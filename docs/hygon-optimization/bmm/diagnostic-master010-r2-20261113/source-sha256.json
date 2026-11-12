@@ -1,0 +1,4 @@
+{
+  "src/flag_gems/runtime/backend/_hygon/ops/__init__.py": "e15881e4d0d5ed57c8931044b4ca7846e1f52db4a6a47433f3e5e6bf685a78b8",
+  "src/flag_gems/runtime/backend/_hygon/ops/bmm_specialized.py": "e29625a99d1907e21e5fab3ea50339180ff9a8c62d7f78760f7cc2f7e4bdaf9f"
+}

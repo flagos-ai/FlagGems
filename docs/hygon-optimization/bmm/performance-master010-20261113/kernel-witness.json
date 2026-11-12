@@ -1,0 +1,742 @@
+{
+  "cases": {
+    "model285-18e2cd15c308785dd3a2": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Alik_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Alik_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-25af3c75f4d3904e580b": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-155198636f96e1bab14e": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-ea1474e504fa08c474d1": {
+      "aa": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-2bb53d63878b75fecbb2": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-d728d49e9e4fef4b41cf": {
+      "aa": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT8x8x8_SE_AMAS0_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW1_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW1_MAC_MMAC_BW0_MMAC_KM0_MMAC_KME0_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT1_1_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW1_WG8_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT8x8x8_SE_AMAS0_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW1_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW1_MAC_MMAC_BW0_MMAC_KM0_MMAC_KME0_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT1_1_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW1_WG8_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-dbc43a40e34b8ed69d4a": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_16_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_16_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-74a11ccc9ff09d67191c": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT8x16x16_SE_AMAS0_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW1_GSU1_ISA936_IU1_KME_GRCM1_K1_KLA_LDL1_LRVW1_MAC_MMAC_BW0_MMAC_KM0_MMAC_KME0_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT1_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW1_WG8_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT8x16x16_SE_AMAS0_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW1_GSU1_ISA936_IU1_KME_GRCM1_K1_KLA_LDL1_LRVW1_MAC_MMAC_BW0_MMAC_KM0_MMAC_KME0_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT1_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW1_WG8_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-4882d7f17433cd314fc4": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-5f2413e6910119bbe537": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-7a5253b6a4f6554d6504": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-7baed9ec4e4cb461da7d": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-73c0a01658503860eb88": {
+      "aa": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-c63ca1056cb10bb7ba28": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL1_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL1_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-88023dc4afe0249bc793": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-a17305c70194123d37ce": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-c7fa02cb1bb66e0f9fce": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-ea2b0705d9f894363ac0": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-a3de3e0e4c3c34971851": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-a2eb8f1dc4b4dd415684": {
+      "aa": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-0694ce26f4fdd1f2e765": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL1_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL1_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-ce0e5d4c91081b706acb": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-d0f9417529b5019f7854": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-10fab80c6b4205c50f49": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-56cb9af233fe717d3249": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Alik_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-42a0c21c47bbe49e473a": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-7eabae029879e9583269": {
+      "aa": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS0_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM1_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_single_row_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-5125fbddfa9123163adc": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL1_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT64x32x16_SE_AMAS3_BW_DTL1_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG32_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-e707497b3fdfc23f53b4": {
+      "aa": {
+        "kernel:_small_bmm": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bjlk_SB_MT32x32x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_small_bmm": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-dd26358a281ea1ea60e6": {
+      "aa": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x64x32_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT32x64x32_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU32_SUM0_SUS256_SVW4_TT2_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG16_16_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-809a8e8ca10e8c6cf48b": {
+      "aa": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "das": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Ailk_Bljk_SB_MT16x16x16_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW2_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW2_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT2_2_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW2_WG8_8_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    },
+    "model285-565362c5211ae608a0b1": {
+      "aa": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "das": {
+        "kernel:Cijk_Alik_Bljk_SB_MT64x64x8_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW4_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW4_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT4_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW4_WG16_16_1_WGM8": 1000
+      },
+      "das_repeat": {
+        "kernel:Cijk_Alik_Bljk_SB_MT64x64x8_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW4_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW4_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT4_4_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW4_WG16_16_1_WGM8": 1000
+      },
+      "new": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old": {
+        "kernel:_bmm_regular_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:_bmm_regular_kernel": 1000
+      }
+    }
+  },
+  "source_accounting_files": [
+    {
+      "path": "bmm-group-00/aa/accounting-0.json",
+      "sha256": "7e4d28d27880985e4debdff8d37fe4584a4cdfdb987f2bcfe3f420fcac6898f7"
+    },
+    {
+      "path": "bmm-group-00/aa/accounting-1.json",
+      "sha256": "1483184168e462b37ec6d1d838a49f1db02279187d68947695b14e837f97b5b6"
+    },
+    {
+      "path": "bmm-group-00/das/accounting-0.json",
+      "sha256": "b8b3263f83cc8fc4f484c04fd21bf2955648d7b271d86474f2fb91364c54398e"
+    },
+    {
+      "path": "bmm-group-00/das/accounting-1.json",
+      "sha256": "1846ae4e074ef5c72912350c5716edc6b1fac08640410fada7caff80b0a43f97"
+    },
+    {
+      "path": "bmm-group-00/das_repeat/accounting-0.json",
+      "sha256": "07e9b1635a5db49d5a8d0f91daa9e38b1fda019ea3a6f9b68c27174448f98bd2"
+    },
+    {
+      "path": "bmm-group-00/das_repeat/accounting-1.json",
+      "sha256": "17bf4d59b71a0406d8359998d2a522eeb6ea847d94d00efb2d8cfaa027e95897"
+    },
+    {
+      "path": "bmm-group-00/new/accounting-0.json",
+      "sha256": "334cecb018f9113c2f68a89a8d1ff9937d2aee16e50e30667391fa8efcda66ac"
+    },
+    {
+      "path": "bmm-group-00/new/accounting-1.json",
+      "sha256": "ce8089622b7b6ab6c243930c71b8a4cc032613f03734662d481e0c7233880066"
+    },
+    {
+      "path": "bmm-group-00/old/accounting-0.json",
+      "sha256": "13e559d6a4d7e27753dbc0a16c29e1026a20b004036b92fec3a11d0081f17bb4"
+    },
+    {
+      "path": "bmm-group-00/old/accounting-1.json",
+      "sha256": "ad4a36f8b08ad618fd98704df3bf28857af7064697b2a87333a5eb8c8ff82a9f"
+    },
+    {
+      "path": "bmm-group-00/old_repeat/accounting-0.json",
+      "sha256": "226c72ed714ab1feefc9d43bd7cd78e5232664b25fbe7670fc18e57d160b4188"
+    },
+    {
+      "path": "bmm-group-00/old_repeat/accounting-1.json",
+      "sha256": "9de235a919a8c3848b788a6551b983e2c0d5e1a4d89abb2f05019cdcce3daa26"
+    },
+    {
+      "path": "bmm-group-01/aa/accounting-0.json",
+      "sha256": "fadc1eb9081a038acf2fa6196e2e618797a05807e1bf2dcf260a6eb9f40195d1"
+    },
+    {
+      "path": "bmm-group-01/aa/accounting-1.json",
+      "sha256": "bcbd5860aaac936a59393cad3e4d0bb5bf7dd3d07f5694317c946aa2fc7a3679"
+    },
+    {
+      "path": "bmm-group-01/das/accounting-0.json",
+      "sha256": "56566d9c5398df1b35955b46effe79f5d5c113a1d0f2b0e8cedc9a3cd952906a"
+    },
+    {
+      "path": "bmm-group-01/das/accounting-1.json",
+      "sha256": "86a41dd8d30e8c92822156312c974e2fe19f3a668d044b82460e4683c5fb7e60"
+    },
+    {
+      "path": "bmm-group-01/das_repeat/accounting-0.json",
+      "sha256": "87435c990e53287240eacf52b43570351fedb21b743a774107c801eb844d9471"
+    },
+    {
+      "path": "bmm-group-01/das_repeat/accounting-1.json",
+      "sha256": "e691fbf0f83288fcab86e2218b339f6f6273625860131e0583ab8c200ae1b1b5"
+    },
+    {
+      "path": "bmm-group-01/new/accounting-0.json",
+      "sha256": "6885ded04fbbca6a67830d944a53f6664ecc4daa74a872ae923af52458323035"
+    },
+    {
+      "path": "bmm-group-01/new/accounting-1.json",
+      "sha256": "33293808ccc8be8032e5d546a02df5a96c82c5a90c76e0484a49732c98cdfcff"
+    },
+    {
+      "path": "bmm-group-01/old/accounting-0.json",
+      "sha256": "04a3a1abcd89ef6662b5d1d0bdca3f51fbc1efd924a438bfaa8afb5d47b05c87"
+    },
+    {
+      "path": "bmm-group-01/old/accounting-1.json",
+      "sha256": "6041b773a34d14cc29debe6149cd5330b1f6a8c49e3925b5c627a9eb5f8b31b3"
+    },
+    {
+      "path": "bmm-group-01/old_repeat/accounting-0.json",
+      "sha256": "f552be6adab81963d1e9ac895ee6a55a3e19134eb69a9f5f9183ec17f6faf119"
+    },
+    {
+      "path": "bmm-group-01/old_repeat/accounting-1.json",
+      "sha256": "f659dd19718fa87aac2e7f7205c30329583e5210e430fe3b56fd84552022011c"
+    }
+  ]
+}

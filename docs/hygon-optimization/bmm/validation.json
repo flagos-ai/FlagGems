@@ -1,8 +1,32 @@
 {
   "operator": "aten::bmm",
   "source_commit": "7ca605ff2692059e7e73e5bd144376264f6f5a37",
-  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
+  "official_master": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
   "internal_validation": "PR1 full revised-list validation; official-master branch retest pending",
   "test_file": "tests/test_hygon_bmm.py",
-  "raw_evidence": "private D:/ZZ/analysis/ artifacts"
+  "raw_evidence": "private D:/ZZ/analysis/ artifacts",
+  "date": "2026-11-13",
+  "tested_candidate": "b4c330effb09e546456d0094fab525edabf64f93",
+  "candidate_src_tree": "2128a3d3dfd78617adad71dc51787bc3c64e61a8",
+  "focused_hardware": {
+    "passed": 62,
+    "failed": 0,
+    "job": 1103593
+  },
+  "performance": {
+    "cases": 32,
+    "complete_all6roles": 32,
+    "old_correct": 32,
+    "new_correct": 32,
+    "das_correct": 32,
+    "qualified_old_new": 15,
+    "old_new_over5_percent": 10,
+    "qualified_new_das": 16,
+    "DAS90": 15,
+    "qualified_slowdowns_over5_percent": [],
+    "known_miss": "model285-565362c5211ae608a0b1;DAS/new0.881283422;upstream fallback",
+    "hardware_job": 1103593,
+    "analysis_job": 1103594,
+    "evidence": "performance-master010-20261113/README.md"
+  }
 }
