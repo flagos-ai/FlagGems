@@ -9,6 +9,7 @@ pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
 
+
 @pytest.mark.clone
 @pytest.mark.parametrize(
     "memory_format", [torch.preserve_format, torch.contiguous_format]
@@ -33,12 +34,9 @@ def test_hygon_clone_layout(memory_format, kind):
     assert result.stride() == expected.stride()
     assert torch.equal(result.cpu(), expected)
 
+
 """Regression coverage for expanded Hygon layouts and precise reductions."""
 
-import pytest
-import torch
-
-import flag_gems
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
