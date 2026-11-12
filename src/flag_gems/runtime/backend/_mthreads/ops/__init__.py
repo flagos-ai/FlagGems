@@ -59,6 +59,7 @@ from .choose_qparams_optimized import choose_qparams_optimized
 from .clip_ import clip_
 from .conv1d import conv1d
 from .conv2d import conv2d
+from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
@@ -251,6 +252,7 @@ __all__ = [
     "constant_pad_nd",
     "conv1d",
     "conv2d",
+    "conv_tbc",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
