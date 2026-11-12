@@ -62,9 +62,20 @@ def test_linalg_eig(shape, dtype):
     )
 
     # reconstruction residual A @ V - V @ diag(w)
-    a_c = inp.to(res_v.dtype)
-    recon = a_c @ res_v - res_v @ torch.diag(res_w)
-    assert torch.linalg.norm(recon).item() < 1e-2 * (shape[0] ** 0.5 + 1.0)
+    if flag_gems.vendor_name == "kunlunxin":
+        # XPU eager matmul has no complex kernel (float/half/bf16/int8 only):
+        # compute the residual with real/imag parts, identical semantics.
+        vr = res_v.real
+        vi = res_v.imag
+        wr = res_w.real
+        wi = res_w.imag
+        rec_r = inp @ vr - (vr @ torch.diag(wr) - vi @ torch.diag(wi))
+        rec_i = inp @ vi - (vr @ torch.diag(wi) + vi @ torch.diag(wr))
+        recon = torch.sqrt((rec_r * rec_r + rec_i * rec_i).sum())
+    else:
+        a_c = inp.to(res_v.dtype)
+        recon = a_c @ res_v - res_v @ torch.diag(res_w)
+    assert recon.item() < 1e-2 * (shape[0] ** 0.5 + 1.0)
 
 
 @pytest.mark.linalg_eig
@@ -76,6 +87,16 @@ def test_linalg_eig_batched(batch, n, dtype):
 
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
 
-    a_c = inp.to(res_v.dtype)
-    recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
-    assert torch.linalg.norm(recon).item() < 1e-2 * (batch * n) ** 0.5
+    if flag_gems.vendor_name == "kunlunxin":
+        # XPU eager matmul has no complex kernel: split into real/imag parts.
+        vr = res_v.real
+        vi = res_v.imag
+        wr = res_w.real
+        wi = res_w.imag
+        rec_r = inp @ vr - (vr @ torch.diag_embed(wr) - vi @ torch.diag_embed(wi))
+        rec_i = inp @ vi - (vr @ torch.diag_embed(wi) + vi @ torch.diag_embed(wr))
+        recon = torch.sqrt((rec_r * rec_r + rec_i * rec_i).sum())
+    else:
+        a_c = inp.to(res_v.dtype)
+        recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
+    assert recon.item() < 1e-2 * (batch * n) ** 0.5
