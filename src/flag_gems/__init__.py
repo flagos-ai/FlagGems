@@ -719,6 +719,18 @@ _FULL_CONFIG = (
         (SPARSE_DISPATCH_KEY,),
     ),
     (
+        "_sparse_sparse_matmul",
+        _sparse_sparse_matmul,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sparse_matmul.out",
+        _sparse_sparse_matmul_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
         "_sparse_sum_backward",
         _sparse_sum_backward,
         None,

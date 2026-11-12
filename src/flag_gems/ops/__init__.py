@@ -423,6 +423,10 @@ from flag_gems.ops._sparse_softmax_backward_data import (
     _sparse_softmax_backward_data,
     _sparse_softmax_backward_data_out,
 )
+from flag_gems.ops._sparse_sparse_matmul import (
+    _sparse_sparse_matmul,
+    _sparse_sparse_matmul_out,
+)
 from flag_gems.ops._sparse_sum_backward import (
     _sparse_sum_backward,
     _sparse_sum_backward_out,
@@ -2148,6 +2152,8 @@ __all__ = [
     "_sparse_softmax_backward_data_out",
     "_sparse_softmax_int",
     "_sparse_softmax_out",
+    "_sparse_sparse_matmul",
+    "_sparse_sparse_matmul_out",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
     "_stack",
