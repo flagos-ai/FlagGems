@@ -27,9 +27,12 @@ _DEFAULT_SHAPES = [
 ]
 
 
-class GreaterBenchmark(OperatorBenchmark):
+class Greater_Benchmark(OperatorBenchmark, base.GenericBenchmarkExcluse1D):
+    DEFAULT_SHAPES = _DEFAULT_SHAPES
+
     def set_shapes(self, shape_file_path):
-        super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
+        super().set_shapes(shape_file_path)
+        self.shapes = [shape for shape in self.shapes if len(shape) != 1]
 
 
 def _case_fn(shape, dtype):
@@ -52,7 +55,7 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.greater_
 def test_greater_():
-    bench = GreaterBenchmark(
+    bench = Greater_Benchmark(
         op_name="greater_",
         torch_op=lambda a, b: a.greater_(b),
         case_fn=_case_fn,
