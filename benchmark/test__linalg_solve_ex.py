@@ -234,9 +234,13 @@ def _operand_shapes(shape, left):
     return batch + (n, n), (batch + (n, m) if left else batch + (m, n))
 
 
+def _uses_master_spd_recipe(shape):
+    return flag_gems.vendor_name == "thead" and shape in _MASTER_CORE_DESCRIPTORS
+
+
 def _case_fn(shape, dtype):
     descriptor = _validate_descriptor(shape)
-    master_core = descriptor in _MASTER_CORE_DESCRIPTORS
+    master_core = _uses_master_spd_recipe(descriptor)
     if master_core and dtype != torch.float32:
         return
     for left in ((True,) if master_core else (True, False)):
@@ -257,7 +261,7 @@ def _build_inputs_fn(plan, dtype, device):
     cpu_fixture = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype.is_complex
     fixture_device = "cpu" if cpu_fixture else device
     a = torch.randn(a_shape, dtype=dtype, device=fixture_device)
-    if shape in _MASTER_CORE_DESCRIPTORS:
+    if _uses_master_spd_recipe(shape):
         n = a_shape[-1]
         eye = torch.eye(n, dtype=dtype, device=fixture_device).unsqueeze(0)
         a = a @ a.mT + eye * n

@@ -1015,15 +1015,18 @@ _MASTER_SOLVE_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
 def _make_solve_ex_inputs(shape, k, dtype, device, left=True):
     """Create well-conditioned A and random B for solve_ex test."""
     n = shape[-1]
-    A = torch.randn(*shape, dtype=dtype, device=device)
-    eye = torch.eye(n, dtype=dtype, device=device)
+    # PPU cannot perform the complex GEMM that builds the SPD fixture.
+    cpu_fixture = flag_gems.vendor_name == "thead" and dtype.is_complex
+    fixture_device = "cpu" if cpu_fixture else device
+    A = torch.randn(*shape, dtype=dtype, device=fixture_device)
+    eye = torch.eye(n, dtype=dtype, device=fixture_device)
     batch_dims = [1] * (A.ndim - 2)
     if batch_dims:
         eye = eye.view(*batch_dims, n, n)
     A = A @ A.mH + eye * n
     B_shape = shape[:-1] + (k,) if left else shape[:-2] + (k, n)
-    B = torch.randn(*B_shape, dtype=dtype, device=device)
-    return A, B
+    B = torch.randn(*B_shape, dtype=dtype, device=fixture_device)
+    return A.to(device), B.to(device)
 
 
 def _assert_solve_ex_outputs(res, ref, dtype, n):
