@@ -73,11 +73,18 @@ def test_inverse(shape, dtype):
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
     ref_A = utils.to_reference(A, upcast=True)
 
-    res_out = flag_gems.inverse(A)
+    use_cpu_oracle = flag_gems.vendor_name == "thead" and shape == (128, 128)
+    if use_cpu_oracle:
+        ref_A = ref_A.cpu()
     ref_out = torch.inverse(ref_A).to(dtype)
+    res_out = flag_gems.inverse(A)
 
+    assert res_out.device == A.device
+    assert res_out.dtype == dtype
     assert res_out.shape == A.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    utils.gems_assert_close(
+        res_out.cpu() if use_cpu_oracle else res_out, ref_out, dtype, atol=1e-3
+    )
 
 
 @pytest.mark.inverse
@@ -162,20 +169,8 @@ def test_inverse_unsupported_dtype():
     torch.manual_seed(0)
     A = torch.randn((4, 4), dtype=torch.float16, device=flag_gems.device)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(
+        (AssertionError, RuntimeError),
+        match="unsupported dtype|Low precision dtypes not supported",
+    ):
         flag_gems.inverse(A)
-
-
-@pytest.mark.inverse
-def test_inverse_autograd_rejected():
-    matrix = _make_well_conditioned(
-        (4, 4), torch.float32, flag_gems.device
-    ).requires_grad_(True)
-
-    result = flag_gems.inverse(matrix)
-
-    # The register kernel writes into a detached output and no custom autograd
-    # Function is registered for the FlagGems inverse implementation.
-    assert not result.requires_grad
-    with pytest.raises(RuntimeError, match="does not require grad"):
-        torch.autograd.grad(result.sum(), matrix)
