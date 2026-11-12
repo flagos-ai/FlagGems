@@ -62,3 +62,27 @@ for case in doc["cases"]:
         case["fg_das_qualified"] and case["das_over_new"] >= 0.9
     )
 print(json.dumps(counts, indent=2))
+
+
+# API controls remain supplementary and are not device-gain acceptance gates.
+api_doc = json.loads((root / "api-controls.json").read_text(encoding="utf8"))
+assert {c["id"] for c in api_doc["cases"]} == {c["id"] for c in doc["cases"]}
+for provenance in api_doc["provenance"].values():
+    assert provenance["cases"] == 207 and provenance["profiler_loaded"] is False
+    for proof in provenance["proof"].values():
+        assert proof["active_profiler_loaded"] is False
+        assert not proof["profiler_environment"] and proof["ld_preload"] is None
+for case in api_doc["cases"]:
+    controls = case["synchronized_api_us"]
+    for value in controls.values():
+        assert value["n"] == len(value["raw"]) == 50
+        assert all(math.isfinite(x) and x > 0 for x in value["raw"])
+        assert math.isclose(
+            statistics.median(value["raw"]), value["median"], rel_tol=1e-12
+        )
+    assert math.isclose(
+        controls["old"]["median"] / controls["new"]["median"],
+        case["api_old_over_new_diagnostic"],
+        rel_tol=1e-12,
+    )
+print("Supplementary unprofiled API arrays verified:", len(api_doc["cases"]))
