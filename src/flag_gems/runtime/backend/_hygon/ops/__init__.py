@@ -27,6 +27,7 @@ from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
@@ -272,6 +273,7 @@ __all__ = [
     "_foreach_clamp_min__Scalar",
     "_foreach_div__Scalar",
     "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
     "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
