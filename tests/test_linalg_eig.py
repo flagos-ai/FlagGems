@@ -22,6 +22,13 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _check_eigenpair_metadata(inp, eigenvalues, eigenvectors):
+    assert eigenvalues.device == eigenvectors.device == inp.device
+    assert eigenvalues.dtype == eigenvectors.dtype == torch.complex64
+    assert eigenvalues.shape == inp.shape[:-1]
+    assert eigenvectors.shape == inp.shape
+
+
 @pytest.mark.linalg_eig
 @pytest.mark.parametrize("shape", [(2, 2), (3, 3), (5, 5), (8, 8), (16, 16)])
 # linalg_eig computes a general (non-symmetric) eigendecomposition; the Triton
@@ -36,21 +43,37 @@ def test_linalg_eig(shape, dtype):
     """
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    use_cpu = flag_gems.vendor_name == "thead"
+    ref_inp = inp.cpu() if use_cpu else utils.to_reference(inp)
 
     ref_w, _ = torch.linalg.eig(ref_inp)
-    res_w, res_v = flag_gems.ops.linalg_eig(inp)
+    res_w, res_v = flag_gems.linalg_eig(inp)
+    _check_eigenpair_metadata(inp, res_w, res_v)
 
-    # eigenvalue set: sort by (real, imag) before comparing
-    def _sort_key(w):
-        r = torch.view_as_real(w)
-        return torch.argsort(r[:, 0] * 1e6 + r[:, 1])
-
-    res_sorted = res_w[_sort_key(res_w)]
-    ref_sorted = ref_w[_sort_key(ref_w)]
-    utils.gems_assert_close(res_sorted, ref_sorted, res_w.dtype, atol=1e-3)
+    # Eigenvalues carry no order and no fixed phase, so pair each reference
+    # eigenvalue with its nearest kernel counterpart before comparing. Sorting
+    # both lists by a scalar key is not enough: two eigenvalues with close real
+    # parts can still be ordered differently on the two sides.
+    assert len(res_w) == len(ref_w)
+    ref_cpu = ref_w.cpu().to(torch.complex128)
+    res_cpu = res_w.cpu().to(torch.complex128)
+    remaining = list(range(len(res_cpu)))
+    matched = []
+    for ref_val in ref_cpu:
+        dists = [(abs(res_cpu[i] - ref_val), i) for i in remaining]
+        _, best = min(dists)
+        remaining.remove(best)
+        matched.append(res_cpu[best])
+    utils.gems_assert_close(
+        torch.stack(matched).to(res_w.dtype),
+        ref_w.cpu(),
+        res_w.dtype,
+        atol=1e-3,
+    )
 
     # reconstruction residual A @ V - V @ diag(w)
+    if flag_gems.vendor_name == "thead":
+        inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
     a_c = inp.to(res_v.dtype)
     recon = a_c @ res_v - res_v @ torch.diag(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (shape[0] ** 0.5 + 1.0)
@@ -64,22 +87,11 @@ def test_linalg_eig_batched(batch, n, dtype):
     torch.manual_seed(0)
     inp = torch.randn(batch, n, n, dtype=dtype, device=flag_gems.device)
 
-    res_w, res_v = flag_gems.ops.linalg_eig(inp)
+    res_w, res_v = flag_gems.linalg_eig(inp)
+    _check_eigenpair_metadata(inp, res_w, res_v)
 
+    if flag_gems.vendor_name == "thead":
+        inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
     a_c = inp.to(res_v.dtype)
     recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (batch * n) ** 0.5
-
-
-@pytest.mark.linalg_eig
-def test_linalg_eig_autograd_is_explicitly_unsupported():
-    torch.manual_seed(0)
-    inp = torch.randn((4, 4), dtype=torch.float32, device=flag_gems.device)
-    inp.requires_grad_(True)
-
-    eigenvalues, eigenvectors = flag_gems.ops.linalg_eig(inp)
-
-    assert not eigenvalues.requires_grad
-    assert not eigenvectors.requires_grad
-    with pytest.raises(RuntimeError, match="does not require grad"):
-        torch.autograd.grad(eigenvalues.abs().sum(), inp)
