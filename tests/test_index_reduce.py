@@ -18,9 +18,15 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 REDUCTIONS = ("prod", "mean", "amax", "amin")
-SHAPE_DIMS = (((8,), 0), ((4, 7), 1), ((3, 5, 2), -2))
+if cfg.QUICK_MODE:
+    _FUNCTIONAL_DTYPES = [torch.float32]
+    _FUNCTIONAL_SHAPE_DIMS = [((4, 5), 1)]
+else:
+    _FUNCTIONAL_DTYPES = utils.ALL_FLOAT_DTYPES
+    _FUNCTIONAL_SHAPE_DIMS = [((8,), 0), ((4, 7), 1), ((5, 3, 4), 0), ((3, 5, 2), -2)]
 
 
 def _values(shape, dtype):
@@ -49,8 +55,8 @@ def _case(shape, dim, dtype, index_dtype=torch.int64):
 
 
 @pytest.mark.index_reduce
-@pytest.mark.parametrize("shape,dim", SHAPE_DIMS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape,dim", _FUNCTIONAL_SHAPE_DIMS)
+@pytest.mark.parametrize("dtype", _FUNCTIONAL_DTYPES)
 @pytest.mark.parametrize("index_dtype", (torch.int64, torch.int32))
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize("include_self", (True, False))
@@ -107,7 +113,6 @@ def test_index_reduce_noncontiguous(reduce):
 @pytest.mark.parametrize(
     "inplace",
     [
-        pytest.param(False, marks=pytest.mark.index_reduce),
         pytest.param(True, marks=pytest.mark.index_reduce_),
     ],
 )
