@@ -33,7 +33,12 @@ def slot_asm(slot, total, tn, ki):
     tmp = total * 8 + ki * 2 * (total // tn + tn)
     areg = tmp + 2 * (slot // tn)
     breg = tmp + 2 * (total // tn) + 2 * (slot % tn)
-    return f"v_mmac_16x16x4_f64 v[{start}:{start+7}], v[{areg}:{areg+1}], v[{breg}:{breg+1}], v[{start}:{start+7}]"
+    return (
+        f"v_mmac_16x16x4_f64 v[{start}:{start + 7}], "
+        f"v[{areg}:{areg + 1}], "
+        f"v[{breg}:{breg + 1}], "
+        f"v[{start}:{start + 7}]"
+    )
 
 
 @triton.constexpr_function
@@ -43,7 +48,7 @@ def slot_constraints(slot, total, tn, ki):
     areg = tmp + 2 * (slot // tn)
     breg = tmp + 2 * (total // tn) + 2 * (slot % tn)
     return ",".join(
-        [f"={{v{start+i}}}" for i in range(8)]
+        [f"={{v{start + i}}}" for i in range(8)]
         + [f"{{v{reg}}}" for reg in (areg, areg + 1, breg, breg + 1)]
         + [str(i) for i in range(8)]
     )

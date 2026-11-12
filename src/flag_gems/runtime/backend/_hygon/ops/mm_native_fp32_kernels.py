@@ -101,12 +101,12 @@ def read_compute_asm(tm, tn, pf, bm, bn):
         for i in range(tm // 2):
             dst = count + 4 * i
             code.append(
-                f"ds_read_m32x8_b32 v[{dst}:{dst+3}], ${count} offset:{(ki*8*bm+i*32)*4}"
+                f"ds_read_m32x8_b32 v[{dst}:{dst + 3}], ${count} offset:{(ki * 8 * bm + i * 32) * 4}"
             )
         for j in range(tn // 2):
             dst = count + 2 * tm + 4 * j
             code.append(
-                f"ds_read_m32x8_b32 v[{dst}:{dst+3}], ${count+1} offset:{(ki*8*bn+j*32)*4}"
+                f"ds_read_m32x8_b32 v[{dst}:{dst + 3}], ${count + 1} offset:{(ki * 8 * bn + j * 32) * 4}"
             )
         code.append("s_waitcnt lgkmcnt(0)")
         for i in range(tm):
@@ -115,7 +115,7 @@ def read_compute_asm(tm, tn, pf, bm, bn):
                 aa = count + 2 * i
                 bb = count + 2 * tm + 2 * j
                 code.append(
-                    f"v_mmac_16x16x8_f32 v[{dst}:{dst+3}], v[{aa}:{aa+1}], v[{bb}:{bb+1}], v[{dst}:{dst+3}]"
+                    f"v_mmac_16x16x8_f32 v[{dst}:{dst + 3}], v[{aa}:{aa + 1}], v[{bb}:{bb + 1}], v[{dst}:{dst + 3}]"
                 )
     return "\n".join(code)
 
@@ -127,7 +127,7 @@ def read_compute_constraints(tm, tn):
         [f"=&{{v{i}}}" for i in range(count)]
         + ["v", "v"]
         + [str(i) for i in range(count)]
-        + [f"~{{v{count+i}}}" for i in range(2 * (tm + tn))]
+        + [f"~{{v{count + i}}}" for i in range(2 * (tm + tn))]
         + ["~{memory}"]
     )
 
@@ -277,9 +277,9 @@ def native_pipeline_asm(ak, bk, steps):
         "ds_write_b32 $38, v67 offset:768",
         "s_cmp_gt_u32 s36, 1",
         "s_cbranch_scc0 .Lmatrix_native_prefetch_done",
-        f"s_add_u32 s32, s32, {16*ak*4}",
+        f"s_add_u32 s32, s32, {16 * ak * 4}",
         "s_addc_u32 s33, s33, 0",
-        f"s_add_u32 s34, s34, {16*bk*4}",
+        f"s_add_u32 s34, s34, {16 * bk * 4}",
         "s_addc_u32 s35, s35, 0",
         "global_load_dwordx4 v[56:59], $34, s[32:33]",
         "global_load_dwordx4 v[60:63], $35, s[32:33]",
@@ -290,9 +290,9 @@ def native_pipeline_asm(ak, bk, steps):
     ]
     for ki in range(2):
         code += [
-            f"ds_read_m32x8_b32 v[{32+ki*4}:{35+ki*4}], $39 offset:{ki*4096}",
-            f"ds_read_m32x8_b32 v[{40+ki*8}:{43+ki*8}], $40 offset:{ki*2048}",
-            f"ds_read_m32x8_b32 v[{44+ki*8}:{47+ki*8}], $40 offset:{ki*2048+128}",
+            f"ds_read_m32x8_b32 v[{32 + ki * 4}:{35 + ki * 4}], $39 offset:{ki * 4096}",
+            f"ds_read_m32x8_b32 v[{40 + ki * 8}:{43 + ki * 8}], $40 offset:{ki * 2048}",
+            f"ds_read_m32x8_b32 v[{44 + ki * 8}:{47 + ki * 8}], $40 offset:{ki * 2048 + 128}",
         ]
     for ki in range(2):
         code.append("s_waitcnt lgkmcnt(3)" if ki == 0 else "s_waitcnt lgkmcnt(0)")
@@ -302,7 +302,7 @@ def native_pipeline_asm(ak, bk, steps):
                 ar = 32 + ki * 4 + i * 2
                 br = 40 + ki * 8 + j * 2
                 code.append(
-                    f"v_mmac_16x16x8_f32 v[{dst}:{dst+3}], v[{ar}:{ar+1}], v[{br}:{br+1}], v[{dst}:{dst+3}]"
+                    f"v_mmac_16x16x8_f32 v[{dst}:{dst + 3}], v[{ar}:{ar + 1}], v[{br}:{br + 1}], v[{dst}:{dst + 3}]"
                 )
     code += [
         "s_sub_u32 s36, s36, 1",
