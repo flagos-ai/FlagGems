@@ -15,7 +15,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
 pytestmark = [
-    pytest.mark._flash_attention_forward,
+    pytest.mark.underscore_flash_attention_forward,
     pytest.mark.flash_attention_backward,
     pytest.mark.skipif(
         flag_gems.vendor_name != "hygon", reason="Hygon-specific FP32 FA path"
