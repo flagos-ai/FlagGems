@@ -9,6 +9,7 @@ pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
 
+
 @pytest.mark.index
 @pytest.mark.parametrize("density", [0.0, 0.5, 1.0])
 @pytest.mark.parametrize("suffix", [None, 1, 3, 0])
@@ -35,6 +36,7 @@ def test_hygon_mask_compaction(density, suffix, broadcast):
     result = flag_gems.index(gpu, [mask.to(flag_gems.device)]).cpu()
     assert torch.equal(result, expected)
 
+
 @pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 @pytest.mark.parametrize("suffix", [4, 48, 128])
@@ -49,16 +51,14 @@ def test_hygon_gather_negative_indices(dtype, suffix):
     result = flag_gems.index(device_a, [i.to(flag_gems.device)])
     assert torch.equal(result.cpu(), a[i])
 
+
 """Regression coverage for expanded Hygon layouts and precise reductions."""
 
-import pytest
-import torch
-
-import flag_gems
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
+
 
 @pytest.mark.index
 @pytest.mark.parametrize("column", [False, True])
@@ -72,6 +72,7 @@ def test_expanded_index_negative_strided_indices(column):
         x.to(flag_gems.device), [None, device_ix] if column else [device_ix]
     )
     assert torch.equal(actual.cpu(), torch.ops.aten.index.Tensor(x, indices))
+
 
 @pytest.mark.index
 @pytest.mark.parametrize("suffix", [4, 33])
@@ -88,6 +89,7 @@ def test_expanded_index_broadcast_mask(suffix, empty):
         x.to(flag_gems.device), [base.to(flag_gems.device).expand(3, 5)]
     )
     assert torch.equal(actual.cpu(), torch.ops.aten.index.Tensor(x, [mask]))
+
 
 @pytest.mark.index
 def test_expanded_index_empty_integer():
