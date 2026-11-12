@@ -144,13 +144,14 @@ _MM_FP32_STATIC_CONFIGS = {
     (140000, 512, 512): (64, 64, 32, 1, 4),
 }
 
+# Wide-vocabulary (145, 2560, 262208) projections use upstream MM.
+# The static tile regressed on HIP/gfx936 in the full independent comparison.
 _MM_SPECIALIZATION_CONFIGS = {
     (145, 10240, 2560): (64, 64, 64, 2, 8),
     (145, 2048, 2560): (32, 64, 64, 2, 4),
     (145, 2560, 1024): (32, 32, 128, 2, 4),
     (145, 2560, 10240): (128, 128, 64, 2, 4),
     (145, 2560, 2048): (32, 64, 64, 1, 4),
-    (145, 2560, 262208): (256, 256, 32, 2, 8),
 }
 
 
@@ -350,7 +351,6 @@ _MM_SPECIALIZATION_KERNELS = {
     (145, 2560, 1024): mm_bf16_staticmasked_kernel,
     (145, 2560, 10240): mm_bf16_staticmasked_kernel,
     (145, 2560, 2048): mm_bf16_staticall_kernel,
-    (145, 2560, 262208): mm_bf16_staticmasked_kernel,
 }
 
 _MM_SPLIT_K_CONFIGS = {(145, 10240, 2560): 4}

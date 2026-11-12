@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -62,3 +63,33 @@ def test_hygon_projection_keeps_general_mm_route(dtype):
     assert try_linear_projection(a, b) is None
     actual = flag_gems.mm(a, b)
     torch.testing.assert_close(actual.cpu(), torch.full((8, 8), 8, dtype=dtype))
+
+
+def test_hygon_projection_defers_wide_vocabulary_before_allocation(monkeypatch):
+    from flag_gems.runtime.backend._hygon.ops.linear_projection import (
+        try_linear_projection,
+    )
+
+    device = torch.device(flag_gems.device)
+    a = SimpleNamespace(
+        ndim=2,
+        shape=(145, 2560),
+        dtype=torch.bfloat16,
+        device=device,
+        stride=lambda dim=None: (2560, 1) if dim is None else (2560, 1)[dim],
+        storage_offset=lambda: 0,
+    )
+    b = SimpleNamespace(
+        ndim=2,
+        shape=(2560, 262208),
+        dtype=torch.bfloat16,
+        device=device,
+        stride=lambda dim=None: (1, 2560) if dim is None else (1, 2560)[dim],
+        storage_offset=lambda: 0,
+    )
+
+    def unexpected_allocation(*args, **kwargs):
+        pytest.fail("wide-vocabulary projection must defer before allocation")
+
+    monkeypatch.setattr(torch, "empty", unexpected_allocation)
+    assert try_linear_projection(a, b) is None
