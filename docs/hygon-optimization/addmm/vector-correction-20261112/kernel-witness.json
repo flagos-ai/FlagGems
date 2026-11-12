@@ -1,0 +1,76 @@
+{
+  "cases": {
+    "expanded230-3c72a5a491b6f928b6ab": {
+      "aa": {
+        "kernel:addmm_kernel": 1000
+      },
+      "das": {
+        "memory:DeviceToDevice": 1000,
+        "kernel:Cijk_Ailk_Bljk_SB_MT8x8x8_SE_AMAS0_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW1_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW1_MAC_MMAC_BW0_MMAC_KM0_MMAC_KME0_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT1_1_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW1_WG8_8_1_WGM1": 1000
+      },
+      "das_repeat": {
+        "memory:DeviceToDevice": 1000,
+        "kernel:Cijk_Ailk_Bljk_SB_MT8x8x8_SE_AMAS0_BW_DTL0_BL1_DRB16_ALT_KME0_ETN_EPS1_FL0_GRVW1_GSU1_ISA936_IU1_KME_GRCMn2_K1_KLA_LDL1_LRVW1_MAC_MMAC_BW0_MMAC_KM0_MMAC_KME0_NLCA1_NLCB1_OLDSR0_PGR1_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT1_1_TLM0_ULDSWM0_USFGRO0_USSB0_VAW1_VSn1_VW1_WG8_8_1_WGM1": 1000
+      },
+      "new": {
+        "kernel:addmm_kernel": 1000
+      },
+      "old": {
+        "kernel:addmm_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:addmm_kernel": 1000
+      }
+    }
+  },
+  "source_accounting_files": [
+    {
+      "path": "addmm-group-05/aa/accounting-0.json",
+      "sha256": "bdc774387bc6a06060589278143748eb53d1db3b6d72121da4f36b5f609cf155"
+    },
+    {
+      "path": "addmm-group-05/aa/accounting-1.json",
+      "sha256": "b452997e291071a105da2e0bb379225d4c1da6e3250de4b68a01015d572003ba"
+    },
+    {
+      "path": "addmm-group-05/das/accounting-0.json",
+      "sha256": "220cc5a5b8b8daf871c0f4069d4f24cde2fb32a83776ac55853901cf5c888904"
+    },
+    {
+      "path": "addmm-group-05/das/accounting-1.json",
+      "sha256": "b4ae3f831eaa21d571f9797a209bca1a70e678e0225e275d93aa39fdfab77246"
+    },
+    {
+      "path": "addmm-group-05/das_repeat/accounting-0.json",
+      "sha256": "aff033128498c7528c1ea3ec739ff3bafda82414f21921db834b5b0ead92a622"
+    },
+    {
+      "path": "addmm-group-05/das_repeat/accounting-1.json",
+      "sha256": "fb9cd3811d2e7504d78dca908e4b2a9f5e09236a74bfecc45ca5d2f43728e433"
+    },
+    {
+      "path": "addmm-group-05/new/accounting-0.json",
+      "sha256": "68ed89a2dace812f9211fbf4e1ddd457fc4fecd51aba6a948d8406304fa7fa6e"
+    },
+    {
+      "path": "addmm-group-05/new/accounting-1.json",
+      "sha256": "8fc109f43064b65350d2fa520f7ef928758cbad457304d9b846dadc96ac7ed62"
+    },
+    {
+      "path": "addmm-group-05/old/accounting-0.json",
+      "sha256": "d1715483eaa8f7a3c19e9b0b3dcc3832511416d23e39188d1ba5063857c5feff"
+    },
+    {
+      "path": "addmm-group-05/old/accounting-1.json",
+      "sha256": "c1b5b5b44ce92aed12afb597c7d7f042061da72609cfcffc83c91ddea96a643c"
+    },
+    {
+      "path": "addmm-group-05/old_repeat/accounting-0.json",
+      "sha256": "191a8f3e8ca1e9e774547b3396df740874d07af5df78bb5e41eac5ba7f960c68"
+    },
+    {
+      "path": "addmm-group-05/old_repeat/accounting-1.json",
+      "sha256": "66a0aeef0c7fffa17dbabf3fa30ef1ed28149f3088dd4c55f3415414af09c538"
+    }
+  ]
+}

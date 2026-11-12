@@ -74,5 +74,35 @@
     "errors": 0,
     "skips": 0
   },
-  "performance_status": "Complete affected-case six-role confirmation still pending; no claim of final performance from unit success"
+  "performance_status": "corrected whole-case six-role confirmation passed; remaining125-case accounting still pending",
+  "confirmation": {
+    "hardware_job": 1102530,
+    "analysis_job": 1102531,
+    "hardware_exit": "COMPLETED0:0",
+    "analysis_exit": "COMPLETED0:0",
+    "old_correct": true,
+    "new_correct": true,
+    "das_correct": true,
+    "old_over_new": 0.9999114948780924,
+    "das_over_new": 4.078290445742597,
+    "target90": true,
+    "device_us": {
+      "old": 40895.990525,
+      "new": 40899.61035,
+      "das": 166800.490125
+    },
+    "old_aa_drift": [
+      -2.1066644296685588e-05,
+      8.010888127230054e-05
+    ],
+    "new_aa_drift": [
+      0.00013352543402200823,
+      -6.236387572799984e-05
+    ],
+    "das_aa_drift": [
+      -0.0031636479949056495,
+      0.0007298771259796055
+    ],
+    "evidence": "vector-correction-20261112/README.md"
+  }
 }

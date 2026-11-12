@@ -22,6 +22,10 @@
     "correction_analysis_job": 1102531,
     "corrected_case": "expanded230-3c72a5a491b6f928b6ab",
     "new_regression_before_correction": true,
-    "source_equivalence": "source-equivalence.json"
+    "source_equivalence": "source-equivalence.json",
+    "correction_status": "complete_output_samples_attribution_AA_all_pass",
+    "correction_old_over_new": 0.9999114948780924,
+    "correction_das_over_new": 4.078290445742597,
+    "correction_evidence": "vector-correction-20261112/README.md"
   }
 }
