@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -14,7 +16,13 @@ import flag_gems
 def test_addmm_single_row_k1_strided_cpu_reference(N, cancellation):
     from flag_gems.runtime.backend._hygon.ops.addmm import addmm
 
-    assert flag_gems.addmm is addmm
+    # Vendor and fully qualified imports can create distinct function objects.
+    actual_provider = getattr(flag_gems, "addmm")
+    assert (
+        Path(actual_provider.__code__.co_filename).resolve()
+        == Path(addmm.__code__.co_filename).resolve()
+    )
+    assert actual_provider.__code__.co_firstlineno == addmm.__code__.co_firstlineno
 
     generator = torch.Generator().manual_seed(20261109 + N)
     backing = [
