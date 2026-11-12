@@ -20,12 +20,11 @@ from flag_gems.ops.__rshift__ import __rshift__
 from flag_gems.ops.__xor__ import xor_scalar  # noqa: F401
 from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
-from flag_gems.ops._adaptive_avg_pool3d import (
-    _adaptive_avg_pool3d as adaptive_avg_pool3d,
-)
+from flag_gems.ops._adaptive_avg_pool3d import _adaptive_avg_pool3d
 from flag_gems.ops._adaptive_avg_pool3d import (
     _adaptive_avg_pool3d_out as adaptive_avg_pool3d_out,
 )
+from flag_gems.ops._adaptive_avg_pool3d import adaptive_avg_pool3d
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
@@ -315,6 +314,9 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from flag_gems.ops._nested_from_padded import _nested_from_padded
+from flag_gems.ops._nested_from_padded_and_nested_example import (
+    _nested_from_padded_and_nested_example,
+)
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
@@ -325,9 +327,11 @@ from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
 from flag_gems.ops._nested_tensor_from_tensor_list import (
     _nested_tensor_from_tensor_list,
 )
+from flag_gems.ops._nested_tensor_size import _nested_tensor_size
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
+from flag_gems.ops._nested_tensor_strides import _nested_tensor_strides
 from flag_gems.ops._nested_view_from_buffer import _nested_view_from_buffer
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
@@ -388,11 +392,41 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
 from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
+from flag_gems.ops._sparse_log_softmax import (
+    _sparse_log_softmax,
+    _sparse_log_softmax_int,
+    _sparse_log_softmax_out,
+)
+from flag_gems.ops._sparse_log_softmax_backward_data import (
+    _sparse_log_softmax_backward_data,
+    _sparse_log_softmax_backward_data_out,
+)
+from flag_gems.ops._sparse_mask_projection import (
+    _sparse_mask_projection,
+    _sparse_mask_projection_out,
+)
 from flag_gems.ops._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
+from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
+from flag_gems.ops._sparse_semi_structured_apply_dense import (
+    _sparse_semi_structured_apply_dense,
+)
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._sparse_semi_structured_tile import _sparse_semi_structured_tile
+from flag_gems.ops._sparse_softmax import (
+    _sparse_softmax,
+    _sparse_softmax_int,
+    _sparse_softmax_out,
+)
+from flag_gems.ops._sparse_softmax_backward_data import (
+    _sparse_softmax_backward_data,
+    _sparse_softmax_backward_data_out,
+)
+from flag_gems.ops._sparse_sum_backward import (
+    _sparse_sum_backward,
+    _sparse_sum_backward_out,
+)
 from flag_gems.ops._spsolve import spsolve
 from flag_gems.ops._stack import _stack
 from flag_gems.ops._standard_gamma import standard_gamma
@@ -604,6 +638,8 @@ from flag_gems.ops.can_cast import can_cast
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
+from flag_gems.ops.cast_Long import cast_Long
+from flag_gems.ops.cast_Short import cast_Short
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ccol_indices import ccol_indices
@@ -770,6 +806,7 @@ from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
+from flag_gems.ops.embedding_spmdm_grad import embedding_spmdm_grad
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_affine_quantized import (
     _empty_affine_quantized,
@@ -1193,6 +1230,9 @@ from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss_out,
 )
 from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
+from flag_gems.ops.multilabel_margin_loss_backward import (
+    multilabel_margin_loss_backward,
+)
 from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
@@ -1479,6 +1519,7 @@ from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
+from flag_gems.ops.sparse_mask import sparse_mask, sparse_mask_out
 from flag_gems.ops.sparse_resize_ import sparse_resize_
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
@@ -1643,6 +1684,7 @@ from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
+from flag_gems.ops.transpose_ import transpose_
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapezoid import trapezoid_x
 from flag_gems.ops.trapz import trapz
@@ -1758,6 +1800,7 @@ __all__ = [
     "__lshift__",
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d",
     "_adaptive_avg_pool3d_backward",
     "_add_relu",
     "_add_relu_",
@@ -2032,13 +2075,16 @@ __all__ = [
     "_neg_view_copy",
     "_neg_view_copy_out",
     "_nested_from_padded",
+    "_nested_from_padded_and_nested_example",
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
     "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
     "_nested_tensor_from_tensor_list",
+    "_nested_tensor_size",
     "_nested_tensor_softmax_with_shape",
+    "_nested_tensor_strides",
     "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
@@ -2083,11 +2129,27 @@ __all__ = [
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
     "_sobol_engine_scramble_",
+    "_sparse_log_softmax",
+    "_sparse_log_softmax_backward_data",
+    "_sparse_log_softmax_backward_data_out",
+    "_sparse_log_softmax_int",
+    "_sparse_log_softmax_out",
+    "_sparse_mask_projection",
+    "_sparse_mask_projection_out",
     "_sparse_mm_reduce_impl",
     "_sparse_semi_structured_addmm",
+    "_sparse_semi_structured_apply",
+    "_sparse_semi_structured_apply_dense",
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
     "_sparse_semi_structured_tile",
+    "_sparse_softmax",
+    "_sparse_softmax_backward_data",
+    "_sparse_softmax_backward_data_out",
+    "_sparse_softmax_int",
+    "_sparse_softmax_out",
+    "_sparse_sum_backward",
+    "_sparse_sum_backward_out",
     "_stack",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_differentiable_lstm_cell_backward",
@@ -2295,6 +2357,8 @@ __all__ = [
     "cartesian_prod",
     "cast_Byte",
     "cast_Char",
+    "cast_Long",
+    "cast_Short",
     "cat",
     "cat_out",
     "cauchy",
@@ -2455,6 +2519,7 @@ __all__ = [
     "embedding_renorm_",
     "embedding_sparse_backward",
     "embedding_spmdm",
+    "embedding_spmdm_grad",
     "empty",
     "empty_permuted",
     "eq",
@@ -2908,6 +2973,7 @@ __all__ = [
     "multi_margin_loss_backward_out",
     "multi_margin_loss_out",
     "multilabel_margin_loss",
+    "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
@@ -3214,6 +3280,8 @@ __all__ = [
     "sparse_csc_tensor_unsafe",
     "sparse_csr_tensor",
     "sparse_dim",
+    "sparse_mask",
+    "sparse_mask_out",
     "sparse_resize_",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
@@ -3374,6 +3442,7 @@ __all__ = [
     "trace",
     "trace_backward",
     "transpose",
+    "transpose_",
     "transpose_copy",
     "trapezoid_x",
     "trapz",
