@@ -102,10 +102,13 @@ def _pd_input(dtype, shape, value_range):
     low = abs(tu.resolve_bound(value_range[0], dtype))
     high = abs(tu.resolve_bound(value_range[1], dtype))
     scale = max(low, high, 1.0)
-    sampled = _range_input(dtype, shape, value_range) / scale
+    sampled = _range_input(dtype, shape, value_range)
+    if flag_gems.vendor_name == "thead" and dtype.is_complex:
+        sampled = sampled.cpu()
+    sampled = sampled / scale
     gram = sampled @ sampled.conj().transpose(-2, -1)
-    eye = torch.eye(n, dtype=dtype, device=flag_gems.device)
-    return gram + (n + 1) * eye
+    eye = torch.eye(n, dtype=dtype, device=sampled.device)
+    return (gram + (n + 1) * eye).to(flag_gems.device)
 
 
 def _extreme_pd_input(dtype, symbol):
@@ -261,17 +264,27 @@ _QUICK_ROWS = [((2, 7, 7), dtype, ["-1", "1"]) for dtype in _DTYPES]
     "shape,dtype,value_range", tu.selected_cases(_RAW_ROWS, quick=_QUICK_ROWS)
 )
 def test_linalg_cholesky_ex_raw_range(shape, dtype, value_range):
-    # Range-sampled matrices are generally not definite, so the native call
-    # reports a failing minor through info; the full returned tuple is compared
-    # either way.
+    # A nonzero info leaves the factor undefined for that matrix.
+    # Check every info entry and compare factors for successful matrices.
     inp = _range_input(dtype, shape, value_range)
     ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
+    assert res_l.device == res_info.device == inp.device
+    assert res_l.dtype == ref_l.dtype == inp.dtype
+    assert res_l.shape == ref_l.shape == inp.shape
+    assert res_info.shape == ref_info.shape == inp.shape[:-2]
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    successful = (ref_info == 0).reshape(-1)
+    if successful.any():
+        order = inp.shape[-1]
+        matrix_shape = (successful.numel(), order, order)
+        tu.assert_result_close(
+            res_l.reshape(matrix_shape)[successful.to(res_l.device)],
+            ref_l.reshape(matrix_shape)[successful],
+        )
 
 
 _PD_SHAPES = [(4, 4), (64, 64), (256, 256), (2, 16, 16)]
