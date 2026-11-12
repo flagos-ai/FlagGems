@@ -16,3 +16,11 @@ pre-commit run --all-files
 ```
 
 This PR remains Draft until complete126-case performance accounting and latest-head CI. Tests run on Hygon gfx936, Torch2.10/Torch-FL R7, FlagTree HCU; frozen metadata-preserving generated inputs, not original model payloads. Both independent block-mean drifts must be<=5%. All producer-linked device activities are retained; API and compile costs are separate. Single-agent staged audit with independent provider processes/repeats, not independent-person approval.
+
+## Performance guard repair in progress (2026-11-12)
+
+The full126-case audit after the extreme-vector correction has125 new correctness passes and one inherited numerical failure. It still exposes12 accepted old/new slowdowns>5%,including7 BF16 slowdowns of approximately5–15x. These are blockers,not accepted final performance. The former backend-label guard missed the actual `hip/gfx936` compiler target.
+
+The current candidate `0a2a9f28da8b3916c91a3b05085bca88d85c32ce` protects gfx936 as well as HCU and uses the generic route for default-scalar ragged/strided FP32 projections. An earlier unpublished guard attempt failed12 existing precision tests by also redirecting non-default alpha/beta and beta=0 reductions. The current scalar-aware guard preserves their precise path. **All108 focused hardware tests now pass** on job1102950;the same complete-output tolerances remain unchanged. Four BF16 route tests record the actual compiler target and forbid specialized launch. Full six-role performance confirmation of all16 changed metadata routes plus one predeclared unchanged control is running. Whole cases will be replaced regardless outcome;no filtered repeats or pooled samples.
+
+The PR stays Draft until final126-case accounting and latest-head CI pass. Earlier vector-only source proof remains valid for its preceding source;the additional guarded selection is recorded separately in `performance-guard-selection.json`.

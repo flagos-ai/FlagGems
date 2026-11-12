@@ -2,19 +2,19 @@
   "operator": "aten::addmm",
   "source_commit": "7ca605ff2692059e7e73e5bd144376264f6f5a37",
   "official_master": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
-  "internal_validation": "PR1 full revised-list validation; official-master branch retest pending",
+  "internal_validation": "Official-master-derived full126 measured; performance guard confirmation pending",
   "test_file": "tests/test_hygon_addmm.py",
   "raw_evidence": "private D:/ZZ/analysis/ artifacts",
-  "tested_candidate": "e42573035c2ff5a3946288542c2f0aea649241dc",
+  "tested_candidate": "0a2a9f28da8b3916c91a3b05085bca88d85c32ce",
   "date": "2026-11-12",
   "focused_hardware": {
-    "passed": 94,
+    "passed": 108,
     "failed": 0,
     "skipped": 0,
-    "job": 1102530
+    "job": 1102950
   },
   "performance": {
-    "status": "126_case_accounting_and_complete_affected_case_confirmation_pending",
+    "status": "full126_performance_blocked_pending17_guard_confirmation",
     "declared_cases": 126,
     "original_hardware_job": 1101516,
     "original_analysis_job": 1102486,
@@ -26,6 +26,18 @@
     "correction_status": "complete_output_samples_attribution_AA_all_pass",
     "correction_old_over_new": 0.9999114948780924,
     "correction_das_over_new": 4.078290445742597,
-    "correction_evidence": "vector-correction-20261112/README.md"
+    "correction_evidence": "vector-correction-20261112/README.md",
+    "confirmation_hardware_job": 1102950,
+    "confirmation_analysis_job": 1102951,
+    "affected_case_count": 16,
+    "control_case_count": 1,
+    "rejected_unpublished_guard": {
+      "source": "13c441c0251392ec825ccd1d5e614716cb1b880b",
+      "job": 1102850,
+      "passed": 94,
+      "failed": 12,
+      "reason": "non-default scalar/beta0 generic precision loss",
+      "performance_started": false
+    }
   }
 }
