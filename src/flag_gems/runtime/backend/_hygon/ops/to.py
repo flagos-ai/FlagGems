@@ -59,14 +59,22 @@ def to_copy(
         memory_format == torch.contiguous_format and x.is_contiguous()
     )
     n = x.numel()
-    # Avoid launch/configuration regressions on contiguous copies. Keep the
-    # explicit nonzero-to-bool conversion: the generic path is not equivalent.
-    prefer_generic = x.is_contiguous() and (
-        (dtype != torch.bool and n <= min(65536, _PACKED_MIN_ELEMENTS))
+    # Keep generic launch choices in the size/layout ranges that regressed
+    # against official master. Preserve the explicit nonzero-to-bool correction.
+    contiguous = x.is_contiguous()
+    prefer_generic = (
+        (contiguous and dtype != torch.bool and n <= min(65536, _PACKED_MIN_ELEMENTS))
         or (
             x.dtype == torch.bfloat16
             and dtype == torch.float32
-            and (262144 < n < 524288 or n >= _PACKED_MIN_ELEMENTS)
+            and (262144 < n < 524288 or (contiguous and n >= _PACKED_MIN_ELEMENTS))
+        )
+        or (
+            contiguous
+            and x.dtype == torch.float32
+            and dtype == torch.bfloat16
+            and 131072 < n <= 262144
+            and n < _PACKED_MIN_ELEMENTS
         )
     )
     if (

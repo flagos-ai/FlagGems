@@ -276,3 +276,32 @@ def test_hygon_to_dtype_extended_workbook_direct(case):
     assert out.device == x.device and out.dtype == target
     assert out.stride() == ref.stride() and out.data_ptr() != x.data_ptr()
     torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
+
+
+@pytest.mark.to_copy
+@pytest.mark.parametrize("kind", ["dense_permutation", "medium_packed_range"])
+def test_official_master_cast_fallback_guards(monkeypatch, kind):
+    import importlib
+
+    impl = importlib.import_module("flag_gems.runtime.backend._hygon.ops.to")
+    generic = impl.default_to_copy
+    observed = []
+
+    def checked_generic(x, **kwargs):
+        observed.append(True)
+        return generic(x, **kwargs)
+
+    monkeypatch.setattr(impl, "default_to_copy", checked_generic)
+    generator = torch.Generator().manual_seed(20261112)
+    if kind == "dense_permutation":
+        x = torch.randn((1, 145, 8, 256), generator=generator, dtype=torch.bfloat16)
+        x = x.transpose(1, 2)
+        dtype = torch.float32
+    else:
+        x = torch.randn((8, 2048, 10), generator=generator)
+        dtype = torch.bfloat16
+    reference = x.to(dtype)
+    actual = impl.to_copy(x.to(flag_gems.device), dtype=dtype)
+    assert observed == [True], "regressed cast ranges must keep the generic kernel"
+    assert actual.stride() == reference.stride()
+    torch.testing.assert_close(actual.cpu(), reference, rtol=0, atol=0)
