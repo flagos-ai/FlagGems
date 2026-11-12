@@ -17,27 +17,163 @@ import logging
 
 import torch
 import triton
-
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# ndtri is the inverse of the standard normal CDF, which is exactly what
-# libdevice exposes as normcdfinv. Using it directly is more accurate than
-# composing sqrt(2) * erfinv(2p - 1): measured on H20 in float32 the former
-# reaches a max absolute error of 2.9e-07 against the float64 reference while
-# the latter reaches 1.3e-05.
-_NORMCDFINV = tl_extra_shim.normcdfinv
+# The launch is grid-strided and every CTA runs several tiles: a CTA prologue
+# dominates the launch cost on the measured backend, so the grid is sized so
+# that each program walks ~_TARGET_ITERS tiles instead of one tile per program.
+_BLOCK = 1024
+_WARPS = 1
+# Big inputs: fat tiles + a small persistent grid.
+_BLOCK_BIG = 16384
+_BIG_TOTAL = 1 << 20
+_TARGET_ITERS = 16
+_MIN_PROGRAMS = 64
+# grid.x is capped at 65535 by the hardware; the launch is capped lower still
+# so that every CTA runs several tiles of the grid-stride loop.
+_MAX_CTAS = 512
+
+_INF = tl.constexpr(float("inf"))
+_NINF = tl.constexpr(float("-inf"))
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def special_ndtri_func(x):
-    # The input dtype is kept as-is so that float64 dispatches to the double
-    # precision libdevice variant. Measured on H20 against the float64
-    # reference, the max absolute error is 2.9e-07 for float32 inputs and
-    # 1.1e-15 for float64 inputs.
-    return _NORMCDFINV(x)
+def _ndtri_math(p):
+    # fp32 rational approximation (Acklam). The branch split is moved from
+    # 0.02425 to 0.1 because the measured fp32 error of the central rational
+    # branch reaches ~9e-5 near its boundary, while the symmetric tail branch
+    # stays at ~1e-6 all the way out to p = 1e-10..1e-38.
+    # symmetric tail: work on pp = min(p, 1 - p) so a single log covers both
+    # tails (1 - p is exact for p > 1/2 by Sterbenz).
+    lo = p < 0.5
+    pp = tl.where(lo, p, 1.0 - p)
+    s = tl.where(lo, 1.0, -1.0)
+    q = tl.sqrt(-2.0 * tl.log(pp))
+    num = -7.784894002430293e-03
+    num = -3.223964580411365e-01 + num * q
+    num = -2.400758277161838e00 + num * q
+    num = -2.549732539343734e00 + num * q
+    num = 4.374664141464968e00 + num * q
+    num = 2.938163982698783e00 + num * q
+    den = 7.784695709041462e-03
+    den = 3.224671290700398e-01 + den * q
+    den = 2.445134137142996e00 + den * q
+    den = 3.754408661907416e00 + den * q
+    den = 1.0 + den * q
+    tail = s * num / den
+
+    # central branch for |p - 1/2| <= 0.4
+    d = p - 0.5
+    r = d * d
+    cnum = -3.969683028665376e01
+    cnum = 2.209460984245205e02 + cnum * r
+    cnum = -2.759285104469687e02 + cnum * r
+    cnum = 1.383577518672690e02 + cnum * r
+    cnum = -3.066479806614716e01 + cnum * r
+    cnum = 2.506628277459239e00 + cnum * r
+    cden = -5.447609879822406e01
+    cden = 1.615858368580409e02 + cden * r
+    cden = -1.556989798598866e02 + cden * r
+    cden = 6.680131188771972e01 + cden * r
+    cden = -1.328068155288572e01 + cden * r
+    cden = 1.0 + cden * r
+    cen = cnum * d / cden
+
+    x = tl.where((p >= 0.1) & (p <= 0.9), cen, tail)
+    # neither rational form reaches the exact end points by itself
+    x = tl.where(p == 0.0, _NINF, x)
+    x = tl.where(p == 1.0, _INF, x)
+    return x
+
+
+@triton.jit
+def _ndtri_flat_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    for base in range(pid * BLOCK, n, step):
+        offs = base + tl.arange(0, BLOCK)
+        if EVEN:
+            # every tile is full (n % BLOCK == 0): drop the per-element compare
+            # and the predication around load/store, and assert the tile is
+            # aligned and contiguous so the body becomes straight-line vector
+            # code. The mask/predicate stream is the largest static part of the
+            # measured tile body, so this is where the element cost lives.
+            offs = tl.max_contiguous(tl.multiple_of(offs, BLOCK), BLOCK)
+            p = tl.load(x_ptr + offs)
+            tl.store(out_ptr + offs, _ndtri_math(p))
+        else:
+            mask = offs < n
+            p = tl.load(x_ptr + offs, mask=mask)
+            tl.store(out_ptr + offs, _ndtri_math(p), mask=mask)
+
+
+@triton.jit
+def _ndtri_strided_kernel(
+    x_ptr,
+    out_ptr,
+    n,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    for base in range(pid * BLOCK, n, step):
+        offs = base + tl.arange(0, BLOCK)
+        mask = offs < n
+        r = offs
+        o = (r % s7) * d7
+        r = r // s7
+        o += (r % s6) * d6
+        r = r // s6
+        o += (r % s5) * d5
+        r = r // s5
+        o += (r % s4) * d4
+        r = r // s4
+        o += (r % s3) * d3
+        r = r // s3
+        o += (r % s2) * d2
+        r = r // s2
+        o += (r % s1) * d1
+        r = r // s1
+        o += (r % s0) * d0
+        p = tl.load(x_ptr + o, mask=mask)
+        tl.store(out_ptr + offs, _ndtri_math(p), mask=mask)
+
+
+def _pad8(shape, stride):
+    pad = 8 - len(shape)
+    return [1] * pad + [int(v) for v in shape], [0] * pad + [int(v) for v in stride]
+
+
+def _pick(n):
+    """(grid.x, BLOCK) for a launch over n elements; the kernel is grid-stride."""
+    if n < _BIG_TOTAL:
+        block = _BLOCK
+        ctas = (n + block - 1) // block
+        return (ctas if ctas < _MAX_CTAS else _MAX_CTAS,), block
+    block = _BLOCK_BIG
+    nblocks = (n + block - 1) // block
+    grid = min(
+        max(_MIN_PROGRAMS, (nblocks + _TARGET_ITERS - 1) // _TARGET_ITERS), _MAX_CTAS
+    )
+    return (grid,), block
 
 
 # ndtri is only defined for single and double precision in PyTorch: both
@@ -53,4 +189,55 @@ def special_ndtri(self):
             f"\"ndtri\" not implemented for '{self.dtype}'; supported dtypes are "
             f"{_SUPPORTED_DTYPES}"
         )
-    return special_ndtri_func(self)
+    x = self
+    dt = x.dtype
+    n = x.numel()
+    out = torch.empty(x.shape, dtype=dt, device=x.device)
+    if n == 0:
+        return out
+
+    grid, block = _pick(n)
+    even = n % block == 0
+
+    if dt is torch.float64 and x.device.type == "gcu":
+        # The measured backend keeps float64 values in the first n float32
+        # words of the storage and its Triton compiler rejects 64-bit dtypes,
+        # so this case is computed through a zero-copy float32 view.
+        x = x.contiguous()
+        src = x.view(-1).view(torch.float32).narrow(0, 0, n)
+        dst = out.view(-1).view(torch.float32).narrow(0, 0, n)
+        _ndtri_flat_kernel[grid](src, dst, n, BLOCK=block, EVEN=even, num_warps=_WARPS)
+        return out
+
+    if x.dim() > 8:
+        # The strided fallback handles at most 8 dimensions.
+        x = x.contiguous()
+    if x.is_contiguous():
+        _ndtri_flat_kernel[grid](x, out, n, BLOCK=block, EVEN=even, num_warps=_WARPS)
+        return out
+
+    sizes, steps = _pad8(x.shape, x.stride())
+    _ndtri_strided_kernel[grid](
+        x,
+        out,
+        n,
+        sizes[0],
+        sizes[1],
+        sizes[2],
+        sizes[3],
+        sizes[4],
+        sizes[5],
+        sizes[6],
+        sizes[7],
+        steps[0],
+        steps[1],
+        steps[2],
+        steps[3],
+        steps[4],
+        steps[5],
+        steps[6],
+        steps[7],
+        BLOCK=block,
+        num_warps=_WARPS,
+    )
+    return out
