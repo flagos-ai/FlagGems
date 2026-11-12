@@ -23,6 +23,9 @@ from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_div__Scalar import _foreach_div__Scalar
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
@@ -228,7 +231,10 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
-from .thnn_fused_gru_cell_backward import thnn_fused_gru_cell_backward
+from .thnn_fused_gru_cell_backward import (
+    _thnn_fused_gru_cell_backward,
+    _thnn_fused_gru_cell_backward_out,
+)
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
@@ -261,9 +267,14 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_div__Scalar",
     "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
+    "_thnn_fused_gru_cell_backward",
+    "_thnn_fused_gru_cell_backward_out",
     "_thnn_fused_lstm_cell",
     "_unique2",
     "adaptive_avg_pool2d_backward",
@@ -459,7 +470,6 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
-    "thnn_fused_gru_cell_backward",
     "tile",
     "topk_w8a16_fp8",
     "triangular_solve",
