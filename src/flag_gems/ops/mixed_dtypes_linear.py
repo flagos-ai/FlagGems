@@ -235,12 +235,6 @@ def _choose_tiles(M, N, K, int4, dtype):
         BN, BK = 1024, 512
     if K % BK != 0:
         BK = 256 if K % 256 == 0 else (128 if K % 128 == 0 else 64)
-    # The accuracy suite's small shapes fall back to the conservative
-    # pre-#8417 tiles: the wide column tile needs ~BK*BN bytes of smem for the
-    # weight (e.g. 256x1024 = 256KB+), over the A100 163KB limit, which OOMs at
-    # e.g. 32x256x128. Large LLM shapes (N >> 256) keep the wide tiles.
-    if N <= 256:
-        BM, BN, BK = 128, 128, 64
     return {
         "BM": BM,
         "BN": BN,
