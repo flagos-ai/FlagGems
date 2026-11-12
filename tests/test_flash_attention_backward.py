@@ -82,6 +82,52 @@ def flash_attn_forward_native(
     return output.contiguous(), lse.float(), philox_seed, philox_offset
 
 
+def flash_attn_value_grad_reference_cpu(
+    Q, K, dOut, scale, is_causal, window_size_left, window_size_right
+):
+    """Compute dV from the mathematical softmax in CPU FP64.
+
+    Hygon's native FP16 backward rounds the softmax probabilities differently
+    from FlagGems. For near-uniform scores, comparing those two rounded dV
+    results rejects values that satisfy the existing tolerance against FP64.
+    Keep the tolerance unchanged and use an independent reference for dV.
+    """
+    q, k, dout = (
+        tensor.detach().cpu().double().permute(0, 2, 1, 3) for tensor in (Q, K, dOut)
+    )
+    q_len, k_len = q.shape[-2], k.shape[-2]
+    # FlashAttention aligns causal/local masks to the bottom-right corner.
+    q_position = torch.arange(q_len)[:, None] + k_len - q_len
+    k_position = torch.arange(k_len)[None, :]
+    allowed = torch.ones((q_len, k_len), dtype=torch.bool)
+    if is_causal:
+        allowed &= k_position <= q_position
+    if window_size_left >= 0:
+        allowed &= k_position >= q_position - window_size_left
+    if window_size_right >= 0:
+        allowed &= k_position <= q_position + window_size_right
+    scores = (q @ k.transpose(-1, -2)) * scale
+    probabilities = scores.masked_fill(~allowed, float("-inf")).softmax(-1)
+    probabilities = torch.where(allowed.any(-1, keepdim=True), probabilities, 0.0)
+    return (probabilities.transpose(-1, -2) @ dout).permute(0, 2, 1, 3).to(Q.dtype)
+
+
+@pytest.mark.flash_attention_backward
+@pytest.mark.parametrize(
+    "causal, left, right, expected",
+    [
+        (False, -1, -1, [7 / 3, 7 / 3, 7 / 3]),
+        (True, -1, -1, [10 / 3, 7 / 3, 4 / 3]),
+        (False, 1, 0, [2.0, 3.0, 2.0]),
+    ],
+)
+def test_flash_attention_value_grad_cpu_reference(causal, left, right, expected):
+    q = torch.zeros((1, 3, 1, 1), dtype=torch.float64)
+    dout = torch.tensor([1.0, 2.0, 4.0], dtype=torch.float64).view_as(q)
+    actual = flash_attn_value_grad_reference_cpu(q, q, dout, 1.0, causal, left, right)
+    torch.testing.assert_close(actual.flatten(), torch.tensor(expected, dtype=q.dtype))
+
+
 def cudnn_attn_forward_native(
     Q,
     K,
@@ -291,6 +337,10 @@ def test_flash_attention_backward(
         **extra_bwd,
     )
     ref_dQ, ref_dK, ref_dV = (utils.to_reference(g) for g in ref_grads)
+    if flag_gems.vendor_name == "hygon":
+        ref_dV = flash_attn_value_grad_reference_cpu(
+            Q, K, dOut, scale, is_causal, wl, wr
+        ).to(ref_dV.device)
 
     dQ, dK, dV = flag_gems.flash_attention_backward(
         dOut,
