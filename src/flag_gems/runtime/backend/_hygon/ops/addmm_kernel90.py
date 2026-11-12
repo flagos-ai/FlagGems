@@ -315,6 +315,11 @@ def _expanded_fp32(a, b):
 def _eligible(a, b):
     m, k = a.shape
     n = b.shape[1]
+    # Extremely long FP32 vector reductions use the established accumulation
+    # order. The double-precision split reduction can differ from the native
+    # FP32 reference beyond the operator's existing tolerance in this regime.
+    if a.dtype == torch.float32 and min(m, n) == 1 and k >= 2**20:
+        return False
     # Large BF16 tiles depend on the HIP-specific scheduling path. HCU
     # compilers can spill these accumulators heavily; retain the established
     # generic implementation instead of selecting an unsupported fast path.

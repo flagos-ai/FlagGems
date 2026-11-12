@@ -353,3 +353,26 @@ def test_hygon_addmm_large_bf16_k1(alpha, beta):
         beta=beta,
     )
     torch.testing.assert_close(actual.cpu(), expected)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("out_variant", [False, True])
+def test_hygon_addmm_extreme_vector_native_reference(out_variant):
+    # Reconstruct the frozen long-vector regression, including backing order
+    # and singleton-dimension strides. Check values without relaxing tolerance.
+    k = 3145728
+    generator = torch.Generator().manual_seed(20261109)
+    bias = torch.randn(1, generator=generator) * 0.25
+    a = (torch.randn(k, generator=generator) * 0.25).as_strided((1, k), (48, 1))
+    b = (torch.randn(k, generator=generator) * 0.25).as_strided((k, 1), (1, 48))
+    expected = torch.addmm(bias, a, b)
+    ad = a.reshape(-1).to(flag_gems.device).as_strided(a.shape, a.stride())
+    bd = b.reshape(-1).to(flag_gems.device).as_strided(b.shape, b.stride())
+    cd = bias.to(flag_gems.device)
+    if out_variant:
+        out = torch.empty((1, 2), device=flag_gems.device)[:, 1:]
+        result = flag_gems.addmm_out(cd, ad, bd, out=out)
+        assert result is out
+    else:
+        result = flag_gems.addmm(cd, ad, bd)
+    torch.testing.assert_close(result.cpu(), expected)
