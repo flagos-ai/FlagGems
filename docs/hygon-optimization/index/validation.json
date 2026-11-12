@@ -2,10 +2,7 @@
   "operator": "aten::index.Tensor",
   "official_master": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
   "tested_candidate": "e6cec3cde6cf525c5fe6e9ac93754a96d5c50a14",
-  "source_sha256": {
-    "src/flag_gems/runtime/backend/_hygon/ops/index.py": "5c698ef1295676de5694de8c6312c65c93603bdf1560548006fa18404797a40a",
-    "src/flag_gems/ops/index.py": "3c0a6b86235f18988d6581350a421bf99641067683786a0648146c9747213705"
-  },
+  "candidate_src_tree": "f6713170d72b4f1612f02094e2c29f23a42858c6",
   "date": "2026-11-12",
   "focused_hardware": {
     "passed": 59,
@@ -14,24 +11,26 @@
     "job": 1103029
   },
   "performance": {
-    "status": "all125 measured;5 affected routes under full confirmation",
-    "previous_source": "1a5cea0e25316bb5159ccefcbea1245542a20b2a",
-    "previous_hardware_job": 1102501,
-    "previous_analysis_job": 1102502,
-    "previous_complete": 125,
-    "previous_correct": 125,
-    "previous_qualified_old_new": 49,
-    "previous_qualified_new_das": 57,
-    "previous_target90": 57,
-    "previous_qualified_slowdowns": [
-      "expanded230-1cc61c9d55d614ba6fbe",
-      "expanded230-333ca8a8d66d1e3ca124"
+    "cases": 125,
+    "old_correct": 125,
+    "new_correct": 125,
+    "das_correct": 125,
+    "qualified_old_new": 47,
+    "gains_over5_percent": 35,
+    "qualified_new_das": 55,
+    "target90": 55,
+    "accepted_old_new_range": [
+      0.9615931959545453,
+      21.101131615598888
     ],
+    "accepted_old_new_slowdowns": [],
+    "status": "complete_with_per_case_AA_qualification",
+    "full_hardware_job": 1102501,
+    "full_analysis_job": 1102502,
     "confirmation_hardware_job": 1103029,
     "confirmation_analysis_job": 1103030,
-    "confirmation_case_count": 5,
-    "source_proof": "compact-guard-selection.json"
-  },
-  "test_file": "tests/test_hygon_index.py",
-  "raw_evidence": "Private source-bound scheduler and profiler artifacts; compact evidence pending full analysis"
+    "predeclared_confirmation_cases": 5,
+    "unresolved_AA_point": "expanded230-333ca8a8d66d1e3ca124;0.879802 old/new;not claimed fixed",
+    "evidence": "performance-20261112/README.md"
+  }
 }
