@@ -81,10 +81,31 @@ def _margin_ranking_loss_kernel(
     target_val = tl.load(target + offsets, mask=mask, other=0.0)
     margin_val = tl.full([BLOCK_SIZE], margin, input1_val.dtype)
     zero = tl.zeros([BLOCK_SIZE], input1_val.dtype)
-    difference = (input1_val - input2_val).to(input1_val.dtype)
-    product = (-target_val * difference).to(input1_val.dtype)
-    loss = tl.maximum((product + margin_val).to(input1_val.dtype), zero)
-    tl.store(out + offsets, loss, mask=mask)
+    if input1_val.dtype == tl.bfloat16:
+        # Per-step bf16 rounding emulation in fp32 (matches the native
+        # bf16 operator boundaries bit-exactly; plain bf16 arithmetic is
+        # fused to fp32 by the lowering and fails the strict tolerances).
+        # The int bitcasts/shifts of the emulation fail to lower past
+        # ~1024 lanes on flagtree 3.6.0/xpu3.6 (``triton_xpu.unpack reached
+        # lowering without a bufPtr``; host launches this kernel at
+        # BLOCK=1024), and the rounded value is stored through its raw
+        # uint16 bit pattern to avoid an fp32->bf16 narrowing conversion
+        # (same pattern as the mixed_dtypes_linear passes).
+        input1_val = input1_val.to(tl.float32)
+        input2_val = input2_val.to(tl.float32)
+        target_val = target_val.to(tl.float32)
+        difference = _round_to_bfloat16(input1_val - input2_val)
+        product = _round_to_bfloat16(-target_val * difference)
+        loss = tl.maximum(_round_to_bfloat16(product + margin), 0.0)
+        bits = loss.to(tl.uint32, bitcast=True)
+        rounding_bias = 0x7FFF + ((bits >> 16) & 1)
+        bf16_bits = ((bits + rounding_bias) >> 16).to(tl.uint16)
+        tl.store(out + offsets, bf16_bits, mask=mask)
+    else:
+        difference = (input1_val - input2_val).to(input1_val.dtype)
+        product = (-target_val * difference).to(input1_val.dtype)
+        loss = tl.maximum((product + margin_val).to(input1_val.dtype), zero)
+        tl.store(out + offsets, loss, mask=mask)
 
 
 @libentry()
@@ -319,6 +340,28 @@ def _margin_ranking_loss_forward(input1, input2, target, margin, reduction):
     block_size = 2048
 
     if reduction == 0:
+        if input1.dtype == torch.bfloat16:
+            # The pointwise elementwise path cannot serve bf16 here: its
+            # per-step ``_round_to_bfloat16`` emulation fails to lower on
+            # flagtree 3.6.0/xpu3.6 (``triton_xpu.unpack`` without a bufPtr)
+            # once the tile vectorizes past ~1024 lanes, and dropping the
+            # emulation breaks the strict per-step rounding tolerance. The
+            # masked libentry kernel keeps the emulation at BLOCK=1024 and
+            # stores raw bf16 bits (see ``_margin_ranking_loss_kernel``).
+            out = torch.empty_like(input1)
+            block_size = 1024
+            with torch_device_fn.device(input1.device):
+                _margin_ranking_loss_kernel[(triton.cdiv(n_elements, block_size),)](
+                    input1,
+                    input2,
+                    target,
+                    out.view(torch.uint16),
+                    n_elements,
+                    float(margin),
+                    BLOCK_SIZE=block_size,
+                    buffer_size_limit=2048,
+                )
+            return out.view(output_shape)
         return _margin_ranking_loss_elementwise(
             input1, input2, target, float(margin)
         ).view(output_shape)
