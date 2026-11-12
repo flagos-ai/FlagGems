@@ -299,10 +299,9 @@ def quantized_max_pool3d_out(
     if tuple(out.shape) != tuple(out_shape):
         _resize_quantized_out(out, out_shape)
 
-    match_qparams = (
-        abs(float(out.q_scale()) - float(input.q_scale())) < 1e-9
-        and int(out.q_zero_point()) == int(input.q_zero_point())
-    )
+    match_qparams = abs(float(out.q_scale()) - float(input.q_scale())) < 1e-9 and int(
+        out.q_zero_point()
+    ) == int(input.q_zero_point())
 
     if match_qparams:
         if out.numel() != 0:
