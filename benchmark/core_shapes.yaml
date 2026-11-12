@@ -462,6 +462,33 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+linear:
+  # Matched by op_name, which set_shapes() looks up before falling back to
+  # the MRO class name, so this override leaves every other BlasBenchmark op
+  # on the shared square shapes above.
+  #
+  # The first five entries are exactly the shared BlasBenchmark squares, so
+  # --level core keeps the shape set it always reported for this op. The next
+  # five are LoRA-rank small-K shapes (K=32-64), the region where the Ascend
+  # kernel beats the vendor path; they are added on top of the baseline, not
+  # in place of it, so both the large-K and the small-K regions are measured.
+  #
+  # The leading B is decorative: test_linear.py's _input_fn takes b and
+  # ignores it, building only [m, k], so the two 4096^3 squares below differ
+  # only in that ignored field (they were both in the baseline list).
+  shapes:
+    - [2, 384, 384, 384]
+    - [2, 4096, 4096, 4096]
+    - [16, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [16, 4096, 4096, 4096]
+    - [1, 4096, 4096, 32]
+    - [2, 4096, 4096, 64]
+    - [1, 4096, 8192, 64]
+    - [16, 8192, 4096, 32]
+    - [1, 4096, 14336, 64]
+  shape_desc: "B, M, N, K"
+
 addmm_vector_bias:
   shapes:
     - [1, 64, 256, 184]
@@ -612,6 +639,33 @@ embedding_spmdm_weighted:
     - [131072, 64, 2048, 16]
   shape_desc: "V, D, B, S"
 
+embedding_spmdm_grad:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
+embedding_spmdm_grad_weighted:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
 
 # [N, C, H, W]
 UpsampleBenchmark:
@@ -768,6 +822,18 @@ frobenius_norm:
     - [1048576, 16]
     - [65536, 64]
   shape_desc: "M, N"
+
+# O(N*C^2): keep the class axis representative without inheriting the generic
+# 4096x4096 and 1024x65536 cases, which are not practical for this operator.
+multilabel_margin_loss_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
 
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
@@ -1270,3 +1336,26 @@ bmm_w8a8:
     - [1, 128, 1024, 4096]
     - [2, 33, 65, 129]
   shape_desc: "B, M, N, K"
+
+layernorm:
+  shape_desc: "input_shape, normalized_shape, eps"
+  shapes:
+    - [[200, 36], [36], 1e-05]
+    - [[4096, 100], [100], 1e-05]
+    - [[1, 40999], [40999], 1e-05]
+    - [[100, 40499], [40499], 1e-05]
+    - [[4096, 256], [256], 1e-05]
+    - [[256, 512], [512], 1e-05]
+    - [[4096, 512], [512], 1e-05]
+    - [[2048, 1024], [1024], 1e-05]
+    - [[1024, 2048], [2048], 1e-05]
+    - [[4, 64], [64], 1e-05]
+    - [[4, 8, 8], [8, 8], 1e-05]
+    - [[4, 4, 4, 4], [4, 4, 4], 1e-05]
+    - [[16, 16, 64], [16, 64], 1e-05]
+    - [[16, 16, 1024], [16, 1024], 1e-05]
+    - [[1, 8, 4, 4], [8, 4, 4], 1e-05]
+    - [[1, 2], [2], 1e-05]
+    - [[200, 40999], [40999], 1e-05]
+    - [[2, 32], [32], 1e-05]
+    - [[65536, 1, 1152], [1152], 1e-06]

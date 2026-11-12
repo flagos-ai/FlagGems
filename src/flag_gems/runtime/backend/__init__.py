@@ -325,7 +325,7 @@ def get_tl_extra_backend_module():
 def set_torch_backend_device_fn(vendor_name=None):
     _state.device_name = _state.device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{_state.device_name}"
-    if _state.device_name in ("musa", "aipu", "npu", "txda", "ptpu", "gcu"):
+    if _state.device_name in ("musa", "aipu", "npu", "txda", "raisa", "ptpu", "gcu"):
         _state.torch_device_fn_device = None
     else:
         _state.torch_device_fn_device = importlib.import_module(module_str)

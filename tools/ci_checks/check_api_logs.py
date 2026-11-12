@@ -41,6 +41,7 @@ import yaml
 
 OPERATORS_YAML = Path("conf/operators.yaml")
 OPS_DIR = Path("src/flag_gems/ops")
+BACKEND_DIR = Path("src/flag_gems/runtime/backend")
 
 
 def load_operators_yaml() -> dict[str, dict]:
@@ -53,21 +54,58 @@ def load_operators_yaml() -> dict[str, dict]:
     return {op["id"]: op for op in data.get("ops", []) if "id" in op}
 
 
-def find_op_source(op_id: str) -> Path | None:
-    """Find the source file for an operator."""
-    # Direct match
-    direct = OPS_DIR / f"{op_id}.py"
-    if direct.exists():
-        return direct
+def iter_ops_dirs() -> list[Path]:
+    """Collect every "ops" directory to search: the generic one plus every
+    vendor backend's, including vendors that split further into per-model
+    subfolders (e.g. ``_enflame/gcu300``, ``_nvidia/hopper``).
 
-    # Some ops use different file names
-    # e.g., abs_ might be in abs.py
+    Each vendor's own ``ops/`` directory, if present, plus each of its
+    immediate subdirectories' ``ops/`` directory (if any) is included, so a
+    vendor can have either a flat layout or a model-specific one without this
+    script needing to know its name.
+    """
+    ops_dirs = [OPS_DIR]
+
+    if not BACKEND_DIR.is_dir():
+        return ops_dirs
+
+    for vendor_dir in sorted(BACKEND_DIR.iterdir()):
+        if not vendor_dir.is_dir() or not vendor_dir.name.startswith("_"):
+            continue
+
+        direct = vendor_dir / "ops"
+        if direct.is_dir():
+            ops_dirs.append(direct)
+
+        for model_dir in sorted(vendor_dir.iterdir()):
+            if not model_dir.is_dir():
+                continue
+            nested = model_dir / "ops"
+            if nested.is_dir():
+                ops_dirs.append(nested)
+
+    return ops_dirs
+
+
+def find_op_sources(op_id: str, ops_dirs: list[Path]) -> list[Path]:
+    """Find every source file implementing an operator.
+
+    Looks in the generic ops directory plus every vendor (and per-model)
+    backend ops directory collected by ``iter_ops_dirs``, since a vendor may
+    override an operator for one or more of its models.
+    """
+    names = [op_id]
+    # Some ops use different file names, e.g. abs_ might be in abs.py
     if op_id.endswith("_"):
-        base = OPS_DIR / f"{op_id[:-1]}.py"
-        if base.exists():
-            return base
+        names.append(op_id[:-1])
 
-    return None
+    sources = []
+    for ops_dir in ops_dirs:
+        for name in names:
+            candidate = ops_dir / f"{name}.py"
+            if candidate.exists():
+                sources.append(candidate)
+    return sources
 
 
 def check_logging_setup(tree: ast.Module) -> bool:
@@ -193,31 +231,33 @@ def main():
 
     print(f"Checking API logging for {len(ops_to_check)} operator(s)...")
     all_warnings = []
+    ops_dirs = iter_ops_dirs()
 
     for op_id in sorted(ops_to_check):
-        source_file = find_op_source(op_id)
-        if source_file is None:
+        source_files = find_op_sources(op_id, ops_dirs)
+        if not source_files:
             # Not all operators have a direct source file (backend-specific, etc.)
             continue
 
-        try:
-            source = source_file.read_text()
-            tree = ast.parse(source)
-        except (SyntaxError, UnicodeDecodeError):
-            continue
+        for source_file in source_files:
+            try:
+                source = source_file.read_text()
+                tree = ast.parse(source)
+            except (SyntaxError, UnicodeDecodeError):
+                continue
 
-        # Check logging setup
-        if not check_logging_setup(tree):
-            all_warnings.append(
-                f"{source_file}: operator '{op_id}' missing logging setup "
-                f"(import logging + logger = logging.getLogger(__name__))"
-            )
-            continue
+            # Check logging setup
+            if not check_logging_setup(tree):
+                all_warnings.append(
+                    f"{source_file}: operator '{op_id}' missing logging setup "
+                    f"(import logging + logger = logging.getLogger(__name__))"
+                )
+                continue
 
-        # Check debug calls in public functions
-        fn_warnings = check_debug_calls(tree, op_id)
-        for w in fn_warnings:
-            all_warnings.append(f"{source_file}: {w}")
+            # Check debug calls in public functions
+            fn_warnings = check_debug_calls(tree, op_id)
+            for w in fn_warnings:
+                all_warnings.append(f"{source_file}: {w}")
 
     if all_warnings:
         print(f"\n⚠️  Found {len(all_warnings)} warning(s):\n")
