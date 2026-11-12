@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-13T00:49:50.604836",
+  "official_master": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "measured_candidate": "8ed056afe466023d1c24e6ede4060324dd73a8f1",
+  "candidate_src_tree": "e2bf4e6f83ef0e125c82c50537d4cd32729055be",
+  "ssh_alias": "luojun850",
+  "hardware_job": 1103445,
+  "unit_passed": 58,
+  "raw_junit_sha256": "7db3901e84b559011ad26bbd38372056359f570b9b3322fca8f348aef2260771",
+  "published_junit_sha256": "fc7b4b20befb5017e35123147f399cfb8dfed1ebe438febcc405151a45ead3fe",
+  "normalization": "One terminal LF for official EOF hook;all XML test records identical",
+  "full_performance": "pending;no newest-baseline gains accepted here"
+}
