@@ -27,6 +27,7 @@ from .addmm_ import addmm_
 from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
+from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
 from .batch_norm_with_update_functional import _batch_norm_with_update_functional
@@ -48,6 +49,9 @@ from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
+from .expand_copy import expand_copy
+from .float_power_scalar_tensor import float_power_scalar_tensor
+from .float_power_tensor_scalar import float_power_tensor_scalar
 from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
@@ -63,8 +67,10 @@ from .index_reduce import index_reduce, index_reduce_
 from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
+from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
+from .linalg_det import linalg_det
 from .linalg_householder_product import run as linalg_householder_product
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
@@ -96,7 +102,6 @@ from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
 from .pinverse import pinverse
-from .quantized_max_pool1d_out import quantized_max_pool1d_out
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -169,6 +174,7 @@ __all__ = [
     "arccos_",
     "arccosh_",
     "as_strided_scatter",
+    "avg_pool1d",
     "avg_pool3d_backward",
     "cholesky_solve",
     "cholesky_solve_out",
@@ -185,6 +191,9 @@ __all__ = [
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "expand_copy",
+    "float_power_scalar_tensor",
+    "float_power_tensor_scalar",
     "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
     "gcd_",
@@ -203,8 +212,10 @@ __all__ = [
     "index_select_backward",
     "kthvalue",
     "ldl_factor_ex",
+    "lift_fresh",
     "lift_out",
     "linalg_cholesky",
+    "linalg_det",
     "linalg_householder_product",
     "linalg_lstsq",
     "linalg_matrix_norm",
@@ -240,7 +251,6 @@ __all__ = [
     "pad_sequence",
     "permute_copy",
     "pinverse",
-    "quantized_max_pool1d_out",
     "randperm",
     "renorm_",
     "repeat",
