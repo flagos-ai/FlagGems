@@ -32,7 +32,7 @@ class BesselY1Benchmark(base.UnaryPointwiseBenchmark, OperatorBenchmark):
 @pytest.mark.special_bessel_y1
 @pytest.mark.skip_native(
     vendors=["metax"],
-    reason="Native bessel_y1 exceeds MetaX private memory; use the ops-baseline H800 data",
+    reason="Native bessel_y1 exceeds the MetaX per-thread private memory limit",
 )
 def test_special_bessel_y1():
     BesselY1Benchmark(
