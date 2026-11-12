@@ -50,12 +50,20 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
     assert quasi_gems.shape == (dimension,)
     assert quasi_gems.dtype == torch.int64
 
-    # Check values are in valid range [0, 1)
-    assert (result_gems >= 0).all()
-    assert (result_gems < 1).all()
+    assert result_gems.device == quasi_cuda.device
+    assert quasi_gems.device == quasi_cuda.device
 
-    # Check match with CPU reference
-    torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)
+    result_cpu = result_gems.cpu()
+    # Iluvatar FP64 comparisons can misclassify values that round-trip exactly.
+    range_values = (
+        result_cpu
+        if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+        else result_gems
+    )
+    assert (range_values >= 0).all()
+    assert (range_values < 1).all()
+
+    torch.testing.assert_close(result_cpu, result_ref, rtol=1e-5, atol=1e-8)
     assert torch.equal(quasi_gems.cpu(), quasi_ref)
 
 
