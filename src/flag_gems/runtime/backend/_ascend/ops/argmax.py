@@ -375,6 +375,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_ASCEND ARGMAX")
     if inp.ndim == 0 and dim in (0, -1):
         dim = None
+        keepdim = False
     if dim is None:
         M = inp.numel()
         if M == 0:
@@ -384,8 +385,10 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         inp = inp.contiguous()
         if dtype is None:
             dtype = inp.dtype
+        # torch_npu reduces a flattened input when dim is None, including
+        # the retained dimension. Explicit scalar dimensions remain scalar.
+        out_shape = [1] if keepdim else []
         if M >= 4096 and dtype == inp.dtype:
-            out_shape = [1] * inp.ndim if keepdim else []
             out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
             with torch_device_fn.device(inp.device):
                 argmax_split_rows(inp, out, 1, M)
@@ -396,7 +399,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
-        out_shape = [1] * inp.ndim if keepdim else []
         out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
 
         with torch_device_fn.device(inp.device):
