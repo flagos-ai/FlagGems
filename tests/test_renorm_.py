@@ -40,15 +40,17 @@ RENORM_MAXNORM_LIST = [1.0] if QUICK_MODE else [0.5, 1.0, 2.0]
 @pytest.mark.parametrize("p", RENORM_P_LIST)
 @pytest.mark.parametrize("maxnorm", RENORM_MAXNORM_LIST)
 def test_renorm_(shape, dtype, dim, p, maxnorm):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     # Clone first: renorm_ is in-place, so the reference and the gems result
     # must not share the same storage, otherwise the comparison is vacuous.
     ref_inp = utils.to_reference(inp.clone())
 
+    original_pointer = inp.data_ptr()
     ref_out = torch.ops.aten.renorm_(ref_inp, p, dim, maxnorm)
     res_out = flag_gems.renorm_(inp, p, dim, maxnorm)
 
-    # renorm_ is in-place, so both tensors should be modified
-    # Compare the modified tensors
+    assert res_out is inp
+    assert res_out.data_ptr() == original_pointer
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)
