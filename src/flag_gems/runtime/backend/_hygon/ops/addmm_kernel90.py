@@ -10,6 +10,9 @@ from flag_gems.ops.addmm import addmm as _generic_addmm
 from flag_gems.ops.addmm import addmm_out as _generic_addmm_out
 from flag_gems.runtime import torch_device_fn
 
+from .addmm import addmm as _upstream_addmm
+from .addmm import addmm_out as _upstream_addmm_out
+
 
 @triton.jit
 def _gemv(
@@ -706,7 +709,14 @@ def _launch(bias, a, b, out, alpha, beta):
 
 def addmm(bias, a, b, *, beta=1, alpha=1):
     if not _eligible(a, b, alpha, beta):
-        return _generic_addmm(bias, a, b, beta=beta, alpha=alpha)
+        fallback = (
+            _generic_addmm
+            if a.dtype == torch.float32
+            and min(a.shape[0], b.shape[1]) == 1
+            and a.shape[1] >= 2**20
+            else _upstream_addmm
+        )
+        return fallback(bias, a, b, beta=beta, alpha=alpha)
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     out = torch.empty((a.shape[0], b.shape[1]), dtype=a.dtype, device=a.device)
     return _launch(bias, a, b, out, alpha, beta)
@@ -714,7 +724,14 @@ def addmm(bias, a, b, *, beta=1, alpha=1):
 
 def addmm_out(bias, a, b, *, beta=1, alpha=1, out=None):
     if not _eligible(a, b, alpha, beta):
-        return _generic_addmm_out(bias, a, b, beta=beta, alpha=alpha, out=out)
+        fallback = (
+            _generic_addmm_out
+            if a.dtype == torch.float32
+            and min(a.shape[0], b.shape[1]) == 1
+            and a.shape[1] >= 2**20
+            else _upstream_addmm_out
+        )
+        return fallback(bias, a, b, beta=beta, alpha=alpha, out=out)
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     if out is None:
         out = torch.empty((a.shape[0], b.shape[1]), dtype=a.dtype, device=a.device)

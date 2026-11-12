@@ -381,7 +381,7 @@ def test_hygon_addmm_extreme_vector_native_reference(out_variant):
 @pytest.mark.addmm
 @pytest.mark.parametrize("k", [33, 64])
 @pytest.mark.parametrize("out_variant", [False, True])
-def test_hygon_large_bf16_guard_reaches_generic(
+def test_hygon_large_bf16_guard_reaches_upstream(
     monkeypatch, record_property, k, out_variant
 ):
     import triton
@@ -395,7 +395,7 @@ def test_hygon_large_bf16_guard_reaches_generic(
         pytest.skip("large BF16 schedule guard is specific to HCU/gfx936")
 
     def forbidden_specialization(*args, **kwargs):
-        pytest.fail("large BF16 guard did not reach the generic implementation")
+        pytest.fail("large BF16 guard did not reach the upstream implementation")
 
     monkeypatch.setattr(addmm_kernel90, "_launch", forbidden_specialization)
     m, n = 1024, 256
@@ -425,13 +425,13 @@ def test_hygon_large_bf16_guard_reaches_generic(
     ],
 )
 @pytest.mark.parametrize("out_variant", [False, True])
-def test_hygon_ragged_projection_generic_values(
+def test_hygon_ragged_projection_upstream_values(
     monkeypatch, m, k, n, row_pitch, out_variant
 ):
     from flag_gems.runtime.backend._hygon.ops import addmm_kernel90
 
     def forbidden_specialization(*args, **kwargs):
-        pytest.fail("ragged/strided projection guard did not reach generic addmm")
+        pytest.fail("ragged/strided projection guard did not reach upstream addmm")
 
     monkeypatch.setattr(addmm_kernel90, "_launch", forbidden_specialization)
     generator = torch.Generator().manual_seed(20261109)

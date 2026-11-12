@@ -443,23 +443,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
-- id: _reshape_alias
-  description: 'Creates a view of the input tensor with the given size and stride,
-
-    sharing the same storage as the input. This is an internal reshape
-
-    helper that skips the validity checks a normal reshape performs.
-
-    '
-  for:
-  - _reshape_alias
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: _reshape_alias_copy
   description: 'Returns a contiguous copy of the input tensor viewed through the
     given size and stride. It is the copy companion of _reshape_alias: the view
@@ -1336,17 +1319,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: alias
-  description: Return a view tensor sharing the same storage (zero-copy alias).
-  for:
-  - alias
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: alias_copy
   description: 'Creates a new tensor that shares the same storage data as the original
     tensor,
@@ -6281,17 +6253,6 @@ tensor into the caller-supplied `out` buffer.
   - skip_precision_check
   kind:
   - Tensor
-  stages:
-  - alpha: '5.4'
-- id: expand_as
-  description: Expand tensor to the same size as another tensor (view operation).
-  for:
-  - expand_as
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
   stages:
   - alpha: '5.4'
 - id: expand_copy
@@ -13680,23 +13641,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.4'
-- id: make_dep_token
-  description: 'Creates a scalar tensor as a dependency token for TorchScript tracing
-
-    and class-based compiler frameworks. The value of the returned tensor
-
-    is uninitialized and should not be consumed.
-
-    '
-  for:
-  - _make_dep_token
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: make_dual_copy
   description: 'Returns an independent copy of the primal tensor of a forward-mode
     dual tensor, instead of aliasing it as `_make_dual` does.
@@ -20152,6 +20096,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: sparse_mm
+  description: |
+    Computes the sparse-times-dense product of a 2-D CSR tensor (M, K) and a
+    dense (K, N) matrix, returning a dense (M, N) tensor. The .reduce overload
+    applies a reduction (sum / mean / amax / amin) over the per-nnz products of
+    each output element.
+  for:
+  - _sparse_mm
+  - _sparse_mm.reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_mm_reduce_impl
   description: |
     Backend of aten::_sparse_mm.reduce: computes the sparse-times-dense
@@ -22065,17 +22025,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
-- id: t_
-  description: Transpose a 2D tensor in-place.
-  for:
-  - t_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: t_copy
   description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
   for:
@@ -22988,17 +22937,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - RandomSampling
   stages:
   - alpha: '5.5.0'
-- id: unflatten
-  description: Expand a single dimension into multiple dimensions (inverse of flatten).
-  for:
-  - unflatten.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: unflatten_dense_tensors
   description: |
     Given a flat buffer and a list of template tensors, returns one view per template carved out of the buffer at a running offset, preserving the buffer's alias, strides and storage offset; zero-numel templates yield fresh empty tensors. Metadata-only view op (no element-wise computation).
@@ -23216,23 +23154,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - unsafe_split_with_sizes
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: unsafe_view
-  description: 'Creates a new view of an existing tensor with a different shape without
-
-    performing safety checks, such as verifying if the tensor is contiguous or
-
-    if the reshape is valid.
-
-    '
-  for:
-  - _unsafe_view
   labels:
   - aten
   - KernelGen
