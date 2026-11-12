@@ -180,10 +180,22 @@ class _ExternalMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
 
 
-class ConvDepthwise2dBenchmark(OperatorBenchmark):
+class ConvDepthwise2DBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(CASES)
-        self.shape_desc = "N, C, H, W, Kh, Kw, stride, padding, dilation"
+        if (
+            flag_gems.vendor_name in ("enflame", "mthreads", "kunlunxin")
+            or os.environ.get("FLAGGEMS_NV_BASELINE")
+        ):
+            self.shapes = list(CASES)
+            self.shape_desc = "N, C, H, W, Kh, Kw, stride, padding, dilation"
+        else:
+            super().set_shapes(shape_file_path)
+
+    def set_more_shapes(self):
+        return [
+            (1, 64, 224, 224, 3, 3, 1, 1, 1),
+            (1, 128, 112, 112, 5, 5, 2, 2, 1),
+        ]
 
     @cached_property
     def _external_records(self):
@@ -367,10 +379,9 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
-@pytest.mark.conv_depthwise2d
 @pytest.mark.underscore_conv_depthwise2d
 def test_conv_depthwise2d():
-    ConvDepthwise2dBenchmark(
+    ConvDepthwise2DBenchmark(
         op_name="_conv_depthwise2d",
         torch_op=torch.ops.aten._conv_depthwise2d.default,
         case_fn=_case_fn,
