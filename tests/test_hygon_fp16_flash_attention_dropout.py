@@ -191,3 +191,105 @@ def test_hygon_fp16_flash_attention_forward_and_backward_dropout(head_size, caus
     expected_increment = (batch * heads * seqlen * seqlen + 3) // 4 * 4
     _, _, _, next_offset, _ = _run_forward(q, k, v, scale, causal, dropout_p)
     assert int(next_offset.item()) - offset_i == expected_increment
+
+
+FP16_EXTENDED_CASES = [
+    pytest.param(1, 32, 32, 2, 64, False, id="b1-s32-h2-d64-noncausal"),
+    pytest.param(1, 32, 32, 2, 64, True, id="b1-s32-h2-d64-causal"),
+    pytest.param(2, 64, 64, 2, 64, False, id="b2-s64-h2-d64-noncausal"),
+    pytest.param(2, 64, 64, 4, 128, True, id="b2-s64-h4-d128-causal"),
+    pytest.param(1, 128, 128, 2, 64, False, id="b1-s128-h2-d64-noncausal"),
+    pytest.param(1, 128, 128, 2, 128, True, id="b1-s128-h2-d128-causal"),
+]
+
+
+@pytest.mark.parametrize("batch, seqlen_q, seqlen_k, heads, head_size, causal", FP16_EXTENDED_CASES)
+@pytest.mark.parametrize("dropout_p", [0.1, 0.2, 0.5])
+def test_hygon_fp16_flash_attention_dropout_extended(
+    batch, seqlen_q, seqlen_k, heads, head_size, causal, dropout_p
+):
+    """Exercise multiple batch/head sizes, causal modes and dropout ratios."""
+    device = flag_gems.device
+    scale = 1.0 / math.sqrt(head_size)
+    seed_base = 20261200 + batch + seqlen_q + seqlen_k + heads + head_size
+    torch.manual_seed(seed_base)
+    q = torch.randn(
+        (batch, seqlen_q, heads, head_size), dtype=torch.float16, device=device
+    )
+    k = torch.randn(
+        (batch, seqlen_k, heads, head_size), dtype=torch.float16, device=device
+    )
+    v = torch.randn_like(k)
+    dout = torch.randn_like(q)
+
+    random_utils.set_philox_state(seed_base + 1, 0, torch_device_fn.current_device())
+    out, lse, seed, offset, _ = _run_forward(q, k, v, scale, causal, dropout_p)
+    seed_i, offset_i = int(seed.item()), int(offset.item())
+    mask = _make_mask(
+        device, seed_i, offset_i, batch, heads, seqlen_q, seqlen_k, dropout_p
+    )
+    ref = _reference(
+        q.cpu(),
+        k.cpu(),
+        v.cpu(),
+        dout.cpu(),
+        scale,
+        causal,
+        dropout_p,
+        mask.cpu(),
+    )
+
+    _assert_finite(out, lse)
+    assert out.shape == q.shape
+    assert out.stride() == q.stride()
+    torch.testing.assert_close(out.cpu().float(), ref[0], rtol=1.5e-2, atol=1.5e-2)
+    torch.testing.assert_close(lse.cpu(), ref[1], rtol=8e-3, atol=8e-3)
+
+    dq, dk, dv = flag_gems.flash_attention_backward(
+        dout,
+        q,
+        k,
+        v,
+        out,
+        lse,
+        None,
+        None,
+        seqlen_q,
+        seqlen_k,
+        dropout_p,
+        causal,
+        seed,
+        offset,
+        scale=scale,
+    )
+    _assert_finite(dq, dk, dv)
+    torch.testing.assert_close(dq.cpu().float(), ref[2], rtol=4e-2, atol=4e-2)
+    torch.testing.assert_close(dk.cpu().float(), ref[3], rtol=4e-2, atol=4e-2)
+    torch.testing.assert_close(dv.cpu().float(), ref[4], rtol=4e-2, atol=4e-2)
+
+    _, _, _, next_offset, _ = _run_forward(q, k, v, scale, causal, dropout_p)
+    expected_increment = (batch * heads * seqlen_q * seqlen_k + 3) // 4 * 4
+    assert int(next_offset.item()) - offset_i == expected_increment
+
+
+@pytest.mark.parametrize("causal", [False, True])
+def test_hygon_fp16_flash_attention_dropout_replay(causal):
+    """Verify deterministic Philox replay for the direct low-level FA entry."""
+    device = flag_gems.device
+    batch, seqlen, heads, head_size = 1, 32, 2, 64
+    dropout_p = 0.2
+    scale = 1.0 / math.sqrt(head_size)
+    torch.manual_seed(20261240 + int(causal))
+    q = torch.randn((batch, seqlen, heads, head_size), dtype=torch.float16, device=device)
+    k = torch.randn_like(q)
+    v = torch.randn_like(q)
+
+    random_utils.set_philox_state(20261250 + int(causal), 0, torch_device_fn.current_device())
+    first = _run_forward(q, k, v, scale, causal, dropout_p)
+    random_utils.set_philox_state(20261250 + int(causal), 0, torch_device_fn.current_device())
+    second = _run_forward(q, k, v, scale, causal, dropout_p)
+
+    torch.testing.assert_close(first[0], second[0], rtol=0, atol=0)
+    torch.testing.assert_close(first[1], second[1], rtol=0, atol=0)
+    assert int(first[2].item()) == int(second[2].item())
+    assert int(first[3].item()) == int(second[3].item())
