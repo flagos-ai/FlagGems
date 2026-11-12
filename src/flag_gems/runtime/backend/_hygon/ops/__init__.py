@@ -23,6 +23,26 @@ from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_add__List import _foreach_add__List
+from ._foreach_add__Scalar import _foreach_add__Scalar
+from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
+from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
+from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_copy_ import _foreach_copy_
+from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_mul__List import _foreach_mul__List
+from ._foreach_mul__Scalar import _foreach_mul__Scalar
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_pow__Scalar import _foreach_pow__Scalar
+from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_round_ import _foreach_round_
+from ._foreach_sign_ import _foreach_sign_
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
@@ -34,6 +54,7 @@ from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
@@ -50,11 +71,12 @@ from .attention import (
 )
 from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
+from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .block_diag import block_diag
-from .bmm import bmm, bmm_out
+from .bmm_specialized import bmm, bmm_out
 from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
@@ -128,6 +150,7 @@ from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .ldexp_ import ldexp_
+from .ldl_factor_ex import ldl_factor_ex
 from .lift_fresh import lift_fresh
 from .linalg_ldl_factor import ldl_factor, linalg_ldl_factor
 from .linalg_lstsq import linalg_lstsq
@@ -166,6 +189,7 @@ from .nll_loss_backward import heur_block_n, nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .norm_scalaropt_dim import norm_scalaropt_dim
 from .nuclear_norm import nuclear_norm
+from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad_sequence import pad_sequence
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
@@ -265,6 +289,26 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_foreach_add__List",
+    "_foreach_add__Scalar",
+    "_foreach_add__ScalarList",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_copy_",
+    "_foreach_div__Scalar",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_minimum__Scalar",
+    "_foreach_mul__List",
+    "_foreach_mul__Scalar",
+    "_foreach_mul__ScalarList",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
+    "_foreach_round_",
+    "_foreach_sign_",
     "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
@@ -275,7 +319,11 @@ __all__ = [
     "adaptive_avg_pool2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "addmm",
     "addmm_",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "addmv_",
     "addr",
     "any",
@@ -285,7 +333,9 @@ __all__ = [
     "as_strided_scatter",
     "avg_pool1d",
     "avg_pool3d_backward",
+    "baddbmm",
     "baddbmm_",
+    "baddbmm_out",
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",
@@ -359,6 +409,7 @@ __all__ = [
     "lcm_",
     "ldexp_",
     "ldl_factor",
+    "ldl_factor_ex",
     "lift_fresh",
     "linalg_ldl_factor",
     "linalg_lstsq",
@@ -402,6 +453,7 @@ __all__ = [
     "nonzero_numpy",
     "norm_scalaropt_dim",
     "nuclear_norm",
+    "or_tensor",
     "ormqr",
     "pad_sequence",
     "per_token_group_quant_fp8",

@@ -101,3 +101,21 @@ def test_hygon_single_row_bmm(shape, layout):
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
+
+
+@pytest.mark.bmm
+def test_hygon_bmm_uses_specialized_export():
+    from flag_gems.runtime.backend._hygon.ops.bmm_specialized import bmm
+
+    assert flag_gems.bmm is bmm
+
+
+@pytest.mark.bmm
+def test_hygon_bmm_out_overlap_uses_upstream_copy():
+    a = torch.arange(12, dtype=torch.float32).reshape(1, 3, 4) / 16
+    b = torch.arange(16, dtype=torch.float32).reshape(1, 4, 4) / 16
+    expected = torch.bmm(a, b)
+    ad, bd = a.to(flag_gems.device), b.to(flag_gems.device)
+    result = flag_gems.bmm_out(ad, bd, out=ad)
+    assert result is ad
+    torch.testing.assert_close(result.cpu(), expected)

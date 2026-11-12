@@ -97,6 +97,9 @@ _MAXD = 8
 def _fw_primal_copy(self: torch.Tensor, level: int) -> torch.Tensor:
     """``aten::_fw_primal_copy``: fresh copy of ``self`` (``level`` unused)."""
     logger.debug("GEMS _FW_PRIMAL_COPY")
+    if not self.is_contiguous() and self.dim() > _MAXD:
+        # The strided kernel decomposes at most `_MAXD` trailing dims.
+        return self.contiguous()
     numel = self.numel()
     if self.is_contiguous():
         out = torch.empty_like(self)
@@ -148,6 +151,11 @@ def _fw_primal_copy_out(
         )
     if out.shape != self.shape:
         out.resize_(self.shape)
+    if self.dim() > _MAXD:
+        # The strided kernel decomposes at most `_MAXD` trailing dims;
+        # `copy_` handles arbitrary rank and strides.
+        out.copy_(self)
+        return out
     numel = self.numel()
     if numel == 0:
         return out
