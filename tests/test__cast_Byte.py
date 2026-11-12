@@ -95,8 +95,25 @@ def _seed_input():
     torch.manual_seed(0)
 
 
+def _require_dtype(dtype):
+    supported = {
+        torch.bfloat16: utils.bf16_is_supported,
+        torch.float64: utils.fp64_is_supported,
+        torch.int64: utils.int64_is_supported,
+        torch.complex64: utils.complex_is_supported,
+        torch.complex128: utils.complex_is_supported and utils.fp64_is_supported,
+    }
+    if not supported.get(dtype, True):
+        pytest.skip(f"{dtype} is not supported on this backend")
+
+
 def make_input(shape, dtype):
-    return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
+    # Keep ordinary float shape/layout cases in the portable cast domain.
+    # The dedicated boundary cases exercise overflow and nonfinite inputs.
+    low, high = (0, 256) if dtype.is_floating_point else (-512, 512)
+    return torch.randint(
+        low, high, shape, dtype=torch.int32, device=flag_gems.device
+    ).to(dtype)
 
 
 @pytest.mark.underscore_cast_Byte
@@ -106,6 +123,7 @@ def make_input(shape, dtype):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Byte(shape, dtype, non_blocking):
+    _require_dtype(dtype)
     x = make_input(shape, dtype)
     expected = _native_cast(x, non_blocking)
     actual = flag_gems._cast_Byte(x, non_blocking)
@@ -123,6 +141,7 @@ def test_cast_Byte(shape, dtype, non_blocking):
     "layout", ["transpose", "slice", "expand", "channels_last", "permuted_slice"]
 )
 def test_cast_Byte_strided(dtype, layout):
+    _require_dtype(dtype)
     x = make_input((4, 5, 6, 7), dtype)
     if layout == "transpose":
         x = x.transpose(0, 3)
@@ -144,6 +163,7 @@ def test_cast_Byte_strided(dtype, layout):
     "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 )
 def test_cast_Byte_fractional(dtype):
+    _require_dtype(dtype)
     x = torch.tensor(
         [
             -257.75,
@@ -178,7 +198,7 @@ def test_cast_Byte_fractional(dtype):
 @pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("requires_grad", [False, True])
 def test_cast_Byte_requires_grad(requires_grad):
-    x = torch.randn(1025, device=flag_gems.device, requires_grad=requires_grad)
+    x = (torch.rand(1025, device=flag_gems.device) * 255).requires_grad_(requires_grad)
     expected = _native_cast(x, True)
     actual = flag_gems._cast_Byte(x, True)
     _assert_cast(actual, expected, x)
@@ -193,6 +213,7 @@ def test_cast_Byte_requires_grad(requires_grad):
     "_to_copy both raise NOT IMPLEMENTED); no device reference exists",
 )
 def test_cast_Byte_complex(dtype):
+    _require_dtype(dtype)
     x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()
     expected = _native_cast(x)
     actual = flag_gems._cast_Byte(x)
@@ -201,6 +222,7 @@ def test_cast_Byte_complex(dtype):
 
 @pytest.mark.underscore_cast_Byte
 def test_cast_Byte_integer_limits():
+    _require_dtype(torch.int64)
     x = torch.tensor(
         [-(2**63), -(2**31) - 1, 2**31, 2**63 - 1], device=flag_gems.device
     )

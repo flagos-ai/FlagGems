@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 _CASES = [
@@ -53,8 +55,11 @@ class CastByteBenchmark(base.Benchmark):
 
 @pytest.mark.underscore_cast_Byte
 def test_cast_Byte():
+    dtypes = [torch.float16, torch.float32]
+    if flag_gems.runtime.device.support_bf16:
+        dtypes.insert(1, torch.bfloat16)
     CastByteBenchmark(
         op_name="_cast_Byte",
         torch_op=torch.ops.aten._cast_Byte.default,
-        dtypes=[torch.float16, torch.bfloat16, torch.float32],
+        dtypes=dtypes,
     ).run()
