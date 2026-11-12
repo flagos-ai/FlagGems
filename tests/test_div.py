@@ -535,13 +535,9 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
-    # Route through torch.div + use_gems() so the backend specialization (with
-    # the correct half-precision floor algorithm) is used instead of the common op.
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
-    else:
-        res_out = flag_gems.ops.div_mode(inp1, inp2, rounding_mode=rounding_mode)
+    # The top-level div_mode resolves to the backend specialization (with the
+    # correct half-precision floor algorithm) via SpecOpRegistrar.
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -583,11 +579,7 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     else:
         ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
 
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = torch.div(inp, scalar, rounding_mode=rounding_mode)
-    else:
-        res_out = flag_gems.ops.div_mode(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -636,8 +628,7 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+        res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
     else:
         res_out = flag_gems.ops.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
@@ -677,11 +668,7 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
         ref_out = utils.ref_div_rounding(ref_inp, scalar_tensor, rounding_mode)
     else:
         ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = inp.div_(scalar, rounding_mode=rounding_mode)
-    else:
-        res_out = flag_gems.ops.div_mode_(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.

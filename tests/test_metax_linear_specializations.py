@@ -1,8 +1,9 @@
 # Copyright 2026 FlagOS Contributors
 # SPDX-License-Identifier: Apache-2.0
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 from flag_gems import runtime
 
 pytestmark = pytest.mark.skipif(

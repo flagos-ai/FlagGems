@@ -10,7 +10,6 @@ from . import accuracy_utils as utils
 VENDOR_NAME = getattr(flag_gems, "vendor_name", "")
 IS_ASCEND = VENDOR_NAME == "ascend"
 IS_ILUVATAR = VENDOR_NAME == "iluvatar"
-IS_THEAD = VENDOR_NAME == "thead"
 IS_KUNLUNXIN = VENDOR_NAME == "kunlunxin"
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
@@ -97,7 +96,12 @@ CHOLESKY_SOLVE_COMPLEX_BLOCKED_SHAPES = [
 
 
 def _use_cpu_complex_path(dtype):
-    return IS_THEAD and dtype in (torch.complex64, torch.complex128)
+    # MUSA and T-Head cannot reliably build Hermitian complex inputs with the
+    # vendor torch stack, so assemble them on CPU and move them to the device.
+    return VENDOR_NAME in ("thead", "mthreads") and dtype in (
+        torch.complex64,
+        torch.complex128,
+    )
 
 
 def _use_cpu_complex_validation(dtype):
@@ -209,8 +213,8 @@ def _assert_cholesky_solve_close(result, reference, dtype):
 
 def _assert_backward_error(A, X, rhs, dtype):
     if IS_ASCEND or _use_cpu_complex_path(dtype) or _use_cpu_complex_validation(dtype):
-        # Ascend falls back to CPU during input construction, while T-Head does
-        # not support the complex GEMM used by the residual calculation. CoreX
+        # Ascend falls back to CPU during input construction, while T-Head and
+        # MUSA lack a reliable complex GEMM for the residual calculation. CoreX
         # cannot compile every complex validation kernel used here either.
         A = A.detach().contiguous().cpu()
         X = X.detach().contiguous().cpu()
@@ -586,8 +590,7 @@ def test_cholesky_solve_complex_lazy_conjugate_with_all_gems(dtype):
     assert factor.is_conj()
 
     ref_out = _reference_cholesky_solve(rhs, factor, upper=True)
-    with flag_gems.use_gems(exclude=["zero_"]):
-        res_out = torch.cholesky_solve(rhs, factor, upper=True)
+    res_out = flag_gems.cholesky_solve(rhs, factor, upper=True)
 
     _assert_cholesky_solve_close(res_out, ref_out, dtype)
     _assert_backward_error(A, res_out, rhs, dtype)

@@ -21,8 +21,14 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry
+from flag_gems.utils.device_info import is_amd_radeon
 
 logger = logging.getLogger(__name__)
+
+# Radeon has no fp32 matrix instruction: an "ieee" fp32 dot unrolls into scalar
+# FMAs whose compile time explodes, so use bf16x6 (WMMA, fp32-level accuracy).
+# Everywhere else keep ieee, i.e. the previous allow_tf32=False.
+_DOT_PRECISION = tl.constexpr("bf16x6" if is_amd_radeon() else "ieee")
 
 
 def conv2d_output_size(
@@ -175,7 +181,7 @@ def conv2d_forward_kernel(
         input_block = tl.load(curr_input_pointer, mask=input_mask)
         weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
-        accum += tl.dot(input_block, weight_block, allow_tf32=False)
+        accum += tl.dot(input_block, weight_block, input_precision=_DOT_PRECISION)
     bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
         None, :
     ]
@@ -339,7 +345,9 @@ def conv2d_backward_kernel_weight(
                 )
 
                 curr_input = tl.load(curr_input_pointer, mask=input_mask)
-                accum += tl.dot(curr_input, curr_out_grad, allow_tf32=False)
+                accum += tl.dot(
+                    curr_input, curr_out_grad, input_precision=_DOT_PRECISION
+                )
 
     weight_mask = (
         (ci_point_value < input_c)[:, None]

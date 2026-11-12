@@ -16,9 +16,10 @@ import sys
 import time
 from pathlib import Path
 
-import flag_gems
 import torch
 import triton
+
+import flag_gems
 
 
 def paired_calls(native, candidate, rounds=7):

@@ -36,8 +36,9 @@ def test_binomial(shape, dtype, n, p):
 
     ref_count = to_reference(count)
     ref_prob = to_reference(prob)
-    # CPU binomial doesn't support bfloat16, convert to float32 for reference
-    if ref_count.dtype == torch.bfloat16:
+    # CPU binomial supports neither bfloat16 nor float16, so run the reference in
+    # float32 for those dtypes.
+    if ref_count.dtype in (torch.bfloat16, torch.float16):
         ref_count = ref_count.to(torch.float32)
         ref_prob = ref_prob.to(torch.float32)
     ref_out = torch.binomial(ref_count, ref_prob)

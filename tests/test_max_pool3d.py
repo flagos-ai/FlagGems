@@ -58,3 +58,40 @@ def test_max_pool3d(shape, kernel_size, stride, padding, dilation, ceil_mode, dt
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# End-to-end gradient parity for max_pool3d's autograd path, covering both a
+# contiguous and a channels_last_3d input. The channels_last_3d case pins the
+# backward wrapper's layout handling: the scatter kernel assumes NCDHW
+# contiguous storage, so a gradient allocated in NDHWC order would silently
+# scatter to wrong addresses.
+@pytest.mark.max_pool3d
+@pytest.mark.parametrize(
+    "memory_format", [torch.contiguous_format, torch.channels_last_3d]
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_pool3d_autograd(dtype, memory_format):
+    shape = (2, 8, 8, 16, 16)
+    kernel_size, stride, padding = 3, 2, 1
+
+    inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    ).to(memory_format=memory_format)
+    inp.requires_grad_(True)
+    ref_inp = utils.to_reference(inp, True).contiguous()
+
+    res_out = flag_gems.max_pool3d(
+        inp, kernel_size=kernel_size, stride=stride, padding=padding
+    )
+    ref_out = torch.max_pool3d(
+        ref_inp, kernel_size=kernel_size, stride=stride, padding=padding
+    )
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
