@@ -51,6 +51,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from .gemm_utils import (
     benchmark_gemm_candidate,
     capture_gemm_fallback,
+    gemm_replay_benchmarker,
     supports_hcu_options,
     try_gemm_candidate,
 )
@@ -612,9 +613,10 @@ _HYGON_MM_DEFAULT_CONFIGS = _hygon_mm_configs()
         "default",
         "default",
     ],
-    warmup=25,
-    rep=100,
+    warmup=5,
+    rep=10,
     benchmark_mode="replay",
+    replay_refinement=(25, 100),
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_hygon",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -1183,6 +1185,7 @@ else:
     warmup=5,
     rep=10,
     benchmark_mode="replay",
+    replay_refinement=(25, 100),
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_hygon_splitk_post",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -1251,6 +1254,7 @@ def _splitk_prune(configs, named_args, **kwargs):
     warmup=5,
     rep=10,
     benchmark_mode="replay",
+    replay_refinement=(25, 100),
     post_hook=_splitk_post_hook,
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_hygon_splitk",
@@ -2138,10 +2142,7 @@ def try_mm_family(
                     )
                     if not candidates:
                         return False
-                    from triton.flagtune.runtime.graph_benchmark import (
-                        do_bench_hcu_graph,
-                    )
-
+                    screen = gemm_replay_benchmarker(5, 10, 3)
                     ordinary()
                     calls = (ordinary,) + tuple(
                         lambda candidate=candidate: _dispatch_hygon_mm_candidate(
@@ -2162,9 +2163,8 @@ def try_mm_family(
                         for index in order:
                             samples[index].append(
                                 benchmark_gemm_candidate(
-                                    do_bench_hcu_graph, calls[index],
+                                    screen, calls[index],
                                     optional=index != 0,
-                                    rep=10, n_retries=3, device_interface=torch.cuda,
                                 )
                             )
                     medians = tuple(
@@ -2179,6 +2179,7 @@ def try_mm_family(
                     )[:3]
                     refined = {}
                     if ordinary_with_output is not None and len(finalists) > 1:
+                        refine = gemm_replay_benchmarker(25, 100, 10)
                         refined_samples = {i: [] for i in finalists}
                         for repeat in range(3):
                             order = (
@@ -2198,9 +2199,8 @@ def try_mm_family(
 
                                 refined_samples[index].append(
                                     benchmark_gemm_candidate(
-                                        do_bench_hcu_graph, fresh_output,
+                                        refine, fresh_output,
                                         optional=index != 0,
-                                        rep=100, n_retries=10, device_interface=torch.cuda,
                                     )
                                 )
                         refined = {

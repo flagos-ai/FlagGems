@@ -40,22 +40,21 @@ def operands(offset=0, dtype=torch.bfloat16):
     )
 
 
-def install_benchmark(monkeypatch):
-    graph = importlib.import_module("triton.flagtune.runtime.graph_benchmark")
+def install_benchmark(router, monkeypatch):
     measured = []
 
     def bench(fn, **kwargs):
         measured.append(kwargs)
         return float(fn())
 
-    monkeypatch.setattr(graph, "do_bench_hcu_graph", bench)
+    monkeypatch.setattr(router, "gemm_replay_benchmarker", lambda *_: bench)
     return measured
 
 
 def test_family_hot_cache_uses_current_tensors_and_skips_pool_rebuild(
     router, monkeypatch
 ):
-    measured = install_benchmark(monkeypatch)
+    measured = install_benchmark(router, monkeypatch)
     cfg = router.SharedMMConfig((64, 128, 32))
     enumerated, launched = [], []
 
@@ -99,7 +98,7 @@ def test_optional_mm_compile_failure_preserves_incumbent(
 ):
     from triton.runtime.errors import OutOfResources
 
-    install_benchmark(monkeypatch)
+    install_benchmark(router, monkeypatch)
     config = router.SharedMMConfig((64, 128, 32))
     monkeypatch.setattr(router, "mm_family_candidates", lambda *a, **kw: (config,))
     fails = not fail_on_cache_hit
@@ -241,7 +240,7 @@ def test_splitk_shortlist_uses_tile_parallelism(router, monkeypatch, m, n, expec
 
 
 def test_family_separates_dtype_protocol_and_runtime_eligibility(router, monkeypatch):
-    install_benchmark(monkeypatch)
+    install_benchmark(router, monkeypatch)
     cfg = router.SharedMMConfig((64, 128, 32))
     enumerated = []
 
@@ -266,7 +265,7 @@ def test_family_separates_dtype_protocol_and_runtime_eligibility(router, monkeyp
 def test_family_does_not_reuse_legacy_choice_when_storage_alias_changes(
     router, monkeypatch
 ):
-    install_benchmark(monkeypatch)
+    install_benchmark(router, monkeypatch)
 
     def candidates(a, b, c, **kwargs):
         return (
@@ -284,7 +283,7 @@ def test_family_does_not_reuse_legacy_choice_when_storage_alias_changes(
 
 
 def test_family_does_not_reuse_choice_for_different_output_shape(router, monkeypatch):
-    install_benchmark(monkeypatch)
+    install_benchmark(router, monkeypatch)
     cfg = router.SharedMMConfig((64, 128, 32))
     monkeypatch.setattr(
         router,

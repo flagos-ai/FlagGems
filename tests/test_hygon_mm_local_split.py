@@ -149,7 +149,6 @@ def test_pool_contains_logical_tiles_and_standard_pipeline_stages(local):
 
 def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
     module = importlib.import_module(local.__package__ + ".mv")
-    graph = importlib.import_module("triton.flagtune.runtime.graph_benchmark")
     monkeypatch.setattr(module, "_mv_mmac_choices", {})
     monkeypatch.setattr(module, "_mv_mmac_measurements", {})
     monkeypatch.setattr(module, "_mv_mmac_eligible", lambda *args: True)
@@ -163,7 +162,13 @@ def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
         calls.append(1)
         return 1.0
 
-    monkeypatch.setattr(graph, "do_bench_hcu_graph", bench)
+    protocols = []
+
+    def replay(warmup, rep, retries):
+        protocols.append((warmup, rep, retries))
+        return bench
+
+    monkeypatch.setattr(module, "gemm_replay_benchmarker", replay)
     for dtype in (torch.bfloat16, torch.float16, torch.bfloat16):
         a = torch.ones(3, 5, dtype=dtype)
         b = torch.ones(5, dtype=dtype)
@@ -171,5 +176,6 @@ def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
         assert module.try_mv_mmac(
             a, b, out, lambda result: result.fill_(1), tuning_key=("test",)
         )
-    assert len(calls) == 12
+    assert protocols == [(5, 10, 3), (25, 100, 10)] * 2
+    assert len(calls) == 24
     assert len(module._mv_mmac_choices) == 2

@@ -127,6 +127,7 @@ BENCHMARK_CACHE_SCHEMA_VERSION = 2
 DEFAULT_BENCHMARK_WARMUP_MS = 25
 DEFAULT_BENCHMARK_REP_MS = 100
 DEFAULT_BENCHMARK_RETRIES = 10
+DEFAULT_REPLAY_SCREEN_RETRIES = 3
 
 
 def _infer_tensor_dtypes(values: Iterable[Any]) -> Tuple[Any, ...]:
@@ -369,6 +370,8 @@ class LibTuner(triton.runtime.Autotuner):
         flagtune_variant=None,
         flagtune_yaml_path=None,
         flagtune_dtype_resolver=None,
+        replay_refinement=None,
+        replay_retries=DEFAULT_REPLAY_SCREEN_RETRIES,
     ):
         """Initialize library autotuning and optional FlagTune integration.
 
@@ -391,6 +394,9 @@ class LibTuner(triton.runtime.Autotuner):
                 the proposer when they do not already provide one.
             flagtune_dtype_resolver: Optional trusted Python callable returning
                 tensor dtypes in model identity order. YAML cannot set it.
+            replay_refinement: Optional (warmup_ms, measurement_ms) for a
+                second replay pass over close runtime candidates.
+            replay_retries: Replay sample count in the screening pass.
 
         Notes:
             ``USE_FLAGTUNE=0`` selects Default. ``USE_FLAGTUNE=1`` selects
@@ -401,6 +407,21 @@ class LibTuner(triton.runtime.Autotuner):
             unadapted, preserving its Default/Expanded routes.
         """
         benchmark_retries = DEFAULT_BENCHMARK_RETRIES
+        self._replay_screen = self._replay_final = None
+        if replay_refinement is not None:
+            if not use_cuda_graph or do_bench is not None:
+                raise ValueError("replay refinement requires replay mode without a custom benchmarker")
+            final_warmup, final_rep = replay_refinement
+            benchmark_retries = replay_retries
+            self._replay_screen = resolve_benchmarker(
+                BenchmarkMode.REPLAY, warmup_ms=warmup, measurement_ms=rep,
+                n_retries=replay_retries,
+            )
+            self._replay_final = resolve_benchmarker(
+                BenchmarkMode.REPLAY, warmup_ms=final_warmup, measurement_ms=final_rep,
+                n_retries=DEFAULT_BENCHMARK_RETRIES,
+            )
+            do_bench = self._replay_screen.benchmark
         if do_bench is None and major_version >= 3 and minor_version >= 2:
             if use_cuda_graph:
                 from triton.testing import do_bench_cudagraph
@@ -472,7 +493,10 @@ class LibTuner(triton.runtime.Autotuner):
                 prune_configs_by=prune_configs_by,
                 do_bench=do_bench,
             )
-        if do_bench is not None:
+        if self._replay_screen is not None:
+            self.benchmark_protocol = self._replay_screen.protocol
+            self._benchmark_protocol = self.benchmark_protocol.cache_key()
+        elif do_bench is not None:
             self.benchmark_protocol = None
             self._benchmark_protocol = ("custom_do_bench", -1, -1)
         else:
@@ -525,12 +549,48 @@ class LibTuner(triton.runtime.Autotuner):
             if mode is runtime.TuningMode.COST_MODEL:
                 intent = runtime.resolve_cost_model_intent(supports_cost_model=True)
                 base = f"{base}_{intent.value}_fallback_v2"
-        if self._benchmark_protocol[0] == "triton_do_bench":
+        identity = tuple(self._benchmark_protocol)
+        if LibTuner._uses_replay_refinement(self):
+            identity += ("refine_top4_within_3pct_v1", *self._replay_final.protocol.cache_key())
+        elif identity[0] == "triton_do_bench":
             return base
         protocol_hash = hashlib.sha256(
-            repr(tuple(self._benchmark_protocol)).encode("utf-8")
+            repr(identity).encode("utf-8")
         ).hexdigest()[:12]
         return f"{base}_benchmark_{protocol_hash}"
+
+    def _uses_replay_refinement(self):
+        return (
+            getattr(self, "_replay_screen", None) is not None
+            and self.benchmark_protocol is self._replay_screen.protocol
+        )
+
+    def _refine_replay(self, best_config, timings, args, kwargs):
+        best_ms = timings[best_config][0]
+        if not math.isfinite(best_ms):
+            return best_config
+        finalists = sorted(
+            (config for config, samples in timings.items() if samples[0] <= best_ms * 1.03),
+            key=timings.__getitem__,
+        )[:4]
+        if len(finalists) < 2:
+            return best_config
+
+        # Keep short measurements in BenchmarkCache for offline consumers.
+        # Triton deduplicates identical launch metadata within a tuning pass.
+        previous_benchmark = self.do_bench
+        previous_metas = getattr(self, "seen_tuned_metas", None)
+        try:
+            self.do_bench = self._replay_final.benchmark
+            if previous_metas is not None:
+                self.seen_tuned_metas = {}
+            results = {config: self._bench(*args, config=config, **kwargs) for config in finalists}
+        finally:
+            self.do_bench = previous_benchmark
+            if previous_metas is not None:
+                self.seen_tuned_metas = previous_metas
+        winner = min(results, key=results.__getitem__)
+        return winner if math.isfinite(results[winner][0]) else best_config
 
     def _normalize_strategy(self, strategy):
         if isinstance(strategy, str):
@@ -1082,6 +1142,8 @@ class LibTuner(triton.runtime.Autotuner):
                         args,
                         kwargs,
                     )
+                if not bypass_config_cache and LibTuner._uses_replay_refinement(self):
+                    best_config = self._refine_replay(best_config, timings, args, kwargs)
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 config = best_config
@@ -1291,6 +1353,7 @@ def libtuner(
     flagtune_yaml_path=None,
     flagtune_pre_hook=None,
     flagtune_dtype_resolver=None,
+    replay_refinement=None,
 ):
     """Decorator for triton library autotuner.
 
@@ -1304,6 +1367,9 @@ def libtuner(
     FlagTune Args:
         use_cuda_graph: Use CUDA Graph benchmarking for this ordinary tuner.
             The default is ``False`` and uses ``triton.testing.do_bench``.
+        replay_refinement: Enable explicit replay budgets and remeasure close
+            runtime candidates with the given ``(warmup_ms, measurement_ms)``.
+            A scoped protocol override still measures in a single pass.
         flagtune_op_name: FlagGems legacy runtime enablement key.
         flagtune_expand_op_name: Independent legacy expanded-config name; it
             defaults to ``flagtune_op_name``.
@@ -1338,6 +1404,16 @@ def libtuner(
 
     def decorator(fn):
         """Construct the selected policy class around a Triton JIT kernel."""
+        replay_options = {}
+        if replay_refinement is not None:
+            replay_options = {
+                "replay_refinement": replay_refinement,
+                "replay_retries": (
+                    DEFAULT_REPLAY_SCREEN_RETRIES
+                    if benchmark_retries is None
+                    else benchmark_retries
+                ),
+            }
         return policy(
             fn,
             fn.arg_names,
@@ -1361,6 +1437,7 @@ def libtuner(
             flagtune_op_id=flagtune_op_id,
             flagtune_variant=flagtune_variant,
             flagtune_dtype_resolver=flagtune_dtype_resolver,
+            **replay_options,
         )
 
     return decorator

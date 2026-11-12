@@ -2002,6 +2002,37 @@ def test_cost_model_protocol_stays_explicit():
     )
 
 
+def test_replay_refinement_remeasures_close_configs_without_reusing_screen():
+    screen = object()
+    long_replay = object()
+    tuner = SimpleNamespace(
+        do_bench=screen,
+        _replay_final=SimpleNamespace(benchmark=long_replay),
+        seen_tuned_metas={"screened": (1.0, 1.0, 1.0)},
+    )
+    screened_metas = tuner.seen_tuned_metas
+    timings = {
+        "first": (1.0, 1.0, 1.0),
+        "close": (1.02, 1.02, 1.02),
+        "slow": (1.04, 1.04, 1.04),
+    }
+    calls = []
+
+    def bench(*args, config, **kwargs):
+        assert tuner.do_bench is long_replay
+        assert "screened" not in tuner.seen_tuned_metas
+        calls.append(config)
+        latency = 1.1 if config == "first" else 1.0
+        return (latency, latency, latency)
+
+    tuner._bench = bench
+    assert LibTuner._refine_replay(tuner, "first", timings, (), {}) == "close"
+    assert calls == ["first", "close"]
+    assert tuner.do_bench is screen
+    assert tuner.seen_tuned_metas is screened_metas
+    assert timings["close"] == (1.02, 1.02, 1.02)
+
+
 def test_replay_fallback_reuses_event_config_cache_namespace(monkeypatch):
     """Use the historical event cache when replay resolution falls back to event."""
 

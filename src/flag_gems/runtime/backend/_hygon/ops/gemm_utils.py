@@ -51,11 +51,19 @@ def try_gemm_candidate(call, *args, **kwargs):
     return False, None
 
 
-def benchmark_gemm_candidate(bench, call, *, optional, **kwargs):
+def gemm_replay_benchmarker(warmup_ms, measurement_ms, n_retries):
+    from triton.flagtune.runtime.benchmark_protocol import resolve_benchmarker
+
+    return resolve_benchmarker(
+        "replay", warmup_ms=warmup_ms, measurement_ms=measurement_ms, n_retries=n_retries
+    ).benchmark
+
+
+def benchmark_gemm_candidate(bench, call, *, optional):
     if optional:
-        succeeded, elapsed = try_gemm_candidate(bench, call, **kwargs)
+        succeeded, elapsed = try_gemm_candidate(bench, call, quantiles=(0.5,))
         return float(elapsed) if succeeded else inf
-    return float(bench(call, **kwargs))
+    return float(bench(call, quantiles=(0.5,)))
 
 
 @cache

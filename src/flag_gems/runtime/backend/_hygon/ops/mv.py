@@ -35,6 +35,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from .gemm_utils import (
     benchmark_gemm_candidate,
     capture_gemm_fallback,
+    gemm_replay_benchmarker,
     try_gemm_candidate,
 )
 
@@ -78,7 +79,8 @@ def grouped_mv_candidates(a, b, compute_units):
     strategy=runtime.common.DEFAULT_STRATEGIES["mv_hygon"],
     benchmark_mode="replay",
     warmup=5,
-    rep=50,
+    rep=10,
+    replay_refinement=(25, 100),
     flagtune_op_name="mv",
     flagtune_expand_op_name="mv_hygon",
 )
@@ -292,42 +294,43 @@ def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
             with _mv_mmac_lock:
                 choice = _mv_mmac_choices.get(key)
                 if choice is None:
-                    from triton.flagtune.runtime.graph_benchmark import (
-                        do_bench_hcu_graph,
-                    )
-
                     # Resolve the unchanged Default/Expanded tuner first.
                     ordinary_with_output(out)
                     succeeded, _ = try_gemm_candidate(_launch_mmac, inp, vec, out)
                     if not succeeded:
                         _mv_mmac_choices[key] = 0
                         return True
-                    samples = ([], [])
-                    for repeat in range(3):
-                        for index in (0, 1) if repeat % 2 == 0 else (1, 0):
+                    def compare(bench):
+                        samples = ([], [])
+                        for repeat in range(3):
+                            for index in (0, 1) if repeat % 2 == 0 else (1, 0):
 
-                            def fresh_output(index=index):
-                                output = torch.empty_like(out)
-                                if index:
-                                    _launch_mmac(inp, vec, output)
-                                else:
-                                    ordinary_with_output(output)
-                                return output
+                                def fresh_output():
+                                    output = torch.empty_like(out)
+                                    if index:
+                                        _launch_mmac(inp, vec, output)
+                                    else:
+                                        ordinary_with_output(output)
+                                    return output
 
-                            samples[index].append(
-                                benchmark_gemm_candidate(
-                                    do_bench_hcu_graph, fresh_output,
-                                    optional=index != 0,
-                                    rep=100, n_retries=10, device_interface=torch.cuda,
+                                samples[index].append(
+                                    benchmark_gemm_candidate(
+                                        bench, fresh_output, optional=index != 0,
+                                    )
                                 )
-                            )
-                    medians = tuple(
-                        statistics.median(x) if all(map(isfinite, x)) else inf
-                        for x in samples
-                    )
+                        return tuple(
+                            statistics.median(x) if all(map(isfinite, x)) else inf
+                            for x in samples
+                        )
+
+                    screened = compare(gemm_replay_benchmarker(5, 10, 3))
+                    medians = screened
+                    if all(map(isfinite, screened)) and max(screened) <= 1.05 * min(screened):
+                        medians = compare(gemm_replay_benchmarker(25, 100, 10))
                     choice = min(range(2), key=medians.__getitem__)
                     _mv_mmac_measurements[key] = {
                         "variants": ("ordinary", "mmac_k256_bn16_s2"),
+                        "screened_ms": screened,
                         "allocating_ms": medians,
                         "choice": choice,
                     }
