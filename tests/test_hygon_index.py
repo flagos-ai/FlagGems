@@ -98,3 +98,32 @@ def test_expanded_index_empty_integer():
         x, [torch.empty(0, dtype=torch.int64, device=flag_gems.device)]
     )
     assert actual.shape == (0,)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+def test_hygon_index_offsets_above_int32(index_dtype):
+    import ctypes
+
+    from flag_gems.ops.index import index as generic_index
+
+    # Torch-FL's flagos device API does not expose mem_get_info. Query the
+    # Hygon runtime directly before allocating this boundary regression input.
+    torch.empty(1, device=flag_gems.device)
+    hip = ctypes.CDLL("libamdhip64.so")
+    free_bytes, total_bytes = ctypes.c_size_t(), ctypes.c_size_t()
+    assert hip.hipMemGetInfo(ctypes.byref(free_bytes), ctypes.byref(total_bytes)) == 0
+    if free_bytes.value < 3 * 2**30:
+        pytest.skip("not enough free device memory for the int32-offset boundary")
+    rows = 2**28 + 1
+    inp = torch.zeros((rows, 8), dtype=torch.int8, device=flag_gems.device)
+    sentinel = torch.arange(1, 9, dtype=torch.int8)
+    inp[-1] = sentinel.to(flag_gems.device)
+    inp[0] = -sentinel.to(flag_gems.device)
+    idx = torch.tensor([-1, rows - 1, 0], dtype=index_dtype, device=flag_gems.device)
+    expected = torch.stack((sentinel, sentinel, -sentinel))
+    for implementation in (flag_gems.index, generic_index):
+        actual = implementation(inp, [idx])
+        assert torch.equal(actual.cpu(), expected)
+        transposed = implementation(inp.t(), [None, idx])
+        assert torch.equal(transposed.cpu(), expected.t())
