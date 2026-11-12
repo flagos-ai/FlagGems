@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
@@ -23,17 +21,10 @@ from . import base, consts, utils
 
 
 class MaxPool2dBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        shapes_4d = [
-            (4, 3, 224, 224),  # Typical input image size
-            (16, 64, 56, 56),  # Early ResNet layer output
-            (32, 128, 28, 28),  # Mid ResNet layer output
-            (64, 256, 14, 14),  # Later ResNet layer output
-            (128, 512, 7, 7),  # Final ResNet layer output
-        ]
-
-        for shape in shapes_4d:
-            yield from self.input_fn(shape, dtype, self.device)
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        # The legacy iterator always used these five shapes, at every level.
+        self.shapes = list(_MAX_POOL2D_SHAPES_4D)
 
 
 def _max_pool2d_param_variants(shape):
@@ -120,11 +111,11 @@ def build_max_pool2d_inputs(plan, dtype, device):
 def test_max_pool2d_with_indices():
     bench = MaxPool2dBenchmark(
         op_name="max_pool2d_with_indices",
-        input_fn=max_pool2d_input_fn,
+        case_fn=max_pool2d_case_fn,
+        build_inputs_fn=build_max_pool2d_inputs,
         torch_op=torch.nn.functional.max_pool2d_with_indices,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.max_pool2d_with_indices)
 
     bench.run()
 
