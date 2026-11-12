@@ -45,6 +45,14 @@ def test_gems_log_prefix(monkeypatch, module, expected):
     assert utils.gems_log_prefix(_function_from(module)) == expected
 
 
-def test_gems_log_logger():
-    module = "_test_vendor.ops.nested.add"
-    assert utils.gems_log_logger(_function_from(module)) == "flag_gems.ops.add"
+@pytest.mark.parametrize(
+    "module",
+    [
+        "flag_gems.ops.add",
+        "_test_vendor.ops.nested.add",
+    ],
+)
+def test_gems_log_logger(module):
+    # Operator modules log via logging.getLogger(__name__), so the logger name
+    # is the resolved function's own module path.
+    assert utils.gems_log_logger(_function_from(module)) == module
