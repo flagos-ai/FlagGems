@@ -253,8 +253,13 @@ def test_dstack_backward(shapes):
     ref_out = torch.dstack(ref_inp)
     res_out = flag_gems.dstack(inp)
     assert res_out.requires_grad
-    ref_out.sum().backward()
-    res_out.sum().backward()
+    # Per-element gradients catch a backward that reshapes the depth slice
+    # incorrectly; a uniform sum would hide that behind an all-ones grad.
+    grad_out = torch.randn_like(res_out)
+    # Move the same values to the reference device: the default lane keeps the
+    # reference on device, while --ref=cpu moves it to CPU.
+    ref_out.backward(grad_out.to(device=ref_out.device, dtype=ref_out.dtype))
+    res_out.backward(grad_out)
 
     for got, ref in zip(inp, ref_inp):
         assert got.grad is not None
