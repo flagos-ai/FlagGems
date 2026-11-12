@@ -366,10 +366,13 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += pow(tl.abs(a), ord)
+        # For ord < 0 the masked-out lanes load 0.0, and 0.0 ** (-2) = inf
+        # poisons the whole row's sum (out becomes 0.0).  Zero the contribution
+        # of masked lanes explicitly instead of relying on other=0.0.
+        _sum += tl.where(mask, pow(tl.abs(a), ord), 0.0)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
@@ -388,7 +391,9 @@ def l1_norm_kernel_1(
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(pow(tl.abs(x), ord))
+    # Masked-out lanes load 0.0 and 0.0 ** ord == inf for ord < 0; zero them
+    # explicitly so the partial sum is not poisoned (see v_norm_kernel).
+    mid = tl.sum(tl.where(mask, pow(tl.abs(x), ord), 0.0))
     tl.store(Mid, mid)
 
 
