@@ -19,6 +19,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
+from ._convolution_double_backward import _convolution_double_backward
 from ._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
@@ -206,6 +207,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_compute_linear_combination",
     "_conj",
+    "_convolution_double_backward",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
