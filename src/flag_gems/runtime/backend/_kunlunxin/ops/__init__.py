@@ -215,6 +215,9 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._weight_norm_differentiable_backward import (  # noqa: F401
+    weight_norm_differentiable_backward,
+)
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
@@ -226,6 +229,7 @@ from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from .adaptive_max_pool1d import adaptive_max_pool1d  # noqa: F401
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -740,6 +744,7 @@ from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .quantized_lstm import quantized_lstm
+from .quantized_max_pool3d import quantized_max_pool3d, quantized_max_pool3d_out
 from .rad2deg import rad2deg, rad2deg_
 from .rand import rand
 from .rand_like import rand_like
@@ -973,6 +978,7 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
 from .weight_norm import _weight_norm
@@ -1738,6 +1744,8 @@ __all__ = [
     "prod_dim",
     "quantile",
     "quantized_lstm",
+    "quantized_max_pool3d",
+    "quantized_max_pool3d_out",
     "rad2deg",
     "rad2deg_",
     "rand",
