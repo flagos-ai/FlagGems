@@ -45,8 +45,10 @@ def test_feature_dropout(shape, p, dtype):
     assert res_out.device == inp.device
     batch_size, num_channels = shape[0], shape[1]
     scale = 1.0 / (1.0 - p)
-    # Native dropout may round the scale to the input dtype before multiplying.
-    rounded_scale = inp.new_tensor(scale)
+    # MetaX and Hygon native dropout may round the gain before multiplying.
+    rounded_scale = (
+        inp.new_tensor(scale) if flag_gems.vendor_name in ("metax", "hygon") else None
+    )
     inp_reshaped = inp.view(batch_size, num_channels, -1)
     out_reshaped = res_out.view(batch_size, num_channels, -1)
     for b in range(batch_size):
@@ -56,8 +58,11 @@ def test_feature_dropout(shape, p, dtype):
             if not torch.all(channel_out == 0).item():
                 assert torch.allclose(
                     channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
-                ) or torch.allclose(
-                    channel_out, channel_inp * rounded_scale, rtol=1e-4, atol=1e-5
+                ) or (
+                    rounded_scale is not None
+                    and torch.allclose(
+                        channel_out, channel_inp * rounded_scale, rtol=1e-4, atol=1e-5
+                    )
                 )
     out_by_channel = res_out.view(batch_size, num_channels, -1)
     dropped = sum(
