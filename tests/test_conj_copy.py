@@ -73,3 +73,32 @@ def test_conj_copy_with_conj_bit(shape, dtype):
         res_out = torch._conj_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conj_copy
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_conj_copy_empty(dtype):
+    """Empty complex input must not launch a zero-grid copy kernel."""
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch._conj_copy(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch._conj_copy(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conj_copy_out
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_conj_copy_out_empty(dtype):
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(inp)
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.empty_like(ref_inp)
+
+    torch.ops.aten._conj_copy.out(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        torch.ops.aten._conj_copy.out(inp, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype)

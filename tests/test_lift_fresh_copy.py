@@ -38,3 +38,17 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
         res_out = torch.ops.aten.lift_fresh_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.lift_fresh_copy
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_accuracy_lift_fresh_copy_empty(dtype):
+    """Empty input must not launch a zero-grid copy kernel (EE1003 coreDim 0)."""
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.lift_fresh_copy(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.lift_fresh_copy(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)

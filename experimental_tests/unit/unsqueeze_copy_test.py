@@ -119,3 +119,15 @@ def test_unsqueeze_copy_out(shape, dtype, where):
         act_out = gems_unsqueeze_copy_out(x, dim, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.unsqueeze_copy
+@pytest.mark.skipif(
+    flag_gems.device != "cuda", reason="experimental unsqueeze_copy is CUDA-only"
+)
+def test_unsqueeze_copy_empty():
+    """Empty input must not launch a zero-grid copy kernel."""
+    x = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    assert gems_unsqueeze_copy(x, 0).numel() == 0
+    out = torch.empty((1, 0), dtype=torch.float32, device=flag_gems.device)
+    assert gems_unsqueeze_copy_out(x, 0, out).numel() == 0

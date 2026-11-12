@@ -85,3 +85,13 @@ def test_lift_out_tensor(shape, dtype):
         act_out = gems_lift_out(x, act_out_buf)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.lift
+@pytest.mark.skipif(flag_gems.device != "cuda", reason="lift is CUDA-only")
+def test_lift_empty():
+    """Empty input must not launch a zero-grid copy kernel."""
+    x = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    assert gems_lift(x).numel() == 0
+    out = torch.empty_like(x)
+    assert gems_lift_out(x, out).numel() == 0

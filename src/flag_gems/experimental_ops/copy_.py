@@ -74,6 +74,10 @@ def _launch_copy_tensor(dst: torch.Tensor, src: torch.Tensor):
     assert (
         src.numel() == n_elements
     ), "Source and destination must have the same number of elements."
+    # Empty copy: cdiv(0, BLOCK) is 0 and the NPU rejects a zero grid
+    # (coreDim must be >= 1). There is nothing to copy.
+    if n_elements == 0:
+        return dst
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     DST_DTYPE = _tl_dtype_from_torch(dst.dtype)
     _copy_kernel[grid](
@@ -90,6 +94,9 @@ def _launch_fill_scalar(dst: torch.Tensor, scalar):
     assert dst.is_cuda, "Triton copy_ (scalar) supports CUDA tensors only."
     assert dst.is_contiguous(), "Only contiguous tensors are supported."
     n_elements = dst.numel()
+    # Empty scalar fill: same zero-grid issue as the tensor overload.
+    if n_elements == 0:
+        return dst
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     DST_DTYPE = _tl_dtype_from_torch(dst.dtype)
     # Convert scalar to a Python number for kernel argument

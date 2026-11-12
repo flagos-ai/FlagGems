@@ -73,6 +73,10 @@ def _conj_copy(input: torch.Tensor) -> torch.Tensor:
     out_float = output.reshape(-1).view(float_dt)
 
     n_floats = in_float.numel()
+    # Empty tensor: cdiv(0, BLOCK) == 0 launches a zero grid, which the NPU
+    # rejects (coreDim must be >= 1). The output is already empty.
+    if n_floats == 0:
+        return output
     grid = lambda meta: (triton.cdiv(n_floats, meta["BLOCK_SIZE"]),)
 
     _conj_copy_kernel[grid](in_float, out_float, n_floats)
@@ -108,6 +112,9 @@ def _conj_copy_out(input: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     out_float = dst.reshape(-1).view(float_dt)
 
     n_floats = in_float.numel()
+    # Empty out variant: nothing to copy; return the caller's output tensor.
+    if n_floats == 0:
+        return out
     grid = lambda meta: (triton.cdiv(n_floats, meta["BLOCK_SIZE"]),)
 
     _conj_copy_kernel[grid](in_float, out_float, n_floats)
