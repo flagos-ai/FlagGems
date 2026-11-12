@@ -125,7 +125,7 @@ def test_clone_under_torch_compile(memory_format, transpose):
     fmt = {"contiguous": torch.contiguous_format, "preserve": torch.preserve_format}
     kwargs = {} if memory_format is None else {"memory_format": fmt[memory_format]}
 
-    expected = torch.ops.aten.clone.default(inp, **kwargs)
+    expected = torch.ops.aten.clone.default(utils.to_reference(inp), **kwargs)
     compiled = torch.compile(
         lambda x: torch.ops.aten.clone.default(x, **kwargs),
         backend="eager",
