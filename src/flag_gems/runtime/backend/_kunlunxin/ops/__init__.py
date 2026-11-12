@@ -270,6 +270,10 @@ from .atan2 import atan2, atan2_, atan2_out
 from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
+    _scaled_dot_product_attention_math,
+    _scaled_dot_product_cudnn_attention,
+    _scaled_dot_product_flash_attention,
+    cudnn_attention_forward,
     efficient_attention_backward,
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -819,6 +823,8 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe  # noqa: F401
+from .sparse_compressed_tensor import sparse_compressed_tensor  # noqa: F401
 from .sparse_sampled_addmm import (  # noqa: F401
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
