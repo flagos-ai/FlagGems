@@ -1,0 +1,13 @@
+{
+  "cases": 200,
+  "complete_timing": 200,
+  "new_correct": 200,
+  "qualified_fg_pairs": 0,
+  "qualified_fg_das_pairs": 0,
+  "target90": 0,
+  "regressions": [],
+  "source_fingerprints": {
+    "src/flag_gems/runtime/backend/_hygon/ops/__init__.py": "cc4be3e1162ce56642fd02c251acbff489302f3f42cdc566a8629fd00cf7813d",
+    "src/flag_gems/runtime/backend/_hygon/ops/add.py": "6056ab52738e24d86c774507405a62bdea6d3cfb8c7d73e1f856a4ea5ddbb211"
+  }
+}
