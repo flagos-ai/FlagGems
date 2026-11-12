@@ -237,35 +237,7 @@ def test_convolution_double_backward(
             ), f"{name} should be None when its grad-output input is missing"
             continue
         assert r is not None, f"{name} should not be None"
+        assert r.device == x.device
+        assert r.dtype == dtype
+        assert r.shape == ref_r.shape
         utils.gems_assert_close(r, ref_r, dtype, atol=atol)
-
-
-@pytest.mark.convolution_double_backward
-@pytest.mark.underscore_convolution_double_backward
-@pytest.mark.parametrize("output_mask", [(True, True, True), (True, False, True), (False, True, False)])
-def test_convolution_double_backward_output_mask_metadata(output_mask):
-    torch.manual_seed(0)
-    dtype = torch.float32
-    x = torch.randn((1, 2, 5, 5), dtype=dtype, device=flag_gems.device)
-    weight = torch.randn((3, 2, 3, 3), dtype=dtype, device=flag_gems.device)
-    gO = torch.randn((1, 3, 5, 5), dtype=dtype, device=flag_gems.device)
-    ggI = torch.randn_like(x)
-    ggW = torch.randn_like(weight)
-    ggb = torch.randn((3,), dtype=dtype, device=flag_gems.device)
-    args = ([1, 1], [1, 1], [1, 1], False, [0, 0], 1, output_mask)
-    ref = torch.ops.aten._convolution_double_backward(
-        utils.to_reference(ggI, True), utils.to_reference(ggW, True),
-        utils.to_reference(ggb, True), utils.to_reference(gO, True),
-        utils.to_reference(weight, True), utils.to_reference(x, True), *args
-    )
-    result = flag_gems._convolution_double_backward(
-        ggI, ggW, ggb, gO, weight, x, *args
-    )
-    for actual, expected in zip(result, ref):
-        if expected is None:
-            assert actual is None
-        else:
-            assert actual is not None
-            utils.gems_assert_close(actual, expected, dtype)
-            assert actual.shape == expected.shape
-            assert actual.dtype == dtype
