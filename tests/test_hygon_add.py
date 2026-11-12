@@ -161,7 +161,7 @@ def test_intermediate_bandwidth_domains_keep_generic(monkeypatch, kind):
         b = torch.randint(-(2**40), 2**40, a.shape, generator=g)
         ad, bd = a.to(flag_gems.device), b.to(flag_gems.device)
     elif kind == "broadcast":
-        a = torch.randint(-100, 100, (1, 1081, 1024), generator=g).float()
+        a = torch.randint(-100, 100, (1, 4097, 1024), generator=g).float()
         b = torch.randint(-100, 100, (1, 1, 1024), generator=g).float()
         ad, bd = a.to(flag_gems.device), b.to(flag_gems.device)
     else:

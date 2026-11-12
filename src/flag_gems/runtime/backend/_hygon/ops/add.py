@@ -421,7 +421,13 @@ def add(a, b, *, alpha=1):
     # Generic pointwise scheduling is faster for these intermediate bandwidth
     # domains; retain the baseline rather than forcing the ordered kernels.
     if not scalar and 1048576 <= size < 8388608 and a.dtype == torch.float32:
-        if av.is_contiguous() and not bv.is_contiguous() and b.numel() > 1:
+        if (
+            size >= 4194304
+            and av.is_contiguous()
+            and not bv.is_contiguous()
+            and 512 <= shape[-1] <= 2048
+            and b.numel() == shape[-1]
+        ):
             return _generic_add(a, b, alpha=alpha)
         if (
             size < 2097152
