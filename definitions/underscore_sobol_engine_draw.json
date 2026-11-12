@@ -39,7 +39,7 @@
       "kind": "keyword_only",
       "required": false,
       "type_hint": "torch.dtype | None",
-      "default": null
+      "default": "float32"
     }
   ],
   "outputs": [
