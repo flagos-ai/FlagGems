@@ -1,3 +1,4 @@
+import functools
 import logging
 import math
 
@@ -864,6 +865,28 @@ TILED_MAX = 64  # multi-program tiled kernel  (33 <= M <= 64)
 # backend whose atomics can return a stale value must lower this to TILED_MAX so
 # the range falls through to the host-driven binary exponentiation instead.
 GRID_SYNC_MAX = 256
+
+# The grid-sync kernel spins on a global barrier, so every program of a batch
+# element has to be resident at the same time. Programs that cannot be scheduled
+# yet never reach the barrier and the resident ones wait for them forever. On
+# MI308X (80 CUs) the kernel keeps 4 programs per CU resident and hangs once the
+# grid goes past ~330 programs, so on AMD only use it up to half of that.
+_AMD_GRID_SYNC_PROGRAMS_PER_CU = 2
+
+
+@functools.lru_cache(maxsize=None)
+def _num_compute_units(device_index):
+    return torch.cuda.get_device_properties(device_index).multi_processor_count
+
+
+def _grid_sync_fits(batch_size, m, device):
+    """Whether the grid-sync kernel's grid is small enough to be fully resident."""
+    if flag_gems.vendor_name != "amd":
+        return True
+    index = device.index if device.index is not None else torch.cuda.current_device()
+    tiles = triton.cdiv(m, TILE)
+    max_programs = _num_compute_units(index) * _AMD_GRID_SYNC_PROGRAMS_PER_CU
+    return batch_size * tiles * tiles <= max_programs
 
 
 # ===========================================================================
@@ -2624,8 +2647,13 @@ def linalg_matrix_power(
             BLOCK=BLOCK,
         )
 
-    elif m <= GRID_SYNC_MAX and A.device.type == flag_gems.device:
-        # Tier 3: grid-level sync fused (65 <= M <= GRID_SYNC_MAX).
+    elif (
+        m <= GRID_SYNC_MAX
+        and A.device.type == flag_gems.device
+        and _grid_sync_fits(batch_size, m, A.device)
+    ):
+        # Tier 3: grid-level sync fused (65 <= M <= GRID_SYNC_MAX), when the
+        # whole grid can be resident (see _grid_sync_fits).
         TILES = triton.cdiv(m, TILE)
         # Fresh buffers per call: the kernel's Step 0 fully overwrites every
         # scratch slot it reads, and the round-based barrier logic works from a
