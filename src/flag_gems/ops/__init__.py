@@ -403,6 +403,7 @@ from flag_gems.ops._sparse_mask_projection import (
     _sparse_mask_projection,
     _sparse_mask_projection_out,
 )
+from flag_gems.ops._sparse_mm import _sparse_mm
 from flag_gems.ops._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
@@ -2130,6 +2131,7 @@ __all__ = [
     "_sparse_log_softmax_out",
     "_sparse_mask_projection",
     "_sparse_mask_projection_out",
+    "_sparse_mm",
     "_sparse_mm_reduce_impl",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
