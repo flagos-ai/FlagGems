@@ -266,6 +266,10 @@ def generate_index_kernel(
         code.newline()
         for i in range(indices_len):
             code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int64)")
+            code.writeline(
+                f"cur_index{i} = tl.where(cur_index{i} < 0, "
+                f"cur_index{i} + input_shape{i}, cur_index{i})"
+            )
         code.newline()
         index_mask = [
             f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"

@@ -368,3 +368,19 @@ def test_index_int32_offset_overflow():
         ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
         out_t = flag_gems.index(inp.t(), [None, idx])
         utils.gems_assert_close(out_t, ref_out_t, torch.int8)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+def test_index_strided_negative_indices(index_dtype):
+    # Exercise the generic code-generated fallback directly; vendor providers
+    # can otherwise hide missing negative-index normalization in this path.
+    from flag_gems.ops.index import index as generic_index
+
+    inp = torch.arange(35, device=flag_gems.device).reshape(5, 7).t()
+    idx = torch.tensor([-5, -1, 0, 4], dtype=index_dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_idx = utils.to_reference(idx)
+    expected = torch.ops.aten.index(ref_inp, [None, ref_idx])
+    actual = generic_index(inp, [None, idx])
+    utils.gems_assert_close(actual, expected, inp.dtype)
