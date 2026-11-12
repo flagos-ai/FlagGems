@@ -49,8 +49,10 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 from .gemm_utils import (
+    I32_GEMM_COORD_LIMIT,
     benchmark_gemm_candidate,
     capture_gemm_fallback,
+    gemm_has_wide_storage,
     gemm_replay_benchmarker,
     supports_hcu_options,
     try_gemm_candidate,
@@ -651,6 +653,7 @@ def mm_kernel(
     LOOP_UNROLL_FACTOR: tl.constexpr = 1,
     B_K_CONTIGUOUS: tl.constexpr = False,
     USE_I32_INDEX: tl.constexpr = False,
+    WIDE_INDEX: tl.constexpr = False,
 ):
     # Preserve the wrapper's K alignment proof independently of async-load
     # capability so synchronous boundary-checked loads retain vector accesses.
@@ -663,7 +666,10 @@ def mm_kernel(
     else:
         k_bound = tl.cast(K, tl.int64)
     pid = ext.program_id(0)
-    if USE_I32_INDEX:
+    if WIDE_INDEX:
+        M = M.to(tl.int64)
+        N = N.to(tl.int64)
+    elif USE_I32_INDEX:
         pid = pid.to(tl.int32)
 
     # --------------------------
@@ -697,7 +703,9 @@ def mm_kernel(
         offs_am_cont = tl.max_contiguous(tl.multiple_of(offs_am % M, BLOCK_M), BLOCK_M)
         offs_bn_cont = tl.max_contiguous(tl.multiple_of(offs_bn % N, BLOCK_N), BLOCK_N)
 
-    prev_k_mult = tl.cdiv(K, BLOCK_K) * BLOCK_K
+    # Promote before ceil-div and padding so rk and its stride products are
+    # wide on the explicit-pointer path. Block pointers already use i64 strides.
+    prev_k_mult = tl.cdiv(k_bound if WIDE_INDEX else K, BLOCK_K) * BLOCK_K
     if not USE_TLE:
         prev_k_mult = tl.maximum(prev_k_mult - BLOCK_K, 0)
 
@@ -2343,12 +2351,13 @@ def _hygon_mm_requires_edge_mask(M, N, large_tile_configs=False):
 def _launch_ordinary_mm(a, b, c):
     M, K = a.shape
     N = b.shape[1]
-    # launch kernel
+    bounded_coords = max(M, N, K) < I32_GEMM_COORD_LIMIT
+    wide_index = not bounded_coords or gemm_has_wide_storage(a, b, c)
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
-        load_mask = _hygon_mm_async_load_mask(a, b, c, M, N, K)
+        load_mask = 0 if not bounded_coords else _hygon_mm_async_load_mask(a, b, c, M, N, K)
         large_tile_configs = _hygon_mm_large_tile_eligible(a, M, N, K, load_mask)
         mm_kernel[grid](
             a,
@@ -2365,7 +2374,9 @@ def _launch_ordinary_mm(a, b, c):
             c.stride(1),
             IS_FP64=a.dtype == torch.float64,
             MASK_EDGES=_hygon_mm_requires_edge_mask(M, N, large_tile_configs),
-            USE_TLE=HAS_HYGON_TLE,
+            # Triton block-pointer offsets are i32 even with i64 strides.
+            USE_TLE=HAS_HYGON_TLE and bounded_coords,
+            WIDE_INDEX=wide_index,
             LARGE_TILE_CONFIGS=large_tile_configs,
             ASYNC_LOAD_MASK=load_mask,
             K_DIVISIBLE_BY_16=K % 16 == 0,

@@ -33,8 +33,10 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 from .gemm_utils import (
+    I32_GEMM_COORD_LIMIT,
     benchmark_gemm_candidate,
     capture_gemm_fallback,
+    gemm_has_wide_storage,
     gemm_replay_benchmarker,
     try_gemm_candidate,
 )
@@ -100,6 +102,7 @@ def mv_kernel(
     LOOP_STAGES: tl.constexpr,
     GROUP_VEC_STRIDE: tl.constexpr = 0,
     GROUP_OUT_STRIDE: tl.constexpr = 0,
+    WIDE_INDEX: tl.constexpr = False,
 ):
     """Accumulate K tiles before reducing each output row.
 
@@ -116,6 +119,11 @@ def mv_kernel(
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)
     offset_m = tl.arange(0, BLOCK_M)
     n_mask = offset_n < N
+    k_bound = M
+    if WIDE_INDEX:
+        k_bound = tl.cast(M, tl.int64)
+        stride_am = tl.cast(stride_am, tl.int64)
+        stride_bm = tl.cast(stride_bm, tl.int64)
 
     # Accumulate corresponding elements across K tiles before reducing.  This
     # avoids a cross-warp reduction on every iteration of a multi-tile row.
@@ -126,8 +134,8 @@ def mv_kernel(
     # Use Triton's loop iterator so LOOP_STAGES is emitted as a loop
     # pipeline attribute.  The JIT parser accepts keyword arguments on a
     # builtin ``range`` call but ignores them when lowering that iterator.
-    for m in tl.range(0, M, BLOCK_M, num_stages=LOOP_STAGES):
-        m_mask = m + offset_m < M
+    for m in tl.range(0, k_bound, BLOCK_M, num_stages=LOOP_STAGES):
+        m_mask = m + offset_m < k_bound
         a = tl.load(
             a_ptrs,
             mask=n_mask[:, None] & m_mask[None, :],
@@ -168,6 +176,7 @@ def launch_grouped_mv(a, b, c, config):
             LOOP_STAGES=1,
             GROUP_VEC_STRIDE=a.stride(0),
             GROUP_OUT_STRIDE=c.stride(0),
+            WIDE_INDEX=max(m, n, k) >= I32_GEMM_COORD_LIMIT or gemm_has_wide_storage(a, b, c),
             num_warps=4,
         )
 
@@ -221,6 +230,7 @@ def _launch_ordinary_mv(inp, vec, out):
             inp.stride(1),
             vec.stride(0),
             out.stride(0),
+            WIDE_INDEX=max(M, N) >= I32_GEMM_COORD_LIMIT or gemm_has_wide_storage(inp, vec, out),
         )
 
     return out

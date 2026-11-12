@@ -23,11 +23,19 @@ from triton.runtime import errors
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+# Leave room for a complete padded tile in signed i32 coordinate arithmetic.
+I32_GEMM_COORD_LIMIT = 1 << 30
 _CANDIDATE_FAILURES = (CompilationError, errors.OutOfResources) + tuple(
     getattr(errors, name)
     for name in ("BackendCompilerError", "HSACOError")
     if hasattr(errors, name)
 )
+
+
+def gemm_has_wide_storage(*tensors):
+    # Match FlagTree HCU's signed 32-bit byte-range specialization. Using
+    # storage size also accounts for strided views and nonzero storage offsets.
+    return any(tensor.untyped_storage().nbytes() >= 2**31 for tensor in tensors)
 
 
 def supports_hcu_options(options):
