@@ -61,16 +61,22 @@ def test_replication_pad2d_out(shape, padding, dtype):
     H_out = shape[-2] + pad_top + pad_bottom
     W_out = shape[-1] + pad_left + pad_right
     out_shape = (*shape[:-2], H_out, W_out)
-    out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    out = torch.full(out_shape, float("nan"), dtype=dtype, device=inp.device)
 
     ref_inp = utils.to_reference(inp)
-    ref_out = utils.to_reference(out)
+    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_inp.device)
 
     torch.ops.aten.replication_pad2d.out(ref_inp, padding, out=ref_out)
 
-    flag_gems.replication_pad2d_out(inp, padding, out=out)
+    out_pointer = out.data_ptr()
+    result = flag_gems.replication_pad2d_out(inp, padding, out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype)
+    assert result is out
+    assert result.data_ptr() == out_pointer
+    assert result.device == inp.device
+    assert result.dtype == dtype
+    assert result.shape == out_shape
+    utils.gems_assert_close(result, ref_out, dtype)
 
 
 @pytest.mark.replication_pad2d
