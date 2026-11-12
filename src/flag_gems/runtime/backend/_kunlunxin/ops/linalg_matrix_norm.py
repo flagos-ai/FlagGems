@@ -140,18 +140,34 @@ def _pad_col(x, pad, R, pitch, ncols):
     )
 
 
+def _copy_into(dst, src):
+    """Copy ``src`` into ``dst``: DMA engine first, in-tree Triton ``copy_`` else.
+
+    ``tle_copy`` is an opportunistic fast path, not a guarantee: it returns
+    False on triton builds without a usable tle extension (the CI runtime
+    image is one) and on layouts/dtypes the engine cannot express.  Every copy
+    in this file must therefore keep a real fallback -- calling ``tle_copy``
+    alone leaves ``dst`` untouched, which silently turns a padded reduction
+    into an identity-only one and a transpose helper into uninitialised
+    memory.
+    """
+    if not tle_copy(src, dst):
+        _gems_copy_(dst, src)
+
+
 def _native_contiguous(t):
     """Materialise ``t`` contiguously through the vendor DMA engine.
 
     ``Tensor.contiguous()`` is itself a FlagGems-registered operator, so using
     it here would drag a Triton copy kernel into the timed region (and into
     every ``use_gems`` call site).  ``tle_copy`` drives the vendor SDNN copy
-    engine directly (no ATen, no FlagGems kernel).
+    engine directly (no ATen, no FlagGems kernel); where it is unavailable the
+    in-tree Triton ``copy_`` stands in.
     """
     if t.is_contiguous():
         return t
     out = torch.empty(t.shape, dtype=t.dtype, device=t.device)
-    tle_copy(t, out)
+    _copy_into(out, t)
     return out
 
 
@@ -174,16 +190,11 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
         # rather than reading the rows past `R`.
         pad = torch.full((RP, ncols), _identity(op), dtype=x.dtype, device=dev)
         if C == 1:
-            # The one destination `tle_copy` cannot express, and at one element
-            # per row a scatter costs less than the strided copy that used to
-            # stand in for it.
+            # One element per row is a scatter, which the DMA row path cannot
+            # express; at this width it also costs less than a strided copy.
             _pad_col(x, pad, R, pitch, ncols)
-        elif not tle_copy(x, pad[:R, :C]):
-            # Every wider destination is expressible; if that ever stops being
-            # true, fail loudly rather than reduce a buffer left all identity.
-            raise NotImplementedError(
-                f"tle_copy cannot express a {C}-column pad destination"
-            )
+        else:
+            _copy_into(pad[:R, :C], x)
         x = pad
         pitch = ncols
     nfull = ncols // BN
@@ -234,7 +245,7 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
         cop = _combine_op(op)
         pt = torch.full((R, BN), _identity(cop), dtype=torch.float32, device=dev)
         part_t = part[: nchunk * RP].reshape(nchunk, RP)[:, :R].transpose(0, 1)
-        tle_copy(part_t, pt[:, :nchunk])
+        _copy_into(pt[:, :nchunk], part_t)
         out = torch.empty(RP + BM, dtype=torch.float32, device=dev)
         _row_reduce_kernel[(nrow_blocks, 1)](
             pt,
@@ -417,7 +428,7 @@ def _rank2_sigma_norm(Ab, B, M, N, mode):
     if K % BN:
         pitch = triton.cdiv(K, BN) * BN
         Wp = torch.zeros((B, 2, pitch), dtype=W.dtype, device=dev)
-        tle_copy(W, Wp[:, :, :K])
+        _copy_into(Wp[:, :, :K], W)
         W = Wp
 
     aa = _row_reduce(W[:, 0, :], B, pitch, _OP_SUMSQ)
@@ -863,7 +874,7 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         Wt = _native_contiguous(Ab.transpose(-2, -1))
     else:
         Wt = Ab
-    tle_copy(Wt, Wh[:, :K, :R])
+    _copy_into(Wh[:, :K, :R], Wt)
 
     sc_h = torch.empty((B, _BD_L), dtype=torch.float32, device=dev)
     sc_l = torch.empty_like(sc_h)
@@ -882,8 +893,8 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
 
     with torch_device_fn.device(dev):
         for j in range(min(K, R - 1)):
-            tle_copy(Wh[:, :, j], sc_h)
-            tle_copy(Wl[:, :, j], sc_l)
+            _copy_into(sc_h, Wh[:, :, j])
+            _copy_into(sc_l, Wl[:, :, j])
             _bidiag_col_h_kernel[(B,)](sc_h, sc_l, v_h, v_l, th, tl_, B, j)
             _bidiag_left_w_kernel[(B, int(RP // _BD_C))](
                 Wh, Wl, v_h, v_l, th, tl_, wh_b, wl_b, B, j, RP, PROW
@@ -903,12 +914,12 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         eh = torch.zeros_like(dh)
         el = torch.zeros_like(dh)
         nd = min(_BD_L, RP)
-        tle_copy(Wh.diagonal(0, 1, 2), dh[:, :nd])
-        tle_copy(Wl.diagonal(0, 1, 2), dl[:, :nd])
+        _copy_into(dh[:, :nd], Wh.diagonal(0, 1, 2))
+        _copy_into(dl[:, :nd], Wl.diagonal(0, 1, 2))
         ne = min(_BD_L, RP - 1)
         if ne > 0:
-            tle_copy(Wh.diagonal(1, 1, 2), eh[:, :ne])
-            tle_copy(Wl.diagonal(1, 1, 2), el[:, :ne])
+            _copy_into(eh[:, :ne], Wh.diagonal(1, 1, 2))
+            _copy_into(el[:, :ne], Wl.diagonal(1, 1, 2))
         td = torch.empty((B, _BD_L), dtype=torch.float32, device=dev)
         tdl = torch.empty_like(td)
         te = torch.empty_like(td)
@@ -923,20 +934,160 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         return sig[:, :K].sum(dim=1)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["B", "M", "N", "PAD"])
+def _absmax_sum_kernel(
+    A,
+    Partial,
+    B,
+    M,
+    N,
+    PAD,
+    IS_MIN: tl.constexpr,
+    ALONG_ROWS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Stage 1 of |A| sum -> max/min: per-lane abs-sums of the summed dim.
+
+    ``ALONG_ROWS=True``  -> ord +/-inf: survive over M, sum over N (axis=1).
+    ``ALONG_ROWS=False`` -> ord +/-1:   survive over N, sum over M.  The summed
+    dimension (M) is loaded transposed so the reduce is still ``axis=1`` -- the
+    backend cannot lower ``axis=0`` 2-D reductions (``arith.addf`` type
+    mismatch) and cannot lower ``tl.atomic_{min,max}`` (uni_sram OOR).
+
+    Each program emits one *vector* ``Partial[b, pid*BLOCK : (pid+1)*BLOCK]``
+    of surviving-lane sums; stage 2 folds those vectors.  A single
+    ``tl.sum(axis=1)`` reduction per program keeps the legalizer's reduce group
+    consistent (two reduces of different ranks in one kernel trip
+    ``reduceRowsPerCore_``).  Loads are never ``other=``-masked; indices are
+    clamped and masked lanes are zeroed by multiplication before the sum.
+    """
+    pid = tl.program_id(0)
+    b = tl.program_id(1)
+    base = A + b * M * N
+    nrows = tl.arange(0, BLOCK_M)
+    ncols = tl.arange(0, BLOCK_N)
+
+    if ALONG_ROWS:
+        r = pid * BLOCK_M + nrows
+        r_mask = r < M
+        r_safe = tl.minimum(r, M - 1)
+        acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for n0 in range(0, N, BLOCK_N):
+            c = n0 + ncols
+            c_mask = c < N
+            c_safe = tl.minimum(c, N - 1)
+            x = tl.load(base + r_safe[:, None] * N + c_safe[None, :]).to(tl.float32)
+            m = (r_mask[:, None] & c_mask[None, :]).to(tl.float32)
+            acc += tl.abs(x) * m
+        res = tl.sum(acc, axis=1)
+        if IS_MIN:
+            res = tl.where(
+                r_mask, res, tl.full([BLOCK_M], float("inf"), dtype=tl.float32)
+            )
+        else:
+            res = tl.where(
+                r_mask, res, tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
+            )
+        tl.store(Partial + b * PAD + pid * BLOCK_M + nrows, res)
+    else:
+        c = pid * BLOCK_N + ncols
+        c_mask = c < N
+        c_safe = tl.minimum(c, N - 1)
+        acc = tl.zeros([BLOCK_N, BLOCK_M], dtype=tl.float32)
+        for m0 in range(0, M, BLOCK_M):
+            r = m0 + nrows
+            r_mask = r < M
+            r_safe = tl.minimum(r, M - 1)
+            # tile[i, j] = A[r_safe[j], c_safe[i]]  (transposed load -> axis=1)
+            x = tl.load(base + r_safe[None, :] * N + c_safe[:, None]).to(tl.float32)
+            m = (c_mask[:, None] & r_mask[None, :]).to(tl.float32)
+            acc += tl.abs(x) * m
+        res = tl.sum(acc, axis=1)
+        if IS_MIN:
+            res = tl.where(
+                c_mask, res, tl.full([BLOCK_N], float("inf"), dtype=tl.float32)
+            )
+        else:
+            res = tl.where(
+                c_mask, res, tl.full([BLOCK_N], float("-inf"), dtype=tl.float32)
+            )
+        tl.store(Partial + b * PAD + pid * BLOCK_N + ncols, res)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "SURVIVE", "PAD"])
+def _absmax_combine_kernel(
+    Partial,
+    Out,
+    B,
+    SURVIVE,
+    PAD,
+    IS_MIN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Stage 2: fold the per-lane sums ``Partial[b, :SURVIVE]`` into ``Out[b]``."""
+    b = tl.program_id(0)
+    idx = tl.arange(0, BLOCK)
+    mask = idx < SURVIVE
+    safe = tl.minimum(idx, SURVIVE - 1)
+    x = tl.load(Partial + b * PAD + safe).to(tl.float32)
+    if IS_MIN:
+        x = tl.where(mask, x, tl.full([BLOCK], float("inf"), dtype=tl.float32))
+        tl.store(Out + b, tl.min(x))
+    else:
+        x = tl.where(mask, x, tl.full([BLOCK], float("-inf"), dtype=tl.float32))
+        tl.store(Out + b, tl.max(x))
+
+
 def _absmax_norm(Ab, B, M, N, is_min, along_rows):
-    """|A| row/column sums followed by a max (or min) over the survivors.
+    """|A| row/column abs sums followed by a max (or min) over the survivors.
 
     ``along_rows=True``  -> ord = +/-inf (sum over N, then max/min over M)
     ``along_rows=False`` -> ord = +/-1   (sum over M, then max/min over N)
+
+    Two kernels (no DMA transpose, no ``torch.full`` padding, no atomics, one
+    reduction each): stage 1 produces the per-lane abs-sums, stage 2 folds them
+    to a scalar.  The previous implementation transposed the whole matrix
+    through the DMA engine for ord=+/-1 and ran two ``_row_reduce`` kernels
+    (with ``torch.full`` padding) for every ord -- ~4-15x slower than native on
+    the small benchmark shapes.
     """
     if along_rows:
-        base, R, C = Ab, B * M, N
+        block = _BLOCK_M
+        survive = M
     else:
-        base = _native_contiguous(Ab.transpose(-2, -1))
-        R, C = B * N, M
-    sums = _row_reduce(base.reshape(R, C), R, C, _OP_SUMABS)
-    inner = R // B
-    return _row_reduce(sums.reshape(B, inner), B, inner, _OP_MIN if is_min else _OP_MAX)
+        block = _BLOCK_N
+        survive = N
+    n_outer = triton.cdiv(survive, block)
+    pad = n_outer * block
+    partial = torch.empty((B, pad), dtype=torch.float32, device=Ab.device)
+    _absmax_sum_kernel[(n_outer, B)](
+        Ab,
+        partial,
+        B,
+        M,
+        N,
+        pad,
+        IS_MIN=is_min,
+        ALONG_ROWS=along_rows,
+        BLOCK_M=_BLOCK_M,
+        BLOCK_N=_BLOCK_N,
+        buffer_size_limit=2048,
+    )
+    out = torch.empty((B,), dtype=torch.float32, device=Ab.device)
+    _absmax_combine_kernel[(B,)](
+        partial,
+        out,
+        B,
+        survive,
+        pad,
+        IS_MIN=is_min,
+        BLOCK=triton.next_power_of_2(survive),
+        buffer_size_limit=2048,
+    )
+    return out
 
 
 def linalg_matrix_norm(

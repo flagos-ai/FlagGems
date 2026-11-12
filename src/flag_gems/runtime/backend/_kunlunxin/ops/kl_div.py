@@ -8,9 +8,12 @@ Layout of the implementation
   partials (or the final 0-dim result directly when a single block covers the
   whole tensor, saving the second launch), plus a tiny folding kernel.
 
-No kernel contains a loop: the target compiler's mask pass rejects ``scf.while``
-and a fused single-pass persistent reduction, so the grid depth is expressed by
-the launch geometry instead.
+The block kernel has no loop: the target compiler's mask pass rejects
+``scf.while`` and a fused single-pass persistent reduction, so the grid depth is
+expressed by the launch geometry instead.  The same-shape fast path instead
+statically unrolls up to ``_FLAT_ITER_MAX`` chunks per program (see
+``_kl_flat_kernel``), which cuts the program count and the number of tree
+reductions.
 
 Addressing: both operands are broadcast to the common shape with standard
 stride-0 broadcast rules (``expand`` is a zero-copy view), the joint
@@ -35,6 +38,18 @@ _MID_TARGET = 2048
 _BLOCK_MID_MAX = 4096
 _SMALL_N = 4096
 _WARPS_FINAL = 4
+# Same-shape contiguous fast path: the broadcast decomposition is the identity,
+# so the kernel needs no stride description at all.  Keeping the launch
+# signature tiny (7 args instead of 28) removes ~13 us of host launch cost per
+# call, which dominates the small-shape cases.  A single CTA can fold the whole
+# reduction for anything below this threshold, saving the second launch.
+_FLAT_SINGLE_MAX = 16384
+_FLAT_NONE_BLOCK = 2048
+# Wide-tile reduction ladder for the flat reduce kernel.  A program owns up to
+# _FLAT_ITER_MAX unmasked chunks of _FLAT_BLOCK lanes; measured best on this
+# target for a 16.7M element tensor (fp32 345 us, fp16 283 us).
+_FLAT_BLOCKS = (16384, 8192, 4096, 2048, 1024)
+_FLAT_ITER_MAX = 4
 
 _REDUCTION_MAP = {
     0: 0,
@@ -173,9 +188,13 @@ def _kl_none_kernel(
     if LOG_TARGET:
         loss = tl.exp(t) * (t - x)
     else:
-        # The target platform's aten::kl_div evaluates target*log(target)
-        # without the xlogy zero guard (target==0 -> NaN), so mirror it.
-        loss = t * tl.log(t) - t * x
+        # ATen (xlogy semantics): target == 0 contributes exactly 0.  Redirect
+        # the log argument to 1 for those lanes (log(1) == 0) instead of biasing
+        # it with an epsilon: the product is then exactly 0 without ever forming
+        # -inf/NaN, so the result does not depend on the epsilon surviving in the
+        # operand dtype or on how the backend lowers a select over a NaN lane.
+        log_arg = tl.where(t == 0.0, 1.0, t)
+        loss = t * (tl.log(log_arg) - x)
     tl.store(out_ptr + offs, loss.to(out_ptr.dtype.element_ty), mask=mask)
 
 
@@ -308,7 +327,8 @@ def _kl_block_kernel(
         if LOG_TARGET:
             loss = tl.exp(t) * (t - x)
         else:
-            loss = t * (tl.log(t) - x)
+            log_arg = tl.where(t == 0.0, 1.0, t)
+            loss = t * (tl.log(log_arg) - x)
     else:
         mask = offs < n
         x = tl.load(x_ptr + xo, mask=mask, other=0.0).to(tl.float32)
@@ -319,8 +339,82 @@ def _kl_block_kernel(
         else:
             # padded lanes must contribute exactly 0: 1*(log(1) - 0) == 0
             t = tl.load(t_ptr + to, mask=mask, other=1.0).to(tl.float32)
-            loss = t * (tl.log(t) - x)
+            log_arg = tl.where(t == 0.0, 1.0, t)
+            loss = t * (tl.log(log_arg) - x)
     s = tl.sum(loss, axis=0)
+    if FINAL:
+        if DIV:
+            s = s / denom
+        tl.store(out_ptr, s.to(out_ptr.dtype.element_ty))
+    else:
+        tl.store(mid_ptr + pid, s)
+
+
+@triton.jit
+def _kl_flat_none_kernel(
+    x_ptr,
+    t_ptr,
+    out_ptr,
+    n,
+    LOG_TARGET: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+    t = tl.load(t_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+    if LOG_TARGET:
+        loss = tl.exp(t) * (t - x)
+    else:
+        log_arg = tl.where(t == 0.0, 1.0, t)
+        loss = t * (tl.log(log_arg) - x)
+    tl.store(out_ptr + offs, loss.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _kl_flat_kernel(
+    x_ptr,
+    t_ptr,
+    mid_ptr,
+    out_ptr,
+    n,
+    denom,
+    LOG_TARGET: tl.constexpr,
+    DIV: tl.constexpr,
+    FINAL: tl.constexpr,
+    FULL: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ITER: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base = pid * (ITER * BLOCK)
+    # Vector accumulator: each lane sums its own column across the chunks and
+    # the tree reduce runs once per program.  Reducing every chunk separately
+    # costs ~1.4x on this target (fp32 16.7M: 407 us -> 345 us).
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for i in tl.static_range(ITER):
+        offs = base + i * BLOCK + tl.arange(0, BLOCK)
+        if FULL:
+            x = tl.load(x_ptr + offs).to(tl.float32)
+            t = tl.load(t_ptr + offs).to(tl.float32)
+            if LOG_TARGET:
+                loss = tl.exp(t) * (t - x)
+            else:
+                log_arg = tl.where(t == 0.0, 1.0, t)
+                loss = t * (tl.log(log_arg) - x)
+        else:
+            mask = offs < n
+            x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+            if LOG_TARGET:
+                t = tl.load(t_ptr + offs, mask=mask, other=-10000.0).to(tl.float32)
+                loss = tl.exp(t) * (t - x)
+            else:
+                t = tl.load(t_ptr + offs, mask=mask, other=1.0).to(tl.float32)
+                log_arg = tl.where(t == 0.0, 1.0, t)
+                loss = t * (tl.log(log_arg) - x)
+        acc += loss
+    s = tl.sum(acc, axis=0)
     if FINAL:
         if DIV:
             s = s / denom
@@ -471,6 +565,40 @@ def _warps_for(blk):
     return max(4, min(32, blk // 1024))
 
 
+def _flat_cfg(n):
+    """(BLOCK, ITER) for the unmasked flat reduce kernel, or None.
+
+    ``BLOCK`` is the widest safe reduce width dividing ``n``; ``ITER`` is the
+    largest power of two up to ``_FLAT_ITER_MAX`` dividing ``n // BLOCK`` so
+    each program owns an integral number of chunks.
+    """
+    for blk in _FLAT_BLOCKS:
+        if n % blk == 0:
+            m = n // blk
+            return blk, min(_FLAT_ITER_MAX, m & -m)
+    return None
+
+
+def _kl_flush_mid(mid, out, p, denom, div, dev):
+    """Fold the fp32 block partials down to the scalar result."""
+    cur = mid
+    while p > _BLOCK_MID_MAX:
+        q = triton.cdiv(p, _BLOCK_MID_MAX)
+        nxt = torch.empty((q,), dtype=torch.float32, device=dev)
+        _kl_buf_kernel[(q,)](cur, nxt, p, BLOCK=_BLOCK_MID_MAX, num_warps=4)
+        cur = nxt
+        p = q
+    _kl_final_kernel[(1,)](
+        cur,
+        out,
+        p,
+        denom,
+        DIV=div,
+        BLOCK_P=triton.next_power_of_2(p),
+        num_warps=_WARPS_FINAL,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # entry point
 # --------------------------------------------------------------------------- #
@@ -487,16 +615,37 @@ def run(self, target, reduction=1, log_target=False):
     if x.device != target.device:
         raise RuntimeError("kl_div: input and target must be on the same device")
 
-    shape = torch.broadcast_shapes(x.shape, target.shape)
-    n = 1
-    for d in shape:
-        n *= int(d)
+    # Same-shape contiguous operands make the broadcast description the
+    # identity; the flat kernels avoid both the stride plan and the wide
+    # launch signature, which is pure per-call overhead on small tensors
+    # (measured ~23 us of host work + ~13 us of argument packing).
+    if x.shape == target.shape and x.is_contiguous() and target.is_contiguous():
+        shape = x.shape
+        n = x.numel()
+        flat = True
+    else:
+        shape = torch.broadcast_shapes(x.shape, target.shape)
+        n = 1
+        for d in shape:
+            n *= int(d)
+        flat = False
     dtype = torch.result_type(x, target)
     dev = x.device
 
     if red == 0:
         out = torch.empty(shape, dtype=dtype, device=dev)
         if n == 0:
+            return out
+        if flat:
+            _kl_flat_none_kernel[(triton.cdiv(n, _FLAT_NONE_BLOCK),)](
+                x,
+                target,
+                out,
+                n,
+                LOG_TARGET=lt,
+                BLOCK=_FLAT_NONE_BLOCK,
+                num_warps=_WARPS_NONE,
+            )
             return out
         S, XA, TA, rank, xf, tf, i64 = _plan(shape, x, target, n)
         grid = (triton.cdiv(n, _BLOCK_NONE),)
@@ -564,6 +713,85 @@ def run(self, target, reduction=1, log_target=False):
         if red == 1 or first == 0:
             return torch.full((), float("nan"), dtype=dtype, device=dev)
         return torch.zeros((), dtype=dtype, device=dev)
+
+    if flat:
+        cfg = _flat_cfg(n)
+        if cfg is not None:
+            blk, it = cfg
+            nblk = n // (blk * it)
+            if nblk == 1:
+                _kl_flat_kernel[(1,)](
+                    x,
+                    target,
+                    out,
+                    out,
+                    n,
+                    denom,
+                    LOG_TARGET=lt,
+                    DIV=div,
+                    FINAL=True,
+                    FULL=True,
+                    BLOCK=blk,
+                    ITER=it,
+                    num_warps=_warps_for(blk),
+                )
+                return out
+            mid = torch.empty((nblk,), dtype=torch.float32, device=dev)
+            _kl_flat_kernel[(nblk,)](
+                x,
+                target,
+                mid,
+                out,
+                n,
+                denom,
+                LOG_TARGET=lt,
+                DIV=div,
+                FINAL=False,
+                FULL=True,
+                BLOCK=blk,
+                ITER=it,
+                num_warps=_warps_for(blk),
+            )
+            _kl_flush_mid(mid, out, nblk, denom, div, dev)
+            return out
+        if n <= _FLAT_SINGLE_MAX:
+            blk = max(128, triton.next_power_of_2(n))
+            _kl_flat_kernel[(1,)](
+                x,
+                target,
+                out,
+                out,
+                n,
+                denom,
+                LOG_TARGET=lt,
+                DIV=div,
+                FINAL=True,
+                FULL=(n % blk == 0),
+                BLOCK=blk,
+                ITER=1,
+                num_warps=max(_WARPS_RED, min(32, blk // 1024)),
+            )
+            return out
+        blk = _block_for(n)
+        nblk = triton.cdiv(n, blk)
+        mid = torch.empty((nblk,), dtype=torch.float32, device=dev)
+        _kl_flat_kernel[(nblk,)](
+            x,
+            target,
+            mid,
+            out,
+            n,
+            denom,
+            LOG_TARGET=lt,
+            DIV=div,
+            FINAL=False,
+            FULL=False,
+            BLOCK=blk,
+            ITER=1,
+            num_warps=_warps_for(blk),
+        )
+        _kl_flush_mid(mid, out, nblk, denom, div, dev)
+        return out
 
     S, XA, TA, rank, xf, tf, i64 = _plan(shape, x, target, n)
     spread = (
@@ -639,23 +867,7 @@ def run(self, target, reduction=1, log_target=False):
         BLOCK=blk,
         num_warps=warps,
     )
-    cur = mid
-    p = nblk
-    while p > _BLOCK_MID_MAX:
-        q = triton.cdiv(p, _BLOCK_MID_MAX)
-        nxt = torch.empty((q,), dtype=torch.float32, device=dev)
-        _kl_buf_kernel[(q,)](cur, nxt, p, BLOCK=_BLOCK_MID_MAX, num_warps=4)
-        cur = nxt
-        p = q
-    _kl_final_kernel[(1,)](
-        cur,
-        out,
-        p,
-        denom,
-        DIV=div,
-        BLOCK_P=triton.next_power_of_2(p),
-        num_warps=_WARPS_FINAL,
-    )
+    _kl_flush_mid(mid, out, nblk, denom, div, dev)
     return out
 
 
