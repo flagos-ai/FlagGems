@@ -280,8 +280,7 @@ def test_hygon_to_dtype_extended_workbook_direct(case):
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("kind", ["dense_permutation", "medium_packed_range"])
-def test_official_master_cast_fallback_guards(monkeypatch, kind):
-    import importlib
+def test_official_master_cast_fallback_guards(monkeypatch, record_property, kind):
 
     impl = importlib.import_module("flag_gems.runtime.backend._hygon.ops.to")
     generic = impl.default_to_copy
@@ -301,7 +300,12 @@ def test_official_master_cast_fallback_guards(monkeypatch, kind):
         x = torch.randn((8, 2048, 10), generator=generator)
         dtype = torch.bfloat16
     reference = x.to(dtype)
-    actual = impl.to_copy(x.to(flag_gems.device), dtype=dtype)
+    record_property("direct_transfer_stride", list(x.to(flag_gems.device).stride()))
+    record_property("original_cpu_stride", list(x.stride()))
+    gpu = transfer_storage(x)
+    assert gpu.shape == x.shape and gpu.stride() == x.stride()
+    assert gpu.storage_offset() == x.storage_offset()
+    actual = impl.to_copy(gpu, dtype=dtype)
     assert observed == [True], "regressed cast ranges must keep the generic kernel"
     assert actual.stride() == reference.stride()
     torch.testing.assert_close(actual.cpu(), reference, rtol=0, atol=0)
