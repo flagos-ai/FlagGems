@@ -499,9 +499,7 @@ def pack_weight_merged(weight: torch.Tensor, groups: int = 1):
     out_c, channels, kh, kw = weight.shape
     k_row = kw * channels
     co_alignment = max(16, 64 // weight.element_size())
-    co_tile = min(
-        _MERGED_MAX_CO, max(co_alignment, triton.next_power_of_2(out_c))
-    )
+    co_tile = min(_MERGED_MAX_CO, max(co_alignment, triton.next_power_of_2(out_c)))
     co_pad = _round_up(out_c, co_tile)
     packed = torch.empty((kh, k_row, co_pad), dtype=weight.dtype, device=weight.device)
     block_k, block_co = 64, 32
