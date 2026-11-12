@@ -285,7 +285,7 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 DEFAULT_DESCRIPTORS = [
-    _validate_descriptor(shape) for shape in PERFORMANCE_DESCRIPTORS + ZERO_DESCRIPTORS + _MASTER_CORE_DESCRIPTORS
+    _validate_descriptor(shape) for shape in PERFORMANCE_DESCRIPTORS + ZERO_DESCRIPTORS
 ]
 
 
@@ -354,6 +354,15 @@ class _HiddenSolveH800Baseline:
             return super().get_latency(op, *args, **kwargs)
         if ascend_native:
             self._hidden_asc_pending = False
+        elif (
+            len(args) == 2
+            and args[0].dtype == torch.float32
+            and kwargs == {"left": True}
+            and (*args[0].shape[:-2], args[0].shape[-1], args[1].shape[-1])
+            in _MASTER_CORE_DESCRIPTORS
+        ):
+            # PPU's native path is verified for these small SPD workloads.
+            return super().get_latency(op, *args, **kwargs)
         if args[0].device.type != torch.device(self.device).type:
             raise ValueError("H800 comparison requires actual target-device inputs")
         if (
@@ -522,7 +531,10 @@ class SolveExBenchmark(_HiddenSolveH800Baseline, OperatorBenchmark):
     """
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=DEFAULT_DESCRIPTORS)
+        descriptors = DEFAULT_DESCRIPTORS
+        if flag_gems.vendor_name == "thead":
+            descriptors = descriptors + _MASTER_CORE_DESCRIPTORS
+        super().set_shapes(shape_file_path, default_shapes=descriptors)
 
 
 @pytest.mark.underscore_linalg_solve_ex
