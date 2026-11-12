@@ -27,9 +27,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 _NSTEP16 = 4
+
+# The default fp32 tl.dot precision is tf32 on CDNA, which keeps about 10 mantissa
+# bits and is not enough for the float32 tolerance of the blockwise inverse, so
+# AMD uses full-precision ieee. Other backends keep the default.
+_DOT_PRECISION = tl.constexpr("ieee" if runtime.device.vendor_name == "amd" else None)
 
 
 @triton.jit
@@ -44,8 +51,8 @@ def _triinv16(D, rowok, NSTEP: tl.constexpr):
     P = tl.where(ii > jj, -(D * dv[:, None]), 0.0)
     S = (ii == jj).to(D.dtype)
     for _ in tl.static_range(NSTEP):
-        S = S + tl.dot(P, S)
-        P = tl.dot(P, P)
+        S = S + tl.dot(P, S, input_precision=_DOT_PRECISION)
+        P = tl.dot(P, P, input_precision=_DOT_PRECISION)
     return S * dv[None, :]
 
 
@@ -97,14 +104,16 @@ def _fused_kernel(
                         mask=(rows[:, None] < n) & (cols[None, :] < n),
                         other=0.0,
                     )
-                    Y = Y + tl.dot(Lk, X[jc * K + k])
-                X = X + (-tl.dot(Dinv[Iblk], Y),)
+                    Y = Y + tl.dot(Lk, X[jc * K + k], input_precision=_DOT_PRECISION)
+                X = X + (-tl.dot(Dinv[Iblk], Y, input_precision=_DOT_PRECISION),)
 
     for i in tl.static_range(K):
         for j in tl.static_range(K):
             acc = tl.zeros((16, 16), dtype=dt)
             for k in tl.static_range(max(i, j), K):
-                acc = acc + tl.dot(tl.trans(X[i * K + k]), X[j * K + k])
+                acc = acc + tl.dot(
+                    tl.trans(X[i * K + k]), X[j * K + k], input_precision=_DOT_PRECISION
+                )
             rows = i * 16 + r
             cols = j * 16 + r
             tl.store(
@@ -159,8 +168,9 @@ def _trtri_kernel(Lp, Dp, Xp, n, sb_in, ar, ac, MP, K: tl.constexpr):
                         mask=m,
                         other=0.0,
                     )
-                    Y = Y + tl.dot(Lk, Xc[k])
-        cur = -tl.dot(Di, Y) * (Iblk > jc).to(dt) + Di * (Iblk == jc).to(dt)
+                    Y = Y + tl.dot(Lk, Xc[k], input_precision=_DOT_PRECISION)
+        DiY = tl.dot(Di, Y, input_precision=_DOT_PRECISION)
+        cur = -DiY * (Iblk > jc).to(dt) + Di * (Iblk == jc).to(dt)
         Xc = Xc + (cur,)
         rows = Iblk * 16 + r
         cols = jc * 16 + r
@@ -211,8 +221,9 @@ def _trtri_row_kernel(
             Xk = tl.load(
                 Xp + xb + xrows[:, None] * MP + xcols[None, :], mask=okx, other=0.0
             )
-            Y = Y + tl.dot(Lk, Xk)
-    cur = -tl.dot(Di, Y) * (Iblk > jc).to(dt) + Di * (Iblk == jc).to(dt)
+            Y = Y + tl.dot(Lk, Xk, input_precision=_DOT_PRECISION)
+    DiY = tl.dot(Di, Y, input_precision=_DOT_PRECISION)
+    cur = -DiY * (Iblk > jc).to(dt) + Di * (Iblk == jc).to(dt)
     rows = Iblk * 16 + r
     cols = jc * 16 + r
     tl.store(
@@ -250,7 +261,7 @@ def _xtx_kernel(Xp, Op, n, MP, sb_out, K: tl.constexpr):
                     mask=(rows[:, None] < n) & (cj[None, :] < n),
                     other=0.0,
                 )
-                acc = acc + tl.dot(tl.trans(a), bb)
+                acc = acc + tl.dot(tl.trans(a), bb, input_precision=_DOT_PRECISION)
         rows = i * 16 + r
         cols = j * 16 + r
         tl.store(
