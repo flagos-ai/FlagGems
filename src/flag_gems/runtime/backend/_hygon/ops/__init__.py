@@ -127,6 +127,7 @@ from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .ldexp_ import ldexp_
+from .ldl_factor_ex import ldl_factor_ex
 from .lift_fresh import lift_fresh
 from .linalg_ldl_factor import ldl_factor, linalg_ldl_factor
 from .linalg_lstsq import linalg_lstsq
@@ -356,6 +357,7 @@ __all__ = [
     "lcm_",
     "ldexp_",
     "ldl_factor",
+    "ldl_factor_ex",
     "lift_fresh",
     "linalg_ldl_factor",
     "linalg_lstsq",
