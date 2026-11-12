@@ -63,20 +63,22 @@ def _check_backward(shape, dtype, layout, offset=0):
         xr, wr, br, None, None, True, 0.1, 1e-5
     )
     expected = torch.autograd.grad(y, (xr, wr, br), grad.cpu().double())
+    saved_mean = mean.to(device=x.device, dtype=param_dtype)
+    saved_invstd = inv.to(device=x.device, dtype=param_dtype)
+    reserve = torch.empty(0, dtype=torch.uint8, device=x.device)
+    inputs = (x, grad, w, saved_mean, saved_invstd, reserve)
+    snapshots = tuple(value.clone() for value in inputs)
     actual = flag_gems.cudnn_batch_norm_backward(
-        x,
-        grad,
-        w,
-        None,
-        None,
-        mean.to(device=x.device, dtype=param_dtype),
-        inv.to(device=x.device, dtype=param_dtype),
-        1e-5,
-        torch.empty(0, dtype=torch.uint8, device=x.device),
+        x, grad, w, None, None, saved_mean, saved_invstd, 1e-5, reserve
     )
-    assert len(actual) == len(expected) == 3
-    assert all(t.device == x.device for t in actual)
-    assert all(a.shape == e.shape for a, e in zip(actual, expected))
+    assert isinstance(actual, (tuple, list)) and len(actual) == len(expected) == 3
+    input_storage = {t.untyped_storage().data_ptr() for t in inputs}
+    for result, reference in zip(actual, expected):
+        assert result.device == x.device
+        assert result.shape == reference.shape
+        assert result.untyped_storage().data_ptr() not in input_storage
+    for value, snapshot in zip(inputs, snapshots):
+        assert torch.equal(value, snapshot)
     assert actual[0].dtype == dtype
     assert actual[1].dtype == actual[2].dtype == param_dtype
     tol = (
