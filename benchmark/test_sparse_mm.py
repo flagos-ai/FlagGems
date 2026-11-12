@@ -55,12 +55,40 @@ def _torch_sparse_mm(mat1, mat2):
     baseline (the upcast runs inside the timed region); the fp32 rows are the
     like-for-like kernel comparison.
 
-    The native CUDA kernel only implements fp32/fp64; fp16/bf16 run through an
-    fp32 upcast of the sparse triple, mirroring the reference used in tests.
+    The native CUDA kernel only implements fp32/fp64, so fp16/bf16 run an
+    fp32 upcast.  The cast is memoised per input identity and only the fp32
+    SpMM is timed -- otherwise the baseline pays a cast the Gems kernel does
+    not, and the comparison is not like-for-like.
     """
     if mat1.dtype in (torch.float16, torch.bfloat16):
-        return torch.ops.aten._sparse_mm(mat1.float(), mat2.float()).to(mat1.dtype)
+        upcast_sparse, upcast_dense = _upcast_inputs(mat1, mat2)
+        return torch.ops.aten._sparse_mm(upcast_sparse, upcast_dense).to(mat1.dtype)
     return torch.ops.aten._sparse_mm(mat1, mat2)
+
+
+_UPCAST_CACHE = {}
+
+
+def _upcast_inputs(mat1, mat2):
+    """fp32 copies of an fp16/bf16 input pair, cached by input identity.
+
+    ``do_bench`` re-invokes the callable with the same tensors, so the cast
+    happens once (outside the measured steady state) instead of every
+    iteration.
+    """
+    import weakref
+
+    key = (id(mat1), id(mat2))
+    entry = _UPCAST_CACHE.get(key)
+    if (
+        entry is None
+        or entry[0]() is not mat1
+        or entry[1]() is not mat2
+        or entry[2].device != mat1.device
+    ):
+        entry = (weakref.ref(mat1), weakref.ref(mat2), mat1.float(), mat2.float())
+        _UPCAST_CACHE[key] = entry
+    return entry[2], entry[3]
 
 
 def _input_fn(m, n, k, dtype, device, b_column_major=False, sparsity=SPARSITY):

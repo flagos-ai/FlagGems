@@ -37,14 +37,16 @@ if QUICK_MODE:
 else:
     MNK = [(5, 5, 5), (64, 64, 64), (1, 128, 32), (256, 32, 512), (0, 0, 0)]
     SPARSITIES = [0.0, 0.5, 0.9, 1.0]
-    LAYOUTS = ["csr", "coo", "csc"]
+    # BSR is supported by aten (and the kernel converts it through COO); BSC
+    # is rejected by aten itself, so it is covered by an explicit test below.
+    LAYOUTS = ["csr", "coo", "csc", "bsr"]
     # The reduce overload is CSR-only in torch; max/min are aliases of amax/amin.
     REDUCES = ["sum", "mean", "amax", "amin"]
 
-# utils.FLOAT_DTYPES covers the floating-point dtypes this op supports; the
-# sparse CUDA backend itself is fp32/fp64-only, so fp16/bf16 are checked
-# against an fp32 upcast reference instead of the native sparse kernel.
-DTYPES = utils.FLOAT_DTYPES
+# The kernel implements fp16/bf16/fp32/fp64 (``IS_FP64`` selects the fp64
+# accumulator), so fp64 must be in the matrix or that branch stays untested.
+# fp16/bf16 are checked against an fp64 upcast reference, like the rest.
+DTYPES = utils.ALL_FLOAT_DTYPES
 _LOW_PREC_DTYPES = (torch.float16, torch.bfloat16)
 
 
@@ -62,6 +64,12 @@ def _make_sparse(M, K, dtype, device, sparsity, layout):
         sparse = values.to_sparse_csc()
     elif layout == "coo":
         sparse = values.to_sparse()
+    elif layout == "bsr":
+        # BSR requires divisible block shape; skip the non-conforming cases
+        # (the kernel converts BSR -> COO -> CSR before the Triton pass).
+        if values.shape[0] % 2 or values.shape[1] % 2:
+            pytest.skip("BSR block shape must divide the tensor shape")
+        sparse = values.to_sparse_bsr(blocksize=(2, 2))
     else:
         sparse = values.to_sparse_csr()
     # to_sparse_* drops explicit zeros; densify so the reference uses exactly
@@ -228,14 +236,48 @@ def test_dispatch_reaches_gems_impl():
     for item in mapping.get("_sparse_mm", []):
         entries.append(("_sparse_mm", spy) + tuple(item[2:]))
     mapping["_sparse_mm"] = entries
-    sparse = torch.eye(4, device=flag_gems.device).to_sparse_csr()
-    dense = torch.randn(4, 4, device=flag_gems.device)
+    device = flag_gems.device
+    values = torch.eye(4, device=device)
+    values[2, 3] = 2.0
+    layouts = {
+        "csr": values.to_sparse_csr,
+        "coo": values.to_sparse,
+        "csc": values.to_sparse_csc,
+        "bsr": lambda: values.to_sparse_bsr(blocksize=(2, 2)),
+    }
+    dense = torch.randn(4, 4, device=device)
+    # Both overloads are CompositeImplicitAutograd in ATen, so the composite
+    # key decides before any sparse backend key: one registration therefore
+    # covers every layout, all exercised here (re-registering a key is
+    # rejected by torch, hence the single only_enable).
     with unittest.mock.patch.object(flag_gems, "FULL_CONFIG_BY_FUNC", mapping):
         flag_gems.only_enable(include=["_sparse_mm"])
-        res_out = torch.ops.aten._sparse_mm(sparse, dense)
+        for layout, make in layouts.items():
+            calls["count"] = 0
+            res_out = torch.ops.aten._sparse_mm(make(), dense)
+            assert (
+                calls["count"] == 1
+            ), f"{layout}: aten dispatch did not reach the Gems implementation"
+            assert res_out.shape == (4, 4)
 
-    assert calls["count"] == 1, "aten dispatch did not reach the Gems implementation"
-    assert res_out.shape == (4, 4)
+
+@pytest.mark.sparse_mm
+def test_cpu_inputs_fall_back_without_recursing():
+    # Registering the composite key intercepts every device, so CPU inputs
+    # must delegate to ATen's non-composite CPU kernel instead of recursing
+    # into this operator (which would raise RecursionError).
+    if flag_gems.device == "cpu":
+        pytest.skip("the fallback is only exercised on an accelerator build")
+    values = torch.zeros(4, 4)
+    values[0, 0], values[2, 3] = 1.0, 2.0
+    sparse = values.to_sparse_csr()
+    dense = torch.randn(4, 4)
+    res = flag_gems._sparse_mm(sparse, dense)
+    utils.gems_assert_close(res, sparse.to_dense() @ dense, torch.float32, atol=1e-5)
+    for reduce in ("mean", "amax", "amin"):
+        res = flag_gems._sparse_mm(sparse, dense, reduce)
+        ref = torch.ops.aten._sparse_mm.reduce(sparse, dense, reduce)
+        utils.gems_assert_close(res, ref, torch.float32, atol=1e-5)
 
 
 @pytest.mark.sparse_mm
@@ -265,10 +307,10 @@ def test_reduce_against_aten_cpu(reduce):
     # kernel's crow[row + 1] read for the last row ran past the buffer
     # (illegal memory access).
     crow = torch.tensor([0, 2, 2, 5, 5], device=device, dtype=torch.int64)
-    col = torch.tensor([0, 2, 0, 1, 2], device="cuda", dtype=torch.int64)
-    vals = torch.tensor([1.0, 2.0, -3.0, 4.0, 0.5], device="cuda")
+    col = torch.tensor([0, 2, 0, 1, 2], device=device, dtype=torch.int64)
+    vals = torch.tensor([1.0, 2.0, -3.0, 4.0, 0.5], device=device)
     sparse = torch.sparse_csr_tensor(crow, col, vals, size=(4, 3))
-    mat2 = torch.randn(3, 4, device="cuda")
+    mat2 = torch.randn(3, 4, device=device)
 
     res = flag_gems._sparse_mm(sparse, mat2, reduce=reduce)
     ref = torch.ops.aten._sparse_mm(sparse.cpu(), mat2.cpu(), reduce=reduce)

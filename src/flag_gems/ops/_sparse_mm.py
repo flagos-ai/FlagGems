@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -60,7 +61,6 @@ def _sparse_mm_kernel(
     val_ptr,
     mat2_ptr,
     out_ptr,
-    M,
     N,
     stride_mat2_k,
     stride_mat2_n,
@@ -127,24 +127,44 @@ def _sparse_mm_kernel(
             ).to(acc_dtype)
             acc += b * v
 
-    cos = (row64 * stride_out_m + (rn * stride_out_n).to(tl.int64)).to(tl.int64)
+    # Widen before the multiply: ``rn * stride_out_n`` in int32 can wrap for
+    # large N * stride_out_n (the flat offset itself already needs int64).
+    cos = row64 * stride_out_m + rn.to(tl.int64) * stride_out_n
     tl.store(out_ptr + cos, acc.to(out_ptr.dtype.element_ty), mask=rmask)
 
 
 def _to_csr(sparse):
     if sparse.layout == torch.sparse_csr:
         return sparse
-    if sparse.layout in (
-        torch.sparse_coo,
-        torch.sparse_csc,
-        torch.sparse_bsr,
-        torch.sparse_bsc,
-    ):
+    if sparse.layout in (torch.sparse_coo, torch.sparse_csc):
         return sparse.to_sparse_csr()
+    if sparse.layout in (torch.sparse_bsr, torch.sparse_bsc):
+        # ``to_sparse_csr`` only accepts CSR/CSC sources; BSR/BSC go through
+        # COO, which both layouts can produce.
+        return sparse.to_sparse().to_sparse_csr()
     raise RuntimeError(
         f"_sparse_mm: Expected sparse to have a sparse layout, but got "
         f"{sparse.layout}"
     )
+
+
+def _cpu_fallback(sparse, dense, reduce):
+    """Run ATen's own CPU implementation without re-entering this operator.
+
+    Registering the CompositeImplicitAutograd key (needed because ATen makes
+    both overloads composite) intercepts calls for *every* device, but the
+    Triton kernel only runs on the accelerator. ``_sparse_mm_reduce_impl``
+    has a real ``SparseCsrCPU`` kernel and is not composite, so delegating to
+    it cannot recurse; its ``sum`` reduction is identical to
+    ``aten::_sparse_mm`` (verified for all four selectors).
+    """
+    csr = _to_csr(sparse)
+    if csr.layout != torch.sparse_csr:
+        raise RuntimeError(
+            f"_sparse_mm: expect sparse to be SparseCsr, got {csr.layout}"
+        )
+    out, _ = torch.ops.aten._sparse_mm_reduce_impl(csr, dense, reduce or "sum")
+    return out
 
 
 def _sparse_mm_impl(sparse, dense, reduce=None):
@@ -188,9 +208,13 @@ def _sparse_mm_impl(sparse, dense, reduce=None):
         raise RuntimeError("_sparse_mm: sparse and dense shapes cannot be multiplied")
     N = dense.shape[1]
 
+    if sparse.device.type != flag_gems.device:
+        return _cpu_fallback(sparse, dense, reduce)
+
     # ``aten::_sparse_mm`` is CompositeImplicitAutograd: its autograd comes from
-    # the decomposition this backend kernel replaces. A requires_grad input
-    # would silently lose its grad_fn, so reject it explicitly instead.
+    # the decomposition this kernel replaces. The flag_gems composite
+    # registration runs in grad mode too, so a requires_grad input would lose
+    # its grad_fn unless it is rejected explicitly.
     if sparse.requires_grad or dense.requires_grad:
         raise NotImplementedError(
             "_sparse_mm: the FlagGems kernel does not support autograd; the "
@@ -229,7 +253,6 @@ def _sparse_mm_impl(sparse, dense, reduce=None):
             val,
             dense,
             out,
-            M,
             N,
             dense.stride(0),
             dense.stride(1),
