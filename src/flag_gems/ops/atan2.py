@@ -37,4 +37,10 @@ def atan2(input, other):
 
 def atan2_out(input, other, out):
     logger.debug("GEMS ATAN2_OUT")
+    # ATen rejects an integer or bool out buffer (the float result cannot be
+    # cast into it); mirror that instead of silently truncating.
+    if not out.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{out.dtype}"
+        )
     return atan2_kernel(input, other, out0=out)

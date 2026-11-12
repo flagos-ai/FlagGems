@@ -48,6 +48,18 @@ def test_arctan2_(shape, dtype):
     assert res_out is x1
 
 
+@pytest.mark.arctan2_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_arctan2__integer_rejects(shape, dtype):
+    # ATen raises for in-place arctan2 on integer/bool inputs; FlagGems mirrors
+    # that instead of silently truncating.
+    x = utils.make_reduction_input(shape, dtype)
+    y = utils.make_reduction_input(shape, dtype)
+    with pytest.raises(RuntimeError):
+        flag_gems.arctan2_(x, y)
+
+
 @pytest.mark.arctan2
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_arctan2_special_values(dtype):

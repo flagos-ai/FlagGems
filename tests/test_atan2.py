@@ -60,3 +60,16 @@ def test_atan2_out(shape, dtype):
     res_out = flag_gems.atan2_out(x, y, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.atan2_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_atan2_out_integer_rejects(shape, dtype):
+    # ATen raises for an integer/bool out buffer; FlagGems mirrors that instead
+    # of silently truncating the float result.
+    x = utils.make_reduction_input(shape, dtype)
+    y = utils.make_reduction_input(shape, dtype)
+    out = utils.make_reduction_input(shape, dtype)
+    with pytest.raises(RuntimeError):
+        flag_gems.atan2_out(x, y, out=out)
