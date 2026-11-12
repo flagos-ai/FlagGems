@@ -281,7 +281,17 @@ COMPLEX_DTYPES = (
 # Low-precision dtypes: int8/uint8 are always available; float8 only where the
 # device exposes it (mirrors fp8_is_supported above).
 BYTE_DTYPES = [torch.int8, torch.uint8]
-FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if fp8_is_supported else []
+# Triton's CUDA backend only compiles fp8e4nv (torch.float8_e4m3fn) pointers on
+# sm89+; on older arches (e.g. A100/sm80) any kernel taking an fp8e4nv pointer
+# fails at compile time, so gate the list on the actual device capability,
+# not just the backend's fp8 flag.
+_fp8_supported = (
+    fp8_is_supported
+    and flag_gems.utils.device_info.get_device_capability()[0] * 10
+    + flag_gems.utils.device_info.get_device_capability()[1]
+    >= 89
+)
+FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_supported else []
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
