@@ -28,6 +28,7 @@ from . import accuracy_utils as utils
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_replication_pad3d_backward(shape, padding, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back = padding
     output_shape = (
@@ -50,6 +51,7 @@ def test_replication_pad3d_backward(shape, padding, dtype):
 
 @pytest.mark.replication_pad3d_backward
 def test_replication_pad3d_backward_rejects_mismatched_leading_shape():
+    torch.manual_seed(0)
     inp = torch.randn((2, 3, 4, 5, 6), device=flag_gems.device)
     grad_output = torch.randn((1, 3, 6, 7, 8), device=flag_gems.device)
     with pytest.raises(ValueError, match="leading dimensions"):
