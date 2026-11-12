@@ -191,7 +191,9 @@ def test_accuracy_gru_cell_invalid_input():
         flag_gems.gru_cell(input, hx, w_ih, w_hh, b_ih[:-1], b_hh)
 
     with pytest.raises(RuntimeError, match="same dtype"):
-        flag_gems.gru_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
+        # float64 is silently downgraded to float32 on XPU (support_fp64=False),
+        # so use a half-precision mismatch to still exercise the dtype contract.
+        flag_gems.gru_cell(input.half(), hx, w_ih, w_hh, b_ih, b_hh)
 
 
 @pytest.mark.gru_cell
