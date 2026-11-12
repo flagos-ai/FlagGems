@@ -1,25 +1,29 @@
-# Hygon `aten::index` optimization
+# Hygon `aten::index.Tensor` optimization
 
-This branch is based on official FlagGems `master` (`4d3d9f70c9c92ae9adf004ed0202355fe26fd511`) and contains only the `index` implementation, focused Hygon tests, and this compact review note.
+Isolated branch based on official master `9a9aecb53103cc83dda27bc7458fc3bfd07f3188`. Specialized gather and boolean-compaction kernels retain generic fallbacks. All offset products use int64 addressing; the generic negative-index wrap is applied after promotion as well.
 
-## Implementation
+## Current hardware validation
 
-The Hygon backend dispatches the public ATen overload to the specialized `index` implementation and retains the generic fallback for unsupported layouts/dtypes. The source is copied from the validated internal change set `7ca605ff2692059e7e73e5bd144376264f6f5a37`; source hashes are recorded below.
+On 2026-11-12, the preceding source completed all125 declared model/expanded cases with old/new/DAS correctness passing125/125. Four stable old/new device comparisons regressed by more than5%; these results remain diagnostic and are not final evidence for the current guard.
 
-## Validation status
+The current source `1a5cea0e25316bb5159ccefcbea1245542a20b2a` retains generic indexing for contiguous dense tiny tails, large outputs and high-reuse INT64 scalar gathers. The guards depend on sizes/layouts, not workload IDs or input values. **55 focused hardware tests passed, with1 shared memory-capability test skipped.** Dedicated Hygon tests really execute positive/negative int32/int64 gathers above2GiB address offsets. Fourteen new full-output tests cover repeated negative and positive boundary rows in the guarded regimes.
 
-The source change was numerically and performance tested in the internal Hygon validation on reconstructed model/expanded inputs. Before this branch is marked Ready for Review, rerun the focused test and hardware acceptance from this official-master-derived branch; no full raw profiler archive is included here.
+The complete125-case repeat is in progress. This PR remains Draft until final source-bound performance accounting and latest-head CI finish. No claim that the current candidate already achieves a125-case performance pass rate is made.
 
-- Focused test: `pytest tests/test_hygon_index.py -q --ref cpu`
-- Static checks: `python -m compileall -q src tests`; `git diff --check`
-- Acceptance rule: each comparable case must pass full output correctness, A/A stability, and `T_DAS / T_FG >= 0.90`. Historical/common-provider failures remain diagnostic and are not counted as optimization passes.
+```bash
+pytest tests/test_hygon_index.py tests/test_index.py::test_index_strided_negative_indices tests/test_index.py::test_index_int32_offset_overflow --ref cpu -q
+pre-commit run --all-files
+```
+
+All12 local pre-commit checks pass. Each old/new/DAS provider and independent repeat uses2x25 complete producer-linked device samples,20 calls/ROI. Output correctness and per-block A/A drift<=5% qualify pairs separately. Full reconstructed input backing/geometry and known aliases are preserved; these are generated values, not original model payload replay. Large trace-shard re-accounting retains every event and original producer/timestamp identity; it never substitutes a partial trace median.
 
 ## Source fingerprints
 
 ```json
 {
-  "src/flag_gems/runtime/backend/_hygon/ops/index.py": "da038d3483bfc7c1cf865354021d3aec5d394745b76be8b9081d38ef264b8514"
+  "src/flag_gems/runtime/backend/_hygon/ops/index.py": "5c698ef1295676de5694de8c6312c65c93603bdf1560548006fa18404797a40a",
+  "src/flag_gems/ops/index.py": "3c0a6b86235f18988d6581350a421bf99641067683786a0648146c9747213705"
 }
 ```
 
-Full raw traces and scheduler artifacts remain in the private evidence directories under `D:/ZZ/analysis/`; they are not part of the public source change.
+Compact complete-case evidence will be added after the full repeat. Large raw/profiler binaries remain outside the public repository. Single-agent staged audit with separate provider processes and repeats; no independent-person signoff claimed.

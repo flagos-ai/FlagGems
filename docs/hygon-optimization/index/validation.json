@@ -1,8 +1,27 @@
 {
-  "operator": "aten::index",
-  "source_commit": "7ca605ff2692059e7e73e5bd144376264f6f5a37",
-  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
-  "internal_validation": "PR1 full revised-list validation; official-master branch retest pending",
+  "operator": "aten::index.Tensor",
+  "official_master": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+  "tested_candidate": "1a5cea0e25316bb5159ccefcbea1245542a20b2a",
+  "source_sha256": {
+    "src/flag_gems/runtime/backend/_hygon/ops/index.py": "5c698ef1295676de5694de8c6312c65c93603bdf1560548006fa18404797a40a",
+    "src/flag_gems/ops/index.py": "3c0a6b86235f18988d6581350a421bf99641067683786a0648146c9747213705"
+  },
+  "date": "2026-11-12",
+  "focused_hardware": {
+    "passed": 55,
+    "skipped": 1,
+    "job": 1102501,
+    "tests": "tests/test_hygon_index.py + generic strided negative and int32-offset tests"
+  },
+  "performance": {
+    "status": "current_guard_full125_in_progress",
+    "cases": 125,
+    "hardware_job": 1102501,
+    "analysis_job": 1102502,
+    "preceding_candidate": "fa49c60a01baaf890455cb1fe074092577fc53f5",
+    "preceding_correct_cases": 125,
+    "preceding_qualified_regressions_over5_percent": 4
+  },
   "test_file": "tests/test_hygon_index.py",
-  "raw_evidence": "private D:/ZZ/analysis/ artifacts"
+  "raw_evidence": "Private source-bound scheduler and profiler artifacts; compact evidence pending full analysis"
 }
