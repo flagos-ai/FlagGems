@@ -162,6 +162,21 @@ def test_accuracy_svd_gram_ill_conditioned_orthonormal(shape):
 
 
 @pytest.mark.svd
+def test_accuracy_svd_cyclic_jacobi_batched_repeated_singular_values():
+    # A batch above 32 goes through the pair kernel instead of the serial one.
+    inp = _make_spectrum_input((40, 17, 17), [4, 4, 2, 2, *([1] * 13)], seed=11)
+    ref_inp = utils.to_reference(inp, False)
+    ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
+
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
+
+    _assert_same_shape(res_s, ref_s)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
+    reconstructed = _reconstruct(res_u, res_s, res_v)
+    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=2e-3)
+
+
+@pytest.mark.svd
 @pytest.mark.parametrize("case", ["zero", "repeated"])
 def test_accuracy_svd_gram_zero_and_repeated_singular_values(case):
     if case == "zero":
