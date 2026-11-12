@@ -468,6 +468,18 @@ def test_quantized_max_pool3d_out(
 )
 def test_quantized_max_pool3d_out_resizes(out_shape):
     """A mis-sized ``out`` is resized to the pooled shape, as ATen does."""
+    if flag_gems.vendor_name == "kunlunxin":
+        # ATen's ``out`` overload resizes ``out``, adopts the *input*'s
+        # qparams, and writes the result back (``res is out``). On XPU there
+        # is no Python API to change a quantized tensor's scale/zero_point in
+        # place (no ``set_qparams`` binding; XDNN's quantized ``copy_`` does
+        # not adopt the source qparams and raises), so the ATen contract
+        # cannot be reproduced on this stack. Same vendor-gated pattern as
+        # PR #8700; revisit once the platform exposes ``set_qparams``.
+        pytest.skip(
+            "ATen out-resize contract is not reproducible on XPU "
+            "(no set_qparams; quantized copy_ is broken)"
+        )
     shape = (1, 2, 6, 6, 6)
     qx = _make_qinput(shape, device=flag_gems.device)
     ref_inp = qx.to("cpu")
@@ -569,6 +581,17 @@ def test_quantized_max_pool3d_out_non_contiguous():
     ATen only restrides ``out`` when a resize actually happens, so a strided
     ``out`` that already has the pooled shape is written through its own strides.
     """
+    if flag_gems.vendor_name == "kunlunxin":
+        # XDNN's ``as_strided`` does not support quint8
+        # (``[XDNN_UNIMPLEMENTED]``), so the strided ``out`` view cannot even
+        # be constructed; and writing through it also requires the
+        # input-qparams adoption that is unavailable on XPU (see
+        # ``test_quantized_max_pool3d_out_resizes``). Same vendor-gated
+        # pattern as PR #8700.
+        pytest.skip(
+            "strided quantized out views are unsupported on XPU "
+            "(as_strided unimplemented for quint8)"
+        )
     shape = (1, 2, 6, 8, 10)
     qx = _make_qinput(shape, device=flag_gems.device)
     ref_inp = qx.to("cpu")
@@ -603,6 +626,17 @@ def test_quantized_max_pool3d_non_contiguous_input(layout):
     shape = (2, 4, 6, 8, 10)
     qx = _make_qinput(shape, device=flag_gems.device)
     ref_inp = qx.to("cpu")
+
+    if flag_gems.vendor_name == "kunlunxin" and layout == "channels_last_3d":
+        # XDNN has no channels-last-3d kernel for quantized tensors, so
+        # ``q.contiguous(memory_format=torch.channels_last_3d)`` raises
+        # ``cudaErrorInvalidDeviceFunction`` before the GEMS op is reached.
+        # Same vendor-gated pattern as PR #8700; the other layouts and all
+        # other backends keep the original path.
+        pytest.skip(
+            "channels_last_3d quantized tensors are unsupported on XPU "
+            "(XDNN kernel missing)"
+        )
 
     def as_layout(q):
         # Restride the quantized tensor itself: rebuilding one over a strided
