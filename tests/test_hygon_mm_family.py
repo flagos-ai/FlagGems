@@ -321,6 +321,9 @@ def test_family_does_not_reuse_choice_for_different_output_shape(router, monkeyp
         (4097, 2056, 193, "nn", True, 0, ()),
         (4097, 2056, 192, "nn", False, 0, ()),
         (512, 257, 192, "nt", False, 0, (0, 4)),
+        (65536, 32768, 512, "nn", True, 0, (4,)),
+        (512, 262152, 4096, "nn", True, 0, (4,)),
+        (65536, 32768, 512, "nt", False, 0, (0, 4)),
     ],
 )
 def test_cooperative_shortlist_uses_layout_and_tile_coverage(
@@ -337,3 +340,48 @@ def test_cooperative_shortlist_uses_layout_and_tile_coverage(
     c = tensor((m, n), (n, 1), 0x200000000)
     configs = router._cooperative_mm_candidates(a, b, c, allow_nn=expanded)
     assert tuple(config.group_m for config in configs) == expected
+
+
+@pytest.mark.parametrize("layout", ["nn", "nt"])
+@pytest.mark.parametrize("group_m", [0, 4])
+@pytest.mark.parametrize(
+    "shape,expected",
+    [
+        ((65536, 32768, 512), True),  # 4 GiB output
+        ((257, 262152, 4096), True),  # B crosses 2 GiB
+        ((129, 8454664, 64), True),  # wide local byte offsets and edge tiles
+        ((2**31 + 1, 256, 64), False),  # block-pointer row coordinate
+        ((256, 2**31 + 8, 64), False),  # producer column coordinate
+        ((2**24, 2**23, 64), False),  # signed launcher grid product
+        ((256 * ((2**32 - 1) // (12 * 64)) + 1, 512, 64), False),  # HIP grid X
+        ((256, 256, 8192), False),  # existing pipeline limit
+    ],
+)
+def test_cooperative_wide_address_admission(
+    router, monkeypatch, shape, expected, group_m, layout
+):
+    monkeypatch.setattr(router, "_cooperative_supported", lambda: True)
+    m, n, k = shape
+    a = tensor((m, k), (k, 1), 0x100000)
+    b = tensor((k, n), (n, 1) if layout == "nn" else (1, k), 1 << 49)
+    c = tensor((m, n), (n, 1), 1 << 50)
+    assert router.CooperativeMMConfig(group_m).supports(a, b, c) is expected
+
+
+@pytest.mark.parametrize(
+    "shape,layout,expected",
+    [
+        ((65536, 32768, 512), "nn", True),
+        ((65536, 32768, 512), "nt", True),
+        ((257, 262152, 4096), "nn", True),
+        ((256, 256, 2**31 - 8), "nt", False),
+        ((256, 2**26, 64), "nn", False),
+        ((2**30, 256, 64), "nn", False),
+    ],
+)
+def test_shared_wide_output_preserves_block_pointer_bounds(router, shape, layout, expected):
+    m, n, k = shape
+    a = tensor((m, k), (k, 1), 0x100000)
+    b = tensor((k, n), (n, 1) if layout == "nn" else (1, k), 1 << 49)
+    c = tensor((m, n), (n, 1), 1 << 50)
+    assert router.SharedMMConfig((64, 128, 32)).supports(a, b, c) is expected

@@ -837,6 +837,11 @@ def mm_kernel(
 
 # Cooperative producer/consumer GEMM.
 
+# HIP bounds each grid axis in work-items. Cooperative launches 12 wave64
+# waves per CTA along X.
+_COOPERATIVE_CTA_THREADS = tl.constexpr(12 * 64)
+
+
 @triton.jit
 def grouped_program_coordinates(
     pid, count_m: tl.constexpr, count_n: tl.constexpr, GROUP_M: tl.constexpr
@@ -891,6 +896,7 @@ def _coordinates(M: tl.constexpr, N: tl.constexpr, GROUP_M: tl.constexpr):
 def _produce_tile(
     B,
     owner,
+    col,
     n,
     k,
     t,
@@ -901,7 +907,21 @@ def _produce_tile(
 ):
     column = t * BK + k
     mask = n[None, :] < N
-    if B_K_CONTIGUOUS:
+    if 2 * K * N >= 2**31:
+        # A wide tensor can still use a buffer copy when the offsets from
+        # this tile's scalar base fit the descriptor's signed byte range.
+        first_k = tl.cast(t * BK, tl.int64)
+        j = tl.arange(0, n.shape[0])
+        if B_K_CONTIGUOUS:
+            base = B + (col.to(tl.int64) * K + first_k)
+            offsets = j[None, :] * K + k[:, None]
+        else:
+            base = B + (first_k * N + col.to(tl.int64))
+            if 2 * ((BK - 1) * N + n.shape[0]) >= 2**31:
+                k = k.to(tl.int64)
+            offsets = k[:, None] * N + j[None, :]
+        pointer = base + offsets
+    elif B_K_CONTIGUOUS:
         pointer = B + n[None, :].to(tl.int64) * K + column[:, None]
     else:
         pointer = B + column[:, None].to(tl.int64) * N + n[None, :]
@@ -923,14 +943,15 @@ def _producer(
     GROUP_M: tl.constexpr,
     B_K_CONTIGUOUS: tl.constexpr,
 ):
-    pm, pn = _coordinates(M, N, GROUP_M)
-    n = pn * BN + tl.arange(0, BN)
+    _, pn = _coordinates(M, N, GROUP_M)
+    col = pn * BN
+    n = col + tl.arange(0, BN)
     k = tl.arange(0, BK)
     for pair in range(K // (2 * BK)):
-        _produce_tile(B, owner, n, k, pair * 2, N, K, BK, B_K_CONTIGUOUS)
-        _produce_tile(B, owner, n, k, pair * 2 + 1, N, K, BK, B_K_CONTIGUOUS)
+        _produce_tile(B, owner, col, n, k, pair * 2, N, K, BK, B_K_CONTIGUOUS)
+        _produce_tile(B, owner, col, n, k, pair * 2 + 1, N, K, BK, B_K_CONTIGUOUS)
     if (K // BK) % 2:
-        _produce_tile(B, owner, n, k, K // BK - 1, N, K, BK, B_K_CONTIGUOUS)
+        _produce_tile(B, owner, col, n, k, K // BK - 1, N, K, BK, B_K_CONTIGUOUS)
     cta_phase()
     cta_phase()
 
@@ -1028,8 +1049,20 @@ def _consumer(
         acc, av0, av1 = _compute_parts(
             A, owner, acc, av0, av1, row, tl.cdiv(K, BK) - 1, M, K, BM, BK, HIGH_PHASE, BN, B_K_CONTIGUOUS
         )
+    # Each consumer owns BM rows. The bound includes padded edge lanes.
+    wide_store: tl.constexpr = 2 * ((BM - 1) * N + BN) >= 2**31
     if B_K_CONTIGUOUS:
-        output = tl.make_block_ptr(C, (M, N), (N, 1), (row, pn * BN), (BM, BN), (1, 0))
+        if wide_store:
+            col = pn.to(tl.int64) * BN
+            output = tl.make_block_ptr(
+                C + row.to(tl.int64) * N + col,
+                (tl.maximum(M - row.to(tl.int64), 0), N - col),
+                (N, 1), (0, 0), (BM, BN), (1, 0),
+            )
+        else:
+            output = tl.make_block_ptr(
+                C, (M, N), (N, 1), (row, pn * BN), (BM, BN), (1, 0),
+            )
         tl.store(output, acc.to(C.dtype.element_ty), boundary_check=(0, 1))
     else:
         i = tl.arange(0, BM)
@@ -1039,6 +1072,8 @@ def _consumer(
         j = (j & ~31) | ((j & 15) << 1) | ((j >> 4) & 1)
         col = pn.to(tl.int64) * BN
         origin = C + row.to(tl.int64) * N + col
+        if wide_store:
+            i = i.to(tl.int64)
         tl.store(
             origin + i[:, None] * N + j[None, :],
             acc.to(C.dtype.element_ty),
@@ -1063,8 +1098,10 @@ def _mm_cooperative_kernel(
 ):
     tl.static_assert(BM == 256 and BN == 256 and BK == 64)
     tl.static_assert(K >= 64 and K < 8192 and K % 64 == 0)
-    tl.static_assert(M > 0 and N > 0 and M < 2147483648 and N < 2147483648)
-    tl.static_assert(512 * N < 2147483648 and GROUP_M >= 0)
+    tl.static_assert(M > 0 and N > 0 and M < 2**31 and N < 2**31 and GROUP_M >= 0)
+    # The launcher and the grouped traversal both use a signed i32 grid.
+    tl.static_assert(((M + 255) // 256) * ((N + 255) // 256) < 2**31)
+    tl.static_assert(((M + 255) // 256) * _COOPERATIVE_CTA_THREADS < 2**32)
     # Describe logical storage; the backend jointly selects its physical chart
     # from the global producer and actual MMAC consumers.
     if B_K_CONTIGUOUS:
@@ -1511,6 +1548,8 @@ class SharedMMConfig:
         m, k = a.shape
         n = b.shape[1]
         bm, bn, bk = self.tile
+        tiles_m = triton.cdiv(m, bm)
+        tiles_n = triton.cdiv(n, bn)
         nt = b.stride() == (1, k)
         local_span = max(
             (bm - 1) * k + bk, (bn - 1) * k + bk if nt else (bk - 1) * n + bn
@@ -1539,8 +1578,13 @@ class SharedMMConfig:
             and not c.requires_grad
             and (not c.is_inference() or torch.is_inference_mode_enabled())
             and disjoint
-            and max(m, n, k) < 2**31
-            and 2 * m * n < 2**31
+            # The fixed TLE path retains signed i32 block-pointer offsets,
+            # including the K advance and padded ceil-div intermediates.
+            and max(m + bm - 1, n + bn - 1, k + bk - 1) < 2**31
+            and max(tiles_m, self.group_m) * tiles_n < 2**31
+            and tiles_m * tiles_n * prod(self.warps) * 64 < 2**32
+            # The launch independently selects i64 output indexing when the
+            # padded output byte range does not fit in i32.
             and (2 * local_span < 2**31 or max(2 * m * k, 2 * k * n) < 2**31)
         )
 
@@ -1787,6 +1831,8 @@ class CooperativeMMConfig:
             return False
         m, k = a.shape
         n = b.shape[1]
+        tiles_m = triton.cdiv(m, 256)
+        tiles_n = triton.cdiv(n, 256)
         begin, end = c.data_ptr(), c.data_ptr() + 2 * m * n
         disjoint = all(
             end <= t.data_ptr() or t.data_ptr() + 2 * count <= begin
@@ -1805,8 +1851,6 @@ class CooperativeMMConfig:
                 or (
                     b.stride() == (n, 1)
                     and n % 8 == 0
-                    and 2 * m * n < 2**31
-                    and 2 * k * n < 2**31
                     and callable(getattr(tle.gpu, "swizzled_shared_layout", None))
                 )
             )
@@ -1820,9 +1864,8 @@ class CooperativeMMConfig:
             and (not c.is_inference() or torch.is_inference_mode_enabled())
             and disjoint
             and max(m, n) < 2**31
-            # Each CTA rebases C in i64; only its local byte offsets are i32.
-            and 512 * n < 2**31
-            and (not self.group_m or triton.cdiv(m, 256) * triton.cdiv(n, 256) < 2**31)
+            and tiles_m * tiles_n < 2**31
+            and tiles_m * _COOPERATIVE_CTA_THREADS.value < 2**32
         )
 
 
