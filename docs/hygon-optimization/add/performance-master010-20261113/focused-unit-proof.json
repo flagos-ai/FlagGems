@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-13T02:04:15.245167",
+  "ssh_alias": "luojun850",
+  "run_id": "official-master010-add-guard-20261113-0205",
+  "source": "baa3719bd423bec0c179af709dc8404f42ca655b",
+  "src_tree": "e539387c75726e63a538da034cda5b4b3c6bf972",
+  "all_passed": 76,
+  "raw_junit_sha256": "ae13caacda71ea2c98f0def8b6fe052e53b1ad40810ee17700a3cdec2bc11266",
+  "baseline": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "published_junit_sha256": "f7c9c3b99db3894b05705c9bc44c466f48dc076f68f49702ebcaca1428ff8a11",
+  "junit_normalization": "Only one final LF added if absent;raw XML remains hashed separately"
+}

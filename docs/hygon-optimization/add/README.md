@@ -1,22 +1,16 @@
 # Hygon add optimization
 
-Current guarded production source: `baa3719bd423bec0c179af709dc8404f42ca655b`,integrated on official master `010d8083b0dc89ab795aee973ad62c83c9d2592d`. Focused hardware gate: **76 tests passed** on2026-11-13. The **full200-case final performance repeat is running**;this PR remains Draft pending complete correctness,device accounting,stability review and latest-head required CI.
+Independent official-master baseline `010d8083b0dc89ab795aee973ad62c83c9d2592d`, measured source `baa3719bd423bec0c179af709dc8404f42ca655b`, date2026-11-13. All200 cases and all6 roles complete;old/new/DAS correctness200each,76 focused hardware tests pass.63 correct/stable old-new pairs,29 gains above5%,range0.963901-5.080014x;all29 gains have actual specialized-source/kernel/count witnesses.91 qualified new/DAS pairs:70 meet90%,21 miss,109 comparisons remain A/A-inconclusive. No qualified latency regression above5%.
 
-## Why the additional guard and full repeat
+The89 original model contracts have30 qualified old/new pairs and8 gains above5%;42 qualified new/DAS pairs include33DAS90 and9misses,47 comparisons remain inconclusive. Everycase remains in [complete evidence](performance-master010-20261113/README.md),including unchanged fallbacks,misses and unstable points. This replaces all200 previous-source cases regardless outcome,without pooling samples or selecting favorable repeats.
 
-The complete preceding serial200 capture has200/200 old/new/DAS correctness,79 qualified old/new pairs,44 gains>5%,and3 qualified device regressions: large row broadcast0.859160x,INT64 vector0.945983x,and an intermediate transpose0.603094x. Synchronized API controls improve for all three,but do not establish device-kernel acceptance.99 new/DAS pairs qualify,75 meet90%;other comparisons retain A/A diagnostics. The complete [preceding serial capture](diagnostic-serial-20261113/README.md) remains auditable,as does [the original concurrent-process diagnostic](diagnostic-concurrent-20261112/README.md).
-
-The guard uses general dtype,volume,stride and broadcast domains,selecting exactly3 of the frozen200 workload metadata records. All other production-module AST is unchanged. Every200 case is being rerun on the pinned optimized master with fresh six-role captures and API controls,not just the three regressed shapes. No previous samples are pooled or selected by outcome. The previous9a ADD leaf/config equivalence and three actual current-master route controls are historical support,not a claim that an entire9a execution used the010 package.
-
-## Reproduction and actual execution
+All3 preregistered generic-guard domains now meetDAS90. Two old/new ratios qualify(1.000793x and0.963901x);the INT64 point remains old-control A/A-inconclusive,so no confirmed three-case recovery is claimed. [Attribution and guard assessment](performance-master010-20261113/specialization-attribution.json) contains exact source and kernel event counts. Earlier [serial diagnostics](diagnostic-serial-20261113/README.md) and [concurrent diagnostics](diagnostic-concurrent-20261112/README.md) retain all earlier failures and limitations.
 
 ```bash
-pytest tests/test_hygon_add.py -q --ref cpu
-python docs/hygon-optimization/add/diagnostic-serial-20261113/verify_results.py
-python docs/hygon-optimization/add/diagnostic-serial-20261113/test-accounting-boundaries.py
+pytest tests/test_hygon_add.py --ref cpu -q
+python docs/hygon-optimization/add/performance-master010-20261113/verify_results.py
+python docs/hygon-optimization/add/performance-master010-20261113/test-accounting-boundaries.py
 pre-commit run --all-files
 ```
 
-Public `aten::add.Tensor` uses an exact private PrivateUse1 binding to the real candidate source. The provider selects contiguous/ordered/transpose kernels or generic pointwise fallback. Full output and input backing,known alias,stride,offset and immutability are checked outside the ROI. Inputs reconstruct fixed generated metadata contracts with explicit assumptions,not original model tensor payloads. Six sequential provider roles each have2x25 valid device ROIs and20calls/ROI,with independent block drift<=5%. Device metric is the complete producer-linked kernel-duration sum. Separate50-call synchronized API controls include CPU dispatch,allocation,launch and synchronization and are not model throughput. Eager execution,no graph fusion claim.
-
-The V5 accountant records a final same-thread nonproducing HIP wait overrun separately while preserving exact producing-API and device containment. All events and timestamps remain;no epsilon,trimming or sample exclusion. Exact source and9 boundary counterexamples are included. Hygon gfx936,Torch2.10/Torch-FL R7,FlagTree HIP/gfx936. Single-agent staged audit with independent provider processes/repeats,no independent-person signoff claim.
+Exact ATen->privatePrivateUse1->realHygon provider->specialized/generic kernel witnesses;full frozen output and backing/geometry/known-alias checks outsideROI. Generated metadata-preserving inputs are not original model payload replay. Six sequential roles,2x25 device samples/role,20calls/ROI,both block drifts<=5%. Producer-linked kernel sums;separate50-call synchronized API controls are diagnostic. Eager,no fusion/model-throughput claim. V5 preserves all events/timestamps and strict producers/device bounds;only final nonproducing waits audited separately.9 portable boundary counterexamples and exact accountant sources included. Hygon gfx936,Torch2.10/Torch-FL R7,FlagTree HIP/gfx936. Latest-head requiredCI and protected Feishu readback gate Ready conversion.
