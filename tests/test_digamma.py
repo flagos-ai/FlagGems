@@ -31,3 +31,17 @@ def test_digamma(shape, dtype):
     res_out = flag_gems.digamma(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.digamma
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_digamma_byte(shape, dtype):
+    # torch promotes integral digamma inputs to float32.
+    inp = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.digamma(ref_inp)
+    res_out = flag_gems.digamma(inp)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)

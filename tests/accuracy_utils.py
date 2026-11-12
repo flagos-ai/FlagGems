@@ -278,6 +278,11 @@ COMPLEX_DTYPES = (
     else []
 )
 
+# Low-precision dtypes: int8/uint8 are always available; float8 only where the
+# device exposes it (mirrors fp8_is_supported above).
+BYTE_DTYPES = [torch.int8, torch.uint8]
+FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if fp8_is_supported else []
+
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 

@@ -1260,6 +1260,7 @@ _FULL_CONFIG = (
     ("greater_.Tensor", greater_),
     ("greater_equal.Scalar", greater_equal_scalar),
     ("greater_equal.Tensor", greater_equal),
+    ("greater_equal_.Scalar", greater_equal_),
     ("greater_equal_.Tensor", greater_equal_),
     ("grid_sampler", grid_sampler),
     ("grid_sampler_2d", grid_sampler_2d),

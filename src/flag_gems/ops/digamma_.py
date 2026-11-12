@@ -161,6 +161,14 @@ def digamma(A):
     if not isinstance(A, torch.Tensor):
         raise TypeError("digamma expects a torch.Tensor as the first argument")
 
+    # PyTorch promotes integral inputs to float32 for digamma
+    # (INT_TO_FLOAT promotion in native_functions semantics).
+    if A.is_floating_point():
+        output_dtype = A.dtype
+    else:
+        output_dtype = torch.float32
+    A = A.to(output_dtype)
+
     output = torch.empty_like(A)
     n_elements = A.numel()
     if n_elements == 0:
