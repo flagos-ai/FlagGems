@@ -577,14 +577,7 @@ def _flash_attn_bwd_dkv(
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=[
-        "max_seqlen_q",
-        "max_seqlen_k",
-        "HEAD_DIM",
-        "HAS_BIAS",
-        "DO_BIAS_GRAD",
-        "FP32",
-    ],
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -636,7 +629,6 @@ def _flash_attn_bwd_varlen_dq_fused(
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     DO_BIAS_GRAD: tl.constexpr,
-    FP32: tl.constexpr,
 ):
     start_m = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -730,10 +722,7 @@ def _flash_attn_bwd_varlen_dq_fused(
             other=0.0,
         )
 
-        if FP32:
-            s = tl.dot(q, tl.trans(k), input_precision="ieee") * sm_scale
-        else:
-            s = tl.dot(q, tl.trans(k)) * sm_scale
+        s = tl.dot(q, tl.trans(k)) * sm_scale
 
         if HAS_BIAS:
             bias_block = tl.load(
@@ -757,10 +746,7 @@ def _flash_attn_bwd_varlen_dq_fused(
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
         p = tl.exp(s - Li[:, None])
-        if FP32:
-            dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
-        else:
-            dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
 
         if IS_DROPOUT:
             rng_off = (
@@ -772,13 +758,11 @@ def _flash_attn_bwd_varlen_dq_fused(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
+            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
             p = tl.where(drop_mask, p * drop_scale, 0.0)
 
         ds = p * (dp - Di[:, None]) * sm_scale
-        if FP32:
-            dq = dq + tl.dot(ds, k, input_precision="ieee")
-        else:
-            dq = dq + tl.dot(ds.to(q.dtype), k)
+        dq = dq + tl.dot(ds.to(q.dtype), k)
 
         if DO_BIAS_GRAD:
             ds_bias = p * (dp - Di[:, None])
@@ -806,7 +790,7 @@ def _flash_attn_bwd_varlen_dq_fused(
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
     # device limit once recompiled with one.
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "FP32"],
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
@@ -856,7 +840,6 @@ def _flash_attn_bwd_varlen_dkv(
     HAS_WINDOW: tl.constexpr,
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
-    FP32: tl.constexpr,
 ):
     start_n = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -1000,10 +983,7 @@ def _flash_attn_bwd_varlen_dkv(
         Di = tl.load(D + m_phys * H_q + head_q_idx, mask=mask_m, other=0.0)
         Li = tl.load(L + m_phys * H_q + head_q_idx, mask=mask_m, other=0.0)
 
-        if FP32:
-            s = tl.dot(q, tl.trans(k), input_precision="ieee") * sm_scale
-        else:
-            s = tl.dot(q, tl.trans(k)) * sm_scale
+        s = tl.dot(q, tl.trans(k)) * sm_scale
 
         if HAS_BIAS:
             bias_block = tl.load(
@@ -1028,10 +1008,7 @@ def _flash_attn_bwd_varlen_dkv(
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
         p = tl.exp(s - Li[:, None])
-        if FP32:
-            dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
-        else:
-            dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
 
         if IS_DROPOUT:
             rng_off = (
@@ -1043,15 +1020,12 @@ def _flash_attn_bwd_varlen_dkv(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
+            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
             p = tl.where(drop_mask, p * drop_scale, 0.0)
 
         ds = p * (dp - Di[:, None]) * sm_scale
-        if FP32:
-            dk = dk + tl.dot(tl.trans(ds), q, input_precision="ieee")
-            dv = dv + tl.dot(tl.trans(p), do, input_precision="ieee")
-        else:
-            dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-            dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+        dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
+        dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
 
     tl.store(
         dK
@@ -1214,7 +1188,6 @@ def flash_attn_backward(
             HEAD_DIM=Head_Dim,
             IS_CAUSAL=is_causal,
             IS_DROPOUT=use_dropout,
-            FP32=Q.dtype == torch.float32,
             HAS_WINDOW=has_window,
             HAS_ALIBI=has_alibi,
             HAS_BIAS=has_bias,
@@ -1264,7 +1237,6 @@ def flash_attn_backward(
             HEAD_DIM=Head_Dim,
             IS_CAUSAL=is_causal,
             IS_DROPOUT=use_dropout,
-            FP32=Q.dtype == torch.float32,
             HAS_WINDOW=has_window,
             HAS_ALIBI=has_alibi,
             HAS_BIAS=has_bias,
