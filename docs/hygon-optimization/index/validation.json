@@ -1,26 +1,36 @@
 {
   "operator": "aten::index.Tensor",
   "official_master": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
-  "tested_candidate": "1a5cea0e25316bb5159ccefcbea1245542a20b2a",
+  "tested_candidate": "e6cec3cde6cf525c5fe6e9ac93754a96d5c50a14",
   "source_sha256": {
     "src/flag_gems/runtime/backend/_hygon/ops/index.py": "5c698ef1295676de5694de8c6312c65c93603bdf1560548006fa18404797a40a",
     "src/flag_gems/ops/index.py": "3c0a6b86235f18988d6581350a421bf99641067683786a0648146c9747213705"
   },
   "date": "2026-11-12",
   "focused_hardware": {
-    "passed": 55,
+    "passed": 59,
     "skipped": 1,
-    "job": 1102501,
-    "tests": "tests/test_hygon_index.py + generic strided negative and int32-offset tests"
+    "failed": 0,
+    "job": 1103029
   },
   "performance": {
-    "status": "current_guard_full125_in_progress",
-    "cases": 125,
-    "hardware_job": 1102501,
-    "analysis_job": 1102502,
-    "preceding_candidate": "fa49c60a01baaf890455cb1fe074092577fc53f5",
-    "preceding_correct_cases": 125,
-    "preceding_qualified_regressions_over5_percent": 4
+    "status": "all125 measured;5 affected routes under full confirmation",
+    "previous_source": "1a5cea0e25316bb5159ccefcbea1245542a20b2a",
+    "previous_hardware_job": 1102501,
+    "previous_analysis_job": 1102502,
+    "previous_complete": 125,
+    "previous_correct": 125,
+    "previous_qualified_old_new": 49,
+    "previous_qualified_new_das": 57,
+    "previous_target90": 57,
+    "previous_qualified_slowdowns": [
+      "expanded230-1cc61c9d55d614ba6fbe",
+      "expanded230-333ca8a8d66d1e3ca124"
+    ],
+    "confirmation_hardware_job": 1103029,
+    "confirmation_analysis_job": 1103030,
+    "confirmation_case_count": 5,
+    "source_proof": "compact-guard-selection.json"
   },
   "test_file": "tests/test_hygon_index.py",
   "raw_evidence": "Private source-bound scheduler and profiler artifacts; compact evidence pending full analysis"

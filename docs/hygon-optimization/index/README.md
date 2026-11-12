@@ -27,3 +27,9 @@ All12 local pre-commit checks pass. Each old/new/DAS provider and independent re
 ```
 
 Compact complete-case evidence will be added after the full repeat. Large raw/profiler binaries remain outside the public repository. Single-agent staged audit with separate provider processes and repeats; no independent-person signoff claimed.
+
+## Compact-row follow-up (2026-11-12)
+
+The preceding source `1a5cea0e25316bb5159ccefcbea1245542a20b2a` completed all125 cases and all6role device samples. Every provider passes correctness125/125;57 stable/correct new/DAS pairs all meet90%. Among49 qualified old/new comparisons,38 improve>5%,but2 expanded cases still regress:singleton[1,1] with31360 indices(old/new0.876812) and[913,3,24] with2101 indices(0.909097). These are retained performance blockers,not final accepted results.
+
+Current source `e6cec3cde6cf525c5fe6e9ac93754a96d5c50a14` retains the generic path for compact rows and highly reused singleton gathers. **59 focused hardware tests pass,1 shared capability skip**,including4 new complete-output and explicit-generic-route tests. An entire-module AST comparison and evaluation of all125 frozen metadata inputs identifies exactly5 affected cases. All5 are being rerun with full six-role samples,regardless final correctness or stability outcome. Unchanged cases can be retained only under this source proof;no sample pooling or successful-repeat selection. `compact-guard-selection.json` records the premeasurement selection. Latest-head CI and final combined evidence remain required before Ready.

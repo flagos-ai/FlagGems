@@ -1,0 +1,517 @@
+{
+  "previous_source": "1a5cea0e25316bb5159ccefcbea1245542a20b2a",
+  "guarded_source": "e6cec3cde6cf525c5fe6e9ac93754a96d5c50a14",
+  "previous_source_sha256": "5c698ef1295676de5694de8c6312c65c93603bdf1560548006fa18404797a40a",
+  "new_source_sha256": "1194c12ad1754d001cee53c844ad0564eb7e33e88c93a5e9a6663f2ea8f1de42",
+  "module_ast_proof": "Remove only repeated_singleton/compact_rows predicates and restore original generic-guard OR; entire module AST equals preceding full125 candidate. Every declared metadata case evaluated before confirmation; not a GPU result.",
+  "cases": [
+    {
+      "id": "model285-e137bcb24aa744ccc8c2",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-3fc4b3248422e17f3fed",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-669ae14d6d09b8a629d2",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-21316790d24d5e1da98f",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-eaeba3c4d33782febed3",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-3de3d3d64fd426c1f2df",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-519b69a825162a26eb83",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-dca30ef40ea0604dd528",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-8950a2f1abf426a77b7b",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-295f4b62e7ad6446034b",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-9f005578a7b0aa5488f6",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-21ae20985b1533982e54",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-c126a310e73a78b5b923",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-899bd65f5e975dee0278",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-b549963d86391abbf479",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-0e6b1723da3ea61996d3",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-c40507dae064084dc09a",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-3a6806621e6b296ae39d",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-17afb335a1fcd95e5f3b",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-b183968c7f88c8cba90d",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-651502dc31e403b5ff8a",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-e94df383fc01121b7274",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-9c64592f0c6dbcaec054",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-884130dfb87e820dd5cb",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-0411afa91acfe4b455cb",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-9f1049d703aecf0685cc",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-cde2dcfa0918102b1097",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-c9e0a58522d856b87db9",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-80855192fae9d9c51ed4",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-9ac348e2a3c51c410466",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-315ecb5ffdb9d755936a",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-f160cac2eb2e463a834c",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-eda8d3489a0ed77fa740",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-482f6e3285f2f4be1e3b",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-beb30c1125ab0a4ac29a",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-96a80f3b1aec026bfad0",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-93e897079b103b458b00",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-53b13363c165791cdaef",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-de01aef8374feced8fd4",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-5326b4478f0117629ee8",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-7490e7469234eacf5a7a",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-120a634c94e670bc57e8",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-8bbcc66918e3cdb35249",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-55222404411ffb5eb892",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-7ef410163f5399670fde",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-818ffdba3890dacab3c4",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-4bfa22f178aa5833d1e7",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-9605e764faf218126756",
+      "changed_guard": false
+    },
+    {
+      "id": "model285-5d6e77385fcea930a13e",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-cbed5e4dec93ab0ec47a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-02b611e4ea0eba0138ce",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-967fd34c6712ca38ed17",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-6d7d8a68cdfc4d6b5b0a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-44c446c18ad59dccbbf5",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-dfc4f511d3d0d7aab0d9",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-67aecb99c109db388ca8",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-c9ffa060a670a5a30e3a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-2edbfb5e0cdf61e095d5",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-86c7eee4156c25c72c38",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-dc3631625119495b03b4",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-de697f88205c621bb615",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-1c9294b935c596120ec8",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-60ea81a312a6cdaba651",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-91a6894378870404a946",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-9ca4fdbcc187f9a7962a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-2e54a865de2b5cf32701",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0c3b42d5a2e8365003a0",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-f373e1f71b418e0c34ff",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-1e2743931342fe2de342",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-4e173b1db47e3172eb67",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-10dd0131053bc26200d1",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-14da1c073dd2d3fc7bda",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-899255d34b62bd64ae91",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0b26701af89410da8726",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-3aada3c662cd856b4743",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-78d840b06e462e995413",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-506d992a22c7d21b24b0",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-2e12193c28ada25c80d2",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-ac7a72179786e34abc3f",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-4bc7c8f1c110af835a86",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-356ad92ac72575ec8445",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-3829618fb225d14a2255",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-49ef87b34eb266646ffb",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-1cc61c9d55d614ba6fbe",
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-81ee96d389325ee0c614",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-96f6c4146f30dbed3ec2",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-5367bf4788e1db50a575",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-84992cb20e2ec7a8e699",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-d6aa99a1e2ed6a2feb67",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-793bf03741fe9680f2a3",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0c46fa801d41798abe20",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-d47e7c2e8c4e3bb7fc5d",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-e742a911aad52fb8228d",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0777a18f459bee16dd64",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-ae9ea76b5b3e7b66de0f",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-b3b05945bf38c12cb95a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-dab20772394ee2658889",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-38432d78704f302acdb0",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-d12b3ec6244085e951d1",
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-333ca8a8d66d1e3ca124",
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-f8a62be9ea3a1224da55",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-b450074603fe17306714",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-dcd943d30bb2610c558a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-d25be3768b2e85645782",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-4c11080a965f310b7d25",
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-515b533813096f1e1019",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-ec33a84bb6e283bd839a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-74acaedc059b38a523a9",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-3d882806381cfde3b047",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-3c41fc7087752721f8a0",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-91d3d381d6afea306edb",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-697304460b619ca9ba64",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-c8199ff465cc2e991156",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-878d9fea26653ef33024",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-27c914b26e2857e5eb2f",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-2ee794f5d5c3c38982f0",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-5449a8d10e16cc267a00",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-db4f475c12f8bbaaea1a",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-66a5d70991595a7f0e2d",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-34b67f38c2005a436ce1",
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-b9b1e196e05bbb490d3e",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0c27215b54129a97c78c",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-a12a6a0cd63d5e6b08a3",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-7ef67f4492820ad576e3",
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-19766cbd7e2444e11e8d",
+      "changed_guard": false
+    }
+  ],
+  "affected_ids": [
+    "expanded230-1cc61c9d55d614ba6fbe",
+    "expanded230-d12b3ec6244085e951d1",
+    "expanded230-333ca8a8d66d1e3ca124",
+    "expanded230-4c11080a965f310b7d25",
+    "expanded230-34b67f38c2005a436ce1"
+  ],
+  "case_replacement_policy": "Replace every affected whole six-role case regardless correctness/stability outcome. Retain all unaffected cases under exact AST/metadata proof; no sample pooling or successful-repeat selection."
+}
