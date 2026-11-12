@@ -364,9 +364,11 @@ def ref_fmod(a, b):
 
 
 def to_cpu(res, ref):
-    if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
-        res = res.to("cpu")
-        assert ref.device == torch.device("cpu")
+    # Compare on the CPU whenever the reference is there (e.g. a CPU-only
+    # eager op on a backend without fp64); the result tensor follows it.
+    if isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
+        if TO_CPU or ref.device.type == "cpu":
+            res = res.to("cpu")
     return res
 
 
