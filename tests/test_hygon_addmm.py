@@ -376,3 +376,78 @@ def test_hygon_addmm_extreme_vector_native_reference(out_variant):
     else:
         result = flag_gems.addmm(cd, ad, bd)
     torch.testing.assert_close(result.cpu(), expected)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("k", [33, 64])
+@pytest.mark.parametrize("out_variant", [False, True])
+def test_hygon_large_bf16_guard_reaches_generic(
+    monkeypatch, record_property, k, out_variant
+):
+    import triton
+
+    from flag_gems.runtime.backend._hygon.ops import addmm_kernel90
+
+    target = triton.runtime.driver.active.get_current_target()
+    record_property("compiler_backend", target.backend)
+    record_property("compiler_arch", str(target.arch))
+    if target.backend != "hcu" and str(target.arch) != "gfx936":
+        pytest.skip("large BF16 schedule guard is specific to HCU/gfx936")
+
+    def forbidden_specialization(*args, **kwargs):
+        pytest.fail("large BF16 guard did not reach the generic implementation")
+
+    monkeypatch.setattr(addmm_kernel90, "_launch", forbidden_specialization)
+    m, n = 1024, 256
+    generator = torch.Generator().manual_seed(20261109)
+    bias = (torch.randn(n, generator=generator) * 0.25).to(torch.bfloat16)
+    a = (torch.randn(m, k, generator=generator) * 0.25).to(torch.bfloat16)
+    b = (torch.randn(n, k, generator=generator) * 0.25).to(torch.bfloat16).t()
+    expected = torch.addmm(bias.float(), a.float(), b.float()).to(torch.bfloat16)
+    ad, bd, cd = (x.to(flag_gems.device) for x in (a, b, bias))
+    if out_variant:
+        out = torch.empty((m, n + 1), dtype=a.dtype, device=flag_gems.device)[:, :n]
+        result = flag_gems.addmm_out(cd, ad, bd, out=out)
+        assert result is out
+    else:
+        result = flag_gems.addmm(cd, ad, bd)
+    torch.testing.assert_close(result.cpu(), expected)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize(
+    "m,k,n,row_pitch",
+    [
+        (303, 320, 320, 320),
+        (854, 256, 256, 256),
+        (854, 512, 256, 512),
+        (800, 1280, 1280, 4864),
+    ],
+)
+@pytest.mark.parametrize("out_variant", [False, True])
+def test_hygon_ragged_projection_generic_values(
+    monkeypatch, m, k, n, row_pitch, out_variant
+):
+    from flag_gems.runtime.backend._hygon.ops import addmm_kernel90
+
+    def forbidden_specialization(*args, **kwargs):
+        pytest.fail("ragged/strided projection guard did not reach generic addmm")
+
+    monkeypatch.setattr(addmm_kernel90, "_launch", forbidden_specialization)
+    generator = torch.Generator().manual_seed(20261109)
+    bias = torch.randn(n, generator=generator) * 0.25
+    storage = torch.randn((m - 1) * row_pitch + k, generator=generator) * 0.25
+    a = storage.as_strided((m, k), (row_pitch, 1))
+    b_storage = torch.randn(n * k, generator=generator) * 0.25
+    b = b_storage.as_strided((k, n), (1, k))
+    expected = torch.addmm(bias, a, b)
+    ad = storage.to(flag_gems.device).as_strided(a.shape, a.stride())
+    bd = b_storage.to(flag_gems.device).as_strided(b.shape, b.stride())
+    cd = bias.to(flag_gems.device)
+    if out_variant:
+        out = torch.empty((m, n + 1), device=flag_gems.device)[:, :n]
+        result = flag_gems.addmm_out(cd, ad, bd, out=out)
+        assert result is out
+    else:
+        result = flag_gems.addmm(cd, ad, bd)
+    torch.testing.assert_close(result.cpu(), expected)

@@ -323,13 +323,28 @@ def _eligible(a, b):
     # Large BF16 tiles depend on the HIP-specific scheduling path. HCU
     # compilers can spill these accumulators heavily; retain the established
     # generic implementation instead of selecting an unsupported fast path.
-    if (
-        a.dtype == torch.bfloat16
-        and m >= 1024
-        and n >= 256
-        and triton.runtime.driver.active.get_current_target().backend == "hcu"
-    ):
-        return False
+    if a.dtype == torch.bfloat16 and m >= 1024 and n >= 256:
+        target = triton.runtime.driver.active.get_current_target()
+        # FlagTree can expose gfx936 through the HIP backend as well as HCU.
+        # The backend label alone does not identify the spilling schedule.
+        if target.backend == "hcu" or str(target.arch) == "gfx936":
+            return False
+    if a.dtype == b.dtype == torch.float32:
+        ragged_medium = (
+            128 <= m <= 1024
+            and 128 <= n <= 512
+            and 128 <= k <= 512
+            and (m % 128 != 0 or n % 128 != 0 or k % 128 != 0)
+        )
+        strided_projection = (
+            256 <= m <= 1024
+            and n >= 512
+            and k >= 1024
+            and a.stride(1) == 1
+            and a.stride(0) != k
+        )
+        if ragged_medium or strided_projection:
+            return False
     return a.dtype in (torch.float16, torch.bfloat16, torch.float32) and (
         (m <= 8 and n <= 256 and k <= 4096)
         or _small_fp32(a, b)
