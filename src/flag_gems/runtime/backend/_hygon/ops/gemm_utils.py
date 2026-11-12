@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import logging
+import threading
+from dataclasses import dataclass
 from functools import cache
 from math import inf
 
@@ -32,10 +34,63 @@ _CANDIDATE_FAILURES = (CompilationError, errors.OutOfResources) + tuple(
 )
 
 
-def gemm_has_wide_storage(*tensors):
+def gemm_storage_is_wide(tensor):
     # Match FlagTree HCU's signed 32-bit byte-range specialization. Using
     # storage size also accounts for strided views and nonzero storage offsets.
-    return any(tensor.untyped_storage().nbytes() >= 2**31 for tensor in tensors)
+    return tensor.untyped_storage().nbytes() >= 2**31
+
+
+def gemm_has_wide_storage(*tensors):
+    return any(map(gemm_storage_is_wide, tensors))
+
+
+def gemm_tuning_key(tuner):
+    return tuner.config_table_name, tuner._flagtune_mode, tuple(tuner._benchmark_protocol)
+
+
+@dataclass(frozen=True)
+class GemmChoice:
+    index: int
+    candidates: tuple = ()
+
+
+class GemmChoiceCache:
+    """Bounded process-local winners for one GEMM family."""
+
+    def __init__(self, maxsize=8192):
+        self._choices = {}
+        self._maxsize = maxsize
+        # A LibTuner instance mutates launch arguments and hooks during tuning.
+        # Serialize cold calls within each family. Warm hits never take the lock.
+        self._lock = threading.RLock()
+
+    def __len__(self):
+        return len(self._choices)
+
+    def get(self, key):
+        return self._choices.get(key)
+
+    def get_or_measure(self, key, measure, *args, **kwargs):
+        if torch.cuda.is_current_stream_capturing():
+            return None
+        with self._lock:
+            choice = self.get(key)
+            if choice is None:
+                choice = measure(*args, **kwargs)
+                if choice is not None:
+                    if len(self._choices) >= self._maxsize:
+                        del self._choices[next(iter(self._choices))]
+                    self._choices[key] = choice
+            return choice
+
+    def fallback(self, key, expected):
+        with self._lock:
+            if self.get(key) is expected:
+                self._choices[key] = GemmChoice(0, expected.candidates)
+
+    def clear(self):
+        with self._lock:
+            self._choices.clear()
 
 
 def supports_hcu_options(options):

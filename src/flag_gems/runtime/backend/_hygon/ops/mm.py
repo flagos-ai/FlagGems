@@ -18,7 +18,6 @@ import copy
 import logging
 import os
 import statistics
-import threading
 from dataclasses import asdict, dataclass
 from functools import cache, lru_cache
 from math import inf, isfinite, prod
@@ -49,15 +48,18 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 from .gemm_utils import (
+    GemmChoice,
+    GemmChoiceCache,
     I32_GEMM_COORD_LIMIT,
     benchmark_gemm_candidate,
     capture_gemm_fallback,
     gemm_has_wide_storage,
     gemm_replay_benchmarker,
+    gemm_storage_is_wide,
+    gemm_tuning_key,
     supports_hcu_options,
     try_gemm_candidate,
 )
-from .mv import GroupedMVConfig, grouped_mv_candidates, launch_grouped_mv
 
 logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -1432,12 +1434,7 @@ def try_mm_splitk(a, b, c, *, compare_local_split=False):
         _mm_splitk_partial._apply_flagtune()
         tuner = _mm_splitk_partial.fn
         if tuner._run_mode == "normal":
-            key = (
-                "splitK-baseline",
-                tuner.config_table_name,
-                id(tuner.configs),
-                tuple(tuner._benchmark_protocol),
-            )
+            key = gemm_tuning_key(tuner)
             if try_mm_family(
                 a,
                 b,
@@ -2008,12 +2005,311 @@ def launch_local_split_mm(a, b, c, config):
         )
 
 
+# MV reduction, grouped MV and CTA-local MMAC.
+
+
+@dataclass(frozen=True)
+class GroupedMVConfig:
+    block_n: int
+    block_k: int
+
+
+_GROUPED_MV_CONFIGS = tuple(
+    GroupedMVConfig(block_n, block_k)
+    for block_n, block_k in ((1, 1024), (2, 1024), (2, 2048), (4, 1024))
+)
+
+
+def grouped_mv_candidates(a, b, compute_units):
+    """Offer vector reduction for underfilled MMAC rows and contiguous K."""
+    m, k = a.shape
+    n = b.shape[1]
+    if not (1 < m < 8 and b.stride() == (1, k)):
+        return ()
+    return tuple(
+        config
+        for config in _GROUPED_MV_CONFIGS
+        if config.block_n <= n
+        and config.block_k <= k
+        and m * triton.cdiv(n, config.block_n) <= 4 * compute_units
+    )
+
+
+@libentry(cache_miss_fallback=capture_gemm_fallback)
+@libtuner(
+    # Keep the default config fallback for callers that do not opt into
+    # FlagTune.  The real-model acceptance path sets FLAGTUNE_INCLUDE=mv,
+    # which selects the MV section of mm_hygon_expand.yaml at first launch.
+    configs=runtime.get_tuned_config("mv"),
+    key=["M", "N", "stride_an", "stride_am", "stride_bm"],
+    strategy=runtime.common.DEFAULT_STRATEGIES["mv_hygon"],
+    benchmark_mode="replay",
+    warmup=5,
+    rep=10,
+    replay_refinement=(25, 100),
+    flagtune_op_name="mv",
+    flagtune_expand_op_name="mv_hygon",
+)
+@triton.jit
+def mv_kernel(
+    A,
+    B,
+    C,
+    N,
+    M: tl.constexpr,
+    stride_an,
+    stride_am,
+    stride_bm,
+    stride_cn,
+    BLOCK_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    LOOP_STAGES: tl.constexpr,
+    GROUP_VEC_STRIDE: tl.constexpr = 0,
+    GROUP_OUT_STRIDE: tl.constexpr = 0,
+    WIDE_INDEX: tl.constexpr = False,
+):
+    """Accumulate K tiles before reducing each output row.
+
+    ``A`` has shape ``[N, M]`` and ``B`` has shape ``[M]``.  Each program
+    computes ``BLOCK_N`` output rows and walks the reduction dimension in
+    ``BLOCK_M`` element tiles.
+    """
+
+    if GROUP_VEC_STRIDE:
+        row = ext.program_id(1)
+        B += row * GROUP_VEC_STRIDE
+        C += row * GROUP_OUT_STRIDE
+    pid = ext.program_id(0)
+    offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    offset_m = tl.arange(0, BLOCK_M)
+    n_mask = offset_n < N
+    k_bound = M
+    if WIDE_INDEX:
+        k_bound = tl.cast(M, tl.int64)
+        stride_am = tl.cast(stride_am, tl.int64)
+        stride_bm = tl.cast(stride_bm, tl.int64)
+
+    # Accumulate corresponding elements across K tiles before reducing.  This
+    # avoids a cross-warp reduction on every iteration of a multi-tile row.
+    a_ptrs = A + offset_n[:, None] * stride_an + offset_m[None, :] * stride_am
+    b_ptrs = B + offset_m * stride_bm
+    acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=tl.float32)
+
+    # Use Triton's loop iterator so LOOP_STAGES is emitted as a loop
+    # pipeline attribute.  The JIT parser accepts keyword arguments on a
+    # builtin ``range`` call but ignores them when lowering that iterator.
+    for m in tl.range(0, k_bound, BLOCK_M, num_stages=LOOP_STAGES):
+        m_mask = m + offset_m < k_bound
+        a = tl.load(
+            a_ptrs,
+            mask=n_mask[:, None] & m_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        b = tl.load(b_ptrs, mask=m_mask, other=0.0).to(tl.float32)
+        acc += a * b[None, :]
+        a_ptrs += BLOCK_M * stride_am
+        b_ptrs += BLOCK_M * stride_bm
+
+    acc = tl.sum(acc, axis=1)
+    c_ptrs = C + offset_n * stride_cn
+    tl.store(c_ptrs, acc.to(C.dtype.element_ty), mask=n_mask)
+
+
+@lru_cache(maxsize=1)
+def _fixed_mv_entry():
+    return libentry()(mv_kernel.fn.fn)
+
+
+def launch_grouped_mv(a, b, c, config):
+    """Run one GEMV per A row against the shared matrix B transpose."""
+    m, k = a.shape
+    n = b.shape[1]
+    with torch_device_fn.device(a.device):
+        return _fixed_mv_entry()[(triton.cdiv(n, config.block_n), m)](
+            b,
+            a,
+            c,
+            n,
+            k,
+            b.stride(1),
+            b.stride(0),
+            a.stride(1),
+            c.stride(1),
+            BLOCK_N=config.block_n,
+            BLOCK_M=config.block_k,
+            LOOP_STAGES=1,
+            GROUP_VEC_STRIDE=a.stride(0),
+            GROUP_OUT_STRIDE=c.stride(0),
+            WIDE_INDEX=max(m, n, k) >= I32_GEMM_COORD_LIMIT or gemm_has_wide_storage(a, b, c),
+            num_warps=4,
+        )
+
+
+def mv(inp, vec):
+    """Hygon ``mv`` entry point matching the ATen signature."""
+
+    logger.debug("GEMS_HYGON MV")
+    assert inp.dim() == 2 and vec.dim() == 1, "mv expects a matrix and a vector"
+    assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
+
+    out = torch.empty((inp.shape[0],), device=inp.device, dtype=inp.dtype)
+    return _mv_out(inp, vec, out)
+
+
+def _mv_out(inp, vec, out):
+    """Launch the same reduction into an existing, possibly strided vector."""
+    assert inp.dim() == 2 and vec.dim() == out.dim() == 1
+    N, M = inp.shape
+    assert vec.shape[0] == M and out.shape[0] == N
+    _dispatch_hygon_mv(inp, vec, out)
+    return out
+
+
+def _dispatch_hygon_mv(inp, vec, out):
+    """Choose the vector reduction or the MMAC candidate."""
+    mv_kernel._apply_flagtune()
+    tuner = mv_kernel.fn
+    if tuner._run_mode == "normal":
+        tuning_key = gemm_tuning_key(tuner)
+        if try_mv_mmac(inp, vec, out,
+                       lambda output: _launch_ordinary_mv(inp, vec, output),
+                       tuning_key=tuning_key):
+            return
+    _launch_ordinary_mv(inp, vec, out)
+
+
+def _launch_ordinary_mv(inp, vec, out):
+    N, M = inp.shape
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
+
+    with torch_device_fn.device(inp.device):
+        mv_kernel[grid](
+            inp,
+            vec,
+            out,
+            N,
+            M,
+            inp.stride(0),
+            inp.stride(1),
+            vec.stride(0),
+            out.stride(0),
+            WIDE_INDEX=max(M, N) >= I32_GEMM_COORD_LIMIT or gemm_has_wide_storage(inp, vec, out),
+        )
+
+    return out
+
+
+# MV matrix-instruction candidate and replay selection.
+
+
+_mv_mmac_choices = GemmChoiceCache()
+
+
+@cache
+def _mmac_config():
+    return LocalSplitMMConfig((16, 16), num_stages=2)
+
+
+def _mv_mmac_eligible(inp, vec, out):
+    n, k = inp.shape
+    config = _mmac_config()
+    if (
+        vec.shape != (k,)
+        or out.shape != (n,)
+        or vec.stride() != (1,)
+        or out.stride() != (1,)
+        or config not in local_split_mm_configs()
+    ):
+        return False
+    if not config.supports(vec.view(1, k), inp.t(), out.view(1, n)):
+        return False
+    with torch_device_fn.device(inp.device):
+        target = triton.runtime.driver.active.get_current_target()
+    return target.backend == "hip" and target.arch == "gfx936"
+
+
+def _launch_mmac(inp, vec, out):
+    n, k = inp.shape
+    return launch_local_split_mm(
+        vec.view(1, k), inp.t(), out.view(1, n), _mmac_config()
+    )
+
+
+def _measure_mv_family(inp, vec, out, ordinary_with_output):
+    ordinary_with_output(out)
+    succeeded, _ = try_gemm_candidate(_launch_mmac, inp, vec, out)
+    if not succeeded:
+        return GemmChoice(0)
+
+    def compare(bench):
+        samples = ([], [])
+        for repeat in range(3):
+            for index in (0, 1) if repeat % 2 == 0 else (1, 0):
+
+                def fresh_output():
+                    output = torch.empty_like(out)
+                    if index:
+                        _launch_mmac(inp, vec, output)
+                    else:
+                        ordinary_with_output(output)
+                    return output
+
+                samples[index].append(
+                    benchmark_gemm_candidate(
+                        bench, fresh_output, optional=index != 0,
+                    )
+                )
+        return tuple(
+            statistics.median(x) if all(map(isfinite, x)) else inf
+            for x in samples
+        )
+
+    screened = compare(gemm_replay_benchmarker(5, 10, 3))
+    medians = screened
+    if all(map(isfinite, screened)) and max(screened) <= 1.05 * min(screened):
+        medians = compare(gemm_replay_benchmarker(25, 100, 10))
+    choice = min(range(2), key=medians.__getitem__)
+    logger.debug("Hygon MV family=%s screening=%s allocating=%s ms", choice, screened, medians)
+    return GemmChoice(choice)
+
+
+def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
+    if not _mv_mmac_eligible(inp, vec, out):
+        return False
+    key = (
+        inp.device,
+        inp.dtype,
+        vec.dtype,
+        out.dtype,
+        _mmac_config(),
+        tuple(inp.shape),
+        tuple(inp.stride()),
+        tuple(vec.stride()),
+        tuple(out.stride()),
+        tuning_key,
+        tuple(map(gemm_storage_is_wide, (inp, vec, out))),
+    )
+    with torch_device_fn.device(inp.device):
+        choice = _mv_mmac_choices.get(key)
+        if choice is None:
+            choice = _mv_mmac_choices.get_or_measure(
+                key, _measure_mv_family, inp, vec, out, ordinary_with_output
+            )
+        if choice is None:
+            return False
+        if choice.index:
+            succeeded, _ = try_gemm_candidate(_launch_mmac, inp, vec, out)
+            if succeeded:
+                return True
+            _mv_mmac_choices.fallback(key, choice)
+        ordinary_with_output(out)
+    return True
+
+
 # MM family shortlist, replay selection and choice cache.
 
 
-_mm_family_choices = {}
-_mm_family_measurements = {}
-_mm_family_lock = threading.RLock()
+_mm_family_choices = GemmChoiceCache()
 _SPLITK_LOCAL = (
     LocalSplitMMConfig((16, 16)),
     LocalSplitMMConfig((16, 16), num_stages=2),
@@ -2082,9 +2378,90 @@ def _mm_candidate_label(candidate):
 
 
 def clear_mm_family_choices():
-    with _mm_family_lock:
-        _mm_family_choices.clear()
-        _mm_family_measurements.clear()
+    _mm_family_choices.clear()
+
+
+def _measure_mm_family(
+    a, b, c, ordinary, ordinary_with_output, splitk_pool, allow_cooperative_nn,
+):
+    candidates = mm_family_candidates(
+        a, b, c, splitk_pool=splitk_pool,
+        allow_cooperative_nn=allow_cooperative_nn,
+    )
+    if not candidates:
+        return None
+    screen = gemm_replay_benchmarker(5, 10, 3)
+    ordinary()
+    calls = (ordinary,) + tuple(
+        lambda candidate=candidate: _dispatch_hygon_mm_candidate(
+            a, b, c, candidate
+        )
+        for candidate in candidates
+    )
+    available = [0]
+    for index, call in enumerate(calls[1:], 1):
+        succeeded, _ = try_gemm_candidate(call)
+        if succeeded:
+            available.append(index)
+    samples = tuple([] for _ in calls)
+    for repeat in range(3):
+        order = available
+        if repeat % 2:
+            order = reversed(order)
+        for index in order:
+            samples[index].append(
+                benchmark_gemm_candidate(
+                    screen, calls[index],
+                    optional=index != 0,
+                )
+            )
+    medians = tuple(
+        statistics.median(x) if x and all(map(isfinite, x)) else inf
+        for x in samples
+    )
+    choice = min(available, key=medians.__getitem__)
+    finalists = tuple(
+        i
+        for i in sorted(range(len(calls)), key=medians.__getitem__)
+        if isfinite(medians[i]) and medians[i] <= medians[choice] * 1.05
+    )[:3]
+    refined = {}
+    if ordinary_with_output is not None and len(finalists) > 1:
+        refine = gemm_replay_benchmarker(25, 100, 10)
+        refined_samples = {i: [] for i in finalists}
+        for repeat in range(3):
+            order = (
+                finalists if repeat % 2 == 0 else reversed(finalists)
+            )
+            for index in order:
+
+                def fresh_output():
+                    output = torch.empty_like(c)
+                    if index:
+                        _dispatch_hygon_mm_candidate(
+                            a, b, output, candidates[index - 1]
+                        )
+                    else:
+                        ordinary_with_output(output)
+                    return output
+
+                refined_samples[index].append(
+                    benchmark_gemm_candidate(
+                        refine, fresh_output,
+                        optional=index != 0,
+                    )
+                )
+        refined = {
+            i: statistics.median(x)
+            if all(map(isfinite, x)) else inf
+            for i, x in refined_samples.items()
+        }
+        choice = min(finalists, key=refined.__getitem__)
+        if not isfinite(refined[choice]):
+            choice = 0
+    label = _mm_candidate_label(candidates[choice - 1]) if choice else "incumbent"
+    logger.debug("Hygon MM family=%s screening=%s allocating=%s ms", label, medians, refined)
+    return GemmChoice(choice, candidates)
 
 
 def try_mm_family(
@@ -2093,8 +2470,8 @@ def try_mm_family(
 ):
     """Compare real candidates with the existing Default/Expanded TL tuner.
 
-    Cache only the selected index, never tensors. A cold graph capture defers
-    family selection to the incumbent path. In the Split-K region, the
+    Cache the winner and its candidate descriptors. A cold graph capture
+    defers family selection to the incumbent path. In the Split-K region, the
     incumbent is the Split-K tuner and only a fixed shortlist challenges it.
     """
     if any(t.ndim != 2 for t in (a, b, c)) or a.device.type != "cuda":
@@ -2113,6 +2490,7 @@ def try_mm_family(
         c.requires_grad,
         c.is_inference(),
         torch.is_inference_mode_enabled(),
+        tuple(map(gemm_storage_is_wide, (a, b, c))),
     )
     key = (
         a.device,
@@ -2128,122 +2506,27 @@ def try_mm_family(
         tuple(b.stride()),
         tuple(c.stride()),
         tuning_key,
-        (
-            "shared-family-v5-grouped-mv",
-            storage,
-            splitk_pool,
-            allow_cooperative_nn,
-            ordinary_with_output is not None,
-        ),
+        storage,
+        splitk_pool,
+        allow_cooperative_nn,
+        ordinary_with_output is not None,
     )
     with torch_device_fn.device(a.device):
-        cached = _mm_family_choices.get(key)
-        if cached is None:
-            if torch.cuda.is_current_stream_capturing():
-                return False
-            with _mm_family_lock:
-                cached = _mm_family_choices.get(key)
-                if cached is None:
-                    candidates = mm_family_candidates(
-                        a, b, c, splitk_pool=splitk_pool,
-                        allow_cooperative_nn=allow_cooperative_nn,
-                    )
-                    if not candidates:
-                        return False
-                    screen = gemm_replay_benchmarker(5, 10, 3)
-                    ordinary()
-                    calls = (ordinary,) + tuple(
-                        lambda candidate=candidate: _dispatch_hygon_mm_candidate(
-                            a, b, c, candidate
-                        )
-                        for candidate in candidates
-                    )
-                    available = [0]
-                    for index, call in enumerate(calls[1:], 1):
-                        succeeded, _ = try_gemm_candidate(call)
-                        if succeeded:
-                            available.append(index)
-                    samples = tuple([] for _ in calls)
-                    for repeat in range(3):
-                        order = available
-                        if repeat % 2:
-                            order = reversed(order)
-                        for index in order:
-                            samples[index].append(
-                                benchmark_gemm_candidate(
-                                    screen, calls[index],
-                                    optional=index != 0,
-                                )
-                            )
-                    medians = tuple(
-                        statistics.median(x) if x and all(map(isfinite, x)) else inf
-                        for x in samples
-                    )
-                    choice = min(available, key=medians.__getitem__)
-                    finalists = tuple(
-                        i
-                        for i in sorted(range(len(calls)), key=medians.__getitem__)
-                        if isfinite(medians[i]) and medians[i] <= medians[choice] * 1.05
-                    )[:3]
-                    refined = {}
-                    if ordinary_with_output is not None and len(finalists) > 1:
-                        refine = gemm_replay_benchmarker(25, 100, 10)
-                        refined_samples = {i: [] for i in finalists}
-                        for repeat in range(3):
-                            order = (
-                                finalists if repeat % 2 == 0 else reversed(finalists)
-                            )
-                            for index in order:
-
-                                def fresh_output():
-                                    output = torch.empty_like(c)
-                                    if index:
-                                        _dispatch_hygon_mm_candidate(
-                                            a, b, output, candidates[index - 1]
-                                        )
-                                    else:
-                                        ordinary_with_output(output)
-                                    return output
-
-                                refined_samples[index].append(
-                                    benchmark_gemm_candidate(
-                                        refine, fresh_output,
-                                        optional=index != 0,
-                                    )
-                                )
-                        refined = {
-                            i: statistics.median(x)
-                            if all(map(isfinite, x)) else inf
-                            for i, x in refined_samples.items()
-                        }
-                        choice = min(finalists, key=refined.__getitem__)
-                        if not isfinite(refined[choice]):
-                            choice = 0
-                    _mm_family_measurements[key] = dict(
-                        variants=(("splitk_pool" if splitk_pool else "ordinary_tl"),)
-                        + tuple(_mm_candidate_label(x) for x in candidates),
-                        screened_ms=medians,
-                        refined_allocating_ms=refined,
-                        choice=choice,
-                    )
-                    cached = (choice, candidates)
-                    _mm_family_choices[key] = cached
-                    logger.debug(
-                        "Hygon MM family=%s screening=%s refined=%s ms",
-                        choice,
-                        medians,
-                        refined,
-                    )
-        choice, candidates = cached
-        if choice:
+        choice = _mm_family_choices.get(key)
+        if choice is None:
+            choice = _mm_family_choices.get_or_measure(
+                key, _measure_mm_family, a, b, c, ordinary, ordinary_with_output,
+                splitk_pool, allow_cooperative_nn,
+            )
+        if choice is None:
+            return False
+        if choice.index:
             succeeded, _ = try_gemm_candidate(
-                _dispatch_hygon_mm_candidate, a, b, c, candidates[choice - 1]
+                _dispatch_hygon_mm_candidate, a, b, c, choice.candidates[choice.index - 1]
             )
             if succeeded:
                 return True
-            with _mm_family_lock:
-                _mm_family_choices[key] = (0, candidates)
-                _mm_family_measurements[key]["choice"] = 0
+            _mm_family_choices.fallback(key, choice)
         ordinary()
     return True
 
@@ -2286,12 +2569,8 @@ def mm(a, b):
     # generic dimension rule (not a model-shape special case) and avoids
     # launching a 2-D tile kernel with one entirely wasted output axis.
     if N == 1 and c_dtype != torch.float64:
-        from .mv import mv
-
         return mv(a, b[:, 0]).reshape(M, 1).to(c_dtype)
     if M == 1 and c_dtype != torch.float64:
-        from .mv import mv
-
         return mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c_dtype)
 
     c = torch.empty((M, N), device=device, dtype=c_dtype)
@@ -2322,9 +2601,7 @@ def _dispatch_hygon_mm(a, b, c):
     if try_mm_splitk(a, b, c, compare_local_split=True):
         return
     mm_kernel._apply_flagtune()
-    tuning_key = (
-        tuner.config_table_name, id(tuner.configs), tuple(tuner._benchmark_protocol),
-    )
+    tuning_key = gemm_tuning_key(tuner)
     if not try_mm_family(
         a, b, c, lambda: _launch_ordinary_mm(a, b, c), tuning_key=tuning_key,
         ordinary_with_output=lambda output: _launch_ordinary_mm(a, b, output),
@@ -2417,8 +2694,6 @@ def mm_out(a, b, *, out):
     if K == 0:
         return c.zero_()
     if N == 1 and a.dtype != torch.float64 and b.dtype != torch.float64:
-        from .mv import _mv_out, mv
-
         if _hygon_mm_direct_mv_out(a, b, c, M, N):
             _mv_out(a, b[:, 0], c[:, 0])
             torch.autograd.graph.increment_version(c)
@@ -2426,8 +2701,6 @@ def mm_out(a, b, *, out):
         c.copy_(mv(a, b[:, 0]).reshape(M, 1).to(c.dtype))
         return c
     if M == 1 and a.dtype != torch.float64 and b.dtype != torch.float64:
-        from .mv import _mv_out, mv
-
         if _hygon_mm_direct_mv_out(a, b, c, M, N):
             _mv_out(b.transpose(0, 1), a[0], c[0])
             torch.autograd.graph.increment_version(c)

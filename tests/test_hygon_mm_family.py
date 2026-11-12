@@ -26,7 +26,9 @@ def tensor(shape, stride, pointer, dtype=torch.bfloat16):
         dtype=dtype,
         device=torch.device("cuda:0"),
         data_ptr=lambda: pointer,
-        untyped_storage=lambda: SimpleNamespace(data_ptr=lambda: pointer),
+        untyped_storage=lambda: SimpleNamespace(
+            data_ptr=lambda: pointer, nbytes=lambda: 1 << 20
+        ),
         requires_grad=False,
         is_inference=lambda: False,
     )
@@ -92,9 +94,12 @@ def test_family_cold_graph_never_tunes(router, monkeypatch):
     assert not router._mm_family_choices
 
 
-@pytest.mark.parametrize("fail_on_cache_hit", [False, True])
+@pytest.mark.parametrize(
+    "fail_on_cache_hit, clear_on_failure",
+    [(False, False), (True, False), (True, True)],
+)
 def test_optional_mm_compile_failure_preserves_incumbent(
-    router, monkeypatch, fail_on_cache_hit
+    router, monkeypatch, fail_on_cache_hit, clear_on_failure
 ):
     from triton.runtime.errors import OutOfResources
 
@@ -106,6 +111,8 @@ def test_optional_mm_compile_failure_preserves_incumbent(
 
     def optional(*args):
         if fails:
+            if clear_on_failure:
+                router.clear_mm_family_choices()
             raise OutOfResources(65538, 65536, "shared memory")
         selected.append("shared")
         return 1
@@ -121,7 +128,11 @@ def test_optional_mm_compile_failure_preserves_incumbent(
     fails = True
     assert router.try_mm_family(*args, incumbent, tuning_key=("expanded",))
     assert selected[-1] == "ordinary"
-    assert next(iter(router._mm_family_choices.values()))[0] == 0
+    choices = router._mm_family_choices._choices
+    if clear_on_failure:
+        assert not choices
+    else:
+        assert next(iter(choices.values())).index == 0
 
 
 def test_offline_mm_tuner_precedes_splitk(router, monkeypatch):

@@ -266,7 +266,7 @@ def test_hygon_mm_expanded_resolver_and_capability_cache_key(hygon_mm):
 
 @pytest.fixture
 def cpu_mv_raw_write(monkeypatch):
-    module = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mv")
+    module = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
 
     def write(inp, vec, out):
         # Emulate a Triton pointer write without PyTorch mutation tracking.
@@ -543,7 +543,10 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
         outputs.append(out)
 
     tuner = SimpleNamespace(
-        _run_mode="normal", config_table_name="test", configs=(), _benchmark_protocol=()
+        _run_mode="normal",
+        config_table_name="test",
+        _flagtune_mode="default",
+        _benchmark_protocol=(),
     )
     monkeypatch.setattr(split, "_splitk_eligible", eligible)
     monkeypatch.setattr(split, "_launch_mm_splitk", launch)
@@ -833,7 +836,7 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
     # The ordinary registry is identical for both input strides, like the YAML
     # pool above. Count its configurations once; retain layout-specific legacy
     # algorithms separately. Dtype/shape/stride specializations are not new configs.
-    from flag_gems.runtime.backend._hygon.ops.mv import _GROUPED_MV_CONFIGS
+    from flag_gems.runtime.backend._hygon.ops.mm import _GROUPED_MV_CONFIGS
     python_candidates = (
         len(hygon_mm.shared_mm_configs())
         + len(hygon_mm.SHORT_K_MM_CONFIGS)
@@ -854,7 +857,7 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_hygon_grouped_mv_preserves_row_and_output_strides(hygon_mm, dtype):
-    from flag_gems.runtime.backend._hygon.ops.mv import GroupedMVConfig, launch_grouped_mv
+    from flag_gems.runtime.backend._hygon.ops.mm import GroupedMVConfig, launch_grouped_mv
 
     m, n, k = 3, 13, 2053
     a = torch.randn((m, k), device="cuda", dtype=dtype) / k**0.5

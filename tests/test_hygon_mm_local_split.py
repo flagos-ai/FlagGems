@@ -108,7 +108,7 @@ def test_config_identity_is_immutable(local):
 
 
 def test_no_model_specific_mv_pruner():
-    module = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mv")
+    module = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
     # This is a tuner contract: the actual wrapped tuner has no early filter
     # silently replacing its declared pool on two model reduction lengths.
     module.mv_kernel._apply_flagtune()
@@ -148,9 +148,8 @@ def test_pool_contains_logical_tiles_and_standard_pipeline_stages(local):
 
 
 def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
-    module = importlib.import_module(local.__package__ + ".mv")
-    monkeypatch.setattr(module, "_mv_mmac_choices", {})
-    monkeypatch.setattr(module, "_mv_mmac_measurements", {})
+    module = local
+    monkeypatch.setattr(module, "_mv_mmac_choices", module.GemmChoiceCache())
     monkeypatch.setattr(module, "_mv_mmac_eligible", lambda *args: True)
     monkeypatch.setattr(module.torch_device_fn, "device", lambda _: nullcontext())
     monkeypatch.setattr(torch.cuda, "is_current_stream_capturing", lambda: False)
