@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Flat vector loads for contiguous add, retaining generic broadcasting."""
 
+import logging
 import math
 
 import torch
@@ -10,6 +11,8 @@ import triton.language as tl
 
 from flag_gems.ops.add import add as _generic_add
 from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -386,6 +389,7 @@ def _ordered_matrix(
 
 
 def add(a, b, *, alpha=1):
+    logger.debug("GEMS_HYGON ADD")
     scalar = not isinstance(b, torch.Tensor)
     if (
         not isinstance(a, torch.Tensor)
