@@ -28,6 +28,8 @@ _TINY = tl.constexpr(1e-30)
 _DFLAT = tl.constexpr(1e-8)
 # cycle budget: it=30*max(10,n)+30 corresponds to LAPACK dhseqr ITMAX
 _MAXIT_COEF = 30
+# XPU triton needs BLOCK >= 4 for the top-level 1D row/column kernels
+_MIN_BLOCK = 4
 
 
 @triton.jit
@@ -492,7 +494,7 @@ def _eigvecs_host(Ap, Qp, LR, LI, BLKB, VR, VI, XR, XI, n, block):
 
 
 def linalg_eig(A):
-    logger.debug("GEMS LINALG_EIG (kunlunxin vendor)")
+    logger.debug("GEMS_KUNLUNXIN LINALG_EIG")
     if A.dim() < 2 or A.shape[-1] != A.shape[-2]:
         raise ValueError("linalg.eig expects batches of square matrices")
     if A.is_complex():
@@ -514,8 +516,8 @@ def linalg_eig(A):
     vi = torch.empty(batch, n, n, dtype=torch.float32, device=A.device)
 
     block = triton.next_power_of_2(n)
-    if block < 4:
-        block = 4  # XPU triton needs BLOCK >= 4 for the 1D kernels
+    if block < _MIN_BLOCK:
+        block = _MIN_BLOCK  # XPU triton needs BLOCK >= 4 for the 1D kernels
     Ap = torch.zeros(block, block, device=A.device, dtype=torch.float64)
     Qp = torch.zeros(block, block, device=A.device, dtype=torch.float64)
     st = torch.zeros(2 + block, device=A.device, dtype=torch.int32)

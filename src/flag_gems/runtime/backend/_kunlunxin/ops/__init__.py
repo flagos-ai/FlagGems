@@ -1516,6 +1516,7 @@ __all__ = [
     "linalg_cross_out",
     "linalg_det",
     "linalg_det_out",
+    "linalg_eig",
     "linalg_householder_product",
     "linalg_ldl_solve",
     "linalg_lstsq",
