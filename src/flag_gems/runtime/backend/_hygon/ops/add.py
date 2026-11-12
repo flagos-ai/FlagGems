@@ -418,6 +418,32 @@ def add(a, b, *, alpha=1):
             return _generic_add(a, b, alpha=alpha)
         if not scalar and b.numel() == 1 and size >= 1048576:
             return _generic_add(a, b, alpha=alpha)
+    # Generic pointwise scheduling is faster for these intermediate bandwidth
+    # domains; retain the baseline rather than forcing the ordered kernels.
+    if not scalar and 1048576 <= size < 8388608 and a.dtype == torch.float32:
+        if av.is_contiguous() and not bv.is_contiguous() and b.numel() > 1:
+            return _generic_add(a, b, alpha=alpha)
+        if (
+            size < 2097152
+            and a.shape == b.shape
+            and len(shape) >= 2
+            and min(shape[-2:]) >= 64
+            and (
+                (av.stride(-2) == bv.stride(-1) == 1)
+                or (av.stride(-1) == bv.stride(-2) == 1)
+            )
+            and av.stride()[-2:] != bv.stride()[-2:]
+        ):
+            return _generic_add(a, b, alpha=alpha)
+    if (
+        not scalar
+        and a.dtype == torch.int64
+        and 262144 <= size <= 524288
+        and a.shape == b.shape
+        and av.is_contiguous()
+        and bv.is_contiguous()
+    ):
+        return _generic_add(a, b, alpha=alpha)
     if size > 8388608 and av.is_contiguous():
         if not scalar and not bv.is_contiguous():
             return _generic_add(a, b, alpha=alpha)

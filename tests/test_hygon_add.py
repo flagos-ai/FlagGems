@@ -139,3 +139,42 @@ def test_official_master_add_fallback_guards(monkeypatch, kind):
     )
     assert observed == [True], "regressed domains must retain the generic kernel"
     torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.add
+@pytest.mark.parametrize("kind", ["broadcast", "transpose_a", "transpose_b", "int64"])
+def test_intermediate_bandwidth_domains_keep_generic(monkeypatch, kind):
+    import importlib
+
+    impl = importlib.import_module("flag_gems.runtime.backend._hygon.ops.add")
+    generic = impl._generic_add
+    observed = []
+
+    def checked_generic(a, b, *, alpha=1):
+        observed.append(True)
+        return generic(a, b, alpha=alpha)
+
+    monkeypatch.setattr(impl, "_generic_add", checked_generic)
+    g = torch.Generator().manual_seed(20261113)
+    if kind == "int64":
+        a = torch.randint(-(2**40), 2**40, (300001,), generator=g)
+        b = torch.randint(-(2**40), 2**40, a.shape, generator=g)
+        ad, bd = a.to(flag_gems.device), b.to(flag_gems.device)
+    elif kind == "broadcast":
+        a = torch.randint(-100, 100, (1, 1081, 1024), generator=g).float()
+        b = torch.randint(-100, 100, (1, 1, 1024), generator=g).float()
+        ad, bd = a.to(flag_gems.device), b.to(flag_gems.device)
+    else:
+        backing = torch.randint(-100, 100, (1009, 1057), generator=g).float()
+        dense = torch.randint(-100, 100, (1057, 1009), generator=g).float()
+        transposed = backing.transpose(0, 1)
+        td = backing.to(flag_gems.device).transpose(0, 1)
+        dd = dense.to(flag_gems.device)
+        a, b, ad, bd = (
+            (transposed, dense, td, dd)
+            if kind == "transpose_a"
+            else (dense, transposed, dd, td)
+        )
+    actual = impl.add(ad, bd, alpha=-2)
+    assert observed == [True]
+    torch.testing.assert_close(actual.cpu(), torch.add(a, b, alpha=-2), rtol=0, atol=0)
