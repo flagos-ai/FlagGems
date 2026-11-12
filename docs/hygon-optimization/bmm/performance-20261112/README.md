@@ -22,3 +22,9 @@ Focused correctness tests are in `tests/test_hygon_bmm.py`. Full raw traces, ori
 Process-level A/A repeats and offline verification were performed in stages by one agent; no independent-person signoff is claimed. The32-case correctness and all-role raw measurements are separate from CI scheduling.
 
 The Hygon job in CI run43198954642 failed before operator tests because its runner timed out waiting for an available DCU. It is classified as infrastructure failure rather than operator correctness failure. A subsequent evidence update triggers a fresh latest-head check; this PR remains Draft until that check succeeds. The original failed CI logs and fixed-source hardware raw are preserved outside git.
+
+## Supplementary synchronized API controls
+
+`api-controls.json` provides all50 unprofiled samples for old/new/DAS/new-repeat roles across all32 cases, original control-file hashes and profiler-exclusion proofs. `api-case-summary.csv` lists complete synchronized API medians beside the primary device ratios and qualification flags. API time includes dispatch, allocation, launch and synchronization; it is not kernel duration or model throughput. It is supplementary diagnostic evidence and has no separately frozen API acceptance gate.
+
+For example, `model285-56cb9af233fe717d3249` has a qualified device old/new ratio of21.422948x. Its API old/new medians are256.709000/116.177000us, a diagnostic API ratio of2.209637. Do not substitute this API ratio for device acceptance or extrapolate the kernel ratio to model throughput. All prior32-case device correctness, A/A and90% counts remain unchanged.
