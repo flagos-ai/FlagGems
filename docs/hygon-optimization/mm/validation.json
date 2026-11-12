@@ -1,61 +1,29 @@
 {
   "measurement_date": "2026-11-12",
-  "job_id": "1097237",
-  "node": "f11r2n10",
-  "source_branch": "upstream/hygon-mm",
-  "source_commit": "397ffccd0",
-  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
-  "results": [
-    {
-      "id": "mm98-row0056",
-      "status": "valid",
-      "numerical_acceptance": false,
-      "performance_diagnostic_only": true,
-      "old_kernel_us": 172.0,
-      "new_kernel_us": 72.96,
-      "das_kernel_us": 77.76,
-      "old_over_new": 2.3574561403508776,
-      "das_over_new": 1.0657894736842106,
-      "aa_block_drift": {
-        "old": [
-          -0.0008180762081784199,
-          -0.0025283457249071217
-        ],
-        "new": [
-          0.002640845070422726,
-          -0.0013140604467806183
-        ],
-        "das": [
-          -0.006587587484561563,
-          -0.005789909015715522
-        ]
-      }
-    },
-    {
-      "id": "mm98-row0068",
-      "status": "valid",
-      "numerical_acceptance": true,
-      "performance_diagnostic_only": false,
-      "old_kernel_us": 82.56,
-      "new_kernel_us": 41.6,
-      "das_kernel_us": 15.84,
-      "old_over_new": 1.9846153846153847,
-      "das_over_new": 0.38076923076923075,
-      "aa_block_drift": {
-        "old": [
-          0.0017038413878565084,
-          0.001241180037017342
-        ],
-        "new": [
-          -0.009220839096357736,
-          0.003877772607414398
-        ],
-        "das": [
-          -0.0044989775051124115,
-          -0.024321037697608405
-        ]
-      }
-    }
-  ],
-  "raw_sha256": "c19a5bc4887947319a422a3a0b15e3546538a84974c097e4450439f86071faf7"
+  "base_commit": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+  "tested_candidate_commit": "e554c140099cb3a4b216f26bc1093e7cb42a2bf1",
+  "candidate_src_tree": "200959f103616b6e94e95637d254518e2b12135f",
+  "unit_gate": {
+    "passed": 410,
+    "failed": 0,
+    "errors": 0,
+    "seconds": 276.96,
+    "junit_sha256": "628471a3e71c05ec11ec9414bebf01f73be2dd965d8666233f31e850d1cf1cbf",
+    "command": "pytest tests/test_hygon_extended_mm.py tests/test_hygon_mm.py tests/test_hygon_native_fp32.py --ref cpu -q"
+  },
+  "performance": {
+    "status": "in_progress_not_qualified",
+    "requested_model_cases": 98,
+    "declared_extended_cases": 109,
+    "roles": [
+      "official_master",
+      "candidate",
+      "DAS",
+      "independent repeats for each provider"
+    ],
+    "samples_per_role": 50,
+    "calls_per_roi": 20,
+    "aa_block_drift_limit": 0.05
+  },
+  "historical_evidence": "historical-two-case-validation.json"
 }
