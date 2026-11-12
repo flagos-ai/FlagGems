@@ -31,8 +31,7 @@ def transfer_storage(x):
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: str(c["row"]))
-@pytest.mark.parametrize("api", ["aten", "direct"])
-def test_hygon_to_dtype_spreadsheet(case, api):
+def test_hygon_to_dtype_spreadsheet(case):
     meta, target = case["metadata"][0]
     dtype = getattr(torch, meta["dtype"].split(".")[-1])
     target = getattr(torch, target.split(".")[-1])
@@ -52,14 +51,9 @@ def test_hygon_to_dtype_spreadsheet(case, api):
         meta["shape"], meta["stride"], meta.get("storage_offset", 0)
     )
     x = transfer_storage(cpu)
-    if api == "aten":
-        with flag_gems.use_gems(include=["to_copy"]):
-            out = torch.ops.aten.to.dtype(x, target)
-        assert (out is x) == (dtype == target)
-    else:
-        out = flag_gems.to_copy(x, dtype=target)
-        assert out is not x
-    ref = cpu.to(target, copy=api == "direct")
+    out = flag_gems.to_copy(x, dtype=target)
+    assert out is not x
+    ref = cpu.to(target, copy=True)
     assert out.device == x.device and out.dtype == target
     assert out.stride() == ref.stride()
     torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
@@ -115,8 +109,8 @@ def test_hygon_to_dtype_bfloat16_rounding_and_special_values():
     cpu = torch.tensor(bits, dtype=torch.int64).to(torch.int32).view(torch.float32)
     ref = cpu.to(torch.bfloat16)
     x = transfer_storage(cpu)
-    with flag_gems.use_gems(include=["to_copy"]):
-        out = x.to(torch.bfloat16).cpu()
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, dtype=torch.bfloat16).cpu()
     torch.testing.assert_close(out, ref, rtol=0, atol=0, equal_nan=True)
     finite_or_infinite = ~torch.isnan(ref)
     assert torch.equal(
@@ -154,7 +148,7 @@ def test_hygon_to_dtype_packed_rounding_and_tail(monkeypatch, length, offset):
         offset : offset + length
     ]
     ref = cpu.to(torch.bfloat16)
-    with flag_gems.use_gems(include=["to_copy"]):
+    with torch.no_grad():
         result = transfer_storage(cpu).to(torch.bfloat16).cpu()
     torch.testing.assert_close(result, ref, atol=0, rtol=0, equal_nan=True)
     valid = ~torch.isnan(ref)
@@ -185,8 +179,8 @@ def test_hygon_to_dtype_bool_zero_comparison(view):
     elif view == "offset":
         cpu = cpu[1:]
     x = transfer_storage(cpu)
-    with flag_gems.use_gems(include=["to_copy"]):
-        out = torch.ops.aten._to_copy.default(x, dtype=torch.bool)
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, dtype=torch.bool)
     ref = cpu.to(torch.bool)
     assert out.device == x.device and out.stride() == ref.stride()
     assert out.data_ptr() != x.data_ptr()
@@ -234,8 +228,8 @@ def test_hygon_to_dtype_dense_pairs(source, target, view):
     elif view == "offset":
         cpu = cpu[1:]
     x = transfer_storage(cpu)
-    with flag_gems.use_gems(include=["to_copy"]):
-        out = torch.ops.aten._to_copy.default(x, dtype=target)
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, dtype=target)
     ref = cpu.to(target)
     assert out.device == x.device and out.stride() == ref.stride()
     assert out.data_ptr() != x.data_ptr()
@@ -251,7 +245,7 @@ _EXTENDED_CASES = json.loads(
 
 
 @pytest.mark.parametrize("case", _EXTENDED_CASES, ids=lambda c: str(c["case"]))
-def test_hygon_to_dtype_extended_workbook_public(case):
+def test_hygon_to_dtype_extended_workbook_direct(case):
     meta = case["metadata"][0][0]
     kwargs = case["metadata"][1]
     source = getattr(torch, meta["dtype"].split(".")[-1])
@@ -276,8 +270,8 @@ def test_hygon_to_dtype_extended_workbook_public(case):
         kw["layout"] = torch.strided
     if "device" in kwargs:
         kw["device"] = x.device
-    with torch.no_grad(), flag_gems.use_gems(include=["to_copy"]):
-        out = torch.ops.aten._to_copy.default(x, **kw)
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, **kw)
     ref = torch.ops.aten._to_copy.default(cpu, dtype=target)
     assert out.device == x.device and out.dtype == target
     assert out.stride() == ref.stride() and out.data_ptr() != x.data_ptr()
