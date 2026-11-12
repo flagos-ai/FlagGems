@@ -1347,6 +1347,12 @@ bmm_w8a8:
     - [2, 33, 65, 129]
   shape_desc: "B, M, N, K"
 
+grouped_gemm_w8a8_fp8:
+  shapes:
+    - [45, 256, 6144, 256]
+    - [45, 6144, 128, 256]
+  shape_desc: "M,N,K,E (M before per-expert padding)"
+
 layernorm:
   shape_desc: "input_shape, normalized_shape, eps"
   shapes:
