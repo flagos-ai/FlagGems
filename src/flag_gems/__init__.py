@@ -668,6 +668,29 @@ _FULL_CONFIG = (
         None,
         (SPARSE_DISPATCH_KEY,),
     ),
+    # Both overloads are CompositeImplicitAutograd in ATen (no per-backend
+    # dispatch block in native_functions.yaml): the Autograd composite key is
+    # checked *before* the sparse backend keys, so a SparseCsrCUDA/SparseCUDA
+    # registration alone is shadowed in normal grad mode and the aten
+    # decomposition runs instead (same pitfall as nested_to_padded_tensor).
+    # Register the composite key as well so use_gems()/only_enable() actually
+    # intercept the operator.
+    (
+        "_sparse_mm",
+        _sparse_mm,
+        None,
+        (
+            SPARSE_DISPATCH_KEY,
+            SPARSE_CSR_DISPATCH_KEY,
+            "CompositeImplicitAutograd",
+        ),
+    ),
+    (
+        "_sparse_mm.reduce",
+        _sparse_mm,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY, "CompositeImplicitAutograd"),
+    ),
     (
         "_sparse_mm_reduce_impl",
         _sparse_mm_reduce_impl,

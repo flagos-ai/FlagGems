@@ -23,6 +23,39 @@ import triton
 from . import backend, common
 from .backend.device_finder import DeviceDetector
 
+_HYGON_BLAS_META_FIELDS = {
+    "addmm_hygon": {
+        "BLOCK_SIZE_M": "BLOCK_M",
+        "BLOCK_SIZE_N": "BLOCK_N",
+        "BLOCK_SIZE_K": "BLOCK_K",
+        "GROUP_SIZE_M": "GROUP_M",
+    },
+    "bmm_hygon": {
+        "FAMILY": "FAMILY",
+        "TM": "M",
+        "TN": "N",
+        "TK": "K",
+        "GROUP": "GROUP",
+        "SPLITS": "SPLITS",
+        "PACK": "PACK",
+    },
+    "baddbmm_hygon": {
+        "BLOCK_M": "BLOCK_M",
+        "BLOCK_N": "BLOCK_N",
+        "BLOCK_K": "BLOCK_K",
+        "GROUP_M": "GROUP_M",
+        "UNROLL": "UNROLL",
+        "STAGE_SHARED": "STAGE_SHARED",
+    },
+    "baddbmm_packed": {
+        "BLOCK_M": "BLOCK_M",
+        "BLOCK_N": "BLOCK_N",
+        "BLOCK_K": "BLOCK_K",
+        "GROUP_M": "GROUP_M",
+        "SPLIT_ROWS": "SPLIT_ROWS",
+    },
+}
+
 
 class TunedConfigLoader(object):
     _instance = None
@@ -102,6 +135,21 @@ class TunedConfigLoader(object):
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
+        fields = _HYGON_BLAS_META_FIELDS.get(op_name)
+        if fields is not None:
+            meta_ranges = [ranges[name] for name in fields.values()]
+            return [
+                triton.Config(
+                    dict(zip(fields, values)),
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for *values, stages, warps in product(
+                    *meta_ranges, ranges["s"], ranges["w"]
+                )
+            ]
+
         if op_name in (
             "mm_gemm",
             "mm_dense",
@@ -1018,6 +1066,26 @@ class TunedConfigLoader(object):
             },
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
+            ),
+            "addmm_hygon": self._build_single_expand_spec(
+                "addmm_hygon",
+                expand_yaml_path=self._get_expand_config_path("addmm"),
+                yaml_op_name="addmm",
+            ),
+            "bmm_hygon": self._build_single_expand_spec(
+                "bmm_hygon",
+                expand_yaml_path=self._get_expand_config_path("bmm"),
+                yaml_op_name="bmm",
+            ),
+            "baddbmm_hygon": self._build_single_expand_spec(
+                "baddbmm_hygon",
+                expand_yaml_path=self._get_expand_config_path("baddbmm"),
+                yaml_op_name="baddbmm",
+            ),
+            "baddbmm_packed": self._build_single_expand_spec(
+                "baddbmm_packed",
+                expand_yaml_path=self._get_expand_config_path("baddbmm"),
+                yaml_op_name="baddbmm_packed",
             ),
             "addmm_sqmma": self._build_single_expand_spec("addmm_sqmma"),
             "baddbmm": self._build_single_expand_spec(
