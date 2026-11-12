@@ -52,6 +52,7 @@ def test_special_multigammaln(shape, dtype, p, caplog, pytestconfig):
     torch.manual_seed(42)
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     inp = inp + (p - 1) / 2 + 1.0
+    before = inp.clone()
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.special_multigammaln(ref_inp, p)
@@ -64,11 +65,14 @@ def test_special_multigammaln(shape, dtype, p, caplog, pytestconfig):
         prefix = utils.gems_log_prefix(flag_gems.special_multigammaln)
         assert f"{prefix} SPECIAL_MULTIGAMMALN" in caplog.text
     assert res_out.device == inp.device
+    assert res_out is not inp
+    if inp.numel():
+        assert res_out.data_ptr() != inp.data_ptr()
     # Use relaxed tolerance for float16 due to lgamma precision limitations
     atol = 1e-2 if dtype == torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
     # special_multigammaln is out-of-place: the input must stay unmodified
-    utils.gems_assert_close(inp, ref_inp, dtype, atol=atol)
+    utils.gems_assert_equal(inp, before)
 
 
 @pytest.mark.mvlgamma_
