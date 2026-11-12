@@ -60,6 +60,33 @@ def _reference_input(inp):
     return tu.to_reference(inp)
 
 
+def _reference_cholesky(inp, *, upper=False, check_errors=False, L=None, info=None):
+    op = torch.ops.aten.linalg_cholesky_ex
+    use_cpu = (
+        flag_gems.vendor_name == "thead"
+        and inp.device.type != "cpu"
+        and upper
+        and inp.ndim > 2
+    )
+    if not use_cpu:
+        if L is not None:
+            return op.L(inp, upper=upper, check_errors=check_errors, L=L, info=info)
+        return op.default(inp, upper=upper, check_errors=check_errors)
+
+    # PPU's native upper batched path can report a different failing minor
+    # for an identical matrix. Use the CPU solver and preserve output placement.
+    factor, status = op.default(inp.cpu(), upper=upper, check_errors=check_errors)
+    if L is None:
+        return factor.to(inp.device), status.to(inp.device)
+    if L.shape != factor.shape:
+        L.resize_(factor.shape)
+    if info.shape != status.shape:
+        info.resize_(status.shape)
+    L.copy_(factor)
+    info.copy_(status)
+    return L, info
+
+
 # A Cholesky factor exists only for a square matrix, so the spec shape levels
 # are adapted by rank: the rank 0 and rank 1 levels carry no square matrix and
 # are replaced by the empty-square, zero-batch and n == 1 boundaries below,
@@ -269,7 +296,7 @@ def test_linalg_cholesky_ex_raw_range(shape, dtype, value_range):
     inp = _range_input(dtype, shape, value_range)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
+    ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     assert res_l.device == res_info.device == inp.device
@@ -305,7 +332,7 @@ def test_linalg_cholesky_ex_pd_success(shape, dtype, value_range):
     inp = _pd_input(dtype, shape, value_range)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
+    ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -328,7 +355,7 @@ def test_linalg_cholesky_ex_extreme_pd(symbol, upper, dtype):
     inp = _extreme_pd_input(dtype, symbol)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
+    ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -354,7 +381,7 @@ def test_linalg_cholesky_ex_upper(shape, dtype, value_range):
     inp = _range_input(dtype, shape, value_range)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=True)
+    ref_l, ref_info = _reference_cholesky(ref_inp, upper=True)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=True)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -381,7 +408,7 @@ def test_linalg_cholesky_ex_param_combos(upper, check_errors, dtype):
     inp = _pd_input(dtype, (1024, 1024), ["-1", "1"])
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(
+    ref_l, ref_info = _reference_cholesky(
         ref_inp, upper=upper, check_errors=check_errors
     )
     res_l, res_info = flag_gems.linalg_cholesky_ex(
@@ -401,7 +428,7 @@ def test_linalg_cholesky_ex_default_arguments(dtype):
     inp = _pd_input(dtype, (16, 16), ["-1", "1"])
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
+    ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -418,7 +445,7 @@ def test_linalg_cholesky_ex_layout(layout, dtype):
     inp = _layout_input(dtype, layout)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
+    ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -453,7 +480,7 @@ def test_linalg_cholesky_ex_out_overload(shape, layout, upper, dtype):
     # nothing is compared against itself and a dtype or device mismatch cannot
     # pass unnoticed.
     ref_l, ref_info = _out_buffers(shape, ref_inp.dtype, ref_inp.device, layout)
-    ref_out = torch.ops.aten.linalg_cholesky_ex.L(
+    ref_out = _reference_cholesky(
         ref_inp, upper=upper, check_errors=False, L=ref_l, info=ref_info
     )
 
@@ -493,7 +520,7 @@ def test_linalg_cholesky_ex_failed_minor(kind, upper, dtype):
     inp = _non_pd_input(dtype, 8, kind)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
+    ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -522,7 +549,7 @@ def test_linalg_cholesky_ex_special_values(placement, upper, dtype, scenario):
     inp = _special_input(dtype, placement, upper, scenario)
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
+    ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -540,7 +567,7 @@ def test_linalg_cholesky_ex_complex_diagonal(dtype):
     inp = inp + torch.diag(imag.to(dtype))
     ref_inp = _reference_input(inp)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
+    ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
@@ -564,7 +591,7 @@ def test_linalg_cholesky_ex_backward(upper, dtype):
     upstream = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
     ref_upstream = tu.to_reference(upstream)
 
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
+    ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(res_inp, upper=upper)
 
     # The successful forward is compared before differentiating.
@@ -674,7 +701,7 @@ def test_linalg_cholesky_ex_master_spd(case):
     matrix = raw @ raw.transpose(-1, -2) + 2.0 * torch.eye(
         n, dtype=dtype, device=device
     )
-    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
+    ref_l, ref_info = _reference_cholesky(
         utils.to_reference(matrix, True), upper=upper, check_errors=False
     )
     actual_l, actual_info = flag_gems.linalg_cholesky_ex(
