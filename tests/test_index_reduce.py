@@ -20,7 +20,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 REDUCTIONS = ("prod", "mean", "amax", "amin")
-SHAPE_DIMS = (((8,), 0), ((4, 7), 1), ((3, 5, 2), -2))
+SHAPE_DIMS = (((8,), 0), ((4, 7), 1), ((5, 3, 4), 0), ((3, 5, 2), -2))
 
 
 def _values(shape, dtype):
@@ -50,7 +50,7 @@ def _case(shape, dim, dtype, index_dtype=torch.int64):
 
 @pytest.mark.index_reduce
 @pytest.mark.parametrize("shape,dim", SHAPE_DIMS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("index_dtype", (torch.int64, torch.int32))
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize("include_self", (True, False))
@@ -75,13 +75,14 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
     assert result.shape == inp.shape
     assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype=dtype, reduce_dim=source.size(dim))
-    utils.gems_assert_equal(inp, snapshot)
+    utils.gems_assert_equal(inp, utils.to_reference(snapshot, False))
 
 
 @pytest.mark.index_reduce
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 def test_index_reduce_noncontiguous(reduce):
     inp = _values((6, 4), torch.float32).t()
+    snapshot = inp.clone()
     source = _values((8, 4), torch.float32).t()
     index = torch.tensor([0, 2, 1, 0, 3, 1, 2, 0], device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
@@ -98,6 +99,7 @@ def test_index_reduce_noncontiguous(reduce):
 
     assert result.is_contiguous()
     utils.gems_assert_close(result, ref_out, dtype=torch.float32, reduce_dim=8)
+    utils.gems_assert_equal(inp, utils.to_reference(snapshot, False))
 
 
 @pytest.mark.parametrize("reduce", REDUCTIONS)
@@ -143,6 +145,7 @@ def test_index_reduce_index_pattern(reduce, index, inplace):
 @pytest.mark.parametrize("include_self", (True, False))
 def test_index_reduce_empty_index(include_self):
     inp = _values((3, 4), torch.float32)
+    snapshot = inp.clone()
     source = torch.empty((3, 0), dtype=inp.dtype, device=flag_gems.device)
     index = torch.empty((0,), dtype=torch.int64, device=flag_gems.device)
     ref_out = torch.index_reduce(
@@ -158,7 +161,9 @@ def test_index_reduce_empty_index(include_self):
         inp, 1, index, source, "mean", include_self=include_self
     )
 
+    assert result is not inp
     utils.gems_assert_close(result, ref_out, dtype=inp.dtype)
+    utils.gems_assert_equal(inp, utils.to_reference(snapshot, False))
 
 
 @pytest.mark.index_reduce
