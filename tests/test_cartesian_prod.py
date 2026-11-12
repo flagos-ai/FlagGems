@@ -190,3 +190,46 @@ def test_cartesian_prod_rejects_non_tensor():
     a = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(TypeError):
         flag_gems.cartesian_prod(a, 1.0)
+
+
+@pytest.mark.cartesian_prod
+@pytest.mark.parametrize(
+    "sizes,needs",
+    [
+        ((2, 3, 4), (True, False, False)),
+        ((2, 3, 4), (True, False, True)),
+        ((2,) * 9, (True, False, True, False, False, False, False, False, True)),
+    ],
+)
+def test_cartesian_prod_backward_mixed_requires_grad(sizes, needs):
+    """Only inputs that require grad may receive a gradient contribution.
+
+    The backward kernel used to point every ``None`` accumulator at a live
+    one, so a non-grad input's contribution was added to that live gradient;
+    the generic K>8 path additionally called ``None.data_ptr()``.
+    """
+    inp = [
+        torch.randn(size, dtype=torch.float32, device=flag_gems.device).requires_grad_(
+            need
+        )
+        for size, need in zip(sizes, needs)
+    ]
+    ref_inp = []
+    for item, need in zip(inp, needs):
+        ref = utils.to_reference(item.detach(), False)
+        if need:
+            ref.requires_grad_()
+        ref_inp.append(ref)
+
+    ref_out = torch.cartesian_prod(*ref_inp)
+    res_out = flag_gems.cartesian_prod(inp)
+    grad_out = torch.randn_like(res_out)
+    ref_out.backward(grad_out.to(device=ref_out.device, dtype=ref_out.dtype))
+    res_out.backward(grad_out)
+
+    for got, ref, need in zip(inp, ref_inp, needs):
+        if need:
+            assert got.grad is not None
+            utils.gems_assert_close(got.grad, ref.grad, torch.float32)
+        else:
+            assert got.grad is None

@@ -87,6 +87,7 @@ def _cartesian_prod_generic_bwd_kernel(
     SIZES: tl.constexpr,
     PRS: tl.constexpr,
     N: tl.constexpr,
+    NEEDS: tl.constexpr,
     WIDE: tl.constexpr,
     BLOCK_ROWS: tl.constexpr,
     DT: tl.constexpr,
@@ -99,9 +100,12 @@ def _cartesian_prod_generic_bwd_kernel(
         rows = pid * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
     mask = rows < M
     for k in tl.static_range(N):
-        idx = (rows // PRS[k]) % SIZES[k]
-        v = tl.load(gout_ptr + rows * N + k, mask=mask)
-        tl.atomic_add(tl.cast(PTRS[k], tl.pointer_type(DT)) + idx, v.to(DT), mask=mask)
+        if NEEDS[k]:
+            idx = (rows // PRS[k]) % SIZES[k]
+            v = tl.load(gout_ptr + rows * N + k, mask=mask)
+            tl.atomic_add(
+                tl.cast(PTRS[k], tl.pointer_type(DT)) + idx, v.to(DT), mask=mask
+            )
 
 
 @triton.jit(do_not_specialize=["M"])
@@ -199,6 +203,7 @@ def _cartesian_prod_bwd_kernel(
     pr6: tl.constexpr,
     pr7: tl.constexpr,
     N: tl.constexpr,
+    NEEDS: tl.constexpr,
     WIDE: tl.constexpr,
     BLOCK_ROWS: tl.constexpr,
 ):
@@ -215,15 +220,16 @@ def _cartesian_prod_bwd_kernel(
 
     # each output element feeds exactly one input element, so this is a scatter-add
     for k in tl.static_range(N):
-        if prs[k] % BLOCK_ROWS == 0:
-            # PR[k] spans whole row blocks: this program writes a single index
-            base = (pid // (prs[k] // BLOCK_ROWS)) % sizes[k]
-            idx = tl.zeros([BLOCK_ROWS], dtype=tl.int32) + base
-        else:
-            idx = (rows // prs[k]) % sizes[k]
-        # accumulate in fp32 (fp64 for fp64) and cast once, like the reference
-        v = tl.load(gout_ptr + tl.where(row_mask, rows * N + k, 0))
-        tl.atomic_add(qs[k] + idx, v.to(qs[k].dtype.element_ty), mask=row_mask)
+        if NEEDS[k]:
+            if prs[k] % BLOCK_ROWS == 0:
+                # PR[k] spans whole row blocks: this program writes a single index
+                base = (pid // (prs[k] // BLOCK_ROWS)) % sizes[k]
+                idx = tl.zeros([BLOCK_ROWS], dtype=tl.int32) + base
+            else:
+                idx = (rows // prs[k]) % sizes[k]
+            # accumulate in fp32 (fp64 for fp64) and cast once, like the reference
+            v = tl.load(gout_ptr + tl.where(row_mask, rows * N + k, 0))
+            tl.atomic_add(qs[k] + idx, v.to(qs[k].dtype.element_ty), mask=row_mask)
 
 
 def _normalize(args, kwargs):
@@ -319,7 +325,7 @@ class _CartesianProd(torch.autograd.Function):
     def backward(ctx, grad_out):
         n = ctx.n
         sizes = ctx.sizes
-        needs = ctx.needs_input_grad[2:]
+        needs = tuple(bool(need) for need in ctx.needs_input_grad[2:])
         acc_dtype = torch.float64 if grad_out.dtype == torch.float64 else torch.float32
         accs = [
             (
@@ -341,10 +347,11 @@ class _CartesianProd(torch.autograd.Function):
                 _cartesian_prod_generic_bwd_kernel[(triton.cdiv(m, _BLOCK_ROWS_BWD),)](
                     gout,
                     m,
-                    PTRS=tuple(a.data_ptr() for a in accs),
+                    PTRS=tuple((a if a is not None else live).data_ptr() for a in accs),
                     SIZES=tuple(sizes),
                     PRS=tuple(_suffix_products(sizes)),
                     N=n,
+                    NEEDS=needs,
                     WIDE=m * n > _INT32_SAFE,
                     BLOCK_ROWS=_BLOCK_ROWS_BWD,
                     DT=dense_dt,
@@ -364,6 +371,7 @@ class _CartesianProd(torch.autograd.Function):
                 *szs,
                 *prs,
                 N=n,
+                NEEDS=needs,
                 WIDE=m * n > _INT32_SAFE,
                 BLOCK_ROWS=_BLOCK_ROWS_BWD,
                 num_warps=_NUM_WARPS,
