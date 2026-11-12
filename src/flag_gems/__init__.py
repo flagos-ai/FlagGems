@@ -697,6 +697,12 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    (
+        "_sparse_mm_reduce_impl_backward",
+        _sparse_mm_reduce_impl_backward,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
     (
         "_sparse_semi_structured_apply",
