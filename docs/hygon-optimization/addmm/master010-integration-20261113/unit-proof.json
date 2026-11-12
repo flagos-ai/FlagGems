@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-13T00:24:14.947424",
+  "pinned_official_master": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "measured_candidate": "bee222e93b457a9ea054860de09c8e3256637957",
+  "candidate_src_tree": "458898ff73758655c71a006b34525141c7ed22f4",
+  "ssh_alias": "luojun850",
+  "hardware_job": 1103424,
+  "run_id": "official-master010-addmm-20261113-0015",
+  "unit_tests_passed": 108,
+  "unit_junit_sha256": "5ef362317e74c57c303b69b6360813c4806bc7818a0823503ff1e607ed85c575",
+  "compiler_target": "hip/gfx936",
+  "full126_performance": "running; not accepted yet",
+  "no_new_performance_claim": true,
+  "changes": "Retain official optimized Hygon ADDMM fallback and dtype exports; common accumulation only for extreme FP32 vectors; preserve scalar-aware precise specialization.",
+  "published_junit_sha256": "4c783016fe96b3478cd36e0330281536449ee70a377d988e8ded20c29ca97732",
+  "published_junit_normalization": "Official EOF hook appended one LF;all XML test records identical to hashed raw JUnit"
+}
