@@ -472,6 +472,104 @@ def test__coalesce_out(case, dtype):
     assert not inp.is_coalesced()
 
 
+_HYBRID_CASES = [
+    ((30, 40), (3,), torch.float32),
+    ((20, 20), (2, 2), torch.float32),
+    ((10, 12, 8), (2,), torch.float64),
+    ((10, 10, 10), (4,), torch.int32),
+    ((10, 10, 10), (4,), torch.bool),
+]
+
+
+def _make_hybrid_sparse_input(shape, dense_shape, nnz, dtype):
+    """Build an uncoalesced hybrid COO tensor with duplicate coordinates."""
+    gen = torch.Generator("cpu").manual_seed(2026)
+    total = nnz * 2
+    indices = torch.stack(
+        [
+            torch.randint(0, dim, (total,), generator=gen, dtype=torch.long)
+            for dim in shape
+        ]
+    )
+    # Force duplicates so the per-dense-component accumulation is exercised.
+    indices[:, :nnz] = indices[:, nnz:]
+    if dtype == torch.bool:
+        values = torch.randint(0, 2, (total,) + dense_shape, generator=gen).bool()
+    elif dtype.is_floating_point:
+        values = torch.randn((total,) + dense_shape, generator=gen, dtype=dtype)
+    else:
+        values = torch.randint(
+            -5, 6, (total,) + dense_shape, generator=gen, dtype=torch.int64
+        ).to(dtype)
+    return torch.sparse_coo_tensor(
+        indices, values, shape + dense_shape, device=flag_gems.device
+    )
+
+
+def _make_empty_hybrid_out(shape, dense_shape, dtype, device):
+    indices = torch.empty((len(shape), 0), dtype=torch.long, device=device)
+    values = torch.empty((0,) + dense_shape, dtype=dtype, device=device)
+    return torch.sparse_coo_tensor(indices, values, shape + dense_shape, device=device)
+
+
+@pytest.mark.underscore_coalesce
+@pytest.mark.parametrize("shape,dense_shape,dtype", _HYBRID_CASES)
+def test__coalesce_dense_dims(shape, dense_shape, dtype):
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    inp = _make_hybrid_sparse_input(shape, dense_shape, 80, dtype)
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten._coalesce(ref_inp)
+    res_out = flag_gems._coalesce(inp)
+
+    _assert_coalesced(res_out, ref_out, dtype)
+    assert res_out is not inp
+    assert not inp.is_coalesced()
+
+
+@pytest.mark.underscore_coalesce_out
+@pytest.mark.parametrize("shape,dense_shape,dtype", _HYBRID_CASES)
+def test__coalesce_out_dense_dims(shape, dense_shape, dtype):
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    inp = _make_hybrid_sparse_input(shape, dense_shape, 80, dtype)
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+    out = _make_empty_hybrid_out(shape, dense_shape, dtype, flag_gems.device)
+    ref_out = _make_empty_hybrid_out(shape, dense_shape, dtype, ref_inp.device)
+
+    ref_ret = torch.ops.aten._coalesce.out(ref_inp, out=ref_out)
+    res_ret = flag_gems._coalesce(inp, out=out)
+
+    assert res_ret is out
+    _assert_coalesced(res_ret, ref_ret, dtype)
+    assert not inp.is_coalesced()
+
+
+@pytest.mark.underscore_coalesce
+def test__coalesce_rejects_coalesced_input():
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    inp = _make_sparse_input((8, 8), 40, torch.float32).coalesce()
+    with pytest.raises(RuntimeError, match="is_coalesced"):
+        flag_gems._coalesce(inp)
+
+
+@pytest.mark.underscore_coalesce_out
+def test__coalesce_out_rejects_wrong_dtype_and_shape():
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    inp = _make_sparse_input((8, 8), 40, torch.float32)
+    out_bad_dtype = _make_empty_out((8, 8), torch.float64, flag_gems.device)
+    with pytest.raises(RuntimeError, match="dtype"):
+        flag_gems._coalesce(inp, out=out_bad_dtype)
+    out_bad_shape = _make_empty_out((9, 8), torch.float32, flag_gems.device)
+    with pytest.raises(NotImplementedError, match="resize_"):
+        flag_gems._coalesce(inp, out=out_bad_shape)
+
+
 @pytest.mark.underscore_coalesce
 def test__coalesce_rejects_dense_input():
     # The op output is device-independent, but --ref=cpu moves the native
