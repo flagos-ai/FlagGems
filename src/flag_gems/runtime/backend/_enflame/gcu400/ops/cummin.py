@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_max
@@ -504,29 +505,33 @@ def cummin(
 
     # torch propagates NaN and reports the most recent NaN position.  The scan
     # combine drops NaNs on this backend, so run the regular min on a NaN-free
-    # copy and patch the NaN prefix back in afterwards.
-    if input.is_floating_point() and bool(torch.isnan(input).any()):
-        nan_mask = torch.isnan(input)
+    # copy and patch the NaN prefix back in afterwards.  Every tensor
+    # computation on this path goes through FlagGems operators; PyTorch is only
+    # used for data initialisation, dtype conversion and views.
+    if input.is_floating_point() and flag_gems.any(flag_gems.isnan(input)).item():
+        nan_mask = flag_gems.isnan(input)
         pos_shape = [1] * input.ndim
         pos_shape[dim] = N
-        pos = torch.arange(N, device=input.device, dtype=torch.int32).view(pos_shape)
+        # Encode NaN positions as -1, -2, ..., -N so the scan minimum selects
+        # the most recent NaN.  arange() here only initialises data.
+        neg_pos = torch.arange(
+            -1, -N - 1, -1, device=input.device, dtype=torch.int32
+        ).view(pos_shape)
         big = 1 << 30  # larger than any position, still fits int32
-        key = torch.where(
-            nan_mask,
-            -pos - 1,
-            torch.full_like(pos, big, dtype=torch.int32),
-        )
+        big_pos = torch.full_like(neg_pos, big, dtype=torch.int32)
+        key = flag_gems.where_self(nan_mask, neg_pos, big_pos)
         latest_min, _ = _cummin_impl(key, dim, M, N, K, torch.int32)
-        has_nan = latest_min < big
-        latest = (-latest_min - 1).to(torch.int64)
+        has_nan = flag_gems.lt_scalar(latest_min, big)
+        # -1 - latest_min is -latest_min - 1, i.e. the decoded NaN position.
+        latest = flag_gems.sub(-1, latest_min).to(torch.int64)
 
         inf = torch.tensor(float("inf"), dtype=input.dtype, device=input.device)
-        safe = torch.where(nan_mask, inf, input)
+        safe = flag_gems.where_self(nan_mask, inf, input)
         vals, idx = _cummin_impl(safe, dim, M, N, K, dtype)
 
         nan_val = torch.tensor(float("nan"), dtype=vals.dtype, device=vals.device)
-        vals = torch.where(has_nan, nan_val, vals)
-        idx = torch.where(has_nan, latest.to(torch.int32), idx)
+        vals = flag_gems.where_self(has_nan, nan_val, vals)
+        idx = flag_gems.where_self(has_nan, latest.to(torch.int32), idx)
         return vals, idx.to(torch.int32).to(torch.int64)
 
     out, out_indices = _cummin_impl(input, dim, M, N, K, dtype)

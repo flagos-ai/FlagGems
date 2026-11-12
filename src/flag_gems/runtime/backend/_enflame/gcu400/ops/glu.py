@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -119,6 +120,6 @@ def glu_backward(grad_output, self, dim=-1):
     b = b.contiguous()
     grad_output = grad_output.contiguous()
     grad_a, grad_b = glu_backward_kernel(grad_output, a, b)
-    grad_input = torch.cat((grad_a, grad_b), dim=dim)
+    grad_input = flag_gems.cat((grad_a, grad_b), dim=dim)
 
     return grad_input

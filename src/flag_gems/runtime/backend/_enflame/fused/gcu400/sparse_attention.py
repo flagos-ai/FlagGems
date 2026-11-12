@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -116,11 +117,11 @@ def sparse_attn_triton(q, kv, attn_sink, topk_idxs, softmax_scale):
 
     if m == 1:
         idx = topk_idxs.view(b, topk, 1).expand(b, topk, d).long()
-        gathered_kv = torch.gather(kv, 1, idx)
+        gathered_kv = flag_gems.gather(kv, 1, idx)
     else:
         idx_exp = topk_idxs.unsqueeze(-1).expand(b, m, topk, d).long()
         kv_exp = kv.unsqueeze(1).expand(b, m, -1, d)
-        gathered_kv = torch.gather(kv_exp, 2, idx_exp)
+        gathered_kv = flag_gems.gather(kv_exp, 2, idx_exp)
     gathered_kv = gathered_kv.reshape(b * m, topk, d)
 
     BLOCK = 128

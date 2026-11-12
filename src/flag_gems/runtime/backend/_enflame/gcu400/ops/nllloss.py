@@ -123,7 +123,7 @@ def _forward_impl(self, target, weight, reduction_val, ignore_index_val):
     )
     # Keep total_weight in float32: the backward kernel only reads it to
     # divide, so converting to out_dtype costs an extra kernel for no benefit.
-    return out, partial_weight.sum()
+    return out, flag_gems.sum(partial_weight)
 
 
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):

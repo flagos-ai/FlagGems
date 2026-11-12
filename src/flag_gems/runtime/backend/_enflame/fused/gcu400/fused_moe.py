@@ -19,11 +19,11 @@ from enum import Enum
 from typing import Any, Optional
 
 import torch
-import torch.nn.functional as F
 import triton
 import triton.language as tl
 import yaml
 
+import flag_gems
 from flag_gems.runtime import device, torch_device_fn
 
 from ...gcu400.utils.pointwise_dynamic import pointwise_dynamic
@@ -645,23 +645,24 @@ def apply_moe_activation(
     elif activation == MoEActivation.GELU:
         N = output.size(-1)
         gate, up = input[:, :N], input[:, N:]
-        output.copy_(F.gelu(gate) * up)
+        output.copy_(flag_gems.mul(flag_gems.gelu(gate), up))
     elif activation == MoEActivation.SWIGLUSTEP:
         N = output.size(-1)
         gate, up = input[:, :N], input[:, N:]
-        output.copy_(torch.sigmoid(gate) * up)
+        output.copy_(flag_gems.mul(flag_gems.sigmoid(gate), up))
     elif activation == MoEActivation.RELU2:
         N = output.size(-1)
         gate, up = input[:, :N], input[:, N:]
-        output.copy_(F.relu(gate).square() * up)
+        output.copy_(flag_gems.mul(flag_gems.square(flag_gems.relu(gate)), up))
 
     elif activation == MoEActivation.SILU_NO_MUL:
-        output.copy_(F.silu(input))
+        output.copy_(flag_gems.silu(input))
     elif activation == MoEActivation.GELU_NO_MUL:
-        output.copy_(F.gelu(input))
+        output.copy_(flag_gems.gelu(input))
     elif activation == MoEActivation.RELU2_NO_MUL:
-        F.relu(input, inplace=True)
-        torch.square(input, out=output)
+        # Preserve the in-place relu on `input`, then write the square to `output`.
+        flag_gems.relu_(input)
+        output.copy_(flag_gems.square(input))
     else:
         raise ValueError(f"Unsupported FusedMoe activation: {activation}")
 
@@ -703,24 +704,36 @@ def _fp8_quantize(
         A_flat = A.reshape(-1, A.size(-1))
         M, K = A_flat.shape
         A_groups = A_flat.reshape(M * (K // block_k), block_k)
-        amax = (
-            A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        )
-        scale = amax / fp8_max
-        A_q = (A_groups.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        amax = flag_gems.clamp(
+            flag_gems.amax(flag_gems.abs(A_groups), dim=[-1], keepdim=True),
+            mini=eps,
+        ).to(torch.float32)
+        scale = flag_gems.true_divide(amax, fp8_max)
+        A_q = flag_gems.clamp(
+            flag_gems.true_divide(A_groups.float(), scale),
+            fp8_min,
+            fp8_max,
+        ).to(fp8_dtype)
         A_q = A_q.reshape(orig_shape)
         scale = scale.reshape(M, K // block_k)
         return A_q, scale
 
     elif per_act_token:
         A_flat = A.reshape(-1, A.size(-1))
-        amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        scale = amax / fp8_max
+        amax = flag_gems.clamp(
+            flag_gems.amax(flag_gems.abs(A_flat), dim=[-1], keepdim=True),
+            mini=eps,
+        ).to(torch.float32)
+        scale = flag_gems.true_divide(amax, fp8_max)
         min_scale = torch.tensor(
             1.0 / (fp8_max * 512.0), dtype=torch.float32, device=A.device
         )
-        scale = scale.clamp(min=min_scale)
-        A_q = (A_flat.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+        scale = flag_gems.clamp_tensor(scale, mini=min_scale)
+        A_q = flag_gems.clamp(
+            flag_gems.true_divide(A_flat.float(), scale),
+            fp8_min,
+            fp8_max,
+        ).to(fp8_dtype)
         A_q = A_q.reshape(A.shape)
         scale = scale.reshape(A.shape[:-1] + (1,))
         return A_q, scale
@@ -730,13 +743,23 @@ def _fp8_quantize(
             scale = (
                 A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
             )
-            A_q = (A.float() / scale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+            A_q = flag_gems.clamp(
+                flag_gems.true_divide(A.float(), scale),
+                fp8_min,
+                fp8_max,
+            ).to(fp8_dtype)
             return A_q, A_scale
         else:
-            amax = A.abs().amax().clamp(min=eps).to(torch.float32)
-            scale = amax / fp8_max
-            iscale = 1.0 / scale
-            A_q = (A.float() * iscale).clamp(fp8_min, fp8_max).to(fp8_dtype)
+            amax = flag_gems.clamp(
+                flag_gems.amax(flag_gems.abs(A)), mini=eps
+            ).to(torch.float32)
+            scale = flag_gems.true_divide(amax, fp8_max)
+            iscale = flag_gems.true_divide(1.0, scale)
+            A_q = flag_gems.clamp(
+                flag_gems.mul(A.float(), iscale),
+                fp8_min,
+                fp8_max,
+            ).to(fp8_dtype)
             return A_q, scale.view(1)
 
 
@@ -761,22 +784,31 @@ def _int8_quantize(
         A_flat = A.reshape(-1, A.size(-1))
         M, K = A_flat.shape
         A_groups = A_flat.reshape(M * (K // block_k), block_k)
-        amax = (
-            A_groups.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        )
-        scale = amax / int8_max
-        A_q = (
-            (A_groups.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
-        )
+        amax = flag_gems.clamp(
+            flag_gems.amax(flag_gems.abs(A_groups), dim=[-1], keepdim=True),
+            mini=eps,
+        ).to(torch.float32)
+        scale = flag_gems.true_divide(amax, int8_max)
+        # gcu400 round kernel only accepts contiguous input.
+        scaled = flag_gems.true_divide(A_groups.float(), scale).contiguous()
+        A_q = flag_gems.clamp(
+            flag_gems.round(scaled), int8_min, int8_max
+        ).to(torch.int8)
         A_q = A_q.reshape(orig_shape)
         scale = scale.reshape(M, K // block_k)
         return A_q, scale
 
     elif per_act_token:
         A_flat = A.reshape(-1, A.size(-1))
-        amax = A_flat.abs().amax(dim=-1, keepdim=True).clamp(min=eps).to(torch.float32)
-        scale = amax / int8_max
-        A_q = (A_flat.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        amax = flag_gems.clamp(
+            flag_gems.amax(flag_gems.abs(A_flat), dim=[-1], keepdim=True),
+            mini=eps,
+        ).to(torch.float32)
+        scale = flag_gems.true_divide(amax, int8_max)
+        scaled = flag_gems.true_divide(A_flat.float(), scale).contiguous()
+        A_q = flag_gems.clamp(
+            flag_gems.round(scaled), int8_min, int8_max
+        ).to(torch.int8)
         A_q = A_q.reshape(A.shape)
         scale = scale.reshape(A.shape[:-1] + (1,))
         return A_q, scale
@@ -784,7 +816,10 @@ def _int8_quantize(
     else:
         assert A_scale is not None, "int8 per-tensor requires A_scale"
         scale = A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
-        A_q = (A.float() / scale).round().clamp(int8_min, int8_max).to(torch.int8)
+        scaled = flag_gems.true_divide(A.float(), scale).contiguous()
+        A_q = flag_gems.clamp(
+            flag_gems.round(scaled), int8_min, int8_max
+        ).to(torch.int8)
         return A_q, A_scale
 
 
