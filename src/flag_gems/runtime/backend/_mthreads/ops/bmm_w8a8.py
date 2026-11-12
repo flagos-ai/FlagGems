@@ -18,10 +18,6 @@ try:
 except ImportError:
     SUPPORTS_TLE_WGMMA_INT8 = False
 
-from triton.experimental.tle import language as tle
-
-from .mm_w8a8_fp8 import _produce as produce_tiles
-
 logger = logging.getLogger(__name__)
 
 GEMV_MAX_ROWS = 4
@@ -126,121 +122,130 @@ def channel_host_tme_kernel(
     tl.store(output + offsets, scaled, (rows[:, None] < M) & (columns[None, :] < N))
 
 
-@triton.jit
-def channel_tle_consumer(
-    reader,
-    output,
-    activation_scale,
-    weight_scale,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    BM: tl.constexpr,
-    BN: tl.constexpr,
-    BK: tl.constexpr,
-):
-    tile = tl.program_id(0)
-    batch = tl.program_id(1).to(tl.int64)
-    rows = (tile // tl.cdiv(N, BN)) * BM + tl.arange(0, BM)
-    columns = (tile % tl.cdiv(N, BN)) * BN + tl.arange(0, BN)
-    accumulator = tl.zeros((BM, BN), dtype=tl.int32)
-    for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
-        ready = reader.wait(block)
-        accumulator = tle.gpu.wgmma(
-            ready.slot.a,
-            ready.slot.b0,
-            accumulator,
-            out_dtype=tl.int32,
-            trans_b=True,
+if SUPPORTS_TLE_WGMMA_INT8 is True:
+    from triton.experimental.tle import language as tle
+
+    from .mm_w8a8_fp8 import _produce as produce_tiles
+
+    @triton.jit
+    def channel_tle_consumer(
+        reader,
+        output,
+        activation_scale,
+        weight_scale,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+    ):
+        tile = tl.program_id(0)
+        batch = tl.program_id(1).to(tl.int64)
+        rows = (tile // tl.cdiv(N, BN)) * BM + tl.arange(0, BM)
+        columns = (tile % tl.cdiv(N, BN)) * BN + tl.arange(0, BN)
+        accumulator = tl.zeros((BM, BN), dtype=tl.int32)
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            ready = reader.wait(block)
+            accumulator = tle.gpu.wgmma(
+                ready.slot.a,
+                ready.slot.b0,
+                accumulator,
+                out_dtype=tl.int32,
+                trans_b=True,
+            )
+            # The slot cannot be reused while SQMMA still reads its operands.
+            accumulator = tle.gpu.wgmma_wait(0, accumulator)
+            reader.release(block)
+        row_scale = tl.load(activation_scale + batch * M + rows, rows < M, other=0)
+        column_scale = tl.load(weight_scale + batch * N + columns, columns < N, other=0)
+        scaled = accumulator.to(tl.float32) * row_scale[:, None] * column_scale[None, :]
+        output_offsets = (
+            batch * M * N + rows[:, None].to(tl.int64) * N + columns[None, :]
         )
-        # The slot cannot be reused while SQMMA still reads its operands.
-        accumulator = tle.gpu.wgmma_wait(0, accumulator)
-        reader.release(block)
-    row_scale = tl.load(activation_scale + batch * M + rows, rows < M, other=0)
-    column_scale = tl.load(weight_scale + batch * N + columns, columns < N, other=0)
-    scaled = accumulator.to(tl.float32) * row_scale[:, None] * column_scale[None, :]
-    output_offsets = batch * M * N + rows[:, None].to(tl.int64) * N + columns[None, :]
-    tl.store(
-        output + output_offsets,
-        scaled,
-        (rows[:, None] < M) & (columns[None, :] < N),
-    )
+        tl.store(
+            output + output_offsets,
+            scaled,
+            (rows[:, None] < M) & (columns[None, :] < N),
+        )
 
+    @libentry()
+    @triton.jit
+    def channel_tle_tme_kernel(
+        activation_descriptor,
+        weight_descriptor,
+        output,
+        activation_scale,
+        weight_scale,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        PIPELINE_STAGES: tl.constexpr,
+        PRODUCER_WARPS: tl.constexpr,
+    ):
+        activation_shared = tle.gpu.alloc(
+            (PIPELINE_STAGES, BM, BK),
+            activation_descriptor.dtype,
+            scope=tle.gpu.smem,
+            nv_mma_shared_layout=True,
+        )
+        weight_shared = tle.gpu.alloc(
+            (PIPELINE_STAGES, BN, BK),
+            weight_descriptor.dtype,
+            scope=tle.gpu.smem,
+            nv_mma_shared_layout=True,
+        )
+        pipe = tle.pipe(
+            capacity=PIPELINE_STAGES,
+            scope="cta",
+            name="int8_bmm",
+            readers=("r0",),
+            a=activation_shared,
+            b0=weight_shared,
+        )
+        tle.gpu.warp_specialize(
+            [
+                (
+                    channel_tle_consumer,
+                    (
+                        pipe.reader("r0", fields=("a", "b0")),
+                        output,
+                        activation_scale,
+                        weight_scale,
+                        M,
+                        N,
+                        K,
+                        BM,
+                        BN,
+                        BK,
+                    ),
+                ),
+                (
+                    produce_tiles,
+                    (
+                        pipe.writer(),
+                        activation_descriptor,
+                        weight_descriptor,
+                        M,
+                        N,
+                        K,
+                        BM,
+                        BN,
+                        BK,
+                        1,
+                        1,
+                    ),
+                ),
+            ],
+            worker_num_warps=[PRODUCER_WARPS],
+            worker_num_regs=[24],
+        )
 
-@libentry()
-@triton.jit
-def channel_tle_tme_kernel(
-    activation_descriptor,
-    weight_descriptor,
-    output,
-    activation_scale,
-    weight_scale,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    BM: tl.constexpr,
-    BN: tl.constexpr,
-    BK: tl.constexpr,
-    PIPELINE_STAGES: tl.constexpr,
-    PRODUCER_WARPS: tl.constexpr,
-):
-    activation_shared = tle.gpu.alloc(
-        (PIPELINE_STAGES, BM, BK),
-        activation_descriptor.dtype,
-        scope=tle.gpu.smem,
-        nv_mma_shared_layout=True,
-    )
-    weight_shared = tle.gpu.alloc(
-        (PIPELINE_STAGES, BN, BK),
-        weight_descriptor.dtype,
-        scope=tle.gpu.smem,
-        nv_mma_shared_layout=True,
-    )
-    pipe = tle.pipe(
-        capacity=PIPELINE_STAGES,
-        scope="cta",
-        name="int8_bmm",
-        readers=("r0",),
-        a=activation_shared,
-        b0=weight_shared,
-    )
-    tle.gpu.warp_specialize(
-        [
-            (
-                channel_tle_consumer,
-                (
-                    pipe.reader("r0", fields=("a", "b0")),
-                    output,
-                    activation_scale,
-                    weight_scale,
-                    M,
-                    N,
-                    K,
-                    BM,
-                    BN,
-                    BK,
-                ),
-            ),
-            (
-                produce_tiles,
-                (
-                    pipe.writer(),
-                    activation_descriptor,
-                    weight_descriptor,
-                    M,
-                    N,
-                    K,
-                    BM,
-                    BN,
-                    BK,
-                    1,
-                    1,
-                ),
-            ),
-        ],
-        worker_num_warps=[PRODUCER_WARPS],
-        worker_num_regs=[24],
-    )
+else:
+    channel_tle_tme_kernel = None
 
 
 def bmm_w8a8(
