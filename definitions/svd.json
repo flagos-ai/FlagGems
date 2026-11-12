@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "svd",
+  "requires_triton_kernel": true,
+  "description": "Legacy torch.svd contract. Returns U, S and V, with V rather than Vh. some selects reduced or full factors and compute_uv controls whether singular vectors are computed. The suite covers batched matrices, degenerate inputs, empty and complex inputs, and low-precision routes.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "some",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": true
+    },
+    {
+      "name": "compute_uv",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": true
+    }
+  ],
+  "outputs": [
+    "U",
+    "S",
+    "V"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

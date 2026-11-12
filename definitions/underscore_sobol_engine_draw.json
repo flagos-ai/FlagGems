@@ -1,0 +1,53 @@
+{
+  "api_version": "v6.0",
+  "name": "underscore_sobol_engine_draw",
+  "requires_triton_kernel": true,
+  "description": "FlagGems public wrapper for aten::_sobol_engine_draw. Generates n points of the Sobol sequence at the supplied offset and returns the points and a newly allocated updated quasi state. quasi and sobolstate are read-only. The wrapper defaults to float32 when dtype is omitted and supports an explicit float64 dtype.",
+  "parameters": [
+    {
+      "name": "quasi",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "sobolstate",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dimension",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "num_generated",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "torch.dtype | None",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "points",
+    "quasi_out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

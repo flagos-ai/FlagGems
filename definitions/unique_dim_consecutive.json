@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "unique_dim_consecutive",
+  "requires_triton_kernel": true,
+  "description": "Collapses consecutive equal slices along dim without sorting or collapsing nonadjacent duplicates. Returns the result, inverse indices and counts. The inverse and counts tensors are empty when their respective flags are false. The suite covers negative dimensions, empty inputs, and long slices.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "return_inverse",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    },
+    {
+      "name": "return_counts",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out",
+    "inverse_indices",
+    "counts"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

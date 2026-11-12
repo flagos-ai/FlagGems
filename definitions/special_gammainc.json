@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "special_gammainc",
+  "requires_triton_kernel": true,
+  "description": "Computes the regularized lower incomplete gamma function elementwise on broadcast-compatible inputs. The default call does not mutate or alias its inputs. The suite covers equal shapes, broadcast inputs, x=0, a=1, and large x.",
+  "parameters": [
+    {
+      "name": "a",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

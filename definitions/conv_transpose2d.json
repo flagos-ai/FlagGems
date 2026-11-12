@@ -1,0 +1,69 @@
+{
+  "api_version": "v6.0",
+  "name": "conv_transpose2d",
+  "requires_triton_kernel": true,
+  "description": "Default transposed 2-D convolution (aten::conv_transpose2d.input). Supports batched or unbatched input, optional bias, groups and scalar or paired spatial parameters. Inputs are read-only. The suite also checks noncontiguous operands and invalid geometry.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int]",
+      "default": 1
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int]",
+      "default": 0
+    },
+    {
+      "name": "output_padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int]",
+      "default": 0
+    },
+    {
+      "name": "groups",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": 1
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int]",
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

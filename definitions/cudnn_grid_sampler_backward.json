@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "cudnn_grid_sampler_backward",
+  "requires_triton_kernel": true,
+  "description": "Default backward for cuDNN grid sampling with bilinear interpolation, zero padding and align_corners=True. Returns gradients of input and grid. No inputs are mutated. The separate out overload is outside this Definition.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grid",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input",
+    "grad_grid"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
