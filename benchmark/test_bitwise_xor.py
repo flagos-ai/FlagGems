@@ -18,6 +18,7 @@ import torch
 from . import base, consts, utils
 
 
+@pytest.mark.bitwise_xor
 @pytest.mark.bitwise_xor_tensor
 def test_bitwise_xor_tensor():
     bench = base.BinaryPointwiseBenchmark(
@@ -28,6 +29,7 @@ def test_bitwise_xor_tensor():
     bench.run()
 
 
+@pytest.mark.bitwise_xor_
 @pytest.mark.bitwise_xor_tensor_
 def test_bitwise_xor_inplace():
     bench = base.BinaryPointwiseBenchmark(
@@ -45,6 +47,7 @@ def _scalar_input_fn(shape, dtype, device):
     yield inp, scalar
 
 
+@pytest.mark.bitwise_xor
 @pytest.mark.bitwise_xor_scalar
 def test_bitwise_xor_scalar():
     bench = base.GenericBenchmark(
@@ -62,6 +65,7 @@ def _scalar_input_fn_inplace(shape, dtype, device):
     yield inp, scalar
 
 
+@pytest.mark.bitwise_xor_
 @pytest.mark.bitwise_xor_scalar_
 def test_bitwise_xor_scalar_():
     bench = base.GenericBenchmark(
@@ -80,6 +84,7 @@ def scalar_tensor_input_fn(shape, cur_dtype, device):
     yield scalar, tensor
 
 
+@pytest.mark.bitwise_xor
 @pytest.mark.bitwise_xor_scalar_tensor
 def test_bitwise_xor_scalar_tensor():
     bench = base.GenericBenchmark(

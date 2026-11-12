@@ -33,8 +33,21 @@ AVGPOOL3D_CONFIGS = [
     ((4, 8, 12, 16, 20), (2, 3, 4), (1, 2, 2), (0, 1, 1), False, True, None),
     # ceil_mode
     ((2, 4, 15, 15, 15), 3, 2, 1, True, True, None),
-    # divisor_override
-    ((1, 1, 7, 7, 7), 2, 1, 0, False, True, 1),
+    # divisor_override: unsupported by torch_xmlir XPU native avg_pool3d, so the
+    # aten reference call raises INVALID PARAMETER on kunlunxin; skip there.
+    pytest.param(
+        (1, 1, 7, 7, 7),
+        2,
+        1,
+        0,
+        False,
+        True,
+        1,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin",
+            reason="torch_xmlir XPU native avg_pool3d does not support divisor_override",
+        ),
+    ),
     # Typical CNN shapes
     ((1, 64, 16, 56, 56), 3, 2, 1, False, True, None),
     # No padding
@@ -112,6 +125,10 @@ def test_avg_pool3d_backward(
     divisor_override,
     dtype,
 ):
+    if flag_gems.vendor_name == "kunlunxin" and ceil_mode:
+        pytest.skip(
+            "torch_xmlir XPU native avg_pool3d_backward does not support ceil_mode"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 

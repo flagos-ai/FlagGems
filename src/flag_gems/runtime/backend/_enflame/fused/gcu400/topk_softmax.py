@@ -123,12 +123,18 @@ def _pick_block_size(num_tokens, num_experts, topk):
         rows_block = 32
         num_warps = 16
     elif num_tokens >= 32:
-        # 小 batch 保 grid 并行度 (>=32 programs)
+        # 小 batch 保 grid 并行度 (>=32 programs)。num_tokens//32 一般不是
+        # 2 的幂 (如 T=496 -> 15), 必须向下取 2 的幂, 否则 tl.arange 编译失败。
         g = num_tokens // 32
-        if rows_block > g:
-            rows_block = g
+        if g > 0:
+            g = 1 << (g.bit_length() - 1)
+            if rows_block > g:
+                rows_block = g
     if rows_block < 1:
         rows_block = 1
+    # 防御性检查: tl.arange(0, BLOCK_SIZE_ROWS) 要求 2 的幂, 防止启发式回归
+    if rows_block & (rows_block - 1):
+        raise ValueError(f"rows_block={rows_block} must be a power of two")
     return experts_block, rows_block, num_warps
 
 

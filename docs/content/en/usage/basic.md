@@ -142,12 +142,12 @@ This is useful for debugging or verifying which operators are active.
 
 For advanced usage scenarios, check the following related documentation:
 
-- [Selective enablement](/FlagGems/usage/selective/)
-- [Using experimental operators](/FlagGems/usage/experimental/)
-- [Enabling logging](/FlagGems/usage/debugging/) for debugging
-- [Using FlagGems on non-NVIDIA hardware](/FlagGems/usage/non-nvidia/)
-- [Using FlagGems in a multi-GPU or distributed environment](/FlagGems/usage/distributed/)
-- [Integrating FlagGems with a popular framework](/FlagGems/usage/frameworks/)
-- [Building your own models using FlagGems modules](/FlagGems/usage/modules/)
-- [Enable pre-tuning for better performance](/FlagGems/usage/tuning/)
-- [Using C++ wrapped operators for optimal performance](/FlagGems/usage/cpp/)
+- [Selective enablement](selective.md)
+- [Using experimental operators](experimental.md)
+- [Enabling logging](debugging.md) for debugging
+- [Using FlagGems on non-NVIDIA hardware](non-nvidia.md)
+- [Using FlagGems in a multi-GPU or distributed environment](distributed.md)
+- [Integrating FlagGems with a popular framework](frameworks.md)
+- [Building your own models using FlagGems modules](modules.md)
+- [Enable pre-tuning for better performance](tuning.md)
+- [Using C++ wrapped operators for optimal performance](cpp.md)

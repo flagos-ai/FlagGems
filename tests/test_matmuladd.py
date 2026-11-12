@@ -54,8 +54,7 @@ def test_matmuladd(M, N, K, dtype):
 
     # Reference: matmul + bias
     ref_out = torch.matmul(ref_mat1, ref_mat2) + ref_bias
-    with flag_gems.use_gems():
-        res_out = flag_gems.matmuladd(mat1, mat2, bias)
+    res_out = flag_gems.matmuladd(mat1, mat2, bias)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
@@ -64,7 +63,6 @@ def test_matmuladd(M, N, K, dtype):
     ref_bias_2d = utils.to_reference(bias_2d, True)
 
     ref_out_2d = torch.matmul(ref_mat1, ref_mat2) + ref_bias_2d
-    with flag_gems.use_gems():
-        res_out_2d = flag_gems.matmuladd(mat1, mat2, bias_2d)
+    res_out_2d = flag_gems.matmuladd(mat1, mat2, bias_2d)
 
     utils.gems_assert_close(res_out_2d, ref_out_2d, dtype, reduce_dim=K)

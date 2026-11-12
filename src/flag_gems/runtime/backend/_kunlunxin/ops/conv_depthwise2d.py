@@ -18,6 +18,10 @@ import os
 import threading
 
 import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import libentry
 
 from .conv2d import conv2d
 
@@ -39,6 +43,204 @@ def _zero_bias(out_c, device):
         t = torch.zeros(out_c, device=device, dtype=torch.float)
         _ZERO_BIAS_CACHE[key] = t
     return t
+
+
+# Scalar arguments kept as runtime values so a value of 1 is not folded out.
+_RUNTIME_SCALARS = [
+    "n",
+    "hin",
+    "win",
+    "cout",
+    "hout",
+    "wout",
+    "xsn",
+    "xsc",
+    "xsh",
+    "xsw",
+    "wso",
+    "wsi",
+    "wsh",
+    "wsw",
+    "ysn",
+    "ysc",
+    "ysh",
+    "ysw",
+    "cpg",
+    "kh",
+    "kw",
+    "sh",
+    "sw",
+    "ph",
+    "pw",
+    "dh",
+    "dw",
+    "groups",
+    "opg",
+]
+
+
+@libentry()
+@triton.jit(do_not_specialize=_RUNTIME_SCALARS)
+def conv2d_forward_kernel(
+    x,
+    w,
+    y,
+    b,
+    n,
+    hin,
+    win,
+    cout,
+    hout,
+    wout,
+    xsn,
+    xsc,
+    xsh,
+    xsw,
+    wso,
+    wsi,
+    wsh,
+    wsw,
+    ysn,
+    ysc,
+    ysh,
+    ysw,
+    cpg,
+    kh,
+    kw,
+    sh,
+    sw,
+    ph,
+    pw,
+    dh,
+    dw,
+    groups,
+    opg,
+    HAS_BIAS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Generic scalar-gather fallback.
+    m = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    plane = hout * wout
+    ow = m % wout
+    q = m // wout
+    oh = q % hout
+    q = q // hout
+    oc = q % cout
+    ni = q // cout
+    group = oc // opg
+    acc = tl.zeros((BLOCK,), tl.float32)
+    for r in range(0, kh):
+        ih = oh * sh - ph + r * dh
+        for s in range(0, kw):
+            iw = ow * sw - pw + s * dw
+            valid = (ih >= 0) & (ih < hin) & (iw >= 0) & (iw < win)
+            safe_ih = tl.where(valid, ih, 0)
+            safe_iw = tl.where(valid, iw, 0)
+            for ci in range(0, cpg):
+                xv = tl.load(
+                    x
+                    + ni * xsn
+                    + (group * cpg + ci) * xsc
+                    + safe_ih * xsh
+                    + safe_iw * xsw,
+                    mask=m < n * cout * plane,
+                    other=0.0,
+                )
+                xv = tl.where(valid, xv, 0.0)
+                wv = tl.load(w + oc * wso + ci * wsi + r * wsh + s * wsw)
+                acc += xv.to(tl.float32) * wv.to(tl.float32)
+    if HAS_BIAS:
+        acc += tl.load(b + oc).to(tl.float32)
+    tl.store(
+        y + ni * ysn + oc * ysc + oh * ysh + ow * ysw,
+        acc,
+        mask=m < n * cout * plane,
+    )
+
+
+def _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups):
+    """Launch the depthwise forward kernel."""
+    n, cin, hin, win = input.shape
+    cout, cpg, kh, kw = weight.shape
+    sh, sw = _pair(stride)
+    dh, dw = _pair(dilation)
+    ph, pw = _pair(padding)
+    hout = (hin + 2 * ph - dh * (kh - 1) - 1) // sh + 1
+    wout = (win + 2 * pw - dw * (kw - 1) - 1) // sw + 1
+    out = torch.empty((n, cout, hout, wout), device=input.device, dtype=input.dtype)
+    block = 64
+    conv2d_forward_kernel[(triton.cdiv(n * cout * hout * wout, block),)](
+        input,
+        weight,
+        out,
+        bias,
+        n,
+        hin,
+        win,
+        cout,
+        hout,
+        wout,
+        *input.stride(),
+        *weight.stride(),
+        *out.stride(),
+        cpg,
+        kh,
+        kw,
+        sh,
+        sw,
+        ph,
+        pw,
+        dh,
+        dw,
+        groups,
+        cout // groups,
+        HAS_BIAS=True,
+        BLOCK=block,
+        num_warps=4,
+    )
+    return out
+
+
+def _pair(value):
+    if isinstance(value, int):
+        return value, value
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        return value[0], value[1]
+    return value, value
+
+
+def _vendor_ok(input, weight, stride, padding, dilation):
+    """Eligibility for the fast path: symmetric pad and both spatial extents > 1."""
+    if not (input.is_cuda and weight.is_cuda):
+        return False
+    if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        return False
+    if input.dtype != weight.dtype:
+        return False
+    if input.requires_grad or weight.requires_grad:
+        return False
+    if not (input.is_contiguous() and weight.is_contiguous()):
+        return False
+    if isinstance(padding, str) or isinstance(stride, str) or isinstance(dilation, str):
+        return False
+    n, cin, hin, win = input.shape
+    cout, cpg, kh, kw = weight.shape
+    if min(hin, win) <= 1:
+        return False
+    sh, sw = _pair(stride)
+    dh, dw = _pair(dilation)
+    ph, pw = _pair(padding)
+    if min(sh, sw, dh, dw, kh, kw) <= 0 or min(ph, pw) < 0:
+        return False
+    hout = (hin + 2 * ph - dh * (kh - 1) - 1) // sh + 1
+    wout = (win + 2 * pw - dw * (kw - 1) - 1) // sw + 1
+    if hout <= 0 or wout <= 0:
+        return False
+    if (hin + 2 * ph - dh * (kh - 1) - 1) // sh + 1 != hout:
+        return False
+    if (win + 2 * pw - dw * (kw - 1) - 1) // sw + 1 != wout:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +450,16 @@ def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilatio
 
     def plain():
         return conv2d(input, weight, bias, stride, padding, dilation, groups)
+
+    # Route depthwise (groups == C) to the fast path directly.
+    if user_bias is None and _vendor_ok(input, weight, stride, padding, dilation):
+        if input.dtype == torch.bfloat16:
+            # bf16 reride in fp32; rounded back once.
+            out = _vendor_depthwise(
+                input.float(), weight.float(), bias, stride, padding, dilation, groups
+            )
+            return out.to(input.dtype)
+        return _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups)
 
     if user_bias is not None or not _base_eligible(input, weight):
         return plain()

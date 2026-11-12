@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_skip_if_no_fp64 = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
+    reason="unsupported-dtype guard is unconstructible without fp64",
+)
+
+
 SUPPORTED_CONV_TRANSPOSE2D_CASES = [
     pytest.param(
         (16, 32, 8, 8),
@@ -425,6 +431,7 @@ def test_conv_transpose2d_rejects_triplet_hyperparameters(argument):
         flag_gems.conv_transpose2d(inp, weight, **kwargs)
 
 
+@_skip_if_no_fp64
 @pytest.mark.conv_transpose2d
 def test_conv_transpose2d_unsupported_dtype_raise():
     _skip_if_unsupported_test_device(torch.float32)

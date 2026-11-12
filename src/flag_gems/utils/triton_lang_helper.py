@@ -1318,10 +1318,35 @@ def _fallback_erfc(x):
 @triton.jit
 def _fallback_rcp_rn(x):
     # Correctly-rounded reciprocal, used when a backend's libdevice lacks a
-    # native rcp_rn (e.g. the Ascend CANN backend). x is expected to already
-    # be fp32/fp64; casting 1.0 to x's dtype keeps the division from widening
-    # to fp64, which is what the callers of rcp_rn rely on.
-    return (1.0).to(x.dtype) / x
+    # native rcp_rn (e.g. the Ascend CANN or HIP backend). x is expected to be
+    # fp32/fp64. A Python float literal has no `.to()` in the Triton frontend;
+    # in `1.0 / x` the literal adopts x's dtype, so the division stays in x's
+    # precision without widening to fp64.
+    return 1.0 / x
+
+
+@triton.jit
+def _fallback_div_rn(x, y):
+    # IEEE round-to-nearest division for backends whose libdevice lacks div_rn
+    # (e.g. HIP); tl.math.div_rn is the core precise-division builtin.
+    return tl.math.div_rn(x, y)
+
+
+@triton.jit
+def _fallback_div_rz(x, y):
+    # Round-toward-zero division built from div_rn: the exact remainder
+    # r = x - q*y (via fma) tells whether |q| overshot |x/y|; if so, step q one
+    # ulp toward zero (bits - 1 shrinks the magnitude for either sign).
+    q = tl.math.div_rn(x, y)
+    r = tl.math.fma(-q, y, x)
+    overshoot = (r != 0) & (((r < 0) ^ (y < 0)) != (q < 0))
+    overflow = (tl.abs(q) == float("inf")) & (tl.abs(x) != float("inf")) & (y != 0)
+    step = (q != 0) & (overshoot | overflow)
+    if q.dtype == tl.float64:
+        prev = (q.to(tl.int64, bitcast=True) - 1).to(tl.float64, bitcast=True)
+    else:
+        prev = (q.to(tl.int32, bitcast=True) - 1).to(tl.float32, bitcast=True)
+    return tl.where(step, prev, q)
 
 
 @triton.jit
@@ -1334,12 +1359,87 @@ def _fallback_isfinite(x):
     return (x - x) == 0.0
 
 
+# CUDA's fast_* intrinsics are reduced-precision approximations; on backends
+# whose libdevice lacks them (e.g. HIP) use the full-precision core math.
+@triton.jit
+def _fallback_fast_logf(x):
+    return tl.log(x)
+
+
+@triton.jit
+def _fallback_fast_log2f(x):
+    return tl.log2(x)
+
+
+@triton.jit
+def _fallback_fast_log10f(x):
+    return tl.log(x) * 0.4342944819032518
+
+
+@triton.jit
+def _fallback_fast_cosf(x):
+    return tl.cos(x)
+
+
+@triton.jit
+def _fallback_fast_sinf(x):
+    return tl.sin(x)
+
+
+@triton.jit
+def _fallback_fast_tanf(x):
+    return tl.sin(x) / tl.cos(x)
+
+
+@triton.jit
+def _fallback_ffs(x):
+    # 1-based index of the lowest set bit (0 for x == 0), matching libdevice
+    # ffs/ffsll; used where the backend lacks it (e.g. HIP). Binary search over
+    # the low bits in int64 covers both int32 and int64 inputs.
+    y = x.to(tl.int64)
+    zero = y - y
+    one = zero + 1
+    n = zero
+    m = (one << 32) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 32, n)
+    y = tl.where(s, y >> 32, y)
+    m = (one << 16) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 16, n)
+    y = tl.where(s, y >> 16, y)
+    m = (one << 8) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 8, n)
+    y = tl.where(s, y >> 8, y)
+    m = (one << 4) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 4, n)
+    y = tl.where(s, y >> 4, y)
+    m = (one << 2) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 2, n)
+    y = tl.where(s, y >> 2, y)
+    s = (y & one) == zero
+    n = tl.where(s, n + 1, n)
+    return tl.where(x == 0, zero, n + 1).to(tl.int32)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "asin": _fallback_asin,
+    "div_rn": _fallback_div_rn,
+    "div_rz": _fallback_div_rz,
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
+    "fast_cosf": _fallback_fast_cosf,
+    "fast_log10f": _fallback_fast_log10f,
+    "fast_log2f": _fallback_fast_log2f,
+    "fast_logf": _fallback_fast_logf,
+    "fast_sinf": _fallback_fast_sinf,
+    "fast_tanf": _fallback_fast_tanf,
+    "ffs": _fallback_ffs,
     "finitef": _fallback_isfinite,
     "floor": _fallback_floor,
     "isfinited": _fallback_isfinite,
@@ -1364,6 +1464,11 @@ def _patch_missing_symbols(module, names):
         # FlagGems only needs their shared round-to-nearest-even value semantics.
         if name == "nearbyint" and hasattr(module, "rint"):
             setattr(module, name, module.rint)
+            continue
+        # The HIP/AMD libdevice is the mirror case: it exposes nearbyint but not
+        # rint (which otherwise fails to lower). They share round-to-nearest-even.
+        if name == "rint" and hasattr(module, "nearbyint"):
+            setattr(module, name, module.nearbyint)
             continue
         # Prefer the pure-triton fallback over borrowing from another backend's
         # libdevice.  This loop only runs for symbols the vendor's own libdevice
@@ -1400,9 +1505,16 @@ tl_extra_shim = _patch_missing_symbols(
         "erfinv",
         "exp",
         "exp2",
+        "fast_cosf",
         "fast_erf",
         "fast_gelu",
+        "fast_log10f",
+        "fast_log2f",
+        "fast_logf",
+        "fast_sinf",
+        "fast_tanf",
         "fast_tanh",
+        "ffs",
         "finitef",
         "fmod",
         "floor",
@@ -1431,6 +1543,152 @@ tl_extra_shim = _patch_missing_symbols(
         "y1",
     ),
 )
+
+
+# Accurate fp32 pow for AMD Radeon. HIP's __ocml_pow_f32 as linked by Triton
+# loses accuracy as |y*log2(x)| grows (up to ~120 ULP for |y| ~ 100, ~170 ULP
+# on random inputs), well past the ~11 ULP fp32 test tolerance. This version
+# keeps log2(x) and y*log2(x) as fp32 double-floats (max ~1 ULP measured on
+# gfx1201); special cases follow C99 pow and match the CPU bit-exactly.
+@triton.jit
+def _ff_opaque(x):
+    # Empty asm tied to its input keeps a rounded product from being contracted
+    # into a later add, which would break the error-free transformations.
+    return tl.inline_asm_elementwise(
+        asm="", constraints="=v,0", args=[x], dtype=tl.float32, is_pure=True, pack=1
+    )
+
+
+@triton.jit
+def _ff_two_sum(a, b):
+    s = a + b
+    bb = s - a
+    return s, (a - (s - bb)) + (b - bb)
+
+
+@triton.jit
+def _ff_two_prod(a, b):
+    p = _ff_opaque(a * b)
+    return p, tl.math.fma(a, b, -p)
+
+
+@triton.jit
+def _ff_log2(x):
+    # log2(x) = hi + lo for finite x > 0, via ln(m) = 2 atanh((m - 1) / (m + 1)).
+    sub = x < 1.1754943508222875e-38
+    xs = tl.where(sub, x * 16777216.0, x)
+    bits = xs.to(tl.int32, bitcast=True)
+    e = ((bits >> 23) & 0xFF) - 127
+    m = ((bits & 0x7FFFFF) | 0x3F800000).to(tl.float32, bitcast=True)
+    big = m > 1.41421356
+    m = tl.where(big, m * 0.5, m)
+    e = e + big.to(tl.int32) - sub.to(tl.int32) * 24
+    num = m - 1.0
+    dh, dl = _ff_two_sum(m, 1.0)
+    th = num / dh
+    tlo = (tl.math.fma(-th, dh, num) - th * dl) / dh
+    t2h, t2l = _ff_two_prod(th, th)
+    t3h, t3l = _ff_two_prod(t2h, th)
+    t3l = t3l + t2l * th + 3.0 * t2h * tlo
+    qh, ql = _ff_two_prod(t3h, 0.6666666865348816)
+    ql = ql + t3h * -1.9868215517249155e-08 + t3l * 0.6666666865348816
+    # 2t^5/5 + 2t^7/7 + ... (|t^5| term <= 6e-5, so fp32 is enough here).
+    t2 = t2h
+    poly = 0.1538461538 + t2 * 0.1333333333
+    poly = 0.1818181818 + t2 * poly
+    poly = 0.2222222222 + t2 * poly
+    poly = 0.2857142857 + t2 * poly
+    poly = 0.4 + t2 * poly
+    rest = th * t2 * t2 * poly
+    sh, sl = _ff_two_sum(2.0 * th, qh)
+    sl = sl + 2.0 * tlo + ql + rest
+    lnh = sh + sl
+    lnl = sl - (lnh - sh)
+    l2h, l2l = _ff_two_prod(lnh, 1.4426950216293335)
+    l2l = l2l + lnh * 1.925963033500011e-08 + lnl * 1.4426950216293335
+    rh, rl = _ff_two_sum(e.to(tl.float32), l2h)
+    rl = rl + l2l
+    hi = rh + rl
+    return hi, rl - (hi - rh)
+
+
+@triton.jit
+def _ff_pow2i(k):
+    # 2**k for an integer k in [-126, 127], exact.
+    return ((k + 127) << 23).to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _accurate_powf(x, y):
+    ax = tl.abs(x)
+    y_int = y == tl.floor(y)
+    yh2 = y * 0.5
+    y_odd = y_int & (tl.floor(yh2) != yh2)
+    normal = (
+        (ax > 0.0)
+        & (ax < float("inf"))
+        & (tl.abs(y) < float("inf"))
+        & (y != 0.0)
+        & ((x > 0.0) | y_int)
+    )
+    lh, ll = _ff_log2(tl.where(normal, ax, 1.0))
+    ph, pl = _ff_two_prod(y, lh)
+    pl = pl + y * ll
+    over = ph > 129.0
+    under = ph < -151.0
+    ph = tl.minimum(tl.maximum(ph, -151.0), 129.0)
+    pl = tl.where(over | under, 0.0, pl)
+    n = tl.math.floor(ph + 0.5)
+    r = tl.math.exp2((ph - n) + pl)
+    ni = n.to(tl.int32)
+    k1 = ni >> 1
+    k2 = ni - k1
+    r = r * _ff_pow2i(tl.minimum(tl.maximum(k1, -126), 127))
+    r = r * _ff_pow2i(tl.minimum(tl.maximum(k2, -126), 127))
+    r = tl.where(over, float("inf"), tl.where(under, 0.0, r))
+    r = tl.where((x < 0.0) & y_odd, -r, r)
+    return tl.where(normal, r, _ff_pow_special(x, y, ax, y_int, y_odd))
+
+
+@triton.jit
+def _ff_pow_special(x, y, ax, y_int, y_odd):
+    # C99 pow special cases, spelled out so no native pow is expanded per element.
+    inf = float("inf")
+    y_inf = tl.abs(y) == inf
+    neg = x.to(tl.int32, bitcast=True) < 0
+    r_yinf = tl.where(ax == 1.0, 1.0, tl.where((ax < 1.0) == (y > 0.0), 0.0, inf))
+    r_zero_inf = tl.where((ax == 0.0) == (y < 0.0), inf, 0.0)
+    r = tl.where(y_inf, r_yinf, r_zero_inf)
+    r = tl.where(neg & y_odd & ~y_inf, -r, r)
+    r = tl.where((x < 0.0) & ~y_int & (ax < inf), float("nan"), r)
+    r = tl.where((x != x) | (y != y), float("nan"), r)
+    return tl.where((y == 0.0) | (x == 1.0), 1.0, r)
+
+
+@triton.jit
+def _radeon_pow(x, y):
+    # Callers also pass Python scalars (e.g. pow(x, 3)); where() turns them into
+    # tensors the way the native extern would (int -> int32, float -> fp32), so
+    # integer exponents keep the native pown overload.
+    xt = tl.where(True, x, x)
+    yt = tl.where(True, y, y)
+    if xt.dtype == tl.float32 and yt.dtype == tl.float32:
+        return _accurate_powf(xt, yt)
+    else:
+        return _NATIVE_POW(x, y)
+
+
+def _use_radeon_pow():
+    if getattr(device, "vendor_name", None) != "amd":
+        return False
+    from flag_gems.utils.device_info import is_amd_radeon
+
+    return is_amd_radeon() and hasattr(tl_extra_shim, "pow")
+
+
+if _use_radeon_pow():
+    _NATIVE_POW = tl_extra_shim.pow
+    tl_extra_shim.pow = _radeon_pow
 
 
 def use_backend(module):

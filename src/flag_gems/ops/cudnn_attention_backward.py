@@ -30,6 +30,7 @@ from flag_gems.ops.flash_attention_backward import (
     _get_bias_strides_varlen,
     _parse_philox,
 )
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ _CUDNN_DKV_CONFIGS = [
 ]
 
 
+@libentry()
 @triton.autotune(
     configs=_CUDNN_DQ_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM_QK", "HEAD_DIM_V"],
@@ -228,6 +230,7 @@ def _cudnn_attn_bwd_dq_dual_dim(
     )
 
 
+@libentry()
 @triton.autotune(
     configs=_CUDNN_DKV_CONFIGS,
     key=["seqlen_q", "seqlen_k", "HEAD_DIM_QK", "HEAD_DIM_V"],
