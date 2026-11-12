@@ -16,29 +16,9 @@
 
 import logging
 
-import torch
-
 from flag_gems.ops._validate_sparse_csc_tensor_args import _validate_metadata
 
 logger = logging.getLogger(__name__)
-
-
-def _normalize_empty_stride(indices):
-    # ATen accepts arbitrary strides when there are no elements to address.
-    # The shared validator predates that edge case, so normalize only empty
-    # descriptors without copying or changing any observable data.
-    if indices.numel() == 0 and indices.ndim and indices.stride(-1) != 1:
-        # ``empty_like(..., memory_format=contiguous_format)`` retained the
-        # source stride on older PyTorch releases.  Constructing from the
-        # shape gives a canonical contiguous stride across supported versions.
-        return torch.empty(
-            indices.shape,
-            dtype=indices.dtype,
-            layout=indices.layout,
-            device=indices.device,
-            pin_memory=indices.is_pinned(),
-        )
-    return indices
 
 
 def _validate_sparse_compressed_tensor_args(
@@ -46,8 +26,8 @@ def _validate_sparse_compressed_tensor_args(
 ):
     logger.debug("GEMS _VALIDATE_SPARSE_COMPRESSED_TENSOR_ARGS")
     return _validate_metadata(
-        _normalize_empty_stride(compressed_indices),
-        _normalize_empty_stride(plain_indices),
+        compressed_indices,
+        plain_indices,
         values,
         size,
         layout,
