@@ -9,6 +9,7 @@ pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
 
+
 @pytest.mark.addmm
 @pytest.mark.parametrize("shape", [(33, 112, 48), (63, 128, 31)])
 @pytest.mark.parametrize("kind", ["plain", "strided", "scaled"])
@@ -32,6 +33,7 @@ def test_hygon_addmm_small_fp32_dispatch(shape, kind):
     else:
         result = flag_gems.addmm(ig, ag, bg, alpha=alpha, beta=beta)
     torch.testing.assert_close(result.cpu(), expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize("seed", [2901, 2902])
@@ -58,6 +60,7 @@ def test_hygon_addmm_large_bf16_dispatch(seed, kind):
         result = flag_gems.addmm(ig, ag, bg, alpha=alpha, beta=beta)
     torch.testing.assert_close(result.cpu(), expected)
 
+
 @pytest.mark.addmm
 @pytest.mark.parametrize("n", [4096, 6144])
 @pytest.mark.parametrize("seed", [3901, 3902])
@@ -72,6 +75,7 @@ def test_hygon_addmm_bf16_quarter_stores(n, seed):
         bias.to(flag_gems.device), a.to(flag_gems.device), b.to(flag_gems.device)
     )
     torch.testing.assert_close(result.cpu(), expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize(
@@ -90,6 +94,7 @@ def test_hygon_addmm_bf16_long_k_half_stores(shape, seed):
     )
     torch.testing.assert_close(result.cpu(), expected)
 
+
 @pytest.mark.addmm
 @pytest.mark.parametrize("seed", [158000, 158001, 158002])
 def test_hygon_addmm_fp32_accumulation(seed):
@@ -102,6 +107,7 @@ def test_hygon_addmm_fp32_accumulation(seed):
         bias.to(flag_gems.device), a.to(flag_gems.device), b.to(flag_gems.device)
     ).cpu()
     torch.testing.assert_close(result, expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -123,6 +129,7 @@ def test_hygon_addmm_low_precision_tails(dtype, beta):
         beta=beta,
     )
     torch.testing.assert_close(result.cpu(), expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize(
@@ -159,6 +166,7 @@ def test_hygon_addmm_medium_precise(shape, scale, strided_output, transpose_a):
     result = flag_gems.addmm(nan_bias.to(flag_gems.device), a, b, beta=0)
     expected = torch.addmm(nan_bias.double(), ac.double(), bc.double(), beta=0).float()
     torch.testing.assert_close(result.cpu(), expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize(
@@ -205,6 +213,7 @@ def test_hygon_addmm_schedule_dependencies(unsafe):
         )
         assert result.count("s_barrier") == 2
 
+
 @pytest.mark.addmm
 @pytest.mark.parametrize("unaligned", ["bias", "out"])
 def test_hygon_addmm_long_k_unaligned(unaligned):
@@ -226,16 +235,9 @@ def test_hygon_addmm_long_k_unaligned(unaligned):
     assert result.data_ptr() == out.data_ptr()
     torch.testing.assert_close(result.cpu(), expected)
 
+
 """Regression coverage for expanded Hygon layouts and precise reductions."""
 
-import pytest
-import torch
-
-import flag_gems
-
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name != "hygon", reason="Hygon kernels"
-)
 
 @pytest.mark.addmm
 @pytest.mark.parametrize(
@@ -260,6 +262,7 @@ def test_expanded_addmm_precision_and_output_stride(shape, beta):
     torch.testing.assert_close(actual.cpu(), expected)
     torch.testing.assert_close(out.cpu(), expected)
 
+
 @pytest.mark.addmm
 @pytest.mark.parametrize("beta", [0, 1])
 def test_expanded_addmm_aligned_k(beta):
@@ -283,6 +286,7 @@ def test_expanded_addmm_aligned_k(beta):
     assert returned is out
     torch.testing.assert_close(actual.cpu(), expected)
     torch.testing.assert_close(out.cpu(), expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize(
@@ -311,6 +315,7 @@ def test_expanded_addmm_transposed_bias_and_out(kind, alpha, beta):
     assert returned is out
     torch.testing.assert_close(actual.cpu(), expected)
     torch.testing.assert_close(out.cpu(), expected)
+
 
 @pytest.mark.addmm
 @pytest.mark.parametrize(
