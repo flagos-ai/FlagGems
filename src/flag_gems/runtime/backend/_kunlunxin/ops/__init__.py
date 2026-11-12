@@ -204,6 +204,9 @@ from ._scaled_dot_product_fused_attention_overrideable import (
 )
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
+from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
+    _thnn_differentiable_gru_cell_backward,
+)
 from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
@@ -223,6 +226,7 @@ from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from .adaptive_max_pool1d import adaptive_max_pool1d  # noqa: F401
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -881,6 +885,10 @@ from .special_multigammaln import special_multigammaln
 from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
+from .special_scaled_modified_bessel_k0 import (  # noqa: F401
+    special_scaled_modified_bessel_k0,
+    special_scaled_modified_bessel_k0_out,
+)
 from .special_scaled_modified_bessel_k1 import (  # noqa: F401
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -899,6 +907,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .special_softmax import special_softmax
+from .special_spherical_bessel_j0 import special_spherical_bessel_j0  # noqa: F401
 from .special_xlog1py import special_xlog1py
 from .special_zeta import (
     special_zeta,
@@ -965,6 +974,7 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
 from .weight_norm import _weight_norm
