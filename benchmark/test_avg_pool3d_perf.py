@@ -118,13 +118,39 @@ def test_perf_avg_pool3d():
     bench.run()
 
 
+class AvgPool3dBackwardBenchmark(AvgPool3dBenchmark):
+    def build_inputs(self, case):
+        if base.vendor_name == "enflame" and case.dtype in (torch.float16, torch.bfloat16):
+            pytest.skip(f"Enflame native avg_pool3d_backward does not support {case.dtype}")
+        inp, kwargs = super().build_inputs(case)
+        inp = inp.clone().requires_grad_(True)
+        def triple(value):
+            return (value,) * 3 if isinstance(value, int) else tuple(value)
+        kernel = triple(kwargs["kernel_size"])
+        stride = triple(kwargs["stride"])
+        padding = triple(kwargs["padding"])
+        spatial = []
+        for length, k, step, pad in zip(inp.shape[-3:], kernel, stride, padding):
+            rounding = step - 1 if kwargs["ceil_mode"] else 0
+            output = (length + 2 * pad - k + rounding) // step + 1
+            if kwargs["ceil_mode"] and (output - 1) * step >= length + pad:
+                output -= 1
+            spatial.append(output)
+        grad_output = torch.randn(
+            (*inp.shape[:-3], *spatial), dtype=inp.dtype, device=inp.device
+        )
+        return (
+            grad_output, inp, list(kernel), list(stride), list(padding),
+            kwargs["ceil_mode"], kwargs["count_include_pad"], kwargs["divisor_override"],
+        )
+
+
 @pytest.mark.avg_pool3d_backward
 def test_perf_avg_pool3d_backward():
-    bench = AvgPool3dBenchmark(
+    bench = AvgPool3dBackwardBenchmark(
         input_fn=avg_pool3d_input_fn,
-        op_name="avg_pool3d",
-        torch_op=torch.ops.aten.avg_pool3d,
+        op_name="avg_pool3d_backward",
+        torch_op=torch.ops.aten.avg_pool3d_backward.default,
         dtypes=consts.FLOAT_DTYPES,
-        is_backward=True,
     )
     bench.run()
