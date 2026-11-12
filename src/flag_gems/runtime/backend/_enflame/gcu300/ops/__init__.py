@@ -16,6 +16,7 @@ from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
+from ._foreach_unary_extra import _foreach_asin_, _foreach_erfc_  # noqa: E402
 from ._philox_uniform_ import _philox_uniform_
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._stack import _stack
@@ -329,6 +330,8 @@ from .zeros_like import zeros_like
 __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
+    "_foreach_asin_",
+    "_foreach_erfc_"
     "_index_put_impl_",
     "_philox_uniform_",
     "_scaled_dot_product_flash_attention",
@@ -734,7 +737,3 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
-
-from ._foreach_unary_extra import _foreach_asin_, _foreach_erfc_  # noqa: E402
-
-__all__ += ["_foreach_asin_", "_foreach_erfc_"]
