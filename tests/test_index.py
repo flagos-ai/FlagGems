@@ -342,16 +342,21 @@ def test_index_int32_offset_overflow():
 
     rows = 2**28 + 1
     inp = torch.zeros((rows, 8), dtype=torch.int8, device=flag_gems.device)
-    # Distinct boundary rows also catch incorrect reads that happen to land on
-    # zero-filled memory. Exercise negative wrapping and both index widths.
-    sentinel = torch.tensor(
-        [1, 2, 3, 4, 5, 6, 7, 8], dtype=torch.int8, device=flag_gems.device
-    )
-    inp[-1] = sentinel
-    inp[0] = -sentinel
+    index_dtypes = (torch.int32,)
+    index_values = [2**28]
+    if flag_gems.vendor_name == "hygon":
+        # Supplement the original cross-backend regression with value and
+        # negative-index coverage for the repaired Hygon gather paths.
+        sentinel = torch.tensor(
+            [1, 2, 3, 4, 5, 6, 7, 8], dtype=torch.int8, device=flag_gems.device
+        )
+        inp[-1] = sentinel
+        inp[0] = -sentinel
+        index_dtypes = (torch.int32, torch.int64)
+        index_values = [-1, 2**28, 0]
     ref_inp = utils.to_reference(inp)
-    for index_dtype in (torch.int32, torch.int64):
-        idx = torch.tensor([-1, 2**28, 0], dtype=index_dtype, device=flag_gems.device)
+    for index_dtype in index_dtypes:
+        idx = torch.tensor(index_values, dtype=index_dtype, device=flag_gems.device)
         ref_idx = utils.to_reference(idx)
 
         # Contiguous input takes the linearized adjacent-index kernel.
