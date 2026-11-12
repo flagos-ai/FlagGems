@@ -386,8 +386,10 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .dequantize import dequantize
+from .detach_copy import detach_copy
 from .diag import diag
 from .diag_embed import diag_embed
+from .diagflat import diagflat
 from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .diagonal_scatter import diagonal_scatter
@@ -445,6 +447,8 @@ from .fake_quantize_per_tensor_affine import (  # noqa: F401
 from .fake_quantize_per_tensor_affine_cachemask_backward import (  # noqa: F401
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
+from .feature_alpha_dropout import feature_alpha_dropout
+from .feature_alpha_dropout_ import feature_alpha_dropout_
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -1339,8 +1343,10 @@ __all__ = [
     "deg2rad_",
     "deg2rad_out",
     "dequantize",
+    "detach_copy",
     "diag",
     "diag_embed",
+    "diagflat",
     "diagonal_backward",
     "diagonal_copy",
     "diagonal_scatter",
@@ -1389,6 +1395,8 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
     "fake_quantize_per_tensor_affine_cachemask_backward",
+    "feature_alpha_dropout",
+    "feature_alpha_dropout_",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
