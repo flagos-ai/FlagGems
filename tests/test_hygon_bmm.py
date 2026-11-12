@@ -9,6 +9,7 @@ pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
 
+
 @pytest.mark.bmm
 @pytest.mark.parametrize(
     "dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16]
@@ -39,6 +40,7 @@ def test_hygon_small_bmm(dtype, shape):
     result = flag_gems.bmm(a.to(flag_gems.device), b.to(flag_gems.device)).cpu()
     torch.testing.assert_close(result, reference)
 
+
 @pytest.mark.bmm
 @pytest.mark.parametrize(
     "shape",
@@ -64,6 +66,7 @@ def test_hygon_short_matrix_bmm_out(shape, strided_output):
     result = flag_gems.bmm_out(a.to(flag_gems.device), b.to(flag_gems.device), out)
     assert result.data_ptr() == out.data_ptr()
     torch.testing.assert_close(out.cpu(), expected)
+
 
 @pytest.mark.bmm
 @pytest.mark.parametrize(
@@ -91,12 +94,9 @@ def test_hygon_single_row_bmm(shape, layout):
         actual = flag_gems.bmm(ag, bg)
     torch.testing.assert_close(actual.cpu(), expected)
 
+
 """Regression coverage for expanded Hygon layouts and precise reductions."""
 
-import pytest
-import torch
-
-import flag_gems
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
