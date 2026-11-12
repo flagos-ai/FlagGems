@@ -680,3 +680,49 @@ def test_col_indices_copy_out_negative_wrong_dtype():
         torch.ops.aten.col_indices_copy.out(ref_inp, out=ref_out)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.col_indices_copy(inp, out=out)
+
+
+def _make_noncontiguous_col_csr(dtype):
+    # The stored column-index buffer interleaves sentinel entries between the
+    # real indices, so the CSR accessor exposes stride-2 column indices.
+    col_full = torch.tensor(
+        [0, 99, 1, 99, 2, 99], dtype=torch.long, device=flag_gems.device
+    )
+    crow = torch.tensor([0, 1, 2, 3], dtype=torch.long, device=flag_gems.device)
+    values = _make_values(dtype, (3,), ["-1", "1"])
+    return torch.sparse_csr_tensor(crow, col_full[::2], values, size=(3, 3))
+
+
+@pytest.mark.col_indices_copy
+@pytest.mark.parametrize("dtype", _COLS_DTYPES)
+def test_col_indices_copy_noncontiguous_source(dtype):
+    inp = _make_noncontiguous_col_csr(dtype)
+    assert not inp.col_indices().is_contiguous()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.col_indices_copy(ref_inp)
+    res_out = flag_gems.col_indices_copy(inp)
+
+    assert res_out.is_contiguous()
+    assert res_out.data_ptr() != inp.col_indices().data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.col_indices_copy
+@pytest.mark.parametrize("dtype", _COLS_DTYPES)
+def test_col_indices_copy_out_noncontiguous_out(dtype):
+    inp = _make_input("csr", (5, 4), 6, None, dtype)
+    src = inp.col_indices()
+    n = src.numel()
+    out_base = torch.full((2 * n,), -1, dtype=src.dtype, device=inp.device)
+    out = out_base[::2]
+    assert not out.is_contiguous()
+    ref_inp = utils.to_reference(inp)
+    ref_base = torch.full((2 * n,), -1, dtype=src.dtype, device=ref_inp.device)
+    ref_out = ref_base[::2]
+
+    torch.ops.aten.col_indices_copy(ref_inp, out=ref_out)
+    res_ret = flag_gems.col_indices_copy(inp, out=out)
+
+    assert res_ret is out
+    utils.gems_assert_equal(out_base, ref_base)

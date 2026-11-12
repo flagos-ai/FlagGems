@@ -68,6 +68,18 @@ DSTACK_ZERO_SHAPES = [
     [(0, 3, 4), (0, 3, 4)],
 ]
 
+# Mixed real+complex lists promote to complex, so the real inputs must be read
+# at the complex copy-element width. 2-D inputs take the promoted (M, N, 1)
+# shape with inner == 1; the rank-4 pair has inner == 2.
+DSTACK_MIXED_SHAPES = [
+    [(2, 3), (2, 3)],
+    [(2, 3, 1, 2), (2, 3, 2, 2)],
+]
+
+DSTACK_COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
+
 
 def _make_inputs(shapes, dtype):
     if dtype in utils.FLOAT_DTYPES:
@@ -204,6 +216,36 @@ def test_dstack_mixed_dtype_promotion():
 
     assert res_out.dtype == ref_out.dtype
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.dstack
+@pytest.mark.parametrize("shapes", DSTACK_MIXED_SHAPES)
+@pytest.mark.parametrize("complex_dtype", DSTACK_COMPLEX_DTYPES)
+def test_dstack_mixed_real_complex(shapes, complex_dtype):
+    # Disjoint integer ramps: the real input and the complex input's real part
+    # use consecutive values, and the imaginary part adds a fixed offset, so a
+    # real/imaginary mix-up or a real input read over-wide changes the result.
+    cpu_inp = []
+    for i, shape in enumerate(shapes):
+        numel = 1
+        for dim in shape:
+            numel *= dim
+        real = torch.arange(i * numel, (i + 1) * numel, dtype=torch.float32).reshape(
+            shape
+        )
+        if i == 0:
+            cpu_inp.append(real)
+        else:
+            imag = torch.arange(1000, 1000 + numel, dtype=torch.float32).reshape(shape)
+            cpu_inp.append(torch.complex(real, imag).to(complex_dtype))
+
+    # Independent native reference, computed on CPU from the exact inputs.
+    ref_out = torch.dstack(cpu_inp)
+    inp = [x.to(flag_gems.device) for x in cpu_inp]
+    res_out = flag_gems.dstack(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out.cpu(), ref_out)
 
 
 @pytest.mark.dstack
