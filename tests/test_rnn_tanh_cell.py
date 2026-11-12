@@ -132,6 +132,14 @@ def test_accuracy_rnn_tanh_cell_non_contiguous(dtype):
 )
 def test_accuracy_rnn_tanh_cell_zero_sized(batch, input_size, hidden_size):
     """Empty batch, empty reduction and empty hidden all return empty outputs."""
+    if flag_gems.vendor_name == "kunlunxin" and not TO_CPU and input_size == 0:
+        # XPU (torch_xmlir) native linear/relu eager decomposition is
+        # unreliable for input_size == 0 (returns garbage), so the default
+        # device-reference mode cannot produce a correct reference for the
+        # bias-only result; the gems kernel matches ATen eager semantics.
+        # Same vendor-gated pattern as PR #8700; --ref cpu keeps the full
+        # validation path.
+        pytest.skip("device reference is unreliable on XPU for input_size == 0")
     dtype = torch.float32
     input, hx, w_ih, w_hh, b_ih, b_hh = _inputs(batch, input_size, hidden_size, dtype)
     res_out = flag_gems.rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih, b_hh)
