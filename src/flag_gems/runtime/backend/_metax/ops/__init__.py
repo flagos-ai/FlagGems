@@ -208,7 +208,6 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
-from ._make_dep_token import _make_dep_token
 from .mode import mode
 from .mul import mul, mul_
 from .mv import mv
@@ -280,7 +279,6 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
     "_convolution_double_backward",
-    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_scaled_dot_product_attention_math_for_mps",
     "_thnn_fused_lstm_cell_backward_impl",
