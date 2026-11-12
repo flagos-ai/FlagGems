@@ -48,6 +48,21 @@ PERFORMANCE_DESCRIPTORS = [
     (8, 4, 128, 64),
 ]
 
+# Master core workloads use SPD matrices and one FP32 left solve per shape.
+_MASTER_CORE_DESCRIPTORS = [
+    (1, 4, 1),
+    (1, 8, 1),
+    (1, 16, 1),
+    (4, 4, 4),
+    (4, 8, 4),
+    (4, 16, 4),
+    (8, 8, 1),
+    (8, 16, 1),
+    (16, 8, 4),
+    (16, 16, 4),
+    (32, 8, 1),
+]
+
 # Zero-extent operands are accepted natively, so the empty-system boundaries
 # stay in the default grid (measured: A (0,0)/B (0,0), A (64,64)/B (64,0) and
 # A (2,0,0)/B (2,0,0) return without error for both left modes).
@@ -220,9 +235,11 @@ def _operand_shapes(shape, left):
 
 
 def _case_fn(shape, dtype):
-    del dtype
     descriptor = _validate_descriptor(shape)
-    for left in (True, False):
+    master_core = descriptor in _MASTER_CORE_DESCRIPTORS
+    if master_core and dtype != torch.float32:
+        return
+    for left in ((True,) if master_core else (True, False)):
         a_shape, b_shape = _operand_shapes(descriptor, left)
         yield base.BenchmarkCasePlan(
             shape={"A": a_shape, "B": b_shape},
@@ -240,7 +257,12 @@ def _build_inputs_fn(plan, dtype, device):
     cpu_fixture = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype.is_complex
     fixture_device = "cpu" if cpu_fixture else device
     a = torch.randn(a_shape, dtype=dtype, device=fixture_device)
-    a.diagonal(dim1=-2, dim2=-1).add_(a_shape[-1])
+    if shape in _MASTER_CORE_DESCRIPTORS:
+        n = a_shape[-1]
+        eye = torch.eye(n, dtype=dtype, device=fixture_device).unsqueeze(0)
+        a = a @ a.mT + eye * n
+    else:
+        a.diagonal(dim1=-2, dim2=-1).add_(a_shape[-1])
     b = torch.randn(b_shape, dtype=dtype, device=fixture_device)
     if cpu_fixture:
         a, b = (
@@ -263,7 +285,7 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 DEFAULT_DESCRIPTORS = [
-    _validate_descriptor(shape) for shape in PERFORMANCE_DESCRIPTORS + ZERO_DESCRIPTORS
+    _validate_descriptor(shape) for shape in PERFORMANCE_DESCRIPTORS + ZERO_DESCRIPTORS + _MASTER_CORE_DESCRIPTORS
 ]
 
 
@@ -433,8 +455,10 @@ def _h800_input_config(args, kwargs):
         b.shape[-1] if left else b.shape[-2],
     )
     a_shape, b_shape = _operand_shapes(descriptor, left)
+    if descriptor in _MASTER_CORE_DESCRIPTORS:
+        raise ValueError("Master SPD core cases require their own native baseline")
     if descriptor not in DEFAULT_DESCRIPTORS:
-        raise ValueError("Descriptor differs from the nine original core descriptors")
+        raise ValueError("Descriptor differs from the supported core descriptors")
     for tensor, shape in ((a, a_shape), (b, b_shape)):
         if (
             tuple(tensor.shape) != shape
