@@ -56,6 +56,8 @@ jobs:
       group: python-op-${{ needs.prepare.outputs.datetime }}
       cancel-in-progress: true
     runs-on: jiuding
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
@@ -86,6 +88,29 @@ jobs:
         with:
           name: op-ut-coverage
           path: coverage/
+
+      - name: Record failed operators and adjust stages
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          # Persist the failed operators of this run (issue #4100) and
+          # demote operators that keep failing, then commit the result.
+          python3 tools/record_failures.py --run "${RUN_TAG}" \
+            --results accuracy_result.json \
+            --db .github/daily_failures.json
+          python3 tools/degrade_stages.py \
+            --db .github/daily_failures.json \
+            --yaml conf/operators.yaml
+          git add .github/daily_failures.json conf/operators.yaml || true
+          if git diff --cached --quiet -- .github/daily_failures.json conf/operators.yaml; then
+            echo "No failure-record or stage changes to commit"
+          else
+            git config user.name "flaggems-daily-bot"
+            git config user.email "flaggems-daily-bot@users.noreply.github.com"
+            git commit -m "chore(daily): record failed operators and adjust stages (${RUN_TAG})"
+            git push
+          fi
 
   examples:
     needs: prepare
