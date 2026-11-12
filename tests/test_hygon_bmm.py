@@ -128,3 +128,42 @@ def test_hygon_bmm_out_overlap_uses_upstream_copy():
     result = flag_gems.bmm_out(ad, bd, out=ad)
     assert result is ad
     torch.testing.assert_close(result.cpu(), expected)
+
+
+@pytest.mark.bmm
+@pytest.mark.parametrize("kind", ["interleaved", "narrow_single_row"])
+@pytest.mark.parametrize("out_variant", [False, True])
+def test_hygon_bmm_upstream_performance_guards(monkeypatch, kind, out_variant):
+    import importlib
+
+    # Use the module actually registered by the backend, avoiding import aliases.
+    provider = importlib.import_module(flag_gems.bmm.__module__)
+
+    def forbidden_specialization(*args, **kwargs):
+        pytest.fail("performance guard did not retain optimized upstream BMM")
+
+    monkeypatch.setattr(provider, "_launch", forbidden_specialization)
+    batch, m, k, n = (3, 33, 33, 16) if kind == "interleaved" else (33, 1, 48, 2)
+    generator = torch.Generator().manual_seed(6701)
+    a = torch.randn(batch, m, k, generator=generator) * 0.25
+    backing = torch.randn(k, batch, n, generator=generator) * 0.25
+    b = (
+        backing.permute(1, 0, 2)
+        if kind == "interleaved"
+        else backing.permute(1, 0, 2).contiguous()
+    )
+    expected = torch.bmm(a, b)
+    ad = a.to(flag_gems.device)
+    bg = backing.to(flag_gems.device)
+    bd = (
+        bg.permute(1, 0, 2)
+        if kind == "interleaved"
+        else bg.permute(1, 0, 2).contiguous()
+    )
+    if out_variant:
+        out = torch.empty(batch, m, n, device=flag_gems.device)
+        actual = flag_gems.bmm_out(ad, bd, out)
+        assert actual is out
+    else:
+        actual = flag_gems.bmm(ad, bd)
+    torch.testing.assert_close(actual.cpu(), expected)

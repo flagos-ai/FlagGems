@@ -300,9 +300,20 @@ def _launch(a, b, out):
     return out
 
 
+def _prefer_upstream(a, b):
+    _, m, k = a.shape
+    n = b.shape[2]
+    # The optimized upstream path is faster for narrow single-row reductions
+    # and short matrices whose right operand interleaves different batches.
+    return a.dtype == torch.float32 and (
+        (m == 1 and n <= 4 and 32 <= k <= 64)
+        or (_use_short_matrix(a, b) and 0 < b.stride(0) < k * n)
+    )
+
+
 def bmm(a, b):
     _validate_inputs(a, b)
-    if not (_use_reduction(a, b) or _use_short_matrix(a, b)):
+    if _prefer_upstream(a, b) or not (_use_reduction(a, b) or _use_short_matrix(a, b)):
         return _upstream_bmm(a, b)
     assert (
         a.shape[0] == b.shape[0] and a.shape[2] == b.shape[1]
@@ -316,7 +327,8 @@ def bmm(a, b):
 def bmm_out(a, b, out):
     _validate_inputs(a, b)
     if (
-        out.dtype != a.dtype
+        _prefer_upstream(a, b)
+        or out.dtype != a.dtype
         or out.device != a.device
         or tuple(out.shape) != (a.shape[0], a.shape[1], b.shape[2])
         or any(torch._C._overlaps(out, value) for value in (a, b))
