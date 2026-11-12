@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "gcd_",
+  "requires_triton_kernel": true,
+  "description": "Exact native schema aten::gcd_(Tensor(a!) self, Tensor other) -> Tensor(a!). Compute elementwise greatest common divisor on integer tensors in place, mutating self and returning the same tensor alias. other is read-only; broadcasting must be compatible with in-place destination shape. Existing master tests compare values for pointwise integer inputs; they do not explicitly assert mutation or return identity. The repaired test suite additionally verifies return identity, self metadata/storage preservation and exact preservation of other, while retaining the original numeric assertion.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}
