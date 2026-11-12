@@ -74,6 +74,8 @@ def test_linalg_eig(shape, dtype):
     # reconstruction residual A @ V - V @ diag(w)
     if flag_gems.vendor_name == "thead":
         inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
+    norms = torch.linalg.vector_norm(res_v, dim=-2)
+    torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
     a_c = inp.to(res_v.dtype)
     recon = a_c @ res_v - res_v @ torch.diag(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (shape[0] ** 0.5 + 1.0)
@@ -92,6 +94,8 @@ def test_linalg_eig_batched(batch, n, dtype):
 
     if flag_gems.vendor_name == "thead":
         inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
+    norms = torch.linalg.vector_norm(res_v, dim=-2)
+    torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
     a_c = inp.to(res_v.dtype)
     recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (batch * n) ** 0.5
