@@ -37,7 +37,10 @@ def _function_from(module):
             "GEMS_TEST_VENDOR",
         ),
         ("_test_vendor.fused.nested.add", "GEMS_TEST_VENDOR"),
-        ("_test_vendor_extra.ops.add", "GEMS"),
+        # Arch-specific ops are loaded via sys.path injection under a bare
+        # arch name, outside the flag_gems.* namespace.
+        ("gcu300.ops.add", "GEMS_TEST_VENDOR"),
+        ("_test_vendor_extra.ops.add", "GEMS_TEST_VENDOR"),
     ],
 )
 def test_gems_log_prefix(monkeypatch, module, expected):
