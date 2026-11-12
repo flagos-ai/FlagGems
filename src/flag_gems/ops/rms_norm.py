@@ -311,15 +311,40 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    x = x.contiguous()
+    # Split projections expose row-padded views. The small kernel already
+    # accepts independent input strides; retain the original reduction/casts.
+    direct_rows = (
+        x.layout == torch.strided
+        and x.device.type == "cuda"
+        and x.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and x.ndim == 2
+        and len(normalized_shape) == 1
+        and x.shape[1] == N
+        and M > 0
+        and 0 < N <= 4096
+        and x.stride(1) == 1
+        and x.stride(0) >= N
+        and not x.is_contiguous()
+        and not x.is_conj()
+        and not x.is_neg()
+    )
+    x_stride_r = x.stride(0) if direct_rows else N
+    if not direct_rows:
+        x = x.contiguous()
     weight = weight.contiguous()
-    y = torch.empty_like(x)
+    y = (
+        torch.empty(x.shape, device=x.device, dtype=x.dtype)
+        if direct_rows
+        else torch.empty_like(x)
+    )
     inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
 
     with torch_device_fn.device(x.device):
         if N <= 4096:
             BLOCK_SIZE = triton.next_power_of_2(N)
-            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+            rms_norm_kernel[M,](
+                y, inv_rms, x, weight, N, 1, x_stride_r, 1, N, eps, BLOCK_SIZE
+            )
         else:
             rms_norm_loop_kernel[M,](y, inv_rms, x, weight, N, eps)
 

@@ -36,6 +36,44 @@ def test_rms_norm():
     bench.run()
 
 
+class RowPaddedRmsNormBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "M, N"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1, 2048), (4, 2048), (4, 512), (64, 2048), (256, 2048)]
+
+    def get_input_iter(self, dtype):
+        for m, n in self.shapes:
+            backing = torch.randn((m, 2624), dtype=dtype, device=self.device)
+            offset = 2048 if n == 512 else 0
+            x = backing[:, offset : offset + n]
+            weight = torch.randn(n, dtype=dtype, device=self.device)
+            yield x, weight
+
+
+def _packed_rms_norm(x, weight):
+    from flag_gems.ops.rms_norm import rms_norm_forward
+
+    return rms_norm_forward(x.contiguous(), (x.shape[1],), weight)
+
+
+def _direct_rms_norm(x, weight):
+    from flag_gems.ops.rms_norm import rms_norm_forward
+
+    return rms_norm_forward(x, (x.shape[1],), weight)
+
+
+@pytest.mark.rms_norm
+def test_rms_norm_row_padding():
+    if flag_gems.vendor_name != "nvidia":
+        pytest.skip("CUDA row-stride forward path")
+    bench = RowPaddedRmsNormBenchmark(
+        op_name="rms_norm", torch_op=_packed_rms_norm, dtypes=[torch.bfloat16]
+    )
+    bench.set_gems(_direct_rms_norm)
+    bench.run()
+
+
 GROUP_SIZE = 128
 
 
