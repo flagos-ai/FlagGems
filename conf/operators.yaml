@@ -15554,6 +15554,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_tensor_size
+  description: 'Returns the per-constituent sizes metadata of a nested tensor as a
+    CPU int64 tensor of shape (num_tensors, max_rank).
+
+    '
+  for:
+  - _nested_tensor_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_tensor_softmax_with_shape
   description: |
     Computes softmax over the last dimension of nested-tensor attention scores,
