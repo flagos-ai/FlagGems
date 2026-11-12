@@ -51,16 +51,24 @@ class SparseValidationBenchmark(base.Benchmark):
             (256, 256, (), ()),
             (4096, 4096, (), ()),
             (64, 64, (8,), ()),
+            (1, 3, (256, 256), ()),
         ]
 
     def get_input_iter(self, dtype):
-        layouts = (torch.sparse_csr,)
+        layouts = (torch.sparse_csr, torch.sparse_csc)
         for layout in layouts:
             for shape in self.shapes:
                 comp, plain, _, _ = _make_inputs(
                     layout, shape, dtype, torch.float32, self.device
                 )
-                yield True, comp, plain, shape[0], shape[1], plain.shape[-1]
+                yield (
+                    layout == torch.sparse_csr,
+                    comp,
+                    plain,
+                    shape[0],
+                    shape[1],
+                    plain.shape[-1],
+                )
 
 
 @pytest.mark.validate_compressed_sparse_indices
