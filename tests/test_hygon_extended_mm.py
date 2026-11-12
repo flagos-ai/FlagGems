@@ -24,7 +24,7 @@ CASES = json.loads(
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: str(c["case"]))
-def test_hygon_mm_extended_workbook_public(case):
+def test_hygon_mm_extended_workbook_direct(case):
     cpu_inputs, inputs = [], []
     for i, meta in enumerate(case["metadata"][0]):
         dtype = getattr(torch, meta["dtype"].split(".")[-1])
@@ -43,8 +43,8 @@ def test_hygon_mm_extended_workbook_public(case):
         x.requires_grad_(meta.get("requires_grad", False))
         inputs.append(x)
     ref = cpu_inputs[0].double() @ cpu_inputs[1].double()
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        output = torch.mm(*inputs)
+    with torch.no_grad():
+        output = flag_gems.mm(*inputs)
     assert output.device == inputs[0].device and output.dtype == inputs[0].dtype
     atol, rtol = (1e-10, 1e-10) if output.dtype == torch.float64 else (2e-4, 1e-4)
     torch.testing.assert_close(output.cpu().double(), ref, atol=atol, rtol=rtol)
@@ -73,8 +73,8 @@ def test_hygon_mm_swizzle_split_tail(monkeypatch, k, offset, seed):
         key,
         dict(kind="swizzle_split", tm=1, tn=1, wm=1, warps=2, prefetch=4, split=2),
     )
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        result = torch.mm(*inputs)
+    with torch.no_grad():
+        result = flag_gems.mm(*inputs)
     ref = cpu_inputs[0] @ cpu_inputs[1]
     torch.testing.assert_close(result.cpu(), ref, atol=1e-10, rtol=1e-10)
 
@@ -103,8 +103,8 @@ def test_hygon_mm_outer_product_layouts(monkeypatch, dtype, m, n, offset, stride
         key,
         dict(kind="outer", rows=256, cols=64, warps=4, store=".cs"),
     )
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        out = torch.mm(*inputs)
+    with torch.no_grad():
+        out = flag_gems.mm(*inputs)
     ref = cpu_inputs[0] @ cpu_inputs[1]
     assert out.dtype == dtype and out.device == inputs[0].device
     torch.testing.assert_close(out.cpu(), ref, atol=0, rtol=0)
@@ -151,8 +151,8 @@ def test_hygon_mm_banked_boundaries(
             sb_max=banks[3],
         ),
     )
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        output = torch.mm(*inputs)
+    with torch.no_grad():
+        output = flag_gems.mm(*inputs)
     assert output.dtype == torch.float64 and output.device == inputs[0].device
     torch.testing.assert_close(
         output.cpu(), cpu_inputs[0] @ cpu_inputs[1], atol=1e-10, rtol=1e-10
@@ -195,8 +195,8 @@ def test_hygon_mm_fast_split_tail_and_empty_partitions(
             group=8,
         ),
     )
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        output = torch.mm(*inputs)
+    with torch.no_grad():
+        output = flag_gems.mm(*inputs)
     assert output.dtype == torch.float32 and output.device == inputs[0].device
     torch.testing.assert_close(
         output.cpu().double(),
@@ -241,8 +241,8 @@ def test_hygon_mm_cache_policy_public_boundaries(monkeypatch, k, swap, offset):
             store=".cg",
         ),
     )
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        output = torch.mm(*inputs)
+    with torch.no_grad():
+        output = flag_gems.mm(*inputs)
     torch.testing.assert_close(
         output.cpu().double(),
         cpu_inputs[0].double() @ cpu_inputs[1].double(),
@@ -290,8 +290,8 @@ def test_hygon_mm_short_fp64_tail_public_boundaries(monkeypatch, k, swap, offset
             sb_per=2,
         ),
     )
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        output = torch.mm(*inputs)
+    with torch.no_grad():
+        output = flag_gems.mm(*inputs)
     torch.testing.assert_close(
         output.cpu(), cpu_inputs[0] @ cpu_inputs[1], atol=1e-10, rtol=1e-10
     )

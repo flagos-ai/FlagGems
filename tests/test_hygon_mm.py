@@ -41,7 +41,7 @@ _CONTROL_CASES = [
 
 @pytest.mark.parametrize("case", _CONTROL_CASES, ids=lambda case: str(case["row"]))
 @pytest.mark.parametrize("seed", [100003, 880301])
-def test_hygon_mm_spreadsheet_controls_public(case, seed):
+def test_hygon_mm_spreadsheet_controls_direct(case, seed):
     operands = []
     cpu_operands = []
     for index, meta in enumerate(case["metadata"][0]):
@@ -69,15 +69,15 @@ def test_hygon_mm_spreadsheet_controls_public(case, seed):
         atol, rtol = 1e-10, 1e-10
     else:
         atol, rtol = 2e-4, 1e-4
-    with flag_gems.use_gems(include=["mm"]):
-        output = torch.mm(*operands)
+    with torch.no_grad():
+        output = flag_gems.mm(*operands)
     assert output.dtype == dtype and output.device == operands[0].device
     torch.testing.assert_close(output.cpu().double(), reference, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("seed", [880301, 7, 101])
 @pytest.mark.parametrize("offset", [0, 17])
-def test_hygon_mm_bf16_small_public(seed, offset):
+def test_hygon_mm_bf16_small_direct(seed, offset):
     gen = torch.Generator().manual_seed(seed)
     a = torch.randn((32, 64), dtype=torch.bfloat16, generator=gen)
     b = torch.randn((64, 32), dtype=torch.bfloat16, generator=gen)
@@ -85,8 +85,8 @@ def test_hygon_mm_bf16_small_public(seed, offset):
     storage = torch.empty(offset + b.numel(), dtype=b.dtype, device=flag_gems.device)
     bb = storage.as_strided(b.shape, b.stride(), offset)
     bb.copy_(b)
-    with flag_gems.use_gems(include=["mm"]):
-        result = torch.mm(aa, bb).cpu()
+    with torch.no_grad():
+        result = flag_gems.mm(aa, bb).cpu()
     torch.testing.assert_close(result, a @ b, rtol=0.016, atol=1e-5)
 
 

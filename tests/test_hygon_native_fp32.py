@@ -21,7 +21,7 @@ pytestmark = [
 )
 @pytest.mark.parametrize("offset", [0, 17])
 @pytest.mark.parametrize("regime", ["random", "low_bits", "scaled", "basis"])
-def test_hygon_mm_native_fp32_public(monkeypatch, m, n, k, offset, regime):
+def test_hygon_mm_native_fp32_direct(monkeypatch, m, n, k, offset, regime):
     gen = torch.Generator().manual_seed(20261110)
     a = torch.randn((m, k), generator=gen)
     b = torch.randn((k, n), generator=gen)
@@ -49,8 +49,8 @@ def test_hygon_mm_native_fp32_public(monkeypatch, m, n, k, offset, regime):
     configs = importlib.import_module(module.__package__ + ".mm_config")
     key = (str(a.dtype), m, n, k, *a.stride(), *b.stride())
     monkeypatch.setitem(configs.CONFIGS, key, dict(kind="native_fp32", group=0))
-    with torch.no_grad(), flag_gems.use_gems(include=["mm"]):
-        result = torch.mm(*inputs)
+    with torch.no_grad():
+        result = flag_gems.mm(*inputs)
     assert result.dtype == torch.float32 and result.device == inputs[0].device
     ref = a.double() @ b.double()
     atol, rtol = (0, 0) if regime in ("low_bits", "basis") else (2e-4, 1e-4)
