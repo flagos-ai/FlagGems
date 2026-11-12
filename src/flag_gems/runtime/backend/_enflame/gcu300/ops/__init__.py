@@ -92,6 +92,7 @@ from ._foreach_unary import (
     _foreach_trunc,
     _foreach_trunc_,
 )
+from ._foreach_unary_extra import _foreach_asin_, _foreach_erfc_
 from ._philox_uniform_ import _philox_uniform_
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._stack import _stack
@@ -418,6 +419,7 @@ __all__ = [
     "_foreach_addcmul__Scalar",
     "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
+    "_foreach_asin_",
     "_foreach_atan_",
     "_foreach_clamp_max__Scalar",
     "_foreach_clamp_max__ScalarList",
@@ -434,6 +436,7 @@ __all__ = [
     "_foreach_div_Scalar",
     "_foreach_div_ScalarList",
     "_foreach_erf_",
+    "_foreach_erfc_",
     "_foreach_exp_",
     "_foreach_expm1_",
     "_foreach_floor_",
