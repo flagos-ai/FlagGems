@@ -92,6 +92,27 @@ def max_pool2d_input_fn(shape, dtype, device):
         yield inp, params
 
 
+class MaxPool2dBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if not base.Config.query:
+            self.shapes = list(_MAX_POOL2D_SHAPES_4D)
+
+
+def max_pool2d_case_fn(shape, dtype):
+    for params in _max_pool2d_param_variants(shape):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params=params,
+            builder_args=(shape,),
+        )
+
+
+def build_max_pool2d_inputs(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return utils.generate_tensor_input(shape, dtype, device), dict(plan.params)
+
+
 @pytest.mark.max_pool2d_with_indices
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -108,16 +129,14 @@ def test_max_pool2d_with_indices():
     bench.run()
 
 
-def max_pool2d_backward_input_fn(shape, dtype, device):
-    for forward_args in max_pool2d_input_fn(shape, dtype, device):
-        inp, params = forward_args
-        inp.requires_grad_(True)
+def build_max_pool2d_backward_inputs(plan, dtype, device):
+    inp, params = build_max_pool2d_inputs(plan, dtype, device)
+    inp.requires_grad_(True)
 
-        # Use FlagGems forward to produce indices compatible with FlagGems backward
-        # Note: FlagGems indices format differs from PyTorch's format
-        output, indices = flag_gems.max_pool2d_with_indices(inp, **params)
-        grad_output = torch.randn_like(output)
-        yield grad_output, inp, indices, params
+    # Preserve the index format consumed by the FlagGems backward.
+    output, indices = flag_gems.max_pool2d_with_indices(inp, **params)
+    grad_output = torch.randn_like(output)
+    return grad_output, inp, indices, params
 
 
 def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
@@ -134,8 +153,9 @@ def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_max_pool2d_backward():
-    bench = MaxPool2dBenchmark(
-        input_fn=max_pool2d_backward_input_fn,
+    bench = MaxPool2dBackwardBenchmark(
+        case_fn=max_pool2d_case_fn,
+        build_inputs_fn=build_max_pool2d_backward_inputs,
         op_name="max_pool2d_backward",
         torch_op=torch_max_pool2d_backward_wrapper,
         dtypes=consts.FLOAT_DTYPES,
@@ -143,7 +163,9 @@ def test_max_pool2d_backward():
         is_backward=False,
     )
 
-    bench.set_gems(flag_gems.max_pool2d_backward)
+    bench.set_gems(
+        lambda *args, **kwargs: flag_gems.max_pool2d_backward(*args, **kwargs)
+    )
     bench.run()
 
 
