@@ -149,7 +149,7 @@ def test_hygon_to_dtype_packed_rounding_and_tail(monkeypatch, length, offset):
     ]
     ref = cpu.to(torch.bfloat16)
     with torch.no_grad():
-        result = transfer_storage(cpu).to(torch.bfloat16).cpu()
+        result = flag_gems.to_copy(transfer_storage(cpu), dtype=torch.bfloat16).cpu()
     torch.testing.assert_close(result, ref, atol=0, rtol=0, equal_nan=True)
     valid = ~torch.isnan(ref)
     assert torch.equal(result.view(torch.int16)[valid], ref.view(torch.int16)[valid])

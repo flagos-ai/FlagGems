@@ -58,8 +58,20 @@ def to_copy(
     dense_format = memory_format in (None, torch.preserve_format) or (
         memory_format == torch.contiguous_format and x.is_contiguous()
     )
+    n = x.numel()
+    # Avoid launch/configuration regressions on contiguous copies. Keep the
+    # explicit nonzero-to-bool conversion: the generic path is not equivalent.
+    prefer_generic = x.is_contiguous() and (
+        (dtype != torch.bool and n <= min(65536, _PACKED_MIN_ELEMENTS))
+        or (
+            x.dtype == torch.bfloat16
+            and dtype == torch.float32
+            and (262144 < n < 524288 or n >= _PACKED_MIN_ELEMENTS)
+        )
+    )
     if (
         dense_pair
+        and not prefer_generic
         and x.layout == torch.strided
         and layout in (None, torch.strided)
         and x.device.type in ("cuda", "flagos")
