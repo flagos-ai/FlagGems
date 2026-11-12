@@ -76,6 +76,7 @@ def test_flatten_dense_tensors(dtype, count, layout):
     refs = [utils.to_reference(t) for t in tensors]
     ref = torch.ops.aten.flatten_dense_tensors.default(refs)
     res = flag_gems.flatten_dense_tensors(tensors)
+    assert res.device == tensors[0].device
     utils.gems_assert_equal(res, ref)
     assert res.stride() == ref.stride()
     if res.numel():
@@ -92,8 +93,9 @@ def _make_inputs(shapes, dtype):
             torch.randint(0, 2, s, dtype=dtype, device="cpu").to(flag_gems.device)
             for s in shapes
         ]
+    high = min(0x7FFF, torch.iinfo(dtype).max + 1)
     return [
-        torch.randint(0, 0x7FFF, s, dtype=dtype, device="cpu").to(flag_gems.device)
+        torch.randint(0, high, s, dtype=dtype, device="cpu").to(flag_gems.device)
         for s in shapes
     ]
 
@@ -115,6 +117,7 @@ def test_flatten_dense_tensors_shapes(shapes, dtype):
 
     assert res_out.shape == ref_out.shape
     # The op only moves elements, so the result must match bit for bit.
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -128,6 +131,7 @@ def test_flatten_dense_tensors_int_bool(shapes, dtype):
     res_out = flag_gems.flatten_dense_tensors(inp)
 
     assert res_out.dtype == ref_out.dtype
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -141,6 +145,7 @@ def test_flatten_dense_tensors_zero_sized(shapes, dtype):
     res_out = flag_gems.flatten_dense_tensors(inp)
 
     assert res_out.shape == ref_out.shape
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -157,6 +162,7 @@ def test_flatten_dense_tensors_element_order(count):
     ref_out = _reference(inp)
     res_out = flag_gems.flatten_dense_tensors(inp)
 
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -190,6 +196,7 @@ def test_flatten_dense_tensors_non_contiguous(make_inputs, dtype):
     ref_out = _reference(inp)
     res_out = flag_gems.flatten_dense_tensors(inp)
 
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -204,13 +211,14 @@ def test_flatten_dense_tensors_mixed_dtype():
     refs = [utils.to_reference(t) for t in tensors]
     ref = torch.ops.aten.flatten_dense_tensors.default(refs)
     res = flag_gems.flatten_dense_tensors(tensors)
+    assert res.device == tensors[0].device
     utils.gems_assert_equal(res, ref)
     assert res.dtype == ref.dtype
 
 
 @pytest.mark.flatten_dense_tensors
 def test_flatten_dense_tensors_empty_list():
-    with pytest.raises(RuntimeError):
+    with pytest.raises((RuntimeError, ValueError), match="expected a non-empty list of Tensors"):
         flag_gems.flatten_dense_tensors([])
 
 
@@ -224,6 +232,7 @@ def test_flatten_dense_tensors_single_non_contiguous(dtype):
     ref_out = _reference(inp)
     res_out = flag_gems.flatten_dense_tensors(inp)
 
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -239,6 +248,7 @@ def test_flatten_dense_tensors_nan_inf(dtype):
     ref_out = _reference(inp)
     res_out = flag_gems.flatten_dense_tensors(inp)
 
+    assert res_out.device == inp[0].device
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
@@ -246,5 +256,8 @@ def test_flatten_dense_tensors_nan_inf(dtype):
 def test_flatten_dense_tensors_rejects_non_tensor_element():
     inp = [torch.randn((4,), device=flag_gems.device), 1.0]
 
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        (TypeError, RuntimeError),
+        match=r"expected Tensor as element|Expected a value of type 'List\[Tensor\]'|Unable to cast .* to Tensor",
+    ):
         flag_gems.flatten_dense_tensors(inp)
