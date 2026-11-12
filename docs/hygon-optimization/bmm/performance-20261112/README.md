@@ -15,3 +15,10 @@ python docs/hygon-optimization/bmm/performance-20261112/verify_results.py
 ```
 
 Focused correctness tests are in `tests/test_hygon_bmm.py`. Full raw traces, original worker receipts and isolated source archives are preserved outside the repository; no profiler binaries are added here. Kernel/copy accounting uses strict producer and ROI attribution. CPU/API/compilation costs are separate from the published device metric. Eager execution is used; no Dynamo/Inductor fusion claim is made.
+
+
+## Audit and CI availability
+
+Process-level A/A repeats and offline verification were performed in stages by one agent; no independent-person signoff is claimed. The32-case correctness and all-role raw measurements are separate from CI scheduling.
+
+The Hygon job in CI run43198954642 failed before operator tests because its runner timed out waiting for an available DCU. It is classified as infrastructure failure rather than operator correctness failure. A subsequent evidence update triggers a fresh latest-head check; this PR remains Draft until that check succeeds. The original failed CI logs and fixed-source hardware raw are preserved outside git.

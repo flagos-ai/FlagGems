@@ -18,3 +18,10 @@ The official Hygon CI and required rule checks passed for the production source.
 ## Bottom-layer execution path
 
 Public `aten::bmm` uses a process-private PrivateUse1 binding to the selected FG export; worker traces verify the exact executed source entry and schema. Supported cases enter the Hygon provider, while unsupported layouts/dtypes retain the generic provider. `kernel-witness.json` lists the actual producer-linked device kernels per case and role. DAS executes in an independent process with no FG source frames. Full input backing hashes match across all providers. Device samples sum attributed kernel durations per ROI and divide by the number of calls; API, compiler/autotune, and memory-copy durations are tracked separately. Execution is eager, without graph fusion.
+
+
+## Audit and CI availability
+
+Process-level A/A repeats and offline verification were performed in stages by one agent; no independent-person signoff is claimed. The32-case correctness and all-role raw measurements are separate from CI scheduling.
+
+The Hygon job in CI run43198954642 failed before operator tests because its runner timed out waiting for an available DCU. It is classified as infrastructure failure rather than operator correctness failure. A subsequent evidence update triggers a fresh latest-head check; this PR remains Draft until that check succeeds. The original failed CI logs and fixed-source hardware raw are preserved outside git.
