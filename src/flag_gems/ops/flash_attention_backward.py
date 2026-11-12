@@ -289,7 +289,6 @@ def _flash_attn_bwd_dq_fused(
             dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
         else:
             dp = tl.dot(do, tl.trans(v)).to(tl.float32)
-        p_drop = p
         dp_drop = dp
 
         if IS_DROPOUT:
@@ -302,7 +301,6 @@ def _flash_attn_bwd_dq_fused(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            p_drop = tl.where(drop_mask, p * drop_scale, 0.0)
             dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
         ds = p * (dp_drop - Di[:, None]) * sm_scale
@@ -579,7 +577,14 @@ def _flash_attn_bwd_dkv(
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD", "FP32"],
+    key=[
+        "max_seqlen_q",
+        "max_seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "DO_BIAS_GRAD",
+        "FP32",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(

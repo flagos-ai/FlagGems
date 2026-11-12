@@ -6,10 +6,6 @@
 import math
 
 import pytest
-try:
-    import torch_fl  # noqa: F401  # loads the Hygon runtime before torch.cuda use
-except ImportError:
-    torch_fl = None
 import torch
 import triton
 import triton.language as tl
@@ -18,14 +14,19 @@ import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
-
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name != "hygon", reason="Hygon-specific FP16 FA path"
-)
+pytestmark = [
+    pytest.mark._flash_attention_forward,
+    pytest.mark.flash_attention_backward,
+    pytest.mark.skipif(
+        flag_gems.vendor_name != "hygon", reason="Hygon-specific FP16 FA path"
+    ),
+]
 
 
 @triton.jit
-def _dropout_mask_kernel(out, seed, base_offset, n_elements, dropout_p, BLOCK: tl.constexpr):
+def _dropout_mask_kernel(
+    out, seed, base_offset, n_elements, dropout_p, BLOCK: tl.constexpr
+):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     rng_offsets = (base_offset + offsets).to(tl.uint32)
     keep = tl.rand(seed, rng_offsets) > dropout_p
@@ -68,9 +69,7 @@ def _make_mask(device, seed, offset, batch, heads, seqlen_q, seqlen_k, dropout_p
     n = batch * heads * seqlen_q * seqlen_k
     mask = torch.empty(n, dtype=torch.int8, device=device)
     grid = lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
-    _dropout_mask_kernel[grid](
-        mask, seed, offset, n, dropout_p, BLOCK=256, num_warps=4
-    )
+    _dropout_mask_kernel[grid](mask, seed, offset, n, dropout_p, BLOCK=256, num_warps=4)
     return mask.reshape(batch, heads, seqlen_q, seqlen_k).to(torch.bool)
 
 
@@ -92,7 +91,9 @@ def _run_forward(q, k, v, scale, causal, dropout_p):
 
 def _assert_finite(*tensors):
     for tensor in tensors:
-        assert bool(torch.isfinite(tensor).all()), "FA result contains non-finite values"
+        assert bool(
+            torch.isfinite(tensor).all()
+        ), "FA result contains non-finite values"
 
 
 @pytest.mark.parametrize("head_size", [64, 128])
@@ -203,7 +204,9 @@ FP16_EXTENDED_CASES = [
 ]
 
 
-@pytest.mark.parametrize("batch, seqlen_q, seqlen_k, heads, head_size, causal", FP16_EXTENDED_CASES)
+@pytest.mark.parametrize(
+    "batch, seqlen_q, seqlen_k, heads, head_size, causal", FP16_EXTENDED_CASES
+)
 @pytest.mark.parametrize("dropout_p", [0.1, 0.2, 0.5])
 def test_hygon_fp16_flash_attention_dropout_extended(
     batch, seqlen_q, seqlen_k, heads, head_size, causal, dropout_p
@@ -280,13 +283,19 @@ def test_hygon_fp16_flash_attention_dropout_replay(causal):
     dropout_p = 0.2
     scale = 1.0 / math.sqrt(head_size)
     torch.manual_seed(20261240 + int(causal))
-    q = torch.randn((batch, seqlen, heads, head_size), dtype=torch.float16, device=device)
+    q = torch.randn(
+        (batch, seqlen, heads, head_size), dtype=torch.float16, device=device
+    )
     k = torch.randn_like(q)
     v = torch.randn_like(q)
 
-    random_utils.set_philox_state(20261250 + int(causal), 0, torch_device_fn.current_device())
+    random_utils.set_philox_state(
+        20261250 + int(causal), 0, torch_device_fn.current_device()
+    )
     first = _run_forward(q, k, v, scale, causal, dropout_p)
-    random_utils.set_philox_state(20261250 + int(causal), 0, torch_device_fn.current_device())
+    random_utils.set_philox_state(
+        20261250 + int(causal), 0, torch_device_fn.current_device()
+    )
     second = _run_forward(q, k, v, scale, causal, dropout_p)
 
     torch.testing.assert_close(first[0], second[0], rtol=0, atol=0)

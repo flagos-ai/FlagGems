@@ -6,10 +6,6 @@
 import math
 
 import pytest
-try:
-    import torch_fl  # noqa: F401  # loads the Hygon runtime before torch.cuda use
-except ImportError:
-    torch_fl = None
 import torch
 import triton
 import triton.language as tl
@@ -18,14 +14,19 @@ import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
-
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name != "hygon", reason="Hygon-specific FP32 FA path"
-)
+pytestmark = [
+    pytest.mark._flash_attention_forward,
+    pytest.mark.flash_attention_backward,
+    pytest.mark.skipif(
+        flag_gems.vendor_name != "hygon", reason="Hygon-specific FP32 FA path"
+    ),
+]
 
 
 @triton.jit
-def _dropout_mask_kernel(out, seed, base_offset, n_elements, dropout_p, BLOCK: tl.constexpr):
+def _dropout_mask_kernel(
+    out, seed, base_offset, n_elements, dropout_p, BLOCK: tl.constexpr
+):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     rng_offsets = (base_offset + offsets).to(tl.uint32)
     keep = tl.rand(seed, rng_offsets) > dropout_p
@@ -38,7 +39,9 @@ def _reference(q, k, v, dout, scale, causal, dropout_p, mask):
     if causal:
         q_idx = torch.arange(q.shape[1])[:, None]
         k_idx = torch.arange(k.shape[1])[None, :]
-        scores = scores.masked_fill(k_idx > q_idx + k.shape[1] - q.shape[1], -float("inf"))
+        scores = scores.masked_fill(
+            k_idx > q_idx + k.shape[1] - q.shape[1], -float("inf")
+        )
     lse = torch.logsumexp(scores, dim=-1)
     probs = torch.softmax(scores, dim=-1)
     do = dout.double()
@@ -65,9 +68,7 @@ def _make_mask(device, seed, offset, batch, heads, seqlen_q, seqlen_k, dropout_p
     n = batch * heads * seqlen_q * seqlen_k
     mask = torch.empty(n, dtype=torch.int8, device=device)
     grid = lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
-    _dropout_mask_kernel[grid](
-        mask, seed, offset, n, dropout_p, BLOCK=256, num_warps=4
-    )
+    _dropout_mask_kernel[grid](mask, seed, offset, n, dropout_p, BLOCK=256, num_warps=4)
     return mask.reshape(batch, heads, seqlen_q, seqlen_k).to(torch.bool)
 
 
