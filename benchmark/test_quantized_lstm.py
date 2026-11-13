@@ -9,7 +9,13 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
-SHAPES = [(4, 32, 256, 256), (4, 64, 512, 512), (8, 64, 256, 256)]
+SHAPES = [
+    (4, 32, 256, 256),
+    (4, 64, 256, 256),
+    (4, 64, 512, 512),
+    (4, 128, 256, 256),
+    (8, 64, 256, 256),
+]
 
 
 class QuantizedLstmBenchmark(OperatorBenchmark):
