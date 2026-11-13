@@ -877,3 +877,78 @@ def test_ccol_indices_copy_out_negative_wrong_dtype():
         torch.ops.aten.ccol_indices_copy.out(ref_inp, out=ref_out)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.ccol_indices_copy(inp, out=out)
+
+
+@pytest.mark.ccol_indices_copy
+@pytest.mark.parametrize("shape,nnz", [((4, 6), 6), ((16, 32), 6), ((5, 5), 6), ((3, 1), 2)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES)
+def test_ccol_indices_copy_master_shapes(shape, nnz, dtype):
+    inp = _make_input("csc", shape, nnz, None, dtype)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.ccol_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.ccol_indices_copy(inp)
+
+    _assert_input_unchanged(inp, input_state)
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+
+
+@pytest.mark.ccol_indices_copy
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("bsc", (8, 12), 5, (2, 3)),
+        ("bsc", (4, 4), 2, (2, 2)),
+        ("bsc_batch", (2, 8, 12), 5, (2, 3)),
+    ],
+)
+def test_ccol_indices_copy_master_compressed_layouts(case):
+    inp = _make_input(*case, dtype=torch.float32)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.ccol_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.ccol_indices_copy(inp)
+
+    _assert_input_unchanged(inp, input_state)
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+
+
+@pytest.mark.ccol_indices_copy
+def test_ccol_indices_copy_master_batched_csc():
+    device = flag_gems.device
+    # Distinct valid pointers detect accidentally copying batch zero twice.
+    ccol = torch.tensor(
+        [[0, 1, 2, 3, 3, 4, 6], [0, 0, 1, 1, 3, 4, 6]], device=device
+    )
+    rows = torch.tensor([[0, 1, 2, 0, 1, 2], [0, 1, 2, 0, 1, 2]], device=device)
+    values = torch.randn((2, 6), device=device)
+    inp = torch.sparse_csc_tensor(
+        ccol, rows, values, size=(2, 4, 6), check_invariants=True
+    )
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.ccol_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.ccol_indices_copy(inp)
+
+    _assert_input_unchanged(inp, input_state)
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+
+
+@pytest.mark.ccol_indices_copy
+def test_ccol_indices_copy_master_repeated_dispatch():
+    inp = _make_input("csc", (8, 10), 12, None, torch.float32, seed=7)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.ccol_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    first = flag_gems.ccol_indices_copy(inp)
+    _assert_copy_semantics(first, expected, inp, reference, inp.device)
+    for _ in range(3):
+        actual = flag_gems.ccol_indices_copy(inp)
+        assert actual.data_ptr() != first.data_ptr()
+        assert torch.ops.aten.dim(inp) == 2
+        _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+    _assert_input_unchanged(inp, input_state)
