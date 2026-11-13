@@ -14,13 +14,14 @@
 import pytest
 import torch
 
-from . import base
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 SHAPES = [
     (32, 64, 128, 128, 32, 3, 3, 1, 1, 1),
     (32, 64, 64, 64, 16, 5, 5, 2, 1, 1),
     (16, 32, 24, 24, 24, 3, 3, 2, 1, 1),
+    (16, 32, 12, 12, 24, 3, 3, 1, 0, 1),
 ]
 
 
@@ -83,5 +84,5 @@ def test_convolution_backward_overrideable():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=_native_backward,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=consts.FLOAT_DTYPES,
     ).run()
