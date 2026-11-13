@@ -158,6 +158,58 @@ def _grouped_mm_w8a8_reduce_split_k(
     tl.store(Out + index, acc.to(tl.float32) * scale_a * scale_b, valid)
 
 
+@libentry()
+@triton.jit
+def _grouped_mm_w8a8_direct_k256(
+    A, As, B, Bs, C, RowIndices, Rows, N: tl.constexpr, EVEN_N: tl.constexpr
+):
+    BM: tl.constexpr = 16
+    BN: tl.constexpr = 64
+    BK: tl.constexpr = 128
+    K: tl.constexpr = 256
+    pid = tl.program_id(0)
+    tiles_n: tl.constexpr = tl.cdiv(N, BN)
+    tile_m = pid // tiles_n
+    col = (pid % tiles_n) * BN + tl.arange(0, BN)
+    # A packed run has one owner even if it spans several M tiles.
+    row_start = tile_m
+    expert = tl.load(RowIndices + row_start)
+    previous = tl.load(RowIndices + row_start - 1, row_start > 0, other=-1)
+    if expert == previous:
+        return
+    row_end = row_start + tl.load(Rows + expert)
+    tile_count = tl.cdiv(row_end - row_start, BM)
+    weight_col = expert.to(tl.int64) * N + col
+    if EVEN_N:
+        scale_b = tl.load(Bs + weight_col)
+    else:
+        scale_b = tl.load(Bs + weight_col, col < N, other=0)
+    for tile in range(tile_count):
+        row = row_start + tile * BM + tl.arange(0, BM)
+        red = tl.arange(0, BK)
+        a_base = A + row[:, None].to(tl.int64) * K + red[None, :]
+        b_base = B + weight_col[None, :] * K + red[:, None]
+        row_mask = row[:, None] < row_end
+        col_mask = col[None, :] < N
+        a0 = tl.load(a_base, row_mask, other=0)
+        b0 = tl.load(b_base, col_mask, other=0)
+        a1 = tl.load(a_base + BK, row_mask, other=0)
+        b1 = tl.load(b_base + BK, col_mask, other=0)
+        # Keep the two K tiles on independent accumulator chains.
+        acc = tl.dot(a0, b0, out_dtype=tl.int32) + tl.dot(a1, b1, out_dtype=tl.int32)
+        scale_a = tl.load(As + row, row < row_end, other=0)
+        value = acc.to(tl.float32) * scale_a[:, None] * scale_b[None, :]
+        c_ptrs = C + row[:, None].to(tl.int64) * N + col[None, :]
+        if EVEN_N:
+            tl.store(c_ptrs, value, row[:, None] < row_end)
+        else:
+            tl.store(
+                c_ptrs,
+                value,
+                (row[:, None] < row_end) & (col[None, :] < N),
+            )
+
+
 def grouped_mm_w8a8(
     A: torch.Tensor,
     As: torch.Tensor,
@@ -237,9 +289,23 @@ def grouped_mm_w8a8(
         bm = 128 if (n, k) == (512, 6144) else 64
         bn = 64
         bk = 128 if (n, k) == (512, 6144) else 64
-    # The direct K=256 path has two K blocks and uses a single pipeline stage.
-    num_stages = 1 if direct and k == 256 else 2
     with torch_device_fn.device(A.device):
+        if direct and k == 256:
+            _grouped_mm_w8a8_direct_k256[(m * triton.cdiv(n, 64),)](
+                A,
+                As,
+                B,
+                Bs,
+                C,
+                m_indices,
+                m_rows,
+                n,
+                n % 64 == 0,
+                num_warps=4,
+                num_stages=1,
+                enable_fp_fusion=False,
+            )
+            return
         if direct:
             row_ends, tile_ends = None, None
             max_tiles = m
@@ -277,7 +343,7 @@ def grouped_mm_w8a8(
             SPLIT_K=split_k,
             M=m if split_k > 1 else 0,
             num_warps=4,
-            num_stages=num_stages,
+            num_stages=2,
             enable_fp_fusion=False,
         )
         if split_k > 1:
