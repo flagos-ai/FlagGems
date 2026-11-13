@@ -115,6 +115,27 @@ def test_linalg_polar(shape):
 
 
 @pytest.mark.linalg_polar
+def test_linalg_polar_public_api():
+    inp = torch.randn((8, 4), dtype=torch.float32, device=flag_gems.device)
+    polar_u, polar_h = flag_gems.linalg_polar(inp)
+
+    _assert_output_metadata(inp, polar_u, polar_h)
+    _assert_polar_properties(inp, polar_u, polar_h)
+
+
+@pytest.mark.linalg_polar
+def test_linalg_polar_dispatcher():
+    if not hasattr(torch.ops.aten, "linalg_polar"):
+        pytest.skip("aten.linalg_polar is unavailable in this PyTorch version")
+
+    inp = torch.randn((8, 4), dtype=torch.float32, device=flag_gems.device)
+    polar_u, polar_h = flag_gems.linalg_polar(inp)
+
+    _assert_output_metadata(inp, polar_u, polar_h)
+    _assert_polar_properties(inp, polar_u, polar_h)
+
+
+@pytest.mark.linalg_polar
 def test_linalg_polar_noncontiguous():
     torch.manual_seed(0)
     inp = torch.randn((4, 16), device=flag_gems.device).mT

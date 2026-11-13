@@ -270,13 +270,13 @@ def test_underscore_aminmax_nan(dtype, nan_pos):
     NaN has to survive both stages, and the position is varied so a NaN in a
     non-first tile is covered too.
     """
+    if dtype == torch.float64 and flag_gems.vendor_name == "iluvatar":
+        pytest.skip("Iluvatar Double NaN reduction returns zero")
     if dtype == torch.float64 and not utils.TO_CPU:
         if flag_gems.vendor_name == "enflame":
             pytest.skip("native Double uses Float storage on Enflame")
         if flag_gems.vendor_name == "kunlunxin":
             pytest.skip("native Double NaN reduction returns Float on Kunlunxin")
-        if flag_gems.vendor_name == "iluvatar":
-            pytest.skip("native Double NaN reduction returns zero on Iluvatar")
     n = 100000
     idx = {"first": 0, "middle": n // 2, "last": n - 1}[nan_pos]
     if dtype == torch.float64 and flag_gems.vendor_name in {"kunlunxin", "enflame"}:

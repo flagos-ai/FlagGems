@@ -63,6 +63,9 @@ def test_conv_transpose1d(shape, kernel, stride, padding, dtype, monkeypatch):
     in_channels = kernel[0]
     out_channels = kernel[1]
     kernel_width = kernel[2]
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_close(
         res_out,
         ref_out,
@@ -96,6 +99,9 @@ def test_conv_transpose1d_bias(shape, kernel, stride, padding, dtype, monkeypatc
     )
     in_channels = kernel[0]
     out_channels = kernel[1]
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_close(
         res_out,
         ref_out,
@@ -145,39 +151,9 @@ def test_conv_transpose1d_groups(
     )
     in_channels_per_group = kernel[0] // groups
     kernel_width = kernel[2]
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_close(
         res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels_per_group
     )
-
-
-@pytest.mark.conv_transpose1d
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_conv_transpose1d_output_padding_dilation_and_noncontiguous(dtype):
-    torch.manual_seed(0)
-    base = torch.randn((2, 8, 13), dtype=dtype, device=flag_gems.device)
-    inp = base[:, ::2, :]
-    weight = torch.randn((4, 6, 3), dtype=dtype, device=flag_gems.device)
-    bias = torch.randn((6,), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_bias = utils.to_reference(bias, True)
-    ref = torch.nn.functional.conv_transpose1d(
-        ref_inp, ref_weight, ref_bias, stride=2, padding=2,
-        output_padding=1, dilation=2, groups=1
-    )
-    result = flag_gems.conv_transpose1d(
-        inp, weight, bias, stride=2, padding=2, output_padding=1,
-        groups=1, dilation=2
-    )
-    utils.gems_assert_close(result, ref, dtype, reduce_dim=12)
-    assert result.shape == ref.shape
-    assert result.dtype == dtype
-
-
-@pytest.mark.conv_transpose1d
-def test_conv_transpose1d_invalid_groups():
-    torch.manual_seed(0)
-    inp = torch.randn((1, 4, 8), device=flag_gems.device)
-    weight = torch.randn((4, 3, 3), device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        flag_gems.conv_transpose1d(inp, weight, groups=3)

@@ -135,6 +135,74 @@ def _assert_close(result, reference):
     tu.assert_result_close(result, reference)
 
 
+_MASTER_REAL_DTYPES = [torch.float32] + (
+    [torch.float64] if utils.fp64_is_supported else []
+)
+_MASTER_PD_CASES = [
+    *(((n, n), False, False) for n in (2, 4, 8, 16, 32)),
+    *(((n, n), True, False) for n in (2, 4, 8)),
+    ((2, 4, 4), False, False),
+    ((3, 8, 8), False, False),
+    *(((n, n), False, True) for n in (2, 4, 8, 32)),
+    *(((2, 3, n, n), False, False) for n in (2, 4, 8)),
+    ((128, 128), False, False),
+]
+
+
+def _make_master_spd(shape, dtype):
+    device = flag_gems.device
+    factor = torch.randn(shape, dtype=dtype, device=device)
+    return factor @ factor.transpose(-2, -1) + 0.1 * torch.eye(
+        shape[-1], dtype=dtype, device=device
+    )
+
+
+def _check_master_factorization(inp, upper=False):
+    kwargs = {"upper": True} if upper else {}
+    reference = torch.cholesky(utils.to_reference(inp), **kwargs)
+    result = flag_gems.cholesky(inp, **kwargs)
+    actual, expected = _comparison_values(result, reference)
+    utils.gems_assert_close(actual, expected, inp.dtype)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape,upper,transposed", _MASTER_PD_CASES)
+@pytest.mark.parametrize("dtype", _MASTER_REAL_DTYPES)
+def test_cholesky_master_real_grid(shape, upper, transposed, dtype):
+    inp = _make_master_spd(shape, dtype)
+    if transposed:
+        inp = inp.transpose(-2, -1)
+    _check_master_factorization(inp, upper)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape", [(2, 3, 3), (3, 8, 8), (2, 2, 4, 4)])
+def test_cholesky_master_non_contiguous_batch(shape):
+    inp = _make_master_spd(shape, torch.float32)
+    for view in (inp.transpose(1, 2), inp[::2]):
+        if view.shape[-2] == view.shape[-1]:
+            _check_master_factorization(view)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("dtype", _MASTER_REAL_DTYPES)
+def test_cholesky_master_negative_definite(dtype):
+    inp = -_make_master_spd((4, 4), dtype)
+    with pytest.raises(torch.linalg.LinAlgError):
+        flag_gems.cholesky(inp)
+    with pytest.raises(torch.linalg.LinAlgError):
+        torch.cholesky(utils.to_reference(inp))
+
+
+@pytest.mark.cholesky
+def test_cholesky_master_empty_batch():
+    inp = torch.empty(0, 4, 4, device=flag_gems.device)
+    result = flag_gems.cholesky(inp)
+    assert result.shape == inp.shape
+    assert result.device == inp.device and result.dtype == inp.dtype
+    assert result is not inp
+
+
 def _special_input(dtype, scenario):
     if _construction_device(dtype) == "cpu":
         return tu.make_special_input(torch.float32, scenario).cpu().to(dtype)

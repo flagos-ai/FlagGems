@@ -12,6 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
+import inspect
+import json
+import os
+import re
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -444,6 +454,87 @@ def _assert_untouched(snapshot):
         assert (tensor.shape, tensor.stride(), tensor.storage_offset()) == geometry
 
 
+_MASTER_CSC_SHAPES = [
+    (0, 3, (), ()),
+    (3, 0, (), ()),
+    (3, 5, (), ()),
+    (3, 5, (2,), ()),
+    (3, 5, (2, 3), ()),
+    (3, 5, (0,), ()),
+    (3, 5, (), (2,)),
+    (3, 5, (2,), (2,)),
+]
+
+
+def _master_csc_inputs(shape, index_dtype, dtype, *, strided_batch=False):
+    ncols, nrows, batch, dense = shape
+    per_column = min(nrows, 2)
+    nnz = ncols * per_column
+    ccol = torch.arange(ncols + 1, dtype=torch.int64) * per_column
+    row = torch.arange(per_column, dtype=torch.int64).repeat(ncols)
+    ccol = _index_to_device(ccol.expand(*batch, ncols + 1).clone(), index_dtype)
+    row = _index_to_device(row.expand(*batch, nnz).clone(), index_dtype)
+    if strided_batch and batch:
+        ccol = torch.stack((ccol, ccol), dim=-2)[..., 0, :]
+        row = torch.stack((row, row), dim=-2)[..., 0, :]
+    values = torch.zeros((*batch, nnz, *dense), dtype=dtype, device=ccol.device)
+    return ccol, row, values, (*batch, nrows, ncols, *dense)
+
+
+def _master_validator_kwargs(op):
+    # On older ATen builds this schema has four arguments. All fixtures are
+    # ordinary unpinned tensors on the same device, so the implicit pinning
+    # policy does not change their validity.
+    if any(argument.name == "check_pinning" for argument in op._schema.arguments):
+        return {"check_pinning": False}
+    return {}
+
+
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
+@pytest.mark.parametrize(
+    "index_dtype",
+    [
+        dtype
+        for dtype in utils.ALL_INT_DTYPES
+        if dtype in (torch.int32, torch.int64) and _dtype_supported(dtype)
+    ],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", _MASTER_CSC_SHAPES)
+@pytest.mark.parametrize("strided_batch", [False, True])
+def test_validate_sparse_csc_tensor_args_master_grid(
+    index_dtype, shape, strided_batch, dtype
+):
+    *inputs, size = _master_csc_inputs(
+        shape, index_dtype, dtype, strided_batch=strided_batch
+    )
+    snapshot = _snapshot(*inputs)
+    op = torch.ops.aten._validate_sparse_csc_tensor_args.default
+    options = _master_validator_kwargs(op)
+    reference = op(*(entry[1] for entry in snapshot), size, **options)
+    result = _call_validator(
+        *inputs, size, required_device=_required_device(), **options
+    )
+    assert result is reference is None
+    flag_gems.runtime.torch_device_fn.synchronize()
+    _assert_untouched(snapshot)
+
+
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
+def test_validate_sparse_csc_tensor_args_unbatched_metadata():
+    ccol, row, values, size = _master_csc_inputs(
+        (2, 3, (), ()), INDEX_DTYPE_LONG, torch.float32
+    )
+    ccol = ccol[:-1]
+    op = torch.ops.aten._validate_sparse_csc_tensor_args.default
+    options = _master_validator_kwargs(op)
+    ref_inputs = tuple(tu.to_reference(tensor) for tensor in (ccol, row, values))
+    with pytest.raises(RuntimeError):
+        op(*ref_inputs, size, **options)
+    with pytest.raises(RuntimeError):
+        flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, size, **options)
+
+
 def _invalid_csc_inputs(defect, size, nnz):
     # Build a structurally valid CSC call and then break exactly one host-side
     # precondition, named by defect.
@@ -611,6 +702,151 @@ def test__validate_sparse_csc_tensor_args_invalid(defect, size, nnz):
     # not a second assertion.
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, call_size)
+
+
+_CSC_INDEX_ERRORS = {
+    "endpoint": r"ccol_indices.*== 0",
+    "bounds": r"0 <= row_indices < nrows",
+    "duplicate": r"sorted and distinct",
+}
+
+
+def _csc_index_inputs(case, device):
+    ccol = torch.tensor([0, 2, 3], dtype=torch.int64, device=device)
+    row = torch.tensor([0, 1, 0], dtype=torch.int64, device=device)
+    if case == "endpoint":
+        ccol[0] = 1
+    elif case == "bounds":
+        row[0] = 3
+    elif case == "duplicate":
+        row[1] = row[0]
+    return ccol, row, torch.zeros(3, device=device), (3, 2)
+
+
+def _csc_child_override(request):
+    from flag_gems.cli_override import load_override_config, parse_override_spec
+
+    options = request.config.option
+    configured = getattr(options, "override_config", None)
+    overrides = load_override_config(configured) if configured else {}
+    for spec in getattr(options, "override", None) or ():
+        name, path, symbol = parse_override_spec(spec)
+        overrides[name] = (path, symbol)
+    selected = overrides.get("_validate_sparse_csc_tensor_args")
+    if selected is None:
+        return None
+    path, symbol = selected
+    source = Path(path).resolve()
+    return str(source), symbol, hashlib.sha256(source.read_bytes()).hexdigest()
+
+
+def _csc_candidate_binding():
+    candidate = inspect.unwrap(flag_gems._validate_sparse_csc_tensor_args)
+    code = getattr(candidate, "__code__", None)
+    return {
+        "name": getattr(candidate, "__qualname__", None),
+        "file": code.co_filename if code else None,
+        "line": code.co_firstlineno if code else None,
+        "schema": str(getattr(candidate, "_schema", "")),
+    }
+
+
+def _run_csc_index_child(case, override):
+    # Device assertions may poison or terminate the process. Keep the malformed
+    # call in a fresh interpreter and forward only this operator's override.
+    child = textwrap.dedent("""
+        import hashlib
+        import json
+        import resource
+        import sys
+        from pathlib import Path
+
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+        import flag_gems
+        from flag_gems.dynamic_registry import DynamicOpOverride
+        from tests import conftest, accuracy_utils
+        from tests.test__validate_sparse_csc_tensor_args import (
+            _csc_candidate_binding, _csc_index_inputs, _required_device,
+        )
+
+        args = json.loads(sys.argv[1])
+        conftest.TO_CPU = accuracy_utils.TO_CPU = args["ref_cpu"]
+        key = "_validate_sparse_csc_tensor_args"
+        registry = DynamicOpOverride()
+        if args["override"] is not None:
+            path, symbol, digest = args["override"]
+            assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest
+            assert registry.override_from_file(key, path, symbol)
+        assert _csc_candidate_binding() == args["binding"]
+        candidate = flag_gems._validate_sparse_csc_tensor_args
+        device = _required_device()
+        assert candidate(*_csc_index_inputs("valid", device)) is None
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+        operands = _csc_index_inputs(args["case"], device)
+        try:
+            candidate(*operands)
+            flag_gems.runtime.torch_device_fn.synchronize()
+        except RuntimeError as error:
+            if args["override"] is not None:
+                assert registry.call_counts().get(f"flag_gems.{key}") == 2
+            print("CSC_INDEX_ERROR " + json.dumps(str(error)))
+        else:
+            raise AssertionError("invalid CSC index content was silently accepted")
+        """)
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(root / "src"), *sys.path]))
+    args = json.dumps(
+        dict(
+            case=case,
+            override=override,
+            ref_cpu=utils.TO_CPU,
+            binding=_csc_candidate_binding(),
+        )
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", child, args],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    prefix = "CSC_INDEX_ERROR "
+    reports = [
+        line[len(prefix) :]
+        for line in result.stdout.splitlines()
+        if line.startswith(prefix)
+    ]
+    assert len(reports) == 1, result.stdout[-2000:]
+    return json.loads(reports[0])
+
+
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
+@pytest.mark.parametrize("case", tuple(_CSC_INDEX_ERRORS))
+def test_validate_sparse_csc_tensor_args_invalid_indices(case, request):
+    with pytest.raises(RuntimeError, match=_CSC_INDEX_ERRORS[case]):
+        torch.ops.aten._validate_sparse_csc_tensor_args.default(
+            *_csc_index_inputs(case, "cpu")
+        )
+
+    # The legal control is observable by parent dummy checks. The child below
+    # separately proves that the real candidate rejects the malformed inputs.
+    device = _required_device()
+    result = _call_validator(
+        *_csc_index_inputs("valid", device), required_device=device
+    )
+    assert result is None
+    flag_gems.runtime.torch_device_fn.synchronize()
+
+    override = _csc_child_override(request)
+    message = _run_csc_index_child(case, override)
+    pattern = _CSC_INDEX_ERRORS[case]
+    if override is None:
+        pattern += "|invalid sparse compressed indices"
+    assert re.search(pattern, message), message
 
 
 @pytest.mark.underscore_validate_sparse_csc_tensor_args

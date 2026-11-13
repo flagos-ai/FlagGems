@@ -72,10 +72,10 @@ def _build_inputs_fn(plan, dtype, device):
     )
     scale = torch.randn((n_size,), dtype=dtype, device=device)
     bias = torch.randn((n_size,), dtype=dtype, device=device) if has_bias else None
-    return input_tensor, weight, scale, bias, activation
+    return input_tensor, weight, scale, {"bias": bias, "activation": activation}
 
 
-def _reference(input_tensor, weight, scale, bias, activation):
+def _reference(input_tensor, weight, scale, *, bias=None, activation=None):
     k_size, ncols = weight.shape
     n_size = scale.shape[0]
     if ncols == n_size:
@@ -101,7 +101,7 @@ def _reference(input_tensor, weight, scale, bias, activation):
     return accumulator.to(input_tensor.dtype)
 
 
-def _gems(input_tensor, weight, scale, bias, activation):
+def _gems(input_tensor, weight, scale, *, bias=None, activation=None):
     return flag_gems.mixed_dtypes_linear(
         input_tensor, weight, scale, bias=bias, activation=activation
     )

@@ -1,3 +1,17 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import math
 
 import pytest
@@ -7,136 +21,86 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 
-def _cpu_backward_reference(input, grad_output, weight, save_mean, save_invstd, eps):
-    # cuDNN has no CPU dispatch. Native BN uses the same saved inverse standard
-    # deviation directly, including the parameter publicly named save_var.
-    to_cpu = lambda value: value.detach().to(device="cpu", dtype=torch.float64)
-    return torch.ops.aten.native_batch_norm_backward.default(
-        to_cpu(grad_output),
-        to_cpu(input),
-        to_cpu(weight),
-        None,
-        None,
-        to_cpu(save_mean),
-        to_cpu(save_invstd),
-        True,
-        eps,
-        [True, True, True],
-    )
+DTYPES = [torch.float16, torch.float32] + (
+    [torch.float64] if utils.fp64_is_supported else []
+)
 
 
-def _saved_statistics(input, weight, bias, eps):
-    if flag_gems.vendor_name == "nvidia" and not utils.TO_CPU:
-        _, mean, invstd, reserve = torch.ops.aten.cudnn_batch_norm.default(
-            input,
-            weight,
-            bias,
-            None,
-            None,
-            training=True,
-            exponential_average_factor=0.1,
-            epsilon=eps,
+@pytest.mark.cudnn_batch_norm_backward
+@pytest.mark.parametrize(
+    "shape", [(7, 3), (3, 5, 17), (2, 7, 9, 11), (2, 3, 5, 7, 9), (3, 4, 2051)]
+)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("layout", ["contiguous", "channels_last"])
+def test_cudnn_batch_norm_backward(shape, dtype, layout):
+    _check_backward(shape, dtype, layout)
+
+
+def _check_backward(shape, dtype, layout, offset=0):
+    if layout == "channels_last" and len(shape) not in (4, 5):
+        pytest.skip("channels-last format requires rank 4 or 5")
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if layout == "channels_last":
+        x = torch.randn(
+            (shape[0], *shape[2:], shape[1]), dtype=dtype, device=flag_gems.device
         )
-        return mean, invstd, reserve
-    # The target may have neither cuDNN forward nor backward. Construct genuine
-    # training statistics on CPU, then retain their required FP32 target ABI.
-    _, mean, invstd = torch.ops.aten.native_batch_norm.default(
-        input.detach().to(device="cpu", dtype=torch.float32),
-        weight.cpu(),
-        bias.cpu(),
-        None,
-        None,
-        True,
-        0.1,
-        eps,
+        x = x.permute(0, len(shape) - 1, *range(1, len(shape) - 1))
+    if offset:
+        x += offset
+    param_dtype = torch.float32 if dtype == torch.float16 else dtype
+    w = torch.randn(shape[1], dtype=param_dtype, device=flag_gems.device)
+    grad = torch.randn_like(x)
+    xr, wr = [t.detach().cpu().double().requires_grad_() for t in (x, w)]
+    br = torch.zeros_like(wr, requires_grad=True)
+    # Use the exact saved statistics that produced the reference gradient.
+    # Recomputing mean/variance uses a different reduction order and can diverge
+    # from the CPU BatchNorm's saved values for large-offset FP64 inputs.
+    y, mean, inv = torch.ops.aten.native_batch_norm.default(
+        xr, wr, br, None, None, True, 0.1, 1e-5
     )
-    return (
-        mean.to(input.device),
-        invstd.to(input.device),
-        torch.empty(0, dtype=torch.uint8, device=input.device),
+    expected = torch.autograd.grad(y, (xr, wr, br), grad.cpu().double())
+    saved_mean = mean.to(device=x.device, dtype=param_dtype)
+    saved_invstd = inv.to(device=x.device, dtype=param_dtype)
+    reserve = torch.empty(0, dtype=torch.uint8, device=x.device)
+    inputs = (x, grad, w, saved_mean, saved_invstd, reserve)
+    snapshots = tuple(value.clone() for value in inputs)
+    actual = flag_gems.cudnn_batch_norm_backward(
+        x, grad, w, None, None, saved_mean, saved_invstd, 1e-5, reserve
     )
+    assert isinstance(actual, (tuple, list)) and len(actual) == len(expected) == 3
+    input_storage = {t.untyped_storage().data_ptr() for t in inputs}
+    for result, reference in zip(actual, expected):
+        assert result.device == x.device
+        assert result.shape == reference.shape
+        assert result.untyped_storage().data_ptr() not in input_storage
+    for value, snapshot in zip(inputs, snapshots):
+        assert torch.equal(value, snapshot)
+    assert actual[0].dtype == dtype
+    assert actual[1].dtype == actual[2].dtype == param_dtype
+    tol = (
+        3e-3 if dtype == torch.float16 else (3e-5 if dtype == torch.float32 else 1e-10)
+    )
+    for a, e in zip(actual, expected):
+        torch.testing.assert_close(a.cpu().double(), e, rtol=tol, atol=tol)
+    assert math.prod(shape) // shape[1] > 1
 
 
 @pytest.mark.cudnn_batch_norm_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+    flag_gems.vendor_name != "nvidia", reason="NVIDIA FP64 split reduction"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "amd",
+    reason="ROCm torch has no aten.cudnn_batch_norm reference (MIOpen backend)",
 )
 @pytest.mark.parametrize(
     "shape",
-    [
-        (16, 3),
-        (32, 32, 32),
-        (8, 32, 224, 224),
-        (2050, 16, 32, 32),
-        (8, 16, 3, 224, 224),
-    ],
+    [(1, 3, 2048), (1, 3, 2049), (16, 16, 1024), (16, 16, 4098), (16, 8, 128, 128)],
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("affine", [True, False])
-def test_cudnn_batch_norm_backward(shape, dtype, affine):
-    if (
-        flag_gems.vendor_name == "nvidia"
-        and dtype == torch.bfloat16
-        and not utils.TO_CPU
-    ):
-        pytest.skip(
-            "native cuDNN batch-normalization backward does not support bfloat16"
-        )
-    torch.manual_seed(0)
-    channels = shape[1]
-    res_inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
-    # cuDNN half inputs require FP32 scale and saved statistics. Gradients for
-    # scale and bias follow that FP32 ABI; input gradients retain input dtype.
-    res_weight = torch.ones(channels, dtype=torch.float32, device=flag_gems.device)
-    res_bias = torch.ones_like(res_weight)
-    eps = 1e-5
-    save_mean, save_invstd, reserve = _saved_statistics(
-        res_inp, res_weight, res_bias, eps
-    )
-    grad_output = torch.ones_like(res_inp)
-    args = (
-        res_inp,
-        grad_output,
-        res_weight,
-        None,
-        None,
-        save_mean,
-        save_invstd,
-        eps,
-        reserve,
-    )
-    if flag_gems.vendor_name == "nvidia" and not utils.TO_CPU:
-        reference = torch.ops.aten.cudnn_batch_norm_backward.default(*args)
-    else:
-        reference = _cpu_backward_reference(
-            res_inp, grad_output, res_weight, save_mean, save_invstd, eps
-        )
-    inputs = [res_inp, grad_output, res_weight, save_mean, save_invstd, reserve]
-    before = [value.clone() for value in inputs]
-    result = flag_gems.cudnn_batch_norm_backward(*args)
-    assert isinstance(result, (tuple, list)) and len(result) == 3
-    expected_shapes = [res_inp.shape, res_weight.shape, res_weight.shape]
-    expected_dtypes = [dtype, res_weight.dtype, res_weight.dtype]
-    for actual, expected_shape, expected_dtype in zip(
-        result, expected_shapes, expected_dtypes
-    ):
-        assert isinstance(actual, torch.Tensor)
-        assert actual.device == res_inp.device
-        assert actual.shape == expected_shape and actual.dtype == expected_dtype
-        assert all(
-            actual.untyped_storage().data_ptr() != value.untyped_storage().data_ptr()
-            for value in inputs
-        )
-    for actual, original in zip(inputs, before):
-        assert torch.equal(actual, original)
-    reduce_dim = math.prod(shape) // channels
-    # Check target ABI before transferring both values for numerical comparison.
-    utils.gems_assert_close(
-        result[0].cpu(), reference[0].cpu(), dtype, reduce_dim=reduce_dim
-    )
-    if affine:
-        for actual, expected in zip(result[1:], reference[1:]):
-            utils.gems_assert_close(
-                actual.cpu(), expected.cpu(), res_weight.dtype, reduce_dim=reduce_dim
-            )
+@pytest.mark.parametrize("offset", [0, 1024])
+def test_cudnn_batch_norm_backward_fp64_split(shape, offset):
+    _check_backward(shape, torch.float64, "contiguous", offset)

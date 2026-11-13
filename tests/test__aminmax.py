@@ -22,6 +22,14 @@ from . import accuracy_utils as utils
 
 from . import conftest as cfg
 
+# Use the shared master suite on Iluvatar.
+_private_default_mark = (
+    pytest.mark.skip(reason="Iluvatar uses the shared _aminmax suite")
+    if flag_gems.vendor_name == "iluvatar"
+    else pytest.mark.underscore_aminmax
+)
+
+
 UNDERSCORE_AMINMAX_SHAPES = utils.REDUCTION_SHAPES + [(1, 8192), (32, 50257)]
 
 
@@ -91,7 +99,7 @@ def _checked_aminmax(inp):
     return result
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 @pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__aminmax(shape, dtype):
@@ -104,7 +112,7 @@ def test__aminmax(shape, dtype):
     utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 @pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__aminmax_zero(shape, dtype):
@@ -117,7 +125,7 @@ def test__aminmax_zero(shape, dtype):
     utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 @pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__aminmax_inf(shape, dtype):
@@ -138,7 +146,7 @@ def test__aminmax_inf(shape, dtype):
     )
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 @pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
 def test__aminmax_int(shape):
     inp = torch.randint(-100, 100, shape, dtype=torch.int32, device=flag_gems.device)
@@ -149,7 +157,7 @@ def test__aminmax_int(shape):
     utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 def test__aminmax_scalar():
     inp = torch.randn((), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -186,7 +194,7 @@ def _aminmax_numeric_cpu(value):
     return value.detach().cpu()
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
 @pytest.mark.parametrize("nan_pos", ["first", "middle", "last"])
 def test_underscore_aminmax_nan(dtype, nan_pos):
@@ -232,7 +240,7 @@ def test_underscore_aminmax_nan(dtype, nan_pos):
     )
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 @pytest.mark.parametrize(
     "view", ["slice", "transpose", "narrow", "expand", "broadcast"]
 )
@@ -291,7 +299,7 @@ def test_underscore_aminmax_out_rejects_mismatch(bad):
         flag_gems._aminmax_out(inp, out0=out0, out1=out1)
 
 
-@pytest.mark.underscore_aminmax
+@_private_default_mark
 def test_underscore_aminmax_empty_matches_aten():
     """An empty input is rejected, matching ATen's "no identity" error."""
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)

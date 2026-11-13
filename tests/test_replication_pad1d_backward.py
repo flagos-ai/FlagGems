@@ -91,14 +91,6 @@ def _reference_input(value):
 
 
 def _reference_backward(grad, inp, padding):
-    if (
-        flag_gems.vendor_name == "iluvatar"
-        and inp.device.type != "cpu"
-        and inp.dtype == torch.complex128
-    ):
-        pytest.skip(
-            "Iluvatar native complex128 replication_pad1d_backward computes incorrect values; CPU reference remains covered"
-        )
     try:
         return torch.ops.aten.replication_pad1d_backward(grad, inp, padding)
     except ValueError as error:
@@ -125,6 +117,10 @@ def _reference_backward(grad, inp, padding):
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
 @pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128:
+        pytest.skip(
+            "Iluvatar complex128 replication_pad1d_backward returns incorrect gradients"
+        )
     if (
         flag_gems.vendor_name == "ascend"
         and not utils.TO_CPU

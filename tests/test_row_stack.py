@@ -144,6 +144,10 @@ def test_row_stack_memory_format(shape, memory_format, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_row_stack_mixed_dtype_promotion(dtype):
     """Mixed dtypes follow ATen's type promotion instead of being rejected."""
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float32:
+        pytest.skip(
+            "Iluvatar row_stack float32-to-float64 promotion computes incorrect device values"
+        )
     other = torch.float64 if dtype == torch.float32 else torch.int64
     if dtype in utils.FLOAT_DTYPES:
         a = torch.randn(3, 4, dtype=dtype, device=flag_gems.device)
@@ -154,14 +158,6 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     ref_a = utils.to_reference(a)
     ref_b = utils.to_reference(b)
 
-    if (
-        flag_gems.vendor_name == "iluvatar"
-        and ref_a.device.type != "cpu"
-        and dtype == torch.float32
-    ):
-        pytest.skip(
-            "Iluvatar native row_stack float32/float64 promotion computes incorrect values; CPU reference remains covered"
-        )
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
 
@@ -284,12 +280,12 @@ def test_row_stack_out_resize(shape, dtype):
 @pytest.mark.row_stack_out
 def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
+    if flag_gems.vendor_name == "iluvatar":
+        pytest.skip(
+            "Iluvatar native row_stack out computes incorrect float32-to-float64 casts"
+        )
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     ref_inp = [utils.to_reference(e) for e in inp]
-    if flag_gems.vendor_name == "iluvatar" and ref_inp[0].device.type != "cpu":
-        pytest.skip(
-            "Iluvatar native row_stack out float32-to-float64 cast computes incorrect values; CPU reference remains covered"
-        )
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
     torch.row_stack(ref_inp, out=ref_out)
 

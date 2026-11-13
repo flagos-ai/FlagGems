@@ -26,10 +26,26 @@ class SvdBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "(*B), M, N"
     DEFAULT_DTYPES = [torch.float32]
 
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=dtype, device=self.device)
-            yield inp, {"some": True, "compute_uv": True}
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"some": True, "compute_uv": True},
+                    builder_args=(tuple(shape),),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
+        return inp, dict(plan.params)
 
 
 @pytest.mark.svd

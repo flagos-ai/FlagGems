@@ -26,7 +26,7 @@ SHAPES = [(1,), (1024,), (4096,), (4097,), (128, 128), (1024, 1024), (4096, 4096
 
 class MaskedSelectBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = SHAPES
+        self.shapes = list(SHAPES)
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             self.shapes += [(17, 17), (8192,), (256, 256), (8192, 4096)]
 
@@ -63,10 +63,12 @@ def test_masked_select_backward():
     bench = MaskedSelectBackwardBenchmark(
         op_name="masked_select_backward",
         torch_op=torch.ops.aten.masked_select_backward.default,
-        gems_op=flag_gems.masked_select_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
+    )
+    bench.set_gems(
+        lambda *args, **kwargs: flag_gems.masked_select_backward(*args, **kwargs)
     )
     bench.run()

@@ -32,7 +32,168 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import test_utils as tu
+from .conftest import TO_CPU
+
+# ---------------------------------------------------------------------------
+# Shared value-range / shape helpers (mirrors the operator-test spec
+# conventions; QUICK_MODE selects the reduced sets via pytest --quick).
+# ---------------------------------------------------------------------------
+QUICK_MODE = utils.QUICK_MODE
+
+
+def selected_cases(cases, *, quick=()):
+    """Select parameter values; an empty quick subset contributes no cases."""
+    return list(quick if QUICK_MODE else cases)
+
+
+# Full set: ranks 0 through 5. The operator is a two-branch rational
+# approximation, so the extents keep both branches and the launch-bound regime
+# covered without allocating more than 64 MiB per case.
+REQUIRED_SHAPES = [
+    (),  # 0-dim scalar
+    (1,),  # single-element 1-dim
+    (256,),  # regular 1-dim
+    (1024, 1024),  # regular 2-dim
+    (20, 320, 15),  # regular 3-dim
+    (16, 128, 64, 60),  # 4-dim
+    (16, 7, 57, 32, 29),  # 5-dim
+]
+
+
+def selected_shapes():
+    return [(2, 19, 7)] if QUICK_MODE else REQUIRED_SHAPES
+
+
+def selected_ranges():
+    return [["-1", "1"]] if QUICK_MODE else REQUIRED_RANGES
+
+
+REQUIRED_RANGES = [
+    ["-1", "1"],
+    ["0", "1"],
+    ["-1", "0"],
+    ["0", "max"],
+    ["min", "0"],
+]
+
+
+def dtype_bounds(dtype):
+    if dtype == torch.bool:
+        return 0, 1
+    if dtype.is_complex:
+        real = {
+            torch.complex32: torch.float16,
+            torch.complex64: torch.float32,
+            torch.complex128: torch.float64,
+        }[dtype]
+        finfo = torch.finfo(real)
+        return finfo.min, finfo.max
+    if dtype.is_floating_point:
+        finfo = torch.finfo(dtype)
+        return finfo.min, finfo.max
+    iinfo = torch.iinfo(dtype)
+    return iinfo.min, iinfo.max
+
+
+def make_input(dtype, shape, value_range):
+    """Build a tensor of ``shape`` / ``dtype`` with values in ``value_range``.
+
+    Bounds are clamped to the dtype's representable range first, so a range a
+    dtype cannot represent (e.g. uint8 and ``[-1, 0]``) degenerates to a
+    constant fill instead of raising.
+    """
+    low, high = dtype_bounds(dtype)
+    table = {
+        "-1": -1.0,
+        "0": 0.0,
+        "1": 1.0,
+        "max": high,
+        "min": low,
+        "max/2": high / 2,
+        "min/2": low / 2,
+    }
+    low, high = table[value_range[0]], table[value_range[1]]
+
+    if dtype == torch.bool:
+        return torch.randint(0, 2, shape, device=flag_gems.device).bool()
+
+    if not (dtype.is_floating_point or dtype.is_complex):
+        low, high = int(low), int(high)
+        info = torch.iinfo(dtype)
+        low = max(low, int(info.min))
+        high = min(high, int(info.max))
+        low = min(low, high)
+
+    if low == high:
+        return torch.full(shape, low, device=flag_gems.device, dtype=dtype)
+
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device=flag_gems.device, low=low, high=high
+    )
+
+
+def make_special_input(dtype, scenario):
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return torch.tensor(
+        payloads[scenario], device=flag_gems.device, dtype=torch.float32
+    ).to(dtype)
+
+
+def to_reference(inp, upcast=False):
+    """Independent tensor oracle for these tests, retaining view metadata."""
+    if inp is None:
+        return None
+    if inp.layout != torch.strided or inp.is_quantized or inp.is_nested:
+        reference = inp.detach().clone()
+    else:
+        reference = torch.empty(0, dtype=inp.dtype, device=inp.device).set_(
+            inp.untyped_storage().clone(),
+            inp.storage_offset(),
+            inp.size(),
+            inp.stride(),
+        )
+        if inp.is_conj():
+            reference = reference.conj()
+    # In quick-cpu mode the reference runs on CPU and gems_assert_close
+    # asserts the reference is already there. .to() preserves size, stride
+    # and storage offset, so the view metadata survives the move.
+    if TO_CPU:
+        reference = reference.to("cpu")
+    reference.requires_grad_(inp.requires_grad)
+    return reference
+
+
+def assert_result_close(result, reference, device, *, atol=1e-4):
+    assert result.device == device
+    assert result.shape == reference.shape
+    assert result.dtype == reference.dtype
+    assert result.layout == reference.layout
+    # K0e has a pole at 0 and returns NaN for negative inputs, so the
+    # comparison must ignore NaNs.
+    utils.gems_assert_close(
+        result, reference, dtype=reference.dtype, atol=atol, equal_nan=True
+    )
+
+
+def special_value_cases(dtypes):
+    """Representable special scenarios, kept separate in collected case IDs."""
+    cases = []
+    for dtype in dtypes:
+        if not dtype.is_floating_point:
+            continue
+        cases.append((dtype, "nan"))
+        if dtype not in (
+            torch.float8_e4m3fn,
+            torch.float8_e4m3fnuz,
+            torch.float8_e5m2fnuz,
+        ):
+            cases.extend((dtype, kind) for kind in ("inf", "mixed"))
+    return cases
+
 
 # Integral/bool inputs are promoted to float32; float32 and float64 run on the
 # native kernel. The remaining dtypes are covered by the negative tests below.
@@ -65,11 +226,11 @@ if utils.fp64_is_supported:
 
 # The out= overload keeps the complete default grid but is default-only, so
 # quick mode stays the smoke subset (main grid + negatives).
-OUT_CASES = tu.selected_cases(
+OUT_CASES = selected_cases(
     [
         (shape, value_range, dtype, out_dtype)
-        for shape in tu.REQUIRED_SHAPES
-        for value_range in tu.REQUIRED_RANGES
+        for shape in REQUIRED_SHAPES
+        for value_range in REQUIRED_RANGES
         for dtype, out_dtype in _OUT_DTYPE_PAIRS
     ],
     quick=[],
@@ -78,7 +239,7 @@ OUT_CASES = tu.selected_cases(
 # Non-contiguous and offset layouts are default-only as well. transpose2d keeps
 # the original two-dimensional flipped view; transpose3d transposes the full
 # three-dimensional tensor so no extent is dropped.
-STRIDED_CASES = tu.selected_cases(
+STRIDED_CASES = selected_cases(
     [
         ("transpose2d", (20, 320)),
         ("transpose3d", (20, 320, 15)),
@@ -88,11 +249,11 @@ STRIDED_CASES = tu.selected_cases(
     quick=[],
 )
 
-SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[])
+SPECIAL_CASES = selected_cases(special_value_cases(_FLOAT_DTYPES), quick=[])
 
 # Pole, dtype endpoints and the immediate neighbours of 2.0, the threshold of
 # the classic rational approximations of the scaled K0.
-EDGE_KINDS = tu.selected_cases(
+EDGE_KINDS = selected_cases(
     [
         "zero",
         "neg_zero",
@@ -109,7 +270,7 @@ EDGE_KINDS = tu.selected_cases(
     quick=[],
 )
 
-EMPTY_SHAPES = tu.selected_cases([(0,), (0, 3), (5, 0, 2)], quick=[])
+EMPTY_SHAPES = selected_cases([(0,), (0, 3), (5, 0, 2)], quick=[])
 
 # Dtypes the native kernel rejects on the measured CUDA-family backend. The
 # limitation belongs to that backend's kernel, so the expectation is scoped to
@@ -126,14 +287,6 @@ if flag_gems.vendor_name == "nvidia":
         REJECTED_DTYPES.append(torch.complex128)
 
 
-def _assert_output_contract(result, expected):
-    # Check the original output before shared comparison can move it to CPU.
-    shape, dtype, layout, device = expected
-    assert isinstance(result, torch.Tensor)
-    assert result.shape == shape and result.dtype == dtype
-    assert result.layout == layout and result.device == device
-
-
 def _strided_input(dtype, shape, kind):
     """Build a non-contiguous view over a larger parent tensor.
 
@@ -144,13 +297,13 @@ def _strided_input(dtype, shape, kind):
     do place +inf in the compared result, which the shared comparison handles.
     """
     if kind == "transpose2d":
-        return tu.make_input(dtype, shape, ["0", "1"]).t()
+        return make_input(dtype, shape, ["0", "1"]).t()
     if kind == "transpose3d":
-        return tu.make_input(dtype, shape, ["0", "1"]).transpose(0, 1)
+        return make_input(dtype, shape, ["0", "1"]).transpose(0, 1)
     if kind == "offset":
-        parent = tu.make_input(dtype, (shape[0] + 3,), ["0", "1"])
+        parent = make_input(dtype, (shape[0] + 3,), ["0", "1"])
         return parent[2 : 2 + shape[0]]
-    parent = tu.make_input(dtype, (shape[0], shape[1] * 2), ["0", "1"])
+    parent = make_input(dtype, (shape[0], shape[1] * 2), ["0", "1"])
     return parent[:, ::2]
 
 
@@ -190,52 +343,36 @@ def _edge_input(dtype, kind):
     return value.reshape(1)
 
 
-# Bool input generation ignores value_range; keep one sample per workload.
-# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
-_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
-    for dtype in SUPPORTED_DTYPES
-    for value_range in (
-        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
-    )
-    if dtype != torch.uint8
-    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
-]
-
-
 @pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape", selected_shapes())
+@pytest.mark.parametrize("value_range", selected_ranges())
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = make_input(dtype, shape, value_range)
+    ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-    _assert_output_contract(res_out, _expected_output)
 
-    tu.assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.special_scaled_modified_bessel_k0_out
 @pytest.mark.parametrize("shape,value_range,dtype,out_dtype", OUT_CASES)
 def test_special_scaled_modified_bessel_k0_out(shape, value_range, dtype, out_dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = make_input(dtype, shape, value_range)
+    ref_inp = to_reference(inp)
 
     ref_buf = torch.empty(shape, dtype=out_dtype, device=ref_inp.device)
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0.out(ref_inp, out=ref_buf)
 
     buf = torch.empty(shape, dtype=out_dtype, device=flag_gems.device)
-    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, buf.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp, out=buf)
-    _assert_output_contract(res_out, _expected_output)
 
     # The out= overload must write into, and return, the caller's buffer;
     # comparing pointers would also pass for a distinct alias of one storage.
     assert res_out is buf
-    tu.assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
@@ -243,28 +380,24 @@ def test_special_scaled_modified_bessel_k0_out(shape, value_range, dtype, out_dt
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_special_scaled_modified_bessel_k0_strided(kind, shape, dtype):
     inp = _strided_input(dtype, shape, kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-    _assert_output_contract(res_out, _expected_output)
 
-    tu.assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_special_scaled_modified_bessel_k0_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = make_special_input(dtype, scenario)
+    ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-    _assert_output_contract(res_out, _expected_output)
 
-    tu.assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
@@ -272,60 +405,56 @@ def test_special_scaled_modified_bessel_k0_special_values(dtype, scenario):
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test_special_scaled_modified_bessel_k0_edge_values(kind, dtype):
     inp = _edge_input(dtype, kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-    _assert_output_contract(res_out, _expected_output)
 
     # atol=0: the +max endpoint is a small nonzero limit value (6.79e-20 in
     # float32, 9.35e-155 in float64), so the default absolute tolerance would
     # let a candidate that flushes the tail to zero pass. rtol stays the shared
     # per-dtype resolution.
-    tu.assert_result_close(res_out, ref_out, atol=0)
+    assert_result_close(res_out, ref_out, inp.device, atol=0)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
 @pytest.mark.parametrize("shape", EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
 def test_special_scaled_modified_bessel_k0_empty(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    inp = make_input(dtype, shape, ["-1", "1"])
+    ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-    _assert_output_contract(res_out, _expected_output)
 
-    tu.assert_result_close(res_out, ref_out)
+    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0
 @pytest.mark.parametrize("dtype", REJECTED_DTYPES)
 def test_special_scaled_modified_bessel_k0_rejects_unsupported_dtype(dtype):
-    inp = tu.make_input(dtype, (16,), ["-1", "1"])
+    inp = make_input(dtype, (16,), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.special_scaled_modified_bessel_k0(inp)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.special_scaled_modified_bessel_k0_out
 @pytest.mark.parametrize("out_dtype", [torch.int32, torch.bool])
 def test_special_scaled_modified_bessel_k0_rejects_non_float_out_buffer(out_dtype):
     # Native: RuntimeError, the float result cannot be cast to the Int/Bool
     # output type.
-    inp = tu.make_input(torch.float32, (16,), ["-1", "1"])
+    inp = make_input(torch.float32, (16,), ["-1", "1"])
     buf = torch.empty(16, dtype=out_dtype, device=flag_gems.device)
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.special_scaled_modified_bessel_k0(inp, out=buf)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.special_scaled_modified_bessel_k0_out
 def test_special_scaled_modified_bessel_k0_rejects_positional_out():
     # out is keyword-only in the native schema.
-    inp = tu.make_input(torch.float32, (16,), ["-1", "1"])
+    inp = make_input(torch.float32, (16,), ["-1", "1"])
     buf = torch.empty(16, dtype=torch.float32, device=flag_gems.device)
 
     with pytest.raises((RuntimeError, TypeError)):

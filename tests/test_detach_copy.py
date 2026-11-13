@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
+from .conftest import QUICK_MODE
 
 # Select every overload and contract case with the operator marker.
 pytestmark = pytest.mark.detach_copy
@@ -407,3 +408,260 @@ def test_detach_copy_special_scenarios(dtype, scenario):
     expected = torch.ops.aten.detach_copy(reference)
     actual = flag_gems.detach_copy(inp)
     _assert_result_equal(actual, expected)
+
+
+_MASTER_SHAPES = [(16,), (1024,), (2, 3, 4), (16, 128, 64, 60)]
+if QUICK_MODE:
+    _MASTER_SHAPES = [(2, 3)]
+
+
+def _make_master_input(shape, dtype):
+    # Complex dtypes must be generated explicitly: without this branch they
+    # fall through to BOOL below and never exercise the complex copy path.
+    if dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.FLOAT_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.INT_DTYPES:
+        return torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cpu",
+        ).to(flag_gems.device)
+    # BOOL_TYPES
+    return (
+        torch.randint(0, 2, size=shape, dtype=torch.bool, device="cpu").to(
+            flag_gems.device
+        )
+        if shape
+        else torch.empty(shape, dtype=torch.bool, device=flag_gems.device)
+    )
+
+
+@pytest.mark.detach_copy
+@pytest.mark.parametrize("shape", _MASTER_SHAPES)
+@pytest.mark.parametrize(
+    "dtype",
+    utils.FLOAT_DTYPES
+    + utils.INT_DTYPES
+    + utils.BOOL_TYPES
+    + [torch.complex64, torch.complex128],
+)
+def test_accuracy_detach_copy(shape, dtype):
+    inp = _make_master_input(shape, dtype)
+    # Guards the generation branch above: a silent BOOL fallthrough would
+    # make this parametrization pass without testing the requested dtype.
+    assert inp.dtype == dtype
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.detach_copy(ref_inp)
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.shape == inp.shape
+    assert res_out.dtype == inp.dtype
+    # A copy, not a view: fresh storage.
+    assert res_out.data_ptr() != inp.data_ptr()
+    # Native contract: freshly allocated output is contiguous and dense.
+    assert res_out.is_contiguous() == ref_out.is_contiguous()
+    assert res_out.stride() == ref_out.stride()
+
+
+@pytest.mark.detach_copy
+@pytest.mark.parametrize("shape", [(2, 3), (4, 8, 5)])
+def test_accuracy_detach_copy_non_contiguous(shape):
+    # Transposed (non-contiguous) input: the strided kernel must gather
+    # elements by shape/stride metadata and materialize a contiguous output,
+    # matching native detach_copy.
+    inp = torch.randn(shape, device=flag_gems.device).transpose(0, -1)
+    assert not inp.is_contiguous()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.detach_copy(ref_inp)
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.shape == inp.shape
+    assert res_out.data_ptr() != inp.data_ptr()
+    # Native materializes the copy contiguously for a transposed input.
+    assert res_out.is_contiguous() == ref_out.is_contiguous()
+    assert res_out.stride() == ref_out.stride()
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_empty():
+    # Empty 1-D tensor: grid would be (0,), short-circuited before launch.
+    inp = torch.empty(0, device=flag_gems.device)
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    assert res_out.shape == (0,)
+    assert res_out.numel() == 0
+    utils.gems_assert_equal(res_out, ref_out)
+    # Native allocates fresh storage even for empty inputs, but an empty CUDA
+    # tensor has no backing page, so both data_ptrs are 0 and the fresh-storage
+    # property is not observable here (unlike non-empty cases below).
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_empty_non_contiguous():
+    # A transposed empty tensor is "contiguous" only by ATen's degenerate
+    # stride rules; exercise the strided branch's empty guard too.
+    inp = torch.empty(3, 0, device=flag_gems.device).transpose(0, -1)
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    assert res_out.shape == inp.shape
+    assert res_out.numel() == 0
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_zero_dim():
+    inp = torch.randn((), device=flag_gems.device)
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    assert res_out.shape == ()
+    assert res_out.numel() == 1
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_single_element():
+    inp = torch.randn(1, device=flag_gems.device)
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_autograd_contract():
+    # detach_copy is a copy op: the output must never alias the input and
+    # must carry fresh (grad-free) storage. Native wraps the CUDA kernel in
+    # a generated autograd kernel (requires_grad propagates from the input
+    # and backward raises "derivative ... not implemented"); the FlagGems
+    # registration is backend-side, so the output is a plain leaf. Both
+    # sides agree that the result is detached from the graph: no gradient
+    # can flow from the output back into the input storage.
+    inp = torch.randn(4, 5, device=flag_gems.device, requires_grad=True)
+    ref_inp = inp.detach().requires_grad_(True)
+
+    ref_out = torch.ops.aten.detach_copy(ref_inp)
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    assert res_out.data_ptr() != inp.data_ptr()
+    assert ref_out.data_ptr() != ref_inp.data_ptr()
+    # Native: output is not a view of the input (view_assoc is unset).
+    assert ref_out._base is None
+    # ref_out must stay on CUDA: the native autograd wrapper (grad_fn=
+    # <NotImplemented>) only exists for the CUDA native op, so ref never
+    # goes through to_reference. Compare device-explicitly instead of via
+    # gems_assert_equal, which requires a CPU ref under --ref=cpu.
+    assert torch.equal(res_out.detach().cpu(), ref_out.detach().to("cpu"))
+    # Values equal the input's current content.
+    assert torch.equal(res_out.detach(), inp.detach())
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_dispatch_stability():
+    # Repeated dispatches plus an unrelated aten op in between must not
+    # corrupt the copy (no shared mutable state across calls).
+    inp = torch.randn(3, 7, device=flag_gems.device)
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    for _ in range(3):
+        res_out = flag_gems.detach_copy(inp)
+        assert res_out.device == inp.device
+        assert torch.equal(utils.to_cpu(res_out, ref_out), ref_out)
+        assert torch.ops.aten.dim(inp) == 2
+    assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.detach_copy
+@pytest.mark.parametrize("layout", ["vector", "transposed", "scalar", "permuted"])
+def test_accuracy_detach_copy_neg_view(layout):
+    shapes = {
+        "vector": (1024,),
+        "transposed": (4, 8),
+        "scalar": (),
+        "permuted": (16, 128, 64, 60),
+    }
+    values = torch.randn(shapes[layout], device=flag_gems.device)
+    if layout == "transposed":
+        values = values.transpose(0, -1)
+    elif layout == "permuted":
+        values = values.permute(2, 0, 3, 1)
+    inp = torch._neg_view(values)
+    assert inp.is_neg()
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.dtype == inp.dtype
+    # res_out must equal the resolved logical values, and must NOT equal the
+    # raw storage of the view's base (which is what a bitwise copy yields).
+    assert torch.equal(res_out, inp.resolve_neg())
+    assert not torch.equal(res_out, inp.resolve_neg().neg())
+    assert res_out.data_ptr() != inp.data_ptr()
+    assert not res_out.is_neg()
+    # Freshly allocated output is contiguous, like the native operator.
+    assert res_out.is_contiguous() == ref_out.is_contiguous()
+
+
+@pytest.mark.detach_copy
+def test_accuracy_detach_copy_neg_view_complex():
+    # The negative bit also rides on complex views; combined neg+conj views
+    # resolve to -conj(x), which must not be confused with raw storage.
+    inp = torch.randn(3, 4, dtype=torch.complex64, device=flag_gems.device)
+    neg_conj = torch._neg_view(inp).conj()
+    assert neg_conj.is_neg() and neg_conj.is_conj()
+    ref_out = torch.ops.aten.detach_copy(utils.to_reference(neg_conj))
+    res_out = flag_gems.detach_copy(neg_conj)
+    assert res_out.device == neg_conj.device
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert torch.allclose(res_out, (-inp).conj())
+    assert res_out.data_ptr() != inp.data_ptr()
+    assert not res_out.is_neg() and not res_out.is_conj()
+
+
+@pytest.mark.detach_copy
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("layout", ["dense", "transposed", "scalar", "empty"])
+def test_accuracy_detach_copy_complex_layouts(layout, dtype):
+    if layout == "empty":
+        inp = torch.empty(4, 0, dtype=dtype, device=flag_gems.device).t()
+    else:
+        shape = () if layout == "scalar" else (4, 6)
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if layout == "transposed":
+            inp = inp.t()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.detach_copy(ref_inp)
+    res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == inp.shape
+    if inp.numel() > 0:
+        # Empty CUDA tensors have no backing page (data_ptr() == 0 on both
+        # sides), so the fresh-storage property is only observable here.
+        assert res_out.data_ptr() != inp.data_ptr()
+    assert res_out.is_contiguous() == ref_out.is_contiguous()
+    assert res_out.stride() == ref_out.stride()
+    assert not res_out.is_conj() and not res_out.is_neg()
