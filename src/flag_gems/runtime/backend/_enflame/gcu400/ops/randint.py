@@ -25,6 +25,14 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(__name__)
 
+# 提为模块常量，便于按 shape 分档与批量配置扫描；默认值保持原实现。
+_RANDINT_BLOCK_SIZE = 4096
+_RANDINT_UNROLL = 4
+_RANDINT_MAX_GRID_X = 65535
+_RANDINT_NUM_WARPS = 4
+# 32 位取模比 64 位除法便宜得多；high < 2**32 时启用，否则保持原 64 位路径。
+_RANDINT_U32_HIGH_LIMIT = 1 << 32
+
 
 @libentry()
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
@@ -35,6 +43,7 @@ def randint_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
+    USE_U32: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -44,7 +53,10 @@ def randint_kernel(
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
 
-    high_val = high.to(tl.uint64)
+    if USE_U32:
+        high_val = high.to(tl.uint32)
+    else:
+        high_val = high.to(tl.uint64)
 
     # Grid-stride loop so that grid_x can be capped (<= 65535) while still
     # covering every block. Each block_idx maps to the same philox counter
@@ -103,11 +115,12 @@ def randint(
     for s in size:
         N *= s
 
-    BLOCK_SIZE = 128  # matches philox 4-wide output for efficient random generation
-    UNROLL = 4
-    MAX_GRID_X = 65535
+    BLOCK_SIZE = _RANDINT_BLOCK_SIZE
+    UNROLL = _RANDINT_UNROLL
+    MAX_GRID_X = _RANDINT_MAX_GRID_X
     grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), MAX_GRID_X),)
     increment = triton.cdiv(N, UNROLL)
+    use_u32 = isinstance(high, int) and 0 < high < _RANDINT_U32_HIGH_LIMIT
 
     result = torch.empty(size, device=device, dtype=dtype, pin_memory=pin_memory)
 
@@ -123,6 +136,8 @@ def randint(
             philox_seed,
             philox_offset,
             BLOCK_SIZE,
+            USE_U32=use_u32,
+            num_warps=_RANDINT_NUM_WARPS,
         )
 
     if out is not None:

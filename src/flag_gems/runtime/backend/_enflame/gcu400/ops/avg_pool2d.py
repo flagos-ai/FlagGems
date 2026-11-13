@@ -21,8 +21,6 @@ import triton.language as tl
 from flag_gems.ops.avg_pool2d import _parse_pool_params, pool2d_output_size
 from flag_gems.utils import libentry
 
-from ..utils.config_utils import MAX_GRID_DIM
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +61,7 @@ def avg_pool2d_forward_kernel(
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
     COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override,
+    divisor_override: tl.constexpr,
     total_nc,
     NC_PER_PROGRAM: tl.constexpr,
     BLOCK_H: tl.constexpr,
@@ -86,7 +84,6 @@ def avg_pool2d_forward_kernel(
             c_idx = pid_nc % in_c
 
             sum_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-            count_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
 
             input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
@@ -105,8 +102,8 @@ def avg_pool2d_forward_kernel(
                         input_base_ptr + input_offset, mask=in_mask, other=0.0
                     )
 
-                    sum_acc += tl.where(in_mask, current_val, 0.0)
-                    count_acc += in_mask.to(tl.int32)
+                    # tl.load 已用 other=0.0 把越界元素置零，无需再按 in_mask 屏蔽一次。
+                    sum_acc += current_val
 
             if divisor_override != 0:
                 divisor = tl.full(
@@ -117,7 +114,18 @@ def avg_pool2d_forward_kernel(
                     (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                 )
             else:
-                divisor = count_acc.to(tl.float32)
+                # 前向的有效元素数与反向同理，用解析式替代逐窗口 count 累加。
+                first_h_in = h_out_offsets[:, None] * stride_h - padding_h
+                first_w_in = w_out_offsets[None, :] * stride_w - padding_w
+                last_h_in = first_h_in + (kernel_h - 1) * dilation_h + 1
+                last_w_in = first_w_in + (kernel_w - 1) * dilation_w + 1
+                valid_h = tl.maximum(
+                    0, tl.minimum(in_h, last_h_in) - tl.maximum(0, first_h_in)
+                )
+                valid_w = tl.maximum(
+                    0, tl.minimum(in_w, last_w_in) - tl.maximum(0, first_w_in)
+                )
+                divisor = (valid_h * valid_w).to(tl.float32)
 
             output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
 
@@ -171,7 +179,7 @@ def avg_pool2d_backward_kernel(
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
     COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override,
+    divisor_override: tl.constexpr,
     total_nc,
     NC_PER_PROGRAM: tl.constexpr,
     BLOCK_H: tl.constexpr,
@@ -228,21 +236,21 @@ def avg_pool2d_backward_kernel(
                             (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                         )
                     else:
+                        # 反向里每个 (kh,kw) 都重算一次 divisor，形成 O(k^4) 比较。
+                        # dilation 恒为 1 时，窗口有效区间在 H/W 两维互相独立：
+                        # [max(0,start), min(in_size,start+(k-1)*dilation+1))，
+                        # 两维有效长度的乘积就是原来的 count，可解析求出。
                         h_start = h_out * stride_h - padding_h
                         w_start = w_out * stride_w - padding_w
-                        count = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
-                        for kh_count in range(0, kernel_h):
-                            for kw_count in range(0, kernel_w):
-                                h_in_for_count = h_start + kh_count * dilation_h
-                                w_in_for_count = w_start + kw_count * dilation_w
-                                is_valid = (
-                                    (h_in_for_count >= 0)
-                                    & (h_in_for_count < in_h)
-                                    & (w_in_for_count >= 0)
-                                    & (w_in_for_count < in_w)
-                                )
-                                count += is_valid.to(tl.int32)
-                        divisor = count.to(tl.float32)
+                        h_window_end = h_start + (kernel_h - 1) * dilation_h + 1
+                        w_window_end = w_start + (kernel_w - 1) * dilation_w + 1
+                        valid_h_count = tl.maximum(
+                            0, tl.minimum(in_h, h_window_end) - tl.maximum(0, h_start)
+                        )
+                        valid_w_count = tl.maximum(
+                            0, tl.minimum(in_w, w_window_end) - tl.maximum(0, w_start)
+                        )
+                        divisor = (valid_h_count * valid_w_count).to(tl.float32)
 
                     divisor = tl.where(divisor == 0, 1.0, divisor)
 
@@ -303,12 +311,11 @@ def avg_pool2d(
     if output.numel() == 0:
         return output
 
+    # Fixed Grid：把 grid 第一维压到 GCU400 的 SIP 量级，剩余 (n,c) 平面由
+    # NC_PER_PROGRAM 循环在同一 program 内处理，避免大 batch 产生数万个 CTA。
     total_nc = in_n * in_c
-    grid_nc = total_nc
-    NC_PER_PROGRAM = 1
-    if total_nc >= 65536:
-        grid_nc = MAX_GRID_DIM
-        NC_PER_PROGRAM = (total_nc + MAX_GRID_DIM - 1) // MAX_GRID_DIM
+    grid_nc = min(total_nc, 48)
+    NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
 
     grid = lambda meta: (
         grid_nc,
@@ -374,12 +381,11 @@ def avg_pool2d_backward(
     if grad_output.numel() == 0:
         return grad_input.to(grad_output.dtype)
 
+    # Fixed Grid：把 grid 第一维压到 GCU400 的 SIP 量级，剩余 (n,c) 平面由
+    # NC_PER_PROGRAM 循环在同一 program 内处理，避免大 batch 产生数万个 CTA。
     total_nc = in_n * in_c
-    grid_nc = total_nc
-    NC_PER_PROGRAM = 1
-    if total_nc >= 65536:
-        grid_nc = MAX_GRID_DIM
-        NC_PER_PROGRAM = (total_nc + MAX_GRID_DIM - 1) // MAX_GRID_DIM
+    grid_nc = min(total_nc, 48)
+    NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
 
     grid = lambda meta: (
         grid_nc,

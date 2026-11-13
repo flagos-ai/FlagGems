@@ -793,14 +793,18 @@ def grid_sample_2d_bilinear_reflection_kernel(
 
     # Reflection padding in GRID space (before denormalizing)
     # Triangle wave pattern with period 4
+    # Explicit floor-mod instead of `%`: on this backend the float remainder
+    # keeps the dividend's sign for negative grid coordinates, so grid < -1
+    # produced a wrong reflected coordinate. v - 4*floor(v/4) is always in
+    # [0, 4) and is bit-identical for non-negative v.
     grid_x_shifted = grid_x + 1.0
-    grid_x_mod = grid_x_shifted % 4.0
+    grid_x_mod = grid_x_shifted - 4.0 * tl.floor(grid_x_shifted / 4.0)
     grid_x_mod = tl.where(grid_x_mod < 0, grid_x_mod + 4.0, grid_x_mod)
     grid_x_refl_mod = tl.where(grid_x_mod <= 2.0, grid_x_mod, 4.0 - grid_x_mod)
     grid_x_refl = grid_x_refl_mod - 1.0
 
     grid_y_shifted = grid_y + 1.0
-    grid_y_mod = grid_y_shifted % 4.0
+    grid_y_mod = grid_y_shifted - 4.0 * tl.floor(grid_y_shifted / 4.0)
     grid_y_mod = tl.where(grid_y_mod < 0, grid_y_mod + 4.0, grid_y_mod)
     grid_y_refl_mod = tl.where(grid_y_mod <= 2.0, grid_y_mod, 4.0 - grid_y_mod)
     grid_y_refl = grid_y_refl_mod - 1.0
@@ -4746,7 +4750,10 @@ def grid_sample(
             target_total_blocks = (
                 300  # Target: aim for ~300 blocks across all batches/channels
             )
-            min_blocks_per_nc = 50  # Minimum: ensure enough parallelism
+            # t8 批 Step 4 B02：原值 50 会把大 N*C 档的 target_blocks_per_nc
+            # 钳死在 50，产生 1024 个 CTA；实测 (2,32,64,64) 0.1389ms -> 0.0398ms，
+            # A+B 共 22 轮扫描 9/9 逐位一致，候选 3 轮 overall 2.4005x / p10 0.9989。
+            min_blocks_per_nc = 8  # Minimum: ensure enough parallelism
             max_blocks_per_nc = 1000  # Maximum: avoid too many blocks
 
             # Estimate blocks per (batch, channel) pair
@@ -4775,8 +4782,8 @@ def grid_sample(
 
             # For bilinear, use smaller tiles due to higher memory footprint
             if mode == "bilinear":
-                block_h = max(4, block_h // 2)
-                block_w = max(4, block_w // 2)
+                block_h = max(4, block_h // 1)
+                block_w = max(4, block_w // 1)
 
             # Calculate actual grid size
             num_h_blocks = (H_out + block_h - 1) // block_h

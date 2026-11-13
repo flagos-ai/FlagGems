@@ -24,6 +24,15 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
+# --- TUNING PARAMS START ---
+# 整数索引（可能重复、走原子累加）用较小 tile 保住 fp16 大 shape 时延
+BLOCK_SIZE0 = 64
+# bool mask 展开后写者唯一，索引量大，用较大 tile 压 program 调度开销
+BLOCK_SIZE0_UNIQUE = 128
+BLOCK_SIZE1 = 2048
+GRID_CAP = 65535
+# --- TUNING PARAMS END ---
+
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
     # Filter out None values (basic indexing markers)
@@ -63,7 +72,12 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
 
 def generate_index_put_kernel(
-    inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
+    inp_rank,
+    indices_len,
+    index_rank,
+    kernel_name: str,
+    code: IndentedBuffer,
+    block_size0: int,
 ):
     code.writeline("@libentry()")
     code.writeline("@triton.jit")
@@ -84,10 +98,12 @@ def generate_index_put_kernel(
         args += [
             "M,",
             "N,",
+            "GRID_X,",
             "IS_ACCUMULATE: tl.constexpr,",
-            "BLOCK_SIZE0: tl.constexpr = 2,",
-            "BLOCK_SIZE1: tl.constexpr = 2048,",
-            "GRID_Y_MAX: tl.constexpr = 255,",
+            "UNIQUE_WRITER: tl.constexpr,",
+            f"BLOCK_SIZE0: tl.constexpr = {block_size0},",
+            f"BLOCK_SIZE1: tl.constexpr = {BLOCK_SIZE1},",
+            f"GRID_CAP: tl.constexpr = {GRID_CAP},",
         ]
         code.writelines(args)
     code.writeline("):")
@@ -95,67 +111,90 @@ def generate_index_put_kernel(
     with code.indent():
         code.writeline("pid0 = ext.program_id(axis=0)")
         code.writeline("pid1 = ext.program_id(axis=1)")
+        code.writeline("x_blocks_total = (M + BLOCK_SIZE0 - 1) // BLOCK_SIZE0")
         code.writeline("y_blocks_total = (N + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
-        code.writeline("y_rounds = (y_blocks_total + GRID_Y_MAX - 1) // GRID_Y_MAX")
-        code.writeline("row_block = pid0 // y_rounds")
-        code.writeline("y_round = pid0 - row_block * y_rounds")
-        code.writeline("pid1 = pid1 + y_round * GRID_Y_MAX")
-        code.writeline(
-            "offset0 = row_block * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
-        )
-        if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
-        else:
-            code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
-            )
-        code.newline()
-        code.writeline("cur_idx = offset0")
-        for i in range(index_rank - 1, -1, -1):
-            code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
-            code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
-        code.newline()
-        code.writeline("cur_idx = offset1")
-        for i in range(inp_rank - 1, indices_len - 1, -1):
-            code.writeline(f"input_idx{i} = cur_idx % input_shape{i}")
-            code.writeline(f"cur_idx = cur_idx // input_shape{i}")
-        code.newline()
-        code.writeline("mask0 = offset0 < M")
-        for i in range(indices_len):
-            comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
-            code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
-            )
-        code.newline()
-        index_mask = [
-            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
-            for i in range(indices_len)
-        ]
-        code.writeline(f"index_mask = {' & '.join(index_mask)}")
-        code.writeline("mask1 = offset1 < N")
-        code.writeline("mask = index_mask & mask0 & mask1")
-        code.newline()
-        comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
-        comp += [
-            f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
-        ]
-        code.writeline(f"input_offset = {' + '.join(comp)}")
-        comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
-        comp += [
-            f"input_idx{indices_len + i} * values_stride{index_rank + i}"
-            for i in range(inp_rank - indices_len)
-        ]
-        code.writeline(f"values_offset = {' + '.join(comp)}")
-        code.newline()
-        code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
-        code.writeline("if IS_ACCUMULATE:")
+        code.writeline("total_tiles = x_blocks_total * y_blocks_total")
+        code.writeline("tile = pid0 + pid1 * GRID_X")
+        code.writeline("if tile < total_tiles:")
         with code.indent():
+            code.writeline("row_block = tile // y_blocks_total")
+            code.writeline("y_block = tile - row_block * y_blocks_total")
             code.writeline(
-                "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
+                "offset0 = row_block * BLOCK_SIZE0 "
+                "+ tl.arange(0, BLOCK_SIZE0)[:, None]"
             )
-        code.writeline("else:")
-        with code.indent():
-            code.writeline("tl.store(input_ptr + input_offset, cur_value, mask=mask)")
+            if inp_rank == indices_len:
+                code.writeline("offset1 = y_block * 1 + tl.arange(0, 1)[None, :]")
+            else:
+                code.writeline(
+                    "offset1 = y_block * BLOCK_SIZE1 "
+                    "+ tl.arange(0, BLOCK_SIZE1)[None, :]"
+                )
+            code.newline()
+            code.writeline("cur_idx = offset0")
+            for i in range(index_rank - 1, -1, -1):
+                code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
+                code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
+            code.newline()
+            code.writeline("cur_idx = offset1")
+            for i in range(inp_rank - 1, indices_len - 1, -1):
+                code.writeline(f"input_idx{i} = cur_idx % input_shape{i}")
+                code.writeline(f"cur_idx = cur_idx // input_shape{i}")
+            code.newline()
+            code.writeline("mask0 = offset0 < M")
+            for i in range(indices_len):
+                comp = [
+                    f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)
+                ]
+                code.writeline(
+                    f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, "
+                    "mask=mask0, other=0)"
+                )
+            code.newline()
+            index_mask = [
+                f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+                for i in range(indices_len)
+            ]
+            code.writeline(f"index_mask = {' & '.join(index_mask)}")
+            code.writeline("mask1 = offset1 < N")
+            code.writeline("mask = index_mask & mask0 & mask1")
+            code.newline()
+            comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+            comp += [
+                f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
+            ]
+            code.writeline(f"input_offset = {' + '.join(comp)}")
+            comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
+            comp += [
+                f"input_idx{indices_len + i} * values_stride{index_rank + i}"
+                for i in range(inp_rank - indices_len)
+            ]
+            code.writeline(f"values_offset = {' + '.join(comp)}")
+            code.newline()
+            code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
+            code.writeline("if IS_ACCUMULATE:")
+            with code.indent():
+                code.writeline("if UNIQUE_WRITER:")
+                with code.indent():
+                    # 唯一写者时地址无竞争，普通读改写即可替代低吞吐的标量原子累加
+                    code.writeline(
+                        "old_value = tl.load(input_ptr + input_offset, "
+                        "mask=mask, other=0)"
+                    )
+                    code.writeline(
+                        "tl.store(input_ptr + input_offset, "
+                        "old_value + cur_value, mask=mask)"
+                    )
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(
+                        "tl.atomic_add(input_ptr + input_offset, cur_value, mask=mask)"
+                    )
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(
+                    "tl.store(input_ptr + input_offset, cur_value, mask=mask)"
+                )
 
     code.newline()
     code.newline()
@@ -169,8 +208,11 @@ def generate_index_put_wrapper(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    block_size0: int,
 ):
-    code.writeline(f"def {wrapper_name}(input, indices, values, accumulate):")
+    code.writeline(
+        f"def {wrapper_name}(input, indices, values, accumulate, unique_writer):"
+    )
     with code.indent():
         code.writeline("input_shape = input.shape")
         code.writeline("input_stride = input.stride()")
@@ -182,16 +224,17 @@ def generate_index_put_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
-        code.writeline("grid = lambda meta: (")
+        code.writeline(
+            f"grid_x = min({GRID_CAP}, "
+            f"triton.cdiv(M, {block_size0}) * triton.cdiv(N, {BLOCK_SIZE1}))"
+        )
+        code.writeline("def grid(meta):")
         with code.indent():
             code.writeline(
-                "triton.cdiv(M, meta['BLOCK_SIZE0']) "
-                "* triton.cdiv(triton.cdiv(N, meta['BLOCK_SIZE1']), meta['GRID_Y_MAX']), "
+                "total_tiles = triton.cdiv(M, meta['BLOCK_SIZE0']) "
+                "* triton.cdiv(N, meta['BLOCK_SIZE1'])"
             )
-            code.writeline(
-                "min(meta['GRID_Y_MAX'], triton.cdiv(N, meta['BLOCK_SIZE1'])), "
-            )
-        code.writeline(")")
+            code.writeline("return (grid_x, triton.cdiv(total_tiles, grid_x))")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
@@ -208,7 +251,13 @@ def generate_index_put_wrapper(
                 f"values_stride[{i}],"
                 for i in range(index_rank + inp_rank - indices_len)
             ]
-            args += ["M,", "N,", "accumulate==True,"]
+            args += [
+                "M,",
+                "N,",
+                "grid_x,",
+                "accumulate==True,",
+                "unique_writer==True,",
+            ]
             code.writelines(args)
         code.writeline(")")
         code.writeline("return input")
@@ -222,6 +271,7 @@ def generate_code(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    block_size0: int,
 ):
     inp_rank = inputs[0].ndim
     # Filter out None values to get actual tensor indices
@@ -231,9 +281,11 @@ def generate_code(
         raise ValueError("At least one non-None index tensor is required")
     index_rank = tensor_indices[0].ndim
     code = generate_imports(code)
-    generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
+    generate_index_put_kernel(
+        inp_rank, indices_len, index_rank, kernel_name, code, block_size0
+    )
     generate_index_put_wrapper(
-        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
+        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code, block_size0
     )
     return code
 
@@ -244,19 +296,25 @@ class IndexPutFunction:
         self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args, **kwargs):
-        inp, tensor_indices, values, accumulate = args
+        inp, tensor_indices, values, accumulate = args[:4]
+        # 其它入口（index_put / index_put_）仍传 4 个参数，默认走原子路径
+        unique_writer = args[4] if len(args) > 4 else False
         full_args = (inp, tensor_indices, values)
 
-        key = self.arg_key(*full_args)
+        key = self.arg_key(*full_args, unique_writer=unique_writer)
         if key in self.overloads:
             overload = self.overloads[key]
         else:
             code = IndentedBuffer()
+            # 唯一写者的索引量远大于整数索引，用更大的 tile 减少 program 调度；
+            # 两类场景分开生成文件，避免 constexpr 互相覆盖。
+            block_size0 = BLOCK_SIZE0_UNIQUE if unique_writer else BLOCK_SIZE0
             code = generate_code(
                 full_args,
                 "_index_put_wrapper",
                 "_index_put_jit_function",
                 code,
+                block_size0,
             )
             file_name = f"index_put_{key}.py"
             file_path = code_cache_dir() / file_name
@@ -272,7 +330,7 @@ class IndexPutFunction:
             overload = getattr(m, "_index_put_wrapper")
             self.overloads[key] = overload
 
-        return overload(*args)
+        return overload(inp, tensor_indices, values, accumulate, unique_writer)
 
     def arg_key(self, *args, **kwargs):
         inp, tensor_indices, _ = args[0], args[1], args[2]
@@ -282,7 +340,10 @@ class IndexPutFunction:
             index_rank = 0
         else:
             index_rank = tensor_indices[0].ndim
-        return f"inp_rank_{inp_rank}_indices_len_{indices_len}_index_rank_{index_rank}"
+        key = f"inp_rank_{inp_rank}_indices_len_{indices_len}_index_rank_{index_rank}"
+        if kwargs.get("unique_writer", False):
+            key += "_unique"
+        return key
 
 
 _index_put_func = IndexPutFunction()
@@ -398,8 +459,12 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
     # Our implementation always performs bounds checking, so we ignore this parameter.
     # This is consistent with how PyTorch handles it internally.
 
+    # torch.where(bool mask) 展开的坐标天然互不重复，累加时地址无竞争，
+    # 可用普通读改写替代低吞吐的标量原子累加；整数索引可能有重复，保持原子路径。
+    unique_writer = False
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
+        unique_writer = True
         mask = indices[0]
 
         if mask.device != inp.device:
@@ -439,5 +504,5 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
         values = values.to(inp.device)
     values = torch.broadcast_to(values, target_shape)
 
-    _index_put_func(inp, tensor_indices, values, accumulate)
+    _index_put_func(inp, tensor_indices, values, accumulate, unique_writer)
     return inp

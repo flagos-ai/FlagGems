@@ -1,3 +1,12 @@
+import logging
+
+import triton
+import triton.language as tl
+
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+
 # Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,17 +21,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
-import triton
-import triton.language as tl
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    config=CodeGenConfig(16384, (12, 1, 1), 4, True, False, False),
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+)
 @triton.jit
 def le_func(x, y):
     return x.to(tl.float32) <= y
@@ -33,7 +39,11 @@ def le(A, B):
     return le_func(A, B)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    config=CodeGenConfig(16384, (12, 1, 1), 4, True, False, False),
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+)
 @triton.jit
 def le_func_scalar(x, y):
     return x.to(tl.float32) <= y

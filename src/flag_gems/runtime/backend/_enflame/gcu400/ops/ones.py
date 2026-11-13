@@ -38,7 +38,17 @@ def ones_kernel(
     for block_start_offset in range(block_start, n_elements, step):
         offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
-        tl.store(output_ptr + offsets, 1.0, mask=mask)
+        # torch_gcu narrows int64/uint64 storage to compact int32 words while
+        # keeping 8B/elem metadata; 8B-element stores then interleave (P17).
+        # Write one int32 word per element instead.
+        if (
+            output_ptr.dtype.element_ty == tl.int64
+            or output_ptr.dtype.element_ty == tl.uint64
+        ):
+            word_ptr = output_ptr.to(tl.pointer_type(tl.int32))
+            tl.store(word_ptr + offsets, 1, mask=mask)
+        else:
+            tl.store(output_ptr + offsets, 1.0, mask=mask)
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):

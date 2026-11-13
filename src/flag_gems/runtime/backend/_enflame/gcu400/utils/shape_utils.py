@@ -40,6 +40,7 @@ def heuristics_for_tile_size_notDMA(max_tile_size, *sizes):
         tile_sizes[ndim - 1 - i] = tile_size
         if tile_sizes[ndim - 1 - i] == 1 and ndim > 1:
             tile_sizes[ndim - 1 - i] = 2
-            tile_sizes[ndim - i] //= 2
+            if i > 0:
+                tile_sizes[ndim - i] //= 2
         max_tile_size = max(1, max_tile_size // tile_size)
     return tuple(tile_sizes)

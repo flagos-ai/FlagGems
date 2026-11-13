@@ -23,7 +23,11 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
-_MAX_POOL2D_FORWARD_GRID_X = 65535
+# forward kernel 的确定性分派参数：BLOCK 控制每个 tile 的输出元素数，
+# NUM_WARPS 按访存型 kernel 调优，GRID_PROGRAMS=0 表示按 tile 数全量铺开。
+FORWARD_BLOCK_SIZE = 1024
+FORWARD_NUM_WARPS = 4
+FORWARD_GRID_PROGRAMS = 0
 
 
 def max_pool2d_output_size(
@@ -48,35 +52,23 @@ def max_pool2d_output_size(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=2),
-    ],
-    key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
-def max_pool2d_forward_kernel(
+def max_pool2d_forward_flat_kernel(
     input_ptr,
     output_ptr,
     indices_ptr,
-    # Input tensor strides
-    in_stride_n,
-    in_stride_c,
-    in_stride_h,
-    in_stride_w,
-    # Input/Output shapes
-    in_n,
+    # 输入/输出形状：用于把扁平输出下标还原为 (n, c, oh, ow)
     in_c,
     in_h,
     in_w,
     out_h,
     out_w,
-    # Pooling parameters
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    total_out_elements,
+    # 池化参数保持编译期常量，便于展开窗口循环并优化下标除法
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
     stride_h: tl.constexpr,
@@ -85,72 +77,55 @@ def max_pool2d_forward_kernel(
     padding_w: tl.constexpr,
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
-    # Meta-parameters for tiling
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NUM_PROGRAMS: tl.constexpr,
 ):
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    num_spatial = num_h_blocks * num_w_blocks
-    num_nc = in_n * in_c
-    total_blocks = num_nc * num_spatial
-    # Must match host grid(): min(_MAX_POOL2D_FORWARD_GRID_X, total_blocks)
-    grid_x = tl.minimum(65535, total_blocks)
-    linear_pid = tl.program_id(0) + tl.program_id(1) * grid_x
-    if linear_pid >= total_blocks:
-        return
-    # Same as original (grid dim0 = num_nc, dim1 = num_spatial): pid_nc + pid_hw * num_nc
-    pid_nc = linear_pid % num_nc
-    pid_hw = linear_pid // num_nc
-    h_block_idx = pid_hw // num_w_blocks
-    w_block_idx = pid_hw % num_w_blocks
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
+    # 每个 program 处理一段连续输出元素，跨 (n, c, h, w) 扁平切分；
+    # program 数随输出元素数增长，而非随 n*c 通道数增长。NUM_PROGRAMS 小于
+    # tile 总数时由核内跨步循环复用固定数量的 program（匹配 SIP 拓扑）。
+    num_tiles = tl.cdiv(total_out_elements, BLOCK)
+    for tile_id in tl.range(tl.program_id(0), num_tiles, NUM_PROGRAMS):
+        out_offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        out_mask = out_offsets < total_out_elements
 
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
+        ow = out_offsets % out_w
+        oh = (out_offsets // out_w) % out_h
+        nc_idx = out_offsets // (out_h * out_w)
+        n_idx = nc_idx // in_c
+        c_idx = nc_idx % in_c
+        input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
 
-    dtype = input_ptr.type.element_ty
-    min_val = get_dtype_min(dtype)
-    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
+        dtype = input_ptr.type.element_ty
+        min_val = get_dtype_min(dtype)
+        max_val_acc = tl.full((BLOCK,), min_val, dtype=dtype)
+        max_idx_acc = tl.full((BLOCK,), -1, dtype=tl.int32)
 
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+        for kh in tl.static_range(0, kernel_h):
+            for kw in tl.static_range(0, kernel_w):
+                h_in = oh * stride_h - padding_h + kh * dilation_h
+                w_in = ow * stride_w - padding_w + kw * dilation_w
+                in_mask = (
+                    out_mask & (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
+                )
+                input_offsets = h_in * in_stride_h + w_in * in_stride_w
+                current_val = tl.load(
+                    input_base_ptr + input_offsets, mask=in_mask, other=min_val
+                )
+                current_idx = h_in * in_w + w_in
+                is_new_max = current_val > max_val_acc
+                max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
+                max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
 
-    for kh in tl.static_range(0, kernel_h):
-        for kw in tl.static_range(0, kernel_w):
-            h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-            w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-            in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-            input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=min_val
-            )
-            current_idx = h_in * in_w + w_in
-
-            is_new_max = current_val > max_val_acc
-            max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
-            max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
-
-    out_base_ptr = output_ptr + pid_nc * out_h * out_w
-    indices_base_ptr = indices_ptr + pid_nc * out_h * out_w
-    out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-    indices_block_ptr = (
-        indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-
-    out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
-    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
-    tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
+        tl.store(output_ptr + out_offsets, max_val_acc, mask=out_mask)
+        tl.store(indices_ptr + out_offsets, max_idx_acc.to(tl.int64), mask=out_mask)
 
 
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_warps=2),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_warps=2),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 8}, num_warps=2),
         triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_warps=4),
         triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 8}, num_warps=4),
         triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_warps=4),
@@ -170,6 +145,7 @@ def max_pool2d_backward_kernel(
     in_w,
     out_h,
     out_w,
+    num_nc,
     # Strides for grad_output/indices
     out_stride_nc,
     out_stride_h,
@@ -187,10 +163,20 @@ def max_pool2d_backward_kernel(
     BLOCK_IN_H: tl.constexpr,
     BLOCK_IN_W: tl.constexpr,
 ):
-    nc_idx = tl.program_id(0)
-    pid_hw = tl.program_id(1)
-
+    # Flattened (nc, spatial-block) tile space split across a 2D grid so that
+    # neither grid dim exceeds the 65535 limit (e.g. N*C = 128*512 = 65536
+    # alone overflows grid.x). Must match the host grid() below.
     num_w_blocks = tl.cdiv(in_w, BLOCK_IN_W)
+    num_h_blocks = tl.cdiv(in_h, BLOCK_IN_H)
+    num_spatial = num_h_blocks * num_w_blocks
+    total_blocks = num_nc * num_spatial
+    grid_x = tl.minimum(65535, total_blocks)
+    linear_pid = tl.program_id(0) + tl.program_id(1) * grid_x
+    if linear_pid >= total_blocks:
+        return
+
+    nc_idx = linear_pid // num_spatial
+    pid_hw = linear_pid % num_spatial
     h_block_idx = pid_hw // num_w_blocks
     w_block_idx = pid_hw % num_w_blocks
 
@@ -319,30 +305,31 @@ def max_pool2d_with_indices(
     if output.numel() == 0:
         return output, indices
 
-    def grid(meta):
-        num_h_blocks = triton.cdiv(out_h, meta["BLOCK_H"])
-        num_w_blocks = triton.cdiv(out_w, meta["BLOCK_W"])
-        num_spatial = num_h_blocks * num_w_blocks
-        num_nc = in_n * in_c
-        total = num_nc * num_spatial
-        grid_x = min(_MAX_POOL2D_FORWARD_GRID_X, total)
-        grid_y = triton.cdiv(total, grid_x)
-        return (grid_x, grid_y)
-
-    max_pool2d_forward_kernel[grid](
+    total_out_elements = output.numel()
+    # 1D 扁平输出分块：BLOCK 由迭代调优确定；GRID_PROGRAMS>0 时固定 program 数
+    # 并在核内跨步循环，避免大 shape 下 program 调度开销。
+    BLOCK = FORWARD_BLOCK_SIZE
+    num_tiles = triton.cdiv(total_out_elements, BLOCK)
+    num_programs = (
+        num_tiles
+        if FORWARD_GRID_PROGRAMS <= 0
+        else min(FORWARD_GRID_PROGRAMS, num_tiles)
+    )
+    grid = (num_programs,)
+    max_pool2d_forward_flat_kernel[grid](
         input,
         output,
         indices,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
-        in_n,
         in_c,
         in_h,
         in_w,
         out_h,
         out_w,
+        input.stride(0),
+        input.stride(1),
+        input.stride(2),
+        input.stride(3),
+        total_out_elements,
         kernel_h,
         kernel_w,
         stride_h,
@@ -351,6 +338,9 @@ def max_pool2d_with_indices(
         padding_w,
         dilation_h,
         dilation_w,
+        BLOCK=BLOCK,
+        NUM_PROGRAMS=num_programs,
+        num_warps=FORWARD_NUM_WARPS,
     )
 
     return output, indices
@@ -385,15 +375,23 @@ def max_pool2d_backward(
     in_n, in_c, in_h, in_w = input.shape
     out_h, out_w = grad_output.shape[2], grad_output.shape[3]
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
+    # The kernel writes every input position, so no zero-init is needed; and
+    # accumulating in fp32 inside the kernel lets us store directly in the
+    # output dtype, dropping both the memset pass and the final dtype
+    # conversion pass of the original zeros_like(fp32) + .to(dtype) flow.
+    grad_input = torch.empty_like(input, dtype=grad_output.dtype)
 
     if grad_input.numel() == 0:
-        return grad_input.to(grad_output.dtype)
+        return grad_input
 
-    grid = lambda meta: (
-        in_n * in_c,
-        triton.cdiv(in_h, meta["BLOCK_IN_H"]) * triton.cdiv(in_w, meta["BLOCK_IN_W"]),
-    )
+    def grid(meta):
+        num_h_blocks = triton.cdiv(in_h, meta["BLOCK_IN_H"])
+        num_w_blocks = triton.cdiv(in_w, meta["BLOCK_IN_W"])
+        num_spatial = num_h_blocks * num_w_blocks
+        total = in_n * in_c * num_spatial
+        grid_x = min(65535, total)
+        grid_y = triton.cdiv(total, grid_x)
+        return (grid_x, grid_y)
 
     out_stride_nc = out_h * out_w
     out_stride_h = out_w
@@ -407,6 +405,7 @@ def max_pool2d_backward(
         in_w,
         out_h,
         out_w,
+        in_n * in_c,
         out_stride_nc,
         out_stride_h,
         out_stride_w,
@@ -420,4 +419,21 @@ def max_pool2d_backward(
         dilation_w,
     )
 
-    return grad_input.to(grad_output.dtype)
+    return grad_input
+
+
+def max_pool2d_with_indices_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode: bool,
+    indices: torch.Tensor,
+):
+    """Wrapper matching the aten::max_pool2d_with_indices_backward schema."""
+    logger.debug("GEMS_ENFLAME MAX_POOL2D_WITH_INDICES_BACKWARD")
+    return max_pool2d_backward(
+        grad_output, self, indices, kernel_size, stride, padding, dilation, ceil_mode
+    )

@@ -1,0 +1,793 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+from typing import Callable, Optional
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.device_info import get_device_capability
+
+logger = logging.getLogger(__name__)
+
+SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
+
+
+def get_sm_version_num():
+    major, minor = get_device_capability()
+    return major * 10 + minor
+
+
+SM_VERSION_NUM = get_sm_version_num()
+
+# GCU grid.x hard limit (P19 family): 1D grids must stay within 65535
+# programs or the launch is rejected outright.
+_GCU_GRID_X_LIMIT = 65535
+
+
+def get_block_wise_smm_configs():
+    # GCU tile set for the block-wise scaled MM. TILE_K stays equal to
+    # SCALE_BLOCK_K so one K step covers exactly one scale group, and
+    # TILE_N is capped at SCALE_BLOCK_N so a whole tile shares one b-scale
+    # block and the b-scale base stays a scalar address (a per-lane
+    # offs_bn // SCALE_BLOCK_N divide in a load address scalarizes the
+    # whole loop on GCU). num_warps=4 is the GCU hard cap.
+    tile_configs = [
+        # (TILE_M, TILE_N, num_warps, num_stages)
+        (16, 128, 4, 3),
+        (32, 128, 4, 3),
+        (64, 128, 4, 3),
+        (128, 128, 4, 3),
+    ]
+
+    return [
+        triton.Config(
+            {
+                "TILE_M": TILE_M,
+                "TILE_N": TILE_N,
+                "TILE_K": SCALE_BLOCK_K,
+            },
+            num_warps=warps,
+            num_stages=stages,
+        )
+        for TILE_M, TILE_N, warps, stages in tile_configs
+    ]
+
+
+def _prune_block_wise_configs(configs, named_args, **kwargs):
+    m = named_args["M"]
+    n = named_args["N"]
+    fitting = []
+    for config in configs:
+        tile_m = config.kwargs["TILE_M"]
+        tile_n = config.kwargs["TILE_N"]
+        if triton.cdiv(m, tile_m) * triton.cdiv(n, tile_n) > _GCU_GRID_X_LIMIT:
+            continue
+        fitting.append(config)
+    if not fitting:
+        raise NotImplementedError(
+            "cutlass_scaled_mm: GCU grid.x limit "
+            f"{_GCU_GRID_X_LIMIT} exceeded for M={m}, N={n} with every "
+            "supported tile"
+        )
+    tight = [
+        config
+        for config in fitting
+        if config.kwargs["TILE_M"] <= max(16, triton.next_power_of_2(m))
+    ]
+    return tight or fitting
+
+
+@triton.jit
+def grouped_launch(
+    pid, M, N, TILE_M: tl.constexpr, TILE_N: tl.constexpr, SWIZZLE_GROUP_M: tl.constexpr
+):
+    grid_m = tl.cdiv(M, TILE_M)
+    grid_n = tl.cdiv(N, TILE_N)
+
+    width = SWIZZLE_GROUP_M * grid_n
+    group_id = pid // width
+    group_size = tl.minimum(grid_m - group_id * SWIZZLE_GROUP_M, SWIZZLE_GROUP_M)
+
+    pid_m = group_id * SWIZZLE_GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
+
+    return pid_m, pid_n
+
+
+# block-wise dequantization kernel implemention
+# supports any `SCALE_BLOCK_K, SCALE_BLOCK_N` case where TILE_K ==
+# SCALE_BLOCK_K and TILE_N <= SCALE_BLOCK_N. Row/col tails are handled with
+# masked loads: wrapping indices with `% M` / `% N` puts a vector divide
+# into the load addresses, which scalarizes the whole K loop on GCU
+# (measured ~150x slower than the masked form on (16, 24576, 4096)).
+@libentry()
+@libtuner(
+    configs=get_block_wise_smm_configs(),
+    key=["M", "N", "K", "stride_am", "stride_bk"],
+    strategy=["align32", "align32", "align32", "align32", "align32"],
+    prune_configs_by={"early_config_prune": _prune_block_wise_configs},
+    warmup=5,
+    rep=5,
+    flagtune_op_name="cutlass_scaled_mm",
+)
+@triton.jit
+def _block_wise_smm_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    a_scale_ptr,
+    b_scale_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    stride_Ascale_m,
+    stride_Ascale_k,
+    stride_Bscale_k,
+    stride_Bscale_n,
+    SCALE_BLOCK_N: tl.constexpr,
+    SCALE_BLOCK_K: tl.constexpr,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+):
+    tl.static_assert(TILE_K == SCALE_BLOCK_K)
+    tl.static_assert(TILE_N <= SCALE_BLOCK_N)
+
+    pid = tl.program_id(0)
+    num_pid_n = tl.cdiv(N, TILE_N)
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
+
+    # Row/col tails are masked (not wrapped with % or clamped with
+    # tl.minimum: both put a non-affine index into the load addresses,
+    # which scalarizes the whole loop on GCU, ~150x slower). The host only
+    # routes K % SCALE_BLOCK_K == 0 here: a compound (row & K-tail) mask in
+    # a K loop miscompiles on GCU (last output column turns NaN), and even a
+    # dead tail-branch degrades the whole kernel ~100x, so ragged K goes to
+    # _block_wise_smm_kernel_ragged (see
+    # compiler_issues/vllm_cutlass_scaled_mm_fp8_dot_compound_mask.md).
+    offs_am = pid_m * TILE_M + tl.arange(0, TILE_M)
+    offs_bn = pid_n * TILE_N + tl.arange(0, TILE_N)
+    offs_k = tl.arange(0, TILE_K)
+    masks_am = offs_am < M
+    masks_bn = offs_bn < N
+    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+
+    a_scale_ptrs = a_scale_ptr + offs_am * stride_Ascale_m
+    # whole TILE_N block shares one b-scale entry (TILE_N <= SCALE_BLOCK_N)
+    b_scale_base = b_scale_ptr + ((pid_n * TILE_N) // SCALE_BLOCK_N) * stride_Bscale_n
+
+    acc = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, TILE_K)):
+        a = tl.load(a_ptrs, mask=masks_am[:, None], other=0.0)
+        b = tl.load(b_ptrs, mask=masks_bn[None, :], other=0.0)
+        offs_ks = k * TILE_K // SCALE_BLOCK_K
+        a_scale = tl.load(a_scale_ptrs + offs_ks * stride_Ascale_k)
+        b_scale = tl.load(b_scale_base + offs_ks * stride_Bscale_k)
+        acc += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
+        a_ptrs += TILE_K * stride_ak
+        b_ptrs += TILE_K * stride_bk
+
+    acc = acc.to(c_ptr.dtype.element_ty)
+
+    offs_cm = pid_m * TILE_M + tl.arange(0, TILE_M)
+    offs_cn = pid_n * TILE_N + tl.arange(0, TILE_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, acc, mask=mask)
+
+
+# ragged-K fallback: same tile walk, but the K tail is split out of the main
+# loop into a single masked iteration (a compound mask inside the K loop
+# itself miscompiles on GCU). Slower than the even-K kernel, still far
+# ahead of the generic implementation; only runs when K % SCALE_BLOCK_K != 0.
+@triton.jit
+def _block_wise_smm_kernel_ragged(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    a_scale_ptr,
+    b_scale_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    stride_Ascale_m,
+    stride_Ascale_k,
+    stride_Bscale_k,
+    stride_Bscale_n,
+    SCALE_BLOCK_N: tl.constexpr,
+    SCALE_BLOCK_K: tl.constexpr,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+):
+    tl.static_assert(TILE_K == SCALE_BLOCK_K)
+    tl.static_assert(TILE_N <= SCALE_BLOCK_N)
+
+    pid = tl.program_id(0)
+    num_pid_n = tl.cdiv(N, TILE_N)
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
+
+    offs_am = pid_m * TILE_M + tl.arange(0, TILE_M)
+    offs_bn = pid_n * TILE_N + tl.arange(0, TILE_N)
+    offs_k = tl.arange(0, TILE_K)
+    masks_am = offs_am < M
+    masks_bn = offs_bn < N
+    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+
+    a_scale_ptrs = a_scale_ptr + offs_am * stride_Ascale_m
+    b_scale_base = b_scale_ptr + ((pid_n * TILE_N) // SCALE_BLOCK_N) * stride_Bscale_n
+
+    acc = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
+    k_main = (K // TILE_K) * TILE_K
+    for k in range(0, k_main, TILE_K):
+        a = tl.load(a_ptrs, mask=masks_am[:, None], other=0.0)
+        b = tl.load(b_ptrs, mask=masks_bn[None, :], other=0.0)
+        offs_ks = k // SCALE_BLOCK_K
+        a_scale = tl.load(a_scale_ptrs + offs_ks * stride_Ascale_k)
+        b_scale = tl.load(b_scale_base + offs_ks * stride_Bscale_k)
+        acc += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
+        a_ptrs += TILE_K * stride_ak
+        b_ptrs += TILE_K * stride_bk
+
+    if K > k_main:
+        k_tail = K - k_main
+        k_mask = offs_k < k_tail
+        a = tl.load(a_ptrs, mask=masks_am[:, None] & k_mask[None, :], other=0.0)
+        b = tl.load(b_ptrs, mask=k_mask[:, None] & masks_bn[None, :], other=0.0)
+        offs_ks = k_main // SCALE_BLOCK_K
+        a_scale = tl.load(a_scale_ptrs + offs_ks * stride_Ascale_k)
+        b_scale = tl.load(b_scale_base + offs_ks * stride_Bscale_k)
+        acc += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
+
+    acc = acc.to(c_ptr.dtype.element_ty)
+
+    offs_cm = pid_m * TILE_M + tl.arange(0, TILE_M)
+    offs_cn = pid_n * TILE_N + tl.arange(0, TILE_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, acc, mask=mask)
+
+
+def _block_wise_128_smm_launcher(
+    c: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scale: torch.Tensor,
+    b_scale: torch.Tensor,
+) -> torch.Tensor:
+    M, K = a.shape
+    _, N = b.shape
+    if M == 0 or N == 0:
+        return c
+
+    grid = lambda META: (
+        triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),
+    )
+
+    if K % SCALE_BLOCK_K != 0:
+        # ragged K: fixed tile, tail block split out of the K loop
+        tile_m = 16 if M <= 16 else 64
+        _block_wise_smm_kernel_ragged[(triton.cdiv(M, tile_m) * triton.cdiv(N, 128),)](
+            a,
+            b,
+            c,
+            a_scale,
+            b_scale,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            a_scale.stride(0),
+            a_scale.stride(1),
+            b_scale.stride(0),
+            b_scale.stride(1),
+            SCALE_BLOCK_N=SCALE_BLOCK_N,
+            SCALE_BLOCK_K=SCALE_BLOCK_K,
+            TILE_M=tile_m,
+            TILE_N=128,
+            TILE_K=SCALE_BLOCK_K,
+            num_warps=4,
+            num_stages=3,
+        )
+        return c
+
+    _block_wise_smm_kernel[grid](
+        a,
+        b,
+        c,
+        a_scale,
+        b_scale,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        a_scale.stride(0),
+        a_scale.stride(1),
+        b_scale.stride(0),
+        b_scale.stride(1),
+        SCALE_BLOCK_N=SCALE_BLOCK_N,
+        SCALE_BLOCK_K=SCALE_BLOCK_K,
+    )
+
+    return c
+
+
+# per-tensor and per-token dequantization kernel implemention
+@triton.autotune(
+    configs=[
+        triton.Config({"TILE_M": 64, "TILE_N": 64, "TILE_K": 256}),
+        triton.Config({"TILE_M": 64, "TILE_N": 128, "TILE_K": 128}),
+        triton.Config({"TILE_M": 128, "TILE_N": 128, "TILE_K": 128}),
+    ],
+    key=["_M_NPO2", "N", "K"],
+)
+@triton.jit
+def _pertensor_or_pertoken_smm_kernel(
+    c_ptr,
+    a_ptr,
+    b_ptr,
+    a_scale_ptr,
+    b_scale_ptr,
+    bias_ptr,
+    M,
+    N,
+    K,
+    _M_NPO2,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    ACC_DTYPE: tl.constexpr,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    IS_PER_TOKEN_A: tl.constexpr,
+    IS_PER_TOKEN_B: tl.constexpr,
+):
+    if IS_PER_TOKEN_A:
+        TILE_SIZE_SCALE_A: tl.constexpr = TILE_M
+    else:
+        TILE_SIZE_SCALE_A: tl.constexpr = 1
+
+    if IS_PER_TOKEN_B:
+        TILE_SIZE_SCALE_B: tl.constexpr = TILE_N
+    else:
+        TILE_SIZE_SCALE_B: tl.constexpr = 1
+
+    pid = tl.program_id(axis=0)
+    num_pid_n = tl.cdiv(N, TILE_N)
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
+
+    acc = tl.zeros((TILE_M, TILE_N), dtype=ACC_DTYPE)
+
+    offsets_am = pid_m * TILE_M + tl.arange(0, TILE_M).to(tl.int64)
+    masks_am = offsets_am < M
+
+    offsets_bn = pid_n * TILE_N + tl.arange(0, TILE_N).to(tl.int64)
+    masks_bn = offsets_bn < N
+
+    offsets_k = tl.arange(0, TILE_K).to(tl.int64)
+    offsets_a = stride_am * offsets_am[:, None] + stride_ak * offsets_k[None, :]
+    offsets_b = stride_bk * offsets_k[:, None] + stride_bn * offsets_bn[None, :]
+
+    offsets_scale_am = (
+        tl.arange(0, TILE_SIZE_SCALE_A) + (TILE_SIZE_SCALE_A > 1) * pid_m * TILE_M
+    )
+    masks_scale_am = offsets_scale_am < M
+
+    offsets_scale_bn = (
+        tl.arange(0, TILE_SIZE_SCALE_B) + (TILE_SIZE_SCALE_B > 1) * pid_n * TILE_N
+    )
+    masks_scale_bn = offsets_scale_bn < N
+
+    a_ptrs = a_ptr + offsets_a
+    b_ptrs = b_ptr + offsets_b
+
+    scale_a_ptrs = a_scale_ptr + offsets_scale_am
+    scale_b_ptrs = b_scale_ptr + offsets_scale_bn
+
+    for k in range(0, tl.cdiv(K, TILE_K)):
+        masks_k = offsets_k < K
+        masks_a = masks_am[:, None] & masks_k[None, :]
+        a = tl.load(a_ptrs, mask=masks_a, other=0.0)
+
+        masks_b = masks_k[:, None] & masks_bn[None, :]
+        b = tl.load(b_ptrs, mask=masks_b, other=0.0)
+
+        acc = tl.dot(a, b, acc, out_dtype=ACC_DTYPE)
+
+        offsets_k += TILE_K
+        a_ptrs += TILE_K * stride_ak
+        b_ptrs += TILE_K * stride_bk
+
+    masks_scale_a = masks_scale_am[:, None] & (tl.arange(0, 1) < 1)[:, None]
+    a_scale = tl.load(scale_a_ptrs[:, None], masks_scale_a)
+    a_scale = a_scale.broadcast_to((TILE_M, 1))
+    acc = a_scale * acc.to(tl.float32)
+
+    masks_scale_b = masks_scale_bn[:, None] & (tl.arange(0, 1) < 1)[None, :]
+    b_scale = tl.load(scale_b_ptrs[:, None], masks_scale_b)
+    b_scale = b_scale.broadcast_to((TILE_N, 1))
+    acc = b_scale.T * acc.to(tl.float32)
+
+    c = acc
+
+    if bias_ptr:
+        offsets_bias = offsets_bn
+        bias_ptrs = bias_ptr + offsets_bias
+        bias_mask = offsets_bias < N
+        bias = tl.load(bias_ptrs, bias_mask)
+        c += bias.to(tl.float32)
+
+    offs_cm = pid_m * TILE_M + tl.arange(0, TILE_M).to(tl.int64)
+    offs_cn = pid_n * TILE_N + tl.arange(0, TILE_N).to(tl.int64)
+    offs_cm = offs_cm.to(tl.int64)
+    offs_cn = offs_cn.to(tl.int64)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+
+    tl.store(c_ptrs, c, mask=c_mask)
+
+
+def _pertensor_or_pertoken_smm_launcher(
+    c: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scale: torch.Tensor,
+    b_scale: torch.Tensor,
+    bias: torch.Tensor | None = None,
+) -> torch.Tensor:
+    M, K = a.shape
+    _, N = b.shape
+
+    grid = lambda META: (
+        triton.cdiv(M, META["TILE_M"]) * triton.cdiv(N, META["TILE_N"]),
+    )
+
+    ACC_DTYPE = tl.float32 if a.is_floating_point() else tl.int32
+
+    _M_NPO2 = triton.next_power_of_2(M)
+
+    IS_PER_TOKEN_A = a_scale.numel() == M
+    IS_PER_TOKEN_B = b_scale.numel() == N
+
+    _pertensor_or_pertoken_smm_kernel[grid](
+        c,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        bias,
+        M,
+        N,
+        K,
+        _M_NPO2,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        ACC_DTYPE=ACC_DTYPE,
+        IS_PER_TOKEN_A=IS_PER_TOKEN_A,
+        IS_PER_TOKEN_B=IS_PER_TOKEN_B,
+    )
+
+    return c
+
+
+cutlass_scaled_mm_sm90_fp8 = _pertensor_or_pertoken_smm_launcher
+
+cutlass_scaled_mm_sm90_int8 = _pertensor_or_pertoken_smm_launcher
+
+cutlass_scaled_mm_blockwise_sm90_fp8 = _block_wise_128_smm_launcher
+
+
+def dispatch_scaled_mm(
+    c: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scale: torch.Tensor,
+    b_scale: torch.Tensor,
+    bias: Optional[torch.Tensor],
+    fp8_func: Callable,
+    int8_func: Optional[Callable],
+    blockwise_func: Callable,
+) -> None:
+    assert a_scale.dtype == torch.float32, "a_scale must be float32"
+    assert b_scale.dtype == torch.float32, "b_scale must be float32"
+
+    if (a_scale.numel() == 1 or a_scale.numel() == a.size(0)) and (
+        b_scale.numel() == 1 or b_scale.numel() == b.size(1)
+    ):
+        assert a_scale.is_contiguous(), "a_scale must be contiguous"
+        assert b_scale.is_contiguous(), "b_scale must be contiguous"
+
+        if a.dtype == torch.float8_e4m3fn:
+            fp8_func(c, a, b, a_scale, b_scale, bias)
+        else:
+            assert a.dtype == torch.int8, f"Unsupported dtype: {a.dtype}"
+
+            if int8_func is not None:
+                int8_func(c, a, b, a_scale, b_scale, bias)
+            else:
+                raise RuntimeError(
+                    f"Int8 not supported on SM{SM_VERSION_NUM}. "
+                    f"Use FP8 quantization instead, or run on older arch (SM < 100)."
+                )
+    else:
+        assert a_scale.dim() == 2, "a_scale must be 2D tensor for blockwise scaling"
+        assert b_scale.dim() == 2, "b_scale must be 2D tensor for blockwise scaling"
+
+        if SM_VERSION_NUM >= 90:
+            assert a.size(0) == a_scale.size(0), (
+                f"a_scale must have same first dimension as a: "
+                f"a.shape[0]={a.size(0)}, a_scale.shape[0]={a_scale.size(0)}"
+            )
+            assert triton.cdiv(a.size(1), 128) == a_scale.size(1), (
+                f"a_scale second dimension mismatch: "
+                f"triton.cdiv({a.size(1)}, 128)={triton.cdiv(a.size(1), 128)} != "
+                f"a_scale.shape[1]={a_scale.size(1)}"
+            )
+
+            assert triton.cdiv(b.size(0), 128) == b_scale.size(0), (
+                f"b_scale first dimension mismatch: "
+                f"triton.cdiv({b.size(0)}, 128)={triton.cdiv(b.size(0), 128)} != "
+                f"b_scale.shape[0]={b_scale.size(0)}"
+            )
+            assert triton.cdiv(b.size(1), 128) == b_scale.size(1), (
+                f"b_scale second dimension mismatch: "
+                f"triton.cdiv({b.size(1)}, 128)={triton.cdiv(b.size(1), 128)} != "
+                f"b_scale.shape[1]={b_scale.size(1)}"
+            )
+
+        assert bias is None, "Bias not yet supported for blockwise scaled_mm"
+
+        blockwise_func(c, a, b, a_scale, b_scale)
+
+
+def cutlass_scaled_mm_sm90(
+    c: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scale: torch.Tensor,
+    b_scale: torch.Tensor,
+    bias: Optional[torch.Tensor] = None,
+) -> None:
+    dispatch_scaled_mm(
+        c=c,
+        a=a,
+        b=b,
+        a_scale=a_scale,
+        b_scale=b_scale,
+        bias=bias,
+        fp8_func=cutlass_scaled_mm_sm90_fp8,
+        int8_func=cutlass_scaled_mm_sm90_int8,
+        blockwise_func=cutlass_scaled_mm_blockwise_sm90_fp8,
+    )
+
+
+def cutlass_scaled_mm_sm120(*args, **kwargs):
+    raise NotImplementedError("cutlass_scaled_mm_sm120 is not yet implemented. ")
+
+
+def cutlass_scaled_mm_sm100(*args, **kwargs):
+    raise NotImplementedError("cutlass_scaled_mm_sm100 is not yet implemented. ")
+
+
+def cutlass_scaled_mm_sm89(*args, **kwargs):
+    raise NotImplementedError("cutlass_scaled_mm_sm89 is not yet implemented. ")
+
+
+def cutlass_scaled_mm_sm80(*args, **kwargs):
+    raise NotImplementedError("cutlass_scaled_mm_sm80 is not yet implemented. ")
+
+
+def cutlass_scaled_mm_sm75(*args, **kwargs):
+    raise NotImplementedError("cutlass_scaled_mm_sm75 is not yet implemented. ")
+
+
+def cutlass_scaled_mm(
+    c: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    a_scale: torch.Tensor,
+    b_scale: torch.Tensor,
+    bias: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS CUTLASS_SCALED_MM")
+    assert (
+        a.dim() == 2 and b.dim() == 2 and c.dim() == 2
+    ), "All inputs must be 2D tensors"
+
+    assert c.size(0) == a.size(0), "Number of rows in c must equal number of rows in a"
+    assert a.size(1) == b.size(
+        0
+    ), "Number of columns in a must equal number of rows in b"
+    assert b.size(1) == c.size(
+        1
+    ), "Number of columns in b must equal number of columns in c"
+
+    assert a.stride(1) == 1 and c.stride(1) == 1, "a and c must be row-major"
+
+    assert b.stride(0) == 1, "b must be column-major"
+
+    assert c.stride(0) % 16 == 0, "Row stride of c must be 16-byte aligned"
+    assert b.stride(1) % 16 == 0, "Column stride of b must be 16-byte aligned"
+
+    if bias is not None:
+        assert bias.numel() == b.size(
+            1
+        ), f"Bias size {bias.numel()} must equal number of columns in b {b.size(1)}"
+        assert bias.is_contiguous(), "Bias must be contiguous"
+        assert bias.dim() == 1, "Bias must be a 1D tensor"
+
+    if SM_VERSION_NUM >= 120:
+        cutlass_scaled_mm_sm120(c, a, b, a_scale, b_scale, bias)
+
+    elif SM_VERSION_NUM >= 100:
+        cutlass_scaled_mm_sm100(c, a, b, a_scale, b_scale, bias)
+
+    elif SM_VERSION_NUM >= 90:
+        # Hopper
+        cutlass_scaled_mm_sm90(c, a, b, a_scale, b_scale, bias)
+
+    elif SM_VERSION_NUM >= 80:
+        # Ampere
+        cutlass_scaled_mm_sm80(c, a, b, a_scale, b_scale, bias)
+
+    elif SM_VERSION_NUM >= 75:
+        # Turing
+        cutlass_scaled_mm_sm75(c, a, b, a_scale, b_scale, bias)
+
+    else:
+        # GCU (and any other arch below the CUTLASS coverage floor): the
+        # sm90 path is pure Triton with no arch-specific instructions, so
+        # reuse it instead of silently returning without computing.
+        # Without this branch the public entry left `c` uninitialized
+        # (SM_VERSION_NUM=41 misses every arm of the chain).
+        cutlass_scaled_mm_sm90(c, a, b, a_scale, b_scale, bias)
+
+
+@libentry()
+@triton.jit
+def _scaled_mm_fp8_kernel(
+    A,
+    B,
+    SA,
+    SB,
+    Bias,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    ROW_A: tl.constexpr,
+    ROW_B: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    DIRECT_FP8: tl.constexpr = False,
+    ACC_LIMIT: tl.constexpr = 0,
+):
+    m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    n = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    k = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for start in range(tl.cdiv(K, BLOCK_K)):
+        kk = start * BLOCK_K + k
+        a = tl.load(
+            A + m[:, None] * AM + kk[None, :] * AK,
+            (m[:, None] < M) & (kk[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            B + kk[:, None] * BK + n[None, :] * BN,
+            (kk[:, None] < K) & (n[None, :] < N),
+            other=0.0,
+        )
+        # Every finite E4M3/E5M2 value is exactly representable in FP16.
+        # This also supports mixed encodings without native FP8 dot instructions.
+        if DIRECT_FP8:
+            acc = tl.dot(a, b, acc, max_num_imprecise_acc=ACC_LIMIT)
+        else:
+            acc = tl.dot(a.to(tl.float16), b.to(tl.float16), acc)
+    if ROW_A:
+        sa = tl.load(SA + m, m < M, other=0.0)
+    else:
+        sa = tl.full((BLOCK_M,), tl.load(SA), tl.float32)
+    if ROW_B:
+        sb = tl.load(SB + n, n < N, other=0.0)
+    else:
+        sb = tl.full((BLOCK_N,), tl.load(SB), tl.float32)
+    acc = acc * sa[:, None] * sb[None, :]
+    if HAS_BIAS and K > 0:
+        acc += tl.load(Bias + n, n < N, other=0.0)[None, :].to(tl.float32)
+    tl.store(
+        C + m[:, None] * CM + n[None, :] * CN, acc, (m[:, None] < M) & (n[None, :] < N)
+    )
+
+
+def cutlass_scaled_mm_fp8(c, a, b, scale_a, scale_b, bias):
+    """Validated Hopper FP8 path, sharing the fused scale/bias epilogue.
+
+    Unlike the general CUTLASS-compatible entry, the ATen caller has already
+    validated metadata. Avoid repeating its dispatch and autotuning overhead.
+    """
+    m, k = a.shape
+    n = b.shape[1]
+    bm, bn, bk = (
+        (16, 32, 32) if k <= 32 else ((16, 32, 64) if m <= 128 else (32, 64, 128))
+    )
+    _scaled_mm_fp8_kernel[(triton.cdiv(m, bm), triton.cdiv(n, bn))](
+        a,
+        b,
+        scale_a,
+        scale_b,
+        bias,
+        c,
+        m,
+        n,
+        k,
+        *a.stride(),
+        *b.stride(),
+        *c.stride(),
+        scale_a.numel() != 1,
+        scale_b.numel() != 1,
+        bias is not None,
+        bm,
+        bn,
+        bk,
+        True,
+        0 if c.dtype in (torch.float8_e4m3fn, torch.float8_e5m2) else 32,
+    )

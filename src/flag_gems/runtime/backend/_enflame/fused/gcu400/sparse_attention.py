@@ -23,27 +23,29 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
-
 
 @libentry()
 @triton.jit(do_not_specialize=["scale", "topk", "total_bh"])
 def fused_attn_kernel(
     Q,
-    GKV,
+    KV,
     Out,
     attn_sink,
+    topk_idxs,
     stride_qb,
     stride_qm,
     stride_qh,
     stride_qd,
-    stride_gkvbm,
-    stride_gkvt,
-    stride_gkvd,
+    stride_kvb,
+    stride_kvn,
+    stride_kvd,
     stride_ob,
     stride_om,
     stride_oh,
     stride_od,
+    stride_idxb,
+    stride_idxm,
+    stride_idxk,
     scale,
     topk,
     total_bh,
@@ -65,7 +67,8 @@ def fused_attn_kernel(
         q_vec = tl.load(q_base + offs_d * stride_qd)
         q_scaled_bf = (q_vec.to(tl.float32) * scale).to(tl.bfloat16)
 
-        gkv_offset = (pid_b + pid_m) * stride_gkvbm
+        kv_base = KV + pid_b * stride_kvb
+        idx_base = topk_idxs + pid_b * stride_idxb + pid_m * stride_idxm
 
         acc_o = tl.zeros([D], dtype=tl.float32)
         score_max = tl.full([], float("-inf"), dtype=tl.float32)
@@ -76,18 +79,20 @@ def fused_attn_kernel(
 
         for t in range(num_blocks):
             block_start = t * BLOCK
-            valid_mask = (block_start + offs_blk) < topk
+            raw_offs = block_start + offs_blk
+            idx_mask = raw_offs < topk
+
+            idxs = tl.load(idx_base + raw_offs * stride_idxk, mask=idx_mask, other=-1)
+            gather_mask = idxs != -1
+            idxs_safe = tl.where(gather_mask, idxs, 0)
 
             kv_ptrs = (
-                GKV
-                + gkv_offset
-                + (block_start + offs_blk[:, None]) * stride_gkvt
-                + offs_d[None, :] * stride_gkvd
+                kv_base + idxs_safe[:, None] * stride_kvn + offs_d[None, :] * stride_kvd
             )
-            kv_block = tl.load(kv_ptrs, mask=valid_mask[:, None], other=0.0)
+            kv_block = tl.load(kv_ptrs, mask=gather_mask[:, None], other=0.0)
 
             scores = tl.sum(q_scaled_bf[None, :] * kv_block, axis=1).to(tl.float32)
-            scores = tl.where(valid_mask, scores, float("-inf"))
+            scores = tl.where(gather_mask, scores, float("-inf"))
 
             block_max = tl.max(scores)
             score_max_prev = score_max
@@ -114,16 +119,9 @@ def sparse_attn_triton(q, kv, attn_sink, topk_idxs, softmax_scale):
     topk = topk_idxs.shape[-1]
     o = torch.empty_like(q)
 
-    if m == 1:
-        idx = topk_idxs.view(b, topk, 1).expand(b, topk, d).long()
-        gathered_kv = torch.gather(kv, 1, idx)
-    else:
-        idx_exp = topk_idxs.unsqueeze(-1).expand(b, m, topk, d).long()
-        kv_exp = kv.unsqueeze(1).expand(b, m, -1, d)
-        gathered_kv = torch.gather(kv_exp, 2, idx_exp)
-    gathered_kv = gathered_kv.reshape(b * m, topk, d)
-
-    BLOCK = 128
+    # BLOCK must stay <= 64: data-dependent row-gather tiles with >= 128 rows
+    # and >= 256 cols miscompile silently on GCU at low num_warps (P11 family).
+    BLOCK = 64
     total_bh = b * h
     GRID_BH = min(total_bh, 255)
 
@@ -132,20 +130,24 @@ def sparse_attn_triton(q, kv, attn_sink, topk_idxs, softmax_scale):
     with torch_device_fn.device(q.device):
         fused_attn_kernel[grid](
             q,
-            gathered_kv,
+            kv,
             o,
             attn_sink,
+            topk_idxs,
             q.stride(0),
             q.stride(1),
             q.stride(2),
             q.stride(3),
-            gathered_kv.stride(0),
-            gathered_kv.stride(1),
-            gathered_kv.stride(2),
+            kv.stride(0),
+            kv.stride(1),
+            kv.stride(2),
             o.stride(0),
             o.stride(1),
             o.stride(2),
             o.stride(3),
+            topk_idxs.stride(0),
+            topk_idxs.stride(1),
+            topk_idxs.stride(2),
             softmax_scale,
             topk,
             total_bh,

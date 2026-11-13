@@ -447,7 +447,7 @@ def v_global_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def _launch_global_norm(x, out, M, ord_val, dtype):
-    SINGLE_PASS_LIMIT = 32768
+    SINGLE_PASS_LIMIT = 65536
     SINGLE_BLOCK = 32768
 
     with torch_device_fn.device(x.device):
@@ -555,12 +555,21 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
     if (not dim) or len(dim) == x.ndim:
-        dim = list(range(x.ndim))
-        shape = [1] * x.ndim
-        x = dim_compress(x, dim)
-        M = x.numel()
-        out = torch.empty(shape, dtype=dtype, device=x.device)
-        _launch_global_norm(x, out, M, ord, dtype)
+        # Global 归约只依赖平坦内存视图：连续输入无需 dim_compress 的
+        # permute + contiguous。keepdim=False 时直接构造 0-dim 输出，
+        # 也省掉 squeeze（small/medium shape 上可省约 6µs host 开销）。
+        if x.is_contiguous():
+            inp = x
+        else:
+            inp = dim_compress(x, list(range(x.ndim)))
+        M = inp.numel()
+        if keepdim:
+            out = torch.empty([1] * x.ndim, dtype=dtype, device=x.device)
+            _launch_global_norm(inp, out, M, ord, dtype)
+            return out
+        out = torch.empty((), dtype=dtype, device=x.device)
+        _launch_global_norm(inp, out, M, ord, dtype)
+        return out
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]

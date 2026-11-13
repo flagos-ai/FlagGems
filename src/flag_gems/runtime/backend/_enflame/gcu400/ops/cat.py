@@ -267,6 +267,10 @@ def cat_out(
 ) -> torch.Tensor:
     logger.debug("GEMS_ENFLAME CAT_OUT")
     A = list(A)
+    from .cat__opt import try_fast_cat_out as _try_fast_cat_out
+
+    if _try_fast_cat_out(A, dim, out):
+        return out
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
         if mode == "single":
@@ -323,6 +327,11 @@ def cat(
 ) -> torch.Tensor:
     logger.debug("GEMS_ENFLAME CAT")
     A = list(A)
+    from .cat__opt import try_fast_cat as _try_fast_cat
+
+    _fast = _try_fast_cat(A, dim)
+    if _fast is not None:
+        return _fast
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
         if mode == "single":

@@ -20,26 +20,58 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 24
 
-@triton.jit
-def selu_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask)
+# GCU400 override of the generic mono-grid kernel: the generic path launches
+# one program per BLOCK (up to 32768 programs / 683 waves on the 512M-element
+# core shape), and its 16384 BLOCK heuristic pays the per-wave setup cost that
+# caps the stream at ~1.0 TB/s vs the ~3.0 TB/s memory floor.  The flat
+# grid-stride kernel below keeps at most 2 * NUM_SIPS programs resident so all
+# 48 SIPS stay saturated; math and the fp32 compute path are identical to the
+# generic kernel.
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
+def selu_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
 
-    x_f32 = x.to(tl.float32)
-    alpha = 1.6732632423543772
-    scale = 1.0507009873554805
-    y_f32 = scale * tl.where(x_f32 > 0, x_f32, alpha * (tl.exp(x_f32) - 1.0))
-    y = y_f32.to(x.dtype)
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
 
-    tl.store(x_ptr + offsets, y, mask=mask)
+        x = tl.load(x_ptr + off, mask=mask)
+
+        x_f32 = x.to(tl.float32)
+        alpha = 1.6732632423543772
+        scale = 1.0507009873554805
+        y_f32 = scale * tl.where(x_f32 > 0, x_f32, alpha * (tl.exp(x_f32) - 1.0))
+        y = y_f32.to(x.dtype)
+
+        tl.store(x_ptr + off, y, mask=mask)
+
+
+def _choose_block(N_total, itemsize):
+    # do_bench(median) sweep on GCU400 (kernel mode; ladder follows
+    # special_expit.py with one in-place-specific tweak): tiny shapes want a
+    # 1024-wide tile spread over cdiv(N, 1024) programs (3.3us vs 3.7us single
+    # program @ N=4096; 3.4 vs 4.1us @ N=8192), mid shapes peak at 65536, and
+    # the 512M bucket widens to 131072 only for 2-byte elements.
+    if N_total <= 8192:
+        return min(triton.next_power_of_2(N_total), 1024)
+    if N_total <= 65536:
+        return 8192
+    if N_total <= 524288:
+        return 32768
+    if N_total > (1 << 28) and itemsize <= 2:
+        return 131072
+    return 65536
 
 
 def selu_(*args, **kwargs):
@@ -67,10 +99,14 @@ def selu_(*args, **kwargs):
     if n_elements == 0:
         return x
 
-    BLOCK_SIZE = 1024
-    if n_elements // BLOCK_SIZE > 65535:
-        BLOCK_SIZE = 16384
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = _choose_block(n_elements, x.element_size())
+    grid_size = min(triton.cdiv(n_elements, BLOCK_SIZE), NUM_SIPS * 2)
+    num_warps = 4 if BLOCK_SIZE <= 1024 else 2
     with torch_device_fn.device(x.device):
-        selu_kernel_[grid](x, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        selu_kernel_[(grid_size,)](
+            x,
+            n_elements,
+            BLOCK=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
     return x

@@ -38,17 +38,25 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 )
 
 
+# Fixed Grid (48 CTAs) + grid-stride: larger BLOCK_SIZE amortizes the
+# per-tile overhead, and the libtuner picks per (n_elements, dtype).
+_GRID_SIZE = 48
+
+
 def mul_get_configs():
     return [
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_SIZE": 8192}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_SIZE": 32768}, num_warps=4, num_stages=4),
     ]
 
 
 def mul_broadcast_get_configs():
     return [
-        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 16384}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_SIZE": 8192}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_SIZE": 32768}, num_warps=4, num_stages=4),
     ]
 
 
@@ -71,13 +79,19 @@ def mul_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out, mask=mask)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -99,12 +113,18 @@ def mul_scalar_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    out = x & scalar if IS_BOOL else x * scalar
-    tl.store(output_ptr + offsets, out, mask=mask)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        out = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -133,15 +153,21 @@ def mul_broadcast_2d_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    row = offsets // n_cols
-    col = offsets - row * n_cols
-    a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
-    b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        row = offsets // n_cols
+        col = offsets - row * n_cols
+        a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
+        b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
 
 
 @libentry()
@@ -168,25 +194,31 @@ def mul_generic_nd_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        a_offsets += idx * A_STRIDE[dim]
-        b_offsets += idx * B_STRIDE[dim]
-        out_offsets += idx * OUT_STRIDE[dim]
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            idx = linear % SHAPE[dim]
+            linear = linear // SHAPE[dim]
+            a_offsets += idx * A_STRIDE[dim]
+            b_offsets += idx * B_STRIDE[dim]
+            out_offsets += idx * OUT_STRIDE[dim]
 
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+        a = tl.load(a_ptr + a_offsets, mask=mask)
+        b = tl.load(b_ptr + b_offsets, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + out_offsets, out, mask=mask)
 
 
 @libentry()
@@ -210,29 +242,35 @@ def mul_generic_nd_runtime_meta_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        a_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        a_offsets += idx * a_stride_dim
-        b_offsets += idx * b_stride_dim
-        out_offsets += idx * out_stride_dim
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            shape_dim = tl.load(meta_ptr + dim)
+            a_stride_dim = tl.load(meta_ptr + NDIM + dim)
+            b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+            out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+            idx = linear % shape_dim
+            linear = linear // shape_dim
+            a_offsets += idx * a_stride_dim
+            b_offsets += idx * b_stride_dim
+            out_offsets += idx * out_stride_dim
 
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+        a = tl.load(a_ptr + a_offsets, mask=mask)
+        b = tl.load(b_ptr + b_offsets, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + out_offsets, out, mask=mask)
 
 
 @libentry()
@@ -264,36 +302,48 @@ def mul_complex_generic_nd_kernel(
     NDIM: tl.constexpr,
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        ar_offsets += idx * AR_STRIDE[dim]
-        ai_offsets += idx * AI_STRIDE[dim]
-        br_offsets += idx * BR_STRIDE[dim]
-        bi_offsets += idx * BI_STRIDE[dim]
-        out_r_offsets += idx * OUT_R_STRIDE[dim]
-        out_i_offsets += idx * OUT_I_STRIDE[dim]
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            idx = linear % SHAPE[dim]
+            linear = linear // SHAPE[dim]
+            ar_offsets += idx * AR_STRIDE[dim]
+            ai_offsets += idx * AI_STRIDE[dim]
+            br_offsets += idx * BR_STRIDE[dim]
+            bi_offsets += idx * BI_STRIDE[dim]
+            out_r_offsets += idx * OUT_R_STRIDE[dim]
+            out_i_offsets += idx * OUT_I_STRIDE[dim]
 
-    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
-    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
-    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
-    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+        ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+        ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+        br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+        bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-    out_r = ar * br - ai * bi
-    out_i = ar * bi + ai * br
-    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
-    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+        # complex32 的实部/虚部是 fp16，全程 fp16 乘加会让极少数元素超出容差；
+        # 提升到 fp32 做中间计算再转回原 dtype，与参考实现的舍入一致。
+        ar_f32 = ar.to(tl.float32)
+        ai_f32 = ai.to(tl.float32)
+        br_f32 = br.to(tl.float32)
+        bi_f32 = bi.to(tl.float32)
+        out_r = (ar_f32 * br_f32 - ai_f32 * bi_f32).to(ar.dtype)
+        out_i = (ar_f32 * bi_f32 + ai_f32 * br_f32).to(ar.dtype)
+        tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+        tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
 @libentry()
@@ -319,43 +369,55 @@ def mul_complex_generic_nd_runtime_meta_kernel(
     NDIM: tl.constexpr,
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(
+        tl.program_id(0), num_tile, GRID_SIZE, num_stages=NUM_STAGES
+    ):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
-        out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
-        out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        ar_offsets += idx * ar_stride_dim
-        ai_offsets += idx * ai_stride_dim
-        br_offsets += idx * br_stride_dim
-        bi_offsets += idx * bi_stride_dim
-        out_r_offsets += idx * out_r_stride_dim
-        out_i_offsets += idx * out_i_stride_dim
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            shape_dim = tl.load(meta_ptr + dim)
+            ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
+            ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+            br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+            bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
+            out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
+            out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
+            idx = linear % shape_dim
+            linear = linear // shape_dim
+            ar_offsets += idx * ar_stride_dim
+            ai_offsets += idx * ai_stride_dim
+            br_offsets += idx * br_stride_dim
+            bi_offsets += idx * bi_stride_dim
+            out_r_offsets += idx * out_r_stride_dim
+            out_i_offsets += idx * out_i_stride_dim
 
-    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
-    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
-    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
-    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+        ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+        ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+        br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+        bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-    out_r = ar * br - ai * bi
-    out_i = ar * bi + ai * br
-    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
-    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+        # complex32 的实部/虚部是 fp16，全程 fp16 乘加会让极少数元素超出容差；
+        # 提升到 fp32 做中间计算再转回原 dtype，与参考实现的舍入一致。
+        ar_f32 = ar.to(tl.float32)
+        ai_f32 = ai.to(tl.float32)
+        br_f32 = br.to(tl.float32)
+        bi_f32 = bi.to(tl.float32)
+        out_r = (ar_f32 * br_f32 - ai_f32 * bi_f32).to(ar.dtype)
+        out_i = (ar_f32 * bi_f32 + ai_f32 * br_f32).to(ar.dtype)
+        tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+        tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
 def _is_tensor_or_number(value) -> bool:
@@ -378,11 +440,12 @@ def _as_tensor(value, *, device, dtype):
 
 
 def _result_dtype(a, b):
+    # Same-dtype tensor pairs dominate real workloads; torch.result_type is a
+    # comparatively expensive dispatch, so short-circuit the common case.
+    if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
+        if a.dtype is b.dtype:
+            return a.dtype
     return torch.result_type(a, b)
-
-
-def _dtype_name(dtype):
-    return str(dtype).split(".")[-1]
 
 
 def _is_bool_dtype(dtype):
@@ -411,8 +474,22 @@ def _needs_runtime_meta_for_constexpr_tuple():
         return False
 
 
+_DTYPE_NAME_CACHE = {}
+
+
+def _dtype_name(dtype):
+    name = _DTYPE_NAME_CACHE.get(dtype)
+    if name is None:
+        name = str(dtype).split(".")[-1]
+        _DTYPE_NAME_CACHE[dtype] = name
+    return name
+
+
 def _broadcast_shape(a_t, b_t):
-    return tuple(torch.broadcast_shapes(tuple(a_t.shape), tuple(b_t.shape)))
+    a_shape = a_t.shape
+    if a_shape == b_t.shape:
+        return tuple(a_shape)
+    return tuple(torch.broadcast_shapes(tuple(a_shape), tuple(b_t.shape)))
 
 
 def _broadcasted_stride(shape, stride, out_shape):
@@ -473,11 +550,76 @@ def _can_use_2d_broadcast(out_shape):
     return len(out_shape) == 2
 
 
+@triton.jit
+def mul_contig_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+):
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
+
+
+@triton.jit
+def mul_scalar_contig_kernel(
+    x_ptr,
+    output_ptr,
+    scalar,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+):
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        out = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, out, mask=mask)
+
+
+def _pick_block(n_elements, element_size, scalar_path=False):
+    """Deterministic block size for the contiguous-path kernels.
+
+    A tile of ``BLOCK_SIZE`` elements must pull one tile from each input and
+    push one tile to the output, so the 16-bit types (half the bytes per tile)
+    need more elements per tile than 32-bit ones to keep the memory pipeline
+    busy. The tensor-by-scalar kernel only has two memory streams instead of
+    three, so it can afford a 2x larger tile at the same byte budget. Tiny
+    inputs stay on the smallest block to avoid masked tail waste.
+    """
+    if n_elements <= 4096:
+        return 1024
+    if element_size <= 2:
+        return 16384 if scalar_path else 8192
+    return 32768
+
+
+def _grid_for(n_elements):
+    """Fixed reference block for the grid size so the kernel GRID_SIZE
+    argument always matches grid dim 0, independent of which BLOCK_SIZE the
+    libtuner picks.
+    """
+    tiles = (n_elements + 1023) // 1024
+    return _GRID_SIZE if tiles > _GRID_SIZE else tiles
+
+
 def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (_grid_for(n_elements),)
     with torch_device_fn.device(output.device):
         mul_kernel[grid](
             a_t,
@@ -486,6 +628,52 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
             n_elements,
             dtype=_dtype_name(dtype),
             IS_BOOL=_is_bool_dtype(dtype),
+            GRID_SIZE=grid[0],
+            NUM_STAGES=4,
+        )
+    return output
+
+
+def _fast_contiguous_mul(a, b, out):
+    """Same-shape, same-dtype, contiguous fast path.
+
+    Skips result-type inference, broadcast inference and tensor coercion, which
+    together cost several times the kernel launch itself on small inputs.
+    Returns ``None`` when the expensive generic path must handle the call.
+    """
+    if a.device.type != _DEVICE_NAME or b.device != a.device:
+        return None
+    dtype = a.dtype
+    if b.dtype is not dtype or a.shape != b.shape or dtype.is_complex:
+        return None
+    if not (a.is_contiguous() and b.is_contiguous()):
+        return None
+    if out is None:
+        output = torch.empty(a.shape, device=a.device, dtype=dtype)
+    else:
+        if (
+            out.shape != a.shape
+            or out.dtype is not dtype
+            or out.device != a.device
+            or not out.is_contiguous()
+        ):
+            return None
+        output = out
+    n_elements = output.numel()
+    if n_elements == 0:
+        return output
+    grid = (_grid_for(n_elements),)
+    with torch_device_fn.device(output.device):
+        mul_contig_kernel[grid](
+            a,
+            b,
+            output,
+            n_elements,
+            BLOCK_SIZE=_pick_block(n_elements, a.element_size()),
+            IS_BOOL=dtype is torch.bool,
+            GRID_SIZE=grid[0],
+            num_warps=4,
+            num_stages=4,
         )
     return output
 
@@ -494,7 +682,7 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (_grid_for(n_elements),)
     with torch_device_fn.device(output.device):
         mul_scalar_kernel[grid](
             tensor,
@@ -503,6 +691,50 @@ def _launch_scalar(tensor, scalar, output, dtype):
             n_elements,
             dtype=_dtype_name(dtype),
             IS_BOOL=_is_bool_dtype(dtype),
+            GRID_SIZE=grid[0],
+            NUM_STAGES=4,
+        )
+    return output
+
+
+def _fast_scalar_mul(tensor, scalar, out):
+    """Contiguous tensor-by-number fast path with no result-type promotion.
+
+    Returns ``None`` when the generic path must take over.
+    """
+    if not isinstance(scalar, Number) or isinstance(scalar, complex):
+        return None
+    if tensor.device.type != _DEVICE_NAME or not tensor.is_contiguous():
+        return None
+    dtype = _result_dtype(tensor, scalar)
+    if dtype is not tensor.dtype:
+        return None
+    if out is None:
+        output = torch.empty(tensor.shape, device=tensor.device, dtype=dtype)
+    else:
+        if (
+            out.shape != tensor.shape
+            or out.dtype is not dtype
+            or out.device != tensor.device
+            or not out.is_contiguous()
+        ):
+            return None
+        output = out
+    n_elements = output.numel()
+    if n_elements == 0:
+        return output
+    grid = (_grid_for(n_elements),)
+    with torch_device_fn.device(output.device):
+        mul_scalar_contig_kernel[grid](
+            tensor,
+            output,
+            scalar,
+            n_elements,
+            BLOCK_SIZE=_pick_block(n_elements, tensor.element_size(), scalar_path=True),
+            IS_BOOL=dtype is torch.bool,
+            GRID_SIZE=grid[0],
+            num_warps=4,
+            num_stages=4,
         )
     return output
 
@@ -513,7 +745,10 @@ def _launch_2d_broadcast(
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Fixed reference block for the grid size so the kernel GRID_SIZE
+    # argument (same expression below) always matches grid dim 0,
+    # independent of which BLOCK_SIZE the libtuner picks.
+    grid = lambda meta: (min(_GRID_SIZE, triton.cdiv(n_elements, 1024)), 1, 1)
     with torch_device_fn.device(output.device):
         mul_broadcast_2d_kernel[grid](
             a_t,
@@ -529,6 +764,8 @@ def _launch_2d_broadcast(
             out_s1=out_stride[1],
             dtype=_dtype_name(dtype),
             IS_BOOL=_is_bool_dtype(dtype),
+            GRID_SIZE=min(_GRID_SIZE, triton.cdiv(n_elements, 1024)),
+            NUM_STAGES=4,
         )
     return output
 
@@ -542,7 +779,10 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     a_stride = a_stride or (0,)
     b_stride = b_stride or (0,)
     out_stride = out_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Fixed reference block for the grid size so the kernel GRID_SIZE
+    # argument (same expression below) always matches grid dim 0,
+    # independent of which BLOCK_SIZE the libtuner picks.
+    grid = lambda meta: (min(_GRID_SIZE, triton.cdiv(n_elements, 1024)), 1, 1)
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape + a_stride + b_stride + out_stride,
@@ -559,6 +799,8 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
                 NDIM=ndim,
                 dtype=_dtype_name(dtype),
                 IS_BOOL=_is_bool_dtype(dtype),
+                GRID_SIZE=min(_GRID_SIZE, triton.cdiv(n_elements, 1024)),
+                NUM_STAGES=4,
             )
         return output
 
@@ -575,6 +817,8 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
             NDIM=ndim,
             dtype=_dtype_name(dtype),
             IS_BOOL=_is_bool_dtype(dtype),
+            GRID_SIZE=min(_GRID_SIZE, triton.cdiv(n_elements, 1024)),
+            NUM_STAGES=4,
         )
     return output
 
@@ -582,6 +826,20 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
 def mul_broadcast_func(a, b, out=None):
     if not (_is_tensor_or_number(a) and _is_tensor_or_number(b)):
         raise TypeError("mul expects tensor or scalar inputs")
+
+    # Fast paths first: they avoid result-type inference, broadcast inference
+    # and tensor coercion. On small tensors those costs dominate the launch.
+    if isinstance(a, torch.Tensor):
+        if isinstance(b, torch.Tensor):
+            result = _fast_contiguous_mul(a, b, out)
+        else:
+            result = _fast_scalar_mul(a, b, out)
+        if result is not None:
+            return result
+    elif isinstance(b, torch.Tensor):
+        result = _fast_scalar_mul(b, a, out)
+        if result is not None:
+            return result
 
     device = _select_device(a, b)
     if device.type != _DEVICE_NAME:
@@ -677,7 +935,10 @@ def _launch_complex_generic(
     strides = [stride or (0,) for stride in strides]
     out_r_stride = out_r_stride or (0,)
     out_i_stride = out_i_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Fixed reference block for the grid size so the kernel GRID_SIZE
+    # argument (same expression below) always matches grid dim 0,
+    # independent of which BLOCK_SIZE the libtuner picks.
+    grid = lambda meta: (min(_GRID_SIZE, triton.cdiv(n_elements, 1024)), 1, 1)
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape
@@ -702,6 +963,8 @@ def _launch_complex_generic(
                 n_elements,
                 NDIM=ndim,
                 dtype=_dtype_name(dtype),
+                GRID_SIZE=min(_GRID_SIZE, triton.cdiv(n_elements, 1024)),
+                NUM_STAGES=4,
             )
         return output
 
@@ -723,6 +986,8 @@ def _launch_complex_generic(
             OUT_I_STRIDE=out_i_stride,
             NDIM=ndim,
             dtype=_dtype_name(dtype),
+            GRID_SIZE=min(_GRID_SIZE, triton.cdiv(n_elements, 1024)),
+            NUM_STAGES=4,
         )
     return output
 

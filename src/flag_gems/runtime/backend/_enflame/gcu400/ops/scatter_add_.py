@@ -26,6 +26,8 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
 
+from .scatter import is_last_dim_flat, scatter_last_dim
+
 logger = logging.getLogger(__name__)
 
 
@@ -312,9 +314,12 @@ def scatter_add_0(inp, dim, index, src):
         out = inp
 
     src_strided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
+    # fp16/bf16 会经 `out = inp.to(torch.float32)` 物化出布局可能不同的
+    # 张量（带 storage 洞的切片会退化为 contiguous），kernel 的寻址 strides
+    # 必须取自真正被写的 `out`，否则原子累加会落到错误偏移上。
+    inp_restrided = restride_dim(out, dim, index.shape)
+    dim_size = out.size(dim)
+    dim_stride = out.stride(dim)
     N = index.numel()
 
     _scatter_func(
@@ -370,7 +375,11 @@ def scatter_add_1(x, dim, index, src):
             return origin.copy_(x.to(src.dtype).permute(order))
         return x.permute(order)
     else:
-        return x.to(src.dtype)
+        # 尾维分支同样必须回写 origin：dtype 中转后 x 是新张量，
+        # 直接返回会破坏原地契约（generic 版同款 origin.copy_）
+        if dtype_convert:
+            return origin.copy_(x.to(src.dtype))
+        return x
 
 
 def scatter_add_(x, dim, index, src):
@@ -388,6 +397,12 @@ def scatter_add_(x, dim, index, src):
             if index.size(dim) >= x.size(dim):
                 equal_count += 1
 
+    src_view = src.as_strided(index.shape, src.stride())
+    if is_last_dim_flat(x, dim, index, src_view):
+        # 直接累加到原 dtype：FP32 中转要多走三遍全量流量，而原子次数不变
+        scatter_last_dim(x, dim, index, src_view, True)
+        return x
+
     if equal_count == x.dim() and index.shape == src.shape and dim == x.ndim - 1:
         return scatter_add_1(x, dim, index, src)
     if (index.shape == src.shape and index.shape == x.shape and dim != x.ndim - 1) or (
@@ -398,3 +413,12 @@ def scatter_add_(x, dim, index, src):
         return scatter_add_1(x, dim, index, src)
     else:
         return scatter_add_0(x, dim, index, src)
+
+
+def scatter_add(inp, dim, index, src):
+    """非原地 scatter_add：克隆输入后复用原地实现。"""
+    logger.debug("GEMS_ENFLAME SCATTER_ADD")
+
+    out = inp.clone()
+    scatter_add_(out, dim, index, src)
+    return out

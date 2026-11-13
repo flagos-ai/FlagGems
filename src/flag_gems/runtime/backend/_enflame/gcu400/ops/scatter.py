@@ -18,6 +18,8 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -61,7 +63,7 @@ def generate_scatter_kernel(
         code.writeline("if(flag_gems.vendor_name in ['metax', 'iluvatar']):")
         with code.indent():
             code.writeline("return 256")
-        code.writeline("return 128")
+        code.writeline("return 32")
     code.newline()
     code.newline()
 
@@ -375,6 +377,12 @@ def scatter(inp, dim, index, src, reduce=None):
         out = out.contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
+    # src 必须用 as_strided 之后的视图判断：原始 src 的前导维可能更大
+    if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_strided):
+        scatter_last_dim(out, dim, index, src_strided, reduce == "add")
+        if needs_upcast:
+            out = out.to(orig_dtype)
+        return out
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
@@ -420,6 +428,11 @@ def scatter_(inp, dim, index, src, reduce=None):
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
     src_restrided = src.as_strided(index.shape, src.stride())
+    if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_restrided):
+        scatter_last_dim(out, dim, index, src_restrided, reduce == "add")
+        if needs_upcast:
+            inp.copy_(out.to(orig_dtype))
+        return inp
     inp_restrided = restride_dim(out, dim, index.shape)
     dim_size = out.size(dim)
     dim_stride = out.stride(dim)
@@ -442,3 +455,191 @@ def scatter_(inp, dim, index, src, reduce=None):
     if needs_upcast:
         inp.copy_(out.to(orig_dtype))
     return inp
+
+
+# ---------------------------------------------------------------------------
+# 尾维 scatter 快速路径
+#
+# benchmark 与绝大多数真实调用都是沿最后一维 scatter：index/src 除 scatter
+# 维外的位置与输出对应，写地址 = 行基址 + index 值。此时不再需要逐元素做
+# rank 次 `/` `%` 的多维坐标拆解——把前导维压成「行」、尾维当「列」，用
+# BLOCK_M × BLOCK_N 的 2D tile 覆盖，tile 内部只有一次乘加。
+# ---------------------------------------------------------------------------
+
+LAST_DIM_TILE_BYTES = 4 * 1024
+LAST_DIM_MAX_BLOCK_N = 2048
+LAST_DIM_ATOMIC_BLOCK_N = 4096
+
+
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "width",
+        "idx_row_stride",
+        "src_row_stride",
+        "out_row_stride",
+        "num_col_tile",
+    ]
+)
+def scatter_last_dim_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    width,
+    idx_row_stride,
+    src_row_stride,
+    out_row_stride,
+    num_col_tile,
+    IS_ADD: tl.constexpr,
+    INT32: tl.constexpr,
+    EVEN: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """沿尾维 scatter：tile = BLOCK_M 行 × BLOCK_N 列。
+
+    rows/width 为 index 展平后的行数与行宽；三个 row_stride 分别是
+    index/src/out 展平后的行步长（要求前导维链式齐次，见 is_last_dim_flat）。
+    """
+    pid = tl.program_id(0)
+    num_cta = tl.num_programs(0)
+    num_tile = tl.cdiv(rows, BLOCK_M) * num_col_tile
+    for tile in range(pid, num_tile, num_cta):
+        # 每个 tile 只在这里做一次除法，摊到 BLOCK_M*BLOCK_N 个元素上
+        row_tile = tile // num_col_tile
+        col_tile = tile - row_tile * num_col_tile
+        row_idx = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        col_idx = col_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        idx_off = row_idx[:, None] * idx_row_stride + col_idx[None, :]
+        src_off = row_idx[:, None] * src_row_stride + col_idx[None, :]
+        if EVEN:
+            # 整 tile 落在计算域内：省掉逐元素谓词，原子路径尤其划算
+            index_val = tl.load(index_ptr + idx_off)
+            src_val = tl.load(src_ptr + src_off)
+        else:
+            mask = (row_idx[:, None] < rows) & (col_idx[None, :] < width)
+            index_val = tl.load(index_ptr + idx_off, mask=mask, other=0)
+            src_val = tl.load(src_ptr + src_off, mask=mask, other=0)
+        if INT32:
+            out_off = row_idx[:, None].to(tl.int32) * out_row_stride
+            out_off += index_val.to(tl.int32)
+        else:
+            out_off = row_idx[:, None].to(tl.int64) * out_row_stride
+            out_off += index_val
+        if IS_ADD:
+            if EVEN:
+                tl.atomic_add(out_ptr + out_off, src_val, sem="relaxed")
+            else:
+                tl.atomic_add(out_ptr + out_off, src_val, mask=mask, sem="relaxed")
+        else:
+            if EVEN:
+                tl.store(out_ptr + out_off, src_val)
+            else:
+                tl.store(out_ptr + out_off, src_val, mask=mask)
+
+
+def _max_offset(tensor):
+    """张量可能访问到的最大线性偏移，用于判断能否用 int32 计算地址。"""
+    return sum(
+        (size - 1) * stride
+        for size, stride in zip(tensor.shape, tensor.stride())
+        if size > 1
+    )
+
+
+def _flat_leading(tensor, rank):
+    """前导维是否链式齐次：可把 rank-1 个前导维压成一个「行」维。"""
+    if tensor.stride(rank - 1) != 1:
+        return False
+    for i in range(rank - 2):
+        if tensor.stride(i) != tensor.shape[i + 1] * tensor.stride(i + 1):
+            return False
+    return True
+
+
+def is_last_dim_flat(out, dim, index, src):
+    """判断能否走尾维 2D tile 快速路径。
+
+    行的展平以 index 的前导维为基准，因此三个张量的前导维形状必须与
+    index 完全一致（维度更大时行号无法用一个步长映射过去）。
+    """
+    rank = index.dim()
+    if rank < 2:
+        return False
+    # dim 可能为负值（-1 最常见），先归一化再判断是否为尾维
+    if dim % rank != rank - 1:
+        return False
+    if out.dim() != rank or src.dim() != rank:
+        return False
+    if index.shape[-1] == 0 or index.numel() == 0:
+        return False
+    leading = tuple(index.shape[:-1])
+    for tensor in (out, index, src):
+        if tuple(tensor.shape[:-1]) != leading:
+            return False
+        if not _flat_leading(tensor, rank):
+            return False
+    return True
+
+
+def _last_dim_tile(rows, width, element_size, add):
+    """选 (BLOCK_M, BLOCK_N)。
+
+    事务性写（普通 scatter）按 16 KiB 字节预算铺 tile；原子写（scatter_add）
+    的耗时完全由原子次数决定，实测单行覆盖 4096 列比 2048 列更快，因此走
+    单行 + 大列块的形状。并行度不足时先收窄列块、再收窄行块。
+    """
+    budget = max(1, LAST_DIM_TILE_BYTES // element_size)
+
+    def _rows_per_tile(col_block):
+        """非原子路径按字节预算铺行；行数足够多时单行 tile 更快。"""
+        if rows >= 8 * MAX_GRID_DIM:
+            return 1
+        return max(1, min(triton.next_power_of_2(rows), budget // col_block))
+
+    if add:
+        block_n = min(triton.next_power_of_2(width), LAST_DIM_ATOMIC_BLOCK_N)
+        block_m = 1
+    else:
+        block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
+        block_m = _rows_per_tile(block_n)
+    num_col_tile = triton.cdiv(width, block_n)
+    # 并行度不足时只收窄列块：小 case 把行块也切碎会让 tile 循环开销翻上来
+    while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
+        block_n //= 2
+        num_col_tile = triton.cdiv(width, block_n)
+        if not add:
+            block_m = _rows_per_tile(block_n)
+    return block_m, block_n, num_col_tile
+
+
+def scatter_last_dim(out, dim, index, src, add):
+    """尾维 scatter 的 host 侧派发，就地写 out 并返回它。"""
+    rank = index.dim()
+    width = index.shape[-1]
+    rows = index.numel() // width
+    element_size = max(out.element_size(), index.element_size())
+    block_m, block_n, num_col_tile = _last_dim_tile(rows, width, element_size, add)
+    grid = min(MAX_GRID_DIM, triton.cdiv(rows, block_m) * num_col_tile)
+    even = rows % block_m == 0 and width % block_n == 0
+    int32 = all(_max_offset(t) < 2**31 for t in (out, index, src))
+    scatter_last_dim_kernel[(grid,)](
+        src,
+        index,
+        out,
+        rows,
+        width,
+        index.stride(rank - 2),
+        src.stride(rank - 2),
+        out.stride(rank - 2),
+        num_col_tile,
+        IS_ADD=add,
+        INT32=int32,
+        EVEN=even,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        # 原子写吞吐随 warp 数线性增长并在 4 处饱和，普通写 2 warp 已够
+        num_warps=4 if add else 2,
+    )
+    return out

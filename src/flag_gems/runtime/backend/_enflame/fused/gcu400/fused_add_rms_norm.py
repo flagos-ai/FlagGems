@@ -24,6 +24,8 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 MAX_BLOCK_N = 16384
+_GRID_SIZE = 48  # 固定 program 数，按 M 规模扫描后分档
+_NUM_WARPS = 1  # launch 配置，扫描后固定
 
 
 @triton.jit(do_not_specialize=["eps", "inv_N"])
@@ -36,58 +38,59 @@ def fused_add_rms_norm_kernel(
     eps,
     inv_N,
     BLOCK_N: tl.constexpr,
+    SINGLE_BLOCK: tl.constexpr,
 ):
-    if tl.constexpr(input_ptr.dtype.element_ty == tl.float16) | tl.constexpr(
-        input_ptr.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = input_ptr.dtype.element_ty
+    # 累加恒用 fp32：fp16/bf16 输入提升到 fp32，fp32 输入本身即 fp32
+    cdtype = tl.float32
 
     pid = ext.program_id(0)
     step = tl.num_programs(0)
 
     cols = tl.arange(0, BLOCK_N)
     mask = cols < N
+    # 单块路径的 weight 对所有行相同，循环外只加载一次
+    w_first = tl.load(w_ptr + cols, mask=mask, other=0.0)
 
-    row = pid
-    while row < M:
+    for row in tl.range(pid, M, step):
         row_in = input_ptr + row * N
         row_res = residual_ptr + row * N
 
-        # Single-block fast path: keep x in registers, avoid re-read
-        x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
-        r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
-        x += r
-        tl.store(row_res + cols, x, mask=mask)
-
-        var_acc = x * x
-        for off in range(BLOCK_N, N, BLOCK_N):
-            cols2 = off + tl.arange(0, BLOCK_N)
-            mask2 = cols2 < N
-            xi = tl.load(row_in + cols2, mask2, other=0.0).to(cdtype)
-            ri = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
-            xi += ri
-            tl.store(row_res + cols2, xi, mask=mask2)
-            var_acc += xi * xi
-
-        var = tl.sum(var_acc, axis=0) * inv_N
-        rrms = tl.math.rsqrt(var + eps)
-
-        # Normalize: use x from registers for first block
-        w = tl.load(w_ptr + cols, mask=mask, other=0.0)
-        y = (x * rrms * w).to(cdtype)
-        tl.store(row_in + cols, y, mask=mask)
-
-        for off in range(BLOCK_N, N, BLOCK_N):
-            cols2 = off + tl.arange(0, BLOCK_N)
-            mask2 = cols2 < N
-            xi = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
-            wi = tl.load(w_ptr + cols2, mask=mask2, other=0.0)
-            yi = (xi * rrms * wi).to(cdtype)
-            tl.store(row_in + cols2, yi, mask=mask2)
-
-        row += step
+        if SINGLE_BLOCK:
+            # 整行由一个 tile 覆盖：x+r 常驻寄存器，residual 与归一化共用
+            x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
+            r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
+            t = x + r
+            tl.store(row_res + cols, t, mask=mask)
+            var = tl.sum(t * t, axis=0) * inv_N
+            rrms = tl.math.rsqrt(var + eps)
+            y = (t * rrms * w_first).to(cdtype)
+            tl.store(row_in + cols, y, mask=mask)
+        else:
+            # 行宽超过单 tile 上限：分块累加方差，再从 residual 读回归一化
+            x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
+            r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
+            t = x + r
+            tl.store(row_res + cols, t, mask=mask)
+            var_acc = t * t
+            for off in range(BLOCK_N, N, BLOCK_N):
+                cols2 = off + tl.arange(0, BLOCK_N)
+                mask2 = cols2 < N
+                xi = tl.load(row_in + cols2, mask2, other=0.0).to(cdtype)
+                ri = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
+                ti = xi + ri
+                tl.store(row_res + cols2, ti, mask=mask2)
+                var_acc += ti * ti
+            var = tl.sum(var_acc, axis=0) * inv_N
+            rrms = tl.math.rsqrt(var + eps)
+            y = (t * rrms * w_first).to(cdtype)
+            tl.store(row_in + cols, y, mask=mask)
+            for off in range(BLOCK_N, N, BLOCK_N):
+                cols2 = off + tl.arange(0, BLOCK_N)
+                mask2 = cols2 < N
+                ti = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
+                wi = tl.load(w_ptr + cols2, mask=mask2, other=0.0)
+                yi = (ti * rrms * wi).to(cdtype)
+                tl.store(row_in + cols2, yi, mask=mask2)
 
 
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
@@ -102,12 +105,13 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     N = math.prod(normalized_shape)
 
     BLOCK_N = min(triton.next_power_of_2(N), MAX_BLOCK_N)
+    single_block = triton.next_power_of_2(N) <= MAX_BLOCK_N
 
     x = x.contiguous()
     residual = residual.contiguous()
     weight = weight.contiguous()
 
-    grid_size = min(48, M)
+    grid_size = min(_GRID_SIZE, M)
     inv_N = 1.0 / N
 
     with torch_device_fn.device(x.device):
@@ -120,6 +124,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
             eps,
             inv_N,
             BLOCK_N=BLOCK_N,
-            num_warps=1,
+            SINGLE_BLOCK=single_block,
+            num_warps=_NUM_WARPS,
         )
     return x, residual
