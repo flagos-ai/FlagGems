@@ -43,9 +43,15 @@ def grouped_mm_w8a8_kernel(
     DIRECT: tl.constexpr,
     EVEN_K: tl.constexpr,
     EVEN_N: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    M: tl.constexpr,
 ):
     tiles_n: tl.constexpr = (N + BN - 1) // BN
     pid = tl.program_id(0)
+    if SPLIT_K > 1:
+        tl.static_assert(EVEN_N and K % (BK * SPLIT_K) == 0)
+        partition = pid % SPLIT_K
+        pid = pid // SPLIT_K
     tile_m = pid // tiles_n
     col = (pid % tiles_n) * BN + tl.arange(0, BN)
     if DIRECT:
@@ -82,8 +88,12 @@ def grouped_mm_w8a8_kernel(
     for tile in range(tile_count):
         row = row_start + tile * BM + tl.arange(0, BM)
         acc = tl.zeros((BM, BN), tl.int32)
-        for block in range(tl.cdiv(K, BK)):
-            red = block * BK + tl.arange(0, BK)
+        blocks: tl.constexpr = tl.cdiv(K, BK * SPLIT_K)
+        for block in range(blocks):
+            k_block = block
+            if SPLIT_K > 1:
+                k_block += partition * blocks
+            red = k_block * BK + tl.arange(0, BK)
             a_ptrs = A + row[:, None].to(tl.int64) * K + red[None, :]
             b_ptrs = B + weight_col[None, :] * K + red[:, None]
             if EVEN_K:
@@ -105,17 +115,47 @@ def grouped_mm_w8a8_kernel(
                     other=0,
                 )
             acc = tl.dot(a, b, acc, out_dtype=tl.int32)
-        scale_a = tl.load(As + row, row < row_end, other=0)
-        value = acc.to(tl.float32) * scale_a[:, None] * scale_b[None, :]
-        c_ptrs = C + row[:, None].to(tl.int64) * N + col[None, :]
-        if EVEN_N:
-            tl.store(c_ptrs, value, row[:, None] < row_end)
+        if SPLIT_K > 1:
+            offset = (partition * M + row[:, None]).to(tl.int64) * N + col[None, :]
+            tl.store(C + offset, acc, row[:, None] < row_end)
         else:
-            tl.store(
-                c_ptrs,
-                value,
-                (row[:, None] < row_end) & (col[None, :] < N),
-            )
+            scale_a = tl.load(As + row, row < row_end, other=0)
+            value = acc.to(tl.float32) * scale_a[:, None] * scale_b[None, :]
+            c_ptrs = C + row[:, None].to(tl.int64) * N + col[None, :]
+            if EVEN_N:
+                tl.store(c_ptrs, value, row[:, None] < row_end)
+            else:
+                tl.store(
+                    c_ptrs,
+                    value,
+                    (row[:, None] < row_end) & (col[None, :] < N),
+                )
+
+
+@libentry()
+@triton.jit
+def _grouped_mm_w8a8_reduce_split_k(
+    Partials,
+    As,
+    Bs,
+    RowIndices,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    valid = index < M * N
+    row = index // N
+    col = index % N
+    acc = tl.zeros((BLOCK,), tl.int32)
+    for partition in tl.static_range(SPLIT_K):
+        acc += tl.load(Partials + partition * M * N + index, valid, other=0)
+    expert = tl.load(RowIndices + row, valid, other=0)
+    scale_a = tl.load(As + row, valid, other=0)
+    scale_b = tl.load(Bs + expert.to(tl.int64) * N + col, valid, other=0)
+    tl.store(Out + index, acc.to(tl.float32) * scale_a * scale_b, valid)
 
 
 def grouped_mm_w8a8(
@@ -184,12 +224,21 @@ def grouped_mm_w8a8(
             raise ValueError("C must not overlap an input")
 
     direct = m <= e
+    split_k = 1
     if direct:
-        # BK=512 only when K covers it exactly; a larger BK than K pads the
-        # reduction and doubles the load and dot work (K=256 for the down stage).
-        bm, bn, bk = 16, 64, 512 if k % 512 == 0 else 128
+        bm, bn = 16, 64
+        if (n, k) == (512, 6144):
+            # Two K tiles per CTA expose more independent weight loads.
+            bk, split_k = 256, 12
+        else:
+            bk = 512 if k % 512 == 0 else 128
     else:
-        bm, bn, bk = 64, 64, 64
+        # Larger M tiles reuse each weight tile across more gate/up rows.
+        bm = 128 if (n, k) == (512, 6144) else 64
+        bn = 64
+        bk = 128 if (n, k) == (512, 6144) else 64
+    # The direct K=256 path has two K blocks and uses a single pipeline stage.
+    num_stages = 1 if direct and k == 256 else 2
     with torch_device_fn.device(A.device):
         if direct:
             row_ends, tile_ends = None, None
@@ -201,12 +250,17 @@ def grouped_mm_w8a8(
                 m_rows, row_ends, tile_ends, e, bm, triton.next_power_of_2(e)
             )
             max_tiles = min(m, triton.cdiv(m, bm) + e - 1)
-        grouped_mm_w8a8_kernel[(max_tiles * triton.cdiv(n, bn),)](
+        destination = C
+        if split_k > 1:
+            destination = torch.empty(
+                (split_k, m, n), dtype=torch.int32, device=A.device
+            )
+        grouped_mm_w8a8_kernel[(max_tiles * triton.cdiv(n, bn) * split_k,)](
             A,
             As,
             B,
             Bs,
-            C,
+            destination,
             m_indices,
             m_rows,
             row_ends,
@@ -220,7 +274,23 @@ def grouped_mm_w8a8(
             DIRECT=direct,
             EVEN_K=k % bk == 0,
             EVEN_N=n % bn == 0,
+            SPLIT_K=split_k,
+            M=m if split_k > 1 else 0,
             num_warps=4,
-            num_stages=2,
+            num_stages=num_stages,
             enable_fp_fusion=False,
         )
+        if split_k > 1:
+            _grouped_mm_w8a8_reduce_split_k[(triton.cdiv(m * n, 256),)](
+                destination,
+                As,
+                Bs,
+                m_indices,
+                C,
+                m,
+                n,
+                split_k,
+                256,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
