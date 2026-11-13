@@ -636,6 +636,7 @@ from flag_gems.ops.can_cast import can_cast
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
+from flag_gems.ops.cast_Double import cast_Double
 from flag_gems.ops.cast_Long import cast_Long
 from flag_gems.ops.cast_Short import cast_Short
 from flag_gems.ops.cat import cat, cat_out
@@ -1514,6 +1515,7 @@ from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
 from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from flag_gems.ops.sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_mask import sparse_mask, sparse_mask_out
@@ -2351,6 +2353,7 @@ __all__ = [
     "cartesian_prod",
     "cast_Byte",
     "cast_Char",
+    "cast_Double",
     "cast_Long",
     "cast_Short",
     "cat",
@@ -3271,6 +3274,8 @@ __all__ = [
     "sparse_coo_tensor",
     "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
+    "sparse_csr_sum",
+    "sparse_csr_sum_out",
     "sparse_csr_tensor",
     "sparse_dim",
     "sparse_mask",
