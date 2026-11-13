@@ -213,6 +213,14 @@ from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_
 from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
+from ._upsample_lanczos2d_aa_backward import (  # noqa: F401
+    upsample_lanczos2d_aa_backward,
+    upsample_lanczos2d_aa_backward_grad_input,
+)
+from ._upsample_nearest_exact1d_backward import (  # noqa: F401
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from ._weight_norm_differentiable_backward import (  # noqa: F401
