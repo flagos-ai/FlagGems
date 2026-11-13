@@ -100,6 +100,7 @@ from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .hardtanh_backward import hardtanh_backward
 from .histc import histc
 from .igamma import igamma
 from .im2col import im2col
@@ -301,6 +302,7 @@ __all__ = [
     "greater_",
     "grid_sampler_3d",
     "grid_sampler_3d_backward",
+    "hardtanh_backward",
     "histc",
     "igamma",
     "im2col",
