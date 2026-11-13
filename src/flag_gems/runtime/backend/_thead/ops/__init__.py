@@ -52,6 +52,7 @@ from .gru import gru
 from .igamma import igamma
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -154,6 +155,7 @@ __all__ = [
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "layer_norm",
     "lcm",
     "lcm_",
     "linalg_cholesky",
@@ -178,6 +180,7 @@ __all__ = [
     "mul_",
     "mv",
     "mvlgamma",
+    "native_layer_norm",
     "nll_loss_backward",
     "nonzero_numpy",
     "nuclear_norm",

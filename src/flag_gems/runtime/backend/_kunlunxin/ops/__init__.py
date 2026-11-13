@@ -22,6 +22,8 @@ from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_in
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
+from ._ctc_loss import _ctc_loss, _ctc_loss_out
+from ._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from ._dirichlet_grad import _dirichlet_grad, _dirichlet_grad_into  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -187,6 +189,7 @@ from ._native_batch_norm_legit import (
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
 from ._pdist_backward import _pdist_backward
@@ -199,15 +202,30 @@ from ._scaled_dot_product_efficient_attention import (
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
+from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
+    _thnn_differentiable_gru_cell_backward,
+)
 from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
+from ._upsample_lanczos2d_aa_backward import (  # noqa: F401
+    upsample_lanczos2d_aa_backward,
+    upsample_lanczos2d_aa_backward_grad_input,
+)
+from ._upsample_nearest_exact1d_backward import (  # noqa: F401
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._weight_norm_differentiable_backward import (  # noqa: F401
+    weight_norm_differentiable_backward,
+)
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
@@ -219,6 +237,7 @@ from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from .adaptive_max_pool1d import adaptive_max_pool1d  # noqa: F401
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -266,6 +285,10 @@ from .atan2 import atan2, atan2_, atan2_out
 from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
+    _scaled_dot_product_attention_math,
+    _scaled_dot_product_cudnn_attention,
+    _scaled_dot_product_flash_attention,
+    cudnn_attention_forward,
     efficient_attention_backward,
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -280,6 +303,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
@@ -316,6 +341,7 @@ from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .bucketize import bucketize
+from .cast_Byte import cast_Byte  # noqa: F401
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
 from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
@@ -358,9 +384,11 @@ from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
+from .corrcoef import corrcoef
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
+from .cov import cov
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
@@ -368,6 +396,7 @@ from .cummax import cummax
 from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
+from .cumprod_backward import cumprod_backward
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
@@ -687,6 +716,7 @@ from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .nonzero_static import nonzero_static, nonzero_static_out  # noqa: F401
 from .norm import norm, norm_scalar, norm_scalaropt_dim
+from .norm_except_dim import norm_except_dim  # noqa: F401
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -722,6 +752,7 @@ from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .quantized_lstm import quantized_lstm
+from .quantized_max_pool3d import quantized_max_pool3d, quantized_max_pool3d_out
 from .rad2deg import rad2deg, rad2deg_
 from .rand import rand
 from .rand_like import rand_like
@@ -808,6 +839,8 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe  # noqa: F401
+from .sparse_compressed_tensor import sparse_compressed_tensor  # noqa: F401
 from .sparse_sampled_addmm import (  # noqa: F401
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -864,6 +897,10 @@ from .special_multigammaln import special_multigammaln
 from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
+from .special_scaled_modified_bessel_k0 import (  # noqa: F401
+    special_scaled_modified_bessel_k0,
+    special_scaled_modified_bessel_k0_out,
+)
 from .special_scaled_modified_bessel_k1 import (  # noqa: F401
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -882,6 +919,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .special_softmax import special_softmax
+from .special_spherical_bessel_j0 import special_spherical_bessel_j0  # noqa: F401
 from .special_xlog1py import special_xlog1py
 from .special_zeta import (
     special_zeta,
@@ -911,6 +949,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .trapezoid import trapezoid_x  # noqa: F401
 from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
@@ -943,10 +982,12 @@ from .upsample_nearest_exact2d import (
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
+from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
 from .weight_norm import _weight_norm
@@ -983,6 +1024,10 @@ __all__ = [
     "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
+    "_ctc_loss",
+    "_ctc_loss_backward",
+    "_ctc_loss_backward_out",
+    "_ctc_loss_out",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
@@ -1109,6 +1154,7 @@ __all__ = [
     "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
     "_pdist_backward",
@@ -1250,6 +1296,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bucketize",
+    "cast_Byte",
     "cat",
     "cat_out",
     "cauchy",
@@ -1297,14 +1344,17 @@ __all__ = [
     "copysign",
     "copysign_",
     "copysign_out",
+    "corrcoef",
     "cos",
     "cos_",
     "count_nonzero",
+    "cov",
     "cummax",
     "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
+    "cumprod_backward",
     "cumsum",
     "cumsum_",
     "cumsum_out",
@@ -1703,6 +1753,8 @@ __all__ = [
     "prod_dim",
     "quantile",
     "quantized_lstm",
+    "quantized_max_pool3d",
+    "quantized_max_pool3d_out",
     "rad2deg",
     "rad2deg_",
     "rand",
@@ -1923,6 +1975,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "trapezoid_x",
     "triangular_solve",
     "triangular_solve_out",
     "tril",
@@ -2096,3 +2149,52 @@ def _patch_adaptive_max_pool3d_aten():
 
 
 _patch_adaptive_max_pool3d_aten()
+
+
+_sobol_engine_ff_ops_patched = False
+_sobol_engine_ff_aten_lib = None
+
+
+def _patch_sobol_engine_ff_ops_module():
+    """Route ``flag_gems.ops._sobol_engine_ff_`` and the ATen dispatch to the
+    vendor kernel.
+
+    1. ``SpecOpRegistrar`` only swaps the top-level ``flag_gems.<name>``, but
+       ``tests/test_sobol_engine_ff_.py`` (KernelGen-generated) calls the ops
+       submodule directly (``flag_gems.ops._sobol_engine_ff_``), so the vendor
+       kernel would never be exercised without this explicit patch.  The
+       ``setattr`` is process-global and idempotent; ``flag_gems.ops`` is
+       already fully imported when this module is loaded (``flag_gems/__init__.py``
+       does ``from flag_gems.ops import *`` before the vendor registrar runs).
+    2. The ATen op ``_sobol_engine_ff_`` has no CUDA kernel on this stack
+       (``_dispatch_has_kernel_for_dispatch_key(... CUDA)`` is False; a plain
+       call on a CUDA tensor falls through to the XDNN codegen shim and
+       segfaults, as noted in ``tests/test_sobol_engine_ff_.py``), and
+       ``use_gems()``'s ``lib.impl`` registration never takes effect.  The
+       import-time ``Library("aten", "IMPL")`` registration below (same pattern
+       as ``cast_Byte`` / ``_patch_adaptive_max_pool{2,3}d_aten``) makes
+       ``torch.ops.aten._sobol_engine_ff_`` on CUDA use the vendor kernel.
+    """
+    global _sobol_engine_ff_ops_patched, _sobol_engine_ff_aten_lib
+    if _sobol_engine_ff_ops_patched:
+        return
+    _sobol_engine_ff_ops_patched = True
+
+    import flag_gems
+
+    # Guard against an unusual import order where flag_gems.ops is not yet
+    # bound; in that case the SpecOpRegistrar top-level swap still applies.
+    if getattr(flag_gems, "ops", None) is not None:
+        setattr(flag_gems.ops, "_sobol_engine_ff_", _sobol_engine_ff_)
+
+    # ATen dispatch (CUDA) -> vendor kernel; the Library handle must be kept
+    # alive for the process lifetime.
+    import torch
+
+    _sobol_engine_ff_aten_lib = torch.library.Library("aten", "IMPL")
+    _sobol_engine_ff_aten_lib.impl(
+        "_sobol_engine_ff_", _sobol_engine_ff_, "CUDA", allow_override=True
+    )
+
+
+_patch_sobol_engine_ff_ops_module()

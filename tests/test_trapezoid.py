@@ -5,6 +5,23 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _ref_trapezoid(y, x=None, **kwargs):
+    if IS_KUNLUNXIN and (y.is_complex() or (x is not None and x.is_complex())):
+        y_cpu = y.cpu()
+        x_cpu = None if x is None else x.cpu()
+        return torch.trapezoid(y_cpu, x_cpu, **kwargs)
+    return torch.trapezoid(y, x, **kwargs)
+
+
+def _assert_close(res, ref, dtype, **kwargs):
+    if IS_KUNLUNXIN and (res.is_complex() or ref.is_complex()):
+        res, ref = res.cpu(), ref.cpu()
+    utils.gems_assert_close(res, ref, dtype, **kwargs)
+
+
 # trapezoid reduces along a dim, so shapes need at least one dim with length > 1
 # for the pairwise sum to be meaningful. Scalar/1-length shapes are also tested
 # to exercise the degenerate (empty pair) case.
@@ -27,10 +44,10 @@ def test_trapezoid_x_1d(shape, dtype):
     ref_inp = utils.to_reference(res_inp, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_inp, ref_x)
+    ref_out = _ref_trapezoid(ref_inp, ref_x)
     res_out = flag_gems.trapezoid_x(res_inp, res_x)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
+    _assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
 
 @pytest.mark.trapezoid
@@ -46,10 +63,10 @@ def test_trapezoid_x_same_shape(dtype):
     ref_inp = utils.to_reference(res_inp, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_inp, ref_x)
+    ref_out = _ref_trapezoid(ref_inp, ref_x)
     res_out = flag_gems.trapezoid_x(res_inp, res_x)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
+    _assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
 
 
 @pytest.mark.trapezoid
@@ -65,26 +82,28 @@ def test_trapezoid_x_dim(dim, dtype):
     ref_inp = utils.to_reference(res_inp, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_inp, ref_x, dim=dim)
+    ref_out = _ref_trapezoid(ref_inp, ref_x, dim=dim)
     res_out = flag_gems.trapezoid_x(res_inp, res_x, dim=dim)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
+    _assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
 
 @pytest.mark.trapezoid
 @pytest.mark.parametrize("dtype", [torch.float64])
 def test_trapezoid_x_fp64(dtype):
     # Test FP64 precision is preserved for trapezoid_x
+    if not utils.fp64_is_supported:
+        pytest.skip("device has no fp64 support")
     shape = (20, 32, 15)
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_x = torch.sort(torch.randn(shape[-1], dtype=dtype, device=flag_gems.device))[0]
     ref_inp = utils.to_reference(res_inp, upcast=False)
     ref_x = utils.to_reference(res_x, upcast=False)
 
-    ref_out = torch.trapezoid(ref_inp, ref_x)
+    ref_out = _ref_trapezoid(ref_inp, ref_x)
     res_out = flag_gems.trapezoid_x(res_inp, res_x)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
+    _assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
 
 
 @pytest.mark.trapezoid
@@ -98,10 +117,10 @@ def test_trapezoid_x_non_contiguous(dtype):
     ref_inp = utils.to_reference(res_inp, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_inp, ref_x, dim=0)
+    ref_out = _ref_trapezoid(ref_inp, ref_x, dim=0)
     res_out = flag_gems.trapezoid_x(res_inp, res_x, dim=0)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=32)
+    _assert_close(res_out, ref_out, dtype, reduce_dim=32)
 
 
 @pytest.mark.trapezoid
@@ -117,10 +136,10 @@ def test_trapezoid_x_broadcasting(dtype):
     ref_y = utils.to_reference(res_y, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
     res_out = flag_gems.trapezoid_x(res_y, res_x)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=y_shape[-1])
+    _assert_close(res_out, ref_out, dtype, reduce_dim=y_shape[-1])
 
 
 @pytest.mark.trapezoid
@@ -148,7 +167,7 @@ def test_trapezoid_x_invalid_dim():
         with pytest.raises(IndexError, match="Dimension out of range"):
             flag_gems.trapezoid_x(y, x, dim=bad_dim)
     with pytest.raises(IndexError):
-        torch.trapezoid(y, x, dim=5)
+        _ref_trapezoid(y, x, dim=5)
 
 
 @pytest.mark.trapezoid
@@ -161,7 +180,7 @@ def test_trapezoid_x_empty_dim_skips_length_check():
 
     res_out = flag_gems.trapezoid_x(y, x, dim=-1)
     ref_out = utils.to_reference(torch.zeros(10, device=flag_gems.device), upcast=False)
-    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
+    _assert_close(res_out, ref_out, res_out.dtype)
 
 
 @pytest.mark.trapezoid
@@ -174,10 +193,10 @@ def test_trapezoid_x_zero_size(dtype):
     ref_inp = utils.to_reference(res_inp, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_inp, ref_x)
+    ref_out = _ref_trapezoid(ref_inp, ref_x)
     res_out = flag_gems.trapezoid_x(res_inp, res_x)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.trapezoid
@@ -190,10 +209,10 @@ def test_trapezoid_x_mixed_dtype():
     ref_y = utils.to_reference(y)
     ref_x = utils.to_reference(x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
     res_out = flag_gems.trapezoid_x(y, x)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float16, reduce_dim=5)
+    _assert_close(res_out, ref_out, torch.float16, reduce_dim=5)
 
     # float16 y + float32 x promotes to float32.
     y = torch.randn(4, 5, dtype=torch.float16, device=flag_gems.device)
@@ -203,10 +222,10 @@ def test_trapezoid_x_mixed_dtype():
     ref_y = utils.to_reference(y, upcast=True)
     ref_x = utils.to_reference(x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
     res_out = flag_gems.trapezoid_x(y, x)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=5)
+    _assert_close(res_out, ref_out, torch.float32, reduce_dim=5)
 
     # int y + int x promotes to float32.
     y = torch.randint(-100, 100, (4, 5), dtype=torch.int32, device=flag_gems.device)
@@ -217,10 +236,10 @@ def test_trapezoid_x_mixed_dtype():
     ref_y = utils.to_reference(y)
     ref_x = utils.to_reference(x)
 
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
     res_out = flag_gems.trapezoid_x(y, x)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=5)
+    _assert_close(res_out, ref_out, torch.float32, reduce_dim=5)
 
 
 @pytest.mark.trapezoid
@@ -230,6 +249,8 @@ def test_trapezoid_x_complex(dtype):
     # forward in the complex dtype, and Wirtinger-convention backward
     # (grad = conj(d out / d input)). The device path decomposes the complex
     # arithmetic through real-view reductions.
+    if dtype is torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("device has no fp64 support")
     for dim, y_shape, x_len in [(-1, (3, 5), 5), (0, (3, 5), 3)]:
         y = torch.randn(
             y_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -238,19 +259,19 @@ def test_trapezoid_x_complex(dtype):
         ref_y = utils.to_reference(y.detach().clone(), upcast=False).requires_grad_()
         ref_x = utils.to_reference(x.detach().clone(), upcast=False).requires_grad_()
 
-        ref_out = torch.trapezoid(ref_y, ref_x, dim=dim)
+        ref_out = _ref_trapezoid(ref_y, ref_x, dim=dim)
         res_out = flag_gems.trapezoid_x(y, x, dim=dim)
 
         assert res_out.dtype == dtype
-        utils.gems_assert_close(res_out, ref_out, dtype)
+        _assert_close(res_out, ref_out, dtype)
 
         # Same upstream gradient values on both devices: in --ref=cpu mode the
         # reference lives on cpu while the gems result stays on the device.
         grad = torch.randn(res_out.shape, dtype=dtype, device=res_out.device)
         res_out.backward(grad.clone())
         ref_out.backward(grad.to(ref_out.device).clone())
-        utils.gems_assert_close(y.grad, ref_y.grad, dtype)
-        utils.gems_assert_close(x.grad, ref_x.grad, dtype)
+        _assert_close(y.grad, ref_y.grad, dtype)
+        _assert_close(x.grad, ref_x.grad, dtype)
 
 
 @pytest.mark.trapezoid
@@ -261,10 +282,10 @@ def test_trapezoid_x_complex_mixed():
     ref_y = utils.to_reference(y)
     ref_x = utils.to_reference(x)
 
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
     res_out = flag_gems.trapezoid_x(y, x)
     assert res_out.dtype == torch.complex64
-    utils.gems_assert_close(res_out, ref_out, torch.complex64)
+    _assert_close(res_out, ref_out, torch.complex64)
 
 
 @pytest.mark.trapezoid
@@ -280,10 +301,10 @@ def test_trapezoid_x_y_broadcasting(dtype):
     ref_y = utils.to_reference(res_y, upcast=True)
     ref_x = utils.to_reference(res_x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
     res_out = flag_gems.trapezoid_x(res_y, res_x)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=y_shape[-1])
+    _assert_close(res_out, ref_out, dtype, reduce_dim=y_shape[-1])
 
 
 @pytest.mark.trapezoid
@@ -296,24 +317,26 @@ def test_trapezoid_x_pair_broadcasting(dtype):
     ref_y = utils.to_reference(y, upcast=True)
     ref_x = utils.to_reference(x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_y, ref_x, dim=1)
+    ref_out = _ref_trapezoid(ref_y, ref_x, dim=1)
     res_out = flag_gems.trapezoid_x(y, x, dim=1)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=4)
+    _assert_close(res_out, ref_out, dtype, reduce_dim=4)
 
     y = torch.randn(2, 5, dtype=dtype, device=flag_gems.device)
     x = torch.sort(torch.randn(2, 2, dtype=dtype, device=flag_gems.device), dim=-1)[0]
     ref_y = utils.to_reference(y, upcast=True)
     ref_x = utils.to_reference(x, upcast=True)
 
-    ref_out = torch.trapezoid(ref_y, ref_x, dim=1)
+    ref_out = _ref_trapezoid(ref_y, ref_x, dim=1)
     res_out = flag_gems.trapezoid_x(y, x, dim=1)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=4)
+    _assert_close(res_out, ref_out, dtype, reduce_dim=4)
 
 
 @pytest.mark.trapezoid
 def test_trapezoid_x_backward():
+    if not utils.fp64_is_supported:
+        pytest.skip("device has no fp64 support")
     y = torch.randn(
         (3, 5), dtype=torch.float64, device=flag_gems.device, requires_grad=True
     )
@@ -321,17 +344,19 @@ def test_trapezoid_x_backward():
     x.requires_grad_(True)
     ref_y = utils.to_reference(y.detach().clone(), upcast=False).requires_grad_()
     ref_x = utils.to_reference(x.detach().clone(), upcast=False).requires_grad_()
-    torch.trapezoid(ref_y, ref_x).sum().backward()
+    _ref_trapezoid(ref_y, ref_x).sum().backward()
     flag_gems.trapezoid_x(y, x).sum().backward()
 
-    utils.gems_assert_close(y.grad, ref_y.grad, torch.float64)
-    utils.gems_assert_close(x.grad, ref_x.grad, torch.float64)
+    _assert_close(y.grad, ref_y.grad, torch.float64)
+    _assert_close(x.grad, ref_x.grad, torch.float64)
 
 
 @pytest.mark.trapezoid
 def test_trapezoid_x_backward_single_point():
     # N == 1 (single sample point) spans no interval: ATen returns zero gradients
     # for both y and x. Verify parity with the reference (N == 1 keeps grad_fn).
+    if not utils.fp64_is_supported:
+        pytest.skip("device has no fp64 support")
     y = torch.randn(
         (3, 1), dtype=torch.float64, device=flag_gems.device, requires_grad=True
     )
@@ -340,11 +365,11 @@ def test_trapezoid_x_backward_single_point():
     ref_y = utils.to_reference(y.detach().clone(), upcast=False).requires_grad_()
     ref_x = utils.to_reference(x.detach().clone(), upcast=False).requires_grad_()
 
-    torch.trapezoid(ref_y, ref_x, dim=1).sum().backward()
+    _ref_trapezoid(ref_y, ref_x, dim=1).sum().backward()
     flag_gems.trapezoid_x(y, x, dim=1).sum().backward()
 
-    utils.gems_assert_close(y.grad, ref_y.grad, torch.float64)
-    utils.gems_assert_close(x.grad, ref_x.grad, torch.float64)
+    _assert_close(y.grad, ref_y.grad, torch.float64)
+    _assert_close(x.grad, ref_x.grad, torch.float64)
 
 
 @pytest.mark.trapezoid
@@ -380,19 +405,21 @@ def _registered_case(y, x):
     )
 
     res_out = flag_gems.trapezoid_x(y, x)
-    ref_out = torch.trapezoid(ref_y, ref_x)
+    ref_out = _ref_trapezoid(ref_y, ref_x)
 
-    utils.gems_assert_close(res_out, ref_out, res_out.dtype, reduce_dim=y.shape[-1])
+    _assert_close(res_out, ref_out, res_out.dtype, reduce_dim=y.shape[-1])
 
     if y.requires_grad or x.requires_grad:
         grad = torch.randn_like(res_out)
         ref_grad = utils.to_reference(grad)
+        if IS_KUNLUNXIN and ref_grad.device != ref_out.device:
+            ref_grad = ref_grad.to(ref_out.device)
         res_out.backward(grad)
         ref_out.backward(ref_grad)
         if y.requires_grad:
-            utils.gems_assert_close(y.grad, ref_y.grad, res_out.dtype)
+            _assert_close(y.grad, ref_y.grad, res_out.dtype)
         if x.requires_grad:
-            utils.gems_assert_close(x.grad, ref_x.grad, res_out.dtype)
+            _assert_close(x.grad, ref_x.grad, res_out.dtype)
 
 
 @pytest.mark.trapezoid
