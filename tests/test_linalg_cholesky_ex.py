@@ -43,6 +43,12 @@ CASES = [
 ]
 
 
+def _cholesky_reference_input(inp):
+    if flag_gems.vendor_name == "thead":
+        return inp.cpu().to(torch.float64)
+    return utils.to_reference(inp, True)
+
+
 def _inputs(case):
     batch_shape, n, flag, dtype = case
     torch.manual_seed(0)
@@ -60,12 +66,17 @@ def test_linalg_cholesky_ex(case):
         pytest.skip("float64 is not supported by this device")
     inputs = _inputs(case)
     ref = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(inputs[0], True), upper=inputs[1], check_errors=False
+        _cholesky_reference_input(inputs[0]), upper=inputs[1], check_errors=False
     )
     res = flag_gems.linalg_cholesky_ex(inputs[0], upper=inputs[1], check_errors=False)
     ref_L, ref_info = ref
     res_L = res.L if hasattr(res, "L") else res[0]
     res_info = res.info if hasattr(res, "info") else res[1]
+    assert res_L.device == res_info.device == inputs[0].device
+    assert res_L.shape == ref_L.shape == inputs[0].shape
+    assert res_L.dtype == inputs[0].dtype
+    assert res_info.shape == ref_info.shape == inputs[0].shape[:-2]
+    assert res_info.dtype == ref_info.dtype == torch.int32
     utils.gems_assert_close(res_L, ref_L.to(dtype), dtype, reduce_dim=case[1] * case[1])
     assert torch.equal(res_info.cpu(), ref_info.cpu())
 
@@ -117,7 +128,7 @@ def test_linalg_cholesky_ex_noncontiguous(upper):
     view = base.transpose(-1, -2)
     assert not view.is_contiguous()
     ref_L, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
-        utils.to_reference(view, True), upper=upper, check_errors=False
+        _cholesky_reference_input(view), upper=upper, check_errors=False
     )
     res_L, res_info = flag_gems.linalg_cholesky_ex(view, upper=upper)
     utils.gems_assert_close(
