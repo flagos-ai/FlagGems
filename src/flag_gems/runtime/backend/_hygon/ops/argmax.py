@@ -258,28 +258,43 @@ def argmax_global_final_kernel(mid, out, M, BLOCK: tl.constexpr):
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     numel = inp.numel()
-    if numel == 0:
-        return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
-
     rank = inp.ndim
     if dim is not None:
-        if rank == 0 or dim < -rank or dim >= rank:
-            return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+        if rank == 0:
+            if dim not in (0, -1):
+                raise IndexError(
+                    f"Dimension out of range (expected to be in range of [-1, 0], but got {dim})"
+                )
+            return torch.zeros((), dtype=torch.int64, device=inp.device)
+        if dim < -rank or dim >= rank:
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of [{-rank}, {rank - 1}], but got {dim})"
+            )
         dim %= rank
         shape = inp.shape
-        if shape[dim] == 1:
-            if keepdim:
-                out_shape = shape[:dim] + (1,) + shape[dim + 1 :]
-            else:
-                out_shape = shape[:dim] + shape[dim + 1 :]
-            out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
-            if numel <= 1 << 16:
-                device_index = inp.device.index
-                if device_index is None:
-                    device_index = torch_device_fn.current_device()
-                with _device_context(inp.device):
-                    return _zero_output(out, numel, device_index)
-            return out.zero_()
+        if shape[dim] == 0:
+            raise IndexError(
+                f"argmax(): Expected reduction dim {dim} to have non-zero size."
+            )
+
+    if numel == 0:
+        if dim is None:
+            raise IndexError(
+                "argmax(): Expected reduction dim to be specified for input.numel() == 0."
+            )
+        return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+
+    if dim is not None and shape[dim] == 1:
+        if keepdim:
+            out_shape = shape[:dim] + (1,) + shape[dim + 1 :]
+        else:
+            out_shape = shape[:dim] + shape[dim + 1 :]
+        out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
+        device_index = inp.device.index
+        if device_index is None:
+            device_index = torch_device_fn.current_device()
+        with _device_context(inp.device):
+            return _zero_output(out, numel, device_index)
 
     fast_dtype = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
     if not fast_dtype:
@@ -310,10 +325,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 num_warps=4,
             )
         return out
-
-    if rank == 0 or dim < -rank or dim >= rank:
-        return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
-    dim %= rank
 
     shape = inp.shape
     n = shape[dim]
