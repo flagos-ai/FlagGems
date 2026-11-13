@@ -184,8 +184,12 @@ def _validate_metadata(
         raise RuntimeError(
             "values must have dimensionality > sum of batch and block dimensionalities"
         )
-    if compressed_indices.stride(-1) != 1 or plain_indices.stride(-1) != 1:
-        raise RuntimeError("indices must be contiguous per batch")
+    # ATen skips the plain-index stride check only when it has no elements.
+    # Compressed indices must retain unit last stride even for zero batches.
+    if plain_indices.numel() != 0 and plain_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {pname} to be a contiguous tensor per batch")
+    if compressed_indices.stride(-1) != 1:
+        raise RuntimeError(f"expected {cname} to be a contiguous tensor per batch")
     size = tuple(operator.index(extent) for extent in size)
     if len(size) != batch_ndim + 2 + dense_ndim:
         raise RuntimeError(

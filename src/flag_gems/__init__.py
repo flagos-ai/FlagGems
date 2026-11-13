@@ -844,6 +844,10 @@ _FULL_CONFIG = (
         _upsample_nearest_exact3d_backward_grad_input,
     ),
     ("_validate_sparse_bsr_tensor_args", _validate_sparse_bsr_tensor_args),
+    (
+        "_validate_sparse_compressed_tensor_args",
+        _validate_sparse_compressed_tensor_args,
+    ),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
     ("_validate_sparse_csr_tensor_args", _validate_sparse_csr_tensor_args),
     (
