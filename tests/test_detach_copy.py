@@ -76,6 +76,7 @@ def test_accuracy_detach_copy(shape, dtype):
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == inp.shape
@@ -99,6 +100,7 @@ def test_accuracy_detach_copy_non_contiguous(shape):
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == inp.shape
@@ -114,6 +116,7 @@ def test_accuracy_detach_copy_empty():
     inp = torch.empty(0, device=flag_gems.device)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     assert res_out.shape == (0,)
     assert res_out.numel() == 0
@@ -130,6 +133,7 @@ def test_accuracy_detach_copy_empty_non_contiguous():
     inp = torch.empty(3, 0, device=flag_gems.device).transpose(0, -1)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     assert res_out.shape == inp.shape
     assert res_out.numel() == 0
@@ -141,6 +145,7 @@ def test_accuracy_detach_copy_zero_dim():
     inp = torch.randn((), device=flag_gems.device)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     assert res_out.shape == ()
     assert res_out.numel() == 1
@@ -153,6 +158,7 @@ def test_accuracy_detach_copy_single_element():
     inp = torch.randn(1, device=flag_gems.device)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.data_ptr() != inp.data_ptr()
@@ -172,6 +178,7 @@ def test_accuracy_detach_copy_autograd_contract():
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     assert res_out.data_ptr() != inp.data_ptr()
     assert ref_out.data_ptr() != ref_inp.data_ptr()
@@ -194,6 +201,7 @@ def test_accuracy_detach_copy_dispatch_stability():
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     for _ in range(3):
         res_out = flag_gems.detach_copy(inp)
+        assert res_out.device == inp.device
         assert torch.equal(utils.to_cpu(res_out, ref_out), ref_out)
         assert torch.ops.aten.dim(inp) == 2
     assert res_out.data_ptr() != inp.data_ptr()
@@ -222,6 +230,7 @@ def test_accuracy_detach_copy_neg_view(make_inp):
     assert inp.is_neg()
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
+    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.dtype == inp.dtype
@@ -246,6 +255,7 @@ if _HAS_COMPLEX:
         assert neg_conj.is_neg() and neg_conj.is_conj()
         ref_out = torch.ops.aten.detach_copy(utils.to_reference(neg_conj))
         res_out = flag_gems.detach_copy(neg_conj)
+        assert res_out.device == neg_conj.device
 
         utils.gems_assert_equal(res_out, ref_out)
         assert torch.allclose(res_out, (-inp).conj())
@@ -278,6 +288,7 @@ if _HAS_COMPLEX:
 
         ref_out = torch.ops.aten.detach_copy(ref_inp)
         res_out = flag_gems.detach_copy(inp)
+        assert res_out.device == inp.device
 
         utils.gems_assert_equal(res_out, ref_out)
         assert res_out.dtype == inp.dtype
