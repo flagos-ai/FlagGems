@@ -43,6 +43,7 @@ def _skip_unsupported_fp64(request):
     ):
         pytest.skip("backend does not support float64")
 
+
 # every grad dim needs at least edge_order + 1 points
 GRADIENT_SHAPES = [
     (1024,),
@@ -216,8 +217,7 @@ def test_gradient_int_promotion():
 
 @pytest.mark.gradient
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin"
-    and not flag_gems.runtime.device.support_fp64,
+    flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
     reason="backend does not support float64",
 )
 def test_gradient_quadratic_exactness():
