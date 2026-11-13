@@ -68,13 +68,20 @@ def test_inverse(shape, dtype):
     # Inversion is ill conditioned by nature: the reference is upcast to fp64
     # so the comparison measures our error, not the reference's.
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
-    res_out = flag_gems.inverse(A)
+    use_cpu_oracle = flag_gems.vendor_name == "thead" and shape == (128, 128)
+    if use_cpu_oracle:
+        ref_A = A.to(device="cpu", dtype=torch.float64)
+    else:
+        ref_A = utils.to_reference(A, upcast=True)
     ref_out = torch.inverse(ref_A).to(dtype)
+    res_out = flag_gems.inverse(A)
 
+    assert res_out.device == A.device
+    assert res_out.dtype == dtype
     assert res_out.shape == A.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    utils.gems_assert_close(
+        res_out.cpu() if use_cpu_oracle else res_out, ref_out, dtype, atol=1e-3
+    )
 
 
 @pytest.mark.inverse
@@ -156,5 +163,8 @@ def test_inverse_empty(dtype):
 def test_inverse_unsupported_dtype():
     A = torch.randn((4, 4), dtype=torch.float16, device=flag_gems.device)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(
+        (AssertionError, RuntimeError),
+        match="unsupported dtype|Low precision dtypes not supported",
+    ):
         flag_gems.inverse(A)
