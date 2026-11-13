@@ -1,0 +1,2503 @@
+[
+  {
+    "id": "model285-18e2cd15c308785dd3a2",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,33,3],
+          "stride": [99,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [1,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,33,3],
+          "stride": [99,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [1,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 646,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-25af3c75f4d3904e580b",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [115,10,48],
+          "stride": [4704,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 4224,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [115,10,48],
+          "stride": [4704,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 4224,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 647,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-155198636f96e1bab14e",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [115,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 48,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [115,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 48,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 648,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-ea1474e504fa08c474d1",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [115,48,48],
+          "stride": [4704,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [115,48,48],
+          "stride": [4704,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 649,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-2bb53d63878b75fecbb2",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,1,10],
+          "stride": [118,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 108,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [33,10,2],
+          "stride": [236,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 216,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,1,10],
+          "stride": [118,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 108,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [33,10,2],
+          "stride": [236,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 216,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 650,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-d728d49e9e4fef4b41cf",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [33,48,2],
+          "stride": [236,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [33,48,2],
+          "stride": [236,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 651,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-dbc43a40e34b8ed69d4a",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 78,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [33,10,2],
+          "stride": [236,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 176,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 78,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [33,10,2],
+          "stride": [236,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 176,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 652,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-74a11ccc9ff09d67191c",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [33,3,2],
+          "stride": [6,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [33,3,2],
+          "stride": [6,2,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 653,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-4882d7f17433cd314fc4",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3764,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3764,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 654,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-5f2413e6910119bbe537",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,10,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2884,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [542,10,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2884,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 655,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-7a5253b6a4f6554d6504",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 78,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [542,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 78,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 656,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-7baed9ec4e4cb461da7d",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,48,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2304,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [542,48,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2304,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 657,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-73c0a01658503860eb88",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,48,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [542,48,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 658,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-c63ca1056cb10bb7ba28",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,3,10],
+          "stride": [30,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2784,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,3,10],
+          "stride": [30,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2784,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 659,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-88023dc4afe0249bc793",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [542,3,10],
+          "stride": [30,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [542,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [542,3,10],
+          "stride": [30,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 660,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-a17305c70194123d37ce",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3764,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3764,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 661,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-c7fa02cb1bb66e0f9fce",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,10,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2884,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [6432,10,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2884,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 662,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-ea2b0705d9f894363ac0",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 48,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 48,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 663,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-a3de3e0e4c3c34971851",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,48,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2304,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [6432,48,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2304,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 664,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-a2eb8f1dc4b4dd415684",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,48,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [6432,48,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 665,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-0694ce26f4fdd1f2e765",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 78,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3864,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 78,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3864,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 666,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-ce0e5d4c91081b706acb",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [6432,3,10],
+          "stride": [30,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6432,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [6432,3,10],
+          "stride": [30,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 667,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-d0f9417529b5019f7854",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3964,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3964,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 668,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-10fab80c6b4205c50f49",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,10,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2884,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [8844,10,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2884,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 669,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-56cb9af233fe717d3249",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 48,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,3],
+          "stride": [3,3,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [8844,3,10],
+          "stride": [118,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 48,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 670,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-42a0c21c47bbe49e473a",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,48,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2304,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,48],
+          "stride": [118,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [8844,48,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2304,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 671,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-7eabae029879e9583269",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,48,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,1,48],
+          "stride": [48,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [8844,48,48],
+          "stride": [4164,48,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 672,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-5125fbddfa9123163adc",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,3,10],
+          "stride": [30,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2784,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,3,10],
+          "stride": [30,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2784,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 673,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-e707497b3fdfc23f53b4",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [8844,3,10],
+          "stride": [30,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8844,3,3],
+          "stride": [9,1,3],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [8844,3,10],
+          "stride": [30,10,1],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 674,
+    "model": "DiffDock",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-dd26358a281ea1ea60e6",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "contiguous": true,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [980,245,245],
+          "storage_alias": "storage_0",
+          "storage_offset": 0,
+          "stride": [60025,245,1]
+        },
+        {
+          "contiguous": true,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [980,245,32],
+          "storage_alias": "storage_1",
+          "storage_offset": 0,
+          "stride": [7840,32,1]
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "contiguous": true,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [980,245,245],
+          "storage_alias": "storage_0",
+          "storage_offset": 0,
+          "stride": [60025,245,1]
+        },
+        {
+          "contiguous": true,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [980,245,32],
+          "storage_alias": "storage_1",
+          "storage_offset": 0,
+          "stride": [7840,32,1]
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 675,
+    "model": "Protenix",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-809a8e8ca10e8c6cf48b",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "shape": [60,101,101],
+          "stride": [10201,101,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        {
+          "shape": [60,101,16],
+          "stride": [16,960,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "shape": [60,101,101],
+          "stride": [10201,101,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [60,101,16],
+          "stride": [16,960,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 676,
+    "model": "ESM-2",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "storage_offset",
+        "original": "uncaptured",
+        "effective": 0
+      },
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "storage_offset",
+        "original": "uncaptured",
+        "effective": 0
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-565362c5211ae608a0b1",
+    "op": "aten::bmm",
+    "spec": [
+      [
+        {
+          "shape": [60,101,16],
+          "stride": [16,960,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        {
+          "shape": [60,16,101],
+          "stride": [16,1,960],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-1"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "shape": [60,101,16],
+          "stride": [16,960,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [60,16,101],
+          "stride": [16,1,960],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 677,
+    "model": "ESM-2",
+    "source_sheet": "model285",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "storage_offset",
+        "original": "uncaptured",
+        "effective": 0
+      },
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "storage_offset",
+        "original": "uncaptured",
+        "effective": 0
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  }
+]
