@@ -214,7 +214,7 @@ from .fill import (
 )
 from .flip import flip
 from .flipud import flipud
-from .float_power_ import float_power_scalar_tensor_out
+from .float_power_ import float_power_scalar_tensor, float_power_scalar_tensor_out
 from .float_power_tensor_scalar import float_power_tensor_scalar
 from .floor import floor, floor_, floor_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
@@ -620,6 +620,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "flipud",
+    "float_power_scalar_tensor",
     "float_power_scalar_tensor_out",
     "float_power_tensor_scalar",
     "floor",
