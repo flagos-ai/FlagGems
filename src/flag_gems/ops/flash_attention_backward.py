@@ -21,6 +21,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
+
 try:
     from triton.knobs import autotuning as _autotuning_knobs
 except (ImportError, ModuleNotFoundError):
@@ -108,7 +110,15 @@ _DKV_CONFIGS = [
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "DO_BIAS_GRAD",
+        "FP32",
+        "IS_DROPOUT",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -169,6 +179,7 @@ def _flash_attn_bwd_dq_fused(
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     DO_BIAS_GRAD: tl.constexpr,
+    FP32: tl.constexpr,
 ):
     start_m = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -252,7 +263,10 @@ def _flash_attn_bwd_dq_fused(
             other=0.0,
         )
 
-        s = tl.dot(q, tl.trans(k)) * sm_scale
+        if FP32:
+            s = tl.dot(q, tl.trans(k), input_precision="ieee") * sm_scale
+        else:
+            s = tl.dot(q, tl.trans(k)) * sm_scale
 
         if HAS_BIAS:
             bb = batch_idx * stride_bb + head_q_idx * stride_bh
@@ -276,8 +290,16 @@ def _flash_attn_bwd_dq_fused(
             s = s - alibi_slope * tl.abs(dist).to(tl.float32)
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
+        # Keep the pre-dropout softmax probability separate from the
+        # probability used by the value path.  The softmax derivative is
+        # P * (dP - sum(P_drop * dP_drop)); using P_drop for the outer
+        # factor incorrectly applies the dropout mask to the subtraction term.
         p = tl.exp(s - Li[:, None])
-        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        if FP32:
+            dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
+        else:
+            dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        dp_drop = dp
 
         if IS_DROPOUT:
             rng_off = (
@@ -289,14 +311,16 @@ def _flash_attn_bwd_dq_fused(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
-        dq = dq + tl.dot(ds.to(q.dtype), k)
+        ds = p * (dp_drop - Di[:, None]) * sm_scale
+        if FP32:
+            dq = dq + tl.dot(ds, k, input_precision="ieee")
+        else:
+            dq = dq + tl.dot(ds.to(q.dtype), k)
 
         if DO_BIAS_GRAD:
-            ds_bias = p * (dp - Di[:, None])
+            ds_bias = p * (dp_drop - Di[:, None])
             bb_out = batch_idx * stride_bb + head_q_idx * stride_bh
             tl.store(
                 dBias
@@ -319,7 +343,15 @@ def _flash_attn_bwd_dq_fused(
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
     # device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS"],
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "FP32",
+        "IS_DROPOUT",
+        "COMPENSATE_DV",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -376,6 +408,8 @@ def _flash_attn_bwd_dkv(
     HAS_WINDOW: tl.constexpr,
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
+    FP32: tl.constexpr,
+    COMPENSATE_DV: tl.constexpr,
 ):
     start_n = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -488,7 +522,10 @@ def _flash_attn_bwd_dkv(
         Li = tl.load(L + ld_base + offs_m_c, mask=mask_m, other=0.0)
         Di = tl.load(D + ld_base + offs_m_c, mask=mask_m, other=0.0)
 
-        s = tl.dot(q, tl.trans(k)) * sm_scale
+        if FP32:
+            s = tl.dot(q, tl.trans(k), input_precision="ieee") * sm_scale
+        else:
+            s = tl.dot(q, tl.trans(k)) * sm_scale
 
         if HAS_BIAS:
             bb = batch_idx * stride_bb + head_q_idx * stride_bh
@@ -514,7 +551,12 @@ def _flash_attn_bwd_dkv(
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
         p = tl.exp(s - Li[:, None])
-        dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        if FP32:
+            dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
+        else:
+            dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        p_drop = p
+        dp_drop = dp
 
         if IS_DROPOUT:
             rng_off = (
@@ -526,12 +568,24 @@ def _flash_attn_bwd_dkv(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            dp = tl.where(drop_mask, dp * drop_scale, 0.0)
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            p_drop = tl.where(drop_mask, p * drop_scale, 0.0)
+            dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
-        dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-        dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+        ds = p * (dp_drop - Di[:, None]) * sm_scale
+        if FP32:
+            dk = dk + tl.dot(tl.trans(ds), q, input_precision="ieee")
+            dv = dv + tl.dot(tl.trans(p_drop), do, input_precision="ieee")
+        else:
+            dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
+            p_hi = p_drop.to(q.dtype)
+            dv = dv + tl.dot(tl.trans(p_hi), do)
+            if COMPENSATE_DV:
+                # A single FP16/BF16 probability rounding can exceed the dV
+                # tolerance even when Q/K and the score accumulation are exact.
+                # Recover the residual with a second low-precision dot rather
+                # than discarding it before the FP32 accumulation.
+                p_lo = (p_drop - p_hi.to(tl.float32)).to(q.dtype)
+                dv = dv + tl.dot(tl.trans(p_lo), do)
 
     tl.store(
         dK + k_base + offs_n[:, None] * stride_km + offs_d[None, :] * stride_kd,
@@ -1281,6 +1335,7 @@ def flash_attn_backward(
                 HEAD_DIM=Head_Dim,
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
+                FP32=Q.dtype == torch.float32,
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
@@ -1337,6 +1392,8 @@ def flash_attn_backward(
                 HEAD_DIM=Head_Dim,
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
+                FP32=Q.dtype == torch.float32,
+                COMPENSATE_DV=runtime_device.vendor_name == "hygon",
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
