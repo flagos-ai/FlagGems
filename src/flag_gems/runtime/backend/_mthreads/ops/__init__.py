@@ -19,6 +19,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
+from ._convolution_double_backward import _convolution_double_backward
 from ._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
@@ -59,6 +60,7 @@ from .choose_qparams_optimized import choose_qparams_optimized
 from .clip_ import clip_
 from .conv1d import conv1d
 from .conv2d import conv2d
+from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
@@ -93,6 +95,8 @@ from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
 from .geometric import geometric, geometric_
+from .greater_ import greater_
+from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
 from .igamma import igamma
@@ -196,6 +200,10 @@ from .uniform import uniform
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
+from .upsample_nearest3d_backward import upsample_nearest3d_backward
+from .upsample_nearest3d_backward_grad_input import (
+    upsample_nearest3d_backward_grad_input,
+)
 from .var import var, var_correction, var_dim
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
@@ -206,6 +214,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_compute_linear_combination",
     "_conj",
+    "_convolution_double_backward",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
@@ -251,6 +260,7 @@ __all__ = [
     "constant_pad_nd",
     "conv1d",
     "conv2d",
+    "conv_tbc",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
@@ -283,6 +293,8 @@ __all__ = [
     "gcd_",
     "geometric",
     "geometric_",
+    "greater_",
+    "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "histc",
     "igamma",
@@ -407,6 +419,8 @@ __all__ = [
     "uniform",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
+    "upsample_nearest3d_backward",
+    "upsample_nearest3d_backward_grad_input",
     "var",
     "var_correction",
     "var_dim",
