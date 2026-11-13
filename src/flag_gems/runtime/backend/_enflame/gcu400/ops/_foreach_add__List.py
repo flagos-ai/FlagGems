@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """GCU400 专属 ``_foreach_add_.List``（in-place）。
 
 公共 ``foreach_binary_list`` 执行器把 tensor 地址表放到设备侧，用二维 grid

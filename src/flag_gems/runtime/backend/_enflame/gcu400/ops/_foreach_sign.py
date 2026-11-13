@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """GCU400 专属 ``_foreach_sign``：逐 tensor 一维 flat kernel。
 
 公共 ``foreach_unary`` 执行器依赖设备侧 chunk table 与二维 grid，在 GCU400

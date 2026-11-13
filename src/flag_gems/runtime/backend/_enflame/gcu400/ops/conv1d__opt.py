@@ -1,4 +1,3 @@
-# GCU400 专属 conv1d：仅把委托目标改为 conv2d__opt，其余与公共实现一致。
 # Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

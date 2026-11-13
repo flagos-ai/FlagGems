@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """GCU400 专属 ``cudnn_rnn_backward``（单层单向 LSTM BPTT）。
 
 公共实现按时间步逐步调度：每步 1 次 forward Triton kernel、1 次 backward

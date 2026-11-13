@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 """special_logit enflame 副本：flat grid-stride 家族制式（sigmoid/square 同款）。
 
 公版 one-tile-per-program（grid=cdiv(n,1024)）在 enflame 2^29 元素 core bench

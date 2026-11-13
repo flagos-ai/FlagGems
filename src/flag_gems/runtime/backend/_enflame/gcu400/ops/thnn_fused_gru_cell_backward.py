@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """GCU400 专属 ``_thnn_fused_gru_cell_backward_out``。
 
 公共实现用两步：主 kernel 按 (batch,hidden) 元素写 5 个梯度张量，再单独启动

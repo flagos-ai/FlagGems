@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """GCU400 专属 ``_thnn_fused_lstm_cell_backward_impl``。
 
 公共实现把 LSTM cell 反向拆成十余次 PyTorch 张量操作（切片、tanh、逐元素乘、

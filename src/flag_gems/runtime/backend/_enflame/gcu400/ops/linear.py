@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# y = x @ W^T + b 的 GCU400 特化实现。
-#
-# 关键设计（相对通用实现的差异）：
-# 1. 不使用 libtuner：tuner 的 key 不含 dtype，且实测 (BLOCK_M=128, BLOCK_N=256,
-#    num_warps=2) 这一组合在 GCU400 上会产出整行错误结果（见 Section 9 经验）。
-#    改为 host 侧按 dtype / 规模确定性选配置，既避免错误配置又省掉 tuning 编译。
-# 2. 整除性在 host 侧算成 tl.constexpr（EVEN_M / EVEN_N / EVEN_K），
-#    让编译器静态去掉整块 mask，保留一条无 mask 的 K 循环。
-# 3. 权重按 (N, K) 行主序访存（K 维连续），不做 weight.t().contiguous() 这类整张量拷贝。
+
 import logging
 
 import torch

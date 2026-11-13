@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,23 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# conv_tbc_backward notes (GCU400 rewrite)
-# -----------------------------------------
-#   * grad_bias  = sum over (time, batch) of grad_output
-#   * grad_weight[k, c, o] = sum_{t,b} input_pad[t + k, b, c] * grad_output[t, b, o]
-#   * grad_input[t, b, c]  = sum_{k,o} grad_output_pad[t + kw-1-k, b, o] * weight[k, c, o]
-#
-# Everything runs as direct fused Triton kernels (no torch staging copies):
-# grad_weight and grad_input read the raw tensors with tap-shifted rows, so
-# the (olen*batch, kw*C) im2col matrices of the generic version are never
-# materialized.
-#
-# GCU400 hard requirements this implementation respects (measured, see
-# knowledge/compiler_traps.md):
-#   1. Tile index expressions must stay *affine*. Any per-lane select on the
-#      index vector (tl.where / tl.maximum used for clamping) makes the
-#      compiler drop the tops_slice_async + tops_matmul lowering in favor of
+
 #      gather loads + scalar FMA (~77x slower dot loops).
 #   2. Masked loads with negative addresses are not safe (silent wrong
 #      values). Positive out-of-bounds tails under mask are fine.

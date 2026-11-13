@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# n=0 (digamma) and n=1 (trigamma) use raw autotuned Triton kernels; n>=2 (zeta)
-# uses pointwise_dynamic (raw gives no win on the compute-bound zeta path). Raw
-# is autotuned for out-of-place; in-place and small N use a fixed config, since
-# autotune re-runs the kernel on the same buffer and would corrupt an aliased
-# in-place write. Non-contiguous / integer / mismatched-out inputs fall back to
-# the pointwise_dynamic kernels.
+
 import logging
 import math
 

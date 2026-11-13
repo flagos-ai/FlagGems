@@ -1,10 +1,3 @@
-# GCU400 后端专属实现：aten::_embedding_bag / aten::embedding_bag。
-#
-# 公共实现 src/flag_gems/ops/embedding_bag.py 是纯 Triton 实现，在 GCU 上可运行
-# （需 TORCH_GCU_ENABLE_INT64_AND_UINT64=1 才能正确生成 int64 indices），但 launch
-# 几何按 NVIDIA 目标硬编码。这里仅把 block_l / block_d / index_block / num_warps
-# 提升为可迭代的 TUNING 参数，kernel 算法、ATen 辅助张量约定与错误检查零改动。
-
 # Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

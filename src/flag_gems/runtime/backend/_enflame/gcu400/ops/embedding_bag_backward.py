@@ -1,10 +1,3 @@
-# GCU400 后端专属实现：aten::_embedding_bag_backward。
-#
-# 公共实现 src/flag_gems/ops/embedding_bag_backward.py 是纯 Triton 实现，在 GCU
-# 上可运行；但三个平台开关按 vendor == "nvidia" 硬编码为 False，且所有 launch
-# 使用默认 num_warps。这里把它们提升为可迭代的 TUNING 参数，kernel 算法、
-# chunk 划分与 ATen 语义（SUM/MEAN/MAX、sparse 梯度）保持完全一致。
-
 # Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

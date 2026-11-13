@@ -5,6 +5,13 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """GCU400 专属 ``diag_embed``：按输出规模分档的两条 Triton 路径。
 
 公共实现先用 ``torch.zeros`` 清零整块输出，再用 ``pointwise_dynamic``

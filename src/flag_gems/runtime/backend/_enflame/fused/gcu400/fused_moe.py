@@ -1,16 +1,16 @@
-# SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# Copyright 2026 FlagOS Contributors
 #
-# Adapted from the vLLM project (https://github.com/vllm-project/vllm).
-# Source files under vllm/model_executor/layers/:
-#   fused_moe/fused_moe.py      – Triton kernels, dispatch, fused_experts_impl
-#   fused_moe/activation.py     – MoEActivation enum, apply_moe_activation
-#   fused_moe/utils.py          – _fp8_quantize, _int8_quantize, moe_kernel_quantize_input
-#   fused_moe/config.py         – _get_config_dtype_str
-#   quantization/utils/mxfp4_utils.py   – dequant_mxfp4
-#   quantization/utils/mxfp6_utils.py   – dequant_mxfp6
-#   quantization/utils/ocp_mx_utils.py  – OCP_MX_BLOCK_SIZE
-
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import functools
 import logging

@@ -1,7 +1,3 @@
-# GCU400 专属 conv2d：由公共 ops/conv2d.py 派生（追加式落地，原文件不改）。
-# 修复 1: 公共 tune_configs.yaml 的 num_warps=1 触发 gcu-triton-fusion
-#         PassManager execution failed，所有 conv1d/conv2d 用例编译崩溃。
-# 修复 2: PAD_LANES=12 workaround 在 num_warps>=2 下产生约 50% 错误元素。
 # Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
