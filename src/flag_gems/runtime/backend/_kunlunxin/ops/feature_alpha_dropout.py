@@ -141,7 +141,9 @@ def feature_alpha_dropout(input, p=0.5, train=True):
             philox_offset,
             BLOCK_SIZE=mask_block_size,
         )
-        _fad_apply_kernel[(n_features, triton.cdiv(spatial_size, apply_block_size))](
+        _fad_apply_kernel[
+            (n_features, triton.cdiv(spatial_size, apply_block_size))
+        ](
             input,
             feature_mask,
             output,
