@@ -53,9 +53,13 @@ jobs:
   python-op:
     needs: prepare
     concurrency:
-      group: python-op-${{ needs.prepare.outputs.datetime }}
+      group: python-op-${{ needs.prepare.outputs.datetime }}-shard${{ matrix.shard_index }}
       cancel-in-progress: true
     runs-on: jiuding
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
@@ -67,6 +71,8 @@ jobs:
       - shell: bash
         env:
           CHANGED_FILES: '__ALL__'
+          TOTAL_SHARDS: '4'
+          SHARD_INDEX: ${{ matrix.shard_index }}
         run: |
           # Invoke script to run full-range unit tests,
           # Use datetime timestamp as the fake PR ID, with optional affix if
@@ -80,11 +86,12 @@ jobs:
           # Save RUN_TAG for next step to use
           echo "RUN_TAG=${RUN_TAG}" >> $GITHUB_ENV
 
-          bash tools/test-op.sh ${RUN_TAG}
+          bash tools/test-op.sh ${RUN_TAG}-shard${{ matrix.shard_index }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: always()
         with:
-          name: op-ut-coverage
+          name: op-ut-coverage-shard${{ matrix.shard_index }}
           path: coverage/
 
   examples:
