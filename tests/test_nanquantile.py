@@ -125,7 +125,11 @@ def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
         pytest.skip("Enflame Float64 storage loses adjacent-double values")
     inp = _input((7, 33), dtype).T
     q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
-    ref_inp, ref_q = utils.to_reference(inp, True), utils.to_reference(q, True)
+    # Discrete interpolation uses the rounded rank in the input dtype.
+    # Promoting q can move that rank across an integer or half-integer boundary.
+    upcast = interpolation == "linear"
+    ref_inp = utils.to_reference(inp, upcast)
+    ref_q = utils.to_reference(q, upcast)
     reference = _native_reference(
         ref_inp, ref_q, dim, keepdim, interpolation=interpolation
     )
@@ -408,4 +412,6 @@ def test_nanquantile_errors():
             inp, torch.tensor(0.5, device=inp.device), interpolation="bad"
         )
     with pytest.raises(RuntimeError):
-        flag_gems.nanquantile(torch.empty(0, device=inp.device), 0.5)
+        flag_gems.nanquantile(
+            torch.empty(0, device=inp.device), torch.tensor(0.5, device=inp.device)
+        )
