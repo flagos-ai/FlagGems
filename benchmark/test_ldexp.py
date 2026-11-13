@@ -564,16 +564,6 @@ class LdexpBenchmark(
     build_inputs = OperatorBenchmark.build_inputs
 
 
-@pytest.mark.ldexp
-def test_ldexp():
-    bench = LdexpBenchmark(
-        op_name="ldexp",
-        torch_op=torch.ops.aten.ldexp.Tensor,
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
 
 
 def _out_build_inputs_fn(plan, dtype, device):
@@ -596,3 +586,39 @@ def test_ldexp_out():
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     ).run()
+
+
+class MasterLdexpBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1,), (1024,), (1024, 1024), (4096, 4096), (16, 128, 64, 64)]
+        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            self.shapes.extend(self.set_more_shapes())
+
+    def set_more_shapes(self):
+        return [(2**24,), (8192, 4096)]
+
+
+def _master_ldexp_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(shape), "other": list(shape)},
+        builder_args=(tuple(shape),),
+    )
+
+
+def _master_ldexp_build_inputs(plan, dtype, device):
+    shape = plan.builder_args[0]
+    lhs = torch.randn(shape, dtype=dtype, device=device)
+    rhs = torch.randint(-8, 9, shape, dtype=torch.int32, device=device)
+    return lhs, rhs
+
+
+@pytest.mark.ldexp
+def test_ldexp():
+    bench = MasterLdexpBenchmark(
+        op_name="ldexp",
+        torch_op=torch.ops.aten.ldexp.Tensor,
+        case_fn=_master_ldexp_case_fn,
+        build_inputs_fn=_master_ldexp_build_inputs,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
