@@ -96,6 +96,7 @@ from .gather import gather, gather_backward
 from .gcd_ import gcd_
 from .geometric import geometric, geometric_
 from .greater_ import greater_
+from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
 from .igamma import igamma
@@ -290,6 +291,7 @@ __all__ = [
     "geometric",
     "geometric_",
     "greater_",
+    "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "histc",
     "igamma",
