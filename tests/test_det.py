@@ -100,6 +100,8 @@ def _small_ops_det(A):
 def _ref_det(A):
     if A.device.type == "npu":
         return _small_ops_det(A)
+    if A.device.type != "cpu":
+        return torch.det(A)
     # MKL's threaded LAPACK path hits a SLASWP parameter error and hangs on
     # batched det in this environment; single-threaded MKL is correct and fast.
     prev = torch.get_num_threads()

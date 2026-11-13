@@ -18,7 +18,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import det
 
 from . import base
 
@@ -102,5 +101,5 @@ def test_det():
         torch_op=_torch_det,
         dtypes=DET_DTYPES,
     )
-    bench.set_gems(det)
+    bench.set_gems(lambda matrix: flag_gems.det(matrix))
     bench.run()
