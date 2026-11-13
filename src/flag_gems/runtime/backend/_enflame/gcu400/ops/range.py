@@ -1,0 +1,101 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import math
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems import runtime
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def range_func(y_ptr, start, end, size, BLOCK_SIZE: tl.constexpr):
+    pid = tle.program_id(0)
+    y_ptr += pid * BLOCK_SIZE
+    offset = pid * BLOCK_SIZE
+
+    cols = tl.arange(0, BLOCK_SIZE)
+    range_val = cols + offset + start
+    mask = cols + pid * BLOCK_SIZE
+    tl.store(y_ptr + cols, range_val, mask=mask < size)
+
+
+def range(start, end, *, dtype=None, layout=None, device=None, pin_memory=None):
+    logger.debug("GEMS RANGE")
+    if dtype == torch.bfloat16:
+        raise RuntimeError("torch.range does not support bfloat16 on CUDA")
+    start = float(start)
+    end = float(end)
+
+    if dtype is None:
+        # If any of start/end are float, use float64, otherwise int64
+        if isinstance(start, float) or isinstance(end, float):
+            dtype = torch.float64
+        else:
+            dtype = torch.int64
+
+    if dtype in (torch.int32, torch.int64):
+        start = int(start)
+        end = int(end)
+        size = end - start + 1
+    else:
+        # Float types
+        size = math.ceil(end - start) + 1
+
+    size = int(size)
+    if size < 0:
+        size = 0
+
+    # BLOCK_SIZE=128 balances occupancy and grid launch overhead for typical 1-D ranges
+    BLOCK_SIZE = 128
+    grid = triton.cdiv(size, BLOCK_SIZE)
+
+    if pin_memory is None:
+        pin_memory = False
+
+    if device is None:
+        device = runtime.device.name
+
+    result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
+    if size == 0:
+        return result
+
+    # GCU400: int64/fp64 tensors are "Long/Double use Int/Float replace"
+    # containers — a Triton store through an 8-byte-typed pointer lands at a
+    # 16-byte stride (silent OOB scribble past the allocation). Stage through
+    # the real 4-byte dtype and upcast value-level via copy_ (same pattern as
+    # row_stack::_run_kernel_i64_lanes).
+    if dtype == torch.int64:
+        staging_dtype = torch.int32
+    elif dtype == torch.float64:
+        staging_dtype = torch.float32
+    else:
+        staging_dtype = dtype
+
+    if staging_dtype is dtype:
+        range_func[grid,](result, start, end, size, BLOCK_SIZE)
+        return result
+
+    staging = torch.empty((size,), device=device, dtype=staging_dtype)
+    range_func[grid,](staging, start, end, size, BLOCK_SIZE)
+    result.copy_(staging)
+    return result

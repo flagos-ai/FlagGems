@@ -27,26 +27,15 @@ device_ = device
 
 @libentry()
 @triton.jit
-def eye_kernel(
-    out_ptr,
-    N,
-    M,
-    BLOCK_i: tl.constexpr,
-    BLOCK_j: tl.constexpr,
-):
-    pid_i = tl.program_id(0)  # block id
-    off_i = pid_i * BLOCK_i + tl.arange(0, BLOCK_i)
-    mask_i = off_i < N
-
-    pid_j = tl.program_id(1)  # block id
-    off_j = pid_j * BLOCK_j + tl.arange(0, BLOCK_j)
-    mask_j = off_j < M
-
-    val = tl.where(off_i[:, None] == off_j[None, :], 1.0, 0.0)
-    mask = mask_i[:, None] & mask_j[None, :]
-    off_ij = off_i[:, None] * M + off_j[None, :]
-
-    tl.store(out_ptr + off_ij, val, mask=mask)
+def eye_kernel(out_ptr, N, M, BLOCK_M: tl.constexpr):
+    # 每个 program 负责若干整行：行内连续写，对角线判定退化为 1D 标量比较
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    cols = tl.arange(0, BLOCK_M)
+    col_mask = cols < M
+    for row in tl.range(pid, N, num_programs):
+        val = tl.where(cols == row, 1.0, 0.0)
+        tl.store(out_ptr + row * M + cols, val, mask=col_mask)
 
 
 def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=None):
@@ -64,15 +53,9 @@ def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=Non
     out = torch.empty(
         (n, m), dtype=dtype, device=device, layout=layout, pin_memory=pin_memory
     )
-    BLOCK_SIZE = 256
-    grid = (triton.cdiv(n, BLOCK_SIZE), triton.cdiv(m, BLOCK_SIZE))
-
+    BLOCK_M = triton.next_power_of_2(m)
+    grid = (min(24, n),)
     with torch_device_fn.device(device):
-        eye_kernel[grid](
-            out,
-            n,
-            m,
-            BLOCK_SIZE,
-            BLOCK_SIZE,
-        )
+        eye_kernel[grid](out, n, m, BLOCK_M, num_warps=4)
+
     return out

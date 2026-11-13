@@ -1,0 +1,412 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Triton implementation of ``aten::_neg_view_copy``.
+
+``_neg_view_copy(self)`` returns a fresh contiguous tensor holding ``-self``;
+the ``.out`` overload writes into the caller buffer and returns that object.
+The result participates in autograd like the native op:
+``d(-x)/dx == -grad_out``.
+
+Negation is exact in the input dtype, so the kernels compute in-dtype with no
+intermediate promotion.  For floating dtypes the sign flip is expressed as
+``v * (-1.0)`` because Triton lowers unary minus to a negation that is not
+IEEE-visible on signed zero (``-0.0``), while a multiply by ``-1.0`` flips the
+sign bit exactly as ``aten::neg`` does.  Integer dtypes use unary minus, which
+is the exact two's-complement wrap of ATen.
+"""
+
+# 优化变体 R14：strided 路径 BLOCK=2048。非连续 out 路径 tile 翻倍，减少 strided 分解的逐元素除法次数。
+# 只改动 flat 路径的 tile 与 grid 划分，strided 路径及参数校验沿用基线。
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
+_SUPPORTED = frozenset(
+    (
+        torch.float64,
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+        torch.int64,
+        torch.int32,
+        torch.int16,
+        torch.int8,
+        torch.uint8,
+    )
+)
+
+# A fixed element count means a different byte footprint per dtype, which
+# measurably favors narrow dtypes and penalizes wide ones.  Holding the bytes
+# per program constant keeps the per-CTA memory footprint (and therefore
+# occupancy and vectorization) comparable across dtypes.
+_BYTES_PER_PROGRAM = 65536
+_BLOCK_MIN = 256
+_BLOCK_MAX = 16384
+_STRIDED_BLOCK = 2048
+_WIDE_LIMIT = 1 << 31
+_MAX_RANK = 8
+_FIXED_GRID = 48
+_SMALL_GRID = 0
+_WARPS = 2
+_DTYPE_TIERS = 1
+
+
+def _flat_launch(dtype, numel):
+    """按 dtype 与元素数选择 (BLOCK, num_warps, grid, 是否跨步循环)。
+
+    大 shape 下把 CTA 数固定为 _FIXED_GRID，配合跨步循环覆盖全部元素；
+    小 shape 时 CTA 数取 min(_FIXED_GRID, tile 数)，避免启动空转 CTA。
+    """
+    if _DTYPE_TIERS:
+        # 探针显示 4 字节 dtype 在 16K tile 最优，2/1 字节 dtype 在 8K tile 最优。
+        block = 16384 if dtype.itemsize >= 4 else 8192
+    else:
+        elements = _BYTES_PER_PROGRAM // dtype.itemsize
+        elements = max(_BLOCK_MIN, min(_BLOCK_MAX, elements))
+        block = 1 << (elements.bit_length() - 1)
+
+    tiles = (numel + block - 1) // block
+    if numel >= _WIDE_LIMIT:
+        # 超大 shape 需 int64 偏移，保留基线的单 tile 路径以免跨步索引溢出 int32。
+        return block, _WARPS, (max(1, tiles),), False
+    # 小 shape（元素数不超过 64K）启动的 CTA 数单独分档，避免空转 CTA。
+    effective_grid = (
+        _SMALL_GRID if (0 < _SMALL_GRID and numel <= 65536) else _FIXED_GRID
+    )
+    if effective_grid > 0:
+        grid_n = min(effective_grid, max(1, tiles))
+        stride_loop = True
+    else:
+        grid_n = max(1, tiles)
+        stride_loop = False
+    return block, _WARPS, (grid_n,), stride_loop
+
+
+@triton.jit
+def _neg_flat_kernel(
+    in_ptr,
+    out_ptr,
+    numel,
+    IS_FLOAT: tl.constexpr,
+    EVEN: tl.constexpr,
+    WIDE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    STRIDE_LOOP: tl.constexpr,
+):
+    """Flat contiguous negation with optional grid-stride loop.
+
+    STRIDE_LOOP=1 时 CTA 数固定（通常 48 个），每个 CTA 以
+    ``num_programs * BLOCK`` 为步长反复处理连续 tile；这样大 shape
+    不会产生数万个 CTA，调度开销与带宽利用率都明显改善。
+    EVEN=1 表示 numel 是 BLOCK 的整数倍，所有 tile 完整，可省去 mask。
+    """
+    pid = tl.program_id(0)
+    if STRIDE_LOOP:
+        nprog = tl.num_programs(0)
+        for tile in range(pid * BLOCK, numel, nprog * BLOCK):
+            offs = tile + tl.arange(0, BLOCK)
+            if EVEN:
+                offs = tl.max_contiguous(tl.multiple_of(offs, BLOCK), BLOCK)
+                v = tl.load(in_ptr + offs)
+                if IS_FLOAT:
+                    tl.store(out_ptr + offs, v * (-1.0))
+                else:
+                    tl.store(out_ptr + offs, -v)
+            else:
+                m = offs < numel
+                v = tl.load(in_ptr + offs, mask=m)
+                if IS_FLOAT:
+                    tl.store(out_ptr + offs, v * (-1.0), mask=m)
+                else:
+                    tl.store(out_ptr + offs, -v, mask=m)
+    else:
+        if WIDE:
+            offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+        else:
+            offs = pid * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            offs = tl.max_contiguous(tl.multiple_of(offs, BLOCK), BLOCK)
+            v = tl.load(in_ptr + offs)
+            if IS_FLOAT:
+                tl.store(out_ptr + offs, v * (-1.0))
+            else:
+                tl.store(out_ptr + offs, -v)
+        else:
+            m = offs < numel
+            v = tl.load(in_ptr + offs, mask=m)
+            if IS_FLOAT:
+                tl.store(out_ptr + offs, v * (-1.0), mask=m)
+            else:
+                tl.store(out_ptr + offs, -v, mask=m)
+
+
+@triton.jit
+def _neg_strided_kernel(
+    in_ptr,
+    out_ptr,
+    numel,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    t0,
+    t1,
+    t2,
+    t3,
+    t4,
+    t5,
+    t6,
+    t7,
+    IS_FLOAT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Stride-aware negation for non-contiguous inputs and outputs.
+
+    ``d``/``s``/``t`` describe the input and output stride decompositions with
+    the outermost dimension first; unused slots are padding with size 1 and
+    stride 0, which contributes nothing to the address.
+    """
+    pid = tl.program_id(0)
+    offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    m = offs < numel
+
+    in_off = tl.zeros([BLOCK], dtype=tl.int64)
+    out_off = tl.zeros([BLOCK], dtype=tl.int64)
+
+    rest = offs
+    if d0 > 1:
+        r = rest % d0
+        rest = rest // d0
+        in_off += r * s0
+        out_off += r * t0
+    if d1 > 1:
+        r = rest % d1
+        rest = rest // d1
+        in_off += r * s1
+        out_off += r * t1
+    if d2 > 1:
+        r = rest % d2
+        rest = rest // d2
+        in_off += r * s2
+        out_off += r * t2
+    if d3 > 1:
+        r = rest % d3
+        rest = rest // d3
+        in_off += r * s3
+        out_off += r * t3
+    if d4 > 1:
+        r = rest % d4
+        rest = rest // d4
+        in_off += r * s4
+        out_off += r * t4
+    if d5 > 1:
+        r = rest % d5
+        rest = rest // d5
+        in_off += r * s5
+        out_off += r * t5
+    if d6 > 1:
+        r = rest % d6
+        rest = rest // d6
+        in_off += r * s6
+        out_off += r * t6
+    if d7 > 1:
+        in_off += rest * s7
+        out_off += rest * t7
+
+    v = tl.load(in_ptr + in_off, mask=m)
+    if IS_FLOAT:
+        tl.store(out_ptr + out_off, v * (-1.0), mask=m)
+    else:
+        tl.store(out_ptr + out_off, -v, mask=m)
+
+
+def _joint_collapse(shape, in_strides, out_strides):
+    """Merge adjacent dims that are contiguous for input *and* output.
+
+    The logical multi-index is unchanged by the merge, so the same dimension
+    list can describe the input address and the output address.  Size-1 dims
+    carry no information for an elementwise map and are dropped; the padding
+    slots of the kernel then replay this list with size 1 / stride 0.
+    """
+    merged = []
+    for size, ins, outs in zip(shape, in_strides, out_strides):
+        if size == 1:
+            continue
+        if merged:
+            prev_size, prev_ins, prev_outs = merged[-1]
+            if prev_ins == ins * size and prev_outs == outs * size:
+                # The merged dimension keeps the innermost stride: for the two
+                # dims (k, k+1) the offset is (d_k * size_{k+1} + d_{k+1}) *
+                # stride_{k+1} whenever stride_k == size_{k+1} * stride_{k+1}.
+                merged[-1] = (prev_size * size, ins, outs)
+                continue
+        merged.append((size, ins, outs))
+    return merged
+
+
+def _flat_block(dtype):
+    """Pick the flat-path BLOCK from the element width."""
+    elements = _BYTES_PER_PROGRAM // dtype.itemsize
+    elements = max(_BLOCK_MIN, min(_BLOCK_MAX, elements))
+    return 1 << (elements.bit_length() - 1)
+
+
+def _launch_strided(src, dst, numel):
+    dims = _joint_collapse(src.shape, src.stride(), dst.stride())
+    if len(dims) > _MAX_RANK:
+        raise RuntimeError(
+            "_neg_view_copy: tensor rank too large for the strided kernel"
+        )
+
+    sizes = [1] * _MAX_RANK
+    in_strides = [0] * _MAX_RANK
+    out_strides = [0] * _MAX_RANK
+    for k, (size, ins, outs) in enumerate(dims):
+        sizes[k] = size
+        in_strides[k] = ins
+        out_strides[k] = outs
+
+    grid = ((numel + _STRIDED_BLOCK - 1) // _STRIDED_BLOCK,)
+    _neg_strided_kernel[grid](
+        src,
+        dst,
+        numel,
+        sizes[0],
+        sizes[1],
+        sizes[2],
+        sizes[3],
+        sizes[4],
+        sizes[5],
+        sizes[6],
+        sizes[7],
+        in_strides[0],
+        in_strides[1],
+        in_strides[2],
+        in_strides[3],
+        in_strides[4],
+        in_strides[5],
+        in_strides[6],
+        in_strides[7],
+        out_strides[0],
+        out_strides[1],
+        out_strides[2],
+        out_strides[3],
+        out_strides[4],
+        out_strides[5],
+        out_strides[6],
+        out_strides[7],
+        IS_FLOAT=1 if src.dtype.is_floating_point else 0,
+        BLOCK=_STRIDED_BLOCK,
+        num_warps=2,
+    )
+
+
+def _negate(src, dst):
+    """Run the negate kernel from ``src`` into the pre-allocated ``dst``."""
+    numel = src.numel()
+    if numel == 0:
+        return dst
+    if src.is_contiguous() and dst.is_contiguous():
+        block, warps, grid, stride_loop = _flat_launch(src.dtype, numel)
+        even = numel % block == 0
+        _neg_flat_kernel[grid](
+            src,
+            dst,
+            numel,
+            IS_FLOAT=1 if src.dtype.is_floating_point else 0,
+            EVEN=1 if even else 0,
+            WIDE=1 if numel >= _WIDE_LIMIT else 0,
+            BLOCK=block,
+            STRIDE_LOOP=1 if stride_loop else 0,
+            num_warps=warps,
+        )
+    else:
+        _launch_strided(src, dst, numel)
+    return dst
+
+
+class _NegViewCopy(torch.autograd.Function):
+    """Autograd bridge so the materialized copy keeps the reference gradient.
+
+    ``d(-x)/dx == -grad_out``; both directions run the kernels above, never a
+    framework op.
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        out = torch.empty(x.shape, dtype=x.dtype, device=x.device)
+        return _negate(x, out)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        out = torch.empty(grad_out.shape, dtype=grad_out.dtype, device=grad_out.device)
+        return _negate(grad_out, out)
+
+
+def _neg_view_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Tensor:
+    """``aten::_neg_view_copy``: fresh contiguous tensor holding ``-self``.
+
+    Passing ``out=`` selects the ``.out`` overload: the negated copy is
+    written into the caller buffer and that object is returned.
+    """
+    if out is not None:
+        return _neg_view_copy_out(self, out=out)
+    logger.debug("GEMS _NEG_VIEW_COPY")
+    if not isinstance(self, torch.Tensor):
+        raise TypeError("_neg_view_copy expects a torch.Tensor input")
+    if self.dtype not in _SUPPORTED:
+        raise RuntimeError("_neg_view_copy is not implemented for " + str(self.dtype))
+
+    if self.requires_grad and torch.is_grad_enabled():
+        return _NegViewCopy.apply(self)
+    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    return _negate(self, out)
+
+
+def _neg_view_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
+    """``aten::_neg_view_copy.out``: write ``-self`` into ``out``."""
+    logger.debug("GEMS _NEG_VIEW_COPY_OUT")
+    if not isinstance(self, torch.Tensor):
+        raise TypeError("_neg_view_copy expects a torch.Tensor input")
+    if self.dtype not in _SUPPORTED:
+        raise RuntimeError("_neg_view_copy is not implemented for " + str(self.dtype))
+    if not isinstance(out, torch.Tensor):
+        raise TypeError("_neg_view_copy.out expects a torch.Tensor out buffer")
+    if out.dtype != self.dtype:
+        raise RuntimeError("_neg_view_copy.out: dtype of input and output must match.")
+    if out.device != self.device:
+        raise RuntimeError(
+            "_neg_view_copy.out: input and output must be on the same device."
+        )
+    if out.shape != self.shape:
+        out.resize_(self.shape)
+    return _negate(self, out)

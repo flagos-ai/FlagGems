@@ -1,0 +1,105 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+
+# GCU grid.x hardware limit (65535): large pointwise tensors must use a
+# grid-stride loop instead of a one-block-per-tile launch.
+_MAX_GRID = 65535
+
+
+@libentry()
+@triton.jit
+def _special_round_kernel(
+    x_ptr,
+    out_ptr,
+    scale,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    step = tl.num_programs(0) * BLOCK_SIZE
+    for block_start in range(pid * BLOCK_SIZE, n_elements, step):
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+
+        x = tl.load(x_ptr + offsets, mask=mask)
+        # PyTorch uses fp32 for intermediate computation (not fp64).
+        # Using fp32 matches PyTorch's behavior where fp32 precision truncation
+        # can snap intermediate values to exact ties (e.g. 1.2345 * 1000 = 1234.5).
+        x_f32 = x.to(tl.float32) * scale
+
+        # Banker's rounding: round half to even.
+        sign = tl.where(x_f32 >= 0.0, 1.0, -1.0)
+        abs_x = tl.math.abs(x_f32)
+        floor_x = tl.math.floor(abs_x)
+        frac = abs_x - floor_x
+        is_even = (floor_x % 2.0) == 0.0
+
+        rounded_abs = tl.where(
+            frac > 0.5,
+            floor_x + 1.0,
+            tl.where(
+                frac < 0.5,
+                floor_x,
+                tl.where(is_even, floor_x, floor_x + 1.0),
+            ),
+        )
+        result = sign * rounded_abs
+        # GCU has no fp64 support (P04: f64 arith.extf is rejected by the
+        # PassManager), so the upstream "divide in fp64" trick cannot be used.
+        # GCU's fp32 '/' lowers to a reciprocal-multiply with up to 1-ULP error,
+        # and tl.math.div_rn / tl.fdiv(ieee_rounding=True) alias to the same
+        # path. A Markstein FMA correction restores the correctly-rounded fp32
+        # quotient (bit-exact with the fp64 divide on all tested inputs);
+        # non-finite quotients (inf/NaN input, overflow) keep the plain path.
+        recip = 1.0 / scale
+        quot = result * recip
+        rem = tl.math.fma(-scale, quot, result)
+        quot_corr = tl.math.fma(rem, recip, quot)
+        finite = (quot == quot) & (tl.math.abs(quot) < float("inf"))
+        result = tl.where(finite, quot_corr, quot).to(x.dtype)
+
+        tl.store(out_ptr + offsets, result, mask=mask)
+
+
+def special_round(A, *, decimals=0):
+    logger.debug("GEMS SPECIAL_ROUND")
+    scale = float(10**decimals)
+    out = torch.empty_like(A)
+    n_elements = out.numel()
+    if n_elements == 0:
+        return out
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), _MAX_GRID),)
+    _special_round_kernel[grid](A, out, scale, n_elements, BLOCK_SIZE=1024)
+    return out
+
+
+def special_round_out(self, out, *, decimals=0):
+    logger.debug("GEMS SPECIAL_ROUND_OUT")
+    scale = float(10**decimals)
+    n_elements = out.numel()
+    if n_elements == 0:
+        return out
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), _MAX_GRID),)
+    _special_round_kernel[grid](self, out, scale, n_elements, BLOCK_SIZE=1024)
+    return out

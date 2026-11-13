@@ -26,6 +26,9 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
+# namedtuple 类构造约 87us，逐次调用会压过小 shape 的 kernel 时间，提到模块级复用。
+MaxOut = namedtuple("max", ["values", "indices"])
+
 
 @libentry()
 @triton.jit
@@ -100,7 +103,13 @@ def max_kernel_inner_1d(
     min_value = get_dtype_min(dtype)
 
     if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
-        acc_dtype = tl.float32
+        # max only compares and selects values, so keeping f16/bf16 instead
+        # of widening to f32 is bit-exact.  It also avoids a predicate that is
+        # computed through an f16 -> f32 widening and then drives the i32 index
+        # select, which GCU400 miscompiles: on (4096, 256) dim=1 the value is
+        # right but the index points at a non-maximum element for ~46% of the
+        # rows.  fp32 input, which is not widened, is unaffected.
+        acc_dtype = dtype
     elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
@@ -149,7 +158,9 @@ def max_kernel_non_inner(
 
     dtype = inp.type.element_ty
     if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
-        acc_dtype = tl.float32
+        # See max_kernel_inner_1d: bit-exact for max, and avoids the predicate
+        # computed through an f16 -> f32 widening that GCU400 miscompiles.
+        acc_dtype = dtype
     elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
@@ -173,7 +184,10 @@ def max_kernel_non_inner(
             mask = (n_idx[:, None] < N) & k_mask[None, :]
             vals = tl.load(inp + offset, mask=mask, other=orig_min).to(acc_dtype)
 
-            local_max = tl.max(vals, axis=0)
+            # tl.max promotes f16/bf16 to f32; cast back so the index select
+            # below still sees an f16 predicate.  The result is one of the
+            # inputs, so this is exact.
+            local_max = tl.max(vals, axis=0).to(acc_dtype)
             eq = vals == local_max[None, :]
             idx_matrix = tl.where(eq, n_idx[:, None], 2147483647)
             local_argmax = tl.min(idx_matrix, axis=0)
@@ -190,7 +204,8 @@ def max_kernel_non_inner(
 def max(inp):
     logger.debug("GEMS_ENFLAME MAX")
 
-    inp = inp.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
 
@@ -228,12 +243,20 @@ def max_dim(inp, dim=None, keepdim=False):
     M = math.prod(shape[:dim])
     K = inp.numel() // M // N
 
-    inp = inp.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
 
     shape_list = list(shape)
-    shape_list[dim] = 1
+    if keepdim:
+        shape_list[dim] = 1
+    else:
+        # 两个 kernel 都按扁平的 m*K+k 布局写回，直接分配最终形状即可，
+        # 避免两次 torch.squeeze 带来的设备同步与 Python 开销。
+        shape_list.pop(dim)
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+    # GCU400 Triton 的 int32 索引存储每个 lane 只写 4 字节，若直接写入 int64
+    # 输出张量会得到大量 0；先用 int32 缓冲承接 kernel 写回，再统一转成 int64。
+    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
 
     if K == 1:
         BLOCK_N = min(triton.next_power_of_2(N), 4096)
@@ -251,7 +274,27 @@ def max_dim(inp, dim=None, keepdim=False):
                 num_warps=1,
             )
     else:
-        BLOCK_K = min(triton.next_power_of_2(K), 128)
+        # BLOCK_K is the width of the loop-carried accumulator (output
+        # columns; the reduction walks BLOCK_N).  GCU400 keeps such a vector
+        # in at most 512B of OACC: 128 int64 lanes need 1024B and the
+        # reduction then silently covers only part of the axis -- the value is
+        # the max over a subset and the index matches that wrong value.
+        # int64 dim=0 on (4096, 256) gets 219/256 columns wrong, while int32
+        # at the same 128 lanes (512B) is exact.  The wide tile is also ~12x
+        # slower.
+        _acc_bpes = {
+            torch.float64: 8,
+            torch.int64: 8,
+            torch.float32: 4,
+            torch.int32: 4,
+            torch.int16: 4,
+            torch.int8: 4,
+            torch.float16: 2,
+            torch.bfloat16: 2,
+        }
+        BLOCK_K = min(
+            triton.next_power_of_2(K), min(512 // _acc_bpes.get(inp.dtype, 8), 128)
+        )
         BLOCK_N = min(triton.next_power_of_2(N), 256)
 
         num_k_tiles = triton.cdiv(K, BLOCK_K)
@@ -273,10 +316,4 @@ def max_dim(inp, dim=None, keepdim=False):
                 num_warps=1,
             )
 
-    if not keepdim:
-        out_value = torch.squeeze(out_value, dim)
-        out_index = torch.squeeze(out_index, dim)
-
-    Max_out = namedtuple("max", ["values", "indices"])
-    out = Max_out(values=out_value, indices=out_index)
-    return out
+    return MaxOut(values=out_value, indices=out_index.to(torch.int64))

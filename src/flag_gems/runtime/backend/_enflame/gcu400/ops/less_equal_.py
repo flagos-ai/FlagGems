@@ -1,0 +1,236 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""In-place element-wise less-or-equal (less_equal_ / less_equal_scalar_), GCU400-optimized.
+
+The previous implementation ran every shape through the pointwise_dynamic
+codegen template, whose ENFLAME CodeGenConfig caps the launch grid at
+(12, 1, 1); shapes beyond ~2**22 elements were serialized onto 12 CTAs and
+reached only ~0.5 TB/s versus ~2.9-3.1 TB/s for the native kernel (bench
+core, L600: less_equal_ 0.486x / less_equal_scalar_ 0.437x).
+
+Large contiguous float inputs are dispatched to dedicated flat 1D kernels
+instead (probe-validated tiers, sibling of greater_equal / eq):
+
+* comparisons run in the native input dtype -- bit-exact for same-dtype
+  floats (the fp32 up-cast of the template is an injective map, so `<=` is
+  preserved) and cheaper;
+* the scalar overload casts the Python scalar to ``A.dtype`` before
+  comparing, matching torch TensorIterator semantics; the fp32-compare
+  template deviates from torch on fp16 round-down scalars (e.g. 0.1);
+* in-place writes the comparison result (1/0) back into ``A`` in ``A``'s
+  own dtype through the same OUT-pointer kernels the tensor path uses;
+* the compile-time DSM cap (917504 B) bounds BLOCK/CHUNK per dtype; a
+  coverage/chunk loop kernel and a 48-CTA strided kernel extend giant
+  shapes past the single-tile limits; int32-offset-unsafe sizes fall back
+  to the template.
+
+Probe-validated tiers (L600, do_bench kernel-mode median vs torch native,
+2026-11-13):
+
+  tensor  n < 2**16               -> generic pointwise (launch floor ~1.4x)
+  tensor  2**16..2**22            -> flat BLOCK=np2(cdiv(n,16)) in [4096,65536] nw4
+  tensor  2**22..2**28 (f16/bf16) -> flat BLOCK=65536 nw2           (~0.98-1.01x)
+  tensor  2**22..2**28 (f32)      -> flat BLOCK=32768 nw2           (~1.01x)
+  tensor  n >= 2**28 (f16/bf16)   -> loop COV=524288 CHUNK=131072 nw2 st2 (~1.04-1.06x)
+  tensor  n >= 2**28 (f32)        -> strided BLOCK=65536 grid=48 nw4 (~1.05x)
+  scalar  n < 2**16               -> generic pointwise (launch floor ~1.5x)
+  scalar  2**16..2**22            -> flat BLOCK=np2(cdiv(n,16)) in [4096,65536] nw4
+  scalar  2**22..2**28            -> flat BLOCK=131072 (f16/bf16) / 65536 (f32) nw4
+  scalar  n >= 2**28              -> flat BLOCK=262144 (f16/bf16) / 131072 (f32) nw4
+
+``less_equal_func`` / ``less_equal_func_scalar`` (the pointwise template)
+remain the fallback, so untuned corners keep their previous behaviour.
+"""
+
+import logging
+import time
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
+
+_FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+_SMALL_N = 2**16
+_MID_N = 2**22
+_BIG_N = 2**28
+_INT32_SAFE_LIMIT = 0x7FFFFFFF
+_NPROGS = 48
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@triton.jit
+def less_equal_func(x, y):
+    return x.to(tl.float32) <= y.to(tl.float32)
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@triton.jit
+def less_equal_func_scalar(x, y):
+    return x.to(tl.float32) <= y
+
+
+@triton.jit
+def _le_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = off < N
+    x = tl.load(A + off, mask=m, other=0)
+    y = tl.load(B + off, mask=m, other=0)
+    r = x <= y
+    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+
+
+@triton.jit
+def _le_cmp_loop_kernel(
+    A, B, OUT, N, COV: tl.constexpr, CHUNK: tl.constexpr, ST: tl.constexpr
+):
+    base = tl.program_id(0) * COV
+    for j in tl.range(0, COV // CHUNK, num_stages=ST):
+        off = base + j * CHUNK + tl.arange(0, CHUNK)
+        m = off < N
+        x = tl.load(A + off, mask=m, other=0)
+        y = tl.load(B + off, mask=m, other=0)
+        r = x <= y
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+
+
+@triton.jit
+def _le_cmp_strided_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    for tile in tl.range(pid, tl.cdiv(N, BLOCK), num_ctas):
+        off = tile * BLOCK + tl.arange(0, BLOCK)
+        m = off < N
+        x = tl.load(A + off, mask=m, other=0)
+        y = tl.load(B + off, mask=m, other=0)
+        r = x <= y
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+
+
+@triton.jit
+def _le_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = off < N
+    x = tl.load(A + off, mask=m, other=0)
+    r = x <= Y.to(x.dtype)
+    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+
+
+def _launch_with_retry(launch):
+    # Flaky external toolchain (fresh-compile failure windows on the shared
+    # node): retry compile-time failures only, re-raise the original error
+    # once exhausted so real failures are never masked.
+    for attempt in range(6):
+        try:
+            launch()
+            return
+        except Exception:
+            if attempt == 5:
+                raise
+            time.sleep(1.0)
+
+
+def _mid_block(n):
+    # ~16 CTAs of exponentially growing width beat both a fixed narrow tile
+    # (launch-floor shapes) and one giant tile (single-CTA serialization):
+    # 2**16 -> 4096 (16 CTAs), 2**18 -> 16384, 2**20 -> 65536.
+    return min(65536, max(4096, triton.next_power_of_2(triton.cdiv(n, 16))))
+
+
+def _le_cmp_run(A, B, out):
+    """Launch the tuned tensor kernel; False falls back to the template."""
+    n = A.numel()
+    if n < _SMALL_N:
+        return False
+    if A.dtype == torch.float32:
+        if n >= _BIG_N:
+            if n > _INT32_SAFE_LIMIT - 65536:
+                return False
+            _launch_with_retry(
+                lambda: _le_cmp_strided_kernel[(_NPROGS,)](
+                    A, B, out, n, BLOCK=65536, num_warps=4
+                )
+            )
+            return True
+        block, nw = (32768, 2) if n >= _MID_N else (_mid_block(n), 4)
+    else:
+        if n >= _BIG_N:
+            cov = 524288
+            if n > _INT32_SAFE_LIMIT - cov:
+                return False
+            _launch_with_retry(
+                lambda: _le_cmp_loop_kernel[(triton.cdiv(n, cov),)](
+                    A, B, out, n, COV=cov, CHUNK=131072, ST=2, num_warps=2
+                )
+            )
+            return True
+        block, nw = (65536, 2) if n >= _MID_N else (_mid_block(n), 4)
+    if n > _INT32_SAFE_LIMIT - block:
+        return False
+    _launch_with_retry(
+        lambda: _le_cmp_kernel[(triton.cdiv(n, block),)](
+            A, B, out, n, BLOCK=block, num_warps=nw
+        )
+    )
+    return True
+
+
+def less_equal_(A, B):
+    logger.debug("GEMS LESS_EQUAL_")
+    if (
+        isinstance(B, torch.Tensor)
+        and A.dtype == B.dtype
+        and A.dtype in _FLOAT_DTYPES
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and A.device == B.device
+    ):
+        if _le_cmp_run(A, B, A):
+            return A
+    return less_equal_func(A, B, out0=A)
+
+
+def less_equal_scalar_(A, B):
+    logger.debug("GEMS LESS_EQUAL_SCALAR_")
+    if (
+        isinstance(B, (int, float))
+        and not isinstance(B, bool)
+        and A.dtype in _FLOAT_DTYPES
+        and A.is_contiguous()
+    ):
+        try:
+            y = float(B)
+        except (OverflowError, ValueError):
+            return less_equal_func_scalar(A, B, out0=A)
+        n = A.numel()
+        if n >= _SMALL_N:
+            if n >= _BIG_N:
+                block = 262144 if A.dtype != torch.float32 else 131072
+            elif n >= _MID_N:
+                block = 131072 if A.dtype != torch.float32 else 65536
+            else:
+                block = _mid_block(n)
+            if n <= _INT32_SAFE_LIMIT - block:
+                _launch_with_retry(
+                    lambda: _le_cmp_scalar_kernel[(triton.cdiv(n, block),)](
+                        A, A, n, y, BLOCK=block, num_warps=4
+                    )
+                )
+                return A
+    return less_equal_func_scalar(A, B, out0=A)

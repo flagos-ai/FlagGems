@@ -1,0 +1,208 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+from typing import Optional, Sequence
+
+import torch
+import triton
+import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def upsample_trilinear3d_backward_kernel(
+    grad_out_ptr,
+    grad_in_ptr,
+    NC,
+    ID,
+    IH,
+    IW,
+    OD,
+    OH,
+    OW,
+    scale_d,
+    scale_h,
+    scale_w,
+    bias_d,
+    bias_h,
+    bias_w,
+    SAME_D: tl.constexpr,
+    SAME_H: tl.constexpr,
+    SAME_W: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NUM_TILE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    nc0 = tl.program_id(1)
+
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    total_out = OD * OH * OW
+    mask = offs < total_out
+
+    ow = offs % OW
+    oh = (offs // OW) % OH
+    od = offs // (OW * OH)
+
+    # Map output coordinates back to source (input) space.
+    if SAME_D:
+        src_d = od.to(tl.float32)
+    else:
+        src_d = od.to(tl.float32) * scale_d + bias_d
+    if SAME_H:
+        src_h = oh.to(tl.float32)
+    else:
+        src_h = oh.to(tl.float32) * scale_h + bias_h
+    if SAME_W:
+        src_w = ow.to(tl.float32)
+    else:
+        src_w = ow.to(tl.float32) * scale_w + bias_w
+
+    src_d = tl.maximum(0.0, tl.minimum(src_d, ID - 1.0))
+    src_h = tl.maximum(0.0, tl.minimum(src_h, IH - 1.0))
+    src_w = tl.maximum(0.0, tl.minimum(src_w, IW - 1.0))
+
+    id0 = tl.floor(src_d).to(tl.int32)
+    ih0 = tl.floor(src_h).to(tl.int32)
+    iw0 = tl.floor(src_w).to(tl.int32)
+
+    id1 = tl.minimum(id0 + 1, ID - 1)
+    ih1 = tl.minimum(ih0 + 1, IH - 1)
+    iw1 = tl.minimum(iw0 + 1, IW - 1)
+
+    td = src_d - id0.to(tl.float32)
+    th = src_h - ih0.to(tl.float32)
+    tw = src_w - iw0.to(tl.float32)
+
+    wd0 = 1.0 - td
+    wh0 = 1.0 - th
+    ww0 = 1.0 - tw
+
+    d_stride = IH * IW
+    h_stride = IW
+
+    rel_000 = id0 * d_stride + ih0 * h_stride + iw0
+    rel_001 = id0 * d_stride + ih0 * h_stride + iw1
+    rel_010 = id0 * d_stride + ih1 * h_stride + iw0
+    rel_011 = id0 * d_stride + ih1 * h_stride + iw1
+    rel_100 = id1 * d_stride + ih0 * h_stride + iw0
+    rel_101 = id1 * d_stride + ih0 * h_stride + iw1
+    rel_110 = id1 * d_stride + ih1 * h_stride + iw0
+    rel_111 = id1 * d_stride + ih1 * h_stride + iw1
+
+    # GCU grid.y hardware limit is 255; each program covers NUM_TILE
+    # consecutive (n, c) slices so grid.y stays within the cap.
+    for i in range(NUM_TILE):
+        nc = nc0 * NUM_TILE + i
+        m = mask & (nc < NC)
+
+        g = tl.load(grad_out_ptr + nc * total_out + offs, mask=m, other=0.0).to(
+            tl.float32
+        )
+
+        in_base = nc * (ID * IH * IW)
+
+        tl.atomic_add(grad_in_ptr + in_base + rel_000, g * wd0 * wh0 * ww0, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_001, g * wd0 * wh0 * tw, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_010, g * wd0 * th * ww0, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_011, g * wd0 * th * tw, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_100, g * td * wh0 * ww0, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_101, g * td * wh0 * tw, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_110, g * td * th * ww0, mask=m)
+        tl.atomic_add(grad_in_ptr + in_base + rel_111, g * td * th * tw, mask=m)
+
+
+def _calc_scale_and_bias(in_sz, out_sz, align_corners, scale):
+    if align_corners:
+        if out_sz > 1:
+            scale_val = (in_sz - 1.0) / (out_sz - 1.0)
+        else:
+            scale_val = 0.0
+        bias_val = 0.0
+    else:
+        if scale is not None and scale > 0:
+            real_scale = 1.0 / scale
+        else:
+            real_scale = in_sz / out_sz
+        scale_val = real_scale
+        bias_val = 0.5 * real_scale - 0.5
+    return scale_val, bias_val
+
+
+def upsample_trilinear3d_backward(
+    grad_output: torch.Tensor,
+    output_size: Sequence[int],
+    input_size: Sequence[int],
+    align_corners: bool,
+    scales_d: Optional[float] = None,
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS UPSAMPLE_TRILINEAR3D_BACKWARD")
+
+    N, C, ID, IH, IW = input_size
+    OD, OH, OW = output_size
+    NC = N * C
+
+    grad_out = grad_output.contiguous().view(NC, OD, OH, OW)
+    # Accumulate in fp32 for numerically stable atomic adds, cast back at the end.
+    grad_in = torch.zeros(
+        (NC, ID, IH, IW),
+        device=grad_output.device,
+        dtype=torch.float32,
+    )
+
+    if grad_in.numel() == 0 or grad_out.numel() == 0:
+        return grad_in.view(N, C, ID, IH, IW).to(grad_output.dtype)
+
+    scale_d, bias_d = _calc_scale_and_bias(ID, OD, align_corners, scales_d)
+    scale_h, bias_h = _calc_scale_and_bias(IH, OH, align_corners, scales_h)
+    scale_w, bias_w = _calc_scale_and_bias(IW, OW, align_corners, scales_w)
+
+    total_out = OD * OH * OW
+    # BLOCK=256 (num_warps=4) empirically best: each program scatters into 8
+    # input corner voxels via atomic_add, so larger blocks increase atomic
+    # contention and regress fp32; 256 balances occupancy against contention.
+    BLOCK = 256
+    # GCU grid.y limit is 255: chunk the NC axis so each program handles
+    # NUM_TILE consecutive slices and grid.y never exceeds 128.
+    NUM_TILE = max(1, triton.cdiv(NC, 128))
+    grid = (triton.cdiv(total_out, BLOCK), triton.cdiv(NC, NUM_TILE))
+
+    upsample_trilinear3d_backward_kernel[grid](
+        grad_out,
+        grad_in,
+        NC,
+        ID,
+        IH,
+        IW,
+        OD,
+        OH,
+        OW,
+        scale_d,
+        scale_h,
+        scale_w,
+        bias_d,
+        bias_h,
+        bias_w,
+        SAME_D=(ID == OD),
+        SAME_H=(IH == OH),
+        SAME_W=(IW == OW),
+        BLOCK=BLOCK,
+        NUM_TILE=NUM_TILE,
+        num_warps=4,
+    )
+
+    return grad_in.view(N, C, ID, IH, IW).to(grad_output.dtype)

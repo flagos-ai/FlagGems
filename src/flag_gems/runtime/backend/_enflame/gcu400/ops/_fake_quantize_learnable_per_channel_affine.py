@@ -1,0 +1,164 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""gcu400 fake-quantize per channel, one flat masked gather.
+
+The generated ``pointwise_dynamic`` kernel used to own this op.  On gcu400 it
+issues its loads/stores either as DTE DMA through block pointers (rounded up to
+the tile width) or as plain masked loads whose masked lanes still touch their
+own address.  Both overrun the last tile: at ``(16,128,64,60)`` the allocation
+ends on a page boundary, the overrun leaves the mapping and the MMU faults --
+the process aborts at the next sync and the card goes to ``HEALTH FAIL``
+(the same failure that took the card down through ``copy_`` on 2026-11-10).
+
+This kernel keeps the exact same per-element arithmetic (fp32 reciprocal,
+``nearbyint``, int zero point, clamp) but flattens to 1-D and clamps every
+address: masked lanes address element 0, so no lane can leave the allocation.
+The channel index is ``(flat // inner) % channels`` on the (contiguous) input.
+"""
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import tl_extra_shim
+
+logger = logging.getLogger(__name__)
+
+_BLOCK = 1024
+
+
+@triton.jit
+def _fake_quantize_per_channel_kernel(
+    X,
+    SCALE,
+    ZP,
+    OUT,
+    numel,
+    inner,
+    channels,
+    qmin,
+    qmax,
+    BLOCK: tl.constexpr,
+):
+    # Mirror the PyTorch native (CPU/CUDA) fake-quantise arithmetic bit-for-bit.
+    # ``rcp_rn`` emits the correctly-rounded fp32 reciprocal that matches C's
+    # ``1.0f / scale`` (``1.0 / scale`` in Triton folds into a true division and
+    # flips round-half-to-even at exact half-way quotients).
+    pid = tl.program_id(0).to(tl.int64)
+    off = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    m = off < numel
+    # gcu400 masked lanes still touch memory, so every masked lane must point
+    # at element 0; an unmapped tail lane would fault the MMU.
+    safe = tl.where(m, off, 0)
+
+    c = (safe // inner) % channels
+    x = tl.load(X + safe, mask=m, other=0.0).to(tl.float32)
+    scale = tl.load(SCALE + c, mask=m, other=1.0).to(tl.float32)
+    zp = tl.load(ZP + c, mask=m, other=0)
+
+    inv_scale = tl_extra_shim.rcp_rn(scale)
+    qval = tl_extra_shim.nearbyint(x * inv_scale) + zp.to(tl.float32)
+    bounded = tl.minimum(qmax, tl.maximum(qmin, qval))
+    out = (bounded - zp.to(tl.float32)) * scale
+    tl.store(OUT + safe, out.to(OUT.dtype.element_ty), mask=m)
+
+
+def _prepare_zero_point(zero_point, quant_min, quant_max):
+    """Round, clamp and cast the learnable zero point to int, mirroring the
+    behaviour of ``_get_rounded_zero_point`` followed by ``.to(kInt)`` in the
+    PyTorch native implementation."""
+    return zero_point.round().clamp_(quant_min, quant_max).to(torch.int32)
+
+
+def _launch(self, scale, zero_point_rounded, axis, quant_min, quant_max, out):
+    if axis < 0:
+        axis += self.dim()
+    x = self if self.is_contiguous() else self.contiguous()
+    scale = scale if scale.is_contiguous() else scale.contiguous()
+    channels = int(x.shape[axis])
+    inner = 1
+    for d in x.shape[axis + 1 :]:
+        inner *= int(d)
+    numel = x.numel()
+
+    target = out
+    if target is None:
+        target = torch.empty_like(x)
+    elif target.dtype != x.dtype or tuple(target.shape) != tuple(x.shape):
+        raise RuntimeError(
+            "_fake_quantize_learnable_per_channel_affine: out must match the "
+            f"input shape {tuple(x.shape)} and dtype {x.dtype}"
+        )
+    contiguous_out = target.is_contiguous()
+    store = target if contiguous_out else torch.empty_like(x)
+
+    if numel:
+        grid = (triton.cdiv(numel, _BLOCK),)
+        _fake_quantize_per_channel_kernel[grid](
+            x,
+            scale,
+            zero_point_rounded,
+            store,
+            numel,
+            inner,
+            channels,
+            float(quant_min),
+            float(quant_max),
+            BLOCK=_BLOCK,
+            num_warps=4,
+        )
+    if not contiguous_out:
+        target.copy_(store)
+    return target
+
+
+def _fake_quantize_learnable_per_channel_affine_inner(
+    self, scale, zero_point, axis, quant_min, quant_max, out=None
+):
+    return _launch(self, scale, zero_point, axis, quant_min, quant_max, out)
+
+
+def _fake_quantize_learnable_per_channel_affine(
+    self, scale, zero_point, axis, quant_min, quant_max, grad_factor=1.0
+):
+    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE")
+    if self.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        raise TypeError(
+            f"unsupported dtype {self.dtype}; only floating-point dtypes are supported"
+        )
+    zero_point_rounded = _prepare_zero_point(zero_point, quant_min, quant_max)
+    return _fake_quantize_learnable_per_channel_affine_inner(
+        self, scale, zero_point_rounded, axis, quant_min, quant_max
+    )
+
+
+def _fake_quantize_learnable_per_channel_affine_out_impl(
+    self,
+    scale,
+    zero_point,
+    axis,
+    quant_min,
+    quant_max,
+    grad_factor=1.0,
+    *,
+    out=None,
+):
+    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_OUT")
+    zero_point_rounded = _prepare_zero_point(zero_point, quant_min, quant_max)
+    return _fake_quantize_learnable_per_channel_affine_inner(
+        self, scale, zero_point_rounded, axis, quant_min, quant_max, out=out
+    )

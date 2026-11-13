@@ -61,10 +61,42 @@ def silu_backward_kernel(x, dy):
     return dx
 
 
+# Direct-pointer flat kernel, same shape as silu_flat_kernel.  The
+# pointwise_dynamic variant is much slower on gcu400: div_rn lowers to a
+# slow scalar libdevice call, and the block-pointer form adds overhead.
+# A plain division is fast and matches torch bit-for-bit for fp16 here.
+@libentry()
+@triton.jit
+def silu_backward_flat_kernel(
+    x_ptr,
+    dy_ptr,
+    out_ptr,
+    N_total,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
+        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+        dy = tl.load(dy_ptr + off, mask=mask).to(tl.float32)
+        sigma = 1.0 / (1.0 + tl.exp(-x))
+        dx = dy * sigma * (1.0 + x * (1.0 - sigma))
+        tl.store(out_ptr + off, dx, mask=mask)
+
+
 def _choose_block(N_total):
     if N_total <= 65536:
         return 8192
     if N_total <= 524288:
+        return 32768
+    if N_total > (1 << 28):
+        # 超大 shape 上 65536 元素/tile 的寄存器压力导致明显劣化，
+        # 实测 536M 元素 fp32 1633us -> 1412us、fp16 1489us -> 929us
         return 32768
     return 65536
 
@@ -77,8 +109,8 @@ def silu(self):
 
     BLOCK = _choose_block(N_total)
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
-    nw = 2 if N_total <= 134217728 else 4
+    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
+    nw = 2
 
     with torch_device_fn.device(inp.device):
         silu_flat_kernel[(grid_size,)](
@@ -94,8 +126,32 @@ def silu(self):
 
 def silu_backward(grad_output, self):
     logger.debug("GEMS_ENFLAME SILU_BACKWARD")
-    grad_input = silu_backward_kernel(self, grad_output)
-    return grad_input
+    # Mixed dtype/device needs the generic promotion logic; everything else
+    # goes through the flat kernel.
+    if self.dtype != grad_output.dtype or self.device != grad_output.device:
+        return silu_backward_kernel(self, grad_output)
+
+    inp = self.contiguous()
+    grad = grad_output.contiguous()
+    N_total = inp.numel()
+    if N_total == 0:
+        return torch.empty_like(inp)
+    out = torch.empty_like(inp)
+
+    BLOCK = _choose_block(N_total)
+    NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
+    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
+    with torch_device_fn.device(inp.device):
+        silu_backward_flat_kernel[(grid_size,)](
+            inp,
+            grad,
+            out,
+            N_total,
+            BLOCK=BLOCK,
+            num_warps=2,
+        )
+
+    return out
 
 
 def silu_(A):
@@ -105,8 +161,8 @@ def silu_(A):
 
     BLOCK = _choose_block(N_total)
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
-    nw = 2 if N_total <= 134217728 else 4
+    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
+    nw = 2
 
     with torch_device_fn.device(inp.device):
         silu_flat_kernel[(grid_size,)](

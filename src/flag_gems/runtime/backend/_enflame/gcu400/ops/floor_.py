@@ -73,7 +73,7 @@ def floor_(input):
     IS_FP16 = dtype == torch.float16
     IS_BF16 = dtype == torch.bfloat16
 
-    BLOCK = 8192
+    BLOCK = 32768
     grid = min((N + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
     with torch_device_fn.device(x.device):
         floor_kernel_[(grid,)](
@@ -83,6 +83,6 @@ def floor_(input):
             IS_FP32=IS_FP32,
             IS_FP16=IS_FP16,
             IS_BF16=IS_BF16,
-            num_warps=4,
+            num_warps=2,
         )
     return x

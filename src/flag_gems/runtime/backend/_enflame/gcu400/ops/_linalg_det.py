@@ -1,0 +1,634 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import math
+import sys
+
+import torch
+import triton
+import triton.language as tl
+
+import flag_gems.ops
+from flag_gems.runtime import device as runtime_device
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
+
+_DET_BLOCK_MAX = 64
+
+# gcu400 has no fp64 datapath: the elimination kernels cannot legalize f64
+# arithmetic (the pivot search fails on `math.absf` with a PassManager error).
+# Follow the torch_gcu convention (same as ``cholesky_inverse``): when the
+# device has no native fp64, carry the computation in float32 and restore the
+# requested dtype on the outputs.
+_HAS_FP64 = bool(getattr(runtime_device, "support_fp64", True))
+
+
+@triton.jit
+def _reduce_mul(a, b):
+    return a * b
+
+
+# The three elimination kernels below follow the vectorized design of
+# ``flag_gems/ops/linalg_det.py`` (register-resident / blocked / panel paths,
+# float64 tuned to PANEL=16/BLOCK=32 and float32 to PANEL=32/BLOCK=64). They are
+# vendored here rather than imported because ``aten::_linalg_det`` must also
+# return the factorization and pivots, which requires storing the in-place
+# working matrix (the combined L/U form) and the per-step pivot rows — outputs
+# the upstream ``det``-only kernels do not produce.
+@libentry()
+@triton.jit
+def _det_register_kernel(
+    A,
+    out,
+    LU_out,
+    pivots_out,
+    N,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_N)
+
+    offsets = pid * N * N + rows[:, None] * N + cols[None, :]
+    load_mask = (rows[:, None] < N) & (cols[None, :] < N)
+    work = tl.load(A + offsets, mask=load_mask, other=0.0)
+
+    swap_count = tl.zeros((), dtype=tl.int32)
+
+    for k in range(N):
+        col_k = tl.sum(tl.where(cols[None, :] == k, work, 0.0), axis=1)
+        abs_col = tl.abs(col_k)
+        abs_col = tl.where((rows < k) | (rows >= N), -1.0, abs_col)
+        pivot_val = tl.max(abs_col, axis=0)
+        pivot_row = tl.min(tl.where(abs_col == pivot_val, rows, BLOCK_N), axis=0)
+        # An all-zero pivot column means the matrix is singular; keep the row in
+        # place (parity must not flip on a no-op step).
+        pivot_row = tl.where(pivot_val <= 0.0, k, pivot_row)
+
+        row_k = tl.sum(tl.where(rows[:, None] == k, work, 0.0), axis=0)
+        row_p = tl.sum(tl.where(rows[:, None] == pivot_row, work, 0.0), axis=0)
+        work = tl.where(rows[:, None] == k, row_p[None, :], work)
+        work = tl.where(rows[:, None] == pivot_row, row_k[None, :], work)
+        swap_count = tl.where(pivot_row != k, swap_count + 1, swap_count)
+
+        # 1-indexed pivot row for this elimination step (LAPACK ipiv convention).
+        tl.store(pivots_out + pid * N + k, pivot_row + 1)
+
+        col_k = tl.sum(tl.where(cols[None, :] == k, work, 0.0), axis=1)
+        pivot = tl.sum(tl.where(rows == k, col_k, 0.0), axis=0)
+
+        safe_pivot = tl.where(pivot == 0.0, 1.0, pivot)
+        multipliers = tl.where(rows > k, col_k / safe_pivot, 0.0)
+        u_row = row_p
+        update_mask = (rows[:, None] > k) & (cols[None, :] > k)
+        work = tl.where(update_mask, work - multipliers[:, None] * u_row[None, :], work)
+
+    # Export the factorization: ``work`` now holds the combined L (unit diagonal,
+    # multipliers below the diagonal) and U (including the diagonal).
+    tl.store(LU_out + offsets, work, mask=load_mask)
+
+    diag = tl.sum(tl.where(rows[:, None] == cols[None, :], work, 0.0), axis=0)
+    diag = tl.where(cols < N, diag, 1.0)
+    det = tl.reduce(diag, 0, combine_fn=_reduce_mul)
+    det = tl.where(swap_count % 2 == 0, det, -det)
+    tl.store(out + pid, det)
+
+
+# GCU400 fast register kernel for float32 _linalg_det (n <= 16).
+#
+# Same design as ``_det_register2_kernel`` in ``linalg_det.py``: measured on L600,
+# a register-tile where+sum extraction costs ~1.6-5us (DSM round trip) while a 1D
+# reduction over a [<=256] vector costs ~0.3-0.5us, and the upstream register
+# kernel spends 7 tile reductions per elimination step. This variant keeps only
+# 3 tile extractions per step (column, pivot row, current row), rebuilds the
+# post-swap column by vector arithmetic instead of re-extraction, and applies
+# the rank-1 update unmasked (multipliers are zeroed above the diagonal row and
+# the u-row is zeroed at columns <= k, so the FMA is a no-op outside the active
+# submatrix), padding only to BLOCK_N=8. It additionally exports the combined
+# L/U tile (one masked store) and the per-step 1-indexed pivot rows, replacing
+# the upstream register kernel for the aten::_linalg_det outputs. Dispatch:
+# n <= 16 uses this kernel (upstream wins at n in (16, 32]; 32 < n <= 64 goes
+# to the single-block panel path).
+@libentry()
+@triton.jit
+def _det_register2_kernel(
+    A,
+    out,
+    LU_out,
+    pivots_out,
+    N,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_N)
+    offsets = pid * N * N + rows[:, None] * N + cols[None, :]
+    load_mask = (rows[:, None] < N) & (cols[None, :] < N)
+    work = tl.load(A + offsets, mask=load_mask, other=0.0)
+    swap_parity = tl.zeros((), dtype=tl.int32)
+    for k in range(N):
+        col_k = tl.sum(tl.where(cols[None, :] == k, work, 0.0), axis=1)
+        abs_col = tl.abs(col_k)
+        abs_col = tl.where((rows < k) | (rows >= N), -1.0, abs_col)
+        pivot_val = tl.max(abs_col, axis=0)
+        pivot_row = tl.min(tl.where(abs_col == pivot_val, rows, BLOCK_N), axis=0)
+        # An all-zero pivot column means the matrix is singular; keep the row in
+        # place (parity must not flip on a no-op step).
+        pivot_row = tl.where(pivot_val <= 0.0, k, pivot_row)
+        row_k = tl.sum(tl.where(rows[:, None] == k, work, 0.0), axis=0)
+        row_p = tl.sum(tl.where(rows[:, None] == pivot_row, work, 0.0), axis=0)
+        work = tl.where(rows[:, None] == k, row_p[None, :], work)
+        work = tl.where(rows[:, None] == pivot_row, row_k[None, :], work)
+        swap_parity = swap_parity + (pivot_row != k).to(tl.int32)
+        # 1-indexed pivot row for this elimination step (LAPACK ipiv convention).
+        tl.store(pivots_out + pid * N + k, pivot_row + 1)
+        ck = tl.sum(tl.where(rows == k, col_k, 0.0), axis=0)
+        pv = tl.sum(tl.where(rows == pivot_row, col_k, 0.0), axis=0)
+        col_new = tl.where(rows == k, pv, tl.where(rows == pivot_row, ck, col_k))
+        safe = tl.where(pv == 0.0, 1.0, pv)
+        inv = 1.0 / safe
+        mult = tl.where(rows > k, col_new * inv, 0.0)
+        mult = tl.where(rows < N, mult, 0.0)
+        u_row = tl.where(cols > k, row_p, 0.0)
+        work = work - mult[:, None] * u_row[None, :]
+    # Export the factorization: ``work`` now holds the combined L (unit diagonal,
+    # multipliers below the diagonal) and U (including the diagonal).
+    tl.store(LU_out + offsets, work, mask=load_mask)
+    diag = tl.sum(tl.where(rows[:, None] == cols[None, :], work, 0.0), axis=0)
+    diag = tl.where(cols < N, diag, 1.0)
+    det = tl.reduce(diag, 0, combine_fn=_reduce_mul)
+    det = tl.where(swap_parity % 2 == 0, det, -det)
+    tl.store(out + pid, det)
+
+
+@libentry()
+@triton.jit
+def _det_blocked_kernel(
+    A,
+    out,
+    LU_out,
+    pivots_out,
+    N,
+    BLOCK: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    base = pid * N * N
+    swap_count = tl.zeros((), dtype=tl.int32)
+
+    for k in range(N):
+        best_val = tl.full((), -1.0, dtype=A.dtype.element_ty)
+        best_row = tl.full((), k, dtype=tl.int32)
+        for i0 in range(k, N, BLOCK):
+            rows = i0 + tl.arange(0, BLOCK)
+            col = tl.load(A + base + rows * N + k, mask=rows < N, other=0.0)
+            abs_col = tl.where((rows >= k) & (rows < N), tl.abs(col), -1.0)
+            tile_max = tl.max(abs_col, axis=0)
+            tile_row = tl.min(tl.where(abs_col == tile_max, rows, N), axis=0)
+            is_better = tile_max > best_val
+            best_row = tl.where(is_better, tile_row, best_row)
+            best_val = tl.where(is_better, tile_max, best_val)
+        # See the register kernel: skip the swap for an all-zero pivot column.
+        best_row = tl.where(best_val <= 0.0, k, best_row)
+
+        for j0 in range(k, N, BLOCK):
+            cols = j0 + tl.arange(0, BLOCK)
+            cmask = cols < N
+            row_k = tl.load(A + base + k * N + cols, mask=cmask, other=0.0)
+            row_p = tl.load(A + base + best_row * N + cols, mask=cmask, other=0.0)
+            tl.store(A + base + k * N + cols, row_p, mask=cmask)
+            tl.store(A + base + best_row * N + cols, row_k, mask=cmask)
+        swap_count = tl.where(best_row != k, swap_count + 1, swap_count)
+        tl.store(pivots_out + pid * N + k, best_row + 1)
+
+        tl.debug_barrier()
+
+        pivot = tl.load(A + base + k * N + k)
+        safe_pivot = tl.where(pivot == 0.0, 1.0, pivot)
+
+        for i0 in range(k + 1, N, BLOCK):
+            rows = i0 + tl.arange(0, BLOCK)
+            rmask = rows < N
+            col = tl.load(A + base + rows * N + k, mask=rmask, other=0.0)
+            tl.store(A + base + rows * N + k, col / safe_pivot, mask=rmask)
+
+        tl.debug_barrier()
+
+        for i0 in range(k + 1, N, BLOCK):
+            rows = i0 + tl.arange(0, BLOCK)
+            rmask = rows < N
+            l_col = tl.load(A + base + rows * N + k, mask=rmask, other=0.0)
+            for j0 in range(k + 1, N, BLOCK):
+                cols = j0 + tl.arange(0, BLOCK)
+                cmask = cols < N
+                u_row = tl.load(A + base + k * N + cols, mask=cmask, other=0.0)
+                tmask = rmask[:, None] & cmask[None, :]
+                tile = tl.load(
+                    A + base + rows[:, None] * N + cols[None, :], mask=tmask, other=0.0
+                )
+                tile = tile - l_col[:, None] * u_row[None, :]
+                tl.store(A + base + rows[:, None] * N + cols[None, :], tile, mask=tmask)
+
+        tl.debug_barrier()
+
+    # Export the factorized matrix (combined L/U, LAPACK getrf layout).
+    for i0 in range(0, N, BLOCK):
+        rows = i0 + tl.arange(0, BLOCK)
+        for j0 in range(0, N, BLOCK):
+            cols = j0 + tl.arange(0, BLOCK)
+            m = (rows[:, None] < N) & (cols[None, :] < N)
+            v = tl.load(A + base + rows[:, None] * N + cols[None, :], mask=m, other=0.0)
+            tl.store(LU_out + base + rows[:, None] * N + cols[None, :], v, mask=m)
+
+    det = tl.full((), 1.0, dtype=A.dtype.element_ty)
+    for i0 in range(0, N, BLOCK):
+        d = i0 + tl.arange(0, BLOCK)
+        diag = tl.load(A + base + d * N + d, mask=d < N, other=1.0)
+        det = det * tl.reduce(diag, 0, combine_fn=_reduce_mul)
+    det = tl.where(swap_count % 2 == 0, det, -det)
+    tl.store(out + pid, det)
+
+
+@libentry()
+@triton.jit
+def _det_panel_kernel(
+    A,
+    out,
+    LU_out,
+    pivots_out,
+    N,
+    PANEL: tl.constexpr,
+    BLOCK: tl.constexpr,
+    SINGLE: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    base = pid * N * N
+    swap_count = tl.zeros((), dtype=tl.int32)
+
+    for k0 in range(0, N, PANEL):
+        kend = tl.minimum(k0 + PANEL, N)
+
+        if SINGLE:
+            # Single-block fast path (host guarantees BLOCK >= N): every inner
+            # chunk loop of the elimination step has exactly one iteration, and
+            # each range() costs an integer division on this backend. Flatten
+            # the step to straight-line code and reuse the scaled multiplier
+            # column from registers. The reload was the only read of column k
+            # between the scaling store and the rank-1 update, so the barrier
+            # separating them goes away too (the u-row/tile reads touch the
+            # swap-written rows, already ordered by the post-swap barrier).
+            for k in range(k0, kend):
+                rows = k + tl.arange(0, BLOCK)
+                # The load fills rows >= N with 0, and abs(0) = 0 never wins the
+                # max against a nonzero pivot column; an all-zero (singular)
+                # column falls through to the best_val <= 0 guard below.
+                col = tl.load(A + base + rows * N + k, mask=rows < N, other=0.0)
+                abs_col = tl.abs(col)
+                best_val = tl.max(abs_col, axis=0)
+                best_row = tl.min(tl.where(abs_col == best_val, rows, N), axis=0)
+                best_row = tl.where(best_val <= 0.0, k, best_row)
+
+                cols = k0 + tl.arange(0, BLOCK)
+                cmask = cols < N
+                row_k = tl.load(A + base + k * N + cols, mask=cmask, other=0.0)
+                row_p = tl.load(A + base + best_row * N + cols, mask=cmask, other=0.0)
+                tl.store(A + base + k * N + cols, row_p, mask=cmask)
+                tl.store(A + base + best_row * N + cols, row_k, mask=cmask)
+                swap_count = tl.where(best_row != k, swap_count + 1, swap_count)
+                tl.store(pivots_out + pid * N + k, best_row + 1)
+
+                tl.debug_barrier()
+
+                pivot = tl.load(A + base + k * N + k)
+                safe_pivot = tl.where(pivot == 0.0, 1.0, pivot)
+                rows = k + 1 + tl.arange(0, BLOCK)
+                rmask = rows < N
+                l_col = tl.load(A + base + rows * N + k, mask=rmask, other=0.0)
+                l_col = l_col / safe_pivot
+                tl.store(A + base + rows * N + k, l_col, mask=rmask)
+
+                pcols = k + 1 + tl.arange(0, PANEL)
+                pcmask = pcols < kend
+                u_row = tl.load(A + base + k * N + pcols, mask=pcmask, other=0.0)
+                tmask = rmask[:, None] & pcmask[None, :]
+                tile = tl.load(
+                    A + base + rows[:, None] * N + pcols[None, :],
+                    mask=tmask,
+                    other=0.0,
+                )
+                tile = tile - l_col[:, None] * u_row[None, :]
+                tl.store(
+                    A + base + rows[:, None] * N + pcols[None, :], tile, mask=tmask
+                )
+
+                tl.debug_barrier()
+        else:
+            for k in range(k0, kend):
+                best_val = tl.full((), -1.0, dtype=A.dtype.element_ty)
+                best_row = tl.full((), k, dtype=tl.int32)
+                for i0 in range(k, N, BLOCK):
+                    rows = i0 + tl.arange(0, BLOCK)
+                    col = tl.load(A + base + rows * N + k, mask=rows < N, other=0.0)
+                    abs_col = tl.where((rows >= k) & (rows < N), tl.abs(col), -1.0)
+                    tile_max = tl.max(abs_col, axis=0)
+                    tile_row = tl.min(tl.where(abs_col == tile_max, rows, N), axis=0)
+                    is_better = tile_max > best_val
+                    best_row = tl.where(is_better, tile_row, best_row)
+                    best_val = tl.where(is_better, tile_max, best_val)
+                best_row = tl.where(best_val <= 0.0, k, best_row)
+
+                for j0 in range(k0, N, BLOCK):
+                    cols = j0 + tl.arange(0, BLOCK)
+                    cmask = cols < N
+                    row_k = tl.load(A + base + k * N + cols, mask=cmask, other=0.0)
+                    row_p = tl.load(
+                        A + base + best_row * N + cols, mask=cmask, other=0.0
+                    )
+                    tl.store(A + base + k * N + cols, row_p, mask=cmask)
+                    tl.store(A + base + best_row * N + cols, row_k, mask=cmask)
+                swap_count = tl.where(best_row != k, swap_count + 1, swap_count)
+                tl.store(pivots_out + pid * N + k, best_row + 1)
+
+                tl.debug_barrier()
+
+                pivot = tl.load(A + base + k * N + k)
+                safe_pivot = tl.where(pivot == 0.0, 1.0, pivot)
+                for i0 in range(k + 1, N, BLOCK):
+                    rows = i0 + tl.arange(0, BLOCK)
+                    rmask = rows < N
+                    col = tl.load(A + base + rows * N + k, mask=rmask, other=0.0)
+                    tl.store(A + base + rows * N + k, col / safe_pivot, mask=rmask)
+
+                tl.debug_barrier()
+
+                pcols = k + 1 + tl.arange(0, PANEL)
+                pcmask = pcols < kend
+                u_row = tl.load(A + base + k * N + pcols, mask=pcmask, other=0.0)
+                for i0 in range(k + 1, N, BLOCK):
+                    rows = i0 + tl.arange(0, BLOCK)
+                    rmask = rows < N
+                    l_col = tl.load(A + base + rows * N + k, mask=rmask, other=0.0)
+                    tmask = rmask[:, None] & pcmask[None, :]
+                    tile = tl.load(
+                        A + base + rows[:, None] * N + pcols[None, :],
+                        mask=tmask,
+                        other=0.0,
+                    )
+                    tile = tile - l_col[:, None] * u_row[None, :]
+                    tl.store(
+                        A + base + rows[:, None] * N + pcols[None, :], tile, mask=tmask
+                    )
+
+                tl.debug_barrier()
+
+        # When the panel reaches the end of the matrix (kend == N) there is no
+        # trailing submatrix and every j-loop of the strip phase below is empty,
+        # leaving only a strip load + barrier per column. Skip the phase
+        # entirely: for n <= PANEL (the whole matrix in one panel, e.g. the
+        # f32 n in (64, 128] dispatch) this removes N dead barrier iterations
+        # from the serial path.
+        if kend < N:
+            for c in range(k0, kend):
+                prows = c + 1 + tl.arange(0, PANEL)
+                prmask = prows < kend
+                l_strip = tl.load(A + base + prows * N + c, mask=prmask, other=0.0)
+                for j0 in range(kend, N, BLOCK):
+                    cols = j0 + tl.arange(0, BLOCK)
+                    cmask = cols < N
+                    u_strip = tl.load(A + base + c * N + cols, mask=cmask, other=0.0)
+                    tmask = prmask[:, None] & cmask[None, :]
+                    tile = tl.load(
+                        A + base + prows[:, None] * N + cols[None, :],
+                        mask=tmask,
+                        other=0.0,
+                    )
+                    tile = tile - l_strip[:, None] * u_strip[None, :]
+                    tl.store(
+                        A + base + prows[:, None] * N + cols[None, :], tile, mask=tmask
+                    )
+
+                tl.debug_barrier()
+
+        pcols = k0 + tl.arange(0, PANEL)
+        pmask = pcols < kend
+        for i0 in range(kend, N, BLOCK):
+            rows = i0 + tl.arange(0, BLOCK)
+            rmask = rows < N
+            l_tile = tl.load(
+                A + base + rows[:, None] * N + pcols[None, :],
+                mask=rmask[:, None] & pmask[None, :],
+                other=0.0,
+            )
+            for j0 in range(kend, N, BLOCK):
+                cols = j0 + tl.arange(0, BLOCK)
+                cmask = cols < N
+                u_tile = tl.load(
+                    A + base + pcols[:, None] * N + cols[None, :],
+                    mask=pmask[:, None] & cmask[None, :],
+                    other=0.0,
+                )
+                tmask = rmask[:, None] & cmask[None, :]
+                tile = tl.load(
+                    A + base + rows[:, None] * N + cols[None, :], mask=tmask, other=0.0
+                )
+                tile = tile - tl.dot(l_tile, u_tile, input_precision="ieee")
+                tl.store(A + base + rows[:, None] * N + cols[None, :], tile, mask=tmask)
+
+        tl.debug_barrier()
+
+    # Export the factorized matrix (combined L/U, LAPACK getrf layout).
+    for i0 in range(0, N, BLOCK):
+        rows = i0 + tl.arange(0, BLOCK)
+        for j0 in range(0, N, BLOCK):
+            cols = j0 + tl.arange(0, BLOCK)
+            m = (rows[:, None] < N) & (cols[None, :] < N)
+            v = tl.load(A + base + rows[:, None] * N + cols[None, :], mask=m, other=0.0)
+            tl.store(LU_out + base + rows[:, None] * N + cols[None, :], v, mask=m)
+
+    det = tl.full((), 1.0, dtype=A.dtype.element_ty)
+    for i0 in range(0, N, BLOCK):
+        d = i0 + tl.arange(0, BLOCK)
+        diag = tl.load(A + base + d * N + d, mask=d < N, other=1.0)
+        det = det * tl.reduce(diag, 0, combine_fn=_reduce_mul)
+    det = tl.where(swap_count % 2 == 0, det, -det)
+    tl.store(out + pid, det)
+
+
+def _linalg_det(A):
+    """FlagGems implementation of aten::_linalg_det.
+
+    Computes the determinant via LU decomposition with partial pivoting, using
+    the vectorized elimination kernels shared with ``linalg_det`` (register /
+    blocked / panel by dtype and size), and additionally exports the factorized
+    matrix and pivot indices.
+
+    On devices without a native fp64 datapath (gcu400), float64 inputs follow
+    the torch_gcu convention: the elimination runs in float32 and the outputs
+    are returned in the requested dtype.
+
+    Args:
+        A: tensor of shape (*, n, n) where * is zero or more batch dimensions.
+
+    Returns:
+        A tuple (result, LU, pivots) where:
+        - result is the determinant with the same dtype as A
+        - LU is the factorized matrix in the LAPACK getrf combined layout
+        - pivots is the int32 pivot buffer containing 1-indexed pivot rows
+    """
+    logger.debug("GEMS _LINALG_DET")
+    if A.dtype not in (torch.float32, torch.float64):
+        raise ValueError(
+            f"_linalg_det only supports float32 and float64, got {A.dtype}"
+        )
+    if A.dim() < 2:
+        raise ValueError(
+            f"_linalg_det: input tensor must be at least 2D, got {A.dim()}D"
+        )
+    m, n = A.shape[-2], A.shape[-1]
+    if m != n:
+        raise ValueError(f"_linalg_det: input tensor must be square, got {m}x{n}")
+
+    orig_dtype = A.dtype
+    downcast = orig_dtype == torch.float64 and not _HAS_FP64
+    if downcast:
+        A = A.detach().to(torch.float32)
+
+    batch_shape = A.shape[:-2]
+    batch_count = math.prod(batch_shape)
+
+    result = torch.empty(batch_shape, dtype=A.dtype, device=A.device)
+    LU = torch.empty(A.shape, dtype=A.dtype, device=A.device)
+    # pivots follows the aten schema shape (*, n); stores 1-indexed pivot rows
+    pivots = torch.empty(batch_shape + (n,), dtype=torch.int32, device=A.device)
+
+    if n == 0:
+        return (
+            torch.ones(batch_shape, dtype=orig_dtype, device=A.device),
+            LU.to(orig_dtype),
+            pivots,
+        )
+    if batch_count == 0:
+        return result.to(orig_dtype), LU.to(orig_dtype), pivots
+
+    is_f32 = A.dtype == torch.float32
+    # Read-only register band: reg2 (n <= 16) or the upstream register kernel
+    # ((16, 32]) -- neither writes to the working matrix.
+    use_reg2 = is_f32 and n <= 16
+    use_register_band = is_f32 and n <= 32
+
+    # The register kernels never write to the working matrix, so a contiguous
+    # input is passed directly (a view, no copy); the blocked/panel kernels
+    # eliminate in place and need the private scratch copy. Skipping the clone
+    # here also removes an extra aten copy-kernel launch from the op latency.
+    if use_register_band and A.is_contiguous():
+        A_work = A.reshape(batch_count, n, n)
+    else:
+        A_work = A.clone(memory_format=torch.contiguous_format).reshape(
+            batch_count, n, n
+        )
+    out = torch.empty(batch_count, dtype=A.dtype, device=A.device)
+
+    # LU shape tuning is dtype dependent (see the det-only kernels this follows):
+    # float64 wants a narrower panel than float32 because each element is twice
+    # as wide and the trailing update is arithmetic-intensity bound. The metax
+    # float64 special case from upstream is preserved.
+    is_f64 = A.dtype == torch.float64
+    # f32: the single-block panel path (plain 1D loads + fixed-cost 2D tile
+    # ops, no cross-lane tile reductions) measures ~5us/step vs ~8.3us/step
+    # for the register-tile register2 kernel, so the panel kernel also serves
+    # 32 < n <= 64; the register band above stays for the shapes where the
+    # in-register extraction chains win.
+    use_panel = n > 32 and not (is_f64 and runtime_device.vendor_name == "metax")
+    if is_f64:
+        # f64 panels are always multi-block (use_panel requires n > 32 > BLOCK)
+        panel_kwargs = {"PANEL": 16, "BLOCK": 32, "SINGLE": 0, "num_warps": 4}
+    else:
+        # GCU400: wider chunks amortize the per-op round-trip tax of the
+        # serial panel phase (measured on L600, same tuning as linalg_det):
+        # PANEL=128 with BLOCK equal to the matrix size (<=256) beats the
+        # upstream PANEL=32/BLOCK=64 for f32 n in (32, 256].
+        block_val = min(256, triton.next_power_of_2(max(n, 64)))
+        panel_kwargs = {
+            "PANEL": 128,
+            "BLOCK": block_val,
+            # n <= BLOCK means every inner chunk loop covers the whole range
+            # in one iteration: the single-block fast path flattens them. The
+            # whole tuned band (n <= 256) qualifies by construction; larger
+            # matrices keep the chunked path.
+            "SINGLE": 1 if n <= block_val else 0,
+            # Serial-step cost model: fewer warps shorten the cross-warp
+            # reduction tree of the per-step pivot max/min -- measured nw2
+            # wins ~8-9% at BLOCK=64 (n in (32, 64]) while nw4 stays best for
+            # the wider BLOCK=128+ tiles (nw2 -2.4% at n=128).
+            "num_warps": 2 if block_val <= 64 else 4,
+        }
+
+    grid = (batch_count,)
+    with torch_device_fn.device(A.device):
+        if use_reg2:
+            # GCU400 fast path: the upstream register kernel spends 7 tile
+            # reductions per elimination step (a tile reduction costs ~2-5us
+            # here, DSM round trip) and pads tiny matrices to BLOCK_N=16. The
+            # register2 variant keeps only 3 extractions (column, pivot row,
+            # current row), derives the post-swap column by vector arithmetic
+            # instead of re-extraction, applies the rank-1 update unmasked, and
+            # pads only to BLOCK_N=8 -- while still exporting LU and pivots.
+            # n in (16, 32] keeps the upstream kernel (measured faster there);
+            # 32 < n <= 64 goes to the single-block panel path below.
+            block_n = max(8, triton.next_power_of_2(n))
+            num_warps = min(8, max(1, (block_n * block_n * 4) // 4096))
+            _det_register2_kernel[grid](
+                A_work, out, LU, pivots, n, BLOCK_N=block_n, num_warps=num_warps
+            )
+        elif use_register_band:
+            block_n = max(16, triton.next_power_of_2(n))
+            num_warps = min(8, max(1, (block_n * block_n * 4) // 4096))
+            _det_register_kernel[grid](
+                A_work, out, LU, pivots, n, BLOCK_N=block_n, num_warps=num_warps
+            )
+        elif use_panel:
+            _det_panel_kernel[grid](A_work, out, LU, pivots, n, **panel_kwargs)
+        else:
+            block = min(64, max(8, triton.next_power_of_2(n)))
+            num_warps = min(4, max(1, (block * block * 8) // 4096))
+            _det_blocked_kernel[grid](
+                A_work, out, LU, pivots, n, BLOCK=block, num_warps=num_warps
+            )
+
+    return (
+        out.reshape(batch_shape).to(orig_dtype),
+        LU.reshape(A.shape).to(orig_dtype),
+        pivots.reshape(batch_shape + (n,)),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Generic-path module alias (vendor injection).
+#
+# SpecOpRegistrar imports this file as ``gcu400.ops._linalg_det`` and wires
+# ``flag_gems._linalg_det`` / the aten-registered ``torch.ops.aten._linalg_det``
+# to the implementation above, but the KernelGen accuracy test and the perf
+# benchmark resolve the op through the generic package attribute
+# (``flag_gems.ops._linalg_det(...)``), which keeps pointing at the unused
+# generic implementation -- a float64 input then reaches the fp64-less Triton
+# kernels and fails to compile, even though the dispatcher path already runs
+# this backend copy.  Publish this module under the generic path (the same
+# pattern as ``quantized_max_pool2d`` / ``sparse_coo_tensor``) and rebind the
+# package attribute so the module under test IS the implementation that runs.
+# ---------------------------------------------------------------------------
+sys.modules["flag_gems.ops._linalg_det"] = sys.modules[__name__]
+flag_gems.ops._linalg_det = _linalg_det

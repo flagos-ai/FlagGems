@@ -1,0 +1,550 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import math
+import struct
+from typing import Optional, Tuple
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import device, torch_device_fn
+
+logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _upsample_nearest_exact3d_backward_contiguous_kernel(
+    grad_output_ptr,
+    grad_input_ptr,
+    spatial_numel,
+    N,
+    C,
+    OD,
+    OH,
+    OW,
+    ID,
+    IH,
+    IW,
+    scale_d,
+    scale_h,
+    scale_w,
+    MAX_D: tl.constexpr,
+    MAX_H: tl.constexpr,
+    MAX_W: tl.constexpr,
+    IS_BYTE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    valid = offsets < spatial_numel
+
+    iw = offsets % IW
+    rest = offsets // IW
+    ih = rest % IH
+    rest = rest // IH
+    id_ = rest % ID
+    c = rest // ID
+
+    # torch native maps input coordinate i to the half-open output interval
+    # [ceil(i * scale - 0.5), ceil((i + 1) * scale - 0.5)) and clamps the
+    # interval end of the *last* input row to the output size, so the final
+    # row absorbs every residual output index (decode-verified against the
+    # torch 2.11 CPU/GCU native backward, consistent and inconsistent scales).
+    start_d = tl.minimum(tl.ceil(id_.to(tl.float32) * scale_d - 0.5), OD).to(tl.int64)
+    end_d = tl.where(
+        id_ == ID - 1,
+        OD,
+        tl.minimum(tl.ceil((id_ + 1).to(tl.float32) * scale_d - 0.5), OD),
+    ).to(tl.int64)
+    start_h = tl.minimum(tl.ceil(ih.to(tl.float32) * scale_h - 0.5), OH).to(tl.int64)
+    end_h = tl.where(
+        ih == IH - 1,
+        OH,
+        tl.minimum(tl.ceil((ih + 1).to(tl.float32) * scale_h - 0.5), OH),
+    ).to(tl.int64)
+    start_w = tl.minimum(tl.ceil(iw.to(tl.float32) * scale_w - 0.5), OW).to(tl.int64)
+    end_w = tl.where(
+        iw == IW - 1,
+        OW,
+        tl.minimum(tl.ceil((iw + 1).to(tl.float32) * scale_w - 0.5), OW),
+    ).to(tl.int64)
+
+    output_batch_stride = C * OD * OH * OW
+    input_batch_stride = C * ID * IH * IW
+    output_channel_base = c * OD * OH * OW
+    input_spatial_offset = ((c * ID + id_) * IH + ih) * IW + iw
+
+    # PyTorch also shares the coordinate calculation across batches.  Keeping
+    # N as a runtime loop reduces the launch grid by N for common NCDHW input.
+    for batch in tl.range(0, N):
+        if IS_BYTE:
+            acc = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+        else:
+            acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+        for kd in range(MAX_D):
+            od = start_d + kd
+            mask_d = od < end_d
+            for kh in range(MAX_H):
+                oh = start_h + kh
+                mask_h = oh < end_h
+                for kw in range(MAX_W):
+                    ow = start_w + kw
+                    load_mask = valid & mask_d & mask_h & (ow < end_w)
+                    go_offset = (
+                        batch * output_batch_stride
+                        + output_channel_base
+                        + (od * OH + oh) * OW
+                        + ow
+                    )
+                    value = tl.load(
+                        grad_output_ptr + go_offset, mask=load_mask, other=0.0
+                    )
+                    acc += value
+
+        gi_offset = batch * input_batch_stride + input_spatial_offset
+        tl.store(grad_input_ptr + gi_offset, acc, mask=valid)
+
+
+@triton.jit
+def _upsample_nearest_exact3d_backward_strided_kernel(
+    grad_output_ptr,
+    grad_input_ptr,
+    numel,
+    C,
+    OD,
+    OH,
+    OW,
+    ID,
+    IH,
+    IW,
+    go_stride_n,
+    go_stride_c,
+    go_stride_d,
+    go_stride_h,
+    go_stride_w,
+    gi_stride_n,
+    gi_stride_c,
+    gi_stride_d,
+    gi_stride_h,
+    gi_stride_w,
+    scale_d,
+    scale_h,
+    scale_w,
+    MAX_D: tl.constexpr,
+    MAX_H: tl.constexpr,
+    MAX_W: tl.constexpr,
+    IS_BYTE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    valid = offsets < numel
+
+    iw = offsets % IW
+    rest = offsets // IW
+    ih = rest % IH
+    rest = rest // IH
+    id_ = rest % ID
+    rest = rest // ID
+    c = rest % C
+    n = rest // C
+
+    # torch native maps input coordinate i to the half-open output interval
+    # [ceil(i * scale - 0.5), ceil((i + 1) * scale - 0.5)) and clamps the
+    # interval end of the *last* input row to the output size, so the final
+    # row absorbs every residual output index; a downsampled input position
+    # may otherwise receive no value at all.
+    start_d = tl.minimum(tl.ceil(id_.to(tl.float32) * scale_d - 0.5), OD).to(tl.int64)
+    end_d = tl.where(
+        id_ == ID - 1,
+        OD,
+        tl.minimum(tl.ceil((id_ + 1).to(tl.float32) * scale_d - 0.5), OD),
+    ).to(tl.int64)
+    start_h = tl.minimum(tl.ceil(ih.to(tl.float32) * scale_h - 0.5), OH).to(tl.int64)
+    end_h = tl.where(
+        ih == IH - 1,
+        OH,
+        tl.minimum(tl.ceil((ih + 1).to(tl.float32) * scale_h - 0.5), OH),
+    ).to(tl.int64)
+    start_w = tl.minimum(tl.ceil(iw.to(tl.float32) * scale_w - 0.5), OW).to(tl.int64)
+    end_w = tl.where(
+        iw == IW - 1,
+        OW,
+        tl.minimum(tl.ceil((iw + 1).to(tl.float32) * scale_w - 0.5), OW),
+    ).to(tl.int64)
+
+    if IS_BYTE:
+        acc = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+    else:
+        acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    for kd in range(MAX_D):
+        od = start_d + kd
+        mask_d = od < end_d
+        for kh in range(MAX_H):
+            oh = start_h + kh
+            mask_h = oh < end_h
+            for kw in range(MAX_W):
+                ow = start_w + kw
+                load_mask = valid & mask_d & mask_h & (ow < end_w)
+                go_offset = (
+                    n * go_stride_n
+                    + c * go_stride_c
+                    + od * go_stride_d
+                    + oh * go_stride_h
+                    + ow * go_stride_w
+                )
+                value = tl.load(grad_output_ptr + go_offset, mask=load_mask, other=0.0)
+                acc += value
+
+    gi_offset = (
+        n * gi_stride_n
+        + c * gi_stride_c
+        + id_ * gi_stride_d
+        + ih * gi_stride_h
+        + iw * gi_stride_w
+    )
+    tl.store(grad_input_ptr + gi_offset, acc, mask=valid)
+
+
+def _scale_value(scale: Optional[float], output_size: int, input_size: int) -> float:
+    # compute_scales_value_backwards<float> in PyTorch uses the supplied
+    # forward scale directly and falls back for absent/non-positive scales.
+    if scale is not None and scale > 0:
+        return float(scale)
+    return output_size / input_size
+
+
+def _to_float32(value: float) -> float:
+    # Round to float32 so host-side bounds mirror the kernel's fp32
+    # coordinate arithmetic exactly (Triton passes float scalars as fp32).
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+def _gather_extent(output_size: int, input_size: int, scale: float) -> int:
+    """Worst-case gather width along one dimension.
+
+    Ordinary rows gather at most ``ceil(scale)`` outputs, but the last input
+    row absorbs every output index from its interval start up to the output
+    size, so its width is ``output_size - start_{input_size-1}``; the fp32
+    mirroring keeps the host bound identical to the kernel's start.
+    """
+    scale = _to_float32(scale)
+    extent = max(1, math.ceil(scale))
+    last_start = _to_float32(_to_float32((input_size - 1) * scale) - _to_float32(0.5))
+    last_start = min(math.ceil(last_start), output_size)
+    # No interval can exceed the output size, so clamp the unrolled width.
+    return min(max(extent, output_size - last_start), output_size)
+
+
+def _upsample_nearest_exact3d_backward_impl(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int, int, int],
+    input_size: Tuple[int, int, int, int, int],
+    scales_d: Optional[float],
+    scales_h: Optional[float],
+    scales_w: Optional[float],
+    grad_input: Optional[torch.Tensor],
+) -> torch.Tensor:
+    if grad_output.device.type != device.name:
+        raise RuntimeError(
+            f"expected grad_output to be on {device.name}, got {grad_output.device}"
+        )
+    if grad_output.ndim != 5:
+        raise RuntimeError("grad_output must be a 5D tensor")
+    if len(output_size) != 3:
+        raise RuntimeError("output_size must contain three values")
+    if len(input_size) != 5:
+        raise RuntimeError("input_size must contain five values")
+
+    od, oh, ow = map(int, output_size)
+    n, c, id_, ih, iw = map(int, input_size)
+    expected_shape = (n, c, od, oh, ow)
+    if tuple(grad_output.shape) != expected_shape:
+        raise RuntimeError(
+            f"grad_output shape {tuple(grad_output.shape)} does not match "
+            f"expected shape {expected_shape}"
+        )
+
+    if grad_input is None:
+        grad_input = torch.empty(
+            (n, c, id_, ih, iw),
+            dtype=grad_output.dtype,
+            device=grad_output.device,
+        )
+    else:
+        if grad_input.device != grad_output.device:
+            raise RuntimeError("grad_input and grad_output must be on the same device")
+        if grad_input.dtype != grad_output.dtype:
+            raise RuntimeError(
+                f"Expected out tensor to have dtype {grad_output.dtype}, "
+                f"but got {grad_input.dtype} instead"
+            )
+        if tuple(grad_input.shape) != (n, c, id_, ih, iw):
+            grad_input.resize_((n, c, id_, ih, iw))
+
+    numel = grad_input.numel()
+    if numel == 0:
+        return grad_input
+
+    # gcu400 has no fp64 arithmetic and the Triton backend rejects fp64
+    # vectors outright (compiler_problems P04: tar_load/tar_store carry no
+    # f64 lanes; even a pure fp64 copy aborts the compiler).  torch_gcu
+    # itself computes aten Double ops in fp32 ("GCU not support Double use
+    # Float replace"), so fp64 requests run the fp32 kernel on a converted
+    # copy and upcast into the fp64 destination (upsample_bicubic2d
+    # precedent; matches the native numerics bit-for-bit on fp32 payloads).
+    is_fp64 = grad_output.dtype == torch.float64
+    if is_fp64:
+        grad_output = grad_output.to(torch.float32)
+        grad_input_f32 = torch.empty(
+            (n, c, id_, ih, iw), dtype=torch.float32, device=grad_output.device
+        )
+    else:
+        grad_input_f32 = grad_input
+
+    scale_d = _scale_value(scales_d, od, id_)
+    scale_h = _scale_value(scales_h, oh, ih)
+    scale_w = _scale_value(scales_w, ow, iw)
+
+    max_d = _gather_extent(od, id_, scale_d)
+    max_h = _gather_extent(oh, ih, scale_h)
+    max_w = _gather_extent(ow, iw, scale_w)
+    block_size = 256
+    with torch_device_fn.device(grad_output.device):
+        if grad_output.is_contiguous() and grad_input_f32.is_contiguous():
+            spatial_numel = c * id_ * ih * iw
+            grid = (triton.cdiv(spatial_numel, block_size),)
+            _upsample_nearest_exact3d_backward_contiguous_kernel[grid](
+                grad_output,
+                grad_input_f32,
+                spatial_numel,
+                n,
+                c,
+                od,
+                oh,
+                ow,
+                id_,
+                ih,
+                iw,
+                scale_d,
+                scale_h,
+                scale_w,
+                max_d,
+                max_h,
+                max_w,
+                grad_output.dtype == torch.uint8,
+                block_size,
+                num_warps=4,
+            )
+        else:
+            grid = (triton.cdiv(numel, block_size),)
+            _upsample_nearest_exact3d_backward_strided_kernel[grid](
+                grad_output,
+                grad_input_f32,
+                numel,
+                c,
+                od,
+                oh,
+                ow,
+                id_,
+                ih,
+                iw,
+                *grad_output.stride(),
+                *grad_input_f32.stride(),
+                scale_d,
+                scale_h,
+                scale_w,
+                max_d,
+                max_h,
+                max_w,
+                grad_output.dtype == torch.uint8,
+                block_size,
+            )
+    if is_fp64:
+        grad_input.copy_(grad_input_f32)
+    return grad_input
+
+
+def _upsample_nearest_exact3d_backward(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int, int, int],
+    input_size: Tuple[int, int, int, int, int],
+    scales_d: Optional[float] = None,
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+) -> torch.Tensor:
+    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_BACKWARD")
+    return _upsample_nearest_exact3d_backward_impl(
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+        None,
+    )
+
+
+def _upsample_nearest_exact3d_backward_grad_input(
+    grad_output: torch.Tensor,
+    output_size: Tuple[int, int, int],
+    input_size: Tuple[int, int, int, int, int],
+    scales_d: Optional[float] = None,
+    scales_h: Optional[float] = None,
+    scales_w: Optional[float] = None,
+    *,
+    grad_input: torch.Tensor,
+) -> torch.Tensor:
+    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT3D_BACKWARD_GRAD_INPUT")
+    return _upsample_nearest_exact3d_backward_impl(
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+        grad_input,
+    )
+
+
+# --- Dispatch wrapper: uint8 coverage parity with CUDA ------------------------
+# aten's composite ``_upsample_nearest_exact3d_backward`` only dispatches the
+# floating types, so uint8 requests raise NotImplementedError on GCU (the CPU
+# native is Byte-less the same way), while CUDA kernels do cover Byte.  This
+# registers a PrivateUse1 dispatch wrapper that mirrors CUDA's dtype coverage
+# (cholesky native-capture + slow_conv_dilated2d idempotent device-key
+# registration precedents):
+#   * uint8 tensors route to this module's Triton kernel;
+#   * while FlagGems is enabled (enable()/use_gems()) every dtype routes to
+#     this module -- exactly what the registrar would have installed had this
+#     wrapper not claimed the key first (its re-registration is skipped with
+#     a warning, which is expected);
+#   * otherwise other dtypes forward to the captured native composite via
+#     call_boxed, which bypasses the dispatcher: the reference leg stays the
+#     native implementation and the forwarding cannot recurse.
+_DISPATCH_FLAG = "_flaggems_gcu400_upsample_nearest_exact3d_backward_dispatch"
+_DISPATCH_LIBRARY = None
+_NATIVE_DEFAULT = None
+_NATIVE_GRAD_INPUT = None
+_DEVICE_KEYSET = None
+
+
+def _flaggems_enabled():
+    # Lazy import: this module loads while ``flag_gems`` itself is still
+    # initializing, but the wrappers below only ever run afterwards.
+    import flag_gems
+
+    return getattr(flag_gems, "current_work_registrar", None) is not None
+
+
+def _dispatch_default(
+    grad_output, output_size, input_size, scales_d=None, scales_h=None, scales_w=None
+):
+    if (
+        isinstance(grad_output, torch.Tensor) and grad_output.dtype == torch.uint8
+    ) or _flaggems_enabled():
+        return _upsample_nearest_exact3d_backward_impl(
+            grad_output, output_size, input_size, scales_d, scales_h, scales_w, None
+        )
+    return _NATIVE_DEFAULT.call_boxed(
+        _DEVICE_KEYSET,
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+    )
+
+
+def _dispatch_grad_input(
+    grad_output,
+    output_size,
+    input_size,
+    scales_d=None,
+    scales_h=None,
+    scales_w=None,
+    grad_input=None,
+):
+    if (
+        isinstance(grad_output, torch.Tensor) and grad_output.dtype == torch.uint8
+    ) or _flaggems_enabled():
+        return _upsample_nearest_exact3d_backward_impl(
+            grad_output,
+            output_size,
+            input_size,
+            scales_d,
+            scales_h,
+            scales_w,
+            grad_input,
+        )
+    return _NATIVE_GRAD_INPUT.call_boxed(
+        _DEVICE_KEYSET,
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+        grad_input=grad_input,
+    )
+
+
+def _install_dispatch_wrapper():
+    global _DISPATCH_LIBRARY, _NATIVE_DEFAULT, _NATIVE_GRAD_INPUT, _DEVICE_KEYSET
+    if getattr(torch, _DISPATCH_FLAG, False):
+        return
+    if not hasattr(torch.library, "get_kernel"):
+        return
+    try:
+        _NATIVE_DEFAULT = torch.library.get_kernel(
+            torch.ops.aten._upsample_nearest_exact3d_backward.default,
+            device.dispatch_key,
+        )
+        _NATIVE_GRAD_INPUT = torch.library.get_kernel(
+            torch.ops.aten._upsample_nearest_exact3d_backward.grad_input,
+            device.dispatch_key,
+        )
+        _DEVICE_KEYSET = torch._C.DispatchKeySet(
+            getattr(torch._C.DispatchKey, device.dispatch_key)
+        )
+        library = torch.library.Library("aten", "IMPL")
+        # The ".default" suffix is not a legal overload name, so the default
+        # overload registers under the bare op name (matched by signature)
+        # while the grad_input overload uses its real overload name.  The
+        # grad_input wrapper needs an all-positional signature because the
+        # dispatcher shim passes the schema args positionally.
+        library.impl(
+            "_upsample_nearest_exact3d_backward",
+            _dispatch_default,
+            device.dispatch_key,
+        )
+        library.impl(
+            "_upsample_nearest_exact3d_backward.grad_input",
+            _dispatch_grad_input,
+            device.dispatch_key,
+        )
+    except RuntimeError as error:
+        logger.warning(
+            "_upsample_nearest_exact3d_backward uint8 dispatch skipped: %s", error
+        )
+        return
+    _DISPATCH_LIBRARY = library
+    setattr(torch, _DISPATCH_FLAG, True)
+
+
+_install_dispatch_wrapper()

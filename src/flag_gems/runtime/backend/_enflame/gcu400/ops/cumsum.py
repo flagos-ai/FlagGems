@@ -24,7 +24,6 @@ from flag_gems.utils import get_device_properties, libentry
 
 from ..utils.config_utils import MAX_GRID_DIM
 
-device = device.name
 logger = logging.getLogger(__name__)
 
 
@@ -230,6 +229,7 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     for i in range(dim):
         M *= shape[i]
     inp = inp.contiguous()
+    K = inp.numel() // M // N
 
     if dtype is None:
         dtype = inp.dtype
@@ -237,13 +237,6 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
             dtype = torch.int32
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
-
-    # Empty tensor: return early to avoid the zero-size division below
-    # (issue #4602), matching torch.cumsum semantics.
-    if inp.numel() == 0:
-        return out
-
-    K = inp.numel() // M // N
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
@@ -413,7 +406,50 @@ def block_update_kernel(
             cols += TILE
 
 
+@libentry()
+@triton.jit(do_not_specialize=["n_chunks"])
+def chunk_sums_scan_kernel(sums_ptr, cumsums_ptr, n_chunks, BLOCK: tl.constexpr):
+    # Pass two of the multi-chunk normed cumsum path: each program scans the
+    # per-chunk partial sums of one row into their prefix form with a single
+    # vectorized cumsum over BLOCK lanes (n_chunks <= BLOCK).
+    # A dedicated tiny kernel here avoids reusing block_cumsum_kernel with
+    # HAS_OUT_LAYOUT=True, whose specialization crashes the GCU compiler
+    # (mlir::IRMapping::lookup assertion) at triton_gcu compile time.
+    row = tl.program_id(0)
+    lane_off = tl.arange(0, BLOCK)
+    lane_mask = lane_off < n_chunks
+    offsets = row * n_chunks + lane_off
+    chunk_sums = tl.load(sums_ptr + offsets, mask=lane_mask, other=0.0)
+    prefix_sums = tl.cumsum(chunk_sums, 0)
+    tl.store(cumsums_ptr + offsets, prefix_sums, mask=lane_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["K", "n_rows", "rows_per_program"])
+def normed_cumsum_rows_kernel(
+    inp, out, K, n_rows, rows_per_program, BLOCK: tl.constexpr
+):
+    # Row-parallel normed cumsum: each program normalizes `rows_per_program`
+    # consecutive rows (each row is a full independent scan over BLOCK lanes).
+    # Rows are distributed across grid.x programs so short-row tensors get a
+    # single fully parallel pass; rows_per_program stays 1 whenever the row
+    # count fits the hardware grid.x limit.
+    row_base = tl.program_id(0) * rows_per_program
+    row_off = tl.arange(0, BLOCK)
+    for row_index in range(0, rows_per_program):
+        row = row_base + row_index
+        if row < n_rows:
+            x = tl.load(inp + row * K + row_off, mask=row_off < K, other=0)
+            if x.dtype.is_fp16() | x.dtype.is_bf16():
+                x = x.to(tl.float32)
+            row_sum = tl.sum(x, 0)
+            y = tl.cumsum(x, 0)
+            y = y / row_sum
+            tl.store(out + row * K + row_off, y, mask=row_off < K)
+
+
 GRID_Y_LIMIT = 255
+GRID_X_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
@@ -432,12 +468,19 @@ def normed_cumsum(inp, dim=-1):
     out = torch.empty_like(inp)
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = get_device_properties(device).multi_processor_count
-        TILE = 2048
+        num_sms = get_device_properties(device).multi_processor_count  # noqa: F841
+        # Tile size adapts to K: small rows keep a small tile so the single
+        # chunk kernel does not pay for a huge masked BLOCK, while very long
+        # rows (1D huge scans) use a large tile to cut the serial loop count.
+        TILE = max(2048, min(8192, triton.next_power_of_2(K)))
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
         n_rows = N // K
-        n_chunks = min(triton.cdiv(num_sms, n_rows), triton.cdiv(K, TILE))
+        # multi_processor_count on GCU400 reports 4, which would serialize a
+        # huge 1D scan into 4 programs. Split long rows into enough chunks to
+        # reach a target program count (1024) instead; rows-heavy tensors get
+        # n_chunks = 1 and go through the row-parallel fast path.
+        n_chunks = max(1, min(triton.cdiv(K, TILE), triton.cdiv(4096, n_rows)))
         n_tiles = triton.cdiv(triton.cdiv(K, TILE), n_chunks)
         k_stride = inp.stride(dim)
         r_stride = inp.size(dim) if k_stride == 1 else 1
@@ -449,6 +492,44 @@ def normed_cumsum(inp, dim=-1):
             n_batch = n_rows
 
         grid = (n_chunks, n_batch)
+        # Row-parallel fast path: when rows are short (K <= TILE) and there are
+        # many rows, assign one program per row so the whole tensor is scanned
+        # in a single fully parallel kernel. The generic block path only spans
+        # n_batch programs (<= GRID_Y_LIMIT) and serializes rows inside each
+        # program, which is far below the device's parallel capacity. Tiny
+        # tensors keep the generic path: measured faster for a single small row
+        # group than a per-row kernel launch.
+        if n_chunks == 1 and n_rows > GRID_Y_LIMIT and k_stride == 1:
+            row_kernel_block = triton.next_power_of_2(K)
+            # Cap grid.x at the hardware limit by letting each program handle
+            # several consecutive rows when the tensor has too many rows.
+            # num_warps is scaled with BLOCK so short rows don't waste lanes.
+            rows_per_program = triton.cdiv(n_rows, GRID_X_LIMIT)
+            # Very fine-grained programs (one short row each) pay scheduling
+            # overhead; the floor is tuned per BLOCK tier (measured optimum).
+            if row_kernel_block <= 512:
+                rows_per_program_floor = 16
+            elif row_kernel_block <= 1024:
+                rows_per_program_floor = 128
+            else:
+                rows_per_program_floor = 8
+            if rows_per_program < rows_per_program_floor:
+                rows_per_program = rows_per_program_floor
+            row_grid = triton.cdiv(n_rows, rows_per_program)
+            if row_kernel_block <= 1024:
+                row_num_warps = 1
+            else:
+                row_num_warps = 4
+            normed_cumsum_rows_kernel[(row_grid,)](
+                inp,
+                out,
+                K,
+                n_rows,
+                rows_per_program,
+                BLOCK=row_kernel_block,
+                num_warps=row_num_warps,
+            )
+            return out
         if n_chunks == 1:
             block_cumsum_kernel[grid](
                 inp,
@@ -471,7 +552,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=inp.device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,
@@ -491,23 +572,8 @@ def normed_cumsum(inp, dim=-1):
             TILE=TILE,
         )
         # Pass two, scan partial cumsums
-        block_cumsum_kernel[(1, n_batch)](
-            sums,
-            cumsums,
-            0,
-            batch,
-            1,
-            n_rows,
-            n_chunks,
-            n_chunks,
-            1,
-            n_chunks,
-            1,
-            OUTPUT_SUMS=False,
-            NORMALIZE=False,
-            HAS_OUT_LAYOUT=True,
-            TILE=TILE,
-        )
+        scan_block = triton.next_power_of_2(n_chunks)
+        chunk_sums_scan_kernel[(n_rows,)](sums, cumsums, n_chunks, BLOCK=scan_block)
         # print(sums)
         rscale = cumsums[..., -1]
         block_update_kernel[grid](

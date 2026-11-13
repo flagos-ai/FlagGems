@@ -1,0 +1,165 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import tl_extra_shim
+
+logger = logging.getLogger(__name__)
+
+# out = (clamp(rint(x / scale) + zero_point, qmin, qmax) - zero_point) * scale
+#
+# * scale / zero_point are single-element device tensors read inside the
+#   kernel, so there is no host synchronisation per call.
+# * The division mirrors the aten reference bit-for-bit: the reference computes
+#   ``inv_scale = 1.0f / scale`` (a correctly-rounded fp32 reciprocal) and then
+#   ``x * inv_scale``, so the kernel uses ``rcp_rn`` (hardware correctly-rounded
+#   reciprocal) followed by a multiply.  A plain ``x / scale`` (fast or IEEE)
+#   flips round-half-to-even at exact half-way quotients, which is why a few
+#   elements were off by one quantisation step.
+# * rint is round-to-nearest, ties-to-even, exactly like std::nearbyint in the
+#   aten reference; it maps to the hardware nearbyint instruction instead of a
+#   floating-point magic-constant trick.
+# * The kernel keeps a grid-stride loop, but is launched with exactly one tile
+#   per program (grid = cdiv(n, BLOCK), BLOCK up to 131072), because the
+#   per-program dispatch cost (11.2us + 0.46us * grid.x on this vendor)
+#   dominates for every measured shape.  There is no autotune: its per-call
+#   dispatch is not free and it never beat one tile per program.
+# * The hot loop walks whole tiles only, so it carries no bounds mask; a single
+#   partial tail tile is handled once by program 0.
+# * All arithmetic happens in fp32; the result is stored back in the input
+#   dtype.
+
+_BLOCK_MAX = 131072
+_BLOCK_MAX_HUGE = 262144
+_MAX_GRID_X = 65535
+
+
+def _pick_block(n):
+    """Empty-kernel cost is ~11.2us + 0.46us * grid.x on this vendor, so one
+    program covers the tensor up to 128K elements (262K above 256 programs)
+    instead of the previous 4096/8192/16384-element autotuned tiles."""
+    block = 1 << max(10, (n - 1).bit_length())
+    if block > _BLOCK_MAX:
+        block = _BLOCK_MAX
+    if (n + block - 1) // block > 256:
+        block = _BLOCK_MAX_HUGE
+    while (n + block - 1) // block > _MAX_GRID_X:
+        block *= 2
+    return block
+
+
+def _pick_warps(block, nblocks):
+    if block <= 16384:
+        return 2
+    if block <= 32768:
+        return 4
+    if nblocks <= 2:
+        return 8
+    if nblocks <= 4:
+        return 4
+    return 2
+
+
+@triton.jit
+def _fake_quantize_learnable_per_tensor_affine_kernel(
+    x_ptr,
+    out_ptr,
+    scale_ptr,
+    zp_ptr,
+    n_elements,
+    qmin_val,
+    qmax_val,
+    BLOCK: tl.constexpr,
+    PERSIST: tl.constexpr,
+):
+    pid = tl.program_id(0)
+
+    s = tl.load(scale_ptr).to(tl.float32)
+    inv_scale = tl_extra_shim.rcp_rn(s)
+    zpf = tl.load(zp_ptr).to(tl.float32)
+    # aten rounds the zero point to nearest-even, then clamps it.
+    zpf = tl_extra_shim.nearbyint(zpf)
+    zpf = tl.minimum(tl.maximum(zpf, qmin_val), qmax_val)
+
+    offs = tl.arange(0, BLOCK)
+    n_full = n_elements // BLOCK
+    # grid is min(ceil(n/BLOCK), PERSIST), so PERSIST is the exact program stride
+    for tile in range(pid, n_full, PERSIST):
+        offsets = tile * BLOCK + offs
+        x = tl.load(x_ptr + offsets).to(tl.float32)
+        q = tl_extra_shim.nearbyint(x * inv_scale)
+        q = q + zpf
+        q = tl.minimum(tl.maximum(q, qmin_val), qmax_val)
+        y = (q - zpf) * s
+        tl.store(out_ptr + offsets, y.to(out_ptr.dtype.element_ty))
+
+    if (pid == 0) & (n_full * BLOCK != n_elements):
+        offsets = n_full * BLOCK + offs
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        q = tl_extra_shim.nearbyint(x * inv_scale)
+        q = q + zpf
+        q = tl.minimum(tl.maximum(q, qmin_val), qmax_val)
+        y = (q - zpf) * s
+        tl.store(out_ptr + offsets, y.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+def _fake_quantize_learnable_per_tensor_affine(
+    self, scale, zero_point, quant_min, quant_max, grad_factor=1.0
+):
+    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE")
+
+    x = self
+    out = torch.empty_like(x)
+    n = x.numel()
+    if n == 0:
+        return out
+
+    if not isinstance(scale, torch.Tensor):
+        scale = torch.as_tensor([float(scale)], dtype=torch.float32, device=x.device)
+    if not isinstance(zero_point, torch.Tensor):
+        zero_point = torch.as_tensor(
+            [float(zero_point)], dtype=torch.float32, device=x.device
+        )
+    qmin = (
+        int(quant_min)
+        if not isinstance(quant_min, torch.Tensor)
+        else int(quant_min.item())
+    )
+    qmax = (
+        int(quant_max)
+        if not isinstance(quant_max, torch.Tensor)
+        else int(quant_max.item())
+    )
+
+    block = _pick_block(n)
+    nblocks = (n + block - 1) // block
+    _fake_quantize_learnable_per_tensor_affine_kernel[(nblocks,)](
+        x,
+        out,
+        scale,
+        zero_point,
+        n,
+        float(qmin),
+        float(qmax),
+        BLOCK=block,
+        PERSIST=nblocks,
+        num_warps=_pick_warps(block, nblocks),
+    )
+    return out

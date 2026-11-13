@@ -21,10 +21,55 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+MAX_GRID_X = 65535
+
+# Row-batch (2D [ROWS_PER_CTA, BLOCK] tile) budget, transplanted from the
+# proven skip_layer_norm / rmsnorm_hf row-batch kernels (same backend,
+# compiler_issues/vllm_fused_q_kv_rmsnorm_rowbatch_bcast_miscompile.md):
+# - tile element budget: keeps the fp32 live set (x tile + deviation tile +
+#   weight/bias vectors) inside the per-program DSM budget;
+# - rows cap: R >= 32 combined with a 32768-element tile is a triton_gcu
+#   silent-miscompile zone; tile <= 16384 with R <= 32 was verified correct
+#   across 225 (shape, dtype, R, num_warps) configurations.
+# num_warps must be 1: the 1-D tail body below degrades the whole 2-D hot
+# path by 1.3-1.9x at num_warps >= 2.
+_ROW_TILE_ELEM_MAX = 16384
+_ROWS_PER_CTA_CAP = 32
+_ROWS_PER_CTA_MIN = 4
+_TARGET_CTAS = 48
+# Rows-batch tiles below this many lanes pay too much per-CTA fixed cost
+# (measured (256,512): R=8/tile 4096 lanes 5.77us vs R=4/tile 2048 8.86us).
+_ROW_TILE_MIN_LANES = 4096
+_ROWS_NUM_WARPS = 1
+# Only row-batch when the row count fills the device (>= 48 CTAs at R=4);
+# smaller inputs keep the legacy one-row-per-CTA kernel, which is already
+# at-or-above torch parity for those sizes.
+_ROW_BATCH_MIN_ROWS = _TARGET_CTAS * _ROWS_PER_CTA_MIN
+
+
+def _rows_per_cta(m, n):
+    """Pick the row-batch factor R for the [R, BLOCK] 2D-tile launch.
+
+    Returns 1 (one row per CTA, the legacy kernel) when the row width
+    already fills the tile budget or the input is too small to fill the
+    device, and otherwise the largest power of two that keeps roughly
+    _TARGET_CTAS tiles in flight, bounded by the verified-safe caps and
+    floored so a tile still spans at least _ROW_TILE_MIN_LANES lanes.
+    """
+    block = triton.next_power_of_2(n)
+    tile_cap = _ROW_TILE_ELEM_MAX // max(block, 1)
+    if tile_cap < _ROWS_PER_CTA_MIN or m < _ROW_BATCH_MIN_ROWS:
+        return 1
+    rows = m // _TARGET_CTAS
+    rows = 1 << max(0, rows.bit_length() - 1) if rows >= 1 else 1
+    rows = max(rows, _ROW_TILE_MIN_LANES // max(block, 1))
+    rows = max(rows, _ROWS_PER_CTA_MIN)
+    return max(1, min(_ROWS_PER_CTA_CAP, tile_cap, rows))
 
 
 @triton.jit
@@ -82,6 +127,157 @@ def layer_norm_persistent_kernel(
     out = (x - m) * rstd * w + b
 
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
+
+
+@triton.jit
+def _layer_norm_row(
+    in_ptr,
+    out_ptr,
+    weight_ptr,
+    bias_ptr,
+    out_mean_ptr,
+    out_rstd_ptr,
+    row,
+    N,
+    eps,
+    BLOCK: tl.constexpr,
+    EXACT: tl.constexpr,  # N == BLOCK: no column masking needed
+):
+    """Normalize a single row (1-D form, correct at every BLOCK width)."""
+    in_ptr += row * N
+    out_ptr += row * N
+    cols = tl.arange(0, BLOCK)
+    if EXACT:
+        x = tl.load(in_ptr + cols).to(tl.float32)
+        mean = tl.sum(x, axis=0) / N
+        d = x - mean
+        var = tl.sum(d * d, axis=0) / N
+        rstd = tl.math.rsqrt(var + eps)
+        tl.store(out_mean_ptr + row, mean)
+        tl.store(out_rstd_ptr + row, rstd)
+        if weight_ptr is None:
+            w = 1
+        else:
+            w = tl.load(weight_ptr + cols)
+        if bias_ptr is None:
+            b = 0
+        else:
+            b = tl.load(bias_ptr + cols)
+        out = d * rstd * w + b
+        tl.store(out_ptr + cols, out)
+    else:
+        mask = cols < N
+        x = tl.load(in_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+        mean = tl.sum(x, axis=0) / N
+        d = tl.where(mask, x - mean, 0.0)
+        var = tl.sum(d * d, axis=0) / N
+        rstd = tl.math.rsqrt(var + eps)
+        tl.store(out_mean_ptr + row, mean)
+        tl.store(out_rstd_ptr + row, rstd)
+        if weight_ptr is None:
+            w = 1
+        else:
+            w = tl.load(weight_ptr + cols, mask=mask)
+        if bias_ptr is None:
+            b = 0
+        else:
+            b = tl.load(bias_ptr + cols, mask=mask)
+        out = (x - mean) * rstd * w + b
+        tl.store(out_ptr + cols, out, mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def layer_norm_rows_kernel(
+    in_ptr,
+    out_ptr,
+    weight_ptr,
+    bias_ptr,
+    out_mean_ptr,  # pointer to the mean
+    out_rstd_ptr,  # pointer to the 1/std
+    M,
+    N,
+    eps,
+    BLOCK: tl.constexpr,
+    ROWS_PER_CTA: tl.constexpr,
+    EXACT: tl.constexpr,  # N == BLOCK: no column masking needed
+):
+    # Row-batch kernel: each program normalizes ROWS_PER_CTA rows via a 2D
+    # [ROWS_PER_CTA, BLOCK] tile, amortizing the per-program fixed cost
+    # (load dispatch + reduction trees) that dominates the one-row-per-CTA
+    # form at large M.  A persistent tile loop over grid <= 48 programs
+    # (the L600 SPU count) removes CTA retire/re-launch gaps between waves
+    # (measured -6..-12% vs a flat grid of the same tiles) and keeps the
+    # launch grid 1-D, so the GCU 65535 grid.x limit cannot be reached.
+    # Partial tail tiles fall back to the 1-D row body, which is correct
+    # at every BLOCK width (2-D masked tail variants are a
+    # silent-miscompile zone on this backend).
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    num_tiles = tl.cdiv(M, ROWS_PER_CTA)
+    for tile in range(pid, num_tiles, num_programs):
+        row0 = tile * ROWS_PER_CTA
+        if row0 + ROWS_PER_CTA <= M:
+            rows = row0 + tl.arange(0, ROWS_PER_CTA)
+            cols = tl.arange(0, BLOCK)
+            x_ptrs = in_ptr + rows[:, None] * N + cols[None, :]
+            y_ptrs = out_ptr + rows[:, None] * N + cols[None, :]
+            if EXACT:
+                x = tl.load(x_ptrs).to(tl.float32)
+                mean = tl.sum(x, axis=1) / N
+                d = x - mean[:, None]
+                var = tl.sum(d * d, axis=1) / N
+                rstd = tl.math.rsqrt(var + eps)
+                tl.store(out_mean_ptr + rows, mean)
+                tl.store(out_rstd_ptr + rows, rstd)
+                if weight_ptr is None:
+                    w = 1
+                else:
+                    w = tl.load(weight_ptr + cols)
+                if bias_ptr is None:
+                    b = 0
+                else:
+                    b = tl.load(bias_ptr + cols)
+                out = d * rstd[:, None] * w + b
+                tl.store(y_ptrs, out)
+            else:
+                col_mask = cols < N
+                x = tl.load(x_ptrs, mask=col_mask[None, :], other=0.0).to(tl.float32)
+                mean = tl.sum(x, axis=1) / N
+                d = tl.where(col_mask[None, :], x - mean[:, None], 0.0)
+                var = tl.sum(d * d, axis=1) / N
+                rstd = tl.math.rsqrt(var + eps)
+                tl.store(out_mean_ptr + rows, mean)
+                tl.store(out_rstd_ptr + rows, rstd)
+                if weight_ptr is None:
+                    w = 1
+                else:
+                    w = tl.load(weight_ptr + cols, mask=col_mask)
+                if bias_ptr is None:
+                    b = 0
+                else:
+                    b = tl.load(bias_ptr + cols, mask=col_mask)
+                out = (x - mean[:, None]) * rstd[:, None] * w + b
+                tl.store(y_ptrs, out, mask=col_mask[None, :])
+        else:
+            # Tail tile (partial rows): normalize the leftover rows one
+            # at a time with the 1-D form.
+            for i in tl.static_range(ROWS_PER_CTA):
+                row = row0 + i
+                if row < M:
+                    _layer_norm_row(
+                        in_ptr,
+                        out_ptr,
+                        weight_ptr,
+                        bias_ptr,
+                        out_mean_ptr,
+                        out_rstd_ptr,
+                        row,
+                        N,
+                        eps,
+                        BLOCK,
+                        EXACT,
+                    )
 
 
 @libentry()
@@ -238,9 +434,13 @@ def layer_norm_loop_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("layer_norm_backward"),
+@libtuner(
+    configs=[triton.Config({"BLOCK_ROW_SIZE": 8, "BLOCK_COL_SIZE": 1024}, num_warps=4)],
     key=["M", "N"],
+    # FlagTree AABS shrinks BLOCK_COL_SIZE toward next_power_of_2(N); the
+    # shrunk fp32 [R, 256]/[R, 512] tiles with a W row-vector load are a
+    # triton_gcu silent-miscompile zone — keep the configured 2048 tile.
+    disable_aabs=True,
 )
 @triton.jit
 def layer_norm_backward_kernel(
@@ -349,9 +549,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS_ENFLAME LAYERNORM_FORWARD")
-
-    MAX_GRID_X = 65535
+    logger.debug("GEMS LAYERNORM_FORWARD")
 
     N = math.prod(normalized_shape)
     M = input.numel() // N
@@ -386,20 +584,40 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
             )
         elif N <= 4096:
             TILE_N = triton.next_power_of_2(N)
-            grid_x = min(M, MAX_GRID_X)
-            grid_y = triton.cdiv(M, MAX_GRID_X)
-            layer_norm_persistent_kernel[(grid_x, grid_y, 1)](
-                input,
-                y,
-                weight,
-                bias,
-                mean,
-                rstd,
-                M,
-                N,
-                eps,
-                TILE_N,
-            )
+            rows_per_cta = _rows_per_cta(M, N)
+            if rows_per_cta > 1:
+                num_tiles = triton.cdiv(M, rows_per_cta)
+                grid = (min(num_tiles, _TARGET_CTAS), 1, 1)
+                layer_norm_rows_kernel[grid](
+                    input,
+                    y,
+                    weight,
+                    bias,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    eps,
+                    BLOCK=TILE_N,
+                    ROWS_PER_CTA=rows_per_cta,
+                    EXACT=(N == TILE_N),
+                    num_warps=_ROWS_NUM_WARPS,
+                )
+            else:
+                grid_x = min(M, MAX_GRID_X)
+                grid_y = triton.cdiv(M, MAX_GRID_X)
+                layer_norm_persistent_kernel[(grid_x, grid_y, 1)](
+                    input,
+                    y,
+                    weight,
+                    bias,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    eps,
+                    TILE_N,
+                )
         else:
             grid_x = min(M, MAX_GRID_X)
             grid_y = triton.cdiv(M, MAX_GRID_X)
@@ -427,7 +645,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS_ENFLAME LAYERNORM_BACKWARD")
+    logger.debug("GEMS LAYERNORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

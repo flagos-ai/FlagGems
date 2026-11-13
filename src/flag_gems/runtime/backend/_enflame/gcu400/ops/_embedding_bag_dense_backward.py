@@ -1,0 +1,241 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+import flag_gems
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+
+# --- TUNING PARAMS START ---
+# 由优化迭代驱动脚本按轮次生成；只改变 launch 几何与频次统计方式，不改变语义。
+BLOCK_D_CAP = 512
+NUM_WARPS = 4
+USE_1D_GRID = 0
+USE_FREQ_KERNEL = 1
+FREQ_BLOCK = 128
+USE_PSW_PLACEHOLDER = 1
+# --- TUNING PARAMS END ---
+
+
+@libentry()
+@triton.jit
+def _embedding_bag_freq_kernel(
+    indices_ptr,
+    freq_ptr,
+    num_samples,
+    num_weights,
+    padding_idx,
+    BLOCK: tl.constexpr,
+):
+    # 每个 index 的全局出现频次；主 kernel 只需一次查表即可完成 scale_grad_by_freq。
+    sample_offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    index_values = tl.load(
+        indices_ptr + sample_offsets, sample_offsets < num_samples, other=-1
+    ).to(tl.int32)
+    valid = (
+        (sample_offsets < num_samples)
+        & (index_values >= 0)
+        & (index_values < num_weights)
+        & (index_values != padding_idx)
+    )
+    tl.atomic_add(freq_ptr + index_values, 1, mask=valid)
+
+
+@libentry()
+@triton.jit
+def _embedding_bag_dense_backward_kernel(
+    grad_ptr,
+    indices_ptr,
+    offset2bag_ptr,
+    bag_size_ptr,
+    grad_weight_ptr,
+    freq_ptr,
+    num_weights,
+    padding_idx,
+    mode: tl.constexpr,
+    has_per_sample_weights: tl.constexpr,
+    per_sample_weights_ptr,
+    scale_grad_by_freq: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    EMBED_DIM: tl.constexpr,
+    NUM_D_TILES: tl.constexpr,
+    USE_1D_GRID: tl.constexpr,
+    USE_FREQ_KERNEL: tl.constexpr,
+):
+    """按 (sample, dim tile) 累加梯度到稠密权重梯度表。
+
+    mode=0(sum) 直接累加上游梯度；mode=1(mean) 先除以 bag_size。
+    padding_idx / 越界索引通过 mask 跳过，频次缩放来自预计算 freq 表。
+    """
+    pid = tl.program_id(0)
+    if USE_1D_GRID:
+        pid_s = pid // NUM_D_TILES
+        pid_d = pid % NUM_D_TILES
+    else:
+        pid_s = pid
+        pid_d = tl.program_id(1)
+
+    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    mask_d = offs_d < EMBED_DIM
+
+    idx = tl.load(indices_ptr + pid_s).to(tl.int32)
+    bag_idx = tl.load(offset2bag_ptr + pid_s).to(tl.int32)
+    valid = (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
+
+    bag_size = tl.load(bag_size_ptr + bag_idx).to(tl.float32)
+    bag_size = tl.where(bag_size == 0.0, 1.0, bag_size)
+
+    go_ptrs = grad_ptr + bag_idx * EMBED_DIM + offs_d
+    go = tl.load(go_ptrs, mask=mask_d, other=0.0).to(tl.float32)
+
+    if mode == 0:
+        scale = 1.0
+    else:
+        scale = 1.0 / bag_size
+
+    if has_per_sample_weights:
+        pw = tl.load(per_sample_weights_ptr + pid_s).to(tl.float32)
+        scale = scale * pw
+
+    if scale_grad_by_freq:
+        if USE_FREQ_KERNEL:
+            # freq 表由独立 kernel 预计算，避免每个 sample 重新扫描全部 indices。
+            freq = tl.load(freq_ptr + idx, valid, other=1).to(tl.float32)
+            scale = scale / tl.maximum(freq, 1.0)
+        else:
+            n_samples = tl.num_programs(0)
+            count = 0
+            for i in range(n_samples):
+                loaded_idx = tl.load(indices_ptr + i).to(tl.int32)
+                count = count + (loaded_idx == idx)
+            if count > 1:
+                scale = scale / tl.cast(count, tl.float32)
+
+    go = go * scale
+    gw_ptrs = grad_weight_ptr + idx * EMBED_DIM + offs_d
+    tl.atomic_add(gw_ptrs, go, mask=mask_d & valid)
+
+
+def _embedding_bag_dense_backward(
+    grad: torch.Tensor,
+    indices: torch.Tensor,
+    offset2bag: torch.Tensor,
+    bag_size: torch.Tensor,
+    maximum_indices: torch.Tensor,
+    num_weights: int,
+    scale_grad_by_freq: bool,
+    mode: int,
+    per_sample_weights: torch.Tensor = None,
+    padding_idx: int = -1,
+) -> torch.Tensor:
+    """Compute gradient for embedding_bag dense backward (GCU400 tuned)."""
+    logger.debug("GEMS_ENFLAME _EMBEDDING_BAG_DENSE_BACKWARD")
+
+    assert indices.dtype in (
+        torch.int32,
+        torch.int64,
+    ), "Indices must be int32 or int64."
+    assert (
+        grad.device.type == flag_gems.device
+        and indices.device.type == flag_gems.device
+        and offset2bag.device.type == flag_gems.device
+        and bag_size.device.type == flag_gems.device
+        and grad.device == indices.device
+    ), "All inputs must be on the same device."
+
+    device = grad.device
+    num_bags = grad.shape[0]
+    embedding_dim = grad.shape[1]
+    num_samples = indices.numel()
+
+    assert num_bags == bag_size.numel(), "num_bags must match bag_size length"
+
+    # GCU 的 aten::_embedding_bag 在 SUM 模式下可能返回空的 offset2bag。
+    # ATen 语义下只有具备 sample→bag 映射的样本才参与累加；此处把有效样本数
+    # 收敛为映射表长度，避免 kernel 对空指针越界解引用（会触发异步 abort）。
+    mapped_samples = min(num_samples, offset2bag.numel())
+
+    grad_weight = torch.zeros(
+        (num_weights, embedding_dim), device=device, dtype=torch.float32
+    ).contiguous()
+
+    if mapped_samples == 0:
+        # 无映射即无可累加梯度，直接返回零梯度表（trivial case 短路）。
+        if grad.dtype != torch.float32:
+            return grad_weight.to(grad.dtype)
+        return grad_weight
+
+    # 窄 embedding_dim 使用更窄的 BLOCK_D：避免 128 lane 中大部分 mask 掉。
+    block_d = min(BLOCK_D_CAP, triton.next_power_of_2(max(embedding_dim, 1)))
+    num_d_tiles = triton.cdiv(embedding_dim, block_d)
+    if USE_1D_GRID:
+        grid = (mapped_samples * num_d_tiles,)
+    else:
+        grid = (mapped_samples, num_d_tiles)
+
+    # scale_grad_by_freq=True 时预计算频次；否则复用输出张量作占位指针。
+    freq_table = grad_weight
+    if USE_FREQ_KERNEL and scale_grad_by_freq:
+        freq_table = torch.zeros(
+            (num_weights,), device=device, dtype=torch.int32
+        ).contiguous()
+        _embedding_bag_freq_kernel[(triton.cdiv(mapped_samples, FREQ_BLOCK),)](
+            indices,
+            freq_table,
+            mapped_samples,
+            num_weights,
+            padding_idx,
+            BLOCK=FREQ_BLOCK,
+        )
+
+    if per_sample_weights is not None:
+        per_sample_weights_input = per_sample_weights.contiguous()
+    elif USE_PSW_PLACEHOLDER:
+        # HAS_PSW=False 时 kernel 不解引用该指针，复用输出避免额外分配。
+        per_sample_weights_input = grad_weight
+    else:
+        per_sample_weights_input = torch.ones(
+            mapped_samples, device=device, dtype=torch.float32
+        )
+
+    _embedding_bag_dense_backward_kernel[grid](
+        grad,
+        indices,
+        offset2bag,
+        bag_size,
+        grad_weight,
+        freq_table,
+        num_weights,
+        padding_idx,
+        mode,
+        per_sample_weights is not None,
+        per_sample_weights_input,
+        scale_grad_by_freq,
+        BLOCK_D=block_d,
+        EMBED_DIM=embedding_dim,
+        NUM_D_TILES=num_d_tiles,
+        USE_1D_GRID=USE_1D_GRID,
+        USE_FREQ_KERNEL=USE_FREQ_KERNEL,
+        num_warps=NUM_WARPS,
+    )
+
+    if grad.dtype != torch.float32:
+        return grad_weight.to(grad.dtype)
+    return grad_weight

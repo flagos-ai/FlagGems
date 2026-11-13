@@ -1,0 +1,218 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Wrap an integer tensor as a per-channel affine quantized tensor, enflame GCU adaptation.
+
+``aten::_make_per_channel_quantized_tensor(Tensor self, Tensor scale, Tensor
+zero_point, int axis) -> Tensor`` derives the quantized dtype from the input
+dtype, stores ``scale`` / ``zero_point`` / ``axis`` verbatim and copies the
+input values into the ``int_repr``. Measured on the target build:
+``int8 -> qint8``, ``uint8 -> quint8``, ``int32 -> qint32``; passing float
+zero points keeps them verbatim and selects ``per_channel_affine_float_qparams``.
+
+Two GCU facts reshape the generic implementation:
+
+1. **torch_gcu ships no QuantizedPrivateUse1 kernels.** The aten entry point
+   with gcu arguments is bridged to the host by ``quantize_per_channel.py``
+   (``_make_per_channel_quantized_tensor_host`` at the PrivateUse1 key),
+   which moves the payload and the qparams to the host and serves the wrap
+   from the native QuantizedCPU kernels. The integer branch mirrors that
+   contract: the values already are the ``int_repr`` — nothing is computed on
+   the device — so the wrap lands on the host exactly like the aten entry
+   point the accuracy tests use as their reference. The transfers are plain
+   aten copies (value-level, never bit-level lane copies).
+
+2. **The float branch is a FlagGems extension and stays device-backed.** The
+   native operator rejects float inputs, so the extension's accuracy tests
+   compare ``int_repr`` and the qparams against on-device tensors. The
+   payload is quantized on the GCU by the Triton kernel below and the
+   wrapper keeps the generic placement (the quantizer's dtype casts run fine
+   as gcu copy kernels, and the quantized accessors the tests call are
+   host-side metadata operations that work against the wrapper). The
+   kernel's operands are narrowed to the fp32 / int32 safe domains on the
+   host before the launch: a raw Triton int64 load misreads when the int64
+   runtime is off and gcu400 has no fp64 loads, while scales and the
+   range-bounded zero points are exactly representable in fp32 / int32.
+
+An empty integer input keeps the device-backed factory wrapper: there is no
+payload to move, and the qparams stay on their original device, which is
+what the empty-shape accuracy test asserts.
+"""
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+import triton.language.extra.libdevice as libdevice
+
+logger = logging.getLogger(__name__)
+
+# Launch config for the on-the-fly quantization kernel: 1024 elements per
+# program keeps the per-element channel-index arithmetic cheap.
+_BLOCK_F = 4096
+
+_QDTYPE = {
+    torch.int8: torch.qint8,
+    torch.uint8: torch.quint8,
+    torch.int32: torch.qint32,
+    torch.float32: torch.qint8,
+    torch.float16: torch.quint8,
+}
+
+
+@triton.jit
+def _pcq_quant_kernel(
+    x_ptr,
+    s_ptr,
+    zp_ptr,
+    out_ptr,
+    n_elements,
+    CS,
+    C,
+    QMIN,
+    QMAX,
+    IS_FP16: tl.constexpr,
+    OUT_I8: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Per-channel affine quantization of a float tensor (AO-style fallback):
+    q = clamp(nearbyint(x * (1/scale[c])) + zero_point[c], qmin, qmax)."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+    x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+    if IS_FP16:
+        x = x.to(tl.float32)
+    c = (offs // CS) % C
+    s = tl.load(s_ptr + c, mask=mask, other=1.0).to(tl.float32)
+    zp = tl.load(zp_ptr + c, mask=mask, other=0).to(tl.int32)
+    inv = 1.0 / s
+    r = libdevice.nearbyint(x * inv)
+    qi = r.to(tl.int32) + zp
+    qi = tl.minimum(tl.maximum(qi, QMIN), QMAX)
+    if OUT_I8:
+        tl.store(out_ptr + offs, qi.to(tl.int8), mask=mask)
+    else:
+        tl.store(out_ptr + offs, qi.to(tl.uint8), mask=mask)
+
+
+def _make_per_channel_quantized_tensor(
+    self: torch.Tensor,
+    scale: torch.Tensor,
+    zero_point: torch.Tensor,
+    axis: int,
+) -> torch.Tensor:
+    """Wrap integer values into a per-channel affine quantized tensor.
+
+    Args:
+        self (torch.Tensor): Integer tensor with dtype uint8, int8 or int32.
+        scale (torch.Tensor): Per-channel quantization scales.
+        zero_point (torch.Tensor): Per-channel zero points, stored verbatim.
+        axis (int): Channel axis, stored verbatim (negative values included).
+
+    Returns:
+        torch.Tensor: Quantized tensor whose ``int_repr()`` equals ``self``.
+    """
+    logger.debug("GEMS_ENFLAME MAKE_PER_CHANNEL_QUANTIZED_TENSOR")
+    dt = self.dtype
+    qdtype = _QDTYPE.get(dt)
+    if qdtype is None:
+        raise TypeError(
+            "Only int8/uint8/int32/float32/float16 inputs are supported "
+            f"for per-channel quantization, got {dt}"
+        )
+    n = self.numel()
+
+    if dt == torch.float32 or dt == torch.float16:
+        # On-the-fly quantization, a FlagGems extension over the native
+        # operator (which rejects float inputs): the payload is computed on
+        # the GCU and the wrapper keeps the generic device-backed placement.
+        # ``_make_per_channel_quantized_tensor`` stores the axis verbatim,
+        # including negative values, so pass it raw.
+        q = torch._empty_per_channel_affine_quantized(
+            self.shape,
+            scales=scale,
+            zero_points=zero_point,
+            axis=axis,
+            dtype=qdtype,
+            device=self.device,
+        )
+        if n == 0:
+            return q
+        # Zero-copy integer view over the quantized tensor's raw storage, so
+        # the device kernel writes the int representation ``int_repr`` exposes.
+        raw_dtype = torch.int8 if dt == torch.float32 else torch.uint8
+        raw = torch.empty(0, dtype=raw_dtype, device=self.device).set_(
+            q.untyped_storage(), 0, (n,)
+        )
+        if not self.is_contiguous():
+            self = self.contiguous()
+        # Kernel operands stay in the fp32 / int32 safe domains on the device:
+        # a raw Triton int64 load misreads when the int64 runtime is off, and
+        # gcu400 has no fp64 loads at all, while the values involved —
+        # per-channel scales and zero points bounded by the quantized dtype's
+        # range — are exactly representable in fp32 / int32.
+        scales_k = scale.to(torch.float32).contiguous()
+        if zero_point.dtype.is_floating_point:
+            zero_points_k = zero_point.to(torch.float32).contiguous()
+        else:
+            zero_points_k = zero_point.to(torch.int32).contiguous()
+        ndim = self.dim()
+        ax = axis % ndim
+        channels = self.shape[ax]
+        channel_stride = 1
+        for d in range(ax + 1, ndim):
+            channel_stride *= self.shape[d]
+        grid = (triton.cdiv(n, _BLOCK_F),)
+        _pcq_quant_kernel[grid](
+            self,
+            scales_k,
+            zero_points_k,
+            raw,
+            n,
+            channel_stride,
+            channels,
+            -128 if dt == torch.float32 else 0,
+            127 if dt == torch.float32 else 255,
+            IS_FP16=(dt == torch.float16),
+            OUT_I8=(dt == torch.float32),
+            BLOCK=_BLOCK_F,
+        )
+        return q
+
+    # Integer payload: the values are the int_repr verbatim, so no device
+    # compute is needed. Mirror the aten entry point's gcu contract (the
+    # quantize_per_channel bridge routes gcu arguments to a host-side wrap):
+    # move the payload and the qparams to the host and let the native
+    # QuantizedCPU kernel build the wrapper, exactly like the reference path.
+    if n == 0:
+        # Nothing to transfer; the factory keeps the qparams on their
+        # original device, which the empty-shape accuracy test asserts.
+        return torch._empty_per_channel_affine_quantized(
+            self.shape,
+            scales=scale,
+            zero_points=zero_point,
+            axis=axis,
+            dtype=qdtype,
+            device=self.device,
+        )
+    self_host = self.cpu() if isinstance(self, torch.Tensor) else self
+    scale_host = scale.cpu() if isinstance(scale, torch.Tensor) else scale
+    zero_point_host = (
+        zero_point.cpu() if isinstance(zero_point, torch.Tensor) else zero_point
+    )
+    return torch._make_per_channel_quantized_tensor(
+        self_host, scale_host, zero_point_host, axis
+    )

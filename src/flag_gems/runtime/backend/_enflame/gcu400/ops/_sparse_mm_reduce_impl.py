@@ -1,0 +1,303 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import os
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
+
+
+def _gcu_int64_indices():
+    # torch_gcu reads an int64 tensor with a true 8-byte element stride only
+    # when TORCH_GCU_ENABLE_INT64_AND_UINT64 selects the int64 layout; with the
+    # env off it applies the Long->Int replacement and the same tensor's data
+    # is laid out at a 4-byte stride (tensor metadata is identical in both
+    # regimes, so the env is the only discriminator).  The crow/col index
+    # tensors produced by aten sparse kernels follow that regime, so the
+    # kernel must load them at the matching width or it reads interleaved
+    # halves (measured 2026-11-12: int64 view of an env-off crow gives
+    # [crow[0], crow[2], ...] while the int32 view is exact).  Accepted values
+    # mirror torch_gcu's parse (measured 2026-11-12, kthvalue precedent):
+    # "1", "true", and nonzero numerics enable int64; unset, "0", "false",
+    # "TRUE"/"True"/"on"/"yes" keep the replacement.  Checked per launch
+    # because torch_gcu's own AllowINT64AndUINT64Ctx flips the env inside a
+    # process.
+    val = os.environ.get("TORCH_GCU_ENABLE_INT64_AND_UINT64")
+    if val is None:
+        return False
+    if val == "true":
+        return True
+    try:
+        return int(val) != 0
+    except ValueError:
+        return False
+
+
+_SPARSE_MM_REDUCE_IMPL_DTYPES = {
+    torch.float16,
+    torch.bfloat16,
+    torch.float32,
+    torch.float64,
+}
+
+# Reduction selectors accepted by ``aten::_sparse_mm_reduce_impl`` (which is
+# also the backend of ``aten::_sparse_mm.reduce``).  torch maps the
+# ``max``/``min`` spellings onto amax/amin in the same kernel; we normalise
+# them to a single code so the Triton kernel only needs one constexpr switch.
+_REDUCE_CODES = {
+    "sum": 0,
+    "mean": 1,
+    "amax": 2,
+    "amin": 3,
+    "max": 2,
+    "min": 3,
+}
+
+_REDUCE_SUM = tl.constexpr(0)
+_REDUCE_MEAN = tl.constexpr(1)
+_REDUCE_AMAX = tl.constexpr(2)
+_REDUCE_AMIN = tl.constexpr(3)
+
+
+@libentry()
+@triton.jit
+def _sparse_mm_reduce_impl_kernel(
+    crow_ptr,
+    col_ptr,
+    val_ptr,
+    mat2_ptr,
+    out_ptr,
+    M,
+    N,
+    stride_mat2_k,
+    stride_mat2_n,
+    stride_out_m,
+    stride_out_n,
+    IS_FP64: tl.constexpr,
+    REDUCE: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    INT64_IDX: tl.constexpr,
+):
+    """One program per (row, column block) of the dense output.
+
+    Walks the CSR row ``[crow[row], crow[row + 1])`` and folds the per-nnz
+    products ``val[e] * mat2[col[e], :]`` with the requested reduction.  Rows
+    with no stored entries yield zeros for every reduction and ``mean`` divides
+    by the row's *stored* nnz, matching the CPU reference kernel.
+
+    The crow/col index tensors are int64, but torch_gcu only stores them with
+    a true 8-byte element stride when the int64 layout is enabled; with the
+    Long->Int replacement active the data sits at a 4-byte stride, so the
+    loads go through an int32 view of the same buffer (see
+    ``_gcu_int64_indices``).  Either way this stays a single launch.
+    """
+    row = ext.program_id(0)
+    rn = ext.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    rmask = rn < N
+    row64 = row.to(tl.int64)
+    col_off = (rn * stride_mat2_n).to(tl.int64)
+
+    if INT64_IDX:
+        crow_idx = crow_ptr
+        col_idx = col_ptr
+    else:
+        crow_idx = crow_ptr.to(tl.pointer_type(tl.int32))
+        col_idx = col_ptr.to(tl.pointer_type(tl.int32))
+
+    acc_dtype = tl.float64 if IS_FP64 else tl.float32
+    acc = tl.zeros((BLOCK_N,), dtype=acc_dtype)
+
+    start = tl.load(crow_idx + row64).to(tl.int64)
+    end = tl.load(crow_idx + row64 + 1).to(tl.int64)
+
+    if REDUCE == _REDUCE_AMAX or REDUCE == _REDUCE_AMIN:
+        # Fold with tl.where so the first stored product seeds acc without a
+        # dynamic branch; max/min over an empty row collapses to zero below.
+        for e in range(start, end):
+            c = tl.load(col_idx + e).to(tl.int64)
+            v = tl.load(val_ptr + e).to(acc_dtype)
+            b = tl.load(
+                mat2_ptr + c * stride_mat2_k + col_off, mask=rmask, other=0.0
+            ).to(acc_dtype)
+            p = b * v
+            if REDUCE == _REDUCE_AMAX:
+                acc = tl.where(e == start, p, tl.maximum(acc, p))
+            else:
+                acc = tl.where(e == start, p, tl.minimum(acc, p))
+        acc = tl.where(start < end, acc, 0.0)
+    else:
+        for e in range(start, end):
+            c = tl.load(col_idx + e).to(tl.int64)
+            v = tl.load(val_ptr + e).to(acc_dtype)
+            b = tl.load(
+                mat2_ptr + c * stride_mat2_k + col_off, mask=rmask, other=0.0
+            ).to(acc_dtype)
+            acc += b * v
+        if REDUCE == _REDUCE_MEAN:
+            nnz = (end - start).to(acc_dtype)
+            acc = tl.where(nnz > 0, acc / nnz, 0.0)
+
+    cos = (row64 * stride_out_m + (rn * stride_out_n).to(tl.int64)).to(tl.int64)
+    tl.store(out_ptr + cos, acc.to(out_ptr.dtype.element_ty), mask=rmask)
+
+
+def _to_csr(sparse):
+    if sparse.layout == torch.sparse_csr:
+        return sparse
+    if sparse.layout in (
+        torch.sparse_coo,
+        torch.sparse_csc,
+        torch.sparse_bsr,
+        torch.sparse_bsc,
+    ):
+        # torch_gcu has no device kernel for the csc/bsr/bsc -> csr
+        # conversions (aten::_to_sparse_csr raises NotImplementedError from
+        # the SparseCsrgcu dispatch key), and the coo -> csr conversion
+        # silently runs on the host and leaves values *and* indices on the
+        # CPU (a GCU dense -> to_sparse() tensor already reports
+        # device=cpu with every part on the host).  Route any non-CSR input
+        # through the CPU conversion -- a pure layout transform with no
+        # arithmetic -- and let the launcher move the CSR parts back onto
+        # the compute device.
+        host = sparse if sparse.device.type == "cpu" else sparse.cpu()
+        return host.to_sparse_csr()
+    raise RuntimeError(
+        f"_sparse_mm_reduce_impl: Expected self to have a sparse layout, but "
+        f"got {sparse.layout}"
+    )
+
+
+def _sparse_mm_reduce_impl(self, other, reduce="sum"):
+    """Backend of ``aten::_sparse_mm.reduce``: SpMM plus a per-row reduction.
+
+    Returns ``(output, arg_out)``.  ``output[r, :]`` folds the products
+    ``self.values()[e] * other[col[e], :]`` for the CSR entries ``e`` of row
+    ``r``; ``mean`` divides by the row's stored nnz and rows with no stored
+    entries yield zeros for every reduction.
+
+    ``arg_out`` mirrors aten's contract: the CPU reference backend only
+    materialises per-nnz element indices under grad mode for ``amax``/``amin``
+    and otherwise returns an empty int64 tensor, so this implementation always
+    returns the empty-tensor form.  The index values would additionally be
+    backend specific (tie-breaking over equal products), which is why they are
+    not reproduced.
+    """
+    logger.debug("GEMS _SPARSE_MM_REDUCE_IMPL")
+
+    if self.layout == torch.strided:
+        raise NotImplementedError(
+            f"Could not run '_sparse_mm_reduce_impl' with arguments from the "
+            f"'{self.layout}' backend. This could be because the operator "
+            f"doesn't exist for this backend, or was omitted during the "
+            f"selective/custom build process"
+        )
+    if other.layout != torch.strided:
+        raise RuntimeError(
+            f"_sparse_mm_reduce_impl: Expected other to have strided layout, "
+            f"but got {other.layout}"
+        )
+    if self.dim() != 2:
+        raise RuntimeError(
+            f"sparse_mm_reduce: expected self to be a 2-D tensor, got "
+            f"{self.dim()}-D tensor."
+        )
+    if self.dense_dim() != 0:
+        raise RuntimeError("sparse_mm_reduce: expected non-hybrid self tensor.")
+    if other.dim() != 2 or other.shape[0] != self.shape[1]:
+        raise RuntimeError(
+            f"Expected a tensor of dimension 2 and tensor.size[0] == "
+            f"{self.shape[1]} but got: dimension {other.dim()} and "
+            f"tensor.size[0] = {other.shape[0]}"
+        )
+
+    if reduce not in _REDUCE_CODES:
+        raise RuntimeError(
+            f"reduce argument must be either sum, prod, mean, amax or amin, "
+            f"got {reduce}"
+        )
+    if reduce == "prod":
+        raise RuntimeError(
+            "sparse_mm_reduce: reduce type of prod has not been enabled."
+        )
+
+    csr = _to_csr(self)
+    if csr.layout != torch.sparse_csr:
+        raise RuntimeError(
+            f"sparse_mm_reduce: expect self to be SparseCsr, got {csr.layout}"
+        )
+
+    if self.dtype not in _SPARSE_MM_REDUCE_IMPL_DTYPES:
+        raise RuntimeError(f'"spmm_reduce_kernel" not implemented for {self.dtype!r}')
+    if self.dtype != other.dtype:
+        raise RuntimeError(
+            f"Expected tensor for argument #1 'other' to have scalar type "
+            f"{self.dtype} but got {other.dtype}"
+        )
+
+    M, K = csr.shape
+    N = other.shape[1]
+
+    out = torch.empty((M, N), dtype=other.dtype, device=other.device)
+    arg_out = torch.empty((0,), dtype=torch.int64, device=other.device)
+    if M == 0 or N == 0:
+        return out, arg_out
+
+    crow = csr.crow_indices()
+    col = csr.col_indices()
+    val = csr.values()
+
+    # torch_gcu's non-CSR -> CSR conversions leave the parts on the host (see
+    # _to_csr); move them onto the compute device before the launch.  Plain
+    # device copies only: the copies follow torch_gcu's int64 layout regime,
+    # so the kernel's regime-matched index loads (INT64_IDX) stay correct.
+    if crow.device != other.device:
+        crow = crow.to(other.device)
+    if col.device != other.device:
+        col = col.to(other.device)
+    if val.device != other.device:
+        val = val.to(other.device)
+
+    block_n = min(triton.next_power_of_2(N), 256)
+    grid = (M, triton.cdiv(N, block_n))
+    # Match the element stride torch_gcu uses for the int64 crow/col index
+    # tensors (see _gcu_int64_indices); re-checked per launch.
+    int64_idx = _gcu_int64_indices()
+    with torch_device_fn.device(other.device):
+        _sparse_mm_reduce_impl_kernel[grid](
+            crow,
+            col,
+            val,
+            other,
+            out,
+            M,
+            N,
+            other.stride(0),
+            other.stride(1),
+            out.stride(0),
+            out.stride(1),
+            IS_FP64=other.dtype == torch.float64,
+            REDUCE=_REDUCE_CODES[reduce],
+            BLOCK_N=block_n,
+            INT64_IDX=int64_idx,
+            num_warps=4,
+        )
+    return out, arg_out

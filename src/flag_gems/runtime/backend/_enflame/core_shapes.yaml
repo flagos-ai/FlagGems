@@ -75,6 +75,34 @@ grouped_mm:
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"
 
+_ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+_ctc_loss_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+_ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+_ctc_loss_backward_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
 ctc_loss:
   shapes:
     - [64, 4, 32, 16]
@@ -110,6 +138,92 @@ repeat:
     - [256, 128, 64]
     - [512, 32, 32]
     - [64, 64, 64, 64]
+
+# median(no-dim) inherits Benchmark default shapes ([1073741824], ...); that
+# width exceeds enflame Triton selection limits (f16 key-select <= 16384).
+median:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_out:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_dim:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
+median_dim_values:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
+# tile / repeat_interleave amplify volume; avoid falling back to UnaryPointwise
+# giant 1-D shapes (e.g. 536870912) that overflow GCU grid launch ints.
+tile:
+  shapes:
+    - [16, 256, 256]
+    - [64, 64, 64]
+    - [256, 128, 64]
+    - [512, 32, 32]
+    - [64, 64, 64, 64]
+
+repeat_interleave_self_int:
+  shapes:
+    - [16, 256, 256]
+    - [64, 64, 64]
+    - [256, 128, 64]
+    - [512, 32, 32]
+    - [64, 64, 64, 64]
+
+# cdist_backward input_fn unpacks (batch, n1, dim); avoid 1-D UnaryPointwise fallback.
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+    - [16, 128, 256]
+  shape_desc: "batch, n1, dim"
+
+# conv_transpose2d input_fn unpacks 10-tuple hyperparams.
+conv_transpose2d:
+  shapes:
+    - [1, 64, 32, 32, 32, 3, 3, 1, 1, 1]
+    - [4, 32, 32, 32, 32, 3, 3, 2, 1, 1]
+    - [8, 16, 64, 64, 16, 5, 5, 2, 2, 1]
+    - [16, 32, 16, 16, 64, 3, 3, 2, 1, 1]
+  shape_desc: "N, Cin, H, W, Cout, Kh, Kw, stride, pad, groups"
 
 MvAndOuterBenchmark:
   shapes:
@@ -432,3 +546,42 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+# foreach 列表算子每次调用构造 16 个 tensor，若回落到含 1024**3 元素的
+# DEFAULT_SHAPES，float32 会在 144 GiB 设备上 OOM。这里显式给出与公共
+# benchmark/core_shapes.yaml 一致的中等规模 shape。
+ForeachOpsBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+# GCU400 专属：matrix_norm 的参考实现要求输入至少 2 维。
+# 公共 core_shapes.yaml 有该条目，但 enflame 后端的 shape 文件缺失，
+# 导致 set_shapes 回退到 1 维 DEFAULT_SHAPES 并在参考侧抛
+# "A must have at least 2 dimensions"。此处补齐 2D/3D/4D 合法 shape。
+linalg_matrix_norm_out:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
+
+linalg_matrix_norm:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"

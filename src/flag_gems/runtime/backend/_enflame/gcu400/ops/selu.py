@@ -20,32 +20,67 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 24
 
-@triton.jit
-def selu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask)
-    x_f32 = x.to(tl.float32)
+# GCU400 override of the generic mono-grid kernel.  The generic path launches
+# one program per BLOCK (16384 programs / 341 waves on the 16.7M-element core
+# shape with BLOCK=1024, and 32768 programs / 683 waves on the 512M shape with
+# BLOCK=16384), and the per-wave setup cost caps the stream at 0.1-1.0 TB/s vs
+# the ~3.0 TB/s memory floor.  The flat grid-stride kernel below keeps at most
+# 2 * NUM_SIPS programs resident so all 48 SIPS stay saturated.
+#
+# The math body is a constant-folded short-chain form of the generic one:
+# scale * where(x > 0, x, alpha * (exp(x) - 1))
+#   ==     where(x > 0, scale * x, (scale * alpha) * exp(x) - (scale * alpha))
+# On GCU400 the ops chained after tl.exp dominate 16-bit large-shape latency
+# (IR: exp -> fsub -> fmul -> select -> fmul); folding scale*alpha into one
+# constant and moving the positive arm's scale-mul next to the load cuts the
+# post-exp chain to imas -> select, measuring -11% on the 512M fp16 core shape
+# (945 -> 843us, 2.55 TB/s) and -14% on 16.7M fp16 (39.5 -> 34.0us) vs the
+# unfolded body, with edge semantics (inf/NaN/-0) unchanged and accuracy equal
+# to the unfolded body (same fp16 quantization residual vs the CPU reference).
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
+def selu_kernel(x_ptr, y_ptr, N_total, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
 
-    # SELU constants from PyTorch
-    alpha = 1.6732632423543772848170429916717
-    scale = 1.0507009873554804934193349852946
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
 
-    zero = 0.0
-    x_neg = tl.minimum(x_f32, zero)  # clamp to non-positive to avoid exp overflow
-    neg_part = alpha * (tl.exp(x_neg) - 1.0)
-    out_f32 = tl.where(x_f32 > 0.0, x_f32, neg_part)
-    out_f32 = scale * out_f32
+        x = tl.load(x_ptr + off, mask=mask)
 
-    y = out_f32.to(x.dtype)
-    tl.store(y_ptr + offsets, y, mask=mask)
+        x_f32 = x.to(tl.float32)
+        scale = 1.0507009873554805
+        c1 = 1.7580993408473766  # scale * alpha, folded on host
+        y_f32 = tl.where(x_f32 > 0, scale * x_f32, c1 * tl.exp(x_f32) - c1)
+
+        tl.store(y_ptr + off, y_f32.to(x.dtype), mask=mask)
+
+
+def _choose_block(N_total, itemsize):
+    # do_bench(median) sweep on GCU400 (kernel mode; ladder follows
+    # special_expit.py, the validated out-of-place reference): tiny shapes
+    # want a 1024-wide tile spread over cdiv(N, 1024) programs (3.3us @
+    # N=4096, same as the mono-grid heuristic), mid shapes peak at 65536,
+    # and the 512M bucket widens to 131072 only for 2-byte elements.
+    if N_total <= 8192:
+        return min(triton.next_power_of_2(N_total), 1024)
+    if N_total <= 65536:
+        return 8192
+    if N_total <= 524288:
+        return 32768
+    if N_total > (1 << 28) and itemsize <= 2:
+        return 131072
+    return 65536
 
 
 def selu(*args, **kwargs):
@@ -70,12 +105,19 @@ def selu(*args, **kwargs):
     y = torch.empty_like(x_contig)
 
     n_elements = y.numel()
+    if n_elements == 0:
+        return y
 
-    BLOCK_SIZE = 1024
-    if n_elements // BLOCK_SIZE > 65535:
-        BLOCK_SIZE = 16384
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = _choose_block(n_elements, x_contig.element_size())
+    grid_size = min(triton.cdiv(n_elements, BLOCK_SIZE), NUM_SIPS * 2)
+    num_warps = 4 if BLOCK_SIZE <= 1024 else 2
 
     with torch_device_fn.device(x_contig.device):
-        selu_kernel[grid](x_contig, y, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        selu_kernel[(grid_size,)](
+            x_contig,
+            y,
+            n_elements,
+            BLOCK=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
     return y

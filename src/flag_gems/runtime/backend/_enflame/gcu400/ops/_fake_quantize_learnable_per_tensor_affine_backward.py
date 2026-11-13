@@ -1,0 +1,237 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import tl_extra_shim
+
+logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _fq_tiny_kernel(
+    grad_ptr,
+    x_ptr,
+    scale_ptr,
+    zp_ptr,
+    gs_ptr,
+    out_s_ptr,
+    out_z_ptr,
+    n,
+    num_tiles,
+    qmin,
+    qmax,
+    gf,
+    BLOCK: tl.constexpr,
+):
+    s = tl.load(scale_ptr).to(tl.float32)
+    inv = tl_extra_shim.rcp_rn(s)
+    z = tl.load(zp_ptr).to(tl.float32)
+    qmin_i = qmin.to(tl.int64)
+    qmax_i = qmax.to(tl.int64)
+    qminf = qmin.to(tl.float32)
+    qmaxf = qmax.to(tl.float32)
+    # aten backward zero point: (int64) clamp(z + 0.5f, qmin, qmax). The clamp is
+    # in float, then the cast truncates toward zero (matches static_cast<int64_t>).
+    zr = tl.minimum(tl.maximum(z + 0.5, qminf), qmaxf).to(tl.int64)
+    lo = (qmin_i - zr).to(tl.float32)
+    hi = (qmax_i - zr).to(tl.float32)
+
+    acc_ds = 0.0
+    acc_dz = 0.0
+    for tile in range(0, num_tiles):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < n
+        dy = tl.load(grad_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        # aten CPU: int64_t xqi = nearbyint(zero_point + X * inv_scale); the
+        # zero_point is added before the round, then the integral float narrows
+        # to int64 and the range test is an int64 comparison.
+        xq = (tl_extra_shim.nearbyint(zr.to(tl.float32) + x * inv)).to(tl.int64)
+        inr = (xq >= qmin_i) & (xq <= qmax_i)
+        xq_c = tl.minimum(tl.maximum(xq, qmin_i), qmax_i)
+        xfqi = (xq_c - zr).to(tl.float32) * s
+        tl.store(gs_ptr + offs, tl.where(inr, dy, 0.0), mask=mask)
+        ds_v = tl.where(
+            inr,
+            dy * (xfqi - x) * inv,
+            tl.where(xq < qmin_i, lo * dy, hi * dy),
+        )
+        dz_v = tl.where(inr, 0.0, -dy * s)
+        acc_ds += tl.sum(ds_v, axis=0)
+        acc_dz += tl.sum(dz_v, axis=0)
+
+    tl.store(out_s_ptr, acc_ds * gf)
+    tl.store(out_z_ptr, acc_dz * gf)
+
+
+@triton.jit
+def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
+    grad_ptr,
+    x_ptr,
+    scale_ptr,
+    zp_ptr,
+    gs_ptr,
+    pds_ptr,
+    pdz_ptr,
+    n,
+    qmin,
+    qmax,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    nprog = tl.num_programs(0)
+    num_tiles = (n + (BLOCK - 1)) // BLOCK
+
+    s = tl.load(scale_ptr).to(tl.float32)
+    inv = tl_extra_shim.rcp_rn(s)
+    z = tl.load(zp_ptr).to(tl.float32)
+    qmin_i = qmin.to(tl.int64)
+    qmax_i = qmax.to(tl.int64)
+    qminf = qmin.to(tl.float32)
+    qmaxf = qmax.to(tl.float32)
+    zr = tl.minimum(tl.maximum(z + 0.5, qminf), qmaxf).to(tl.int64)
+    lo = (qmin_i - zr).to(tl.float32)
+    hi = (qmax_i - zr).to(tl.float32)
+
+    acc_ds = tl.zeros([BLOCK], dtype=tl.float32)
+    acc_dz = tl.zeros([BLOCK], dtype=tl.float32)
+
+    for tile in range(pid, num_tiles, nprog):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < n
+        dy = tl.load(grad_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+
+        xq = (tl_extra_shim.nearbyint(zr.to(tl.float32) + x * inv)).to(tl.int64)
+        inr = (xq >= qmin_i) & (xq <= qmax_i)
+        xq_c = tl.minimum(tl.maximum(xq, qmin_i), qmax_i)
+        xfqi = (xq_c - zr).to(tl.float32) * s
+
+        tl.store(gs_ptr + offs, tl.where(inr, dy, 0.0), mask=mask)
+
+        acc_ds += tl.where(
+            inr,
+            dy * (xfqi - x) * inv,
+            tl.where(xq < qmin_i, lo * dy, hi * dy),
+        )
+        acc_dz += tl.where(inr, 0.0, -dy * s)
+
+    tl.store(pds_ptr + pid, tl.sum(acc_ds, axis=0))
+    tl.store(pdz_ptr + pid, tl.sum(acc_dz, axis=0))
+
+
+@triton.jit
+def _reduce_kernel(pds_ptr, pdz_ptr, out_s_ptr, out_z_ptr, g, gf, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    mask = offs < g
+    ds = tl.load(pds_ptr + offs, mask=mask, other=0.0)
+    dz = tl.load(pdz_ptr + offs, mask=mask, other=0.0)
+    tl.store(out_s_ptr, tl.sum(ds, axis=0) * gf)
+    tl.store(out_z_ptr, tl.sum(dz, axis=0) * gf)
+
+
+_G = 256
+_WORK_PER_PROG = 262144
+_TINY_BLOCK = 4096
+_TINY_LIMIT = 2 * _TINY_BLOCK
+# Static launch geometry instead of a triton.autotune sweep (whose per-call
+# dispatch is not free and which picked BLOCK=8192/num_warps=8, i.e. 137ms on
+# 1G fp32).  Measured on gcu:1 at n=2**30 fp32 (12GB of traffic):
+# BLOCK=32768/nw=4 -> 35.0ms, BLOCK=65536/nw=2 -> 34.6-39.3ms,
+# BLOCK=8192/nw=4 -> 54.9ms (the old autotuned pick).
+_MAIN_BLOCK = 32768
+_MAIN_WARPS = 4
+
+
+def _fake_quantize_learnable_per_tensor_affine_backward(
+    grad, self, scale, zero_point, quant_min, quant_max, grad_factor=1.0
+):
+    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE_BACKWARD")
+
+    if not (
+        torch.is_floating_point(grad)
+        and torch.is_floating_point(self)
+        and torch.is_floating_point(scale)
+        and torch.is_floating_point(zero_point)
+    ):
+        raise ValueError("All inputs must be floating-point tensors.")
+
+    # The ATen reference rejects float16 gradients ("Expected dY_.scalar_type()
+    # == Float"); only float32 and bfloat16 inputs are supported.
+    if self.dtype not in (torch.float32, torch.bfloat16):
+        raise ValueError(
+            f"Unsupported dtype {self.dtype}; expected float32 or bfloat16."
+        )
+
+    # The ATen reference implementation always returns float32 gradients
+    # (it rejects float16 grads and promotes bfloat16 grads to float32), so we
+    # match that contract: all three output gradients are float32.
+    grad_self = torch.empty_like(self, dtype=torch.float32)
+    grad_scale = torch.empty_like(scale, dtype=torch.float32)
+    grad_zero_point = torch.empty_like(zero_point, dtype=torch.float32)
+
+    n = self.numel()
+    gf = float(grad_factor)
+    qmin = int(quant_min)
+    qmax = int(quant_max)
+
+    if n <= _TINY_LIMIT:
+        _fq_tiny_kernel[(1,)](
+            grad,
+            self,
+            scale,
+            zero_point,
+            grad_self,
+            grad_scale,
+            grad_zero_point,
+            n,
+            (_TINY_BLOCK + n - 1) // _TINY_BLOCK if n > 0 else 0,
+            qmin,
+            qmax,
+            gf,
+            BLOCK=_TINY_BLOCK,
+            num_warps=4,
+        )
+        return grad_self, grad_scale, grad_zero_point
+
+    pds = torch.empty((_G,), dtype=torch.float32, device=self.device)
+    pdz = torch.empty((_G,), dtype=torch.float32, device=self.device)
+
+    g = min(_G, max(1, (n + _WORK_PER_PROG - 1) // _WORK_PER_PROG))
+
+    _fake_quantize_learnable_per_tensor_affine_backward_kernel[(g,)](
+        grad,
+        self,
+        scale,
+        zero_point,
+        grad_self,
+        pds,
+        pdz,
+        n,
+        qmin,
+        qmax,
+        BLOCK=_MAIN_BLOCK,
+        num_warps=_MAIN_WARPS,
+    )
+
+    _reduce_kernel[(1,)](
+        pds, pdz, grad_scale, grad_zero_point, g, gf, BLOCK=_G, num_warps=4
+    )
+
+    return grad_self, grad_scale, grad_zero_point

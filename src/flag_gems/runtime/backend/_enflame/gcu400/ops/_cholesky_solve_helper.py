@@ -1,0 +1,357 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import math
+import time
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+
+# The enflame external toolchain (gcu-compiler-compile / the llvm-ir converter
+# script) segfaults intermittently under high host load while compiling Triton
+# kernels (compiler_problems P02 family).  Failed compiles are not cached, so
+# re-attempting the launch recompiles and usually succeeds; once a kernel is
+# compiled the retry is a no-op.  Same hardening as the sibling
+# linalg_cholesky.py / linalg_ldl_factor.py.
+_COMPILE_RETRY_ATTEMPTS = 6
+_COMPILE_RETRY_DELAY_S = 1.0
+
+# Up to this size the row loops are fully unrolled with tl.static_range; the
+# unrolled software pipeline is a few percent faster and the code-size cost is
+# bounded.  Larger systems fall back to a dynamic loop with the same body.
+_STATIC_LOOP_MAX_N = 128
+
+
+def _launch_retry(launch):
+    for attempt in range(_COMPILE_RETRY_ATTEMPTS):
+        try:
+            return launch()
+        except Exception:
+            if attempt == _COMPILE_RETRY_ATTEMPTS - 1:
+                raise
+            time.sleep(_COMPILE_RETRY_DELAY_S)
+
+
+# ---------------------------------------------------------------------------
+# Vectorised triangular solve, one program per (batch, rhs) column.  The
+# solution vector lives in registers across each sweep, so every serial row
+# step costs one masked vector load of the factor plus one 1-D dot-product
+# reduction -- the legacy form issued one scalar load per inner iteration
+# (O(n^2) scalar round-trips per column).
+#
+# The three loads each step needs (factor row segment, diagonal scalar, rhs
+# scalar) are issued one iteration ahead with clamped addresses (a scalar
+# min/max instead of extra mask terms), so their latency hides behind the
+# reduction of the current row.  Masked loads with other=0 keep the unused
+# triangle of the factor (which callers deliberately poison with NaN in the
+# accuracy suite) out of the products; the register vectors themselves are
+# zero-disciplined (entries past the solved prefix stay exactly 0).
+#
+# The op wrapper materialises contiguous operands, so all strides fold into
+# the constexpr n/nrhs pair.  num_warps=1: cross-lane reductions on GCU400
+# serial chains measurably degrade with more warps (perf_playbook
+# calibration table).
+#
+# Every loop below uses a distinct variable name: sharing a name between a
+# tl.static_range branch and a dynamic-range branch of the same kernel makes
+# the enflame Triton frontend's loop-carried-variable analysis see one symbol
+# with two types (constexpr vs runtime scalar), which either asserts at
+# compile time or silently drops the loop body.
+# ---------------------------------------------------------------------------
+@libentry()
+@triton.jit
+def _cholesky_solve_lower_kernel(
+    b_ptr,
+    factor_ptr,
+    out_ptr,
+    batch_size,
+    n: tl.constexpr,
+    nrhs: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    USE_STATIC: tl.constexpr,
+):
+    batch_idx = tl.program_id(0)
+    rhs_idx = tl.program_id(1)
+    if batch_idx >= batch_size or rhs_idx >= nrhs:
+        return
+
+    b_base = b_ptr + batch_idx * (n * nrhs) + rhs_idx
+    factor_base = factor_ptr + batch_idx * (n * n)
+    out_base = out_ptr + batch_idx * (n * nrhs) + rhs_idx
+
+    cols = tl.arange(0, BLOCK_N)
+    inb = cols < n
+
+    if n > 0:
+        # Forward substitution: factor @ y = b.  Row r of the factor is a
+        # contiguous masked vector load; column r would be strided, so the
+        # backward pass below owns the strided accesses instead.
+        sol = tl.zeros([BLOCK_N], dtype=factor_ptr.dtype.element_ty)
+        fr = tl.load(factor_base + cols, mask=(cols < 1) & inb, other=0.0)
+        d = tl.load(factor_base)
+        bv = tl.load(b_base)
+        if USE_STATIC:
+            for frow_s in tl.static_range(n):
+                nxtc_s = min(frow_s + 1, n - 1)
+                fr_n = tl.load(
+                    factor_base + nxtc_s * n + cols,
+                    mask=(cols < nxtc_s) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + nxtc_s * n + nxtc_s)
+                bv_n = tl.load(b_base + nxtc_s * nrhs)
+                acc = tl.sum(fr * sol)
+                y_value = (bv - acc) / d
+                sol = tl.where(cols == frow_s, y_value, sol)
+                tl.store(out_base + frow_s * nrhs, y_value)
+                fr = fr_n
+                d = d_n
+                bv = bv_n
+        else:
+            for frow_d in range(n):
+                nxtc_d = min(frow_d + 1, n - 1)
+                fr_n = tl.load(
+                    factor_base + nxtc_d * n + cols,
+                    mask=(cols < nxtc_d) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + nxtc_d * n + nxtc_d)
+                bv_n = tl.load(b_base + nxtc_d * nrhs)
+                acc = tl.sum(fr * sol)
+                y_value = (bv - acc) / d
+                sol = tl.where(cols == frow_d, y_value, sol)
+                tl.store(out_base + frow_d * nrhs, y_value)
+                fr = fr_n
+                d = d_n
+                bv = bv_n
+
+        # Backward substitution: factor.T @ x = y.  Column r of the factor
+        # is the strided access; x accumulates into a fresh zero-disciplined
+        # register vector while y is read back from `out`.
+        x = tl.zeros([BLOCK_N], dtype=factor_ptr.dtype.element_ty)
+        fc = tl.load(
+            factor_base + cols * n + (n - 1),
+            mask=(cols > n - 1) & inb,
+            other=0.0,
+        )
+        d = tl.load(factor_base + (n - 1) * n + (n - 1))
+        y_value = tl.load(out_base + (n - 1) * nrhs)
+        if USE_STATIC:
+            for boff_s in tl.static_range(n):
+                brow_s = n - boff_s - 1
+                prvc_s = max(brow_s - 1, 0)
+                fc_n = tl.load(
+                    factor_base + cols * n + prvc_s,
+                    mask=(cols > prvc_s) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + prvc_s * n + prvc_s)
+                yv_n = tl.load(out_base + prvc_s * nrhs)
+                acc = tl.sum(fc * x)
+                x_value = (y_value - acc) / d
+                x = tl.where(cols == brow_s, x_value, x)
+                tl.store(out_base + brow_s * nrhs, x_value)
+                fc = fc_n
+                d = d_n
+                y_value = yv_n
+        else:
+            for boff_d in range(n):
+                brow_d = n - boff_d - 1
+                prvc_d = max(brow_d - 1, 0)
+                fc_n = tl.load(
+                    factor_base + cols * n + prvc_d,
+                    mask=(cols > prvc_d) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + prvc_d * n + prvc_d)
+                yv_n = tl.load(out_base + prvc_d * nrhs)
+                acc = tl.sum(fc * x)
+                x_value = (y_value - acc) / d
+                x = tl.where(cols == brow_d, x_value, x)
+                tl.store(out_base + brow_d * nrhs, x_value)
+                fc = fc_n
+                d = d_n
+                y_value = yv_n
+
+
+@libentry()
+@triton.jit
+def _cholesky_solve_upper_kernel(
+    b_ptr,
+    factor_ptr,
+    out_ptr,
+    batch_size,
+    n: tl.constexpr,
+    nrhs: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    USE_STATIC: tl.constexpr,
+):
+    batch_idx = tl.program_id(0)
+    rhs_idx = tl.program_id(1)
+    if batch_idx >= batch_size or rhs_idx >= nrhs:
+        return
+
+    b_base = b_ptr + batch_idx * (n * nrhs) + rhs_idx
+    factor_base = factor_ptr + batch_idx * (n * n)
+    out_base = out_ptr + batch_idx * (n * nrhs) + rhs_idx
+
+    cols = tl.arange(0, BLOCK_N)
+    inb = cols < n
+
+    if n > 0:
+        # Forward substitution: factor.T @ y = b (column r of the factor).
+        sol = tl.zeros([BLOCK_N], dtype=factor_ptr.dtype.element_ty)
+        fc = tl.load(factor_base + cols * n, mask=(cols < 1) & inb, other=0.0)
+        d = tl.load(factor_base)
+        bv = tl.load(b_base)
+        if USE_STATIC:
+            for urow_s in tl.static_range(n):
+                unxtc_s = min(urow_s + 1, n - 1)
+                fc_n = tl.load(
+                    factor_base + cols * n + unxtc_s,
+                    mask=(cols < unxtc_s) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + unxtc_s * n + unxtc_s)
+                bv_n = tl.load(b_base + unxtc_s * nrhs)
+                acc = tl.sum(fc * sol)
+                y_value = (bv - acc) / d
+                sol = tl.where(cols == urow_s, y_value, sol)
+                tl.store(out_base + urow_s * nrhs, y_value)
+                fc = fc_n
+                d = d_n
+                bv = bv_n
+        else:
+            for urow_d in range(n):
+                unxtc_d = min(urow_d + 1, n - 1)
+                fc_n = tl.load(
+                    factor_base + cols * n + unxtc_d,
+                    mask=(cols < unxtc_d) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + unxtc_d * n + unxtc_d)
+                bv_n = tl.load(b_base + unxtc_d * nrhs)
+                acc = tl.sum(fc * sol)
+                y_value = (bv - acc) / d
+                sol = tl.where(cols == urow_d, y_value, sol)
+                tl.store(out_base + urow_d * nrhs, y_value)
+                fc = fc_n
+                d = d_n
+                bv = bv_n
+
+        # Backward substitution: factor @ x = y (row r of the factor).
+        x = tl.zeros([BLOCK_N], dtype=factor_ptr.dtype.element_ty)
+        fr = tl.load(
+            factor_base + (n - 1) * n + cols,
+            mask=(cols > n - 1) & inb,
+            other=0.0,
+        )
+        d = tl.load(factor_base + (n - 1) * n + (n - 1))
+        y_value = tl.load(out_base + (n - 1) * nrhs)
+        if USE_STATIC:
+            for uoff_s in tl.static_range(n):
+                ubrow_s = n - uoff_s - 1
+                uprvc_s = max(ubrow_s - 1, 0)
+                fr_n = tl.load(
+                    factor_base + uprvc_s * n + cols,
+                    mask=(cols > uprvc_s) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + uprvc_s * n + uprvc_s)
+                yv_n = tl.load(out_base + uprvc_s * nrhs)
+                acc = tl.sum(fr * x)
+                x_value = (y_value - acc) / d
+                x = tl.where(cols == ubrow_s, x_value, x)
+                tl.store(out_base + ubrow_s * nrhs, x_value)
+                fr = fr_n
+                d = d_n
+                y_value = yv_n
+        else:
+            for uoff_d in range(n):
+                ubrow_d = n - uoff_d - 1
+                uprvc_d = max(ubrow_d - 1, 0)
+                fr_n = tl.load(
+                    factor_base + uprvc_d * n + cols,
+                    mask=(cols > uprvc_d) & inb,
+                    other=0.0,
+                )
+                d_n = tl.load(factor_base + uprvc_d * n + uprvc_d)
+                yv_n = tl.load(out_base + uprvc_d * nrhs)
+                acc = tl.sum(fr * x)
+                x_value = (y_value - acc) / d
+                x = tl.where(cols == ubrow_d, x_value, x)
+                tl.store(out_base + ubrow_d * nrhs, x_value)
+                fr = fr_n
+                d = d_n
+                y_value = yv_n
+
+
+def _cholesky_solve_helper(
+    self: torch.Tensor, A: torch.Tensor, upper: bool
+) -> torch.Tensor:
+    """Solve a positive-definite system from its Cholesky factor."""
+    logger.debug("GEMS _CHOLESKY_SOLVE_HELPER")
+    if self.dtype not in (torch.float32, torch.float64):
+        raise RuntimeError(
+            "_cholesky_solve_helper currently supports float32 and float64 only"
+        )
+    if self.dtype != A.dtype or self.device != A.device:
+        raise RuntimeError("self and A must have the same dtype and device")
+    if self.ndim < 2 or A.ndim < 2 or A.shape[-1] != A.shape[-2]:
+        raise RuntimeError("expected a matrix right-hand side and a square factor")
+    if self.shape[-2] != A.shape[-1]:
+        raise RuntimeError("self and A have incompatible matrix dimensions")
+
+    batch_shape = torch.broadcast_shapes(self.shape[:-2], A.shape[:-2])
+    n = A.shape[-1]
+    nrhs = self.shape[-1]
+    # Materialise the broadcast batch dims; skip the copy when the operand
+    # is already contiguous (on GCU .contiguous() always copies, and the
+    # copy kernel launch is visible next to these microsecond kernels).
+    b = self.expand(*batch_shape, n, nrhs)
+    if not b.is_contiguous():
+        b = b.contiguous()
+    factor = A.expand(*batch_shape, n, n)
+    if not factor.is_contiguous():
+        factor = factor.contiguous()
+    batch_size = math.prod(batch_shape) if batch_shape else 1
+    b_3d = b.reshape(batch_size, n, nrhs)
+    factor_3d = factor.reshape(batch_size, n, n)
+    out_3d = torch.empty_like(b_3d)
+
+    kernel = _cholesky_solve_upper_kernel if upper else _cholesky_solve_lower_kernel
+    block_n = triton.next_power_of_2(max(n, 1))
+    use_static = n <= _STATIC_LOOP_MAX_N
+    with torch_device_fn.device(self.device):
+        _launch_retry(
+            lambda: kernel[(batch_size, nrhs)](
+                b_3d,
+                factor_3d,
+                out_3d,
+                batch_size,
+                n,
+                nrhs,
+                block_n,
+                use_static,
+                num_warps=1,
+            )
+        )
+    return out_3d.reshape(*batch_shape, n, nrhs)

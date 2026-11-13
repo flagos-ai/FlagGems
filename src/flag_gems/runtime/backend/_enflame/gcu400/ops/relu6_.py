@@ -1,0 +1,121 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.utils import pointwise_dynamic as _generic_pointwise_dynamic
+from flag_gems.utils.libentry import libentry
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
+
+# Flat fast path for contiguous float tensors: the generic pointwise_dynamic
+# codegen (12-CTA grid / 4096-elem tile / block-pointer ND indexing) measured
+# 0.25-0.49x native at >= 16M elements on GCU400/L600. Flat grid-stride with
+# grid=min(cdiv, 48), num_warps=2 and a numel-based BLOCK ladder measured
+# 2.0-2.24x native there (do_bench kernel median, 2026-11-11 sweep):
+#   16-bit: >65536..2^21 -> 8192, >2^21 -> 65536; fp32 mid-band -> 16384.
+# Native-dtype min/max keeps results bit-identical to the codegen path
+# (incl. NaN/inf); CAST32 and num_warps=4 measured neutral-to-worse and are
+# not used. Non-contiguous / non-float fallbacks use the gcu400-local
+# pointwise_dynamic fork (48-CTA/tile65536), ~4-8x faster than the generic
+# wrapper on the same cases. The local fork is restricted to the int32-safe
+# domain (numel and max flat offset < 2^31): its generated kernel corrupts
+# results at numel == 2^31 (half the elements skipped/mis-written, repro only
+# under warm allocator state, 2026-11-11 probe), so anything beyond that bound
+# is routed to the generic wrapper, which measured correct there and is the
+# pre-change code path.
+_FLAT_GRID_CAP = 48
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+_FLAT_MAX_NUMEL = 2**31 - 1 - 65536
+_INT32_LIMIT = 2**31
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _relu6_flat_kernel(X, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    num_tiles = tl.cdiv(N, BLOCK)
+    for tile in range(pid, num_tiles, num_ctas):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            x = tl.load(X + offs)
+            tl.store(X + offs, tl.minimum(tl.maximum(x, 0), 6))
+        else:
+            mask = offs < N
+            x = tl.load(X + offs, mask=mask)
+            tl.store(X + offs, tl.minimum(tl.maximum(x, 0), 6), mask=mask)
+
+
+def _relu6_flat_block(numel, itemsize):
+    if numel <= 4096:
+        return max(triton.next_power_of_2(numel), 256)
+    if numel <= 65536:
+        return 2048
+    if numel <= (1 << 21):
+        return 8192 if itemsize <= 2 else 16384
+    return 65536
+
+
+def _use_flat_path(A, numel):
+    if A.dtype not in _FLAT_DTYPES:
+        return False
+    if numel == 0 or numel > _FLAT_MAX_NUMEL:
+        return False
+    return A.is_contiguous()
+
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def relu6_forward(x):
+    return tl.minimum(tl.maximum(x, 0), 6)
+
+
+@_generic_pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def relu6_forward_generic(x):
+    return tl.minimum(tl.maximum(x, 0), 6)
+
+
+def _max_flat_offset(A):
+    offset = 0
+    for size, stride in zip(A.shape, A.stride()):
+        if size > 1:
+            offset += (size - 1) * stride
+    return offset
+
+
+def relu6_(A):
+    logger.debug("GEMS_ENFLAME RELU6_")
+    numel = A.numel()
+    if _use_flat_path(A, numel):
+        block = _relu6_flat_block(numel, A.element_size())
+        grid = (min(triton.cdiv(numel, block), _FLAT_GRID_CAP),)
+        _relu6_flat_kernel[grid](
+            A,
+            numel,
+            BLOCK=block,
+            EVEN=(numel % block == 0),
+            num_warps=2,
+        )
+        return A
+    if numel <= _FLAT_MAX_NUMEL and _max_flat_offset(A) < _INT32_LIMIT:
+        return relu6_forward(A, out0=A)
+    return relu6_forward_generic(A, out0=A)

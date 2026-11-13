@@ -1,0 +1,438 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import torch.nn.functional  # noqa: F401
+import torch.nn.grad  # noqa: F401
+import triton
+import triton.language as tl
+
+import flag_gems
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+# gather 式转置卷积的三维 tile；按 GCU400 的 DSM / 矩阵单元调优。
+CONV_TRANSPOSE_BLOCK_M = 16
+CONV_TRANSPOSE_BLOCK_CI = 32
+CONV_TRANSPOSE_BLOCK_CO = 64
+
+
+def conv_transpose2d_output_size(
+    in_size: int,
+    kernel_size: int,
+    stride: int,
+    padding: int,
+    output_padding: int,
+    dilation: int,
+) -> int:
+    """
+    Determines the output size of a 2D transposed convolution operation.
+
+    Args:
+        in_size: Input size.
+        kernel_size: Kernel size.
+        stride: Stride.
+        padding: Padding.
+        output_padding: Additional output padding.
+        dilation: Dilation.
+
+    Returns:
+        Output size of 2D transposed convolution.
+    """
+    return (
+        (in_size - 1) * stride
+        - 2 * padding
+        + dilation * (kernel_size - 1)
+        + output_padding
+        + 1
+    )
+
+
+@libentry()
+@triton.jit
+def conv_transpose2d_kernel(
+    input_pointer,
+    weight_pointer,
+    output_pointer,
+    in_n,
+    in_c,
+    input_height,
+    input_width,
+    weight_height,
+    weight_width,
+    out_height,
+    out_width,
+    in_c_per_group,
+    out_c_per_group,
+    input_n_stride,
+    input_c_stride,
+    input_height_stride,
+    input_width_stride,
+    weight_ic_stride,
+    weight_oc_stride,
+    weight_height_stride,
+    weight_width_stride,
+    output_n_stride,
+    output_c_stride,
+    output_height_stride,
+    output_width_stride,
+    stride_height: tl.constexpr,
+    stride_width: tl.constexpr,
+    padding_height: tl.constexpr,
+    padding_width: tl.constexpr,
+    dilation_height: tl.constexpr,
+    dilation_width: tl.constexpr,
+    groups: tl.constexpr,
+    BLOCK_NI_HO_WO: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    # Transpose convolution as a gather: for each output pixel (ho, wo) and
+    # output channel oc,
+    #   out[n, oc, ho, wo] = sum_{ic, kh, kw} in[n, ic, ih, iw] * W[ic, oc, kh, kw]
+    # where the input pixel that feeds (ho, wo) through tap (kh, kw) is
+    #   ih = (ho + pad_h - kh*dil_h) / stride_h   (only when divisible & in range)
+    # The transpose-conv weight layout is (in_c, out_c/groups, kH, kW) and the
+    # weight is NOT spatially flipped.
+    pid_ni_ho_wo = tl.program_id(0)
+    pid_co = tl.program_id(1)
+    pid_group = tl.program_id(2)
+
+    ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + tl.arange(0, BLOCK_NI_HO_WO)
+    ni_ho_offset = ni_ho_wo_offset // out_width
+    ni = ni_ho_offset // out_height
+    ho = ni_ho_offset % out_height
+    wo = ni_ho_wo_offset % out_width
+
+    # within-group output channel index
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+
+    accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
+
+    BLOCK_CI_COUNT = (in_c_per_group + BLOCK_CI - 1) // BLOCK_CI
+    for hwk in range(weight_height * weight_width * BLOCK_CI_COUNT):
+        c = (hwk % BLOCK_CI_COUNT) * BLOCK_CI
+        hw = hwk // BLOCK_CI_COUNT
+        kh = hw // weight_width
+        kw = hw % weight_width
+
+        ci = c + tl.arange(0, BLOCK_CI)  # within-group input channel
+        in_ch = pid_group * in_c_per_group + ci  # absolute input channel
+
+        num_h = ho + padding_height - kh * dilation_height
+        num_w = wo + padding_width - kw * dilation_width
+        ih = num_h // stride_height
+        iw = num_w // stride_width
+        valid_h = (num_h % stride_height == 0) & (ih >= 0) & (ih < input_height)
+        valid_w = (num_w % stride_width == 0) & (iw >= 0) & (iw < input_width)
+        pos_valid = valid_h & valid_w & (ni < in_n)
+
+        # input[ni, in_ch, ih, iw] -> (BLOCK_NI_HO_WO, BLOCK_CI)
+        curr_input_pointer = (
+            input_pointer
+            + (input_n_stride * ni)[:, None]
+            + (input_c_stride * in_ch)[None, :]
+            + (input_height_stride * ih)[:, None]
+            + (input_width_stride * iw)[:, None]
+        )
+        input_mask = pos_valid[:, None] & (ci < in_c_per_group)[None, :]
+
+        # weight[in_ch, co, kh, kw] -> (BLOCK_CI, BLOCK_CO); no spatial flip
+        curr_weight_pointer = (
+            weight_pointer
+            + (weight_ic_stride * in_ch)[:, None]
+            + (weight_oc_stride * co)[None, :]
+            + weight_height_stride * kh
+            + weight_width_stride * kw
+        )
+        weight_mask = (ci < in_c_per_group)[:, None] & (co < out_c_per_group)[None, :]
+
+        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
+
+        accum += tl.dot(input_block, weight_block, allow_tf32=False)
+
+    out_ch = pid_group * out_c_per_group + co
+    output_pointer += (
+        (output_n_stride * ni)[:, None]
+        + (output_c_stride * out_ch)[None, :]
+        + (output_height_stride * ho)[:, None]
+        + (output_width_stride * wo)[:, None]
+    )
+    output_mask = (
+        (ni < in_n)[:, None]
+        & (co < out_c_per_group)[None, :]
+        & (ho < out_height)[:, None]
+        & (wo < out_width)[:, None]
+    )
+
+    tl.store(
+        output_pointer, accum.to(output_pointer.dtype.element_ty), mask=output_mask
+    )
+
+
+class CudnnConvolutionTranspose(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        input,
+        weight,
+        padding,
+        output_padding,
+        stride,
+        dilation,
+        groups,
+        benchmark,
+        deterministic,
+        allow_tf32,
+    ):
+        logger.debug("GEMS CUDNN_CONV_TRANSPOSE")
+        assert weight.ndim == 4, "Weights must be 4D for conv_transpose2d"
+        assert input.ndim == 4, "Input must be 4D for conv_transpose2d"
+
+        # Parse stride
+        if isinstance(stride, (list, tuple)):
+            stride_height, stride_width = (
+                stride[0],
+                stride[1] if len(stride) > 1 else stride[0],
+            )
+        else:
+            stride_height = stride_width = stride
+
+        # Parse padding
+        if isinstance(padding, (list, tuple)):
+            padding_height, padding_width = (
+                padding[0],
+                padding[1] if len(padding) > 1 else padding[0],
+            )
+        else:
+            padding_height = padding_width = padding
+
+        # Parse output_padding
+        if isinstance(output_padding, (list, tuple)):
+            output_padding_height = output_padding[0]
+            output_padding_width = (
+                output_padding[1] if len(output_padding) > 1 else output_padding[0]
+            )
+        else:
+            output_padding_height = output_padding_width = output_padding
+
+        # Parse dilation
+        if isinstance(dilation, (list, tuple)):
+            dilation_height, dilation_width = (
+                dilation[0],
+                dilation[1] if len(dilation) > 1 else dilation[0],
+            )
+        else:
+            dilation_height = dilation_width = dilation
+
+        in_n, in_c, input_height, input_width = input.shape
+        # Transpose-conv weight layout is (in_c, out_c/groups, kH, kW).
+        w_in_c, out_c_per_group, weight_height, weight_width = weight.shape
+        assert (
+            w_in_c == in_c
+        ), f"Incompatible input channels {in_c} and weight in-channels {w_in_c}"
+        assert (
+            in_c % groups == 0
+        ), f"Input channels {in_c} not divisible by groups {groups}"
+        in_c_per_group = in_c // groups
+        out_c = out_c_per_group * groups
+
+        out_height = conv_transpose2d_output_size(
+            input_height,
+            weight_height,
+            stride_height,
+            padding_height,
+            output_padding_height,
+            dilation_height,
+        )
+        out_width = conv_transpose2d_output_size(
+            input_width,
+            weight_width,
+            stride_width,
+            padding_width,
+            output_padding_width,
+            dilation_width,
+        )
+
+        output_dtype = input.dtype
+        output = torch.empty(
+            (in_n, out_c, out_height, out_width),
+            device=input.device,
+            dtype=output_dtype,
+        )
+
+        weight_c = weight.contiguous()
+
+        # Grid configuration
+        grid = lambda META: (
+            triton.cdiv(in_n * out_height * out_width, META["BLOCK_NI_HO_WO"]),
+            triton.cdiv(int(out_c_per_group), META["BLOCK_CO"]),
+            groups,
+        )
+
+        conv_transpose2d_kernel[grid](
+            input,
+            weight_c,
+            output,
+            in_n,
+            in_c,
+            input_height,
+            input_width,
+            weight_height,
+            weight_width,
+            out_height,
+            out_width,
+            in_c_per_group,
+            out_c_per_group,
+            *input.stride(),
+            *weight_c.stride(),
+            *output.stride(),
+            stride_height,
+            stride_width,
+            padding_height,
+            padding_width,
+            dilation_height,
+            dilation_width,
+            groups=groups,
+            BLOCK_NI_HO_WO=CONV_TRANSPOSE_BLOCK_M,
+            BLOCK_CI=CONV_TRANSPOSE_BLOCK_CI,
+            BLOCK_CO=CONV_TRANSPOSE_BLOCK_CO,
+        )
+
+        ctx.save_for_backward(input, weight)
+        ctx.stride = (stride_height, stride_width)
+        ctx.padding = (padding_height, padding_width)
+        ctx.output_padding = (output_padding_height, output_padding_width)
+        ctx.dilation = (dilation_height, dilation_width)
+        ctx.groups = groups
+        ctx.weight_info = (out_c, weight_c, weight_height, weight_width)
+        ctx.input_info = (in_n, in_c, input_height, input_width)
+
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        logger.debug("GEMS CUDNN_CONV_TRANSPOSE_VJP")
+        input, weight = ctx.saved_tensors
+
+        stride = ctx.stride
+        padding = ctx.padding
+        output_padding = ctx.output_padding
+        dilation = ctx.dilation
+        groups = ctx.groups
+
+        # Transpose convolution is the adjoint of a plain convolution that uses
+        # the same weight W (layout (in_c, out_c/groups, kH, kW)):
+        #     conv_transpose2d(x, W) == conv2d^T(x, W)
+        # so its input-grad is a plain conv2d and its weight-grad is torch's own
+        # conv2d weight-grad with input and grad_output swapped.
+        #
+        # output_padding extends the output by a strip on the bottom/right. When
+        # output_padding < stride the conv2d below already absorbs it (its stride
+        # floor maps the extended output back to the input size), and the strip
+        # carries real gradient, so it must NOT be cropped. When
+        # output_padding >= stride (only reachable when dilation > stride, e.g.
+        # stride=1/dilation=2/output_padding=1) the strip falls outside every
+        # input position, carries no gradient, and would otherwise cause a size
+        # mismatch, so crop it off grad_output before the adjoint.
+        op_h, op_w = output_padding
+        stride_h, stride_w = stride
+        crop_h = op_h if op_h >= stride_h else 0
+        crop_w = op_w if op_w >= stride_w else 0
+        if crop_h:
+            grad_output = grad_output[..., : grad_output.shape[-2] - crop_h, :]
+        if crop_w:
+            grad_output = grad_output[..., : grad_output.shape[-1] - crop_w]
+
+        grad_input = flag_gems.conv2d(
+            grad_output,
+            weight,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        )
+
+        grad_weight = torch.nn.grad.conv2d_weight(
+            grad_output,
+            weight.shape,
+            input,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+        )
+
+        return (
+            grad_input,
+            grad_weight,
+            None,  # padding
+            None,  # output_padding
+            None,  # stride
+            None,  # dilation
+            None,  # groups
+            None,  # benchmark
+            None,  # deterministic
+            None,  # allow_tf32
+        )
+
+
+def cudnn_convolution_transpose(
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    padding=None,
+    output_padding=None,
+    stride=1,
+    dilation=1,
+    groups=1,
+    benchmark=False,
+    deterministic=False,
+    allow_tf32=True,
+):
+    # Handle default values
+    if padding is None:
+        padding = (0, 0)
+    elif isinstance(padding, int):
+        padding = (padding, padding)
+
+    if output_padding is None:
+        output_padding = (0, 0)
+    elif isinstance(output_padding, int):
+        output_padding = (output_padding, output_padding)
+
+    if isinstance(stride, int):
+        stride = (stride, stride)
+    elif isinstance(stride, tuple) and len(stride) == 1:
+        stride = (stride[0], stride[0])
+
+    if isinstance(dilation, int):
+        dilation = (dilation, dilation)
+    elif isinstance(dilation, tuple) and len(dilation) == 1:
+        dilation = (dilation[0], dilation[0])
+
+    return CudnnConvolutionTranspose.apply(
+        input,
+        weight,
+        padding,
+        output_padding,
+        stride,
+        dilation,
+        groups,
+        benchmark,
+        deterministic,
+        allow_tf32,
+    )

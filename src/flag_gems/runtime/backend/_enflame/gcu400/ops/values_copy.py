@@ -1,0 +1,739 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Triton implementation of ``aten.values_copy`` for compressed sparse tensors.
+
+``values_copy`` is the non-aliasing counterpart of ``torch.values``: it returns a
+freshly allocated contiguous tensor holding a bit-exact copy of a compressed
+sparse tensor's stored values.  The copy is a pure identity on the stored bits,
+so it is implemented as a flat vectorized device copy and a byte-granular
+strided fallback for stored values that live in a strided or offset view.
+
+Both paths reinterpret the operands as the widest integer element that evenly
+divides them, so a 1-byte stored-value dtype still issues 8-byte lanes per
+thread instead of being stuck at a narrow access width.
+
+GCU400 adaptation
+-----------------
+torch_gcu ships no ``SparseCsrgcu`` ATen kernels: a CSR/CSC/BSR/BSC tensor can
+be constructed on the device (the factory composites run on the strided
+component arguments), but every accessor (``values``/``crow_indices``/...),
+``_nnz`` and ``values_copy`` itself hard-fail on the synthesized
+``SparseCsr<backend>`` dispatch key, and ``torch_gcu``'s ``PrivateUse1``
+fallback cannot rescue them.  This module therefore installs, alongside the
+operator itself, a component-access shim for the GCU device, following the
+established ``_dimI.py`` / ``sparse_resize_.py`` conventions:
+
+* the public ``torch.sparse_{csr,csc,bsr,bsc}_tensor`` factories are wrapped so
+  every GCU-resident compressed sparse tensor remembers the very component
+  tensors it was built from (a bounded LRU keyed by the tensor object, which is
+  kept alive inside the entry so the key can never be recycled);
+* the accessors (``values``, ``crow_indices``, ``col_indices``,
+  ``ccol_indices``, ``row_indices``, ``_nnz``) and ``values_copy(.out)`` are
+  registered on the ``SparseCsrPrivateUse1`` dispatch key and served from that
+  cache (view outputs are returned detached, like the native aliasing views);
+* GCU400 has no sparse-COO TensorImpl at all: ``torch.sparse_coo_tensor`` lands
+  on CPU through ``_dimI.py``'s registered fallback.  The COO factory wrapper
+  remembers the original device-resident ``values`` for the produced CPU
+  container, and a cache-scoped ``torch.Tensor._values`` override returns them
+  so device-side consumers (``_values_copy``'s Triton path) keep working on
+  real device buffers.
+
+Tensors that were not constructed through the wrapped factories fall back to
+the native accessors, which keeps CPU (and other backends') behavior untouched.
+"""
+
+import logging
+import types
+from collections import OrderedDict
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import device as _runtime_device
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
+
+# One CTA covers a fixed byte footprint; BLOCK=1024 keeps 128-bit lanes
+# while spreading work across SMs for this launch-bound copy.
+_BLOCK = 1024
+# The flat copy is a pure stream, so each thread's footprint is fixed at the
+# widest lane the dispatch can use.  What is left to choose is how much of that
+# footprint one program covers: large inputs do best with the widest block,
+# while inputs too small to fill the 78-SM part need a narrower one so the grid
+# still occupies every SM (a (1024, 1024) input is only 65536 wide lanes, which
+# is 64 CTAs at BLOCK=1024 but 256 at BLOCK=256, and those small cases are the
+# rows that still sit just below parity).
+_FLAT_BLOCKS = (1024, 512, 256)
+_TARGET_CTAS = 256
+_WARPS = 8
+_ND_BLOCK = 128
+_ND_WARPS = 1
+
+_SUPPORTED_LAYOUTS = (
+    torch.sparse_csr,
+    torch.sparse_csc,
+    torch.sparse_bsr,
+    torch.sparse_bsc,
+)
+_WIDE_DTYPE = {8: torch.int64, 4: torch.int32, 2: torch.int16, 1: torch.int8}
+_WIDE_ORDER = (8, 4)
+
+# ============================================================================
+# GCU sparse component-access shim
+# ============================================================================
+
+_DEV_TYPE = _runtime_device.name
+_SPARSE_CSR_KEY = "SparseCsr" + _runtime_device.dispatch_key
+
+# The arch ops tree is imported under several module names at once (the short
+# ``gcu400.ops...`` alias, the ``_enflame.gcu400...`` alias and the full
+# ``flag_gems.runtime.backend...`` path), so every module-level mutable would
+# be duplicated per name and the factory wrapper would populate a different
+# cache than the one the operator reads.  All shared state therefore lives on
+# a single holder attached to ``torch``, exactly like the registration flags
+# of ``_dimI.py`` / ``sparse_resize_.py``.
+_COMPONENT_STATE_FLAG = "_flag_gems_gcu400_sparse_component_state"
+
+
+def _component_state():
+    state = getattr(torch, _COMPONENT_STATE_FLAG, None)
+    if state is None:
+        state = types.SimpleNamespace(
+            components=OrderedDict(),
+            coo_device_values=OrderedDict(),
+            sparse_library=None,
+        )
+        setattr(torch, _COMPONENT_STATE_FLAG, state)
+    return state
+
+
+_STATE = _component_state()
+
+# Bounded LRU: id(sparse tensor) -> [sparse, compressed, plain, values].
+# The sparse tensor itself is held in the entry, so its id stays unique for as
+# long as the entry exists and can never be recycled by a younger object.
+_CACHE_MAX = 16384
+_components = _STATE.components
+
+# COO containers built by the wrapped factory: id(container) -> values tensor
+# that actually lives on the GCU device.
+_coo_device_values = _STATE.coo_device_values
+
+
+def _cache_put(sparse_tensor, compressed, plain, values):
+    key = id(sparse_tensor)
+    _components[key] = [sparse_tensor, compressed, plain, values]
+    _components.move_to_end(key)
+    while len(_components) > _CACHE_MAX:
+        _components.popitem(last=False)
+
+
+def _coo_values_put(container, values):
+    key = id(container)
+    _coo_device_values[key] = (container, values)
+    _coo_device_values.move_to_end(key)
+    while len(_coo_device_values) > _CACHE_MAX:
+        _coo_device_values.popitem(last=False)
+
+
+def _compressed_entry(self):
+    """Cache entry of a GCU compressed sparse tensor, or ``None``."""
+    if self.device.type != _DEV_TYPE or self.layout not in _SUPPORTED_LAYOUTS:
+        return None
+    return _components.get(id(self))
+
+
+# The wrapped factories chain to whatever the ``torch`` attribute held at
+# patch time, so a second installer (or a future local override) composes
+# instead of being silently dropped.
+_FACTORY_PATCH_FLAG = "_flag_gems_gcu400_sparse_factory_cache_registered"
+
+_COMPRESSED_FACTORIES = {
+    "sparse_csr_tensor": torch.sparse_csr,
+    "sparse_csc_tensor": torch.sparse_csc,
+    "sparse_bsr_tensor": torch.sparse_bsr,
+    "sparse_bsc_tensor": torch.sparse_bsc,
+}
+
+
+def _make_compressed_wrapper(original, layout):
+    def wrapper(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if (
+            len(args) >= 3
+            and isinstance(result, torch.Tensor)
+            and result.layout == layout
+            and result.device.type == _DEV_TYPE
+            and isinstance(args[2], torch.Tensor)
+            and args[2].device.type == _DEV_TYPE
+        ):
+            _cache_put(result, args[0], args[1], args[2])
+        return result
+
+    return wrapper
+
+
+def _install_factory_patches():
+    """Wrap the public sparse factories so GCU tensors remember their parts."""
+    if getattr(torch, _FACTORY_PATCH_FLAG, False):
+        return
+
+    for name, layout in _COMPRESSED_FACTORIES.items():
+        original = getattr(torch, name, None)
+        if original is None:
+            continue
+        setattr(torch, name, _make_compressed_wrapper(original, layout))
+
+    coo_original = getattr(torch, "sparse_coo_tensor", None)
+    if coo_original is not None:
+
+        def coo_wrapper(*args, **kwargs):
+            result = coo_original(*args, **kwargs)
+            if (
+                len(args) >= 2
+                and isinstance(result, torch.Tensor)
+                and result.layout == torch.sparse_coo
+                and isinstance(args[1], torch.Tensor)
+                and args[1].device.type == _DEV_TYPE
+            ):
+                _coo_values_put(result, args[1])
+            return result
+
+        torch.sparse_coo_tensor = coo_wrapper
+
+    setattr(torch, _FACTORY_PATCH_FLAG, True)
+
+
+_COO_VALUES_FLAG = "_flag_gems_gcu400_coo_values_view_registered"
+_native_tensor_values = None
+
+
+def _install_coo_values_override():
+    """Return device-resident values from the CPU COO containers we built.
+
+    GCU400 cannot materialize a sparse-COO TensorImpl, so the wrapped COO
+    factory hands out a CPU container (through ``_dimI.py``'s registered
+    fallback) while the caller's ``values`` buffer stays on the device.  The
+    override is strictly cache-scoped: every other tensor takes the native
+    accessor unchanged.
+    """
+    global _native_tensor_values
+    if getattr(torch.Tensor, _COO_VALUES_FLAG, False):
+        return
+    _native_tensor_values = torch.Tensor._values
+
+    def _values_with_device_components(self):
+        entry = _coo_device_values.get(id(self))
+        if entry is not None:
+            return entry[1]
+        return _native_tensor_values(self)
+
+    torch.Tensor._values = _values_with_device_components
+    setattr(torch.Tensor, _COO_VALUES_FLAG, True)
+
+
+# Native layout spellings used by ATen's rejection messages
+# (ATen/SparseCsrTensorUtils.h), mirrored so the guards read exactly like the
+# dispatcher's own errors.
+_ROW_COMPRESSED_REJECTS = {
+    torch.strided: "Strided",
+    torch.sparse_coo: "Sparse",
+    torch.sparse_csc: "SparseCsc",
+    torch.sparse_bsc: "SparseBsc",
+}
+_COL_COMPRESSED_REJECTS = {
+    torch.strided: "Strided",
+    torch.sparse_coo: "Sparse",
+    torch.sparse_csr: "SparseCsr",
+    torch.sparse_bsr: "SparseBsr",
+}
+_ROW_COMPRESSED_LAYOUTS = (torch.sparse_csr, torch.sparse_bsr)
+_COL_COMPRESSED_LAYOUTS = (torch.sparse_csc, torch.sparse_bsc)
+
+
+def _require_entry(self):
+    entry = _compressed_entry(self)
+    if entry is None:
+        raise NotImplementedError(
+            "Could not read the stored components of this GCU sparse tensor: "
+            "it was not built through the wrapped torch.sparse_* factories. "
+            "Construct it with torch.sparse_csr_tensor (or csc/bsr/bsc) so "
+            "the component buffers stay reachable on this backend."
+        )
+    return entry
+
+
+def _sparse_values_kernel(self):
+    return _require_entry(self)[3].detach()
+
+
+def _sparse_crow_indices_kernel(self):
+    if self.layout not in _ROW_COMPRESSED_LAYOUTS:
+        name = _ROW_COMPRESSED_REJECTS.get(self.layout, str(self.layout))
+        raise RuntimeError(
+            "crow_indices expected sparse row compressed tensor layout "
+            f"but got {name}"
+        )
+    return _require_entry(self)[1].detach()
+
+
+def _sparse_col_indices_kernel(self):
+    if self.layout not in _ROW_COMPRESSED_LAYOUTS:
+        name = _ROW_COMPRESSED_REJECTS.get(self.layout, str(self.layout))
+        raise RuntimeError(
+            "col_indices expected sparse row compressed tensor layout "
+            f"but got {name}"
+        )
+    return _require_entry(self)[2].detach()
+
+
+def _sparse_ccol_indices_kernel(self):
+    if self.layout not in _COL_COMPRESSED_LAYOUTS:
+        name = _COL_COMPRESSED_REJECTS.get(self.layout, str(self.layout))
+        raise RuntimeError(
+            "ccol_indices expected sparse column compressed tensor layout "
+            f"but got {name}"
+        )
+    return _require_entry(self)[1].detach()
+
+
+def _sparse_row_indices_kernel(self):
+    if self.layout not in _COL_COMPRESSED_LAYOUTS:
+        name = _COL_COMPRESSED_REJECTS.get(self.layout, str(self.layout))
+        raise RuntimeError(
+            "row_indices expected sparse column compressed tensor layout "
+            f"but got {name}"
+        )
+    return _require_entry(self)[2].detach()
+
+
+def _sparse_nnz_kernel(self):
+    entry = _require_entry(self)
+    # The nnz axis of the stored values sits right after the batch axes, and
+    # the compressed buffer carries batch_dims + (groups + 1,).
+    return int(entry[3].shape[entry[1].dim() - 1])
+
+
+_SPARSE_ACCESSOR_OPS = (
+    ("values", _sparse_values_kernel),
+    ("crow_indices", _sparse_crow_indices_kernel),
+    ("col_indices", _sparse_col_indices_kernel),
+    ("ccol_indices", _sparse_ccol_indices_kernel),
+    ("row_indices", _sparse_row_indices_kernel),
+    ("_nnz", _sparse_nnz_kernel),
+)
+
+# Grad-mode dispatcher calls never reach the sparse CSR key: the tensor's key
+# set carries AutogradPrivateUse1 above it, and the native VariableType kernel
+# there runs the ``values().clone()`` composite, whose backward traverses the
+# sparse factory node and dies on the missing ``_to_dense`` kernel.  The
+# general registrar cannot rescue this: its device-key registration for
+# ``values_copy`` is rejected by the native composite that occupies
+# PrivateUse1, and that exception aborts the whole entry before the extra
+# autograd key would have been registered.  Registering the op here ourselves
+# routes grad-mode calls straight into ``_ValuesCopy.apply`` over the cached
+# component, which is exactly the native contract (a linear identity).
+_AUTOGRAD_KEY = "Autograd" + _runtime_device.dispatch_key
+
+
+def _install_sparse_csr_kernels(values_copy_fn, values_copy_out_fn):
+    """Register the accessors and this op on the GCU sparse keys.
+
+    Idempotent across every module name this file is imported under: the
+    library handle lives on the shared ``torch``-attached state, so exactly
+    one instance performs the registration.
+    """
+    if _STATE.sparse_library is not None:
+        return
+    _STATE.sparse_library = torch.library.Library("aten", "IMPL")
+    registrations = _SPARSE_ACCESSOR_OPS + (
+        ("values_copy", values_copy_fn),
+        ("values_copy.out", values_copy_out_fn),
+    )
+    for op_name, kernel in registrations:
+        try:
+            _STATE.sparse_library.impl(op_name, kernel, _SPARSE_CSR_KEY)
+        except RuntimeError as error:
+            logger.warning(
+                "values_copy: sparse key registration %s@%s skipped: %s",
+                op_name,
+                _SPARSE_CSR_KEY,
+                error,
+            )
+    for op_name, kernel in (
+        ("values_copy", values_copy_fn),
+        ("values_copy.out", values_copy_out_fn),
+    ):
+        try:
+            _STATE.sparse_library.impl(op_name, kernel, _AUTOGRAD_KEY)
+        except RuntimeError as error:
+            logger.warning(
+                "values_copy: autograd key registration %s@%s skipped: %s",
+                op_name,
+                _AUTOGRAD_KEY,
+                error,
+            )
+
+
+# ============================================================================
+# Copy kernels (generic semantics)
+# ============================================================================
+
+
+@triton.jit
+def _copy_flat_kernel(src_ptr, dst_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    """Flat contiguous copy of ``n`` lanes.
+
+    The source is read exactly once and never revisited, so its load bypasses L1
+    (``.cg``); the destination store keeps the default policy, which the earlier
+    evict-first experiment showed is the better choice on this part.
+    """
+    pid = tl.program_id(axis=0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        tl.store(dst_ptr + off, tl.load(src_ptr + off, cache_modifier=".cg"))
+    else:
+        mask = off < n
+        tl.store(
+            dst_ptr + off,
+            tl.load(src_ptr + off, mask=mask, cache_modifier=".cg"),
+            mask=mask,
+        )
+
+
+@triton.jit
+def _copy_nd_kernel(
+    src_ptr,
+    dst_ptr,
+    n,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    e0,
+    e1,
+    e2,
+    e3,
+    e4,
+    BLOCK: tl.constexpr,
+    RANK: tl.constexpr,
+):
+    """Copy ``n`` byte-lanes through a rank-``RANK`` stride pattern.
+
+    The flat byte index is decomposed with the extents of the source shape
+    (innermost first) and recombined with each operand's own byte strides, so a
+    contiguous source feeding a strided destination (and vice versa) is handled
+    without assuming any regularity between the two stride patterns.
+    """
+    pid = tl.program_id(axis=0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = off < n
+    i = off.to(tl.int64)
+    src_off = tl.zeros([BLOCK], dtype=tl.int64)
+    dst_off = tl.zeros([BLOCK], dtype=tl.int64)
+    if RANK >= 2:
+        i0 = i % e0
+        i = i // e0
+        src_off += i0 * s0
+        dst_off += i0 * d0
+    if RANK >= 3:
+        i1 = i % e1
+        i = i // e1
+        src_off += i1 * s1
+        dst_off += i1 * d1
+    if RANK >= 4:
+        i2 = i % e2
+        i = i // e2
+        src_off += i2 * s2
+        dst_off += i2 * d2
+    if RANK >= 5:
+        i3 = i % e3
+        i = i // e3
+        src_off += i3 * s3
+        dst_off += i3 * d3
+    if RANK >= 6:
+        i4 = i % e4
+        i = i // e4
+        src_off += i4 * s4
+        dst_off += i4 * d4
+    if RANK == 1:
+        src_off += i * s0
+        dst_off += i * d0
+    elif RANK == 2:
+        src_off += i * s1
+        dst_off += i * d1
+    elif RANK == 3:
+        src_off += i * s2
+        dst_off += i * d2
+    elif RANK == 4:
+        src_off += i * s3
+        dst_off += i * d3
+    elif RANK == 5:
+        src_off += i * s4
+        dst_off += i * d4
+    else:
+        src_off += i * s5
+        dst_off += i * d5
+    val = tl.load(src_ptr + src_off, mask=mask)
+    tl.store(dst_ptr + dst_off, val, mask=mask)
+
+
+def _launch_flat(src, dst, lanes, block):
+    grid = ((lanes + block - 1) // block,)
+    with torch_device_fn.device(src.device):
+        _copy_flat_kernel[grid](
+            src, dst, lanes, BLOCK=block, EVEN=(lanes % block) == 0, num_warps=_WARPS
+        )
+
+
+def _pick_block(lanes):
+    """Widest flat block whose grid still spreads the work over the device.
+
+    The copy is latency bound, so an under-filled grid leaves SMs idle on the
+    small cases.  The chosen block is the widest one whose grid still reaches
+    ``_TARGET_CTAS``; if none does, the narrowest block is used.  Every case in
+    the large family keeps BLOCK=1024: a (4096, 4096) float32 input is 2097152
+    wide lanes, which is 2048 CTAs even at the widest block.
+    """
+    for block in _FLAT_BLOCKS:
+        if (lanes + block - 1) // block >= _TARGET_CTAS:
+            return block
+    return _FLAT_BLOCKS[-1]
+
+
+def _alias_1d(t, dtype, lanes, offset):
+    """Zero-copy 1-D reinterpretation of ``t``'s storage as ``lanes`` elements.
+
+    Reinterpreting the storage instead of reading it makes one flat kernel serve
+    every dtype, including the complex and fp8 element types Triton cannot load
+    natively, and lets a 1-byte element type travel as 8-byte lanes.
+    """
+    alias = torch.empty(0, dtype=dtype, device=t.device)
+    alias.set_(t.untyped_storage(), offset, (lanes,), (1,))
+    return alias
+
+
+def _launch_contiguous(vals, dst):
+    """Widest-lane flat copy for contiguous stored values."""
+    nbytes = vals.numel() * vals.element_size()
+    src_off = vals.storage_offset() * vals.element_size()
+    dst_off = dst.storage_offset() * dst.element_size()
+    width = 1
+    for w in _WIDE_ORDER:
+        if nbytes % w == 0 and src_off % w == 0 and dst_off % w == 0:
+            width = w
+            break
+    dtype = _WIDE_DTYPE[width]
+    lanes = nbytes // width
+    src = _alias_1d(vals, dtype, lanes, src_off // width)
+    dst_alias = _alias_1d(dst, dtype, lanes, dst_off // width)
+    if src_off == 0 and dst_off == 0:
+        _launch_flat(src, dst_alias, lanes, _pick_block(lanes))
+        return
+    # A storage offset that is not a multiple of the lane width cannot be folded
+    # into a flat 1-D alias, so the pair is copied lane by lane instead.
+    grid = ((lanes + _ND_BLOCK - 1) // _ND_BLOCK,)
+    with torch_device_fn.device(src.device):
+        _copy_nd_kernel[grid](
+            src,
+            dst_alias,
+            lanes,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            BLOCK=_ND_BLOCK,
+            RANK=1,
+            num_warps=_ND_WARPS,
+        )
+
+
+def _alias_strided(t, shape, strides):
+    """Zero-copy int8 alias of ``t``'s storage with explicit byte strides."""
+    alias = torch.empty(0, dtype=torch.int8, device=t.device)
+    alias.set_(
+        t.untyped_storage(), t.storage_offset() * t.element_size(), shape, strides
+    )
+    return alias
+
+
+def _launch_strided(vals, dst):
+    """Byte-granular copy for strided and/or offset stored values."""
+    itemsize = vals.element_size()
+    shape = vals.shape
+    src_strides = [s * itemsize for s in vals.stride()] + [1]
+    dst_strides = [s * dst.element_size() for s in dst.stride()] + [1]
+    byte_shape = tuple(shape) + (itemsize,)
+    src = _alias_strided(vals, byte_shape, src_strides)
+    alias = _alias_strided(dst, byte_shape, dst_strides)
+    n = vals.numel() * itemsize
+    rank = len(byte_shape)
+    s = src_strides + [0] * (6 - rank)
+    d = dst_strides + [0] * (6 - rank)
+    e = list(shape) + [1] * (5 - len(shape))
+    grid = ((n + _ND_BLOCK - 1) // _ND_BLOCK,)
+    with torch_device_fn.device(src.device):
+        _copy_nd_kernel[grid](
+            src, alias, n, *s, *d, *e, BLOCK=_ND_BLOCK, RANK=rank, num_warps=_ND_WARPS
+        )
+
+
+def _copy_source(vals, dst):
+    """Copy ``vals`` into ``dst`` (same shape/dtype) on the device."""
+    if vals.numel() == 0:
+        return
+    if vals.is_contiguous() and dst.is_contiguous():
+        _launch_contiguous(vals, dst)
+        return
+    _launch_strided(vals, dst)
+
+
+def _stored_values(self):
+    """The stored-values tensor of ``self``, straight from the shim cache.
+
+    GCU compressed sparse tensors keep their construction components in the
+    factory cache, so the copy reads the very buffer the caller handed over
+    (including its autograd identity, which the backward path relies on).
+    Anything else -- CPU tensors, other backends, or cache misses -- takes the
+    native accessor unchanged.
+    """
+    entry = _compressed_entry(self)
+    if entry is not None:
+        return entry[3]
+    return self.values()
+
+
+class _ValuesCopy(torch.autograd.Function):
+    """Both the sparse ``values()`` accessor and this copy are linear identities,
+    so the gradient of the stored values is the incoming gradient unchanged."""
+
+    @staticmethod
+    def forward(ctx, src):
+        dst = torch.empty(src.shape, dtype=src.dtype, device=src.device)
+        _copy_source(src, dst)
+        return dst
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        return grad_out
+
+
+def _values_copy_impl(self, out):
+    """Copy the stored values of ``self`` into ``out`` (or a fresh buffer)."""
+    if not isinstance(self, torch.Tensor):
+        raise TypeError(
+            "values_copy(): argument 'self' must be Tensor, not " + type(self).__name__
+        )
+    if self.is_nested:
+        raise NotImplementedError("aten.values_copy.default")
+    layout = self.layout
+    if layout == torch.strided:
+        raise RuntimeError("values expected sparse tensor layout but got Strided")
+    if layout == torch.sparse_coo:
+        raise NotImplementedError(
+            "Could not run 'aten::values_copy' with arguments from the "
+            "'SparseCUDA' backend"
+        )
+    if layout not in _SUPPORTED_LAYOUTS:
+        raise RuntimeError(
+            "values expected sparse tensor layout but got " + str(layout)
+        )
+
+    vals = _stored_values(self)
+    n = vals.numel()
+    shape = vals.shape
+    dtype = vals.dtype
+
+    if out is None:
+        dst = torch.empty(shape, dtype=dtype, device=vals.device)
+    else:
+        if not isinstance(out, torch.Tensor):
+            raise TypeError(
+                "values_copy.out(): argument 'out' must be Tensor, not "
+                + type(out).__name__
+            )
+        if out.dtype != dtype:
+            raise RuntimeError(
+                "Expected out tensor to have dtype "
+                + str(dtype)
+                + ", but got "
+                + str(out.dtype)
+                + " instead"
+            )
+        if out.numel() != n or out.shape != shape:
+            raise RuntimeError(
+                "values_copy.out(): out tensor must have the same shape as the "
+                "stored values"
+            )
+        dst = out
+
+    if n == 0:
+        return dst
+
+    if self.requires_grad and torch.is_grad_enabled() and out is None:
+        return _ValuesCopy.apply(vals)
+    _copy_source(vals, dst)
+    return dst
+
+
+def values_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Tensor:
+    """``aten::values_copy``: fresh copy of a compressed sparse tensor's values.
+
+    Passing ``out=`` selects the ``.out`` overload: the copy is written into
+    the caller buffer and that object is returned.
+    """
+    if out is None:
+        logger.debug("GEMS VALUES_COPY")
+        return _values_copy_impl(self, None)
+    logger.debug("GEMS VALUES_COPY_OUT")
+    return _values_copy_impl(self, out)
+
+
+def values_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
+    """``aten::values_copy.out``: write the values copy into ``out``."""
+    logger.debug("GEMS VALUES_COPY_OUT")
+    return _values_copy_impl(self, out)
+
+
+# ============================================================================
+# Shim installation
+# ============================================================================
+
+_install_factory_patches()
+_install_coo_values_override()
+_install_sparse_csr_kernels(values_copy, values_copy_out)

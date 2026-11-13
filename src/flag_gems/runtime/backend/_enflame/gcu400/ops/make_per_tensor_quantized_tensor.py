@@ -1,0 +1,232 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Wrap an integer tensor as a per-tensor affine quantized tensor.
+
+``aten::_make_per_tensor_quantized_tensor(Tensor self, float scale, int
+zero_point) -> Tensor`` derives the quantized dtype from the input dtype,
+stores ``scale`` / ``zero_point`` verbatim, and copies the input values into
+the ``int_repr``. Measured on the target build: ``uint8 -> quint8``,
+``int8 -> qint8``, ``int32 -> qint32``; the result is a fresh allocation whose
+``int_repr()`` compares equal to the input and does not share its storage.
+
+The device work is the copy into the quantized tensor's raw storage: a flat
+streaming kernel for contiguous inputs and a stride gather otherwise.
+
+enflame GCU adaptation: without ``TORCH_GCU_ENABLE_INT64_AND_UINT64`` the
+torch_gcu ATen layer silently stores device int64 tensors as packed int32
+while the metadata still claims int64, so the gather kernel's 8-byte
+shape/stride loads read interleaved garbage and the wild offsets abort the
+device. The strided path therefore carries its shape/stride sidecars in the
+int32 safe domain (every realistic tensor fits) and the kernel upcasts the
+loaded scalars to int64 explicitly before the offset arithmetic; only shape
+or stride values at or beyond 2**31 fall back to the int64 sidecars.
+"""
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
+_QDTYPE = {
+    torch.uint8: torch.quint8,
+    torch.int8: torch.qint8,
+    torch.int32: torch.qint32,
+}
+
+_MAXD = 8
+
+_INT32_MAX = (1 << 31) - 1
+
+
+@triton.jit
+def _copy_1d_kernel(src, dst, n_elements, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+    x = tl.load(src + offs, mask=mask)
+    tl.store(dst + offs, x, mask=mask)
+
+
+@triton.jit
+def _gather_1d_kernel(
+    src,
+    dst,
+    n_elements,
+    shape_ptr,
+    stride_ptr,
+    ndim,
+    BLOCK: tl.constexpr,
+    MAXD: tl.constexpr,
+):
+    # Copy the logical (row-major) values of a strided input into a contiguous
+    # destination: decompose each flat index into per-dim coordinates and gather
+    # through the input strides. The loop always runs MAXD steps and masks out
+    # the dimensions the input does not have, so ndim stays a runtime value.
+    # The shape/stride sidecars may arrive as int32 (the torch_gcu int64-safe
+    # domain, see the module docstring) or int64; the loaded scalars are
+    # upcast explicitly so the offset arithmetic is always 64-bit regardless
+    # of the sidecar width.
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+    off = tl.zeros((BLOCK,), dtype=tl.int64)
+    rem = offs.to(tl.int64)
+    for d in tl.static_range(MAXD):
+        dd = ndim - 1 - d
+        active = dd >= 0
+        dd_safe = tl.maximum(dd, 0)
+        s = tl.load(shape_ptr + dd_safe).to(tl.int64)
+        st = tl.load(stride_ptr + dd_safe).to(tl.int64)
+        s_safe = tl.where(active, s, 1)
+        st_safe = tl.where(active, st, 0)
+        c = rem % s_safe
+        off += c * st_safe
+        rem = rem // s_safe
+    x = tl.load(src + off, mask=mask, other=0)
+    tl.store(dst + offs, x, mask=mask)
+
+
+def _copy_config(dtype, n):
+    if dtype == torch.int32:
+        return 1024, 8
+    if n < (1 << 21):
+        return 8192, 4
+    return 16384, 8
+
+
+def _index_sidecars(self):
+    """Device sidecar tensors carrying ``self``'s shape and strides.
+
+    torch_gcu without ``TORCH_GCU_ENABLE_INT64_AND_UINT64`` materialises
+    device int64 tensors as packed int32 under int64 metadata (silent
+    narrowing), which poisons the gather kernel's 8-byte loads. Shape and
+    stride values sit deep inside the int32 domain for any realistic tensor,
+    so the sidecars default to true int32 tensors — regime-independent on
+    this backend. Only values at or beyond 2**31 (a strided dimension of
+    2 GiB+ payload) fall back to int64 sidecars, which need the env on
+    torch_gcu; the kernel upcasts either width explicitly.
+    """
+    shape = tuple(int(v) for v in self.shape)
+    stride = tuple(int(v) for v in self.stride())
+    if max(shape + stride, default=0) <= _INT32_MAX:
+        dtype = torch.int32
+    else:
+        dtype = torch.int64
+    shape_t = torch.tensor(shape, device=self.device, dtype=dtype)
+    stride_t = torch.tensor(stride, device=self.device, dtype=dtype)
+    return shape_t, stride_t
+
+
+def _make_per_tensor_quantized_tensor(
+    self: torch.Tensor, scale: float, zero_point: int
+) -> torch.Tensor:
+    """Wrap integer values into a per-tensor affine quantized tensor.
+
+    Args:
+        self (torch.Tensor): Integer tensor with dtype uint8, int8 or int32.
+        scale (float): Quantization scale, stored verbatim.
+        zero_point (int): Quantization zero point, stored verbatim.
+
+    Returns:
+        torch.Tensor: Quantized tensor whose ``int_repr()`` equals ``self``.
+    """
+    logger.debug("GEMS MAKE_PER_TENSOR_QUANTIZED_TENSOR")
+    qdtype = _QDTYPE[self.dtype]
+    out = torch._empty_affine_quantized(
+        self.shape,
+        dtype=qdtype,
+        device=self.device,
+        scale=float(scale),
+        zero_point=int(zero_point),
+    )
+    n = self.numel()
+    if n == 0:
+        return out
+
+    # Zero-copy view over the quantized tensor's raw storage, so the device
+    # kernel writes the int representation that ``int_repr()`` exposes.
+    raw = torch.empty(0, dtype=self.dtype, device=self.device).set_(
+        out.untyped_storage(), 0, (n,)
+    )
+    if self.is_contiguous():
+        block, num_warps = _copy_config(self.dtype, n)
+        grid = (triton.cdiv(n, block),)
+        _copy_1d_kernel[grid](self, raw, n, BLOCK=block, num_warps=num_warps)
+    else:
+        shape_t, stride_t = _index_sidecars(self)
+        block = 1024
+        grid = (triton.cdiv(n, block),)
+        _gather_1d_kernel[grid](
+            self,
+            raw,
+            n,
+            shape_t,
+            stride_t,
+            self.dim(),
+            BLOCK=block,
+            MAXD=_MAXD,
+            num_warps=8,
+        )
+    return out
+
+
+def _make_per_tensor_quantized_tensor_out(
+    self: torch.Tensor,
+    scale: float,
+    zero_point: int,
+    *,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    """Write the quantized wrap of ``self`` into ``out`` and return ``out``.
+
+    Args:
+        self (torch.Tensor): Integer tensor with dtype uint8, int8 or int32.
+        scale (float): Quantization scale.
+        zero_point (int): Quantization zero point.
+        out (torch.Tensor): Destination quantized tensor.
+
+    Returns:
+        torch.Tensor: ``out``, holding the values of ``self``.
+    """
+    logger.debug("GEMS MAKE_PER_TENSOR_QUANTIZED_TENSOR_OUT")
+    n = self.numel()
+    if n == 0:
+        return out
+    raw = torch.empty(0, dtype=self.dtype, device=self.device).set_(
+        out.untyped_storage(), 0, (n,)
+    )
+    if self.is_contiguous():
+        block, num_warps = _copy_config(self.dtype, n)
+        grid = (triton.cdiv(n, block),)
+        _copy_1d_kernel[grid](self, raw, n, BLOCK=block, num_warps=num_warps)
+    else:
+        shape_t, stride_t = _index_sidecars(self)
+        block = 1024
+        grid = (triton.cdiv(n, block),)
+        _gather_1d_kernel[grid](
+            self,
+            raw,
+            n,
+            shape_t,
+            stride_t,
+            self.dim(),
+            BLOCK=block,
+            MAXD=_MAXD,
+            num_warps=8,
+        )
+    return out

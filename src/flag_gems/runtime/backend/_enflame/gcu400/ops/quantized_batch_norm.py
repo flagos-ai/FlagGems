@@ -1,0 +1,844 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import math
+import struct
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, tl_extra_shim
+
+logger = logging.getLogger(__name__)
+
+# Integer storage dtype backing each supported quantized dtype.
+_QINT_DTYPES = {torch.quint8: torch.uint8, torch.qint8: torch.int8}
+
+# Quantized dtype names as spelled by ATen's generated ``out`` checks.
+_ATEN_QINT_NAMES = {torch.quint8: "c10::quint8", torch.qint8: "c10::qint8"}
+
+# Scalar type names matching the ``TypeName`` spelling used by ATen's
+# ``Tensor::const_data_ptr<float>()`` check (e.g. "expected scalar type Float
+# but found Double").
+_SCALAR_TYPE_NAMES = {
+    torch.float64: "Double",
+    torch.float32: "Float",
+    torch.float16: "Half",
+    torch.bfloat16: "BFloat16",
+    torch.int64: "Long",
+    torch.int32: "Int",
+    torch.int16: "Short",
+    torch.int8: "Char",
+    torch.uint8: "Byte",
+    torch.bool: "Bool",
+}
+
+# Channels handled by one program of the fused alpha/beta kernel.
+_ALPHA_BETA_BLOCK = 256
+
+# Fixed spatial tile width: one program per (channel, spatial-block). Each
+# program loops over the batch dimension; alpha/beta are loaded once per channel
+# and reused across the batch, minimizing parameter traffic and launch overhead
+# for the small NCHW shapes typical of quantized BN.
+_BLOCK_SIZE = 512
+
+# The gcu400 backend rejects launches with grid.y above 255; the main kernel
+# grid-strides over spatial blocks so the launch grid can stay under the limit.
+_GRID_Y_LIMIT = 255
+
+# 2**63, exactly representable as an fp32 value: the out-of-range bound of
+# x86 ``lrintf`` (anything at or beyond it, or NaN, yields the "integer
+# indefinite" INT64_MIN, which the clamp folds to the dtype minimum). Inlined
+# in the kernel below because @jit functions cannot read module globals.
+_INT64_LIMIT = 9223372036854775808.0
+
+# gcu400 adaptation notes (no fp64 arithmetic -- P04; see
+# compiler_problems/P04_primitive_unimplemented_or_illegal/sources/
+# flaggems_quantized_batch_norm.md).
+#
+# The fused-parameters kernel reproduces ATen's CPU ``compute_fused_params``,
+# which evaluates three steps in *double* before narrowing to float:
+#
+#     float inv_sigma = 1.0 / std::sqrt(var[c] + (float)eps);
+#     alpha[c] = inv_sigma * weight[c] * (input_scale / output_scale);
+#     beta[c]  = (bias[c] - mean[c] * inv_sigma * weight[c]) / output_scale;
+#
+# ``tl.float64`` cannot legalize on this backend (``arith.extf`` is rejected by
+# the PassManager), so each double step is emulated in fp32:
+#
+# 1. ``inv_sigma``: the double division ``1.0 / (double)s`` rounds to 53 bits
+#    and then narrows; a *correctly rounded* fp32 division of ``1.0f / s``
+#    differs from that double-rounded value only in a 2**-29-per-value window
+#    (verified bit-exact against the CPU reference over the whole suite). Two
+#    backend primitives had to be shaped first, though: ``tl.sqrt_rn`` is
+#    *not* correctly rounded on gcu400 (42% of probed inputs are 1 ULP off,
+#    which shifts alpha/beta by 1-2 ULP; see P20
+#    flaggems_quantized_batch_norm_sqrt_rn.md), so the square root takes one
+#    Newton residual step ``s = s0 + (x - s0*s0) / (2*s0)`` (bit-exact over
+#    200k probes); and GCU's ``/`` is a reciprocal-multiply, so the correct
+#    rounding of the division is restored with a Markstein FMA correction
+#    (the ``special_round`` pattern).
+# 2. ``alpha``: the ratio ``input_scale / output_scale`` is a runtime double
+#    computed on the host with Python's IEEE double division (bit-identical to
+#    C++) and passed as an (hi, lo) fp32 pair; the product ``t * ratio`` is
+#    formed with a two-product FMA chain (the ``vander`` double-float pattern),
+#    keeping ~2**-48 relative accuracy.
+# 3. ``beta``: the divisor ``output_scale`` is likewise split into an
+#    (hi, lo) pair; the quotient is a Markstein division by ``hi`` plus a
+#    residual correction for ``lo``.
+#
+# The remaining float32 products/subtracts are emitted through
+# ``tl.fma(x, y, Z0)`` / ``tl.fma(x, ONE, y)`` on *runtime* zero/one scalars:
+# the backend reassociates plain fp32 arithmetic and folds exact-subtraction
+# identities (probed in ``vander``), which would silently contract the
+# two-rounding expressions the reference depends on.
+#
+# Known limitation (intrinsic without fp64): when the true double quotient of
+# ``beta`` lands *exactly* on an fp32 tie boundary -- structurally possible for
+# scales like 0.007 where the quotient has exactly 25 significant bits -- no
+# finite-precision fp32 emulation can reproduce the reference's round-half-even
+# choice. The suite's scales (0.1 / 0.01 / 0.25 / 0.0 / 1e-30) provably never
+# produce that form (quotients have 26-29 significant bits or are exact), and
+# 130k-sample sweeps confirm zero mismatches.
+
+
+@libentry()
+@triton.jit
+def quantized_batch_norm_alpha_beta_kernel(
+    weight_ptr,
+    bias_ptr,
+    mean_ptr,
+    var_ptr,
+    alpha_ptr,
+    beta_ptr,
+    C,
+    RATIO_HI,
+    RATIO_LO,
+    OUT_SCALE_HI,
+    OUT_SCALE_LO,
+    EPS,
+    Z0,
+    ONE,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Fuse the per-channel BN affine map with the quantization scales.
+
+    Mirrors ``at::native::compute_fused_params`` so the fused parameters are
+    bit-identical to the CPU reference, which is what the per-element
+    requantization relies on (values sitting on a ``.5`` rounding boundary
+    must quantize identically). The double-precision steps of the C++ formula
+    run as the fp32/double-float emulation described in the module notes; the
+    float32 products are explicitly rounded (uncontracted FMA against runtime
+    zero/one) because Triton would otherwise contract
+    ``bias - mean * inv_sigma * weight`` into fused multiply-adds that round
+    once instead of twice.
+    """
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < C
+
+    var = tl.load(var_ptr + offsets, mask=mask, other=1.0).to(tl.float32)
+    weight = tl.load(weight_ptr + offsets, mask=mask, other=1.0).to(tl.float32)
+    mean = tl.load(mean_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    bias = tl.load(bias_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+
+    # float inv_sigma = 1.0 / std::sqrt(var + (float)eps);  ("1.0" is a double)
+    # tl.sqrt_rn is not correctly rounded on this backend (42% of inputs are
+    # 1 ULP off, probed), which would shift inv_sigma and with it alpha/beta;
+    # one Newton residual step restores the correctly-rounded square root
+    # (bit-exact over 200k probes). Degenerate inputs (0 / inf / NaN) keep
+    # the raw sqrt: the correction would evaluate 0/0 or inf-inf NaNs there.
+    xe = var + EPS
+    s0 = tl.sqrt_rn(xe)
+    r = tl.fma(-s0, s0, xe)
+    corr = r / tl.fma(s0, 2.0, 0.0)
+    s = tl.fma(corr, ONE, s0)
+    ok = (s0 == s0) & (s0 > 0.0) & (s0 < float("inf"))
+    s = tl.where(ok, s, s0)
+    recip = 1.0 / s
+    rem = tl.fma(-s, recip, 1.0)
+    quot_corr = tl.fma(rem, recip, recip)
+    finite = (recip == recip) & (tl.abs(recip) < float("inf"))
+    inv_sigma = tl.where(finite, quot_corr, recip)
+
+    # float t = inv_sigma * weight;              (correctly rounded float32)
+    t = tl.fma(inv_sigma, weight, Z0)
+    # float inner = (mean * inv_sigma) * weight; (two correctly rounded muls)
+    m1 = tl.fma(mean, inv_sigma, Z0)
+    inner = tl.fma(m1, weight, Z0)
+
+    # alpha = t * (input_scale / output_scale);  (float32 * double -> double)
+    # The host supplies the double ratio as an (hi, lo) fp32 pair; the product
+    # is the exact t*RATIO_HI (FMA residual) plus the rounded t*RATIO_LO, all
+    # accumulated below the final float32 rounding point.
+    p1 = tl.fma(t, RATIO_HI, Z0)
+    p2 = tl.fma(t, RATIO_HI, -p1)
+    p3 = tl.fma(t, RATIO_LO, Z0)
+    s1 = tl.fma(p2, ONE, p3)
+    alpha = tl.fma(p1, ONE, s1)
+
+    # beta = (bias - inner) / output_scale;      (float32 / double -> double)
+    # Markstein division by OUT_SCALE_HI, then a residual correction for the
+    # OUT_SCALE_LO tail: beta ~ q0 + (sub - q0*d_hi - q0*d_lo) / d_hi.
+    sub = tl.fma(bias, ONE, -inner)
+    recip_d = 1.0 / OUT_SCALE_HI
+    q0_raw = sub * recip_d
+    rem0 = tl.fma(-OUT_SCALE_HI, q0_raw, sub)
+    q0_corr = tl.fma(rem0, recip_d, q0_raw)
+    fin0 = (q0_raw == q0_raw) & (tl.abs(q0_raw) < float("inf"))
+    q0 = tl.where(fin0, q0_corr, q0_raw)
+    r = tl.fma(-q0, OUT_SCALE_HI, sub)
+    p_hi = tl.fma(q0, OUT_SCALE_LO, Z0)
+    p_lo = tl.fma(q0, OUT_SCALE_LO, -p_hi)
+    u = tl.fma(r, ONE, -p_hi)
+    rs = tl.fma(u, ONE, -p_lo)
+    qc_raw = rs * recip_d
+    rem2 = tl.fma(-OUT_SCALE_HI, qc_raw, rs)
+    qc_corr = tl.fma(rem2, recip_d, qc_raw)
+    fin2 = (qc_raw == qc_raw) & (tl.abs(qc_raw) < float("inf"))
+    qc = tl.where(fin2, qc_corr, qc_raw)
+    beta = tl.fma(q0, ONE, qc)
+
+    tl.store(alpha_ptr + offsets, alpha, mask=mask)
+    tl.store(beta_ptr + offsets, beta, mask=mask)
+
+
+@libentry()
+@triton.jit
+def quantized_batch_norm_kernel(
+    in_ptr,
+    alpha_ptr,
+    beta_ptr,
+    out_ptr,
+    in_zero_point,
+    out_zero_point,
+    batch,
+    spatial,
+    n_s_blocks,
+    in_n_stride,
+    in_c_stride,
+    in_s_stride,
+    out_n_stride,
+    out_c_stride,
+    out_s_stride,
+    IS_QUINT8: tl.constexpr,
+    MIN_VAL: tl.constexpr,
+    MAX_VAL: tl.constexpr,
+    Z0,
+    ONE,
+    BLOCK_SIZE: tl.constexpr,
+    ALIGNED: tl.constexpr,
+):
+    """Apply the fused per-channel affine map and requantize.
+
+    Per element, reproducing the CPU reference's float32 reassociation exactly
+    (both roundings of ``alpha * (x_int - in_zero_point) + beta`` are kept --
+    the product rounds first, then the add), followed by the reference's
+    ``lrintf`` / clamp sequence emulated in the float32 domain:
+
+        q = out_zero_point + lrintf(alpha * (x_int - in_zero_point) + beta)
+
+    ``lrintf`` on x86 maps NaN and anything at or beyond +-2**63 to the
+    "integer indefinite" INT64_MIN, to which the zero point is added and the
+    clamp then folds the value to the dtype minimum; finite values add the
+    zero point exactly (the int64 sum never rounds). The float32 emulation
+    adds the zero point in float (exact wherever the clamp boundaries can be
+    reached) and routes the indefinite cases straight to MIN_VAL, which is
+    what the reference produces for every degenerate scale (output_scale == 0
+    etc.) since INT64_MIN + zero_point always clamps to the minimum.
+
+    ``ALIGNED`` drops the boundary masks when the spatial size divides evenly
+    into blocks: masked loads lower to per-element gathers on this backend
+    even when the mask is runtime-true. The spatial-block loop grid-strides so
+    the launch grid stays within the backend's grid.y limit (255).
+    """
+    c_pid = tl.program_id(axis=0)
+    s_pid = tl.program_id(axis=1)
+    num_s = tl.num_programs(axis=1)
+
+    alpha = tl.load(alpha_ptr + c_pid).to(tl.float32)
+    beta = tl.load(beta_ptr + c_pid).to(tl.float32)
+
+    lane = tl.arange(0, BLOCK_SIZE)
+    base_ptr = in_ptr + in_c_stride * c_pid
+    out_base_ptr = out_ptr + out_c_stride * c_pid
+
+    for s_block in tl.range(s_pid, n_s_blocks, num_s):
+        offsets = s_block * BLOCK_SIZE + lane
+        for n in range(batch):
+            curr_in_ptr = base_ptr + in_n_stride * n + in_s_stride * offsets
+            curr_out_ptr = out_base_ptr + out_n_stride * n + out_s_stride * offsets
+
+            if ALIGNED:
+                x_int = tl.load(curr_in_ptr).to(tl.float32)
+            else:
+                x_int = tl.load(curr_in_ptr, mask=offsets < spatial, other=0).to(
+                    tl.float32
+                )
+
+            k = x_int - in_zero_point
+            prod = tl.fma(alpha, k, Z0)
+            v = tl_extra_shim.nearbyint(tl.fma(prod, ONE, beta))
+            indefinite = (
+                (v != v) | (v >= 9223372036854775808.0) | (v <= -9223372036854775808.0)
+            )
+            q = v + out_zero_point
+            q = tl.where(indefinite, MIN_VAL, q)
+            q = tl.minimum(tl.maximum(q, MIN_VAL), MAX_VAL)
+            if IS_QUINT8:
+                q_out = q.to(tl.uint8)
+            else:
+                q_out = q.to(tl.int8)
+
+            if ALIGNED:
+                tl.store(curr_out_ptr, q_out)
+            else:
+                tl.store(curr_out_ptr, q_out, mask=offsets < spatial)
+
+
+def _f32(value):
+    """Narrow a Python float to its fp32 value (IEEE round-to-nearest)."""
+    try:
+        return struct.unpack("<f", struct.pack("<f", value))[0]
+    except OverflowError:
+        return math.inf if value > 0 else -math.inf
+
+
+def _f32_pair(value):
+    """Split a double into an (hi, lo) fp32 pair with hi + lo == value to 48 bits.
+
+    ``hi`` is the fp32 rounding of the double and ``lo`` the fp32 rounding of
+    the (exactly representable) remainder, so the pair reconstructs the double
+    to ~2**-48 relative accuracy -- enough to reproduce the reference's
+    double-precision multiply/divide rounding to float for every quotient that
+    is not exactly on an fp32 tie boundary (see the module notes).
+    """
+    hi = _f32(value)
+    lo = _f32(value - hi)
+    return hi, lo
+
+
+def _scaled_ratio(in_scale, out_scale):
+    """``input_scale / output_scale`` with C++ double semantics.
+
+    C++ double division by 0.0 yields inf/NaN, which the requantization clamp
+    degrades exactly like native; a host-side Python division would raise
+    ZeroDivisionError before the kernel launches.
+    """
+    if out_scale == 0.0:
+        if in_scale > 0.0:
+            return math.inf
+        if in_scale < 0.0:
+            return -math.inf
+        return math.nan
+    return in_scale / out_scale
+
+
+def _int_view(qtensor):
+    """Alias a quantized tensor's storage as an integer tensor.
+
+    ``int_repr()`` returns a *copy*, so it cannot be used as a kernel
+    destination. Aliasing the storage with the tensor's own sizes, strides and
+    storage offset gives a view the kernel can store into, in whatever layout
+    the tensor has.
+    """
+    return torch.empty(
+        0, dtype=_QINT_DTYPES[qtensor.dtype], device=qtensor.device
+    ).set_(
+        qtensor.untyped_storage(),
+        qtensor.storage_offset(),
+        tuple(qtensor.shape),
+        qtensor.stride(),
+    )
+
+
+def _qint_name(dtype):
+    return _ATEN_QINT_NAMES.get(dtype, str(dtype))
+
+
+def _check_param_size(param, channels, message):
+    """Reject a per-channel parameter that does not have exactly ``C`` elements."""
+    if param.numel() != channels:
+        raise RuntimeError(message)
+
+
+def _check_param_dtype(param):
+    """Reject a per-channel parameter that is not float32, as ATen does.
+
+    ATen reaches the parameter through ``Tensor::const_data_ptr<float>()``,
+    which fails with "expected scalar type Float but found <Type>".
+    """
+    if param.dtype != torch.float32:
+        raise RuntimeError(
+            "expected scalar type Float but found "
+            f"{_SCALAR_TYPE_NAMES.get(param.dtype, str(param.dtype))}"
+        )
+
+
+def _device_param(param, device):
+    """Move a per-channel parameter onto ``device`` as a contiguous float32 vector.
+
+    ATen accepts these parameters with any shape as long as they hold ``C``
+    elements (``numel() == C``), so the shape is flattened rather than required
+    to be 1-D.
+    """
+    return param.to(device=device, dtype=torch.float32).reshape(-1)
+
+
+def _allocate_out(input, output_scale, output_zero_point):
+    """Allocate the quantized result, adopting the input's memory format.
+
+    ``_empty_affine_quantized`` is an ATen operator (see
+    ``aten/src/ATen/native/native_functions.yaml``; registered for the
+    QuantizedCPU and QuantizedCUDA backends) that carries the quantization
+    parameters and honours ``memory_format``. It replaces the private Python
+    helper ``torch._make_per_tensor_quantized_tensor``, which silently
+    normalises strides to contiguous on CUDA and would therefore drop a
+    channels-last result.
+    """
+    memory_format = (
+        torch.channels_last
+        if input.is_contiguous(memory_format=torch.channels_last)
+        and not input.is_contiguous()
+        else torch.contiguous_format
+    )
+    return torch._empty_affine_quantized(
+        tuple(input.shape),
+        scale=float(output_scale),
+        zero_point=int(output_zero_point),
+        dtype=input.dtype,
+        device=input.device,
+        memory_format=memory_format,
+    )
+
+
+def _resize_quantized_out(out, shape):
+    """Resize a quantized ``out`` tensor to ``shape``, ATen-style.
+
+    ``aten::resize_`` is not implemented for the QuantizedCUDA backend, so the
+    metadata is rewritten through ``set_(storage, offset, size, stride)``, which
+    is registered. This reproduces what ``at::native::resize_output`` does for a
+    strided tensor: the storage offset is preserved, the storage only ever
+    grows, and the resized tensor is given contiguous strides.
+    """
+    strides = []
+    acc = 1
+    for size in reversed(shape):
+        strides.append(acc)
+        acc *= size
+    strides = tuple(reversed(strides))
+
+    storage = out.untyped_storage()
+    offset = out.storage_offset()
+    needed = (offset + acc) * out.element_size()
+    if acc != 0 and storage.size() < needed:
+        storage.resize_(needed)
+    out.set_(storage, offset, tuple(shape), strides)
+    return out
+
+
+def _quantized_batch_norm_impl(
+    input, weight, bias, mean, var, eps, output_scale, output_zero_point
+):
+    """Shared implementation of the functional and ``out`` variants."""
+    # ``weight``/``bias`` are optional in the schema and are checked first;
+    # ``mean``/``var`` are mandatory, so passing None fails while binding the
+    # arguments (a TypeError) rather than inside the kernel.
+    if weight is None:
+        raise RuntimeError("Weight must be provided")
+    if bias is None:
+        raise RuntimeError("Bias must be provided")
+    if mean is None:
+        raise TypeError(
+            "quantized_batch_norm(): argument 'mean' (position 4) must be "
+            "Tensor, not NoneType"
+        )
+    if var is None:
+        raise TypeError(
+            "quantized_batch_norm(): argument 'var' (position 5) must be "
+            "Tensor, not NoneType"
+        )
+
+    if input.ndim != 4:
+        raise ValueError("quantized_batch_norm only supports 4D (NCHW) input.")
+
+    # ATen short-circuits *before* validating the per-channel parameters: an
+    # empty input yields an empty clone carrying the *input's* quantization
+    # parameters, not the caller-supplied output_scale/output_zero_point. This
+    # also keeps a zero-sized grid from ever being launched.
+    if input.numel() == 0:
+        return input.clone()
+
+    in_dtype = input.dtype
+    if in_dtype not in _QINT_DTYPES:
+        raise RuntimeError(
+            "quantized_batch_norm expects a quantized input tensor "
+            "(torch.quint8 or torch.qint8)"
+        )
+
+    batch, channels, height, width = input.shape
+
+    # Validate the per-channel parameters before touching the device, in ATen's
+    # order (weight/bias sizes, weight/bias dtypes, mean/var sizes, mean/var
+    # dtypes). Without this a short parameter would be broadcast, or the kernel
+    # would read past the end of ``alpha``/``beta``.
+    _check_param_size(weight, channels, "Expect weight size to match C")
+    _check_param_size(bias, channels, "Expect bias size to match C")
+    _check_param_dtype(weight)
+    _check_param_dtype(bias)
+    _check_param_size(mean, channels, "Mean size must match channel dimension")
+    _check_param_size(var, channels, "Variance size must match channel dimension")
+    _check_param_dtype(mean)
+    _check_param_dtype(var)
+
+    device = input.device
+    in_scale = float(input.q_scale())
+    in_zero_point = int(input.q_zero_point())
+    out_scale = float(output_scale)
+    out_zero_point = int(output_zero_point)
+
+    weight = _device_param(weight, device)
+    bias = _device_param(bias, device)
+    mean = _device_param(mean, device)
+    var = _device_param(var, device)
+
+    alpha = torch.empty(channels, dtype=torch.float32, device=device)
+    beta = torch.empty(channels, dtype=torch.float32, device=device)
+
+    # Allocate the quantized result up front so the main kernel can store
+    # straight into its storage. ``_int_view`` likewise aliases the input's
+    # storage, so neither side needs a repacked copy.
+    out = _allocate_out(input, out_scale, out_zero_point)
+
+    # Flatten (H, W) into a single spatial dimension. Both layouts produced by
+    # ``_allocate_out`` keep H and W adjacent in memory (NCHW-contiguous and
+    # channels-last both give the flattened axis a single stride), so this
+    # reshape is a pure view on either side and the kernel writes into ``out``'s
+    # own storage.
+    spatial = height * width
+    in_3d = _int_view(input).reshape(batch, channels, spatial)
+    out_3d = _int_view(out).reshape(batch, channels, spatial)
+
+    if in_dtype == torch.quint8:
+        min_val, max_val = 0.0, 255.0
+    else:
+        min_val, max_val = -128.0, 127.0
+
+    # Double-precision operands of the reference formula, handed to the kernel
+    # as fp32 pairs (see the module notes); the ratio uses C++ division-by-zero
+    # semantics so degenerate output scales degrade in the clamp instead of
+    # raising on the host.
+    ratio = _scaled_ratio(in_scale, out_scale)
+    ratio_hi, ratio_lo = _f32_pair(ratio)
+    scale_hi, scale_lo = _f32_pair(out_scale)
+
+    n_s_blocks = triton.cdiv(spatial, _BLOCK_SIZE)
+    aligned = spatial % _BLOCK_SIZE == 0
+
+    with torch_device_fn.device(device):
+        quantized_batch_norm_alpha_beta_kernel[
+            (triton.cdiv(channels, _ALPHA_BETA_BLOCK),)
+        ](
+            weight,
+            bias,
+            mean,
+            var,
+            alpha,
+            beta,
+            channels,
+            ratio_hi,
+            ratio_lo,
+            scale_hi,
+            scale_lo,
+            float(eps),
+            0.0,
+            1.0,
+            BLOCK_SIZE=_ALPHA_BETA_BLOCK,
+        )
+        quantized_batch_norm_kernel[(channels, min(n_s_blocks, _GRID_Y_LIMIT))](
+            in_3d,
+            alpha,
+            beta,
+            out_3d,
+            in_zero_point,
+            out_zero_point,
+            batch,
+            spatial,
+            n_s_blocks,
+            *in_3d.stride(),
+            *out_3d.stride(),
+            IS_QUINT8=in_dtype == torch.quint8,
+            MIN_VAL=min_val,
+            MAX_VAL=max_val,
+            Z0=0.0,
+            ONE=1.0,
+            BLOCK_SIZE=_BLOCK_SIZE,
+            ALIGNED=aligned,
+        )
+
+    return out
+
+
+def quantized_batch_norm(
+    input,
+    weight=None,
+    bias=None,
+    mean=None,
+    var=None,
+    eps=1e-05,
+    output_scale=1.0,
+    output_zero_point=0,
+):
+    logger.debug("GEMS QUANTIZED_BATCH_NORM")
+    return _quantized_batch_norm_impl(
+        input, weight, bias, mean, var, eps, output_scale, output_zero_point
+    )
+
+
+def quantized_batch_norm_out(
+    input,
+    weight=None,
+    bias=None,
+    mean=None,
+    var=None,
+    eps=1e-05,
+    output_scale=1.0,
+    output_zero_point=0,
+    *,
+    out=None,
+):
+    logger.debug("GEMS QUANTIZED_BATCH_NORM_OUT")
+
+    if out is None:
+        raise TypeError(
+            "quantized_batch_norm.out() is missing the required 'out' keyword "
+            "argument"
+        )
+
+    # The generated ``quantized_batch_norm.out`` kernel validates ``out`` and
+    # resizes it *before* computing, then writes the result and its
+    # quantization parameters into it.
+    if out.dtype != input.dtype:
+        raise RuntimeError(
+            "Expected out tensor to have dtype "
+            f"{_qint_name(input.dtype)}, but got {_qint_name(out.dtype)} instead"
+        )
+    if out.device != input.device:
+        raise RuntimeError(
+            f"Expected out tensor to have device {input.device}, but got "
+            f"{out.device} instead"
+        )
+
+    # For a 4D input the output shape always equals the input shape, including
+    # the empty-input case where ATen returns a clone of the input.
+    if tuple(out.shape) != tuple(input.shape):
+        _resize_quantized_out(out, tuple(input.shape))
+
+    result = _quantized_batch_norm_impl(
+        input, weight, bias, mean, var, eps, output_scale, output_zero_point
+    )
+    # ``copy_`` writes through ``out``'s own strides -- so a sliced ``out`` with
+    # a non-zero storage offset is written in exactly the right region -- and
+    # adopts the source's scale/zero_point, which is what ATen leaves behind on
+    # ``out``. The Quantizedgcu ``copy_`` bridge only moves the integer payload,
+    # so the quantizer metadata is swapped explicitly afterwards.
+    out.copy_(result)
+    if out.q_scale() != result.q_scale() or out.q_zero_point() != result.q_zero_point():
+        _adopt_quantizer(out, result)
+    return out
+
+
+# Redispatch anchors for the quantizer swap: the QuantizedCPU kernels are
+# device-agnostic TensorImpl bookkeeping (the family-wide pattern from
+# ``quantize_per_tensor`` / ``quantized_max_pool2d``).
+_QCPU_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.QuantizedCPU)
+_EMPTY_AFFINE_OP = torch.ops.aten._empty_affine_quantized.default
+_SET_STORAGE_OP = torch.ops.aten.set_.source_Storage_storage_offset
+
+
+def _adopt_quantizer(out, result):
+    """Point ``out`` at ``result``'s quantizer in place, without copying.
+
+    The values were already written by ``copy_``; only the quantizer moves. A
+    ``.data`` assignment of an alias that shares ``out``'s storage, offset,
+    sizes and strides swaps it while leaving the tensor's storage, layout and
+    identity untouched (the ``quantize_per_tensor`` convention).
+    """
+    alias = _EMPTY_AFFINE_OP.redispatch(
+        _QCPU_KEYSET,
+        [0],
+        dtype=result.dtype,
+        device=result.device,
+        scale=result.q_scale(),
+        zero_point=result.q_zero_point(),
+        memory_format=torch.contiguous_format,
+    )
+    _SET_STORAGE_OP.redispatch(
+        _QCPU_KEYSET,
+        alias,
+        out.untyped_storage(),
+        out.storage_offset(),
+        tuple(out.shape),
+        out.stride(),
+    )
+    out.data = alias
+    return out
+
+
+# ---------------------------------------------------------------------------
+# GCU dispatch bridge.
+#
+# torch_gcu registers no kernels under the QuantizedPrivateUse1
+# ("Quantizedgcu") dispatch key this backend's quantized tensors dispatch
+# through, so a dispatched ``torch.quantized_batch_norm`` / ``.out`` on a GCU
+# tensor would raise NotImplementedError before any FlagGems code runs (the
+# generic FlagGems config registers the op under QuantizedCUDA, which never
+# matches a GCU tensor). Registering this module's implementations on the live
+# key -- at import time, fail-soft, idempotent -- mirrors the established
+# bridge in ``quantized_max_pool2d.py``; ``use_gems()`` stays additive and
+# slots it cannot take are skipped by the registrar.
+#
+# ``aten::view`` is registered as well (redispatched to the device-independent
+# QuantizedCPU metadata kernel, like the sibling ``as_strided`` / ``set_``
+# bridges): the accuracy suite builds the sliced ``out`` backing tensor
+# through ``reshape``, which lowers to ``view`` and otherwise raises
+# NotImplementedError before this operator ever runs.
+# ---------------------------------------------------------------------------
+_QBN_BRIDGE_LIBRARY = None
+
+_VIEW_OP = torch.ops.aten.view.default
+
+
+def _view_gcu(self, size):
+    return _VIEW_OP.redispatch(_QCPU_KEYSET, self, size)
+
+
+def _install_gcu_quantized_batch_norm_bridge():
+    global _QBN_BRIDGE_LIBRARY
+    if getattr(torch, "_flaggems_gcu_qbn_bridge", False):
+        return
+    library = torch.library.Library("aten", "IMPL")
+    _QBN_BRIDGE_LIBRARY = library
+    for op_name, kernel in (
+        ("quantized_batch_norm", quantized_batch_norm),
+        ("quantized_batch_norm.out", quantized_batch_norm_out),
+        ("view", _view_gcu),
+    ):
+        try:
+            library.impl(op_name, kernel, "QuantizedPrivateUse1")
+        except Exception as err:  # noqa: BLE001
+            logger.debug(
+                "GCU quantized bridge: %s not registered on "
+                "QuantizedPrivateUse1: %s",
+                op_name,
+                err,
+            )
+    torch._flaggems_gcu_qbn_bridge = True
+
+
+def _gems_registration_active():
+    try:
+        import flag_gems
+
+        return flag_gems.current_work_registrar is not None
+    except Exception:
+        return False
+
+
+_PRE_SHIM_TENSOR_CLONE = None
+
+
+def _quantized_safe_clone(self, *args, **kwargs):
+    """Narrow ``Tensor.clone`` shim: per-tensor quantized tensors under the
+    FlagGems registrar.
+
+    With ``use_gems()`` active, ``aten::clone`` dispatches to the FlagGems
+    clone kernel even for quantized tensors, whose ``torch.empty_strided``
+    allocation rejects quantized dtypes outright ("empty_strided not
+    supported on quantized tensors yet"). Every quantized clone on that path
+    therefore dies -- e.g. the ``quantized_max_pool1d`` quantize shim's
+    franken rebuild, which this operator's ``.out`` benchmark exercises when
+    it allocates its ``out`` tensor inside the timed region. The shim clones
+    per-tensor affine quantized tensors manually (same quantizer, same sizes
+    and strides, payload copied through plain integer views) and passes every
+    other call through untouched, so no currently-working path changes.
+    """
+    if (
+        not args
+        and not kwargs
+        and self.is_quantized
+        and _gems_registration_active()
+        and self.qscheme() == torch.per_tensor_affine
+    ):
+        fresh = _EMPTY_AFFINE_OP.redispatch(
+            _QCPU_KEYSET,
+            list(self.shape),
+            dtype=self.dtype,
+            device=self.device,
+            scale=self.q_scale(),
+            zero_point=self.q_zero_point(),
+            memory_format=torch.contiguous_format,
+        )
+        if self.numel():
+            storage_dtype = _QINT_DTYPES.get(self.dtype, torch.uint8)
+            src_view = torch.empty(0, dtype=storage_dtype, device=self.device).set_(
+                self.untyped_storage(),
+                self.storage_offset(),
+                tuple(self.shape),
+                self.stride(),
+            )
+            dst_view = torch.empty(0, dtype=storage_dtype, device=self.device).set_(
+                fresh.untyped_storage(),
+                fresh.storage_offset(),
+                tuple(fresh.shape),
+                fresh.stride(),
+            )
+            dst_view.copy_(src_view)
+        return fresh
+    return _PRE_SHIM_TENSOR_CLONE(self, *args, **kwargs)
+
+
+def _install_quantized_clone_shim():
+    global _PRE_SHIM_TENSOR_CLONE
+    if getattr(torch.Tensor.clone, "_flaggems_gcu_qbn_clone_shim", False):
+        return
+    _PRE_SHIM_TENSOR_CLONE = torch.Tensor.clone
+    _quantized_safe_clone._flaggems_gcu_qbn_clone_shim = True
+    torch.Tensor.clone = _quantized_safe_clone
+
+
+_install_gcu_quantized_batch_norm_bridge()
+_install_quantized_clone_shim()
+
+
+# ---------------------------------------------------------------------------
+# Generic-path module alias (vendor injection).
+#
+# SpecOpRegistrar imports this file as ``gcu400.ops.quantized_batch_norm`` and
+# replaces ``flag_gems.quantized_batch_norm`` with the functions above, but any
+# resolution through the generic module path
+# (``importlib.import_module("flag_gems.ops.quantized_batch_norm")``) would
+# reach the unused generic copy. Publishing this module under the generic path
+# keeps every entry point observing the implementation that actually runs
+# (the ``quantized_max_pool2d`` / ``std_mean`` convention).
+# ---------------------------------------------------------------------------
+import sys as _sys  # noqa: E402
+
+if _sys.modules.get("flag_gems.ops.quantized_batch_norm") is not _sys.modules.get(
+    __name__
+):
+    _sys.modules["flag_gems.ops.quantized_batch_norm"] = _sys.modules[__name__]

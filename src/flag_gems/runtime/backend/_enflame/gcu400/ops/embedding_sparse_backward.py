@@ -1,0 +1,151 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+import flag_gems
+
+logger = logging.getLogger(__name__)
+
+# --- TUNING PARAMS START ---
+# 由优化迭代驱动脚本按轮次生成；只影响稀疏输出落盘设备，不影响数值语义。
+USE_CPU_SPARSE = 1
+# --- TUNING PARAMS END ---
+
+
+@triton.jit
+def _masked_copy_rows_kernel(
+    grad_output_ptr,  # (N, D)
+    indices_ptr,  # (N,)
+    values_ptr,  # (N, D)
+    padding_idx,
+    N,
+    EMBED_DIM: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    # One program handles one row. Every row is copied through, but rows whose
+    # index equals padding_idx are written as zeros. This keeps the launch grid
+    # static (N rows) so there is no data-dependent host synchronization, unlike
+    # a torch.nonzero() compaction — that sync is what tanked the padded shapes.
+    pid_n = tl.program_id(0)
+    if pid_n >= N:
+        return
+
+    offs_d = tl.arange(0, BLOCK_D)
+    mask_d = offs_d < EMBED_DIM
+
+    # P17: 索引 load 后归一到 i32（host 已归一传入；防御两种 env 布局差异），
+    # 对齐 embedding.py / embedding_dense_backward.py 惯用法。
+    row_idx = tl.load(indices_ptr + pid_n).to(tl.int32)
+    go = tl.load(grad_output_ptr + pid_n * EMBED_DIM + offs_d, mask=mask_d, other=0)
+    keep = row_idx != padding_idx
+    go = tl.where(keep, go, 0.0)
+    tl.store(values_ptr + pid_n * EMBED_DIM + offs_d, go, mask=mask_d)
+
+
+def embedding_sparse_backward(
+    grad_output: torch.Tensor,
+    indices: torch.Tensor,
+    num_weights: int,
+    padding_idx: int,
+    scale_grad_by_freq: bool,
+):
+    logger.debug("GEMS EMBEDDING_SPARSE_BACKWARD")
+    assert indices.dtype in (
+        torch.int32,
+        torch.int64,
+    ), "Indices must be int32 or int64."
+    if (
+        grad_output.device.type != flag_gems.device
+        or indices.device.type != flag_gems.device
+        or grad_output.device != indices.device
+    ):
+        raise ValueError(
+            f"Inputs must be {flag_gems.device} tensors on the same device."
+        )
+    if scale_grad_by_freq:
+        # Matches aten: frequency scaling is not defined for sparse gradients.
+        raise RuntimeError(
+            "embedding_backward: scale_grad_by_freq not supported with sparse gradients"
+        )
+
+    device = grad_output.device
+    assert (
+        grad_output.dim() >= 2
+    ), "grad_output must have embedding dimension as the last dim."
+
+    D = grad_output.shape[-1]
+    go = grad_output.contiguous().view(-1, D)  # (N, D)
+    idx = indices.contiguous().view(-1)  # (N,)
+    # P17: int64 索引 host 侧归一 int32——无 env 时 torch_gcu 把 int64 张量静默替换为
+    # 紧凑 4B 存储，kernel 按声称 dtype 的 8B 步长 load 会交错错值；`.to(torch.int32)`
+    # 走 torch_gcu 拷贝机能正确读紧凑布局，产出真 int32 张量（两种 env 布局均正确）。
+    if idx.dtype == torch.int64:
+        idx = idx.to(torch.int32)
+    N = idx.numel()
+    assert go.shape[0] == N, "indices number must match grad_output rows."
+
+    # aten's sparse backward emits one COO entry per grad row, dropping the ones
+    # whose index equals padding_idx, and does NOT accumulate duplicates. The
+    # result is an uncoalesced sparse COO tensor of shape (num_weights, D).
+    if padding_idx is not None and padding_idx >= 0:
+        # Keep every row in place and zero the padding rows in a single Triton
+        # pass. A dropped row and an all-zero row densify identically, so this
+        # matches aten's dense-equivalent gradient while avoiding the host sync
+        # that a nonzero() compaction would force on every launch.
+        sparse_indices = idx.view(1, -1)
+        values = torch.empty((N, D), device=device, dtype=grad_output.dtype)
+        if N > 0:
+            BLOCK_D = min(triton.next_power_of_2(D), 256)
+            _masked_copy_rows_kernel[(N,)](
+                go,
+                idx,
+                values,
+                padding_idx,
+                N,
+                EMBED_DIM=D,
+                BLOCK_D=BLOCK_D,
+            )
+    else:
+        # No padding: every grad row survives in order, so the flattened
+        # grad_output rows are exactly the COO values. Reuse them directly
+        # instead of copying into a fresh buffer.
+        sparse_indices = idx.view(1, -1)
+        values = go
+
+    # P21: GCU 无稀疏后端——values 仍在 GCU kernel 算好后，把 indices/values 搬回
+    # CPU 构造 COO，输出设备与 aten 参考腿（CPU fallback）对齐，避免半残张量。
+    if USE_CPU_SPARSE and device.type != "cpu":
+        sparse_indices = sparse_indices.detach().cpu().contiguous()
+        values = values.detach().cpu().contiguous()
+        out = torch.sparse_coo_tensor(
+            sparse_indices,
+            values,
+            (num_weights, D),
+            dtype=grad_output.dtype,
+            device="cpu",
+        )
+    else:
+        out = torch.sparse_coo_tensor(
+            sparse_indices,
+            values,
+            (num_weights, D),
+            dtype=grad_output.dtype,
+            device=device,
+        )
+    return out

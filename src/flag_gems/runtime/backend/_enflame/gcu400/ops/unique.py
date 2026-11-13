@@ -23,6 +23,52 @@ from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
+# 三条 unique 路径的 tile / CTA 配置；提为模块常量便于按 shape 分档与
+# 批量扫描。默认值保持原实现，其中 SIMPLE_TILE_FLOOR 是 GCU400 修复项。
+_UNIQUE_TILE_CAP = 8192
+# 15 轮扫描 + 14 轮 A/B 交替复测：tile floor 64 的 3 case 总延迟中位数
+# 7.929 ms，比 32 的 8.297 ms 快约 4.4%；同时把 0-d/1 元素输入的
+# tile_size=1 编译器断言一并消除（下限须 ≥32）。
+_UNIQUE_TILE_FLOOR = 64
+_UNIQUE_CTA_HARD_LIMIT = 65536
+_UNIQUE_CTA_FALLBACK = 2048
+_UNIQUE_INV_CTA_LIMIT = 32768
+_UNIQUE_INV_CTA_FALLBACK = 8192
+_UNIQUE_NUM_WARPS = 4
+_UNIQUE_SIMPLE_MAX_NUMEL = 8192
+
+
+@triton.jit
+def _unique_ne(a, b, NAN_AS_UNIQUE: tl.constexpr):
+    """Elementwise "not equal" used to detect boundaries between unique values.
+
+    ``torch.unique`` folds every NaN into a single unique value while keeping
+    ``-0.0`` and ``+0.0`` distinct. A plain ``!=`` gets both wrong (NaN != NaN
+    is true, -0.0 == 0.0 is true), so for floating dtypes we compare bit
+    patterns after mapping NaN onto a canonical encoding.
+    """
+    if NAN_AS_UNIQUE:
+        # aten::_unique2 keeps one unique slot per NaN occurrence (NaN != NaN)
+        # and folds -0.0/+0.0 into one value, i.e. exactly plain != semantics.
+        return a != b
+    if a.dtype.is_floating():
+        if a.dtype == tl.float64:
+            a_bits = a.to(tl.uint64, bitcast=True)
+            b_bits = b.to(tl.uint64, bitcast=True)
+            nan_bits = 0x7FF8000000000000
+        elif a.dtype == tl.float32:
+            a_bits = a.to(tl.uint32, bitcast=True)
+            b_bits = b.to(tl.uint32, bitcast=True)
+            nan_bits = 0x7FC00000
+        else:
+            a_bits = a.to(tl.uint16, bitcast=True)
+            b_bits = b.to(tl.uint16, bitcast=True)
+            nan_bits = 0x7E00
+        a_key = tl.where(a != a, nan_bits, a_bits)
+        b_key = tl.where(b != b, nan_bits, b_bits)
+        return a_key != b_key
+    return a != b
+
 
 @libentry()
 @triton.jit
@@ -37,6 +83,7 @@ def simple_unique_flat_kernel(
     return_counts: tl.constexpr,
     num_tasks: int,
     tile_size: tl.constexpr,
+    NAN_AS_UNIQUE: tl.constexpr,
 ):
     i0 = tl.arange(0, tile_size)
     mask = i0 < num_tasks
@@ -47,7 +94,7 @@ def simple_unique_flat_kernel(
     b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
 
     # ne & cumsum
-    ne_result = tl.where(i0 > 0, a != b, 0)
+    ne_result = tl.where(i0 > 0, _unique_ne(a, b, NAN_AS_UNIQUE), 0)
     cumsum = tl.cumsum(ne_result)
 
     # unique_size
@@ -195,6 +242,7 @@ def local_quick_unique_flat_impl(
     num_tasks: int,
     tile_size: tl.constexpr,
     return_counts: tl.constexpr,
+    NAN_AS_UNIQUE: tl.constexpr,
 ):
     offset = global_pid * tile_size
     r = tl.arange(0, tile_size)
@@ -207,7 +255,7 @@ def local_quick_unique_flat_impl(
     b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
 
     # ne & cumsum
-    ne_result = tl.where(i0 > 0, a != b, 0)
+    ne_result = tl.where(i0 > 0, _unique_ne(a, b, NAN_AS_UNIQUE), 0)
     cumsum = tl.cumsum(ne_result)
 
     # local_id or local_unique
@@ -245,6 +293,7 @@ def local_quick_unique_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
     return_counts: tl.constexpr,
+    NAN_AS_UNIQUE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     ctas_num = tl.num_programs(0)
@@ -261,6 +310,7 @@ def local_quick_unique_flat_kernel(
             num_tasks,
             tile_size,
             return_counts,
+            NAN_AS_UNIQUE,
         )
 
 
@@ -331,19 +381,26 @@ def global_quick_unique_flat_kernel(
         )
 
 
-def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
+def sorted_quick_unique_flat(
+    sorted_data: torch.Tensor, return_counts: bool, nan_as_unique: bool = False
+):
     num_tasks = sorted_data.numel()
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
-    tile_size = min(8192, next_power_num_tasks)
+    tile_size = min(_UNIQUE_TILE_CAP, next_power_num_tasks)
     global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    if global_ctas_num <= 8192:
+    if global_ctas_num <= _UNIQUE_TILE_CAP:
         tile_size = max(
-            32, min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks)
+            _UNIQUE_TILE_FLOOR,
+            min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks),
         )
         global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    ctas_num = global_ctas_num if global_ctas_num < 65536 else 2048
+    ctas_num = (
+        global_ctas_num
+        if global_ctas_num < _UNIQUE_CTA_HARD_LIMIT
+        else _UNIQUE_CTA_FALLBACK
+    )
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 4
+    num_warps = _UNIQUE_NUM_WARPS
     grid = (ctas_num, 1, 1)
 
     # allocate tensor
@@ -376,6 +433,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
             tile_size=tile_size,
             return_counts=return_counts,
             num_warps=num_warps,
+            NAN_AS_UNIQUE=nan_as_unique,
         )
         tile_cumsum = torch.zeros(
             global_ctas_num + 1, dtype=torch.int64, device=sorted_data.device
@@ -429,6 +487,7 @@ def local_ne_flat_impl(
     global_ctas_num: int,
     num_tasks: int,
     tile_size: tl.constexpr,
+    NAN_AS_UNIQUE: tl.constexpr,
 ):
     r = tl.arange(0, tile_size)
     i0 = global_pid * tile_size + r
@@ -440,7 +499,7 @@ def local_ne_flat_impl(
     b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
 
     # compute
-    ne_result = tl.where(i0 > 0, a != b, 0)
+    ne_result = tl.where(i0 > 0, _unique_ne(a, b, NAN_AS_UNIQUE), 0)
 
     # store ne_result
     tl.store(ne_result_ptr + i0, ne_result, mask=mask)
@@ -461,6 +520,7 @@ def local_ne_flat_kernel(
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
+    NAN_AS_UNIQUE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     ctas_num = tl.num_programs(0)
@@ -475,6 +535,7 @@ def local_ne_flat_kernel(
             global_ctas_num,
             num_tasks,
             tile_size,
+            NAN_AS_UNIQUE,
         )
 
 
@@ -554,22 +615,29 @@ def global_cumsum_flat_kernel(
 
 
 def sorted_indices_unique_flat(
-    sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool
+    sorted_data: torch.Tensor,
+    sorted_indices: torch.Tensor,
+    return_counts: bool,
+    nan_as_unique: bool = False,
 ):
     num_tasks = sorted_data.numel()
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
-    tile_size = min(8192, next_power_num_tasks)
+    tile_size = min(_UNIQUE_TILE_CAP, next_power_num_tasks)
     global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    if global_ctas_num <= 8192:
+    if global_ctas_num <= _UNIQUE_TILE_CAP:
         min_tile_size = 512 if global_ctas_num > 32 else 256
         tile_size = max(
             min_tile_size,
             min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks),
         )
         global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    ctas_num = global_ctas_num if global_ctas_num < 32768 else 8192
+    ctas_num = (
+        global_ctas_num
+        if global_ctas_num < _UNIQUE_INV_CTA_LIMIT
+        else _UNIQUE_INV_CTA_FALLBACK
+    )
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 4
+    num_warps = _UNIQUE_NUM_WARPS
     grid = (ctas_num, 1, 1)
 
     # allocate tensor
@@ -594,6 +662,7 @@ def sorted_indices_unique_flat(
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
             num_warps=num_warps,
+            NAN_AS_UNIQUE=nan_as_unique,
         )
         tile_cumsum = torch.zeros(
             global_ctas_num + 1, dtype=torch.int64, device=sorted_data.device
@@ -637,6 +706,7 @@ def simple_unique_flat(
     sorted_indices: torch.Tensor,
     return_inverse: bool,
     return_counts: bool,
+    nan_as_unique: bool = False,
 ):
     num_tasks = sorted_data.numel()
     grid = (1, 1, 1)
@@ -665,8 +735,12 @@ def simple_unique_flat(
             return_inverse,
             return_counts,
             num_tasks,
-            tile_size=triton.next_power_of_2(num_tasks),
-            num_warps=4,
+            # 0-d / 1 元素输入会让 tile_size=1，GCU400 编译器在
+            # tl.cumsum(1 元素张量) 上触发 MLIR TypeRange 断言并 abort(134)；
+            # 下限 32 不改变语义（越界元素被 mask 屏蔽，cumsum 保持）。
+            tile_size=max(_UNIQUE_TILE_FLOOR, triton.next_power_of_2(num_tasks)),
+            num_warps=_UNIQUE_NUM_WARPS,
+            NAN_AS_UNIQUE=nan_as_unique,
         )
     out_size = unique_size.item() + 1
     counts = None
@@ -693,24 +767,46 @@ def _unique2(
     return_counts: bool = False,
 ):
     logger.debug("GEMS_ENFLAME _UNIQUE2")
-    if in0.numel() <= 8192:
+    # Zero-size guard: the flat kernels build tile_size = next_power_of_2(numel)
+    # and would launch tl.arange(0, 0) for an empty input. aten::_unique2 on an
+    # empty tensor yields empty outputs, so short-circuit before touching Triton.
+    if in0.numel() == 0:
+        data_out = torch.empty(0, dtype=in0.dtype, device=in0.device)
+        # ATen view_as's inverse_indices even for empty input, so apply it
+        # unconditionally here: identical for 1-D (both (0,)), and matches
+        # ATen's (0, d1, ...) for empty N-D inputs.
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device).view_as(
+            in0
+        )
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+        return data_out, inverse_indices, counts
+    if in0.numel() <= _UNIQUE_SIMPLE_MAX_NUMEL:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
-            sorted_data, sorted_indices, return_inverse, return_counts
+            sorted_data,
+            sorted_indices,
+            return_inverse,
+            return_counts,
+            nan_as_unique=True,
         )
     elif return_inverse:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices, return_counts
+            sorted_data, sorted_indices, return_counts, nan_as_unique=True
         )
     else:
         sorted_data, _ = torch.sort(in0.ravel())
-        print(f"sorted_data:{sorted_data.to('cpu')}")
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts
+            sorted_data, return_counts, nan_as_unique=True
         )
-    return (
-        data_out,
-        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
-        counts,
-    )
+    # aten::_unique2 always returns three tensors: when return_inverse /
+    # return_counts are False the corresponding output is an empty (0,) int64
+    # tensor rather than None. Mirror that contract so callers can rely on the
+    # shapes matching ATen regardless of the requested flags.
+    if inverse_indices is None:
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        inverse_indices = inverse_indices.view_as(in0)
+    if counts is None:
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+    return data_out, inverse_indices, counts

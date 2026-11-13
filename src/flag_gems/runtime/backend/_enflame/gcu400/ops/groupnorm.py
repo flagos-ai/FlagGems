@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 MAX_BLOCK_HW = 2048
 MAX_BLOCK_HW_BACKWARD = 512
 GRID_DIM_X = 24
+MAX_FLAT_BLOCK = 16384
+MAX_FLAT_TWO_PASS_BLOCK = 4096
+MAX_FLAT_N = 4
 
 
 @libentry()
@@ -224,6 +227,92 @@ def group_norm_backward_kernel(
 
 
 @libentry()
+@triton.jit(do_not_specialize=["HW"])
+def group_norm_backward_flat_kernel(
+    grad_y,
+    X,
+    W,
+    Mean,
+    Rstd,
+    num_groups,
+    inv_ne,
+    grad_x,
+    HW,
+    BLOCK: tl.constexpr,
+    SINGLE: tl.constexpr,
+    EXACT: tl.constexpr,
+):
+    # group_size == 1 fast path: each program owns one contiguous row of HW
+    # elements, so the (group_size, HW) tile degenerates to a flat [BLOCK]
+    # vector. Single-pass keeps dY/X live in registers across the two
+    # reduction trees; large HW falls back to a chunked two-pass form.
+    pid = tl.program_id(0)
+    rstd = tl.load(Rstd + pid).to(tl.float32)
+    mean = tl.load(Mean + pid).to(tl.float32)
+    if W is None:
+        w = 1.0
+    else:
+        w = tl.load(W + pid % num_groups).to(tl.float32)
+    base = pid * HW
+    if SINGLE:
+        idx = tl.arange(0, BLOCK)
+        if EXACT:
+            dY = tl.load(grad_y + base + idx).to(tl.float32)
+            Xv = tl.load(X + base + idx).to(tl.float32)
+            dxh = w * dY
+            xh = rstd * (Xv - mean)
+            dx_2 = tl.sum(dxh)
+            dx_3 = tl.sum(dxh * xh)
+            dx = rstd * (dxh - (dx_2 + xh * dx_3) * inv_ne)
+            tl.store(grad_x + base + idx, dx.to(grad_x.dtype.element_ty))
+        else:
+            m = idx < HW
+            dY = tl.load(grad_y + base + idx, mask=m, other=0.0).to(tl.float32)
+            Xv = tl.load(X + base + idx, mask=m, other=0.0).to(tl.float32)
+            dxh = w * dY
+            xh = rstd * (Xv - mean)
+            dx_2 = tl.sum(dxh)
+            dx_3 = tl.sum(dxh * xh)
+            dx = rstd * (dxh - (dx_2 + xh * dx_3) * inv_ne)
+            tl.store(grad_x + base + idx, dx.to(grad_x.dtype.element_ty), mask=m)
+    else:
+        acc2 = tl.zeros([BLOCK], tl.float32)
+        acc3 = tl.zeros([BLOCK], tl.float32)
+        for off in range(0, HW, BLOCK):
+            idx = off + tl.arange(0, BLOCK)
+            if EXACT:
+                dY = tl.load(grad_y + base + idx).to(tl.float32)
+                Xv = tl.load(X + base + idx).to(tl.float32)
+            else:
+                m = idx < HW
+                dY = tl.load(grad_y + base + idx, mask=m, other=0.0).to(tl.float32)
+                Xv = tl.load(X + base + idx, mask=m, other=0.0).to(tl.float32)
+            dxh = w * dY
+            xh = rstd * (Xv - mean)
+            acc2 += dxh
+            acc3 += dxh * xh
+        dx_2 = tl.sum(acc2)
+        dx_3 = tl.sum(acc3)
+        for off in range(0, HW, BLOCK):
+            idx = off + tl.arange(0, BLOCK)
+            if EXACT:
+                dY = tl.load(grad_y + base + idx).to(tl.float32)
+                Xv = tl.load(X + base + idx).to(tl.float32)
+                dxh = w * dY
+                xh = rstd * (Xv - mean)
+                dx = rstd * (dxh - (dx_2 + xh * dx_3) * inv_ne)
+                tl.store(grad_x + base + idx, dx.to(grad_x.dtype.element_ty))
+            else:
+                m = idx < HW
+                dY = tl.load(grad_y + base + idx, mask=m, other=0.0).to(tl.float32)
+                Xv = tl.load(X + base + idx, mask=m, other=0.0).to(tl.float32)
+                dxh = w * dY
+                xh = rstd * (Xv - mean)
+                dx = rstd * (dxh - (dx_2 + xh * dx_3) * inv_ne)
+                tl.store(grad_x + base + idx, dx.to(grad_x.dtype.element_ty), mask=m)
+
+
+@libentry()
 @triton.jit(do_not_specialize=["N", "C", "HW", "group_size"])
 def weight_bias_backward_kernel(
     dY,
@@ -276,6 +365,45 @@ def weight_bias_backward_kernel(
         tl.store(dB + pid, db)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N", "C", "HW"])
+def weight_bias_backward_flat_kernel(
+    dY,
+    X,
+    Mean,
+    Rstd,
+    dW,
+    dB,
+    num_groups,
+    N,
+    C,
+    HW,
+    BLOCK_N: tl.constexpr,
+    BLOCK_HW: tl.constexpr,
+):
+    # group_size == 1 fast path: one program per channel, rows unrolled with
+    # flat [BLOCK_HW] loads (avoids the degenerate narrow 2D tile).
+    pid = tl.program_id(0)
+    accw = tl.zeros([BLOCK_HW], tl.float32)
+    accb = tl.zeros([BLOCK_HW], tl.float32)
+    for n in tl.static_range(BLOCK_N):
+        row = tl.minimum(n, N - 1)
+        mean_n = tl.load(Mean + pid + row * num_groups).to(tl.float32)
+        rstd_n = tl.load(Rstd + pid + row * num_groups).to(tl.float32)
+        row_base = n * (C * HW) + pid * HW
+        for off in range(0, HW, BLOCK_HW):
+            hw = off + tl.arange(0, BLOCK_HW)
+            m = (hw < HW) & (n < N)
+            dYv = tl.load(dY + row_base + hw, mask=m, other=0.0).to(tl.float32)
+            Xv = tl.load(X + row_base + hw, mask=m, other=0.0).to(tl.float32)
+            accw += (Xv - mean_n) * rstd_n * dYv
+            accb += dYv
+    if dW is not None:
+        tl.store(dW + pid, tl.sum(accw))
+    if dB is not None:
+        tl.store(dB + pid, tl.sum(accb))
+
+
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     logger.debug("GEMS_ENFLAME GROUP_NORM")
 
@@ -323,31 +451,70 @@ def group_norm_backward(
     weight = None if weight is None else weight.contiguous()
     group_size = triton.cdiv(C, group)
 
-    BLOCK_GROUP_SIZE = triton.next_power_of_2(group_size)
-    BLOCK_HW = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW_BACKWARD)
-    # DSM constraint: reduce BLOCK_HW if tile is too large for make_block_ptr overhead
-    while BLOCK_GROUP_SIZE * BLOCK_HW > 2048 and BLOCK_HW > 128:
-        BLOCK_HW //= 2
+    # group_size == 1 (num_groups == C): every (n, g) slice is one contiguous
+    # row of HW elements -> flat single-pass kernels.
+    flat_ok = group_size == 1 and HxW > 0 and input.numel() < 2**31
 
     if output_mask[0]:
         grad_inp = torch.empty_like(input)
         grid = (N * group,)
         with torch_device_fn.device(input.device):
-            group_norm_backward_kernel[grid](
-                grad_out,
-                input,
-                weight,
-                mean,
-                rstd,
-                group,
-                group_size,
-                grad_inp,
-                C,
-                HxW,
-                BLOCK_GROUP_SIZE=BLOCK_GROUP_SIZE,
-                BLOCK_HW_SIZE=BLOCK_HW,
-                num_warps=1,
-            )
+            if flat_ok:
+                inv_ne = 1.0 / HxW
+                block = max(triton.next_power_of_2(HxW), 2)
+                if block <= MAX_FLAT_BLOCK:
+                    group_norm_backward_flat_kernel[grid](
+                        grad_out,
+                        input,
+                        weight,
+                        mean,
+                        rstd,
+                        group,
+                        inv_ne,
+                        grad_inp,
+                        HxW,
+                        BLOCK=block,
+                        SINGLE=True,
+                        EXACT=(HxW % block == 0),
+                        num_warps=1,
+                    )
+                else:
+                    group_norm_backward_flat_kernel[grid](
+                        grad_out,
+                        input,
+                        weight,
+                        mean,
+                        rstd,
+                        group,
+                        inv_ne,
+                        grad_inp,
+                        HxW,
+                        BLOCK=MAX_FLAT_TWO_PASS_BLOCK,
+                        SINGLE=False,
+                        EXACT=(HxW % MAX_FLAT_TWO_PASS_BLOCK == 0),
+                        num_warps=4,
+                    )
+            else:
+                BLOCK_GROUP_SIZE = triton.next_power_of_2(group_size)
+                BLOCK_HW = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW_BACKWARD)
+                # DSM constraint: reduce BLOCK_HW if tile is too large for make_block_ptr overhead
+                while BLOCK_GROUP_SIZE * BLOCK_HW > 2048 and BLOCK_HW > 128:
+                    BLOCK_HW //= 2
+                group_norm_backward_kernel[grid](
+                    grad_out,
+                    input,
+                    weight,
+                    mean,
+                    rstd,
+                    group,
+                    group_size,
+                    grad_inp,
+                    C,
+                    HxW,
+                    BLOCK_GROUP_SIZE=BLOCK_GROUP_SIZE,
+                    BLOCK_HW_SIZE=BLOCK_HW,
+                    num_warps=1,
+                )
     else:
         grad_inp = None
 
@@ -356,25 +523,42 @@ def group_norm_backward(
 
     weight_grad = torch.empty_like(weight) if output_mask[1] else None
     bias_grad = torch.empty_like(weight) if output_mask[2] else None
-    BLOCK_HW_WB = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW_BACKWARD)
-    BLOCK_N_WB = triton.next_power_of_2(N)
-    while BLOCK_N_WB * BLOCK_HW_WB > 2048 and BLOCK_HW_WB > 128:
-        BLOCK_HW_WB //= 2
     with torch_device_fn.device(input.device):
-        weight_bias_backward_kernel[(C, 1, 1)](
-            grad_out,
-            input,
-            mean,
-            rstd,
-            weight_grad,
-            bias_grad,
-            group,
-            group_size,
-            N,
-            C,
-            HxW,
-            BLOCK_N=BLOCK_N_WB,
-            BLOCK_HW=BLOCK_HW_WB,
-            num_warps=1,
-        )
+        if flat_ok and triton.next_power_of_2(N) <= MAX_FLAT_N:
+            weight_bias_backward_flat_kernel[(C, 1, 1)](
+                grad_out,
+                input,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                group,
+                N,
+                C,
+                HxW,
+                BLOCK_N=triton.next_power_of_2(N),
+                BLOCK_HW=min(triton.next_power_of_2(HxW), MAX_FLAT_BLOCK),
+                num_warps=1,
+            )
+        else:
+            BLOCK_HW_WB = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW_BACKWARD)
+            BLOCK_N_WB = triton.next_power_of_2(N)
+            while BLOCK_N_WB * BLOCK_HW_WB > 2048 and BLOCK_HW_WB > 128:
+                BLOCK_HW_WB //= 2
+            weight_bias_backward_kernel[(C, 1, 1)](
+                grad_out,
+                input,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                group,
+                group_size,
+                N,
+                C,
+                HxW,
+                BLOCK_N=BLOCK_N_WB,
+                BLOCK_HW=BLOCK_HW_WB,
+                num_warps=1,
+            )
     return grad_inp, weight_grad, bias_grad

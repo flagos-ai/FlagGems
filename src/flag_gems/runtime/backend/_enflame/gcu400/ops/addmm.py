@@ -26,38 +26,63 @@ logger = logging.getLogger(__name__)
 GCU_MAX_GRID_Y = 255
 
 
-def _select_block_sizes(M, N, K):
-    if M <= 16:
-        BLOCK_M = 16
-    elif M <= 32:
-        BLOCK_M = 32
-    elif M <= 64:
-        BLOCK_M = 64
+def _select_addmm_config(M, N, K, dtype):
+    """按 shape 与 dtype 确定性选择 GEMM tile；避免 autotune 的跨 dtype 误判。"""
+    if K <= 64 or M <= 64 or N <= 64:
+        # 小矩阵只需小 tile，避免大量被 mask 掉的无效计算
+        block_m, block_n, block_k = 32, 64, 32 if K <= 32 else 64
+        num_warps = 4
     else:
-        BLOCK_M = 128
+        # 大 M 路径统一 128 行块：GCU400 实测优于按 M/dtype 分到 256，且避免跨 dtype 抖动
+        block_m = 128
+        # N 在 512 以内时 128 的列块可整除常见 shape，让 EVEN 快速路径生效
+        block_n = 128 if N <= 512 else 256
+        # 16-bit 的 256 深 K 块把循环次数减半；仅当 K 可整除时才启用，避免失去 EVEN 路径
+        block_k = 256 if dtype != torch.float32 and K % 256 == 0 else 128
+        num_warps = 2 if dtype == torch.float32 or M >= 1024 else 4
 
-    if N <= 16:
-        BLOCK_N = 16
-    elif N <= 32:
-        BLOCK_N = 32
-    elif N <= 64:
-        BLOCK_N = 64
-    else:
-        BLOCK_N = 128
-
-    if K <= 32:
-        BLOCK_K = 32
-    elif K <= 64:
-        BLOCK_K = 64
-    else:
-        BLOCK_K = 64
-
-    grid_n = triton.cdiv(N, BLOCK_N)
+    grid_n = triton.cdiv(N, block_n)
     if grid_n > GCU_MAX_GRID_Y:
-        BLOCK_N = triton.cdiv(N, GCU_MAX_GRID_Y)
-        BLOCK_N = max(triton.next_power_of_2(BLOCK_N), 16)
+        block_n = triton.cdiv(N, GCU_MAX_GRID_Y)
+        block_n = max(triton.next_power_of_2(block_n), 16)
 
-    return BLOCK_M, BLOCK_N, BLOCK_K
+    return block_m, block_n, block_k, num_warps, 3
+
+
+def _classify_bias(bias, m, n):
+    """Route the bias to a 1-D or scalar addressing arm whenever a broadcast
+    stride collapses to zero, and materialize nothing on the host.
+
+    The matrix arm must never receive a zero stride: a 0-stride scalar used in
+    the 2-D bias-load addressing lowers to an out-of-bounds access that trips a
+    device RAS interrupt and kills the process (one-shot repro in
+    compiler_issues, addmm zero-stride bias load). Returns
+    (bias, stride_im, stride_in, is_vector, is_scalar, is_colvec).
+    """
+    if bias.numel() == 1:
+        return bias, 0, 0, False, True, False
+    if bias.ndim == 1:
+        return bias, 0, bias.stride(0), True, False, False
+    bias_view = bias.broadcast_to((m, n))
+    stride_im = bias_view.stride(0)
+    stride_in = bias_view.stride(1)
+    if stride_im == 0:
+        return bias, 0, stride_in, True, False, False
+    if stride_in == 0:
+        return bias, stride_im, 0, False, False, True
+    return bias_view, stride_im, stride_in, False, False, False
+
+
+def _select_addmm_out_config(M, N, K, dtype):
+    """addmm_out 的独立 tile 分派；out 由调用方提供，单独调优不影响 addmm 路径。"""
+    block_m, block_n, block_k, num_warps, num_stages = _select_addmm_config(
+        M, N, K, dtype
+    )
+    # out 变体把大 M 行块回落到 128，减少 DSM 压力
+    block_m = 128 if M >= 1024 else block_m
+    # out 变体统一 256 列块；该档位实测 fp16 加速比与 fp16 gems 延迟均为最优
+    block_n = 256 if N > 64 else block_n
+    return block_m, block_n, block_k, num_warps, num_stages
 
 
 @libentry()
@@ -84,6 +109,11 @@ def addmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    EVEN: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr = False,
+    BIAS_IS_SCALAR: tl.constexpr = False,
+    BIAS_IS_COLVEC: tl.constexpr = False,
+    SKIP_BIAS: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -104,17 +134,22 @@ def addmm_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        k_remaining = K - k * BLOCK_SIZE_K
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < k_remaining),
-            other=0.0,
-        )
-        b = tl.load(
-            b_ptrs,
-            mask=(offs_k[:, None] < k_remaining) & (offs_bn[None, :] < N),
-            other=0.0,
-        )
+        if EVEN:
+            # 三个维度都能被 tile 整除时越界元素不存在，编译期只保留无 mask 的点积流水
+            a = tl.load(a_ptrs)
+            b = tl.load(b_ptrs)
+        else:
+            k_remaining = K - k * BLOCK_SIZE_K
+            a = tl.load(
+                a_ptrs,
+                mask=(offs_am[:, None] < M) & (offs_k[None, :] < k_remaining),
+                other=0.0,
+            )
+            b = tl.load(
+                b_ptrs,
+                mask=(offs_k[:, None] < k_remaining) & (offs_bn[None, :] < N),
+                other=0.0,
+            )
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -122,13 +157,89 @@ def addmm_kernel(
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
-    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+    # PyTorch ignores bias, including NaN and Inf values, when beta is zero.
+    if SKIP_BIAS:
+        accumulator = accumulator * alpha
+    else:
+        if BIAS_IS_VECTOR:
+            if EVEN:
+                bias = tl.load(i_ptr + offs_cn * stride_in)[None, :]
+            else:
+                bias = tl.load(
+                    i_ptr + offs_cn * stride_in, mask=offs_cn < N, other=0.0
+                )[None, :]
+        elif BIAS_IS_COLVEC:
+            if EVEN:
+                bias = tl.load(i_ptr + offs_cm * stride_im)[:, None]
+            else:
+                bias = tl.load(
+                    i_ptr + offs_cm * stride_im, mask=offs_cm < M, other=0.0
+                )[:, None]
+        elif BIAS_IS_SCALAR:
+            bias = tl.load(i_ptr)
+        else:
+            i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
+            if EVEN:
+                bias = tl.load(i_ptrs)
+            else:
+                c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+                bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+        accumulator = accumulator * alpha + bias * beta
+    c = accumulator.to(c_ptr.dtype.element_ty)
+    if EVEN:
+        tl.store(c_ptrs, c)
+    else:
+        c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+        tl.store(c_ptrs, c, mask=c_mask)
 
-    accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
-    tl.store(c_ptrs, c, mask=c_mask)
+
+def _launch_addmm(bias, mat1, mat2, out, beta, alpha, config_fn):
+    M, K = mat1.shape
+    _, N = mat2.shape
+
+    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
+        mat1 = mat1.contiguous()
+    if mat2.stride(0) > 1 and mat2.stride(1) > 1:
+        mat2 = mat2.contiguous()
+
+    bias, bias_sm, bias_sn, is_vector, is_scalar, is_colvec = _classify_bias(bias, M, N)
+
+    BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages = config_fn(M, N, K, mat1.dtype)
+    even = (M % BLOCK_M == 0) and (N % BLOCK_N == 0) and (K % BLOCK_K == 0)
+
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+    with torch_device_fn.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            bias_sm,
+            bias_sn,
+            out.stride(0),
+            out.stride(1),
+            BLOCK_SIZE_M=BLOCK_M,
+            BLOCK_SIZE_N=BLOCK_N,
+            BLOCK_SIZE_K=BLOCK_K,
+            GROUP_M=8,
+            EVEN=even,
+            BIAS_IS_VECTOR=is_vector,
+            BIAS_IS_SCALAR=is_scalar,
+            BIAS_IS_COLVEC=is_colvec,
+            SKIP_BIAS=bool(beta == 0),
+            num_warps=num_warps,
+            num_stages=num_stages,
+        )
+    return out
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
@@ -137,44 +248,10 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
     ), "Incompatible input shape"
-    M, K = mat1.shape
-    _, N = mat2.shape
-
-    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
-        mat1 = mat1.contiguous()
-    if mat2.stride(0) > 1 and mat2.stride(1) > 1:
-        mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
-
-    BLOCK_M, BLOCK_N, BLOCK_K = _select_block_sizes(M, N, K)
-
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
-    with torch_device_fn.device(mat1.device):
-        addmm_kernel[grid](
-            mat1,
-            mat2,
-            bias,
-            out,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
-            out.stride(0),
-            out.stride(1),
-            BLOCK_SIZE_M=BLOCK_M,
-            BLOCK_SIZE_N=BLOCK_N,
-            BLOCK_SIZE_K=BLOCK_K,
-            GROUP_M=8,
-        )
-    return out
+    out = torch.empty(
+        (mat1.shape[0], mat2.shape[1]), device=mat1.device, dtype=mat1.dtype
+    )
+    return _launch_addmm(bias, mat1, mat2, out, beta, alpha, _select_addmm_config)
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
@@ -183,44 +260,10 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
     ), "Incompatible input shape"
-    M, K = mat1.shape
-    _, N = mat2.shape
     if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    else:
-        assert out.shape == (M, N), "Incompatible output shape"
-
-    if mat1.stride(0) > 1 and mat1.stride(1) > 1:
-        mat1 = mat1.contiguous()
-    if mat2.stride(0) > 1 and mat2.stride(1) > 1:
-        mat2 = mat2.contiguous()
-    bias = bias.broadcast_to(out.shape).contiguous()
-
-    BLOCK_M, BLOCK_N, BLOCK_K = _select_block_sizes(M, N, K)
-
-    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
-    with torch_device_fn.device(mat1.device):
-        addmm_kernel[grid](
-            mat1,
-            mat2,
-            bias,
-            out,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
-            out.stride(0),
-            out.stride(1),
-            BLOCK_SIZE_M=BLOCK_M,
-            BLOCK_SIZE_N=BLOCK_N,
-            BLOCK_SIZE_K=BLOCK_K,
-            GROUP_M=8,
+        out = torch.empty(
+            (mat1.shape[0], mat2.shape[1]), device=mat1.device, dtype=mat1.dtype
         )
-    return out
+    else:
+        assert out.shape == (mat1.shape[0], mat2.shape[1]), "Incompatible output shape"
+    return _launch_addmm(bias, mat1, mat2, out, beta, alpha, _select_addmm_out_config)

@@ -1,0 +1,906 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Triton implementation of aten::_slow_conv2d_forward (2-D cross correlation).
+
+Contract is owned by the original FlagGems pytest suite:
+  * forward, value-range, nan/inf and ``.output`` overload calls,
+  * fp16 / bf16 / fp32 / fp64 operands,
+  * autograd (`torch.autograd.grad` on the returned tensor),
+  * parameter-validation errors.
+
+gcu400 note (backend-local rewrite): the generic flat-M implicit-GEMM kernel
+decomposes the flattened output row into (n, oh, ow) with div/mod chains and
+feeds a 2D gather load / 2D masked store whose *row* terms are data-dependent;
+that exact shape crashes ``make_gcuir`` with ``PassManager execution failed``
+on this target for every dtype and shape (compiler_problems/P02, sources/
+flaggems_enflame_slow_conv2d_forward.md).  A halfway fix that keeps partial
+``C_out`` on the dot's N axis also trips a silent-wrong-value miscompile
+(P07, sources/flaggems_enflame_slow_conv2d_forward_partial_n.md).  The forward
+dot path here therefore ports the shape validated green by this tree's
+``slow_conv_dilated3d``: the weight tile is the A operand with affine ``co``
+rows, the input gather is the B operand with the data-dependent indices on
+the *column* side, ``(C_in x taps)`` is flattened onto the K axis, a partial
+channel count lands on the M axis, and every operand is addressed with plain
+contiguous offsets (the host materialises strided tensors first).  The fp64
+FMA path and all backward kernels are unchanged from the generic source.
+
+Everything that produces or contributes to the returned values runs in Triton
+kernels declared here; the host wrapper only validates arguments, allocates the
+output, and launches kernels.
+"""
+
+import logging
+import sys
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
+
+_SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+_OUT_POS = 0
+
+
+# --------------------------------------------------------------------------
+# forward: weight-as-A implicit GEMM with tl.dot (fp16 / bf16 / fp32)
+#
+# Ported from this tree's green ``slow_conv_dilated3d`` kernel: A = weight
+# (affine ``co`` rows), B = input gather (data-dependent indices on the
+# column side), K = C_in * kH * kW flattened onto the contraction axis, a
+# partial output-channel count on the M axis, and plain contiguous packed
+# offsets for every operand.
+# --------------------------------------------------------------------------
+@triton.jit
+def _conv2d_fwd_dot_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    out_ptr,
+    CIN,
+    H,
+    W,
+    COUT,
+    KH,
+    KW,
+    SH,
+    SW,
+    PH,
+    PW,
+    WO,
+    P_TOTAL,
+    HAS_BIAS: tl.constexpr,
+    PREC: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+    BLOCK_P: tl.constexpr,
+    BK: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    n = tl.program_id(2)
+
+    p = pid0 * BLOCK_P + tl.arange(0, BLOCK_P)
+    co = pid1 * BLOCK_CO + tl.arange(0, BLOCK_CO)
+
+    pmask = p < P_TOTAL
+    comask = co < COUT
+
+    HW = H * W
+    KVOL2 = KH * KW
+
+    oh = p // WO
+    ow = p % WO
+
+    acc = tl.zeros((BLOCK_CO, BLOCK_P), dtype=tl.float32)
+
+    # Guard the row decomposition against an empty channel axis: with CIN == 0
+    # both loops below make zero trips, so the tile degenerates to the bias
+    # broadcast -- exactly the conv result for an empty contraction.
+    cin_safe = tl.maximum(CIN, 1)
+    TAPS = BK // cin_safe
+    if TAPS < 1:
+        TAPS = 1
+    r = tl.arange(0, BK)
+    kk_r0 = r // cin_safe
+    rowok = kk_r0 < TAPS
+    for ci0 in range(0, CIN, BK):
+        ci_r = ci0 + (r % cin_safe)
+        ciok = ci_r < CIN
+        for kc in range(0, KVOL2, TAPS):
+            kk_r = kc + kk_r0
+            kh_r = kk_r // KW
+            kw_r = kk_r % KW
+            kvalid = rowok & ciok & (kk_r < KVOL2)
+            ihr = oh[None, :] * SH + kh_r[:, None] - PH
+            iwr = ow[None, :] * SW + kw_r[:, None] - PW
+            inb = (
+                pmask[None, :]
+                & kvalid[:, None]
+                & (ihr >= 0)
+                & (ihr < H)
+                & (iwr >= 0)
+                & (iwr < W)
+            )
+            x_off = (n * CIN + ci_r[:, None]) * HW + ihr * W + iwr
+            x = tl.load(x_ptr + x_off, mask=inb, other=0.0)
+            w_off = co[:, None] * (CIN * KVOL2) + ci_r[None, :] * KVOL2
+            w_off = w_off + kk_r[None, :]
+            wt = tl.load(
+                w_ptr + w_off, mask=comask[:, None] & kvalid[None, :], other=0.0
+            )
+            if PREC == 0:
+                acc = tl.dot(wt, x, acc, input_precision="ieee")
+            elif PREC == 1:
+                acc = tl.dot(wt, x, acc, input_precision="tf32x3")
+            else:
+                acc = tl.dot(wt, x, acc)
+
+    if HAS_BIAS:
+        bias = tl.load(b_ptr + co, mask=comask, other=0.0)
+        acc += bias[:, None]
+
+    out_off = (n * COUT + co[:, None]) * P_TOTAL + p[None, :]
+    omask = pmask[None, :] & comask[:, None]
+    if PREC == 2:
+        tl.store(out_ptr + out_off, acc.to(x_ptr.dtype.element_ty), mask=omask)
+    else:
+        tl.store(out_ptr + out_off, acc, mask=omask)
+
+
+# --------------------------------------------------------------------------
+# forward: broadcast-FMA path (fp64, and any dtype without tensor cores)
+# --------------------------------------------------------------------------
+@triton.jit
+def _conv2d_fwd_fma_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    o_ptr,
+    N,
+    C_IN,
+    C_OUT,
+    H,
+    W,
+    H_OUT,
+    W_OUT,
+    M,
+    XSN,
+    XSC,
+    XSH,
+    XSW,
+    W_SKH,
+    W_SKW,
+    W_SK,
+    W_SN,
+    B_SN,
+    OSN,
+    OSC,
+    OSH,
+    OSW,
+    K_H: tl.constexpr,
+    K_W: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    IS_F64: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    mask_m = offs_m < M
+    n = offs_m // (H_OUT * W_OUT)
+    rem = offs_m % (H_OUT * W_OUT)
+    oh = rem // W_OUT
+    ow = rem % W_OUT
+
+    offs_co = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask_co = offs_co < C_OUT
+
+    if IS_F64:
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    for kh in tl.static_range(K_H):
+        for kw in tl.static_range(K_W):
+            ih = oh * SH - PH + kh
+            iw = ow * SW - PW + kw
+            m_ok = mask_m & (ih >= 0) & (ih < H) & (iw >= 0) & (iw < W)
+            ihc = tl.maximum(ih, 0)
+            iwc = tl.maximum(iw, 0)
+            x_base = x_ptr + n * XSN + ihc * XSH + iwc * XSW
+            w_base = w_ptr + kh * W_SKH + kw * W_SKW + offs_co * W_SN
+            for ci in range(0, C_IN):
+                a = tl.load(x_base + ci * XSC, mask=m_ok, other=0.0)
+                b = tl.load(w_base + ci * W_SK, mask=mask_co, other=0.0)
+                if IS_F64:
+                    acc += a[:, None] * b[None, :]
+                else:
+                    acc += a.to(tl.float32)[:, None] * b.to(tl.float32)[None, :]
+
+    if HAS_BIAS:
+        bv = tl.load(b_ptr + offs_co * B_SN, mask=mask_co, other=0.0)
+        if IS_F64:
+            acc += bv[None, :]
+        else:
+            acc += bv.to(tl.float32)[None, :]
+
+    o_ptrs = (
+        o_ptr
+        + n[:, None] * OSN
+        + offs_co[None, :] * OSC
+        + oh[:, None] * OSH
+        + ow[:, None] * OSW
+    )
+    tl.store(
+        o_ptrs, acc.to(o_ptr.dtype.element_ty), mask=mask_m[:, None] & mask_co[None, :]
+    )
+
+
+# --------------------------------------------------------------------------
+# backward: gradient w.r.t. the input (transposed / dilated correlation)
+# --------------------------------------------------------------------------
+@triton.jit
+def _conv2d_bwd_input_kernel(
+    go_ptr,
+    w_ptr,
+    gi_ptr,
+    N,
+    C_IN,
+    C_OUT,
+    H,
+    W,
+    H_OUT,
+    W_OUT,
+    GSN,
+    GSC,
+    GSH,
+    GSW,
+    WSN,
+    WSC,
+    WSH,
+    WSW,
+    ISN,
+    ISC,
+    ISH,
+    ISW,
+    TOTAL,
+    K_H: tl.constexpr,
+    K_W: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    IS_F64: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < TOTAL
+
+    n = offs // (C_IN * H * W)
+    rem = offs % (C_IN * H * W)
+    ci = rem // (H * W)
+    s = rem % (H * W)
+    ih = s // W
+    iw = s % W
+
+    if IS_F64:
+        acc = tl.zeros((BLOCK,), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK,), dtype=tl.float32)
+
+    for co in range(0, C_OUT):
+        for kh in tl.static_range(K_H):
+            for kw in tl.static_range(K_W):
+                on = ih + PH - kh
+                om = iw + PW - kw
+                oh = on // SH
+                ow = om // SW
+                ok = (
+                    mask
+                    & (on >= 0)
+                    & (on % SH == 0)
+                    & (om >= 0)
+                    & (om % SW == 0)
+                    & (oh < H_OUT)
+                    & (ow < W_OUT)
+                )
+                g = tl.load(
+                    go_ptr
+                    + n * GSN
+                    + co * GSC
+                    + tl.maximum(oh, 0) * GSH
+                    + tl.maximum(ow, 0) * GSW,
+                    mask=ok,
+                    other=0.0,
+                )
+                wv = tl.load(
+                    w_ptr + co * WSN + ci * WSC + kh * WSH + kw * WSW,
+                    mask=mask,
+                    other=0.0,
+                )
+                if IS_F64:
+                    acc += g * wv
+                else:
+                    acc += g.to(tl.float32) * wv.to(tl.float32)
+
+    tl.store(
+        gi_ptr + n * ISN + ci * ISC + ih * ISH + iw * ISW,
+        acc.to(gi_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
+# --------------------------------------------------------------------------
+# backward: gradient w.r.t. the weight
+# --------------------------------------------------------------------------
+@triton.jit
+def _conv2d_bwd_weight_kernel(
+    go_ptr,
+    x_ptr,
+    gw_ptr,
+    N,
+    C_IN,
+    C_OUT,
+    H,
+    W,
+    H_OUT,
+    W_OUT,
+    GSN,
+    GSC,
+    GSH,
+    GSW,
+    XSN,
+    XSC,
+    XSH,
+    XSW,
+    GWSN,
+    GWSC,
+    GWSH,
+    GWSW,
+    TOTAL,
+    K_H: tl.constexpr,
+    K_W: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    IS_F64: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    co = tl.program_id(0)
+    ci = tl.program_id(1)
+    for kh in tl.static_range(K_H):
+        for kw in tl.static_range(K_W):
+            if IS_F64:
+                psum = tl.zeros((BLOCK,), dtype=tl.float64)
+            else:
+                psum = tl.zeros((BLOCK,), dtype=tl.float32)
+            for start in range(0, TOTAL, BLOCK):
+                offs = start + tl.arange(0, BLOCK)
+                mask = offs < TOTAL
+                n = offs // (H_OUT * W_OUT)
+                rem = offs % (H_OUT * W_OUT)
+                oh = rem // W_OUT
+                ow = rem % W_OUT
+                ih = oh * SH - PH + kh
+                iw = ow * SW - PW + kw
+                ok = mask & (ih >= 0) & (ih < H) & (iw >= 0) & (iw < W)
+                g = tl.load(
+                    go_ptr + n * GSN + co * GSC + oh * GSH + ow * GSW,
+                    mask=mask,
+                    other=0.0,
+                )
+                a = tl.load(
+                    x_ptr
+                    + n * XSN
+                    + ci * XSC
+                    + tl.maximum(ih, 0) * XSH
+                    + tl.maximum(iw, 0) * XSW,
+                    mask=ok,
+                    other=0.0,
+                )
+                if IS_F64:
+                    psum += g * a
+                else:
+                    psum += g.to(tl.float32) * a.to(tl.float32)
+            tl.store(
+                gw_ptr + co * GWSN + ci * GWSC + kh * GWSH + kw * GWSW,
+                tl.sum(psum).to(gw_ptr.dtype.element_ty),
+            )
+
+
+# --------------------------------------------------------------------------
+# backward: gradient w.r.t. the bias
+# --------------------------------------------------------------------------
+@triton.jit
+def _conv2d_bwd_bias_kernel(
+    go_ptr,
+    gb_ptr,
+    N,
+    C_OUT,
+    H_OUT,
+    W_OUT,
+    GSN,
+    GSC,
+    GSH,
+    GSW,
+    TOTAL,
+    IS_F64: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    co = tl.program_id(0)
+    if IS_F64:
+        acc = tl.zeros((), dtype=tl.float64)
+    else:
+        acc = tl.zeros((), dtype=tl.float32)
+    for start in range(0, TOTAL, BLOCK):
+        offs = start + tl.arange(0, BLOCK)
+        mask = offs < TOTAL
+        n = offs // (H_OUT * W_OUT)
+        rem = offs % (H_OUT * W_OUT)
+        oh = rem // W_OUT
+        ow = rem % W_OUT
+        g = tl.load(
+            go_ptr + n * GSN + co * GSC + oh * GSH + ow * GSW, mask=mask, other=0.0
+        )
+        if IS_F64:
+            acc += tl.sum(g)
+        else:
+            acc += tl.sum(g.to(tl.float32))
+    tl.store(gb_ptr + co, acc.to(gb_ptr.dtype.element_ty))
+
+
+# --------------------------------------------------------------------------
+# host side
+# --------------------------------------------------------------------------
+def _as_pair(value, name):
+    if not isinstance(value, (list, tuple)):
+        raise RuntimeError(
+            "%s must be a sequence of two integers, got %r" % (name, value)
+        )
+    if len(value) != 2:
+        raise RuntimeError("%s must have exactly two elements, got %r" % (name, value))
+    out = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise RuntimeError("%s must contain integers, got %r" % (name, value))
+        out.append(int(item))
+    return out[0], out[1]
+
+
+def _validate(x, weight, kernel_size, bias, stride, padding, output):
+    if not torch.is_tensor(x) or not torch.is_tensor(weight):
+        raise RuntimeError("self and weight must be tensors")
+    if x.ndim != 4 or weight.ndim != 4:
+        raise RuntimeError("_slow_conv2d_forward expects 4-D input and weight")
+    if x.dtype not in _SUPPORTED_DTYPES or weight.dtype not in _SUPPORTED_DTYPES:
+        raise RuntimeError("unsupported dtype for _slow_conv2d_forward")
+    if x.dtype != weight.dtype:
+        raise RuntimeError("input and weight must share a dtype")
+
+    k_h, k_w = _as_pair(kernel_size, "kernel_size")
+    s_h, s_w = _as_pair(stride, "stride")
+    p_h, p_w = _as_pair(padding, "padding")
+    if k_h < 1 or k_w < 1:
+        raise RuntimeError("kernel_size must be positive")
+    if s_h < 1 or s_w < 1:
+        raise RuntimeError("stride must be positive")
+    if p_h < 0 or p_w < 0:
+        raise RuntimeError("padding must be non-negative")
+
+    n, c_in, h, w = x.shape
+    c_out, wc, wk_h, wk_w = weight.shape
+    if wc != c_in:
+        raise RuntimeError("weight and input must have the same number of channels")
+    if wk_h != k_h or wk_w != k_w:
+        raise RuntimeError("kernel_size does not match the weight shape")
+
+    h_out = (h + 2 * p_h - k_h) // s_h + 1
+    w_out = (w + 2 * p_w - k_w) // s_w + 1
+    if h_out < 1 or w_out < 1:
+        raise RuntimeError("kernel size is larger than the input")
+
+    if bias is not None:
+        if (
+            not torch.is_tensor(bias)
+            or bias.ndim != 1
+            or bias.shape[0] != c_out
+            or bias.dtype != x.dtype
+        ):
+            raise RuntimeError("invalid bias tensor")
+    if output is not None:
+        if (
+            not torch.is_tensor(output)
+            or tuple(output.shape) != (n, c_out, h_out, w_out)
+            or output.dtype != x.dtype
+            or output.device != x.device
+        ):
+            raise RuntimeError("invalid output tensor")
+    return k_h, k_w, s_h, s_w, p_h, p_w, h_out, w_out
+
+
+def _pick_blocks(N, COUT, CIN, P_TOTAL, KVOL2, dtype):
+    """Workload-class (BLOCK_CO, BLOCK_P, BK) heuristic, ported from this
+    tree's green ``slow_conv_dilated3d`` (spatial taps 3-D -> 2-D).
+
+    The classes separate tiny spatial outputs, 1x1 (pure channel GEMM),
+    few-output-channel and deep-contraction shapes.  Every branch keeps
+    ``BK >= 16`` so ``tl.dot`` is legal and gives the small tiles enough
+    programs to fill the device.
+    """
+    low_precision = dtype in (torch.float16, torch.bfloat16)
+    per_n_p = P_TOTAL // max(1, N)
+    K = CIN * KVOL2
+    p2 = triton.next_power_of_2
+    if per_n_p < 1024:  # tiny spatial output
+        bc, bp = 16, 16
+        bk = min(64, p2(CIN) * 2)
+    elif KVOL2 == 1:  # 1x1 channel GEMM
+        bc, bp = 16, 128
+        bk = p2(CIN)
+    elif COUT <= 16:  # few channels, big spatial
+        bc, bp = 16, 128
+        bk = min(32, p2(CIN) * 2)
+    elif COUT <= 32:
+        if K >= 800:  # deep contraction
+            bc, bp = 16, 64
+            bk = min(128, p2(CIN) * 2)
+        else:
+            bc, bp = 32, 32
+            bk = min(128, p2(CIN) * (4 if low_precision else 2))
+    else:  # COUT >= 64
+        if K >= 1024:  # heaviest contraction
+            bc, bp = 32, 64
+            bk = p2(CIN)
+        else:
+            bc, bp = 32, 32
+            bk = min(128, p2(CIN) * (2 if low_precision else 1))
+    bk = max(16, bk)
+    return bc, bp, bk
+
+
+def _launch_forward(x, weight, bias, out, dims):
+    k_h, k_w, s_h, s_w, p_h, p_w, h_out, w_out = dims
+    n, c_in, h, w = x.shape
+    c_out = weight.shape[0]
+    is_f64 = x.dtype == torch.float64
+
+    # The dot kernel packs every operand offset as a contiguous NCHW linear
+    # index, so strided operands are materialised first (views / copies only;
+    # the math stays in the kernel).  The fp64 FMA kernel indexes with
+    # explicit strides, so feeding it the normalised tensors is equivalent.
+    if not x.is_contiguous():
+        x = x.contiguous()
+    if not weight.is_contiguous():
+        weight = weight.contiguous()
+    if bias is not None and not bias.is_contiguous():
+        bias = bias.contiguous()
+
+    # A non-contiguous user-supplied ``out`` cannot be the direct store target
+    # of the packed-offset kernels; compute into a staging buffer and copy back
+    # (same treatment as ``slow_conv_dilated3d``).
+    if out.is_contiguous():
+        target = out
+    else:
+        target = torch.empty(out.shape, device=out.device, dtype=out.dtype)
+
+    if is_f64:
+        m = n * h_out * w_out
+        wp = weight.permute(2, 3, 1, 0)
+        w_skh, w_skw, w_sk, w_sn = wp.stride()
+        b_sn = bias.stride(0) if bias is not None else 0
+        b_arg = bias if bias is not None else x
+        x_sn, x_sc, x_sh, x_sw = x.stride()
+        o_sn, o_sc, o_sh, o_sw = target.stride()
+        grid = (triton.cdiv(m, 16), triton.cdiv(c_out, 16))
+        _conv2d_fwd_fma_kernel[grid](
+            x,
+            wp,
+            b_arg,
+            target,
+            n,
+            c_in,
+            c_out,
+            h,
+            w,
+            h_out,
+            w_out,
+            m,
+            x_sn,
+            x_sc,
+            x_sh,
+            x_sw,
+            w_skh,
+            w_skw,
+            w_sk,
+            w_sn,
+            b_sn,
+            o_sn,
+            o_sc,
+            o_sh,
+            o_sw,
+            K_H=k_h,
+            K_W=k_w,
+            SH=s_h,
+            SW=s_w,
+            PH=p_h,
+            PW=p_w,
+            HAS_BIAS=bias is not None,
+            IS_F64=True,
+            BLOCK_M=16,
+            BLOCK_N=16,
+            num_warps=4,
+        )
+        if target is not out:
+            out.copy_(target)
+        return out
+
+    p_total = h_out * w_out
+    block_co, block_p, bk = _pick_blocks(n, c_out, c_in, p_total, k_h * k_w, x.dtype)
+    if x.dtype == torch.float32:
+        prec = 1 if c_in * k_h * k_w >= 1024 else 0
+    else:
+        prec = 2
+    num_warps = 8 if block_co * block_p > 2048 else 4
+    b_arg = bias if bias is not None else weight
+
+    grid = (triton.cdiv(p_total, block_p), triton.cdiv(c_out, block_co), n)
+    with torch_device_fn.device(x.device):
+        _conv2d_fwd_dot_kernel[grid](
+            x,
+            weight,
+            b_arg,
+            target,
+            c_in,
+            h,
+            w,
+            c_out,
+            k_h,
+            k_w,
+            s_h,
+            s_w,
+            p_h,
+            p_w,
+            w_out,
+            p_total,
+            HAS_BIAS=bias is not None,
+            PREC=prec,
+            BLOCK_CO=block_co,
+            BLOCK_P=block_p,
+            BK=bk,
+            num_warps=num_warps,
+        )
+    if target is not out:
+        out.copy_(target)
+    return out
+
+
+def _forward(x, weight, bias, dims, out=None):
+    k_h, k_w, s_h, s_w, p_h, p_w, h_out, w_out = dims
+    n = x.shape[0]
+    c_out = weight.shape[0]
+    if out is None:
+        out = torch.empty((n, c_out, h_out, w_out), device=x.device, dtype=x.dtype)
+    return _launch_forward(x, weight, bias, out, dims)
+
+
+def _backward(x, weight, bias, grad_out, dims, needs):
+    k_h, k_w, s_h, s_w, p_h, p_w, h_out, w_out = dims
+    n, c_in, h, w = x.shape
+    c_out = weight.shape[0]
+    is_f64 = x.dtype == torch.float64
+    go = grad_out
+    if not go.is_contiguous():
+        go = go.contiguous()
+    go_sn, go_sc, go_sh, go_sw = go.stride()
+
+    grad_x = grad_w = grad_b = None
+
+    if needs[0]:
+        grad_x = torch.empty_like(x)
+        total = n * c_in * h * w
+        x_sn, x_sc, x_sh, x_sw = x.stride()
+        w_sn, w_sc, w_sh, w_sw = weight.stride()
+        gi_sn, gi_sc, gi_sh, gi_sw = grad_x.stride()
+        block = 256
+        grid = (triton.cdiv(total, block),)
+        _conv2d_bwd_input_kernel[grid](
+            go,
+            weight,
+            grad_x,
+            n,
+            c_in,
+            c_out,
+            h,
+            w,
+            h_out,
+            w_out,
+            go_sn,
+            go_sc,
+            go_sh,
+            go_sw,
+            w_sn,
+            w_sc,
+            w_sh,
+            w_sw,
+            gi_sn,
+            gi_sc,
+            gi_sh,
+            gi_sw,
+            total,
+            K_H=k_h,
+            K_W=k_w,
+            SH=s_h,
+            SW=s_w,
+            PH=p_h,
+            PW=p_w,
+            IS_F64=is_f64,
+            BLOCK=block,
+            num_warps=4,
+        )
+
+    if needs[1]:
+        grad_w = torch.empty_like(weight)
+        x_sn, x_sc, x_sh, x_sw = x.stride()
+        gw_sn, gw_sc, gw_sh, gw_sw = grad_w.stride()
+        total = n * h_out * w_out
+        block = 128
+        grid = (c_out, c_in)
+        _conv2d_bwd_weight_kernel[grid](
+            go,
+            x,
+            grad_w,
+            n,
+            c_in,
+            c_out,
+            h,
+            w,
+            h_out,
+            w_out,
+            go_sn,
+            go_sc,
+            go_sh,
+            go_sw,
+            x_sn,
+            x_sc,
+            x_sh,
+            x_sw,
+            gw_sn,
+            gw_sc,
+            gw_sh,
+            gw_sw,
+            total,
+            K_H=k_h,
+            K_W=k_w,
+            SH=s_h,
+            SW=s_w,
+            PH=p_h,
+            PW=p_w,
+            IS_F64=is_f64,
+            BLOCK=block,
+            num_warps=4,
+        )
+
+    if needs[2] and bias is not None:
+        grad_b = torch.empty_like(bias)
+        total = n * h_out * w_out
+        block = 256
+        grid = (c_out,)
+        _conv2d_bwd_bias_kernel[grid](
+            go,
+            grad_b,
+            n,
+            c_out,
+            h_out,
+            w_out,
+            go_sn,
+            go_sc,
+            go_sh,
+            go_sw,
+            total,
+            IS_F64=is_f64,
+            BLOCK=block,
+            num_warps=4,
+        )
+
+    return grad_x, grad_w, grad_b
+
+
+class _SlowConv2dForward(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, weight, bias, dims):
+        out = _forward(x, weight, bias, dims)
+        ctx.dims = dims
+        ctx.has_bias = bias is not None
+        ctx.needs = (
+            ctx.needs_input_grad[0],
+            ctx.needs_input_grad[1],
+            ctx.needs_input_grad[2],
+        )
+        ctx.save_for_backward(x, weight, bias)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        x, weight, bias = ctx.saved_tensors
+        if grad_out is None:
+            return None, None, None, None
+        gx, gw, gb = _backward(x, weight, bias, grad_out, ctx.dims, ctx.needs)
+        return gx, gw, gb, None
+
+
+def _slow_conv2d_forward(
+    self, weight, kernel_size, bias=None, stride=None, padding=None, output=None
+):
+    """Compute ``_slow_conv2d_forward`` for the FlagGems pytest contract."""
+    logger.debug("GEMS _SLOW_CONV2D_FORWARD")
+    x = self
+    # ATen's ``_slow_conv2d_forward`` schema makes stride and padding required
+    # positional arguments; this wrapper accepts ``None`` as well and resolves
+    # it to the values ATen's convolution path uses when they are omitted.
+    if stride is None:
+        stride = (1, 1)
+    if padding is None:
+        padding = (0, 0)
+    dims = _validate(x, weight, kernel_size, bias, stride, padding, output)
+
+    if output is not None:
+        return _forward(x, weight, bias, dims, out=output)
+
+    needs_grad = (
+        x.requires_grad
+        or weight.requires_grad
+        or (bias is not None and bias.requires_grad)
+    )
+    if needs_grad:
+        return _SlowConv2dForward.apply(x, weight, bias, dims)
+    return _forward(x, weight, bias, dims)
+
+
+# ---------------------------------------------------------------------------
+# live-entry-point wiring
+#
+# SpecOpRegistrar swaps the top-level ``flag_gems._slow_conv2d_forward`` global
+# (and therefore the ATen dispatch path) to this backend-local implementation,
+# but references that resolve through the ``flag_gems.ops`` package -- the
+# ``gems_op=flag_gems.ops._slow_conv2d_forward`` handle in the benchmark suite
+# -- still reach the generic module, whose flat-M kernels fail GCUTritonFusionPass
+# compilation on this target (compiler_problems/P02, sources/
+# flaggems_enflame_slow_conv2d_forward.md).  The generic module stays the
+# untouched reference source; only its live entry points follow the backend
+# specialization, mirroring what SpecOpRegistrar does at the top level (same
+# mechanism as ``slow_conv_dilated2d`` in this tree).
+# ---------------------------------------------------------------------------
+def _rebind_generic_entry_points():
+    entry_point = "_slow_conv2d_forward"
+    impl = globals()[entry_point]
+    generic_module = sys.modules.get("flag_gems.ops._slow_conv2d_forward")
+    if generic_module is not None and generic_module is not sys.modules.get(__name__):
+        setattr(generic_module, entry_point, impl)
+    generic_package = sys.modules.get("flag_gems.ops")
+    if generic_package is not None and generic_package is not sys.modules.get(__name__):
+        setattr(generic_package, entry_point, impl)
+
+
+_rebind_generic_entry_points()

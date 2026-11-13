@@ -77,11 +77,19 @@ def apply_rotary_pos_emb_kernel(
         sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
         sin = tl.where(odd_mask, -sin, sin)
     else:
-        rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
-        sin_cos_block = ordered_block % (HEAD_DIM // 2)
+        # NOTE: avoid `%` with a non-power-of-two modulus here. On gcu400 the
+        # masked gathers below then read HEAD_DIM//2 elements past the computed
+        # address for lanes HEAD_DIM//2 .. HEAD_DIM//2+15 when HEAD_DIM == 96
+        # (observed as wrong q/k values in exactly those 16 lanes).
+        half = HEAD_DIM // 2
+        is_low_half = ordered_block < half
+        rotated_block = tl.where(
+            is_low_half, ordered_block + half, ordered_block - half
+        )
+        sin_cos_block = tl.where(is_low_half, ordered_block, ordered_block - half)
         cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
         sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+        sin = tl.where(is_low_half, -sin, sin)
 
     oq_ptr += s_id * oq_stride_s
     q_ptr += s_id * q_stride_s
@@ -157,11 +165,19 @@ def apply_rotary_pos_emb_inplace_kernel(
         sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
         sin = tl.where(odd_mask, -sin, sin)
     else:
-        rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
-        sin_cos_block = ordered_block % (HEAD_DIM // 2)
+        # NOTE: avoid `%` with a non-power-of-two modulus here. On gcu400 the
+        # masked gathers below then read HEAD_DIM//2 elements past the computed
+        # address for lanes HEAD_DIM//2 .. HEAD_DIM//2+15 when HEAD_DIM == 96
+        # (observed as wrong q/k values in exactly those 16 lanes).
+        half = HEAD_DIM // 2
+        is_low_half = ordered_block < half
+        rotated_block = tl.where(
+            is_low_half, ordered_block + half, ordered_block - half
+        )
+        sin_cos_block = tl.where(is_low_half, ordered_block, ordered_block - half)
         cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
         sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+        sin = tl.where(is_low_half, -sin, sin)
 
     q_ptr += s_id * q_stride_s
 
