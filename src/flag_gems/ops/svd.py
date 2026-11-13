@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 SVDResult = namedtuple("SVDResult", ["U", "S", "V"])
 
+# The cyclic Jacobi rotation kernels are sensitive to FMA contraction on AMD
+# GPUs: for a 17x17 matrix with repeated singular values the result is off by
+# 2.5e-3 instead of 4e-7. Compile them without fp fusion on AMD.
+_JACOBI_ENABLE_FP_FUSION = device.vendor_name != "amd"
+
 _GRAM_CONDITION_GUARD_MAX_BATCH = 16
 _GRAM_CONDITION_GUARD_MAX_K = 32
 _GRAM_CONDITION_EIGEN_RATIO = 1.0e-8
@@ -2307,6 +2312,7 @@ def _cyclic_jacobi_svd(input):
                 BLOCK_R=block_r,
                 BLOCK_K=block_k,
                 num_warps=1,
+                enable_fp_fusion=_JACOBI_ENABLE_FP_FUSION,
             )
         else:
             for _ in range(sweeps):
@@ -2321,6 +2327,7 @@ def _cyclic_jacobi_svd(input):
                         BLOCK_R=block_r,
                         BLOCK_K=block_k,
                         num_warps=1 if block_r <= 64 else 4,
+                        enable_fp_fusion=_JACOBI_ENABLE_FP_FUSION,
                     )
         _cyclic_jacobi_norm_kernel[(batch, k)](
             a_work,
