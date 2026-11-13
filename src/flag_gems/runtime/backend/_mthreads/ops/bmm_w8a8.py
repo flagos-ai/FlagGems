@@ -41,11 +41,11 @@ TLE_MEDIUM_MAX_ROWS = 512
 TLE_SMALL_TILE_CONFIG = (32, 64, 256, 3)
 TLE_MEDIUM_TILE_CONFIG = (64, 64, 256, 2)
 TLE_LARGE_TILE_CONFIG = (128, 128, 128, 3)
-# Reuse each A tile across consumers for the measured large-M workload.
-TLE_GROUPED_MIN_ROWS = 8192
-TLE_GROUPED_CONSUMERS = 2
-TLE_GROUPED_NK = (1024, 4096)
-TLE_GROUPED_TILE_CONFIG = (128, 128, 128, 3)
+# One consumer with more main warps for the measured large-M workload.
+TLE_WIDE_MIN_ROWS = 8192
+TLE_WIDE_NK = (1024, 4096)
+TLE_WIDE_TILE_CONFIG = (256, 128, 128, 3)
+TLE_WIDE_MAIN_WARPS = 8
 
 
 @libentry()
@@ -144,23 +144,17 @@ if SUPPORTS_TLE_WGMMA_INT8 is True:
         BM: tl.constexpr,
         BN: tl.constexpr,
         BK: tl.constexpr,
-        NC: tl.constexpr,
-        ROLE: tl.constexpr,
     ):
         tile = tl.program_id(0)
         batch = tl.program_id(1).to(tl.int64)
-        rows = (tile // tl.cdiv(N, BN * NC)) * BM + tl.arange(0, BM)
-        columns = (tile % tl.cdiv(N, BN * NC)) * BN * NC + ROLE * BN + tl.arange(0, BN)
+        rows = (tile // tl.cdiv(N, BN)) * BM + tl.arange(0, BM)
+        columns = (tile % tl.cdiv(N, BN)) * BN + tl.arange(0, BN)
         accumulator = tl.zeros((BM, BN), dtype=tl.int32)
         for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
             ready = reader.wait(block)
-            if ROLE == 0:
-                weight_tile = ready.slot.b0
-            else:
-                weight_tile = ready.slot.b1
             accumulator = tle.gpu.wgmma(
                 ready.slot.a,
-                weight_tile,
+                ready.slot.b0,
                 accumulator,
                 out_dtype=tl.int32,
                 trans_b=True,
@@ -196,7 +190,6 @@ if SUPPORTS_TLE_WGMMA_INT8 is True:
         BK: tl.constexpr,
         PIPELINE_STAGES: tl.constexpr,
         PRODUCER_WARPS: tl.constexpr,
-        NC: tl.constexpr,
     ):
         activation_shared = tle.gpu.alloc(
             (PIPELINE_STAGES, BM, BK),
@@ -210,126 +203,51 @@ if SUPPORTS_TLE_WGMMA_INT8 is True:
             scope=tle.gpu.smem,
             nv_mma_shared_layout=True,
         )
-        if NC == 2:
-            weight_shared_1 = tle.gpu.alloc(
-                (PIPELINE_STAGES, BN, BK),
-                weight_descriptor.dtype,
-                scope=tle.gpu.smem,
-                nv_mma_shared_layout=True,
-            )
-            pipe = tle.pipe(
-                capacity=PIPELINE_STAGES,
-                scope="cta",
-                name="int8_bmm",
-                readers=("r0", "r1"),
-                a=activation_shared,
-                b0=weight_shared,
-                b1=weight_shared_1,
-            )
-            tle.gpu.warp_specialize(
-                [
+        pipe = tle.pipe(
+            capacity=PIPELINE_STAGES,
+            scope="cta",
+            name="int8_bmm",
+            readers=("r0",),
+            a=activation_shared,
+            b0=weight_shared,
+        )
+        tle.gpu.warp_specialize(
+            [
+                (
+                    channel_tle_consumer,
                     (
-                        channel_tle_consumer,
-                        (
-                            pipe.reader("r0", fields=("a", "b0")),
-                            output,
-                            activation_scale,
-                            weight_scale,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            NC,
-                            0,
-                        ),
+                        pipe.reader("r0", fields=("a", "b0")),
+                        output,
+                        activation_scale,
+                        weight_scale,
+                        M,
+                        N,
+                        K,
+                        BM,
+                        BN,
+                        BK,
                     ),
+                ),
+                (
+                    produce_tiles,
                     (
-                        channel_tle_consumer,
-                        (
-                            pipe.reader("r1", fields=("a", "b1")),
-                            output,
-                            activation_scale,
-                            weight_scale,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            NC,
-                            1,
-                        ),
+                        pipe.writer(),
+                        activation_descriptor,
+                        weight_descriptor,
+                        M,
+                        N,
+                        K,
+                        BM,
+                        BN,
+                        BK,
+                        1,
+                        1,
                     ),
-                    (
-                        produce_tiles,
-                        (
-                            pipe.writer(),
-                            activation_descriptor,
-                            weight_descriptor,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            NC,
-                            1,
-                        ),
-                    ),
-                ],
-                worker_num_warps=[4, PRODUCER_WARPS],
-                worker_num_regs=[128, 24],
-            )
-        else:
-            pipe = tle.pipe(
-                capacity=PIPELINE_STAGES,
-                scope="cta",
-                name="int8_bmm",
-                readers=("r0",),
-                a=activation_shared,
-                b0=weight_shared,
-            )
-            tle.gpu.warp_specialize(
-                [
-                    (
-                        channel_tle_consumer,
-                        (
-                            pipe.reader("r0", fields=("a", "b0")),
-                            output,
-                            activation_scale,
-                            weight_scale,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            NC,
-                            0,
-                        ),
-                    ),
-                    (
-                        produce_tiles,
-                        (
-                            pipe.writer(),
-                            activation_descriptor,
-                            weight_descriptor,
-                            M,
-                            N,
-                            K,
-                            BM,
-                            BN,
-                            BK,
-                            NC,
-                            1,
-                        ),
-                    ),
-                ],
-                worker_num_warps=[PRODUCER_WARPS],
-                worker_num_regs=[24],
-            )
+                ),
+            ],
+            worker_num_warps=[PRODUCER_WARPS],
+            worker_num_regs=[24],
+        )
 
 else:
     channel_tle_tme_kernel = None
@@ -407,26 +325,26 @@ def bmm_w8a8(
         and A.data_ptr() % 16 == 0
         and B.data_ptr() % 16 == 0
     ):
-        consumers = 1
+        launch_warps = 4
         if SUPPORTS_TLE_WGMMA_INT8 is True:
             if M <= TLE_SMALL_MAX_ROWS:
                 bm, bn, bk, pipeline_stages = TLE_SMALL_TILE_CONFIG
             elif M <= TLE_MEDIUM_MAX_ROWS:
                 bm, bn, bk, pipeline_stages = TLE_MEDIUM_TILE_CONFIG
-            elif M >= TLE_GROUPED_MIN_ROWS and (N, K) == TLE_GROUPED_NK:
-                bm, bn, bk, pipeline_stages = TLE_GROUPED_TILE_CONFIG
-                consumers = TLE_GROUPED_CONSUMERS
+            elif M >= TLE_WIDE_MIN_ROWS and (N, K) == TLE_WIDE_NK:
+                bm, bn, bk, pipeline_stages = TLE_WIDE_TILE_CONFIG
+                launch_warps = TLE_WIDE_MAIN_WARPS
             else:
                 bm, bn, bk, pipeline_stages = TLE_LARGE_TILE_CONFIG
             kernel = channel_tle_tme_kernel
-            stage_parameters = (pipeline_stages, 4, consumers)
+            stage_parameters = (pipeline_stages, 4)
         else:
             bm, bn, bk = HOST_TME_TILE_CONFIG
             kernel = channel_host_tme_kernel
             stage_parameters = (1,)
         activation_descriptor = TensorDescriptor(A, [batch * M, K], [K, 1], [bm, bk])
         weight_descriptor = TensorDescriptor(B, [batch * N, K], [K, 1], [bn, bk])
-        grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn * consumers), batch)
+        grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn), batch)
         with torch_device_fn.device(A.device):
             kernel[grid](
                 activation_descriptor,
@@ -441,7 +359,7 @@ def bmm_w8a8(
                 bn,
                 bk,
                 *stage_parameters,
-                num_warps=4,
+                num_warps=launch_warps,
                 num_stages=1,
                 enable_backend_opt=True,
             )
