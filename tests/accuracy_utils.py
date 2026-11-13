@@ -384,6 +384,37 @@ def ref_inverse(a):
     return ref
 
 
+def ref_kaiser_window(
+    window_length,
+    periodic=True,
+    beta=12.0,
+    *,
+    dtype=None,
+    layout=torch.strided,
+    device=None,
+    pin_memory=None,
+):
+    # Kunlunxin eager has no aten::kaiser_window on the accelerator (XDNN
+    # returns CUDA_ERROR_NOT_SUPPORTED for every dtype), so the reference is
+    # computed on CPU there.  Other backends keep the on-device reference.
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.kaiser_window(
+            window_length,
+            periodic=periodic,
+            beta=beta,
+            dtype=dtype,
+            layout=layout,
+            device=device,
+            pin_memory=pin_memory,
+        )
+    ref = torch.kaiser_window(
+        window_length, periodic=periodic, beta=beta, dtype=dtype, layout=layout
+    )
+    if not TO_CPU and device is not None:
+        ref = ref.to(device)
+    return ref
+
+
 def to_cpu(res, ref):
     if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
