@@ -514,6 +514,7 @@ from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_  # noqa: F401
+from .geqrf import geqrf
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
@@ -521,9 +522,12 @@ from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
 from .grid_sampler import grid_sampler
 from .grid_sampler_2d import grid_sampler_2d
+from .grid_sampler_2d_backward import grid_sampler_2d_backward
+from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
+from .gru_cell import gru_cell
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
@@ -1460,6 +1464,7 @@ __all__ = [
     "gelu_backward",
     "geometric",
     "geometric_",
+    "geqrf",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -1472,10 +1477,13 @@ __all__ = [
     "grid_sample",
     "grid_sampler",
     "grid_sampler_2d",
+    "grid_sampler_2d_backward",
+    "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru_cell",
     "gt",
     "gt_scalar",
     "gt_scalar_",
