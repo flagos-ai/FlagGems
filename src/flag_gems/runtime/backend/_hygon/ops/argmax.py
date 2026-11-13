@@ -18,14 +18,13 @@ from contextlib import nullcontext
 import torch
 import triton
 import triton.language as tl
-from triton.runtime import driver
 
 from flag_gems.ops.argmax import argmax as _generic_argmax
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 
-_ZERO_RUNNERS = {}
+_ZERO_LAUNCH_CONFIGS = {}
 
 
 def _device_context(device):
@@ -34,6 +33,7 @@ def _device_context(device):
     return torch_device_fn.device(device)
 
 
+@libentry(cache_binding=True)
 @triton.jit
 def argmax_zero_kernel(out, N: tl.constexpr, BLOCK: tl.constexpr):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -43,96 +43,24 @@ def argmax_zero_kernel(out, N: tl.constexpr, BLOCK: tl.constexpr):
         tl.store(out + offsets, 0, mask=offsets < N)
 
 
-def _zero_output(out, size, device_index):
-    key = (device_index, size)
-    entry = _ZERO_RUNNERS.get(key)
-    if entry is None:
-        entry = _get_zero_runner(out, size, device_index)
-    run, function, packed_metadata, grid, block = entry
-    stream = driver.active.get_current_stream(device_index)
-    run(
-        grid,
-        1,
-        1,
-        stream,
-        function,
-        packed_metadata,
-        None,
-        None,
-        None,
-        out,
-        size,
-        block,
-    )
-    return out
-
-
-def _get_zero_runner(out, size, device_index):
-    block = min(256, triton.next_power_of_2(size))
-    grid = triton.cdiv(size, block)
-    key = (device_index, size)
-    entry = _ZERO_RUNNERS.get(key)
-    if entry is None:
+def _zero_output(out, size):
+    config = _ZERO_LAUNCH_CONFIGS.get(size)
+    if config is None:
+        block = min(256, triton.next_power_of_2(size))
+        grid = triton.cdiv(size, block)
         if block >= 256:
             num_warps = 8
         elif block >= 64:
             num_warps = 4
         else:
             num_warps = 1
-        compiled = argmax_zero_kernel.warmup(
-            out, size, block, grid=(grid,), num_warps=num_warps
-        )
-        compiled._init_handles()
-        if len(_ZERO_RUNNERS) >= 128:
-            _ZERO_RUNNERS.clear()
-        entry = (
-            compiled.run,
-            compiled.function,
-            compiled.packed_metadata,
-            grid,
-            block,
-        )
-        _ZERO_RUNNERS[key] = entry
-    return entry
-
-
-def _prewarm_kernels():
-    try:
-        if not torch_device_fn.is_available():
-            return
-        device_index = torch_device_fn.current_device()
-        device = torch.device("cuda", device_index)
-        with _device_context(device):
-            for size in (1024, 4096):
-                _get_zero_runner(
-                    torch.empty(size, dtype=torch.int64, device=device),
-                    size,
-                    device_index,
-                )
-            size = 1 << 20
-            mid_size = triton.cdiv(size, 2048)
-            mid = torch.empty(mid_size, dtype=torch.uint64, device=device)
-            out = torch.empty((), dtype=torch.int64, device=device)
-            for dtype in (torch.float16, torch.float32, torch.bfloat16):
-                inp = torch.empty(size, dtype=dtype, device=device)
-                argmax_global_block_kernel.warmup(
-                    inp,
-                    mid,
-                    size,
-                    2048,
-                    grid=(mid_size,),
-                    num_warps=4,
-                )
-            argmax_global_final_kernel.warmup(
-                mid,
-                out,
-                mid_size,
-                triton.next_power_of_2(mid_size),
-                grid=(1,),
-                num_warps=4,
-            )
-    except Exception:
-        _ZERO_RUNNERS.clear()
+        config = (grid, block, num_warps)
+        if len(_ZERO_LAUNCH_CONFIGS) >= 128:
+            _ZERO_LAUNCH_CONFIGS.clear()
+        _ZERO_LAUNCH_CONFIGS[size] = config
+    grid, block, num_warps = config
+    argmax_zero_kernel[(grid,)](out, size, block, num_warps=num_warps)
+    return out
 
 
 @triton.jit
@@ -290,11 +218,8 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out_shape = shape[:dim] + shape[dim + 1 :]
         out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
-        device_index = inp.device.index
-        if device_index is None:
-            device_index = torch_device_fn.current_device()
         with _device_context(inp.device):
-            return _zero_output(out, numel, device_index)
+            return _zero_output(out, numel)
 
     fast_dtype = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
     if not fast_dtype:
@@ -388,6 +313,3 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 num_warps=num_warps,
             )
     return out
-
-
-_prewarm_kernels()
