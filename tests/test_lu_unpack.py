@@ -5,7 +5,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# lu_factor only supports float32/float64 in CUDA environment
+# lu_factor only supports float32/float64 (half/bfloat16 are not supported).
 LU_SHAPES = [
     (3, 3),
     (4, 4),
@@ -19,8 +19,8 @@ LU_SHAPES = [
     (768, 768),
     (1024, 1024),
 ]
-# torch.linalg.lu_factor only supports float32/float64; half/bfloat16 not supported
-LU_DTYPES = [torch.float32, torch.float64]
+# torch.linalg.lu_factor only supports float32/float64; half/bfloat16 not supported.
+LU_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 
 @pytest.mark.lu_unpack

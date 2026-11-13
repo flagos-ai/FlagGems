@@ -46,8 +46,9 @@ def test_alpha_dropout(shape, p, dtype):
 
     # Test with train=True
     ref_out = torch.alpha_dropout(ref_inp, p, True)
-    with flag_gems.use_gems():
-        res_out = torch.alpha_dropout(res_inp, p, True)
+    # Direct GEMS call: the kernel wrapper does not accept NumPy scalars,
+    # which the dispatcher would have boxed into a tensor.
+    res_out = flag_gems.alpha_dropout(res_inp, float(p), True)
 
     # Alpha dropout is stochastic, but we can verify that:
     # 1. The output shape matches
@@ -59,8 +60,7 @@ def test_alpha_dropout(shape, p, dtype):
     res_inp_eval = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp_eval = utils.to_reference(res_inp_eval)
     ref_out_eval = torch.alpha_dropout(ref_inp_eval, p, False)
-    with flag_gems.use_gems():
-        res_out_eval = torch.alpha_dropout(res_inp_eval, p, False)
+    res_out_eval = flag_gems.alpha_dropout(res_inp_eval, float(p), False)
 
     # Verify identity in eval mode
     ref_out_eval = utils.to_reference(res_out_eval)

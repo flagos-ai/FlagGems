@@ -33,8 +33,7 @@ def test_special_gammainc(shape, dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.special.gammainc(ref_x, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.special.gammainc(x, y)
+    res_out = flag_gems.special_gammainc(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -53,8 +52,7 @@ def test_special_gammainc_boundary_x_zero(dtype):
     ref_x = utils.to_reference(x_vals, True)
     ref_out = torch.special.gammainc(ref_a, ref_x)
 
-    with flag_gems.use_gems():
-        res = torch.special.gammainc(a_vals, x_vals)
+    res = flag_gems.special_gammainc(a_vals, x_vals)
 
     utils.gems_assert_close(res, ref_out, dtype)
 
@@ -70,8 +68,7 @@ def test_special_gammainc_boundary_a_one(dtype):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.special.gammainc(ref_a, ref_x)
 
-    with flag_gems.use_gems():
-        res = torch.special.gammainc(a, x)
+    res = flag_gems.special_gammainc(a, x)
 
     utils.gems_assert_close(res, ref_out, dtype, atol=1e-5)
 
@@ -87,8 +84,7 @@ def test_special_gammainc_boundary_large_x(dtype):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.special.gammainc(ref_a, ref_x)
 
-    with flag_gems.use_gems():
-        res = torch.special.gammainc(a, x)
+    res = flag_gems.special_gammainc(a, x)
 
     utils.gems_assert_close(res, ref_out, dtype)
 

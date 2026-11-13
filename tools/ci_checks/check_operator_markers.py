@@ -40,13 +40,23 @@ ALIASES_FILE = Path("conf/ci_test_aliases.yaml")
 
 
 def load_operators_yaml() -> dict[str, dict]:
-    """Load operators.yaml and return dict keyed by id."""
-    if not OPERATORS_YAML.exists():
-        print(f"::error::Cannot find {OPERATORS_YAML}", file=sys.stderr)
-        sys.exit(2)
-    with open(OPERATORS_YAML) as f:
-        data = yaml.safe_load(f)
-    return {op["id"]: op for op in data.get("ops", []) if "id" in op}
+    """Load active and deprecated metadata, keyed by operator ID."""
+    operators = {}
+    for path in (Path(OPERATORS_YAML), Path("conf/deprecated_operators.yaml")):
+        if not path.exists():
+            print(f"::error::Cannot find {path}", file=sys.stderr)
+            sys.exit(2)
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        for op in data.get("ops", []):
+            if "id" in op:
+                if op["id"] in operators:
+                    print(
+                        f"::error::Duplicate operator ID: {op['id']}", file=sys.stderr
+                    )
+                    sys.exit(2)
+                operators[op["id"]] = op
+    return operators
 
 
 def load_aliases() -> dict[str, str]:
@@ -161,16 +171,53 @@ def build_marker_index(tests_dir: Path) -> dict[str, list[str]]:
             tree = ast.parse(filepath.read_text())
         except (SyntaxError, UnicodeDecodeError):
             continue
+        names: list[str] = []
         for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for decorator in node.decorator_list:
-                name = _pytest_mark_name(decorator)
-                if name:
-                    index.setdefault(name, [])
-                    if str(filepath) not in index[name]:
-                        index[name].append(str(filepath))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for decorator in node.decorator_list:
+                    name = _pytest_mark_name(decorator)
+                    if name:
+                        names.append(name)
+        names.extend(_module_pytestmark_names(tree))
+        for name in names:
+            index.setdefault(name, [])
+            if str(filepath) not in index[name]:
+                index[name].append(str(filepath))
     return index
+
+
+def _module_pytestmark_names(tree: ast.Module) -> list[str]:
+    """Return the marker names declared by a module-level ``pytestmark``.
+
+    A test file can declare its markers once for the whole module instead of
+    decorating every function::
+
+        pytestmark = [
+            pytest.mark.thnn_differentiable_gru_cell_backward,
+            pytest.mark.underscore_thnn_differentiable_gru_cell_backward,
+        ]
+
+    That is equivalent to decorating each test as far as ``pytest -m`` is
+    concerned, but it is an assignment, not a decorator, so the decorator walk
+    above never sees it. Both the list/tuple form and the single-mark form
+    (``pytestmark = pytest.mark.skipif(...)``) are handled.
+    """
+    names: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in targets):
+            continue
+        elements = value.elts if isinstance(value, (ast.List, ast.Tuple)) else [value]
+        for element in elements:
+            name = _pytest_mark_name(element)
+            if name:
+                names.append(name)
+    return names
 
 
 def _pytest_mark_name(node: ast.expr) -> str | None:

@@ -28,6 +28,9 @@ from flag_gems.utils.code_utils import IndentedBuffer
 
 logger = logging.getLogger(__name__)
 
+# grid.x cap of the GCU300 launcher (CUDA allows far more).
+_MAX_GRID_X = 65535
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
@@ -263,10 +266,16 @@ def _index_copy_clone_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    value = tl.load(inp + offsets, mask=mask)
-    tl.store(out + offsets, value, mask=mask)
+    # Grid-stride: one tile per program needs cdiv(numel, BLOCK_SIZE) programs,
+    # which passes the 65535 grid.x limit of the GCU300 launcher at ~24M
+    # elements (96092 programs for the largest case in the operator's test).
+    # Walking several tiles per program keeps every launch legal.
+    n_programs = tl.num_programs(0)
+    for tile in range(tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), n_programs):
+        offsets = tile * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        value = tl.load(inp + offsets, mask=mask)
+        tl.store(out + offsets, value, mask=mask)
 
 
 def _clone_without_copy_dispatch(inp):
@@ -280,7 +289,7 @@ def _clone_without_copy_dispatch(inp):
         return out
 
     block_size = 256
-    grid = (triton.cdiv(n_elements, block_size),)
+    grid = (min(triton.cdiv(n_elements, block_size), _MAX_GRID_X),)
     _index_copy_clone_kernel[grid](
         inp,
         out,

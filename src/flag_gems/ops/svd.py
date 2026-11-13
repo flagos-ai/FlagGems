@@ -2391,14 +2391,16 @@ def _cyclic_jacobi_svd(input):
                 BLOCK_R=triton.next_power_of_2(projected_rows),
                 num_warps=1,
             )
-            if batch > 1 and k <= 16:
-                _thin_reorthogonalize_kernel[(batch,)](
-                    projected,
-                    ROWS=projected_rows,
-                    K=k,
-                    BLOCK_R=triton.next_power_of_2(projected_rows),
-                    num_warps=1,
-                )
+            # The projected factor is recomputed as A @ basis / s; for small
+            # singular values this loses orthogonality in fp32, so always
+            # reorthogonalize it before returning.
+            _thin_reorthogonalize_kernel[(batch,)](
+                projected,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
     return (
         u.reshape(*input.shape[:-2], m, k),
         s.reshape(*input.shape[:-2], k),

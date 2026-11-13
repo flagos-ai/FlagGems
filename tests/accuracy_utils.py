@@ -15,6 +15,7 @@
 import importlib
 import itertools
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -271,6 +272,10 @@ FLOAT_DTYPES = (
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
+# Sub-32-bit integer dtypes. ATen implements the math/bitwise pointwise ops for
+# these on CPU and CUDA, so operators that accept integer inputs must cover them
+# explicitly; the 16/32/64-bit list above misses both.
+SMALL_INT_DTYPES = [torch.int8, torch.uint8]
 BOOL_TYPES = [torch.bool]
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
@@ -288,6 +293,57 @@ GLU_SHAPES = (
     if QUICK_MODE
     else [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60), (16, 7, 57, 32, 30)]
 )
+
+
+def randint_in_range(shape, dtype, low=-0x7FFF, high=0x7FFF):
+    """Build an integer tensor on CPU, clamped to the dtype's own value range.
+
+    torch.randint rejects bounds outside the target dtype, so the default
+    signed 16-bit window has to shrink for uint8, whose range starts at 0.
+    """
+    if dtype is torch.uint8:
+        low, high = max(low, 0), min(high, 0xFF)
+    elif dtype is torch.int8:
+        low, high = max(low, -0x80), min(high, 0x7F)
+    return torch.randint(low, high, shape, dtype=dtype, device="cpu")
+
+
+def promoted_float_dtype(dtype, op):
+    """Return the dtype ATen produces for a float-valued op applied to `dtype`.
+
+    Integer inputs are promoted to the default float dtype; float inputs keep
+    their own dtype. Querying the real op rather than hard-coding float32 keeps
+    the expectation correct when the process default dtype is not float32.
+    """
+    if dtype.is_floating_point or dtype.is_complex:
+        return dtype
+    probe = torch.zeros(1, dtype=dtype)
+    op_name = {
+        "acosh": torch.acosh,
+        "asin": torch.asin,
+        "atanh": torch.atanh,
+        "atan2": lambda t: torch.atan2(t, t),
+        "arctan2": lambda t: torch.arctan2(t, t),
+    }[op]
+    return op_name(probe).dtype
+
+
+def make_reduction_input(shape, dtype):
+    """Build a reduction input on the active device for float, int or bool dtype.
+
+    GPU random init has no integer or bool implementation, so those are built on
+    CPU and moved over; the values are dense enough that a reduction over any
+    dimension still sees several distinct inputs.
+    """
+    if dtype in BOOL_TYPES:
+        return torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(
+            flag_gems.device
+        )
+    if dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype.is_floating_point:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    return randint_in_range(shape, dtype).to(flag_gems.device)
 
 
 def to_reference(inp, upcast=False):
@@ -344,10 +400,31 @@ def ref_div_rounding(a, b, rounding_mode):
     return ref
 
 
+def ref_fmod(a, b):
+    # Kunlunxin eager fmod is not exact on lanes whose quotient is within one
+    # ulp of an integer: it returns ~0 there instead of the correct remainder
+    # (~|y|), so the reference is computed in float64 on CPU there. The kernel
+    # follows the exact remainder, which is what this reference produces.
+    # Other backends keep the on-device reference (their eager implementation
+    # matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.fmod(a, b)
+    a_cpu = a.cpu().to(torch.float64) if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu().to(torch.float64) if isinstance(b, torch.Tensor) else b
+    ref = torch.fmod(a_cpu, b_cpu)
+    if not TO_CPU:
+        # assert_close casts the reference to the result dtype anyway; casting
+        # here lets the reference travel back to a device without fp64 support.
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 def to_cpu(res, ref):
-    if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
-        res = res.to("cpu")
-        assert ref.device == torch.device("cpu")
+    # Compare on the CPU whenever the reference is there (e.g. a CPU-only
+    # eager op on a backend without fp64); the result tensor follows it.
+    if isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
+        if TO_CPU or ref.device.type == "cpu":
+            res = res.to("cpu")
     return res
 
 
@@ -383,17 +460,47 @@ def init_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def gems_log_prefix(fn):
-    """Derive the expected log prefix from the resolved function module.
+def _vendor_arch_names():
+    """Return the arch directory names of the current vendor backend.
 
-    The generic implementation logs with the ``"GEMS"`` prefix, while
-    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
-    ``_<vendor>`` path component so this works for both short imported module
-    names and fully qualified backend module names.
+    ``BackendArchEvent`` treats every sub-directory of ``_<vendor>`` other than
+    ``ops``/``fused`` and private ones as an arch (e.g. ``hopper``, ``gcu300``).
+    """
+    backend_dir = Path(flag_gems.__file__).parent / "runtime" / "backend"
+    vendor_dir = backend_dir / f"_{flag_gems.vendor_name}"
+    if not vendor_dir.is_dir():
+        return set()
+    excluded = ("ops", "fused")
+    return {
+        p.name
+        for p in vendor_dir.iterdir()
+        if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
+    }
+
+
+def gems_log_prefix(fn):
+    """Return the expected log prefix for an operator implementation.
+
+    Three module naming conventions exist across backends:
+
+    1. Generic ops: ``flag_gems.ops.<op>`` -> prefix ``GEMS``
+    2. Vendor override loaded via ``import_vendor_extra_lib``:
+       ``_<vendor>.ops.<op>``, or a fully qualified
+       ``flag_gems.runtime.backend._<vendor>.ops.<op>``.
+    3. Arch-specific ops loaded by ``BackendArchEvent`` via ``sys.path``
+       injection: ``<arch>.ops.<op>`` with a bare arch name such as ``gcu300``,
+       ``hopper``, ``rdna4``, or ``tx81``, outside the ``flag_gems.*`` namespace.
+
+    Cases 2 and 3 map to ``GEMS_<VENDOR>``. Both are matched on whole path
+    segments, so a module that merely shares a prefix with the vendor or arch
+    name (e.g. ``_<vendor>_extra``) stays ``GEMS``.
     """
     module_parts = fn.__module__.split(".")
+    vendor_prefix = f"GEMS_{flag_gems.vendor_name.upper()}"
     if f"_{flag_gems.vendor_name}" in module_parts:
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
+        return vendor_prefix
+    if module_parts[0] in _vendor_arch_names():
+        return vendor_prefix
     return "GEMS"
 
 
