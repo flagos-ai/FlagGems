@@ -31,7 +31,11 @@ def _case_fn(shape, dtype, align_corners=False):
     output_size = (depth * 2, new_height * 2, width * 2)
     yield base.BenchmarkCasePlan(
         shape={"grad_output": [batch, channel, *output_size]},
-        params={"output_size": list(output_size), "input_size": list(input_size), "align_corners": align_corners},
+        params={
+            "output_size": list(output_size),
+            "input_size": list(input_size),
+            "align_corners": align_corners,
+        },
         builder_args=(input_size, output_size, align_corners),
     )
 
@@ -46,6 +50,19 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class UpsampleBenchmark(OperatorBenchmark):
+    def build_inputs(self, case):
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if (
+            flag_gems.vendor_name == "kunlunxin"
+            and case.dtype in (torch.float16, torch.bfloat16)
+            and needs_native
+        ):
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Kunlunxin native trilinear3d backward supports float32 only")
+        return super().build_inputs(case)
+
     def set_more_shapes(self):
         return None
 
@@ -62,7 +79,6 @@ def test_upsample_trilinear3d_backward(align_corners):
     UpsampleBenchmark(
         op_name="upsample_trilinear3d_backward",
         torch_op=torch.ops.aten.upsample_trilinear3d_backward.default,
-        gems_op=flag_gems.upsample_trilinear3d_backward,
         case_fn=case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
