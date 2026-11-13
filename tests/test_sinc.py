@@ -19,25 +19,38 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# sinc promotes integral inputs to float in ATen, so 1-byte ints are accepted.
+SINC_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES
+
 
 @pytest.mark.sinc
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", SINC_DTYPES)
 def test_sinc(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp = torch.randint(-50, 50, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.sinc(ref_inp)
     res_out = flag_gems.sinc(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
 
 
 @pytest.mark.sinc_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_sinc_(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp = torch.randint(-50, 50, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.sinc_()

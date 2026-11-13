@@ -6,6 +6,19 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+
+def _rand_input(shape, dtype):
+    if dtype in utils.BYTE_INT_DTYPES:
+        return torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    if dtype in utils.FP8_DTYPES:
+        return torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(
+            dtype
+        )
+    return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+
 # Same-numel shape pairs that are NOT broadcast-compatible. These exercise the
 # reshape (rather than broadcast) path of resize_as.
 if cfg.QUICK_MODE:
@@ -26,7 +39,9 @@ else:
 
 @pytest.mark.resize_as
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+)
 def test_resize_as(shape, dtype):
     # resize_as requires same number of elements
     # Create target shape with same number of elements but different shape
@@ -42,8 +57,8 @@ def test_resize_as(shape, dtype):
     for target_shape in target_shapes:
         if target_shape == shape:
             continue
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        template = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
+        inp = _rand_input(shape, dtype)
+        template = _rand_input(target_shape, dtype)
 
         ref_inp = utils.to_reference(inp)
         ref_template = utils.to_reference(template)
@@ -56,7 +71,9 @@ def test_resize_as(shape, dtype):
 
 @pytest.mark.resize_as_
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES + utils.FP8_DTYPES
+)
 def test_resize_as_(shape, dtype):
     numel = 1
     for s in shape:
@@ -69,8 +86,8 @@ def test_resize_as_(shape, dtype):
     for target_shape in target_shapes:
         if target_shape == shape:
             continue
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        template = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
+        inp = _rand_input(shape, dtype)
+        template = _rand_input(target_shape, dtype)
 
         ref_inp = utils.to_reference(inp.clone())
         ref_template = utils.to_reference(template)

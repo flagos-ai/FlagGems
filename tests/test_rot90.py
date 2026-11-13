@@ -31,10 +31,15 @@ else:
 
 @pytest.mark.rot90
 @pytest.mark.parametrize("shape", ROT90_SHAPES_2D)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES)
 @pytest.mark.parametrize("k", ROT90_K_VALUES)
 def test_rot90(shape, dtype, k):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp = torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.rot90(ref_inp, k, [0, 1])
