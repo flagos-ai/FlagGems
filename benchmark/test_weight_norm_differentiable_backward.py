@@ -19,6 +19,8 @@ import flag_gems
 
 from . import base, consts
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 class WeightNormDifferentiableBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
@@ -37,7 +39,10 @@ class WeightNormDifferentiableBackwardBenchmark(base.Benchmark):
             grad_w = torch.randn(shape, dtype=dtype, device=self.device)
             saved_v = torch.randn(shape, dtype=dtype, device=self.device)
             saved_g = torch.randn(broadcast_shape, dtype=dtype, device=self.device)
-            _, saved_norms = torch._weight_norm_interface(saved_v, saved_g, dim)
+            if IS_KUNLUNXIN and dtype == torch.float16:
+                _, saved_norms = flag_gems.weight_norm_interface(saved_v, saved_g, dim)
+            else:
+                _, saved_norms = torch._weight_norm_interface(saved_v, saved_g, dim)
             yield grad_w, saved_v, saved_g, saved_norms, dim
 
 

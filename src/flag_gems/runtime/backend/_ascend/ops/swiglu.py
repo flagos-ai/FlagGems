@@ -17,9 +17,16 @@ from typing import Any, Optional
 
 import torch
 import triton
-import triton.experimental.tle as tle
 import triton.language as tl
 import triton.language.math as math
+
+try:
+    import triton.experimental.tle as tle
+
+    HAS_TLE = True
+except ImportError:
+    tle = None
+    HAS_TLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +155,10 @@ def swiglu_kernel(
 
 def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
     logger.debug("GEMS_ASCEND SWIGLU")
+    if not HAS_TLE:
+        raise RuntimeError(
+            "Ascend swiglu is unavailable: requires triton.experimental.tle."
+        )
     if input_tensor.shape[-1] % 2 != 0:
         raise ValueError(
             f"The last dimension of must be even number, got {input_tensor.shape[-1]}"

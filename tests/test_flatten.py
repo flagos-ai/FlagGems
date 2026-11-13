@@ -34,7 +34,6 @@ def test_flatten(shape, dtype, dims):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.flatten(ref_inp, start_dim, end_dim)
-    with flag_gems.use_gems():
-        res_out = torch.flatten(inp, start_dim, end_dim)
+    res_out = flag_gems.flatten(inp, start_dim, end_dim)
 
     utils.gems_assert_close(utils.to_reference(res_out), ref_out, dtype)

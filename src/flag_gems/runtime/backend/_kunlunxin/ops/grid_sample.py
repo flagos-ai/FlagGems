@@ -495,7 +495,7 @@ def grid_sample(
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS_KUNLUNXIN GRID SAMPLE")
+    logger.debug("GEMS_KUNLUNXIN GRID_SAMPLE")
     from flag_gems.ops.grid_sample import _validate_grid_sample_input
 
     _validate_grid_sample_input(input, grid, mode, padding_mode)

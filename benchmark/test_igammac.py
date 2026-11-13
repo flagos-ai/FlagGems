@@ -18,15 +18,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
-from .conftest import Config
-
-VENDOR = flag_gems.vendor_name
-
-# On ascend the general KERNEL-mode do_bench_npu is unreliable; use operator
-# (end-to-end) timing mode (same as det/lu_factor/linalg_solve_triangular).
-if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
+from . import base
 
 _IGAMMAC_DTYPES = [
     torch.float32,
@@ -154,6 +146,9 @@ def test_igammac():
         input_fn=_igammac_input,
         dtypes=_IGAMMAC_DTYPES,
     )
+    # When the number of logical cores exceeds the number of physical cores (65,535),
+    # the compiler automatically adjusts the logical core count to match the physical core count,
+    # thereby reducing scheduling overhead.
     bench.run()
 
 

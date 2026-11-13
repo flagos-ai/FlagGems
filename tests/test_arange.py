@@ -32,8 +32,7 @@ else:
 @pytest.mark.parametrize("end", ARANGE_ENDS)
 @pytest.mark.parametrize("dtype", ARANGE_DTYPES)
 def test_arange(end, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.arange(end, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.arange(end, dtype=dtype, device=flag_gems.device)
     ref_out = torch.arange(end, dtype=dtype, device="cpu")
 
     utils.gems_assert_equal(res_out.cpu(), ref_out)

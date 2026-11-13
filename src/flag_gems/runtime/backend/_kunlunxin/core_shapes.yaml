@@ -73,8 +73,67 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+  shape_desc: "batch, n1, dim"
+
 vdot:
   <<: *single_dim_shapes
+
+# ctc_loss family consumes 4-element shapes (T, N, C, S). Without these
+# op-level keys the MRO fallback in benchmark/base.py resolves `Benchmark`
+# (2-/3-element shapes) and the 4-name destructuring in the input_fn fails
+# with "not enough values to unpack". Mirrors benchmark/core_shapes.yaml.
+ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss_backward_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
 
 randperm:
   <<: *single_dim_shapes
@@ -446,3 +505,23 @@ fused_recurrent_gated_delta_rule:
     - [480]
     - [496]
   shape_desc: "T"
+
+# conv_transpose1d benchmark shapes; order matches
+# benchmark/test_conv_transpose1d.py conv_transpose1d_input_fn unpack.
+conv_transpose1d:
+  shapes:
+    - [32, 64, 128, 64, 3, 1, 0, 1]
+    - [64, 48, 256, 128, 5, 2, 2, 1]
+    - [16, 24, 512, 96, 7, 1, 3, 1]
+    - [8, 16, 1024, 32, 3, 2, 1, 2]
+    - [4, 8, 2048, 16, 5, 1, 2, 1]
+
+# conv_depthwise2d benchmark shapes; order matches
+# benchmark/test_conv_depthwise2d.py _input_fn unpack.
+conv_depthwise2d:
+  shapes:
+    - [32, 4, 8, 8, 2, 2, 1, 0, 1]
+    - [32, 64, 56, 56, 3, 3, 1, 1, 1]
+    - [1, 64, 224, 224, 3, 3, 1, 1, 1]
+    - [1, 128, 112, 112, 5, 5, 2, 2, 1]
+  shape_desc: "N, C, H, W, K_h, K_w, stride, padding, dilation"

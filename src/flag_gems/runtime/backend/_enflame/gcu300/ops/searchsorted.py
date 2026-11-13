@@ -205,9 +205,6 @@ def _searchsorted_impl(
         out.zero_()
         return out
 
-    if out is not None and out.dtype == torch.int64:
-        out = out.to(torch.int32)
-
     sorted_sequence_contiguous = sorted_sequence.contiguous()
     values_contiguous = values.contiguous()
     sorter_contiguous = sorter.contiguous() if sorter is not None else None
@@ -220,10 +217,14 @@ def _searchsorted_impl(
             sorted_sequence_contiguous, -1, sorter_contiguous
         )
         sorter_contiguous = None
+    # GCU300 has no int64 support on the kernel path, so the search itself runs in
+    # int32 and the copy below widens to the dtype the caller asked for. Keeping
+    # `out` at its own dtype (instead of rebinding it to an int32 view) is what
+    # makes both the int64 return value and a caller-supplied `out` work.
     kernel_out = (
         out
-        if out.is_contiguous()
-        else torch.empty(out.shape, dtype=out.dtype, device=out.device)
+        if out.dtype == torch.int32 and out.is_contiguous()
+        else torch.empty(out.shape, dtype=torch.int32, device=out.device)
     )
     sequence_len = sorted_sequence.shape[-1]
     values_per_row = values.shape[-1] if sorted_sequence.dim() != 1 else values.numel()
@@ -297,7 +298,7 @@ def searchsorted_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS_ENFLAME SEARCHSORTED OUT")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED_OUT")
     return _searchsorted_impl(
         sorted_sequence,
         self,
@@ -318,7 +319,7 @@ def searchsorted_scalar(
     side=None,
     sorter=None,
 ):
-    logger.debug("GEMS_ENFLAME SEARCHSORTED SCALAR")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED_SCALAR")
     _check_scalar_values_shape(sorted_sequence)
     values = torch.scalar_tensor(self, device=sorted_sequence.device)
     return _searchsorted_impl(
@@ -341,7 +342,7 @@ def searchsorted_scalar_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS_ENFLAME SEARCHSORTED SCALAR OUT")
+    logger.debug("GEMS_ENFLAME SEARCHSORTED_SCALAR_OUT")
     _check_scalar_values_shape(sorted_sequence)
     values = torch.scalar_tensor(self, device=sorted_sequence.device)
     return _searchsorted_impl(

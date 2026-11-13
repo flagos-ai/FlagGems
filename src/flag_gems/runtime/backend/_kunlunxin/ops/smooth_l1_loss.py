@@ -309,7 +309,7 @@ def smooth_l1_loss(input, target, reduction=1, beta: float = 1.0):
 
 
 def smooth_l1_loss_out(input, target, reduction=1, beta: float = 1.0, *, out):
-    logger.debug("GEMS_KUNLUNXIN SMOOTH_L1_LOSS OUT")
+    logger.debug("GEMS_KUNLUNXIN SMOOTH_L1_LOSS_OUT")
     result = smooth_l1_loss(input, target, reduction, beta)
     out.resize_(result.shape)
     out.copy_(result)
@@ -317,7 +317,7 @@ def smooth_l1_loss_out(input, target, reduction=1, beta: float = 1.0, *, out):
 
 
 def smooth_l1_loss_backward(grad_output, input, target, reduction, beta: float):
-    logger.debug("GEMS_KUNLUNXIN SMOOTH_L1_LOSS BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN SMOOTH_L1_LOSS_BACKWARD")
     reduction = _normalize_reduction(reduction)
     beta = float(beta)
     if beta < 0:

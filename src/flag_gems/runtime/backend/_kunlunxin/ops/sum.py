@@ -22,7 +22,7 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress
+from flag_gems.utils import dim_compress, libentry
 
 try:
     import triton.experimental.tle.language as tle
@@ -177,6 +177,13 @@ def _tle_available():
 # launch is ~12us, and neither variable can change under a running process.
 _TLE_AVAILABLE = _tle_available()
 
+# Latched True when this toolchain cannot compile the tle row kernel. flagtree XPU
+# fails with "failed to legalize operation 'tt.make_range' that was explicitly marked
+# illegal" on its 2D local_ptr range, so the full reduce is retried on the pointer
+# path and every later call skips tle (the same latch prod/logsumexp use). A launch
+# that fails to compile leaves `out` untouched, so the retry is safe.
+_TLE_BROKEN = False
+
 
 @triton.jit(
     # Both callers hand this kernel a freshly allocated buffer, and the XPU allocator
@@ -197,6 +204,7 @@ def _tle_sum_row_kernel(
     ACC_DTYPE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
     NEED_ZERO: tl.constexpr,
+    SCALE: tl.constexpr = 1.0,
 ):
     """Sum a [XBLOCK, YBLOCK]-tiled slice of a [M, N] input along axis=1.
 
@@ -240,7 +248,7 @@ def _tle_sum_row_kernel(
                 tl.store(a_ptrs, tl.zeros([XBLOCK, YBLOCK], IN_DTYPE))
         tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
         acc = acc + tl.sum(tl.load(a_ptrs).to(ACC_DTYPE), axis=1)
-    tl.store(c_ptrs, acc.to(OUT_DTYPE))
+    tl.store(c_ptrs, (acc * SCALE).to(OUT_DTYPE))
     tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
 
 
@@ -294,7 +302,7 @@ def _tle_row_geom(M, N, itemsize):
     return geom
 
 
-def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom):
+def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom, scale=1.0):
     """Cached launch plan for reducing `[M, N]` columns at row pitch `row_stride`.
 
     `geom` is the caller's `_tle_row_geom` result, and `row_stride` is the parent row
@@ -302,8 +310,12 @@ def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom):
     It is a launch operand and part of the key: the flat launcher replays the operand
     list verbatim, so a plan built for a contiguous view would otherwise be reused for
     a sliced one and stride the DMA wrong -- silently reducing the wrong columns.
+
+    `scale` multiplies the result before the store (`mean = sum * (1/N)`) and is a
+    **constexpr of the kernel**, so it must be part of the key: replaying a plan built
+    for one scale with another would silently return the wrong values.
     """
-    plan_key = (M, N, row_stride, in_dtype, out_dtype)
+    plan_key = (M, N, row_stride, in_dtype, out_dtype, scale)
     plan = _TLE_ROW_PLANS.get(plan_key)
     if plan is not None:
         return plan
@@ -315,6 +327,7 @@ def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom):
         _TLE_ACC_DTYPE[in_dtype],
         _TLE_TL_DTYPE[out_dtype],
         N % yblock != 0,
+        scale,
     )
     key = (M, N, row_stride, row_blocks, in_dtype, out_dtype) + consts[:2] + consts[5:]
     # The last element is the launch's operand list minus the two pointers. Building it
@@ -363,9 +376,94 @@ def _tle_row_reduce(a, c, plan):
     launch(stream, a.data_ptr(), *a_meta, c.data_ptr(), *c_meta)
 
 
-def _tle_sum_dim(inp, out, M, N):
+@libentry()
+@triton.jit
+def _flat_partials_kernel(
+    inp,
+    mid,
+    BLOCK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+):
+    """`mid[pid] = sum(inp[pid * BLOCK:(pid + 1) * BLOCK])`, one program per row.
+
+    Pointer counterpart of the tle row kernel, for toolchains that cannot compile it.
+    Every tile is exactly `BLOCK` (<= `_TLE_FLAT_COLS`) lanes, so `tl.sum` is exact at
+    this width and there is no mask to get wrong (see the constraints at the top).
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    vals = tl.load(inp + offs).to(ACC_DTYPE)
+    tl.store(mid + pid, tl.sum(vals))
+
+
+@libentry()
+@triton.jit(
+    do_not_specialize=["N"],
+)
+def _flat_tail_kernel(
+    inp,
+    out,
+    N,
+    SCALE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+):
+    """Reduce the flat pipeline's residue (at most `_TLE_FLAT_ONESHOT`) into `out`.
+
+    One masked tile of <= 8192 lanes is the exact, reliable shape on XPU (see the
+    constraints at the top of this file), and a pointer kernel keeps the residue off
+    both the descriptor and the tle path: flagtree XPU cannot legalize the tle row
+    kernel at all, and the tle final stage would need a [1, n] descriptor whose row
+    pitch is only valid when `n * itemsize` is 16-byte aligned (residues like 2 or 735
+    are not). `SCALE` is folded into the store, so `mean = sum * (1/M)` needs no
+    second pass.
+    """
+    offs = tl.arange(0, BLOCK)
+    vals = tl.load(inp + offs, mask=offs < N, other=0).to(ACC_DTYPE)
+    total = tl.sum(vals)
+    # Fold the scale only when there is one: for `sum` (SCALE == 1.0) an int64
+    # accumulator must not be promoted to float on the way to the store.
+    if SCALE != 1.0:
+        total = total * SCALE
+    tl.store(out, total.to(out.dtype.element_ty))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _row_reduce_kernel(
+    inp,
+    out,
+    N,
+    SCALE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+):
+    """`out[pid] = sum(inp[pid * N : (pid + 1) * N])`, one program per row.
+
+    Pointer counterpart of the tle row kernel, for toolchains that cannot compile
+    the latter (its 2D local_ptr range lowers to an illegal `tt.make_range`). `N` is
+    streamed in `BLOCK`-sized masked tiles so the reduction never needs a tile wider
+    than the LM budget: unlike the flat tail, a dim reduce can be handed a row of tens
+    of thousands of elements, and one `tl.load` of the whole row would not compile.
+    """
+    pid = tl.program_id(0)
+    base = pid * N
+    offs = tl.arange(0, BLOCK)
+    total = tl.zeros([], dtype=ACC_DTYPE)
+    for start in range(0, N, BLOCK):
+        vals = tl.load(inp + base + start + offs, mask=start + offs < N, other=0).to(
+            ACC_DTYPE
+        )
+        total += tl.sum(vals)
+    if SCALE != 1.0:
+        total = total * SCALE
+    tl.store(out + pid, total.to(out.dtype.element_ty))
+
+
+def _tle_sum_dim(inp, out, M, N, scale=1.0):
     """Row-reduce `inp` into `out` with tle; False if tle cannot express it."""
-    if not _TLE_AVAILABLE:
+    global _TLE_BROKEN
+    if not _TLE_AVAILABLE or _TLE_BROKEN:
         return False
     # N == 1 makes `inp.view(M, 1)` a descriptor whose last stride is M, not 1 (torch
     # is free to pick any stride for an extent-1 dimension), which
@@ -378,66 +476,111 @@ def _tle_sum_dim(inp, out, M, N):
     if not inp.is_contiguous() or not out.is_contiguous():
         return False
     geom = _tle_row_geom(M, N, inp.element_size())
-    plan = _tle_row_plan(M, N, N, inp.dtype, out.dtype, geom)
+    plan = _tle_row_plan(M, N, N, inp.dtype, out.dtype, geom, scale)
     a = inp if inp.ndim == 2 and inp.shape[0] == M else inp.view(M, N)
     c = out if out.ndim == 1 else out.view(M)
     with torch_device_fn.device(inp.device):
-        _tle_row_reduce(a, c, plan)
+        try:
+            _tle_row_reduce(a, c, plan)
+        except Exception as exc:  # noqa: BLE001
+            # flagtree cannot legalize the tle row kernel's 2D local_ptr range; a
+            # failed launch leaves `out` untouched, so retry on the pointer path and
+            # latch it off for the process.
+            _TLE_BROKEN = True
+            logger.debug(
+                "GEMS_KUNLUNXIN SUM_DIM tle unavailable (%s); pointer path", exc
+            )
+            return False
     return True
 
 
-def _tle_sum_flat(inp, out, acc_dtype):
+def _flat_stage(inp, acc_dtype, use_tle):
+    """Feed `[n // COLS, COLS]` row-reduces back in until the residue fits one program.
+
+    `use_tle` selects the tle row kernel; False runs `_flat_partials_kernel` instead,
+    with the same geometry and partial layout, for a toolchain that cannot compile the
+    tle kernel. A `n % COLS` residue is not reduced: it is carried into the next
+    stage's buffer as-is, which costs a copy of under COLS elements and saves a launch.
+    """
+    cur = inp.reshape(-1) if inp.is_contiguous() else inp.contiguous().view(-1)
+    while cur.numel() > _TLE_FLAT_ONESHOT:
+        n = cur.numel()
+        # Wide tiles while there is a lot left; once the tensor is within a couple of
+        # tiles, narrow them so the grid still covers the cores.
+        cols = (
+            _TLE_FLAT_COLS
+            if n >= 2 * _TLE_FLAT_COLS
+            else max(2, _npo2(n) // _TLE_CORE_NUM)
+        )
+        rows = n // cols
+        if rows < 2:
+            break
+        main = rows * cols
+        tail = n - main
+        nxt = torch.empty((rows + tail,), dtype=acc_dtype, device=inp.device)
+        if use_tle:
+            geom = _tle_row_geom(rows, cols, cur.element_size())
+            plan = _tle_row_plan(rows, cols, cols, cur.dtype, acc_dtype, geom)
+            _tle_row_reduce(cur[:main].view(rows, cols), nxt[:rows], plan)
+        else:
+            _flat_partials_kernel[(rows,)](
+                cur[:main], nxt[:rows], cols, _TLE_ACC_DTYPE[cur.dtype]
+            )
+        if tail:
+            nxt[rows:].copy_(cur[main:])
+        cur = nxt
+    return cur
+
+
+def _flat_finish(cur, out, scale):
+    """Reduce the flat pipeline's residue (<= _TLE_FLAT_ONESHOT) into `out`."""
+    n = cur.numel()
+    logger.debug("GEMS_KUNLUNXIN SUM_FLAT residue=%d", n)
+    if n < 2:
+        # A single element (or none) is a copy; `out` is 0-d or (1,).
+        out.view(-1).copy_(cur.view(-1))
+        return
+    _flat_tail_kernel[(1,)](cur, out, n, scale, _npo2(n), _TLE_ACC_DTYPE[cur.dtype])
+
+
+def _tle_sum_flat(inp, out, acc_dtype, scale=1.0):
     """Full reduction as repeated row-reduces of a [n // COLS, COLS] view.
 
     Feeding the output back in is the whole algorithm: 1G elements go 1G -> 262144 in
     one launch, and what is left is three orders of magnitude smaller. COLS shrinks once
     the tensor does, so the later stages still have rows for every core, and the last
-    one -- everything that fits a single program's loop -- is a [1, n] reduce, which is
-    exact but leaves 63 cores idle, so it is only ever handed a small residue. A
-    `n % COLS` residue is not reduced: it is carried into the next stage's buffer as-is,
-    which costs a copy of under COLS elements and saves a launch.
+    one -- everything that fits a single program's loop -- is finished by the pointer
+    `_flat_tail_kernel`, which is exact but leaves 63 cores idle, so it is only ever
+    handed a small residue.
+
+    The staging loop falls back to the pointer partials kernel (same geometry) when the
+    toolchain cannot compile the tle row kernel, and latches that off for the process.
 
     Returns False without touching `out` only when the dtype or the layout is out of
     reach; any size is in reach.
     """
+    global _TLE_BROKEN
     if not _TLE_AVAILABLE:
         return False
     # `acc_dtype` is `_resolve_acc_dtype(inp.dtype)`, which for every dtype in
     # `_TLE_TL_DTYPE` is itself in `_TLE_TL_DTYPE`, so accepting `inp.dtype` implies it.
     if inp.dtype not in _TLE_TL_DTYPE:
         return False
-    cur = inp.reshape(-1) if inp.is_contiguous() else inp.contiguous().view(-1)
     with torch_device_fn.device(inp.device):
-        while cur.numel() > _TLE_FLAT_ONESHOT:
-            n = cur.numel()
-            # Wide tiles while there is a lot left; once the tensor is within a couple of
-            # tiles, narrow them so the grid still covers the cores.
-            cols = (
-                _TLE_FLAT_COLS
-                if n >= 2 * _TLE_FLAT_COLS
-                else max(2, _npo2(n) // _TLE_CORE_NUM)
-            )
-            rows = n // cols
-            if rows < 2:
-                break
-            geom = _tle_row_geom(rows, cols, cur.element_size())
-            plan = _tle_row_plan(rows, cols, cols, cur.dtype, acc_dtype, geom)
-            main = rows * cols
-            tail = n - main
-            nxt = torch.empty((rows + tail,), dtype=acc_dtype, device=inp.device)
-            _tle_row_reduce(cur[:main].view(rows, cols), nxt[:rows], plan)
-            if tail:
-                nxt[rows:].copy_(cur[main:])
-            cur = nxt
-        n = cur.numel()
-        logger.debug("GEMS_KUNLUNXIN SUM_FLAT tle numel=%d -> %d", inp.numel(), n)
-        if n < 2:
-            # A single element (or none) is a copy; `out` is 0-d or (1,).
-            out.view(-1).copy_(cur.view(-1))
-            return True
-        geom = _tle_row_geom(1, n, cur.element_size())
-        plan = _tle_row_plan(1, n, n, cur.dtype, out.dtype, geom)
-        _tle_row_reduce(cur.view(1, n), out.view(1), plan)
+        if not _TLE_BROKEN:
+            try:
+                cur = _flat_stage(inp, acc_dtype, use_tle=True)
+            except Exception as exc:  # noqa: BLE001
+                # Any compile gap re-uses the pointer partials kernel; `out` has
+                # not been written yet.
+                _TLE_BROKEN = True
+                logger.debug(
+                    "GEMS_KUNLUNXIN SUM_FLAT tle unavailable (%s); pointer path", exc
+                )
+            else:
+                _flat_finish(cur, out, scale)
+                return True
+        _flat_finish(_flat_stage(inp, acc_dtype, use_tle=False), out, scale)
     return True
 
 
@@ -514,6 +657,7 @@ def _tle_sum_fold_kernel(
     ACC_DTYPE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
     NUM_STAGES: tl.constexpr,
+    SCALE: tl.constexpr = 1.0,
 ):
     """`c[j, b, k] = sum_i a[b, i * NBLOCK + j, k]` over a (B, N, K) input.
 
@@ -560,15 +704,15 @@ def _tle_sum_fold_kernel(
     for noff in tl.range(0, N, NBLOCK, num_stages=NUM_STAGES):
         tle.gpu.copy(a_desc, a_lmem, [NBLOCK, KBLOCK], [b * N + noff, k_off])
         acc = acc + tl.load(a_ptrs).to(ACC_DTYPE)
-    tl.store(c_ptrs, acc.to(OUT_DTYPE))
+    tl.store(c_ptrs, (acc * SCALE).to(OUT_DTYPE))
     tle.gpu.copy(c_lmem, c_desc, [NBLOCK, KBLOCK], [0, b * K + k_off])
 
 
-def _tle_fold(inp, part, B, N, K, nblock, kblock):
+def _tle_fold(inp, part, B, N, K, nblock, kblock, scale=1.0):
     """Launch the fold, binding the launcher once as `_tle_row_reduce` does."""
     a = inp.view(B * N, K)
     c = part.view(nblock, B * K)
-    plan_key = (B, N, K, nblock, kblock, a.dtype, c.dtype)
+    plan_key = (B, N, K, nblock, kblock, a.dtype, c.dtype, scale)
     plan = _TLE_FOLD_PLANS.get(plan_key)
     if plan is not None:
         grid, args, key = plan
@@ -603,14 +747,16 @@ def _tle_fold(inp, part, B, N, K, nblock, kblock):
         _TLE_TL_DTYPE[c.dtype],
         # A one-row tile cannot be rotated at all, and neither can one whose per-core
         # slice is under a vector wide (see _TLE_FOLD_MIN_STAGE_BYTES) -- both fail in
-        # the same lowering. The second stage is the only NBLOCK == 1 caller and it is
-        # ~3% of the work, so it runs synchronous.
+        # the same lowering. Those callers are the NBLOCK == 1 ones (the second stage,
+        # and the first stage when no power-of-two block divides N); they are a small
+        # share of the work, so they run synchronous.
         (
             _TLE_FOLD_STAGES
             if nblock > 1
             and nblock * kblock * a.element_size() >= _TLE_FOLD_MIN_STAGE_BYTES
             else 1
         ),
+        scale,
     )
     args = (N, K, kblocks) + consts
 
@@ -652,7 +798,7 @@ def _tle_fold(inp, part, B, N, K, nblock, kblock):
     )
 
 
-def _tle_sum_mid(inp, out, dims, N):
+def _tle_sum_mid(inp, out, dims, N, scale=1.0):
     """Reduce a single non-last axis without dim_compress; False if it does not fit.
 
     Two folds. The first shrinks the reduced axis from N to NBLOCK and writes the
@@ -661,7 +807,8 @@ def _tle_sum_mid(inp, out, dims, N):
     transposes anything, and the second touches N/NBLOCK times fewer bytes than the
     first.
     """
-    if not _TLE_AVAILABLE:
+    global _TLE_BROKEN
+    if not _TLE_AVAILABLE or _TLE_BROKEN:
         return False
     d = dims[0]
     if inp.dtype not in _TLE_TL_DTYPE or out.dtype not in _TLE_TL_DTYPE:
@@ -685,23 +832,13 @@ def _tle_sum_mid(inp, out, dims, N):
     nblock = _TLE_FOLD_TILE // kblock
     while nblock > 1 and (N % nblock or nblock >= N):
         nblock >>= 1
-    if nblock < 2:
-        # No power-of-two block divides N (N prime, N=7), and the reduction axis cannot
-        # take the shift trick -- overlapping rows would be counted twice. Run one pass
-        # with NBLOCK == 1 instead: the accumulator is then the whole result, so this
-        # stage writes `out` directly and there is no second stage. One row per transfer
-        # makes it DMA-issue bound, but it is correct and it keeps every dtype off the
-        # pointer fallback.
-        with torch_device_fn.device(inp.device):
-            _tle_fold(inp, out, B, N, K, 1, kblock)
-        logger.debug(
-            "GEMS_KUNLUNXIN SUM_DIM tle fold single-pass B=%d N=%d K=%d tile=1x%d",
-            B,
-            N,
-            K,
-            kblock,
-        )
-        return True
+    # NBLOCK == 1 when no power-of-two block divides N (N prime, N = 7): the reduction
+    # axis cannot take the shift trick -- overlapping rows would be counted twice. One
+    # row per transfer makes that stage DMA-issue bound, and it used to skip the second
+    # fold by writing `out` directly with SCALE applied. That store is exactly the
+    # `(acc * SCALE).to(<16-bit>)` shape that corrupts the last lanes of a 256-element
+    # block (mean_dim bf16 flake, 2026-09-18), so NBLOCK == 1 now runs the same two
+    # folds as every other shape: SCALE only ever lands on the fp32 partials.
     acc_dtype = _resolve_acc_dtype(inp.dtype)
     part = torch.empty((nblock, B, K), dtype=acc_dtype, device=inp.device)
     plane = B * K
@@ -717,8 +854,18 @@ def _tle_sum_mid(inp, out, dims, N):
     while kblock2 > 1 and (kblock2 > plane or plane // kblock2 < 4):
         kblock2 >>= 1
     with torch_device_fn.device(inp.device):
-        _tle_fold(inp, part, B, N, K, nblock, kblock)
-        _tle_fold(part, out, 1, nblock, plane, 1, kblock2)
+        try:
+            _tle_fold(inp, part, B, N, K, nblock, kblock, scale)
+            _tle_fold(part, out, 1, nblock, plane, 1, kblock2)
+        except Exception as exc:  # noqa: BLE001
+            # flagtree cannot legalize the fold kernel's 2D local_ptr range either; a
+            # failed launch leaves `out` untouched, so fall back to dim_compress + the
+            # row path and latch tle off for the process.
+            _TLE_BROKEN = True
+            logger.debug(
+                "GEMS_KUNLUNXIN SUM_DIM tle fold unavailable (%s); row path", exc
+            )
+            return False
     logger.debug(
         "GEMS_KUNLUNXIN SUM_DIM tle fold B=%d N=%d K=%d tile=%dx%d then %dx%d",
         B,
@@ -732,13 +879,19 @@ def _tle_sum_mid(inp, out, dims, N):
     return True
 
 
-def _launch_sum_flat(inp, out, acc_dtype):
+def _launch_sum_flat(inp, out, acc_dtype, scale=1.0):
     """Exact flat reduction writing into `out` (0-d or (1,))."""
-    if not _tle_sum_flat(inp, out, acc_dtype):
+    if not _tle_sum_flat(inp, out, acc_dtype, scale):
         raise NotImplementedError(f"kunlunxin sum: no tle path for dtype {inp.dtype}")
 
 
-def _launch_sum_dim(inp, out, M, N):
+def _launch_sum_dim(inp, out, M, N, scale=1.0):
+    if scale != 1.0 and (M == 1 or N == 1):
+        # The two degenerate branches below bypass the TLE kernels (flat / copy)
+        # and carry no scale, so refuse rather than return an unscaled result.
+        raise NotImplementedError(
+            "kunlunxin sum: scale != 1 is only supported on the tle row/fold paths"
+        )
     if M == 1:
         # Degenerate: whole tensor reduces to one element -> route to the flat
         # machinery, which parallelises over N. The row-reduce must not see this
@@ -760,10 +913,22 @@ def _launch_sum_dim(inp, out, M, N):
     if not inp.is_contiguous():
         # A descriptor needs the last stride to be 1.
         inp = inp.contiguous()
-    if not _tle_sum_dim(inp, out, M, N):
-        raise NotImplementedError(
-            f"kunlunxin sum: no tle path for dtype {inp.dtype} -> {out.dtype}"
-        )
+    if not _tle_sum_dim(inp, out, M, N, scale):
+        if inp.dtype not in _TLE_ACC_DTYPE or out.dtype not in _TLE_TL_DTYPE:
+            raise NotImplementedError(
+                f"kunlunxin sum: no tle path for dtype {inp.dtype} -> {out.dtype}"
+            )
+        # The tle row kernel failed to compile (or is absent): the pointer kernel is
+        # the faithful replacement -- one program per row, streaming the reduced dim.
+        with torch_device_fn.device(inp.device):
+            _row_reduce_kernel[(M,)](
+                inp,
+                out,
+                N,
+                scale,
+                min(_npo2(N), _TLE_FLAT_COLS),
+                _TLE_ACC_DTYPE[inp.dtype],
+            )
 
 
 def _reduce_view(inp, dims):
@@ -806,7 +971,7 @@ def sum_out(inp, *, dtype=None, out):
     return out
 
 
-def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
+def sum_dim(inp, dim=None, keepdim=False, *, dtype=None, scale=1.0):
     logger.debug("GEMS_KUNLUNXIN SUM_DIM")
     out_dtype = _resolve_out_dtype(inp.dtype, dtype)
 
@@ -844,9 +1009,11 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=out_dtype, device=inp.device)
 
     if not (
-        len(dim) == 1 and dim[0] != inp.ndim - 1 and _tle_sum_mid(inp, out, dim, N)
+        len(dim) == 1
+        and dim[0] != inp.ndim - 1
+        and _tle_sum_mid(inp, out, dim, N, scale)
     ):
-        _launch_sum_dim(_reduce_view(inp, dim), out, M, N)
+        _launch_sum_dim(_reduce_view(inp, dim), out, M, N, scale)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

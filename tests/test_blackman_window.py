@@ -32,12 +32,11 @@ def test_blackman_window(window_length, dtype):
         dtype=dtype,
         device=device,
     )
-    with flag_gems.use_gems():
-        res_out = torch.blackman_window(
-            window_length,
-            dtype=dtype,
-            device=device,
-        )
+    res_out = flag_gems.blackman_window(
+        window_length,
+        dtype=dtype,
+        device=device,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype=dtype)
 
@@ -56,12 +55,11 @@ def test_blackman_window_periodic(window_length, periodic, dtype):
         dtype=dtype,
         device=device,
     )
-    with flag_gems.use_gems():
-        res_out = torch.blackman_window(
-            window_length,
-            periodic=periodic,
-            dtype=dtype,
-            device=device,
-        )
+    res_out = flag_gems.blackman_window(
+        window_length,
+        periodic=periodic,
+        dtype=dtype,
+        device=device,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype=dtype)

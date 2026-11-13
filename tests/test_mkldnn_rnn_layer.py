@@ -126,25 +126,24 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
         reverse,
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hy, res_cy, _ws = torch.mkldnn_rnn_layer(
-            input_tensor,
-            w_ih,
-            w_hh,
-            b_ih,
-            b_hh,
-            hx,
-            cx,
-            reverse,
-            [],
-            _MODE,
-            hidden_size,
-            _NUM_LAYERS,
-            True,
-            _BIDIRECTIONAL,
-            _BATCH_FIRST,
-            False,
-        )
+    res_out, res_hy, res_cy, _ws = flag_gems.mkldnn_rnn_layer(
+        input_tensor,
+        w_ih,
+        w_hh,
+        b_ih,
+        b_hh,
+        hx,
+        cx,
+        reverse,
+        [],
+        _MODE,
+        hidden_size,
+        _NUM_LAYERS,
+        True,
+        _BIDIRECTIONAL,
+        _BATCH_FIRST,
+        False,
+    )
 
     # fp16 LSTM accumulation over a sequence disagrees with oneDNN at the
     # ~1-ULP level; use FlagGems' RNN-level fp16 tolerance (5e-3).
@@ -170,7 +169,7 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 ):
     """Direct wrapper smoke test: call the gems wrapper directly and compare
     against the oneDNN reference."""
-    from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer as gems_op
+    gems_op = flag_gems.mkldnn_rnn_layer
 
     input_tensor = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
@@ -226,7 +225,7 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 def test_mkldnn_rnn_layer_direct_backward():
     """Direct wrapper backward: compare gradients against a native PyTorch
     LSTM recomputation (matching the backward internals)."""
-    from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer as gems_op
+    gems_op = flag_gems.mkldnn_rnn_layer
 
     seq, batch, input_size, hidden_size = 4, 2, 8, 8
     dtype = torch.float32

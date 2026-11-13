@@ -5,7 +5,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
 
 # linalg_vander tests
 VANDER_SHAPES = [

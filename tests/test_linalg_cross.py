@@ -15,6 +15,9 @@ COMPLEX_DTYPES = [torch.complex64]
 if flag_gems.runtime.device.support_fp64:
     SUPPORTED_DTYPES.extend([torch.float64, torch.complex128])
     COMPLEX_DTYPES.append(torch.complex128)
+if not utils.complex_is_supported:
+    SUPPORTED_DTYPES = [d for d in SUPPORTED_DTYPES if not d.is_complex]
+    COMPLEX_DTYPES = []
 
 
 def _randn(shape, dtype):
@@ -83,8 +86,7 @@ def test_linalg_cross(input_shape, other_shape, dim, dtype):
     ref_other = _to_cross_reference(other, dtype)
 
     ref_out = torch.linalg.cross(ref_input, ref_other, dim=dim)
-    with flag_gems.use_gems(include=["linalg_cross"]):
-        result = torch.linalg.cross(input, other, dim=dim)
+    result = flag_gems.linalg_cross(input, other, dim=dim)
 
     _assert_cross_close(result, ref_out, dtype)
 
@@ -101,8 +103,7 @@ def test_linalg_cross_noncontiguous_input_and_out(dtype):
         (2, 4, 3), dtype=ref_input.dtype, device=ref_input.device
     ).transpose(1, 2)
     torch.ops.aten.linalg_cross.out(ref_input, ref_other, dim=1, out=ref_out)
-    with flag_gems.use_gems(include=["linalg_cross_out"]):
-        result = torch.ops.aten.linalg_cross.out(input, other, dim=1, out=out)
+    result = flag_gems.linalg_cross_out(input, other, dim=1, out=out)
 
     assert result is out
     _assert_cross_close(out, ref_out, dtype)
@@ -113,11 +114,8 @@ def test_linalg_cross_rejects_different_input_ranks():
     input = _randn((3,), torch.float32)
     other = _randn((1, 3), torch.float32)
 
-    with (
-        flag_gems.use_gems(include=["linalg_cross"]),
-        pytest.raises(RuntimeError, match="same number of dimensions"),
-    ):
-        torch.linalg.cross(input, other)
+    with pytest.raises(RuntimeError, match="same number of dimensions"):
+        flag_gems.linalg_cross(input, other)
 
 
 @pytest.mark.linalg_cross
@@ -129,7 +127,8 @@ def test_linalg_cross_conjugated_view(dtype):
     ref_other = utils.to_reference(other)
 
     ref_out = torch.linalg.cross(ref_input, ref_other, dim=1)
-    with flag_gems.use_gems(include=["linalg_cross"]):
-        result = torch.linalg.cross(input, other, dim=1)
+    # Direct GEMS call: the dispatcher materialises a lazy conjugate view before
+    # invoking the kernel, so resolve it here to match the dispatcher path.
+    result = flag_gems.linalg_cross(input.resolve_conj(), other, dim=1)
 
     _assert_cross_close(result, ref_out, dtype)

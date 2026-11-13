@@ -71,7 +71,7 @@ def mode_kernel(
 
 
 def mode(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS MODE")
+    logger.debug("GEMS_SUNRISE MODE")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
     dim = dim % inp.ndim

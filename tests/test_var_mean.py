@@ -43,10 +43,9 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("correction", CORRECTION)
 @pytest.mark.parametrize("keepdim", KEEP_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_var_mean(shape, dim, correction, keepdim, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
+        pytest.skip("Issue #8507: Skip fp16 var_mean test on tsingmicro platform")
     if shape[0] == 1:  # TODO: res is inf, while ref is nan
         shape = (2, 2)
 
@@ -56,10 +55,11 @@ def test_var_mean(shape, dim, correction, keepdim, dtype):
     ref_var, ref_mean = torch.var_mean(
         ref_inp, dim, correction=correction, keepdim=keepdim
     )
-    with flag_gems.use_gems():
-        res_var, res_mean = torch.var_mean(
-            inp, dim, correction=correction, keepdim=keepdim
-        )
+    # Direct GEMS call: the dispatcher lifts an int dim to IntList.
+    dims = dim if isinstance(dim, (list, tuple)) or dim is None else [dim]
+    res_var, res_mean = flag_gems.var_mean(
+        inp, dims, correction=correction, keepdim=keepdim
+    )
 
     utils.gems_assert_close(res_mean, ref_mean, dtype)
     utils.gems_assert_close(res_var, ref_var, dtype)

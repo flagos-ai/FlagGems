@@ -30,8 +30,7 @@ def test_elu(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.nn.functional.elu(ref_inp, alpha)
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.elu(inp, alpha)
+    res_out = flag_gems.elu(inp, alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -48,8 +47,7 @@ def test_elu_(shape, dtype):
     ref_inp = utils.to_reference(inp_clone, True)
     torch.nn.functional.elu_(ref_inp, alpha)
 
-    with flag_gems.use_gems():
-        torch.nn.functional.elu_(res_inp, alpha)
+    flag_gems.elu_(res_inp, alpha)
 
     utils.gems_assert_close(res_inp, ref_inp, dtype)
 
@@ -78,9 +76,8 @@ def test_elu_backward(shape, dtype, is_result):
         ref_grad_out, alpha, scale, input_scale, is_result, ref_self_or_result
     )
 
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.elu_backward(
-            res_grad_out, alpha, scale, input_scale, is_result, res_self_or_result
-        )
+    res_in_grad = flag_gems.elu_backward(
+        res_grad_out, alpha, scale, input_scale, is_result, res_self_or_result
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
