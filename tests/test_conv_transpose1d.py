@@ -61,6 +61,9 @@ def test_conv_transpose1d(shape, kernel, stride, padding, dtype, monkeypatch):
     in_channels = kernel[0]
     out_channels = kernel[1]
     kernel_width = kernel[2]
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     gems_assert_close(
         res_out,
         ref_out,
@@ -93,6 +96,9 @@ def test_conv_transpose1d_bias(shape, kernel, stride, padding, dtype, monkeypatc
     )
     in_channels = kernel[0]
     out_channels = kernel[1]
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     gems_assert_close(
         res_out,
         ref_out,
@@ -141,6 +147,9 @@ def test_conv_transpose1d_groups(
     )
     in_channels_per_group = kernel[0] // groups
     kernel_width = kernel[2]
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     gems_assert_close(
         res_out, ref_out, dtype, reduce_dim=kernel_width * in_channels_per_group
     )
