@@ -91,7 +91,7 @@ def argmax_heur_tile_n_non_inner(args):
     tile_k = args["TILE_K"]
 
     if n <= 128:
-        return n
+        return triton.next_power_of_2(n)
 
     target_tile = min(8192, n)
     tile_n = triton.next_power_of_2(target_tile)

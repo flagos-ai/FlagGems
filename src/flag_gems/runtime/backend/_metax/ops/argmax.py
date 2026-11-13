@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.argmax import argmax as _generic_argmax
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
@@ -173,6 +173,109 @@ def argmax_row_finalize_kernel(
     )
     _, index = argmax_reduce(values, indices, 1)
     tl.store(out + rows, index, rows < M)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("argmax_non_inner"))
+@triton.jit
+def argmax_small_non_inner_kernel(
+    inp,
+    out,
+    M,
+    N,
+    K,
+    TILE_K: tl.constexpr,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # The wide column kernel has more launches for these tiles. A pair reduction
+    # keeps the shared small-column path while preserving first-NaN semantics.
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
+    k_mask = k_offset < K
+    value_dtype: tl.constexpr = inp.dtype.element_ty
+    if value_dtype == tl.float16 or value_dtype == tl.bfloat16:
+        value_dtype = tl.float32
+    minimum = get_dtype_min(value_dtype)
+    index_max = get_dtype_max(tl.int32)
+
+    if ONE_TILE_PER_CTA:
+        n_offset = tl.arange(0, TILE_N)
+        mask = (n_offset[:, None] < N) & k_mask[None, :]
+        values = tl.load(
+            inp + pid_m * N * K + n_offset[:, None] * K + k_offset[None, :],
+            mask,
+            other=minimum,
+        ).to(value_dtype)
+        indices = tl.broadcast_to(
+            tl.where(n_offset[:, None] < N, n_offset[:, None], index_max),
+            (TILE_N, TILE_K),
+        ).to(tl.int32)
+        _, local_index = tl.reduce((values, indices), 0, argmax_pair)
+        tl.store(out + pid_m * K + k_offset, local_index, mask=k_mask)
+    else:
+        max_values = tl.full((TILE_K,), minimum, value_dtype)
+        max_indices = tl.full((TILE_K,), index_max, tl.int32)
+        for start_n in range(0, N, TILE_N):
+            n_offset = start_n + tl.arange(0, TILE_N)
+            mask = (n_offset[:, None] < N) & k_mask[None, :]
+            values = tl.load(
+                inp + pid_m * N * K + n_offset[:, None] * K + k_offset[None, :],
+                mask,
+                other=minimum,
+            ).to(value_dtype)
+            indices = tl.broadcast_to(
+                tl.where(n_offset[:, None] < N, n_offset[:, None], index_max),
+                (TILE_N, TILE_K),
+            ).to(tl.int32)
+            local_value, local_index = tl.reduce((values, indices), 0, argmax_pair)
+            max_values, max_indices = argmax_pair(
+                max_values, max_indices, local_value, start_n + local_index
+            )
+        tl.store(out + pid_m * K + k_offset, max_indices, mask=k_mask)
+
+
+@libentry()
+@triton.jit
+def argmax_contiguous_copy_kernel(
+    inp,
+    out,
+    size,
+    SHAPE: tl.constexpr,
+    STRIDES: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Materialize strided views without a host-side PyTorch compute operation.
+    pid = tl.program_id(0).to(tl.int64)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    remaining = offsets
+    physical = tl.zeros((BLOCK,), tl.int64)
+    for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
+        coord = remaining % SHAPE[axis]
+        remaining = remaining // SHAPE[axis]
+        physical += coord * STRIDES[axis]
+    mask = offsets < size
+    tl.store(out + offsets, tl.load(inp + physical, mask), mask)
+
+
+def argmax_make_contiguous(inp):
+    out = torch.empty_like(inp, memory_format=torch.contiguous_format)
+    size = inp.numel()
+    if size == 0:
+        return out
+    block = min(4096, triton.next_power_of_2(size))
+    with torch_device_fn.device(inp.device):
+        argmax_contiguous_copy_kernel[(triton.cdiv(size, block),)](
+            inp,
+            out,
+            size,
+            tuple(inp.shape),
+            tuple(inp.stride()),
+            block,
+            num_warps=4,
+        )
+    return out
 
 
 def argmax_rows(inp, out, rows, n, k, stride_m, stride_n, stride_k):
@@ -508,8 +611,30 @@ def argmax_global_strided(inp, out):
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_METAX ARGMAX")
-    if dim is not None and inp.ndim > 0 and inp.numel() > 0:
+    if inp.ndim == 0:
+        if dim not in (None, 0, -1):
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of [-1, 0], but got {dim})"
+            )
+        out = torch.empty((), dtype=torch.int64, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            argmax_zero_kernel[(1,)](out, 1, 512, num_warps=4)
+        return out
+    if dim is None:
+        if inp.numel() == 0:
+            raise IndexError(
+                "argmax(): Expected reduction dim to be specified for input.numel() == 0."
+            )
+    else:
+        if dim < -inp.ndim or dim >= inp.ndim:
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of [{-inp.ndim}, {inp.ndim - 1}], but got {dim})"
+            )
         dim %= inp.ndim
+        if inp.shape[dim] == 0:
+            raise IndexError(
+                f"argmax(): Expected reduction dim {dim} to have non-zero size."
+            )
         if inp.shape[dim] == 1:
             out_shape = list(inp.shape)
             if keepdim:
@@ -524,13 +649,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                     out, out.numel(), 512, num_warps=4
                 )
             return out
-    if dim is not None and inp.ndim > 0 and inp.is_contiguous() and inp.numel() > 0:
-        dim %= inp.ndim
-        n = inp.shape[dim]
-        k = math.prod(inp.shape[dim + 1 :])
-        # The shared tiled kernel remains faster for these small column tiles.
-        if k > 1 and n <= 256 and inp.numel() <= 2_000_000:
-            return _generic_argmax(inp, dim=dim, keepdim=keepdim)
     if dim is None:
         n = inp.numel()
         out_shape = [1] * inp.ndim if keepdim else []
@@ -574,7 +692,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 (m, stride_m), (k, stride_k) = groups
                 inner = stride_n <= stride_k
             else:
-                inp = inp.contiguous()
+                inp = argmax_make_contiguous(inp)
                 stride_m, stride_n, stride_k = n * k, k, 1
 
     out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
@@ -588,6 +706,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         elif dim is None and not inp.is_contiguous():
             # The strided global implementation preserves logical flatten indices.
             argmax_global_strided(inp, out)
+        elif inp.is_contiguous() and k > 1 and n <= 256 and inp.numel() <= 2_000_000:
+            grid = lambda meta: (m, triton.cdiv(k, meta["TILE_K"]))
+            argmax_small_non_inner_kernel[grid](inp, out, m, n, k)
         elif inner or (n > 65536 and k <= 4 and m * k < 16):
             # Few narrow columns share the stride-aware row path and its cheaper launches.
             argmax_rows(inp, out, m * k, n, k, stride_m, stride_n, stride_k)
