@@ -20,13 +20,23 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _assert_equal(res_out, ref_out):
+def _reference_hash(inp, dim, *, keepdim, mode):
+    result = torch.ops.aten.hash_tensor(inp, dim, keepdim=keepdim, mode=mode)
+    if flag_gems.vendor_name == "iluvatar" and result.dtype == torch.uint32:
+        pytest.skip("Iluvatar ATen hash_tensor returns uint32; this test requires uint64")
+    return result
+
+
+def _assert_equal(res_out, ref_out, device):
     """Compare two hash_tensor results, which are always uint64.
 
     Some device runtimes do not implement uint64 elementwise comparison
     (torch_xmlir's eq/equal reject it), so reinterpret the same bits as int64.
     The dtype view keeps the comparison bit-exact.
     """
+    assert res_out.device == device
+    assert res_out.dtype == ref_out.dtype == torch.uint64
+    assert res_out.shape == ref_out.shape
     if ref_out.device != res_out.device:
         res_out = res_out.cpu()
     utils.gems_assert_equal(res_out.view(torch.int64), ref_out.view(torch.int64))
@@ -45,10 +55,10 @@ def test_hash_tensor(shape, dtype, dim, keepdim):
 
     dim_arg = [] if dim is None else [dim]
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=keepdim, mode=0)
+    ref_out = _reference_hash(ref_inp, dim_arg, keepdim=keepdim, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=keepdim, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -64,10 +74,10 @@ def test_hash_tensor_int_dtypes(shape, dtype, dim):
 
     dim_arg = [] if dim is None else [dim]
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=False, mode=0)
+    ref_out = _reference_hash(ref_inp, dim_arg, keepdim=False, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=False, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -86,10 +96,10 @@ def test_hash_tensor_multidim(shape, dim, keepdim):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim, keepdim=keepdim, mode=0)
+    ref_out = _reference_hash(ref_inp, dim, keepdim=keepdim, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim, keepdim=keepdim, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -97,7 +107,7 @@ def test_hash_tensor_scalar():
     inp = torch.tensor(42, dtype=torch.int64, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, [], keepdim=False, mode=0)
+    ref_out = _reference_hash(ref_inp, [], keepdim=False, mode=0)
     res_out = flag_gems.hash_tensor(inp, [], keepdim=False, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)

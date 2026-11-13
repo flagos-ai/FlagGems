@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -27,10 +29,22 @@ def hash_tensor_input_fn(shape, dtype, device):
 
 @pytest.mark.hash_tensor
 def test_hash_tensor():
+    dtypes = consts.FLOAT_DTYPES
+    if flag_gems.vendor_name == "iluvatar" and not base.Config.skip_native:
+        dtypes = [
+            dtype
+            for dtype in dtypes
+            if torch.ops.aten.hash_tensor(
+                torch.ones((1, 2), dtype=dtype, device=flag_gems.device), [-1]
+            ).dtype
+            == torch.uint64
+        ]
+        if not dtypes:
+            pytest.skip("Iluvatar native hash_tensor does not return uint64")
     bench = base.GenericBenchmark2DOnly(
         input_fn=hash_tensor_input_fn,
         op_name="hash_tensor",
         torch_op=torch.ops.aten.hash_tensor,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()
