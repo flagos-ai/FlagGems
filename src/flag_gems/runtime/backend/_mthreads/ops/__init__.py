@@ -106,6 +106,7 @@ from .index_copy import index_copy
 from .index_copy_ import index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .index_select_backward import index_select_backward
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
@@ -306,6 +307,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "index_select_backward",
     "int_mm",
     "int_mm_out",
     "inverse",
