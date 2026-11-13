@@ -18,7 +18,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 
 @pytest.mark.blackman_window
@@ -26,7 +25,9 @@ from . import conftest as cfg
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_blackman_window(window_length, dtype):
     # periodic defaults to True; exercises the aten::blackman_window overload.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    # Build both windows on the accelerator: the Triton kernel cannot take a
+    # CPU pointer. Compare on CPU afterwards for a device-independent check.
+    device = flag_gems.device
     ref_out = torch.blackman_window(
         window_length,
         dtype=dtype,
@@ -35,10 +36,10 @@ def test_blackman_window(window_length, dtype):
     res_out = flag_gems.blackman_window(
         window_length,
         dtype=dtype,
-        device=device,
+        device=flag_gems.device,
     )
 
-    utils.gems_assert_close(res_out, ref_out, dtype=dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype=dtype)
 
 
 @pytest.mark.blackman_window_periodic
@@ -48,7 +49,9 @@ def test_blackman_window(window_length, dtype):
 def test_blackman_window_periodic(window_length, periodic, dtype):
     # Passing an explicit periodic flag exercises the
     # aten::blackman_window.periodic overload.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    # Build both windows on the accelerator: the Triton kernel cannot take a
+    # CPU pointer. Compare on CPU afterwards for a device-independent check.
+    device = flag_gems.device
     ref_out = torch.blackman_window(
         window_length,
         periodic=periodic,
@@ -59,7 +62,7 @@ def test_blackman_window_periodic(window_length, periodic, dtype):
         window_length,
         periodic=periodic,
         dtype=dtype,
-        device=device,
+        device=flag_gems.device,
     )
 
-    utils.gems_assert_close(res_out, ref_out, dtype=dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype=dtype)
