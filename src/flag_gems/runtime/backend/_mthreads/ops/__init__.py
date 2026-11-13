@@ -14,21 +14,29 @@
 
 from torch_musa import current_device, get_device_capability
 
+from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
+from ._convolution_double_backward import _convolution_double_backward
+from ._convolution_mode import _convolution_mode
 from ._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
+)
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_moving_avg_obs_fq_helper import _fused_moving_avg_obs_fq_helper
 from ._masked_scale import _masked_scale
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
+from ._weight_norm import _weight_norm
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmv_ import addmv_
@@ -39,6 +47,8 @@ from .arange import arange, arange_start
 from .arctan2 import arctan2
 from .arctan2_ import arctan2_
 from .arctan_ import arctan_
+from .arctanh import arctanh
+from .arctanh_out import arctanh_out
 from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
@@ -53,11 +63,14 @@ from .choose_qparams_optimized import choose_qparams_optimized
 from .clip_ import clip_
 from .conv1d import conv1d
 from .conv2d import conv2d
+from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .convolution_backward import convolution_backward, convolution_backward_out
+from .convolution_overrideable import convolution_overrideable
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
+from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import (
@@ -76,32 +89,45 @@ from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
 from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
+from .fake_quantize_per_tensor_affine_cachemask import (
+    fake_quantize_per_tensor_affine_cachemask,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
 from .geometric import geometric, geometric_
+from .greater_ import greater_
+from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .hardtanh_backward import hardtanh_backward
 from .histc import histc
+from .igamma import igamma
 from .im2col import im2col
 from .index_add import index_add, index_add_
 from .index_copy import index_copy
 from .index_copy_ import index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .index_select_backward import index_select_backward
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
+from .kl_div import kl_div
 from .kthvalue import kthvalue
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
+from .linalg_householder_product import linalg_householder_product
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .log import log
 from .log2_ import log2_
@@ -122,6 +148,7 @@ from .mish import mish
 from .mish_ import mish_
 from .mode import mode
 from .mul import mul, mul_
+from .multiply_ import multiply_
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
@@ -151,6 +178,7 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
+from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -162,8 +190,12 @@ from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
 from .special_bessel_y1 import special_bessel_y1
+from .special_chebyshev_polynomial_w import special_chebyshev_polynomial_w
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
+from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_modified_bessel_k0 import special_modified_bessel_k0
+from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
@@ -172,9 +204,15 @@ from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .trunc import trunc, trunc_
+from .uniform import uniform
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
+from .upsample_nearest3d_backward import upsample_nearest3d_backward
+from .upsample_nearest3d_backward_grad_input import (
+    upsample_nearest3d_backward_grad_input,
+)
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
@@ -182,20 +220,26 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_compute_linear_combination",
     "_conj",
+    "_convolution_double_backward",
+    "_convolution_mode",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
+    "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_functional_sym_constrain_range_for_size",
+    "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
     "_masked_scale",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact2d_backward",
+    "_weight_norm",
     "adaptive_max_pool3d_backward",
     "addmv_",
     "all",
@@ -210,6 +254,8 @@ __all__ = [
     "arctan2",
     "arctan2_",
     "arctan_",
+    "arctanh",
+    "arctanh_out",
     "argmin",
     "argsort",
     "atan2",
@@ -226,13 +272,16 @@ __all__ = [
     "constant_pad_nd",
     "conv1d",
     "conv2d",
+    "conv_tbc",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
     "convolution_backward",
     "convolution_backward_out",
+    "convolution_overrideable",
     "copy_",
     "cudnn_convolution",
+    "cummaxmin_backward",
     "deg2rad_",
     "diagonal_scatter",
     "div_mode",
@@ -243,6 +292,7 @@ __all__ = [
     "erfinv_",
     "expand_copy",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
     "feature_dropout",
     "feature_dropout_",
     "fix",
@@ -252,13 +302,18 @@ __all__ = [
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
+    "fractional_max_pool2d_backward",
     "gather",
     "gather_backward",
     "gcd_",
     "geometric",
     "geometric_",
+    "greater_",
+    "grid_sampler_3d",
     "grid_sampler_3d_backward",
+    "hardtanh_backward",
     "histc",
+    "igamma",
     "im2col",
     "index_add",
     "index_add_",
@@ -267,10 +322,12 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "index_select_backward",
     "int_mm",
     "int_mm_out",
     "inverse",
     "isin",
+    "kl_div",
     "kthvalue",
     "lcm",
     "lcm_",
@@ -278,7 +335,10 @@ __all__ = [
     "lift_fresh",
     "lift_out",
     "linalg_cholesky",
+    "linalg_householder_product",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
+    "linalg_tensorinv",
     "linear",
     "log",
     "log10",
@@ -305,6 +365,7 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "multiply_",
     "mvlgamma",
     "nanmedian",
     "nanmedian_dim",
@@ -338,6 +399,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad2d",
+    "replication_pad3d_backward",
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
@@ -353,8 +415,12 @@ __all__ = [
     "special_bessel_j1",
     "special_bessel_y0",
     "special_bessel_y1",
+    "special_chebyshev_polynomial_w",
     "special_erfcx",
     "special_gammainc",
+    "special_hermite_polynomial_h",
+    "special_modified_bessel_k0",
+    "special_modified_bessel_k0_out",
     "special_multigammaln",
     "special_round",
     "special_round_out",
@@ -368,8 +434,12 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "uniform",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
+    "upsample_nearest3d_backward",
+    "upsample_nearest3d_backward_grad_input",
+    "upsample_trilinear3d_backward",
     "var",
     "var_correction",
     "var_dim",

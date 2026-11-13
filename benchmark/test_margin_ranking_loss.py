@@ -32,7 +32,7 @@ def _input_fn(shape, dtype, device):
         )
     else:
         target = (
-            torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1
+            torch.randint(0, 2, shape, device=device, dtype=torch.int32) * 2 - 1
         ).to(dtype)
     yield inp1, inp2, target, 0.5, 1
 
@@ -49,9 +49,9 @@ def _backward_input_fn(shape, dtype, device):
         )
     else:
         target = (
-            torch.randint(0, 2, shape, device=device, dtype=torch.int8) * 2 - 1
+            torch.randint(0, 2, shape, device=device, dtype=torch.int32) * 2 - 1
         ).to(dtype)
-    yield inp1, inp2, target, 0.5, 1
+    yield inp1, inp2, target, 0.5, "mean"
 
 
 @pytest.mark.margin_ranking_loss
@@ -70,7 +70,7 @@ def test_margin_ranking_loss_backward():
     bench = base.MarginRankingLossBenchmark(
         op_name="margin_ranking_loss",
         input_fn=_backward_input_fn,
-        torch_op=torch.ops.aten.margin_ranking_loss,
+        torch_op=torch.nn.functional.margin_ranking_loss,
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
