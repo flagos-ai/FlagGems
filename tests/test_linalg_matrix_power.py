@@ -38,6 +38,9 @@ LARGE_CASES = [
         for s in ((4, 8, 8), (8, 16, 16), (2, 3, 4, 4), (5, 2, 6, 6))
         for n in (5, 10, 32)
     ],
+    # batches whose grid-sync kernel launch is large (hundreds of programs):
+    # n=4 still has O(1) entries, so a stale read between programs shows up
+    *[(s, n) for s in ((6, 256, 256), (10, 192, 192), (24, 128, 128)) for n in (4, 10)],
     # high exponents — moderate matrices only (fp32 result stays finite)
     *[(s, n) for s in ((16, 16), (32, 32)) for n in (15, 16, 31)],
     *[((32, 32), n) for n in (0, 2, 3, 8, 16, 32, 64)],
