@@ -393,7 +393,7 @@ def _fused_rms_norm_backward(
                 COL_BLOCK_SIZE,
             )
             dw = (
-                flag_gems.sum_dim(partial_buffer, dim=0, dtype=torch.float32)
+                flag_gems.sum_dim(partial_buffer, dim=[0], dtype=torch.float32)
                 .to(x.dtype)
                 .reshape(normalized_shape)
             )

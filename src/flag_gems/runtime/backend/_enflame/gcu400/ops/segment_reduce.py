@@ -551,7 +551,7 @@ def _segment_reduce_uniform_lengths(data, reduce, lengths, axis):
     if segment_length == 1:
         return torch.squeeze(reshaped, dim=reduce_dim)
     if reduce == "sum":
-        return flag_gems.sum_dim(reshaped, dim=reduce_dim)
+        return flag_gems.sum_dim(reshaped, dim=[reduce_dim])
     if reduce == "mean":
         return flag_gems.mean_dim(reshaped, dim=reduce_dim)
     if reduce == "max":
