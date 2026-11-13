@@ -17,10 +17,15 @@ LDL_SOLVE_SHAPES = [
 ]
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
+complex_is_supported = flag_gems.runtime.device.support_complex
+ldl_solve_complex_supported = complex_is_supported and fp64_is_supported
 
 # CUDA ldl_factor_ex used to build LD supports float32/float64/complex64/complex128 here.
-LDL_SOLVE_DTYPES = [torch.float32, torch.float64, torch.complex64]
+LDL_SOLVE_DTYPES = [torch.float32]
 if fp64_is_supported:
+    LDL_SOLVE_DTYPES.append(torch.float64)
+if ldl_solve_complex_supported:
+    LDL_SOLVE_DTYPES.append(torch.complex64)
     LDL_SOLVE_DTYPES.append(torch.complex128)
 
 
