@@ -235,6 +235,25 @@ def _choose_tiles(M, N, K, int4, dtype):
         BN, BK = 1024, 512
     if K % BK != 0:
         BK = 256 if K % 256 == 0 else (128 if K % 128 == 0 else 64)
+    # The per-block shared-memory budget is 227 KiB. The wide default tiles
+    # stage too much weight for large K and cannot launch; cap the tile so the
+    # BK x BN staging buffer fits. Small K keeps the measured winners.
+    if K >= 512:
+        if int4:
+            BM = min(BM, 32)
+            BN = min(BN, 1024)
+            BK = min(BK, 64)
+        else:
+            BM = min(BM, 32)
+            BN = min(BN, 512)
+            BK = min(BK, 128)
+    # A tile wider/taller than the problem only wastes shared memory: the
+    # BK x BN weight tile is staged per pipeline step, so on small shapes the
+    # default tiles exceed the 227 KiB limit (OutOfResources).  Clamp both
+    # extents to the real problem size; 16 is the tl.dot minimum and int4
+    # needs BN >= 32 so that its packed half-tile stays a legal dot operand.
+    BM = min(BM, max(16, triton.next_power_of_2(M)))
+    BN = min(BN, max(32, triton.next_power_of_2(N)))
     return {
         "BM": BM,
         "BN": BN,

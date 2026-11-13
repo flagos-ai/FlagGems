@@ -167,3 +167,73 @@ def test_sparse_csr_tensor_autograd_flows_into_values(dtype):
     assert values.grad is not None
     expected = (2 * torch.ones_like(ref_values)).cpu()
     assert torch.allclose(values.grad.cpu(), expected)
+
+
+def _csr_components(nnz, ncols, tail_column=None):
+    """crow/col/values for one CSR of shape (2, ncols) with ``nnz`` entries."""
+    device = flag_gems.device
+    crow_indices = torch.tensor([0, nnz // 2, nnz], dtype=torch.int64, device=device)
+    col_indices = torch.arange(nnz, dtype=torch.int64, device=device) % 64
+    if tail_column is not None:
+        col_indices[nnz - 1] = tail_column
+    values = torch.ones(nnz, dtype=torch.float32, device=device)
+    return crow_indices, col_indices, values
+
+
+@pytest.mark.sparse_csr_tensor
+def test_sparse_csr_tensor_infer_size_scans_past_the_grid_cap(monkeypatch):
+    """The size-inference scan reads every column index, not just the first
+    ``_MAX_BLOCK * _BLOCK_ELEMS`` of them.
+
+    The launcher caps the grid so the reduction cannot oversubscribe the
+    device. A kernel that visits only its own block then stops scanning at the
+    cap, and a column index past it is dropped from the inferred extent --
+    which yields a *smaller* tensor whose stored column is out of bounds.
+    Shrinking the two constants makes the same defect reachable with 20
+    entries instead of 4,194,305.
+    """
+    import sys
+
+    mod = sys.modules["flag_gems.ops.sparse_csr_tensor"]
+    monkeypatch.setattr(mod, "_MAX_BLOCK", 2)
+    monkeypatch.setattr(mod, "_BLOCK_ELEMS", 4)
+
+    nnz, ncols = 20, 27
+    crow, col, values = _csr_components(nnz, ncols, tail_column=ncols - 1)
+
+    out = flag_gems.sparse_csr_tensor(crow, col, values)
+
+    assert out.shape == (2, ncols)
+    assert int(out.col_indices().max()) < out.shape[1]
+
+
+@pytest.mark.sparse_csr_tensor
+def test_sparse_csr_tensor_infer_size_falls_back_on_unreducible_inputs():
+    """Inputs the device-side reduction cannot read fall back to the
+    constructor's own inference instead of failing.
+
+    A non-contiguous column buffer is not reduced here, and an empty
+    ``crow_indices`` gives no row count; both are valid inputs that the native
+    constructor accepts and infers.
+    """
+    device = flag_gems.device
+    nnz = 8
+    crow_indices = torch.tensor([0, 4, 8], dtype=torch.int64, device=device)
+    # stride 2: not contiguous, so the reduction is skipped
+    col_indices = (torch.arange(nnz * 4, dtype=torch.int64, device=device) % 5)[::2][
+        :nnz
+    ]
+    values = torch.ones(nnz, dtype=torch.float32, device=device)
+    assert not col_indices.is_contiguous()
+
+    out = flag_gems.sparse_csr_tensor(crow_indices, col_indices, values)
+
+    ref = torch.sparse_csr_tensor(crow_indices.cpu(), col_indices.cpu(), values.cpu())
+    assert out.shape == ref.shape
+    _assert_csr_close(out, ref, torch.float32)
+
+    empty = torch.empty(0, dtype=torch.int64, device=device)
+    out = flag_gems.sparse_csr_tensor(
+        empty, empty, torch.empty(0, dtype=torch.float32, device=device)
+    )
+    assert out.shape == (0, 0)
