@@ -34,6 +34,7 @@ CHOLESKY_SHAPES = [
     (16, 128, 128),
     (64, 256, 256),
 ]
+_MASTER_SHAPES = [(n, n) for n in (2, 4, 8, 16, 32, 64, 128, 256)]
 
 # The factorizer implements float32/float64/complex64/complex128 only (measured on
 # this backend), so consts.FLOAT_DTYPES, which also holds fp16 and bf16, is not
@@ -57,14 +58,29 @@ def _validate_shape(shape):
 
 
 def _case_fn(shape, dtype):
-    del dtype
     _validate_shape(shape)
+    master_shape = shape in _MASTER_SHAPES
+    if master_shape and shape not in CHOLESKY_SHAPES:
+        yield from _master_case(shape, dtype)
+        return
     # One plan per triangular form; both kernel paths are timed.
     for upper in (False, True):
         yield base.BenchmarkCasePlan(
             shape={"input": shape},
             params={"upper": upper},
             builder_args=(shape, upper),
+        )
+    if master_shape:
+        yield from _master_case(shape, dtype)
+
+
+def _master_case(shape, dtype):
+    # Master times the implicit lower path for real matrices with a 0.1 shift.
+    if dtype in (torch.float32, torch.float64):
+        yield base.BenchmarkCasePlan(
+            shape={"input": shape},
+            params={"upper": False, "diagonal_shift": 0.1},
+            builder_args=(shape, False),
         )
 
 
@@ -78,7 +94,10 @@ def _build_inputs_fn(plan, dtype, device):
     if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
         creation_device = "cpu"
     m = torch.randn(shape, dtype=dtype, device=creation_device)
-    inp = m @ m.mH + n * torch.eye(n, dtype=dtype, device=creation_device)
+    diagonal_shift = plan.params.get("diagonal_shift", n)
+    inp = m @ m.mH + diagonal_shift * torch.eye(n, dtype=dtype, device=creation_device)
+    if "diagonal_shift" in plan.params:
+        return (inp.to(device),)
     return inp.to(device), {"upper": upper}
 
 
@@ -88,7 +107,10 @@ class CholeskyBenchmark(OperatorBenchmark):
     # default_shapes argument, which still gives a caller-provided shape file
     # precedence over these defaults.
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=CHOLESKY_SHAPES)
+        shapes = CHOLESKY_SHAPES + [
+            shape for shape in _MASTER_SHAPES if shape not in CHOLESKY_SHAPES
+        ]
+        super().set_shapes(shape_file_path, default_shapes=shapes)
 
 
 @pytest.mark.cholesky
@@ -98,7 +120,6 @@ def test_cholesky():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.cholesky,
-        gems_op=getattr(flag_gems, "cholesky", None),
         dtypes=CHOLESKY_DTYPES,
     )
     bench.run()
