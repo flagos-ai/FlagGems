@@ -1,0 +1,32 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+from .nonzero import nonzero
+
+logger = logging.getLogger(__name__)
+
+
+def argwhere(input):
+    """Triton implementation of ``torch.argwhere``.
+
+    ``argwhere`` is semantically identical to ``nonzero(as_tuple=False)``: both
+    return an ``[nnz, ndim]`` int64 tensor of the row-major coordinates of all
+    non-zero elements.  The vendor ``nonzero`` already implements exactly this
+    (a reliable count + scan + compaction + de-linearisation pipeline), so this
+    is a direct delegation rather than a second implementation.
+    """
+    logger.debug("GEMS_KUNLUNXIN ARGWHERE")
+    return nonzero(input, as_tuple=False)

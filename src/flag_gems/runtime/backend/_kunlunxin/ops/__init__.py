@@ -15,11 +15,13 @@
 from .__iand__ import __iand___scalar, __iand___tensor  # noqa: F401
 from .__irshift__ import __irshift__  # noqa: F401
 from .__rshift__ import __rshift__  # noqa: F401
+from ._addmm_activation import _addmm_activation, _addmm_activation_out
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_no_update import _batch_norm_no_update
+from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
 from ._ctc_loss import _ctc_loss, _ctc_loss_out
@@ -275,6 +277,7 @@ from .arctan2 import arctan2, arctan2_
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort, argsort_stable
+from .argwhere import argwhere
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .as_strided_scatter import as_strided_scatter
 from .asin import asin, asin_
@@ -1027,10 +1030,13 @@ __all__ = [
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
     "_adaptive_avg_pool3d_backward",
+    "_addmm_activation",
+    "_addmm_activation_out",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cholesky_solve_helper",
     "_chunk_cat",
@@ -1258,6 +1264,7 @@ __all__ = [
     "argmin",
     "argsort",
     "argsort_stable",
+    "argwhere",
     "as_strided_copy",
     "as_strided_copy_out",
     "as_strided_scatter",
