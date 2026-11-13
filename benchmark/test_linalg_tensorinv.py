@@ -19,21 +19,27 @@ class LinalgTensorinvBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = TENSORINV_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        with_out = self.op_name == "linalg_tensorinv_out"
-        for shape in self.shapes:
-            # Create an invertible matrix
-            # For 2D case, use ind=1 (matrix inverse)
-            A = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            # Make it invertible
-            m = shape[0]
-            A = A @ A.T + torch.eye(m, dtype=cur_dtype, device=self.device) * 0.1
-            if with_out:
-                # ind=1 on a 2D input yields a same-shape inverse
-                out = torch.empty_like(A)
-                yield A, 1, {"out": out}
-            else:
-                yield A, 1  # ind=1 for matrix inverse
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            plan = base.BenchmarkCasePlan(
+                shape={"input": list(shape)},
+                params={"ind": 1},
+                builder_args=(shape,),
+            )
+            yield self._case_from_plan(dtype, ordinal, plan)
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        matrix = torch.randn(shape, dtype=case.dtype, device=self.device)
+        eye = torch.eye(shape[0], dtype=case.dtype, device=self.device)
+        matrix = matrix @ matrix.T + eye * 0.1
+        if self.op_name == "linalg_tensorinv_out":
+            return matrix, plan.params["ind"], {"out": torch.empty_like(matrix)}
+        return matrix, plan.params["ind"]
 
 
 @pytest.mark.linalg_tensorinv
