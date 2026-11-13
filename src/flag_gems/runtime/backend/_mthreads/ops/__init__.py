@@ -49,6 +49,7 @@ from .arctan2_ import arctan2_
 from .arctan_ import arctan_
 from .arctanh import arctanh
 from .arctanh_out import arctanh_out
+from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
@@ -255,6 +256,7 @@ __all__ = [
     "arctan_",
     "arctanh",
     "arctanh_out",
+    "argmax",
     "argmin",
     "argsort",
     "atan2",
