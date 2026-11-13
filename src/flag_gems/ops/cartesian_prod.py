@@ -38,6 +38,75 @@ _BLOCK_ROWS_WIDE = 256
 _NUM_WARPS = 8
 _INT32_SAFE = 1 << 30
 
+# Element type of the generic >8-input kernels. data_ptr arguments need an
+# explicit pointer type; bool storage is addressed as one-byte uint8.
+_TORCH_TO_TL = {
+    torch.float16: tl.float16,
+    torch.bfloat16: tl.bfloat16,
+    torch.float32: tl.float32,
+    torch.float64: tl.float64,
+    torch.int8: tl.int8,
+    torch.uint8: tl.uint8,
+    torch.int16: tl.int16,
+    torch.int32: tl.int32,
+    torch.int64: tl.int64,
+    torch.bool: tl.uint8,
+}
+
+
+@triton.jit(do_not_specialize=["M"])
+def _cartesian_prod_generic_fwd_kernel(
+    out_ptr,
+    M,
+    PTRS: tl.constexpr,
+    SIZES: tl.constexpr,
+    PRS: tl.constexpr,
+    N: tl.constexpr,
+    WIDE: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    DT: tl.constexpr,
+):
+    """Generic K-input gather, used when K exceeds the specialised width."""
+    pid = tl.program_id(0)
+    if WIDE:
+        rows = pid.to(tl.int64) * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS).to(tl.int64)
+    else:
+        rows = pid * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
+    mask = rows < M
+    for k in tl.static_range(N):
+        idx = (rows // PRS[k]) % SIZES[k]
+        v = tl.load(tl.cast(PTRS[k], tl.pointer_type(DT)) + idx, mask=mask)
+        tl.store(out_ptr + rows * N + k, v.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit(do_not_specialize=["M"])
+def _cartesian_prod_generic_bwd_kernel(
+    gout_ptr,
+    M,
+    PTRS: tl.constexpr,
+    SIZES: tl.constexpr,
+    PRS: tl.constexpr,
+    N: tl.constexpr,
+    NEEDS: tl.constexpr,
+    WIDE: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    DT: tl.constexpr,
+):
+    """Generic K-input scatter-add, the adjoint of the gather above."""
+    pid = tl.program_id(0)
+    if WIDE:
+        rows = pid.to(tl.int64) * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS).to(tl.int64)
+    else:
+        rows = pid * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
+    mask = rows < M
+    for k in tl.static_range(N):
+        if NEEDS[k]:
+            idx = (rows // PRS[k]) % SIZES[k]
+            v = tl.load(gout_ptr + rows * N + k, mask=mask)
+            tl.atomic_add(
+                tl.cast(PTRS[k], tl.pointer_type(DT)) + idx, v.to(DT), mask=mask
+            )
+
 
 @triton.jit(do_not_specialize=["M"])
 def _cartesian_prod_fwd_kernel(
@@ -134,6 +203,7 @@ def _cartesian_prod_bwd_kernel(
     pr6: tl.constexpr,
     pr7: tl.constexpr,
     N: tl.constexpr,
+    NEEDS: tl.constexpr,
     WIDE: tl.constexpr,
     BLOCK_ROWS: tl.constexpr,
 ):
@@ -150,15 +220,16 @@ def _cartesian_prod_bwd_kernel(
 
     # each output element feeds exactly one input element, so this is a scatter-add
     for k in tl.static_range(N):
-        if prs[k] % BLOCK_ROWS == 0:
-            # PR[k] spans whole row blocks: this program writes a single index
-            base = (pid // (prs[k] // BLOCK_ROWS)) % sizes[k]
-            idx = tl.zeros([BLOCK_ROWS], dtype=tl.int32) + base
-        else:
-            idx = (rows // prs[k]) % sizes[k]
-        # accumulate in fp32 (fp64 for fp64) and cast once, like the reference
-        v = tl.load(gout_ptr + tl.where(row_mask, rows * N + k, 0))
-        tl.atomic_add(qs[k] + idx, v.to(qs[k].dtype.element_ty), mask=row_mask)
+        if NEEDS[k]:
+            if prs[k] % BLOCK_ROWS == 0:
+                # PR[k] spans whole row blocks: this program writes a single index
+                base = (pid // (prs[k] // BLOCK_ROWS)) % sizes[k]
+                idx = tl.zeros([BLOCK_ROWS], dtype=tl.int32) + base
+            else:
+                idx = (rows // prs[k]) % sizes[k]
+            # accumulate in fp32 (fp64 for fp64) and cast once, like the reference
+            v = tl.load(gout_ptr + tl.where(row_mask, rows * N + k, 0))
+            tl.atomic_add(qs[k] + idx, v.to(qs[k].dtype.element_ty), mask=row_mask)
 
 
 def _normalize(args, kwargs):
@@ -216,11 +287,26 @@ class _CartesianProd(torch.autograd.Function):
         if m == 0:
             return out
 
+        block_rows, num_warps, wide = _plan(m, n)
+        if n > _MAX_TENSORS:
+            out_arg = out.view(torch.uint8) if tensors[0].dtype is torch.bool else out
+            _cartesian_prod_generic_fwd_kernel[(triton.cdiv(m, block_rows),)](
+                out_arg,
+                m,
+                PTRS=tuple(t.data_ptr() for t in tensors),
+                SIZES=tuple(sizes),
+                PRS=tuple(_suffix_products(sizes)),
+                N=n,
+                WIDE=wide,
+                BLOCK_ROWS=block_rows,
+                DT=_TORCH_TO_TL[tensors[0].dtype],
+                num_warps=num_warps,
+            )
+            return out
         pad = _MAX_TENSORS - n
         ptrs = tensors + (tensors[0],) * pad
         szs = sizes + (1,) * pad
         prs = tuple(_suffix_products(sizes)) + (1,) * pad
-        block_rows, num_warps, wide = _plan(m, n)
         _cartesian_prod_fwd_kernel[(triton.cdiv(m, block_rows),)](
             out,
             m,
@@ -239,7 +325,7 @@ class _CartesianProd(torch.autograd.Function):
     def backward(ctx, grad_out):
         n = ctx.n
         sizes = ctx.sizes
-        needs = ctx.needs_input_grad[2:]
+        needs = tuple(bool(need) for need in ctx.needs_input_grad[2:])
         acc_dtype = torch.float64 if grad_out.dtype == torch.float64 else torch.float32
         accs = [
             (
@@ -256,6 +342,24 @@ class _CartesianProd(torch.autograd.Function):
         live = next((a for a in accs if a is not None), None)
         if m > 0 and live is not None:
             gout = grad_out.contiguous()
+            if n > _MAX_TENSORS:
+                dense_dt = tl.float64 if grad_out.dtype == torch.float64 else tl.float32
+                _cartesian_prod_generic_bwd_kernel[(triton.cdiv(m, _BLOCK_ROWS_BWD),)](
+                    gout,
+                    m,
+                    PTRS=tuple((a if a is not None else live).data_ptr() for a in accs),
+                    SIZES=tuple(sizes),
+                    PRS=tuple(_suffix_products(sizes)),
+                    N=n,
+                    NEEDS=needs,
+                    WIDE=m * n > _INT32_SAFE,
+                    BLOCK_ROWS=_BLOCK_ROWS_BWD,
+                    DT=dense_dt,
+                    num_warps=_NUM_WARPS,
+                )
+                return (None, None) + tuple(
+                    None if a is None else a.to(grad_out.dtype) for a in accs
+                )
             pad = _MAX_TENSORS - n
             qs = tuple(a if a is not None else live for a in accs) + (live,) * pad
             szs = tuple(sizes) + (1,) * pad
@@ -267,6 +371,7 @@ class _CartesianProd(torch.autograd.Function):
                 *szs,
                 *prs,
                 N=n,
+                NEEDS=needs,
                 WIDE=m * n > _INT32_SAFE,
                 BLOCK_ROWS=_BLOCK_ROWS_BWD,
                 num_warps=_NUM_WARPS,
@@ -292,6 +397,11 @@ def run(*args, **kwargs):
     if n == 1:
         # reference returns the single tensor unchanged: shape (s0,)
         return tensors[0]
+
+    dev = tensors[0].device
+    for t in tensors[1:]:
+        if t.device != dev:
+            raise RuntimeError("meshgrid expects all tensors to have the same device")
 
     dtype = tensors[0].dtype
     for t in tensors[1:]:
