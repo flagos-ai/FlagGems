@@ -600,9 +600,7 @@ class Conv2d(torch.autograd.Function):
             pad_c = _MIN_DOT_K - bwd_weight_c
             # Pad revert_weight on dim=1 (the out_c/group dimension)
             # revert_weight shape: [groups*weight_c, out_c, kH, kW]
-            revert_weight = flag_gems.pad(
-                revert_weight, (0, 0, 0, 0, 0, pad_c)
-            )
+            revert_weight = flag_gems.pad(revert_weight, (0, 0, 0, 0, 0, pad_c))
             # Pad new_out on channel dim (dim=1).
             # new_out shape: [N, groups*out_c, H, W]
             # Each group has out_c channels, need to pad each group to _MIN_DOT_K.

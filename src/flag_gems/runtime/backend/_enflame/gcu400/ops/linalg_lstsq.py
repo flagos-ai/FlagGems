@@ -574,7 +574,9 @@ def _tsqr_R(aug, NC, dt, compute):
     n_chunks = triton.cdiv(M, block_m)
     pad = n_chunks * block_m - M
     if pad:
-        aug = flag_gems.cat([aug, torch.zeros(batch, pad, NC, dtype=dt, device=dev)], dim=1)
+        aug = flag_gems.cat(
+            [aug, torch.zeros(batch, pad, NC, dtype=dt, device=dev)], dim=1
+        )
     W = aug.reshape(batch, n_chunks, block_m, NC).reshape(-1, block_m, NC).contiguous()
     _blk_qr_kernel[(W.shape[0],)](
         W,

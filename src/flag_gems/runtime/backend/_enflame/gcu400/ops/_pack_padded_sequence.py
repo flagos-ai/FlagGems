@@ -29,7 +29,6 @@ import triton.language as tl
 
 import flag_gems
 
-
 logger = logging.getLogger(__name__)
 
 # 按 lengths 内容缓存只读的累计行数表；表内容完全由 CPU lengths 决定，
@@ -242,7 +241,9 @@ def _pack_padded_sequence(input, lengths, batch_first):
                 time_index = torch.repeat_interleave(step_ids, batch_sizes)
                 run_starts = torch.repeat_interleave(cumsum - batch_sizes, batch_sizes)
                 batch_index = torch.arange(total_len, dtype=torch.int64) - run_starts
-                meta_cpu = flag_gems.stack((time_index, batch_index), dim=1).contiguous()
+                meta_cpu = flag_gems.stack(
+                    (time_index, batch_index), dim=1
+                ).contiguous()
             meta = meta_cpu.to(input.device, non_blocking=bool(NON_BLOCKING))
             if GRID_MODE:
                 grid = (total_len * num_feat_blocks,)

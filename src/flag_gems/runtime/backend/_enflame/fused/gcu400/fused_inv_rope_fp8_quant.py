@@ -24,7 +24,6 @@ import triton.language as tl
 
 import flag_gems
 
-
 # GCU Triton casts and stores float8_e4m3fn bit-exactly (verified on L600),
 # so this backend-local copy declares fp8 support directly instead of
 # consulting the generic get_device_capability() >= (9, 0) check, which

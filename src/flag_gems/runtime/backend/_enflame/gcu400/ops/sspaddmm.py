@@ -110,7 +110,9 @@ def _sspaddmm_impl(input, mat1, mat2, beta=1.0, alpha=1.0, out=None):
         active_rows = mat1_rows.new_empty((0,))
         counts = mat1_rows.new_empty((0,))
     else:
-        active_rows, counts = flag_gems.unique_consecutive(mat1_rows, return_counts=True)
+        active_rows, counts = flag_gems.unique_consecutive(
+            mat1_rows, return_counts=True
+        )
     R = active_rows.numel()
 
     if R > 0:

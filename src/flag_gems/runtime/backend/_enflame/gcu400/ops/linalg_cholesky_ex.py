@@ -36,7 +36,6 @@ import triton.language as tl
 import flag_gems
 
 
-
 @triton.jit
 def _cholesky_ex_kernel(
     A_ptr,

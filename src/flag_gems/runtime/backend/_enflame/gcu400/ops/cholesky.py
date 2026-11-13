@@ -21,7 +21,6 @@ import triton.language as tl
 import flag_gems
 from flag_gems import runtime
 
-
 logger = logging.getLogger(__name__)
 
 # Capture the native ``aten::cholesky`` kernel at import time, before FlagGems

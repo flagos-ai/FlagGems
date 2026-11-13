@@ -57,7 +57,6 @@ import torch
 
 import flag_gems
 
-
 _TARGET_MODULE = "vllm.utils.deep_gemm"
 _TRITON_BACKEND_ENV = "ENFLAME_DEEPGEMM_KERNEL_TRITON_BACKEND"
 _PAGED_KERNEL_NAME = "fp8_fp4_paged_mqa_logits"

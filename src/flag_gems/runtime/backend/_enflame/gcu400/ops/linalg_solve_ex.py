@@ -50,7 +50,6 @@ import torch
 import flag_gems
 from flag_gems import runtime
 
-
 __all__ = ["linalg_solve_ex"]
 
 _COMPOSITE_KEYSET = torch._C.DispatchKeySet(

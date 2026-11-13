@@ -126,7 +126,9 @@ def batch_norm_update_stats(
         # The aten call returns the input dtype when no running stats are
         # passed (fp16/bf16), while the suite asserts float32 outputs; cast the
         # results so both dtype and values match the reference.
-        out = flag_gems.batch_norm_update_stats(input, running_mean, running_var, momentum)
+        out = flag_gems.batch_norm_update_stats(
+            input, running_mean, running_var, momentum
+        )
         if isinstance(out, torch.Tensor):
             return out.to(torch.float32)
         return type(out)(
