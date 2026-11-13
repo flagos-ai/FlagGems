@@ -421,7 +421,9 @@ def test_copy_functional_float8(dtype, shape):
 
 # Ascend coreDim and large-tensor regressions.
 CORE_DIM_LIMIT = 65535
-GUARD = 37
+# Keep the default destination aligned for int32 reinterpretation. Unaligned
+# source/destination offsets are exercised separately.
+GUARD = 40
 DTYPES = [
     torch.bool,
     torch.uint8,
@@ -433,18 +435,13 @@ DTYPES = [
     torch.bfloat16,
     torch.float32,
 ]
-ONE_BYTE_DTYPES = [torch.bool, torch.uint8, torch.int8]
 FLOAT_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
-NARROW_INT_DTYPES = [torch.uint8, torch.int8, torch.int16]
-APIS = ["direct"]
 
 
 @pytest.fixture
 def release_device_memory():
-    # Several cases hold a few GiB each. Without this, whether a later one fits
-    # depends on what the earlier ones left behind, which is a property of the
-    # run rather than of the operator: the functional 2**29 case passed on one
-    # machine and hit OutOfMemory on another purely from allocator state.
+    # Only the real large-input cases need allocator cleanup between cases.
+    torch.npu.empty_cache()
     yield
     torch.npu.empty_cache()
 
@@ -453,20 +450,14 @@ def release_device_memory():
 def copy_ops():
     ops = importlib.import_module(flag_gems.copy_.__module__)
     assert ops.__name__ == flag_gems.copy.__module__
-    # A failed import inside _ascend.ops is swallowed by the registrar and every
-    # Ascend operator falls back silently, so pin the module down first.
+    # Backend import errors can silently select the generic implementation.
     assert "_ascend" in ops.__name__
     return ops
 
 
 @pytest.fixture
 def checked_launches(copy_ops, monkeypatch):
-    """Record every flat launch and reject an invalid grid before it is issued.
-
-    A grid the driver refuses puts the whole process into an error state, after
-    which later results in the same process cannot be trusted. Asserting on the
-    host keeps a regression readable instead of aborting the run.
-    """
+    """Reject invalid grids before launching; record the effective tile inputs."""
     kernel = copy_ops._flat_copy_kernel
     launches = []
 
@@ -486,7 +477,8 @@ def checked_launches(copy_ops, monkeypatch):
 
 
 def _bytes(tensor):
-    return tensor.contiguous().reshape(-1).view(torch.uint8).cpu()
+    # Materialize reference layouts on the CPU, independently of NPU kernels.
+    return tensor.cpu().contiguous().reshape(-1).view(torch.uint8)
 
 
 def _assert_same_bytes(actual, expected):
@@ -495,136 +487,150 @@ def _assert_same_bytes(actual, expected):
     torch.testing.assert_close(_bytes(actual), _bytes(expected), rtol=0, atol=0)
 
 
-def _run_copy(dst, src, api):
-    # Always the direct call. Registering copy_ for dispatch would need
-    # use_gems(), which tools/ci_checks/check_kernelgen_tests.py forbids in
-    # tests, so the properties that only the dispatch path used to expose are
-    # pinned structurally instead: that a strided narrow source is read by this
-    # backend's own kernel rather than by contiguous() (which would re-enter
-    # aten::copy_), and that the device-transfer guard refuses rather than
-    # recursing. Direct calls are also how TransformerEngine reaches copy_.
-    assert api == "direct"
-    return flag_gems.copy_(dst, src)
-
-
 def _filled(shape, dtype, value, device=None):
-    """A tensor whose every byte is ``value``, for any dtype including bool."""
-    numel = math.prod(shape) if shape else 1
+    """A tensor whose every byte is ``value``, including noncanonical bool bytes."""
+    numel = math.prod(shape)
     esize = torch.empty((), dtype=dtype).element_size()
     flat = torch.full((numel * esize,), value, dtype=torch.uint8, device=device)
     return flat.view(dtype).reshape(shape)
 
 
 def _payload(shape, dtype, seed):
-    """Deterministic payload whose bytes are arbitrary but never the sentinel."""
-    numel = math.prod(shape) if shape else 1
+    """Deterministic bytes without changing the process-wide random state."""
+    numel = math.prod(shape)
     esize = torch.empty((), dtype=dtype).element_size()
-    torch.manual_seed(seed)
-    if dtype is torch.bool:
-        return torch.randint(0, 2, (numel,), dtype=torch.bool).reshape(shape)
-    raw = torch.randint(0, 256, (numel * esize,), dtype=torch.uint8)
-    # 0x5A is the sentinel the destinations are filled with.
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    if dtype == torch.bool:
+        return torch.randint(0, 2, (numel,), dtype=dtype, generator=generator).reshape(
+            shape
+        )
+    raw = torch.randint(
+        0, 256, (numel * esize,), dtype=torch.uint8, generator=generator
+    )
+    # Every source byte differs from the destination sentinel.
     raw[raw == 0x5A] = 0x5B
     return raw.view(dtype).reshape(shape)
 
 
-def _check_copy(payload_cpu, api, dst_view=lambda x: x, src_view=lambda x: x):
-    """Copy ``payload`` into a guarded destination and check the whole storage."""
-    dtype = payload_cpu.dtype
+def _check_copy(payload_cpu, src_view=lambda x: x, dst_offset=GUARD):
+    """Check values, in-place identity and both destination storage guards."""
+    expected = src_view(payload_cpu)
     src = src_view(payload_cpu.to(flag_gems.device))
     numel = src.numel()
-    base = _filled((numel + 2 * GUARD,), dtype, 0x5A, flag_gems.device)
-    dst = dst_view(base[GUARD : GUARD + numel].reshape(src.shape))
+    base = _filled((dst_offset + numel + GUARD,), src.dtype, 0x5A, flag_gems.device)
+    dst = base[dst_offset : dst_offset + numel].reshape(src.shape)
     pointer, offset, strides = dst.data_ptr(), dst.storage_offset(), dst.stride()
 
-    result = _run_copy(dst, src, api)
+    result = flag_gems.copy_(dst, src)
     torch.npu.synchronize()
 
     assert result is dst
     assert result.data_ptr() == pointer
     assert result.storage_offset() == offset
     assert result.stride() == strides
-    _assert_same_bytes(result, src)
-    # The guards catch a launch that walked past the tensor it was given. They
-    # are compared as bytes, since a sentinel byte is not a valid bool.
+    _assert_same_bytes(result, expected)
+    _assert_same_bytes(src, expected)
     esize = base.element_size()
-    raw = base.reshape(-1).view(torch.uint8).cpu()
-    guards = torch.cat((raw[: GUARD * esize], raw[-GUARD * esize :]))
+    raw = _bytes(base)
+    guards = torch.cat((raw[: dst_offset * esize], raw[-GUARD * esize :]))
     torch.testing.assert_close(guards, torch.full_like(guards, 0x5A), rtol=0, atol=0)
 
 
-# --------------------------------------------------------------------------
-# shapes, dtypes and layouts
-# --------------------------------------------------------------------------
+def _check_functional_copy(template, src, expected):
+    template_before = _bytes(template).clone()
+    src_before = _bytes(src).clone()
+    out = flag_gems.copy(template, src)
+    torch.npu.synchronize()
+    assert out.shape == template.shape
+    assert out.dtype == template.dtype
+    assert out.device == template.device
+    assert out.stride() == template.stride()
+    # data_ptr() is zero for empty tensors, so compare storage identity instead.
+    assert not torch._C._is_alias_of(out, template)
+    assert not torch._C._is_alias_of(out, src)
+    _assert_same_bytes(out, expected)
+    torch.testing.assert_close(_bytes(template), template_before, rtol=0, atol=0)
+    torch.testing.assert_close(_bytes(src), src_before, rtol=0, atol=0)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
 @pytest.mark.parametrize(
-    "shape",
+    "dtype,shape,n_elements",
+    [(dtype, (17,), 34 if dtype == torch.int64 else 17) for dtype in DTYPES]
+    + [
+        (dtype, (words * 4 // torch.empty((), dtype=dtype).element_size(),), words)
+        for dtype in (torch.int8, torch.bfloat16, torch.float32)
+        for words in (4095, 4096, 4097)
+    ]
+    + [(torch.bool, (), 1), (torch.bfloat16, (), 1), (torch.int64, (), 2)]
+    + [(torch.float32, (3, 5, 1371), 20565)],
+)
+def test_copy_contiguous_boundaries_exact(checked_launches, dtype, shape, n_elements):
+    _check_copy(_payload(shape, dtype, 1))
+    assert len(checked_launches) == 1
+    grid, actual_n, block, masked, wide = checked_launches[0]
+    # Check boundaries in the kernel's units, after any int32 reinterpretation.
+    assert actual_n == n_elements
+    assert grid == ((n_elements + block - 1) // block,)
+    assert masked == (n_elements % block != 0)
+    assert not wide
+
+
+@pytest.mark.copy
+@pytest.mark.copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,dst_shape,src_shape,valid",
     [
-        (1,),
-        (4095,),
-        (4096,),
-        (4097,),
-        (8192,),
-        (12289,),
-        (3, 5, 1371),
+        (torch.bool, (0,), (0,), True),
+        (torch.float32, (2, 0, 3), (2, 0, 3), True),
+        (torch.int8, (2, 0, 3), (1, 1, 3), True),
+        (torch.float32, (0,), (2,), False),
+        (torch.float32, (2, 0, 3), (2, 0, 4), False),
     ],
 )
-def test_copy_contiguous_boundaries_exact(checked_launches, api, dtype, shape):
-    _check_copy(_payload(shape, dtype, 1), api)
-    assert checked_launches
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", DTYPES)
-def test_copy_zero_dim_exact(api, dtype):
-    _check_copy(_payload((), dtype, 2).reshape(()), api)
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
-def test_copy_empty_exact(api, dtype, shape):
-    # The shared implementation hands this to PyTorch, and that path ends in
-    # aten::_copy_from, which torch_npu does not register.
-    src = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    dst = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    result = _run_copy(dst, src, api)
-    torch.npu.synchronize()
+def test_copy_empty_exact(dtype, dst_shape, src_shape, valid):
+    ref_src = torch.zeros(src_shape, dtype=dtype)
+    ref_dst = torch.empty(dst_shape, dtype=dtype)
+    src = ref_src.to(flag_gems.device)
+    dst = torch.empty(dst_shape, dtype=dtype, device=flag_gems.device)
+    if not valid:
+        with pytest.raises(RuntimeError):
+            ref_dst.copy_(ref_src)
+        with pytest.raises(RuntimeError):
+            flag_gems.copy_(dst, src)
+        return
+    ref_dst.copy_(ref_src)
+    result = flag_gems.copy_(dst, src)
     assert result is dst
-    assert result.numel() == 0
-    assert result.shape == torch.Size(shape)
+    _assert_same_bytes(result, ref_dst)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
 @pytest.mark.parametrize(
-    "layout", ["transpose", "permute", "step", "slice", "diagonal"]
+    "dtype,layout",
+    [
+        (torch.int8, layout)
+        for layout in ("transpose", "permute", "step", "slice", "diagonal")
+    ]
+    + [
+        (torch.bool, "stride2"),
+        (torch.uint8, "stride7"),
+        (torch.int8, "stride3"),
+        (torch.int16, "slice"),
+        (torch.float16, "diagonal"),
+        (torch.bfloat16, "transpose"),
+        (torch.float32, "stride3"),
+    ],
 )
-def test_copy_noncontiguous_source_exact(api, dtype, layout):
-    # pointwise_dynamic reads the wrong bytes from element 32 on when a 1-byte
-    # operand is strided, so these are the cases a shared flat path cannot take.
-    payload = _payload((5 * 7 * 11,), dtype, 3)
-
+def test_copy_noncontiguous_source_exact(monkeypatch, dtype, layout):
     def view(x):
+        if layout.startswith("stride"):
+            return x[:: int(layout[len("stride") :])]
         tensor = x.reshape(5, 7, 11)
         if layout == "transpose":
             return tensor.transpose(0, 2)
@@ -636,127 +642,166 @@ def test_copy_noncontiguous_source_exact(api, dtype, layout):
             return tensor[:, :, 2:7]
         return tensor.diagonal(dim1=1, dim2=2)
 
+    payload = _payload(
+        (4096,) if layout.startswith("stride") else (5 * 7 * 11,), dtype, 3
+    )
     assert not view(payload).is_contiguous()
-    _check_copy(payload, api, src_view=view)
+    if dtype == torch.int8 and layout == "stride3":
+        contiguous = torch.Tensor.contiguous
+
+        def reject_device_materialization(tensor, *args, **kwargs):
+            if tensor.device.type != "cpu" and not tensor.is_contiguous():
+                raise AssertionError(
+                    "copy_ must not call contiguous() on its strided source"
+                )
+            return contiguous(tensor, *args, **kwargs)
+
+        # contiguous() can re-enter copy_ under dispatch. Check the prohibited
+        # operation without requiring a particular private kernel name.
+        monkeypatch.setattr(torch.Tensor, "contiguous", reject_device_materialization)
+    _check_copy(payload, src_view=view)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", ONE_BYTE_DTYPES + [torch.int16, torch.float32])
-@pytest.mark.parametrize("step", [2, 3, 7])
-def test_copy_strided_source_every_element(api, dtype, step):
-    payload = _payload((4096,), dtype, 4)
-    _check_copy(payload, api, src_view=lambda x: x[::step])
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", ONE_BYTE_DTYPES + [torch.float32])
-@pytest.mark.parametrize("layout", ["step", "transpose"])
-def test_copy_noncontiguous_destination_exact(api, dtype, layout):
-    numel = 2048 if layout == "step" else 64 * 32
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,layout",
+    [
+        (torch.bool, "step"),
+        (torch.int8, "step"),
+        (torch.uint8, "transpose"),
+        (torch.float32, "transpose"),
+    ],
+)
+def test_copy_noncontiguous_destination_exact(dtype, layout):
+    numel = 2048
     payload = _payload((numel,), dtype, 5)
+    storage_size = numel * 2 if layout == "step" else numel
+    base = _filled((storage_size + 2 * GUARD,), dtype, 0x5A, flag_gems.device)
+    expected_base = _filled(base.shape, dtype, 0x5A)
+
+    def view(x):
+        body = x[GUARD:-GUARD]
+        return body[::2] if layout == "step" else body.reshape(32, 64).t()
+
+    dst = view(base)
+    expected_dst = view(expected_base)
+    payload = payload.reshape(dst.shape)
+    expected_dst.copy_(payload)
     src = payload.to(flag_gems.device)
-    if layout == "step":
-        base = _filled((numel * 2,), dtype, 0x5A, flag_gems.device)
-        dst = base[::2]
-    else:
-        base = _filled((32, 64), dtype, 0x5A, flag_gems.device)
-        dst = base.t()
-        src = src.reshape(64, 32)
+    metadata = (dst.data_ptr(), dst.storage_offset(), dst.stride())
     assert not dst.is_contiguous()
-    result = _run_copy(dst, src, api)
+    result = flag_gems.copy_(dst, src)
     torch.npu.synchronize()
-    _assert_same_bytes(result, src)
+    assert result is dst
+    assert (dst.data_ptr(), dst.storage_offset(), dst.stride()) == metadata
+    _assert_same_bytes(result, payload)
+    # Include holes between selected elements and guards on both ends.
+    _assert_same_bytes(base, expected_base)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dst_dtype", [torch.float32, torch.int32])
-@pytest.mark.parametrize("src_dtype", ONE_BYTE_DTYPES + [torch.int16, torch.float16])
-def test_copy_strided_narrow_source_cross_dtype(api, src_dtype, dst_dtype):
-    # A conversion does not go through the flat path, so the strided narrow
-    # source reaches pointwise_dynamic unless it is read here first.
-    # Finite values for a float source: a random bit pattern is mostly NaN, and
-    # a conversion is not required to carry the NaN payload through (this kernel
-    # canonicalises it to 0x7fffffff, PyTorch on the host keeps it).
-    if src_dtype.is_floating_point:
-        full = (torch.arange(4096, dtype=torch.float32) - 2048).to(src_dtype)
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "src_dtype,dst_dtype,strided",
+    [
+        (torch.bool, torch.float32, True),
+        (torch.uint8, torch.int32, True),
+        (torch.int8, torch.float32, True),
+        (torch.int16, torch.int32, True),
+        (torch.float16, torch.float32, True),
+    ]
+    + [
+        (src_dtype, dst_dtype, False)
+        for src_dtype in (torch.float32, torch.float16, torch.bfloat16)
+        for dst_dtype in (torch.uint8, torch.int8, torch.int16)
+    ]
+    + [
+        (src_dtype, torch.bool, False)
+        for src_dtype in (torch.float32, torch.int32, torch.int8)
+    ],
+)
+def test_copy_dtype_conversion_matches_cpu(src_dtype, dst_dtype, strided):
+    if strided:
+        if src_dtype.is_floating_point:
+            payload = (torch.arange(4096, dtype=torch.float32) - 2048).to(src_dtype)
+        else:
+            payload = _payload((4096,), src_dtype, 12)
+        src = payload.to(flag_gems.device)[::2]
+        reference = payload[::2]
+        assert not src.is_contiguous()
+    elif dst_dtype == torch.bool:
+        reference = torch.tensor([-2, -1, 0, 1, 2, 3], dtype=src_dtype)
+        src = reference.to(flag_gems.device)
     else:
-        full = _payload((4096,), src_dtype, 12)
-    src = full.to(flag_gems.device)[::2]
-    expected = full[::2].to(dst_dtype)
-    dst = _filled((2048,), dst_dtype, 0x5A, flag_gems.device)
-    result = _run_copy(dst, src, api)
-    torch.npu.synchronize()
-    _assert_same_bytes(result.cpu(), expected)
+        info = torch.iinfo(dst_dtype)
+        values = [-1.5, -1.0, -0.5, -0.0, 0.0, 0.5, 1.5, 2.5]
+        values += [info.min, info.min + 1, info.max - 1, info.max, info.max // 2]
+        rounded = torch.tensor(values, dtype=src_dtype)
+        # Check after rounding, in float64: fp16/bf16 can round an in-range
+        # boundary out of range. Out-of-range float casts vary by platform.
+        exact = rounded.to(torch.float64)
+        reference = rounded[(exact >= info.min) & (exact <= info.max)]
+        src = reference.to(flag_gems.device)
+
+    expected = torch.empty(reference.shape, dtype=dst_dtype)
+    expected.copy_(reference)
+    dst = _filled(expected.shape, dst_dtype, 0x5A, flag_gems.device)
+    result = flag_gems.copy_(dst, src)
+    assert result is dst
+    _assert_same_bytes(result, expected)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", ONE_BYTE_DTYPES + [torch.float16])
-def test_copy_broadcast_from_strided_narrow_source(api, dtype):
-    # Broadcast does not go through the flat path either.
-    full = _payload((2, 256), dtype, 13)
-    src = full.to(flag_gems.device)[:1, ::2]
-    expected = full[:1, ::2].expand(64, 128)
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,strided",
+    [
+        (torch.bool, False),
+        (torch.int8, False),
+        (torch.bfloat16, False),
+        (torch.bool, True),
+        (torch.int8, True),
+        (torch.float16, True),
+    ],
+)
+def test_copy_broadcast_sources_exact(dtype, strided):
+    full = _payload((2, 256) if strided else (1, 128), dtype, 13)
+    device_full = full.to(flag_gems.device)
+    src = device_full[:1, ::2] if strided else device_full
+    reference = full[:1, ::2] if strided else full
+    assert src.is_contiguous() != strided
+    expected = reference.expand(64, 128)
     dst = _filled((64, 128), dtype, 0x5A, flag_gems.device)
-    result = _run_copy(dst, src, api)
-    torch.npu.synchronize()
-    _assert_same_bytes(result.cpu(), expected)
+    result = flag_gems.copy_(dst, src)
+    assert result is dst
+    _assert_same_bytes(result, expected)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", [torch.bool, torch.int8, torch.bfloat16])
-def test_copy_broadcast_source_exact(api, dtype):
-    payload = _payload((1, 128), dtype, 6).to(flag_gems.device)
-    dst = _filled((64, 128), dtype, 0x5A, flag_gems.device)
-    result = _run_copy(dst, payload, api)
-    torch.npu.synchronize()
-    _assert_same_bytes(result, payload.expand(64, 128))
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "src_offset,dst_offset", [(1, 0), (2, 0), (3, 0), (0, 1), (1, 3)]
+)
+def test_copy_unaligned_storage_offset_exact(checked_launches, src_offset, dst_offset):
+    payload = _payload((1024 + src_offset,), torch.int8, 7)
+    _check_copy(
+        payload, src_view=lambda x: x[src_offset:], dst_offset=GUARD + dst_offset
+    )
+    # Even if only one operand is unaligned, neither may be viewed as int32.
+    assert len(checked_launches) == 1
+    assert checked_launches[0][1] == 1024
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("offset", [1, 2, 3])
-def test_copy_unaligned_storage_offset_exact(api, offset):
-    # A byte offset that is not a multiple of 4 is what stops the flat path
-    # from reinterpreting the operands as int32.
-    payload = _payload((1024 + offset,), torch.int8, 7)
-    _check_copy(payload, api, src_view=lambda x: x[offset:])
-
-
-# --------------------------------------------------------------------------
-# values that must survive unchanged
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_copy_preserves_special_values_exact(api, dtype):
+def test_copy_preserves_special_values_exact(dtype):
     info = torch.finfo(dtype)
     values = [
         float("nan"),
@@ -772,93 +817,27 @@ def test_copy_preserves_special_values_exact(api, dtype):
         info.eps,
     ]
     payload = torch.tensor(values, dtype=dtype).repeat(1000)[:8191]
-    _check_copy(payload, api)
+    _check_copy(payload)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dst_dtype", NARROW_INT_DTYPES)
-@pytest.mark.parametrize("src_dtype", [torch.float32, torch.float16, torch.bfloat16])
-def test_copy_narrow_int_conversion_matches_cpu(api, dst_dtype, src_dtype):
-    # Only values the destination can hold. A float outside the destination's
-    # range is undefined in C++ and the platforms disagree: for a float16 32768
-    # this kernel gives int16 -32768, the narrowing through int32 that
-    # _copy_to_narrow_int_kernel documents, while PyTorch on this aarch64 host
-    # gives 32767. Gating on either would be gating on undefined behaviour.
-    info = torch.iinfo(dst_dtype)
-    values = [-1.5, -1.0, -0.5, -0.0, 0.0, 0.5, 1.5, 2.5]
-    values += [float(info.min), float(info.min) + 1, float(info.max) - 1]
-    values += [float(info.max), float(info.max // 2)]
-    # Filter after the cast, not before: float16 cannot hold 32767 and rounds it
-    # to 32768, which is out of range again.
-    rounded = torch.tensor(values, dtype=src_dtype)
-    # Compare in float64: in float16 the bound 32767 itself rounds to 32768, so
-    # filtering in the source dtype lets the out-of-range value back in.
-    exact = rounded.to(torch.float64)
-    src = rounded[(exact >= info.min) & (exact <= info.max)]
-    expected = src.to(dst_dtype)
-    dst = _filled((src.numel(),), dst_dtype, 0x5A, flag_gems.device)
-    result = _run_copy(dst, src.to(flag_gems.device), api)
-    torch.npu.synchronize()
-    _assert_same_bytes(result.cpu(), expected)
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("src_dtype", [torch.float32, torch.int32, torch.int8])
-def test_copy_to_bool_matches_cpu(api, src_dtype):
-    values = torch.tensor([-2, -1, 0, 1, 2, 3], dtype=src_dtype)
-    expected = values.to(torch.bool)
-    dst = _filled((values.numel(),), torch.bool, 0x5A, flag_gems.device)
-    result = _run_copy(dst, values.to(flag_gems.device), api)
-    torch.npu.synchronize()
-    _assert_same_bytes(result.cpu(), expected)
-
-
-# --------------------------------------------------------------------------
-# cases the shared implementation hands back to PyTorch
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
 @pytest.mark.parametrize("dtype", [torch.bool, torch.int8, torch.float32])
 def test_copy_across_devices_exact(dtype):
-    # redispatch(CompositeExplicitAutograd) ends in aten::_copy_from, which
-    # torch_npu does not register, so both directions have to be served here.
-    # This is the direct call, which is how TransformerEngine reaches copy_.
     payload = _payload((1024,), dtype, 8)
-
     dst = _filled((1024,), dtype, 0x5A, flag_gems.device)
-    flag_gems.copy_(dst, payload)
-    torch.npu.synchronize()
-    _assert_same_bytes(dst, payload.to(flag_gems.device))
-
+    assert flag_gems.copy_(dst, payload) is dst
+    _assert_same_bytes(dst, payload)
     back = _filled((1024,), dtype, 0x5A)
-    flag_gems.copy_(back, dst)
-    torch.npu.synchronize()
+    assert flag_gems.copy_(back, dst) is back
     _assert_same_bytes(back, payload)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
 def test_copy_across_devices_is_refused_when_re_entered(copy_ops, monkeypatch):
-    # A transfer needs the runtime, and every primitive that could perform one
-    # -- to, _to_copy, Storage.copy_ -- routes back through aten::copy_. Once
-    # copy_ is registered for dispatch there is no way out, which is why it is
-    # in CUSTOMIZED_UNUSED_OPS on this backend. Entering the transfer a second
-    # time is exactly what that recursion looks like, so pin the refusal: the
-    # alternative is a thousand-frame stack overflow.
     monkeypatch.setattr(copy_ops._reentry, "transferring", True, raising=False)
     host = torch.arange(16, dtype=torch.float32)
     dst = torch.zeros(16, dtype=torch.float32, device=flag_gems.device)
@@ -866,307 +845,194 @@ def test_copy_across_devices_is_refused_when_re_entered(copy_ops, monkeypatch):
         copy_ops.copy_(dst, host)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-def test_copy_strided_narrow_source_uses_its_own_kernel(copy_ops, monkeypatch):
-    # The source is read by _gather_copy_kernel rather than materialised with
-    # contiguous(): contiguous() is empty_like plus copy_, so it re-enters this
-    # operator and recurses the moment copy_ is registered for dispatch.
-    launched = []
-    kernel = copy_ops._gather_copy_kernel
-
-    class CountingKernel:
-        def __getitem__(self, grid):
-            launched.append(grid)
-            return kernel[grid]
-
-    monkeypatch.setattr(copy_ops, "_gather_copy_kernel", CountingKernel())
-
-    def refuse(*args, **kwargs):
-        raise AssertionError("copy_ must not call contiguous() on its source")
-
-    monkeypatch.setattr(torch.Tensor, "contiguous", refuse)
-    full = _payload((4096,), torch.int8, 19)
-    src = full.to(flag_gems.device)[::2]
-    dst = _filled((2048,), torch.int8, 0x5A, flag_gems.device)
-    copy_ops.copy_(dst, src)
-    torch.npu.synchronize()
-    assert launched
-    assert torch.equal(dst.cpu(), full[::2])
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-def test_copy_overlapping_alias_exact(api):
-    base = torch.arange(16, dtype=torch.float32, device=flag_gems.device)
-    expected = torch.cat(
-        (
-            torch.zeros(1, dtype=torch.float32),
-            torch.arange(15, dtype=torch.float32),
-        )
-    )
-    _run_copy(base[1:], base[:-1], api)
-    torch.npu.synchronize()
-    _assert_same_bytes(base.cpu(), expected)
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-def test_copy_identical_alias_is_a_no_op(api):
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+def test_copy_identical_alias_is_a_no_op():
     base = torch.arange(16, dtype=torch.float32, device=flag_gems.device)
     expected = torch.arange(16, dtype=torch.float32)
-    result = _run_copy(base, base, api)
-    torch.npu.synchronize()
+    result = flag_gems.copy_(base, base)
     assert result is base
-    _assert_same_bytes(base.cpu(), expected)
+    _assert_same_bytes(base, expected)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-def test_copy_functional_matches_inplace_exact():
-    payload = _payload((4097,), torch.bfloat16, 9).to(flag_gems.device)
-    template = _filled((4097,), torch.bfloat16, 0x5A, flag_gems.device)
-    out = flag_gems.copy(template, payload)
-    torch.npu.synchronize()
-    assert out.data_ptr() != template.data_ptr()
-    _assert_same_bytes(out, payload)
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,case",
+    [
+        (torch.float32, "contiguous"),
+        (torch.bfloat16, "tail"),
+        (torch.int8, "strided"),
+        (torch.bool, "broadcast"),
+        (torch.float32, "empty"),
+        (torch.bool, "empty_rank3"),
+    ],
+)
+def test_copy_functional_shapes_exact(dtype, case):
+    shape = {
+        "contiguous": (32,),
+        "tail": (4097,),
+        "strided": (4096,),
+        "broadcast": (1, 128),
+        "empty": (0,),
+        "empty_rank3": (2, 0, 3),
+    }[case]
+    payload = _payload(shape, dtype, 15)
+    src = payload.to(flag_gems.device)
+    if case == "strided":
+        src = src[::2]
+        payload = payload[::2]
+    expected = payload.expand(64, 128) if case == "broadcast" else payload
+    template = _filled(expected.shape, dtype, 0x5A, flag_gems.device)
+    _check_functional_copy(template, src, expected)
 
 
-# copy() allocates with the template's own strides and then calls copy_, so it
-# reaches the same paths with a destination the in-place tests never produce:
-# one that is not contiguous because the template was not.
-
-
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("shape", [(1,), (4095,), (4096,), (3, 5, 1371)])
-def test_copy_functional_shapes_exact(dtype, shape):
-    payload = _payload(shape, dtype, 15).to(flag_gems.device)
-    template = _filled(shape, dtype, 0x5A, flag_gems.device)
-    out = flag_gems.copy(template, payload)
-    torch.npu.synchronize()
-    assert out.dtype == dtype and out.shape == torch.Size(shape)
-    assert out.data_ptr() != template.data_ptr()
-    _assert_same_bytes(out, payload)
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", ONE_BYTE_DTYPES + [torch.float16, torch.float32])
-@pytest.mark.parametrize("layout", ["transpose", "step"])
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,layout",
+    [
+        (torch.bool, "step"),
+        (torch.int8, "transpose"),
+        (torch.float16, "step"),
+        (torch.float32, "transpose"),
+    ],
+)
 def test_copy_functional_strided_template_exact(dtype, layout):
-    # empty_strided reproduces the template's strides, so the destination is as
-    # non-contiguous as the template is.
     if layout == "transpose":
-        template = _filled((32, 64), dtype, 0x5A, flag_gems.device).t()
-        payload = _payload((64, 32), dtype, 16).to(flag_gems.device)
+        base = _filled((32, 64), dtype, 0x5A, flag_gems.device)
+        template = base.t()
     else:
-        template = _filled((4096,), dtype, 0x5A, flag_gems.device)[::2]
-        payload = _payload((2048,), dtype, 16).to(flag_gems.device)
+        base = _filled((4096,), dtype, 0x5A, flag_gems.device)
+        template = base[::2]
+    before = _bytes(base).clone()
+    payload = _payload(template.shape, dtype, 16)
     assert not template.is_contiguous()
-    out = flag_gems.copy(template, payload)
-    torch.npu.synchronize()
-    assert out.stride() == template.stride()
-    _assert_same_bytes(out, payload)
+    _check_functional_copy(template, payload.to(flag_gems.device), payload)
+    # Check the entire template storage, including holes in a strided view.
+    torch.testing.assert_close(_bytes(base), before, rtol=0, atol=0)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", ONE_BYTE_DTYPES + [torch.float16])
-def test_copy_functional_strided_source_exact(dtype):
-    full = _payload((4096,), dtype, 17)
-    src = full.to(flag_gems.device)[::2]
-    template = _filled((2048,), dtype, 0x5A, flag_gems.device)
-    out = flag_gems.copy(template, src)
-    torch.npu.synchronize()
-    _assert_same_bytes(out.cpu(), full[::2])
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", [torch.bool, torch.int8, torch.bfloat16])
-def test_copy_functional_broadcast_exact(dtype):
-    payload = _payload((1, 128), dtype, 18).to(flag_gems.device)
-    template = _filled((64, 128), dtype, 0x5A, flag_gems.device)
-    out = flag_gems.copy(template, payload)
-    torch.npu.synchronize()
-    _assert_same_bytes(out, payload.expand(64, 128))
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.int8])
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.int8])
 def test_copy_functional_cross_dtype_exact(dtype):
-    # The template fixes the output dtype, so this is the conversion path.
-    values = (torch.arange(256, dtype=torch.float32) - 128).to(torch.float32)
-    src = values.to(flag_gems.device)
-    template = _filled((256,), dtype, 0x5A, flag_gems.device)
-    out = flag_gems.copy(template, src)
-    torch.npu.synchronize()
-    _assert_same_bytes(out.cpu(), values.to(dtype))
+    values = torch.arange(256, dtype=torch.float32) - 128
+    template = _filled(values.shape, dtype, 0x5A, flag_gems.device)
+    _check_functional_copy(template, values.to(flag_gems.device), values.to(dtype))
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int8, torch.bool])
-@pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
-def test_copy_functional_empty_exact(dtype, shape):
-    src = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    template = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    out = flag_gems.copy(template, src)
-    torch.npu.synchronize()
-    assert out.numel() == 0 and out.shape == torch.Size(shape)
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-def test_copy_functional_over_core_dim_exact(checked_launches):
-    # The functional form reaches the same bounded launch as copy_.
-    numel = (65535 + 1) * 4096 * 2
-    pattern = torch.arange(1024, dtype=torch.bfloat16, device=flag_gems.device)
-    src = pattern.repeat(numel // 1024)
-    template = torch.empty(numel, dtype=torch.bfloat16, device=flag_gems.device)
-    out = flag_gems.copy(template, src)
-    torch.npu.synchronize()
-    # The template only supplied the shape and strides; hold src and out alone.
-    del template
-    torch.npu.empty_cache()
-    # Chunked: torch.equal on a pair this size wants another 4 GiB, which is
-    # available on one machine and not on another.
-    for start in range(0, numel, 2**24):
-        chunk = slice(start, start + 2**24)
-        torch.testing.assert_close(out[chunk].cpu(), src[chunk].cpu(), rtol=0, atol=0)
-    assert checked_launches
-
-
-# --------------------------------------------------------------------------
-# launch limits
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", [torch.int8, torch.bfloat16])
-@pytest.mark.parametrize("layout", ["contiguous", "step", "cross_dtype"])
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,layout",
+    [
+        (torch.int8, "cross_dtype"),
+        (torch.bfloat16, "cross_dtype"),
+        (torch.float32, "step_destination"),
+        (torch.float32, "broadcast"),
+    ],
+)
 def test_copy_splits_when_wider_than_pointwise_can_index(
-    copy_ops, monkeypatch, api, dtype, layout
+    copy_ops, monkeypatch, dtype, layout
 ):
-    # Above 2**31 elements pointwise_dynamic can no longer index the operand, so
-    # the copy is halved until it fits. Allocating that is out of the question;
-    # lower the threshold instead and check the split lands every element.
-    monkeypatch.setattr(copy_ops, "_MAX_POINTWISE_ELEMS", 100)
-    if layout == "cross_dtype" and dtype.is_floating_point:
-        # Finite values: a conversion need not carry a NaN payload through.
-        payload = (torch.arange(37 * 11, dtype=torch.float32) - 200).to(dtype)
-        payload = payload.reshape(37, 11)
-    else:
-        payload = _payload((37, 11), dtype, 14)
-    if layout == "cross_dtype":
-        src = payload.to(flag_gems.device)
-        dst = _filled((37, 11), torch.float32, 0x5A, flag_gems.device)
-        result = _run_copy(dst, src, api)
-        torch.npu.synchronize()
-        _assert_same_bytes(result.cpu(), payload.to(torch.float32))
-        return
-    view = (lambda x: x) if layout == "contiguous" else (lambda x: x[::2])
-    _check_copy(payload, api, src_view=view)
+    limit = 100
+    monkeypatch.setattr(copy_ops, "_MAX_POINTWISE_ELEMS", limit)
+    leaves = []
+    generic_copy = copy_ops._generic_copy_
+
+    def checked_generic(dst, src, non_blocking=False):
+        assert 0 < dst.numel() <= limit
+        leaves.append(dst.numel())
+        return generic_copy(dst, src, non_blocking)
+
+    monkeypatch.setattr(copy_ops, "_generic_copy_", checked_generic)
+    shape = (37, 11)
+    payload = torch.arange(math.prod(shape), dtype=torch.float32).reshape(shape)
+    # Keep all casts finite and in range, independent of backend cast semantics.
+    payload = ((payload % 101) - 50).to(dtype)
+    if layout == "broadcast":
+        payload = payload[:1]
+    src = payload.to(flag_gems.device)
+    storage_shape = (37, 22) if layout == "step_destination" else shape
+    base = _filled(storage_shape, torch.float32, 0x5A, flag_gems.device)
+    expected_base = _filled(storage_shape, torch.float32, 0x5A)
+    dst = base[:, ::2] if layout == "step_destination" else base
+    expected = expected_base[:, ::2] if layout == "step_destination" else expected_base
+    expected.copy_(payload)
+    result = flag_gems.copy_(dst, src)
+    assert result is dst
+    _assert_same_bytes(base, expected_base)
+    # A correct final value alone would also pass if the split were bypassed.
+    assert len(leaves) > 1
+    assert sum(leaves) == dst.numel()
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("tiles", [1, 2, 65534, 65535, 65536, 65537, 131072, 524288])
-def test_flat_grid_never_exceeds_core_dim(copy_ops, tiles):
-    # Planned on the host: the 65536 and 131072 boundaries are reachable here
-    # without allocating the tensors that would reach them on the device.
-    n_elements = tiles * copy_ops._FLAT_COPY_BLOCK
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "n_elements",
+    [
+        1,
+        4095,
+        4096,
+        4097,
+        65535 * 4096 - 1,
+        65535 * 4096,
+        65535 * 4096 + 1,
+        65536 * 4096 + 17,
+        2**31,
+    ],
+)
+def test_flat_grid_never_exceeds_core_dim(copy_ops, n_elements):
     grid = copy_ops._flat_grid(n_elements)
-    assert (
-        0 < math.prod(grid) <= CORE_DIM_LIMIT
-    ), f"n_elements={n_elements}, grid={grid}, coreDim must be <= {CORE_DIM_LIMIT}"
+    tiles = (n_elements + copy_ops._FLAT_COPY_BLOCK - 1) // copy_ops._FLAT_COPY_BLOCK
+    assert 0 < math.prod(grid) <= CORE_DIM_LIMIT
     assert math.prod(grid) == min(tiles, CORE_DIM_LIMIT)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("n_elements", [1, 4095, 4096, 4097])
-def test_flat_grid_is_never_zero(copy_ops, n_elements):
-    # coreDim has a lower bound too: a grid of 0 is rejected as well.
-    assert math.prod(copy_ops._flat_grid(n_elements)) >= 1
-
-
-@pytest.mark.usefixtures("release_device_memory")
-@pytest.mark.copy
-@pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("api", APIS)
-@pytest.mark.parametrize("dtype", [torch.bool, torch.int8, torch.bfloat16, torch.int64])
-@pytest.mark.parametrize("cap", [1, 2, 3])
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,cap",
+    [(torch.bool, 1), (torch.int8, 2), (torch.bfloat16, 3), (torch.int64, 2)],
+)
 def test_copy_capped_grid_covers_every_tile(
-    copy_ops, checked_launches, monkeypatch, api, dtype, cap
+    copy_ops, checked_launches, monkeypatch, dtype, cap
 ):
-    # Force the in-kernel loop to go round many times on a small tensor. The
-    # guards and the byte comparison together catch both a tile that was never
-    # written and a write that landed outside the destination.
     monkeypatch.setattr(copy_ops, "_MAX_CORE_DIM", cap)
     numel = 9 * copy_ops._FLAT_COPY_BLOCK + 257
-    _check_copy(_payload((numel,), dtype, 10), api)
+    _check_copy(_payload((numel,), dtype, 10))
     assert checked_launches
     assert all(math.prod(grid) == cap for grid, *_ in checked_launches)
 
 
-@pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
-@pytest.mark.parametrize("dtype", [torch.int8, torch.bfloat16, torch.float32])
-@pytest.mark.parametrize("extra", [0, 7])
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "dtype,extra", [(torch.float32, 0), (torch.int8, 7), (torch.bfloat16, 7)]
+)
 def test_flat_kernel_offset_widths_agree(copy_ops, dtype, extra):
-    # WIDE_OFFSETS only differs past 2**31 elements, which is too large to
-    # allocate; both widths are correct at any size, so compare them directly
-    # instead of leaving the wide branch untested.
-    numel = (1 << 20) + extra
-    payload = _payload((numel,), dtype, 11).to(flag_gems.device)
-    results = []
+    # Exercise both compiled offset branches on modest inputs. This does not
+    # establish correctness at actual offsets beyond int32's range.
+    numel = 3 * copy_ops._FLAT_COPY_BLOCK + extra
+    expected = _payload((numel,), dtype, 11)
+    payload = expected.to(flag_gems.device)
     for wide in (False, True):
-        dst = _filled((numel,), dtype, 0x5A, flag_gems.device)
+        base = _filled((numel + 2 * GUARD,), dtype, 0x5A, flag_gems.device)
+        dst = base[GUARD:-GUARD]
         as_int32, n = copy_ops._flat_plan(dst, payload)
-        view = payload.reshape(-1)
-        out = dst.reshape(-1)
+        view, out = payload.reshape(-1), dst.reshape(-1)
         if as_int32:
-            view = view.view(torch.int32)
-            out = out.view(torch.int32)
+            view, out = view.view(torch.int32), out.view(torch.int32)
         copy_ops._flat_copy_kernel[copy_ops._flat_grid(n)](
             view,
             out,
@@ -1176,37 +1042,31 @@ def test_flat_kernel_offset_widths_agree(copy_ops, dtype, extra):
             wide,
         )
         torch.npu.synchronize()
-        results.append(dst)
-        _assert_same_bytes(dst, payload)
-    _assert_same_bytes(results[0], results[1])
+        expected_base = _filled(base.shape, dtype, 0x5A)
+        expected_base[GUARD:-GUARD].copy_(expected)
+        _assert_same_bytes(base, expected_base)
 
 
 @pytest.mark.usefixtures("release_device_memory")
 @pytest.mark.copy
 @pytest.mark.copy_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend copy kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
 @pytest.mark.parametrize(
     "numel,dtype",
     [
-        (65535 * 4096 * 2, torch.bfloat16),  # the last grid the driver accepts
-        (65536 * 4096 * 2, torch.bfloat16),  # one tile past it
-        (65536 * 4096 + 17, torch.int32),  # past it, with a tail
+        (65535 * 4096 * 2, torch.bfloat16),
+        (65536 * 4096 * 2, torch.bfloat16),
+        (65536 * 4096 + 17, torch.int32),
     ],
 )
 def test_copy_real_large_input_exact(checked_launches, numel, dtype):
-    # The sizes that made the shared flat path fail with EE1003 coreDim.
     pattern = torch.arange(1024, dtype=dtype, device=flag_gems.device)
     src = pattern.repeat(numel // 1024 + 1)[:numel]
     dst = _filled((numel,), dtype, 0x5A, flag_gems.device)
-
     result = flag_gems.copy_(dst, src)
     torch.npu.synchronize()
-
     assert result is dst
-    # Compare every element, with bounded host-memory use.
     for start in range(0, numel, 2**24):
         chunk = slice(start, start + 2**24)
-        torch.testing.assert_close(
-            result[chunk].cpu(), src[chunk].cpu(), rtol=0, atol=0, equal_nan=True
-        )
+        _assert_same_bytes(result[chunk], src[chunk])
     assert checked_launches

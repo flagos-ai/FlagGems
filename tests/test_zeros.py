@@ -126,7 +126,7 @@ def _check_inplace(base_cpu, view):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize(
     "shape",
@@ -165,7 +165,7 @@ def test_zero_inplace_boundaries_exact(checked_launches, dtype, shape):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_zero_overwrites_special_values_exact(checked_launches, dtype):
     info = torch.finfo(dtype)
@@ -191,7 +191,7 @@ def test_zero_overwrites_special_values_exact(checked_launches, dtype):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("dtype", [torch.bool, torch.int64, torch.float32])
 @pytest.mark.parametrize(
     "layout", ["transpose", "permute", "step", "column_slice", "diagonal"]
@@ -220,7 +220,7 @@ def test_zero_noncontiguous_storage_exact(checked_launches, dtype, layout):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_zero_repeated_calls_exact(checked_launches, dtype):
     inp = torch.full(
@@ -239,7 +239,7 @@ def test_zero_repeated_calls_exact(checked_launches, dtype):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("dtype", [None] + DTYPES)
 @pytest.mark.parametrize("shape", [(), (0,), (2, 0, 3), (20481,)])
 def test_zeros_factory_poisoned_allocation_exact(
@@ -271,7 +271,7 @@ def test_zeros_factory_poisoned_allocation_exact(
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("op", ["zero_", "zeros"])
 @pytest.mark.parametrize("logical_blocks", [65534, 65535, 65536, 131072])
 def test_zero_launch_core_dim_limit(zeros_ops, monkeypatch, op, logical_blocks):
@@ -315,7 +315,7 @@ def test_zero_launch_core_dim_limit(zeros_ops, monkeypatch, op, logical_blocks):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize(
     "length,dtype",
     [
@@ -348,7 +348,7 @@ def test_zero_real_large_input_exact(checked_launches, length, dtype):
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("dtype", [torch.bool, torch.int64, torch.float32])
 @pytest.mark.parametrize("layout", ["contiguous", "step", "diagonal"])
 def test_zero_capped_grid_covers_all_tiles_exact(
@@ -377,7 +377,7 @@ def test_zero_capped_grid_covers_all_tiles_exact(
 
 @pytest.mark.zeros
 @pytest.mark.zero_
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 def test_zeros_factory_capped_grid_exact(zeros_ops, checked_launches, monkeypatch):
     monkeypatch.setattr(zeros_ops, "_MAX_CORE_DIM", 2)
     shape = (9 * 32768 + 17,)

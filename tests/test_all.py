@@ -187,7 +187,7 @@ def _check_all(
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize(
     "helper,value,expected",
     [
@@ -215,7 +215,7 @@ def test_all_reduction_limits(all_ops, helper, value, expected):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", [(), (17,)])
 @pytest.mark.parametrize("has_zero", [False, True])
@@ -233,7 +233,7 @@ def test_all_scalar_and_tail_accuracy(checked_launches, dtype, shape, has_zero):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("grid_limit", [1, 3])
 @pytest.mark.parametrize("zero_index", [None, 0, 127, 128, 384, 16384, 65536])
@@ -263,7 +263,7 @@ def test_all_grid_stride_accuracy(
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("workers", [1, 3])
 def test_all_stage_one_every_tile_accuracy(all_ops, dtype, workers):
@@ -283,7 +283,7 @@ def test_all_stage_one_every_tile_accuracy(all_ops, dtype, workers):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("mid_size", [1, 127, 128, 129, 257, 513])
 @pytest.mark.parametrize("zero_location", ["none", "first", "last"])
 def test_all_stage_two_multitile_accuracy(all_ops, mid_size, zero_location):
@@ -300,7 +300,7 @@ def test_all_stage_two_multitile_accuracy(all_ops, mid_size, zero_location):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
 @pytest.mark.parametrize("length", [65535 * 4096, 65535 * 4096 + 1, 2**28 + 97])
 def test_all_real_core_dim_and_ub_limits(checked_launches, dtype, length):
@@ -328,7 +328,7 @@ def test_all_real_core_dim_and_ub_limits(checked_launches, dtype, length):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("layout", ["transpose", "slice_offset", "expand"])
 @pytest.mark.parametrize("has_zero", [False, True])
@@ -360,7 +360,7 @@ def test_all_noncontiguous_accuracy(checked_launches, dtype, layout, has_zero):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
 def test_all_empty_identity_without_launch(checked_launches, dtype, shape):
@@ -374,7 +374,7 @@ def test_all_empty_identity_without_launch(checked_launches, dtype, shape):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize(
     "special",
@@ -407,7 +407,7 @@ def test_all_floating_truth_accuracy(checked_launches, dtype, special, zero):
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", [dtype for dtype in DTYPES if dtype != torch.int64])
 @pytest.mark.parametrize("dim", [0, -1, (0, 2), (2, 0)])
 @pytest.mark.parametrize("keepdim", [False, True])
@@ -436,7 +436,7 @@ def test_all_dim_and_dims_exact_accuracy(
 @pytest.mark.all
 @pytest.mark.all_dim
 @pytest.mark.all_dims
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend reduction limits")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction limits")
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("workers", [1, 3])
 def test_all_dim_nested_loops_accuracy(all_ops, dtype, workers):

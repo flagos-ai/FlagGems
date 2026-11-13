@@ -70,7 +70,7 @@ def checked_zeros_like_launches(zeros_like_ops, monkeypatch):
 
 
 @pytest.mark.zeros_like
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 @pytest.mark.parametrize("logical_blocks", [65534, 65535, 65536, 131072])
 def test_zeros_like_launch_core_dim_limit(zeros_like_ops, monkeypatch, logical_blocks):
     # Check launch planning without allocating a multi-GiB tensor.
@@ -105,7 +105,7 @@ def test_zeros_like_launch_core_dim_limit(zeros_like_ops, monkeypatch, logical_b
 
 
 @pytest.mark.zeros_like
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
 def test_zeros_like_factory_capped_grid_exact(
     zeros_like_ops, checked_zeros_like_launches, monkeypatch
 ):

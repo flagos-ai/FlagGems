@@ -228,7 +228,7 @@ def _check_sum(inp_cpu, dim, keepdim, use_out, output_dtype=None):
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize(
     "num_tiles,expected",
     [(1, 1), (65534, 65534), (65535, 65535), (65536, 65535), (131072, 65535)],
@@ -241,7 +241,7 @@ def test_sum_launch_grid_limit(sum_ops, num_tiles, expected):
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize("dim", [(0,), (-1,), (0, 2)])
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_sum_dim_empty_output_does_not_launch(sum_ops, monkeypatch, dim, keepdim):
@@ -256,7 +256,7 @@ def test_sum_dim_empty_output_does_not_launch(sum_ops, monkeypatch, dim, keepdim
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize(
     "shape,dim",
     [
@@ -288,7 +288,7 @@ def test_sum_dim_real_core_dim_limit(
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize(
     "shape,dim",
     [
@@ -320,7 +320,7 @@ def test_sum_dim_forced_grid_stride(
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize("dim", [(0,), (-1,), (0, 2)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("use_out", [False, True])
@@ -339,7 +339,7 @@ def test_sum_dim_grid_stride_noncontiguous_dtype(
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_sum_dim_broadcast_gradient_core_dim(checked_launches, dtype):
     # Explicitly run the reduction used by ExpandBackward through the public
@@ -362,7 +362,7 @@ def test_sum_dim_broadcast_gradient_core_dim(checked_launches, dtype):
 @pytest.mark.sum_out
 @pytest.mark.sum_dim
 @pytest.mark.sum_dim_out
-@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit")
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize("use_out", [False, True])
 def test_sum_full_reduction_forced_grid_stride(
     sum_ops, monkeypatch, checked_launches, use_out

@@ -884,7 +884,8 @@ def mm(a, b):
             a = a.contiguous()
         if not b.is_contiguous():
             b = b.contiguous()
-        block_k = min(128, triton.next_power_of_2(K))
+        # Empty reductions still need a nonzero block for tl.arange.
+        block_k = min(128, triton.next_power_of_2(max(K, 1)))
         with torch_device_fn.device(device), _blockified():
             _mm_rectangular_kernel[(1,)](
                 a,
@@ -919,7 +920,7 @@ def mm(a, b):
                 K,
                 block_m,
                 block_n,
-                triton.next_power_of_2(K),
+                triton.next_power_of_2(max(K, 1)),
                 multibuffer=True,
                 unit_flag=True,
                 sync_solver=False,
