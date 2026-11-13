@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 if cfg.QUICK_MODE:
     POLAR_SHAPES = [(8, 4)]
 else:
@@ -35,6 +37,17 @@ ATOL = 1e-2
 
 
 def _reference_linalg_polar(inp):
+    # kunlunxin: the on-device reference (``torch.linalg.svd``) is unreliable
+    # without ``--ref cpu`` — CI runs without it and the device svd hung with a
+    # NOC idle timeout — so the oracle is computed on CPU and handed back on
+    # the input device.  Mirrors test_lstm_cell.py's ``_reference_safe``.
+    if IS_KUNLUNXIN:
+        dev = inp.device
+        inp = inp.detach().cpu()
+        svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
+        polar_U = svd_U @ Vh
+        polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
+        return polar_U.to(dev), (0.5 * (polar_H + polar_H.mH)).to(dev)
     svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
     polar_U = svd_U @ Vh
     polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
@@ -115,7 +128,15 @@ def test_linalg_polar_noncontiguous():
 def test_linalg_polar_empty(shape):
     inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    ref_U, ref_H = TORCH_LINALG_POLAR(ref_inp)
+    if IS_KUNLUNXIN:
+        # XPU's native bmm errors on a zero-size batch (bmm.cpp error code 7),
+        # and the empty reference is only used for shapes here, so derive the
+        # expected shapes directly instead of running the reference matmul.
+        n = shape[-1]
+        ref_U = torch.empty(shape)
+        ref_H = torch.empty((*shape[:-2], n, n))
+    else:
+        ref_U, ref_H = TORCH_LINALG_POLAR(ref_inp)
     result_U, result_H = flag_gems.linalg_polar(inp)
 
     assert result_U.shape == ref_U.shape
@@ -145,6 +166,11 @@ def test_linalg_polar_rank_deficient():
     ],
 )
 def test_linalg_polar_invalid_input(shape, dtype):
+    if IS_KUNLUNXIN and dtype == torch.float64:
+        # XPU silently downgrades float64 to float32 before the override runs,
+        # so the dtype guard in _validate_input can never fire for fp64 inputs;
+        # the case is untestable on this backend.
+        pytest.skip("float64 is silently downgraded to float32 on XPU")
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.linalg_polar(inp)

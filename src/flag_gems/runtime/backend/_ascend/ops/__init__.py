@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -30,6 +31,10 @@ from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .arccos import arccos
+from .arccos_ import arccos_
+from .arccosh_ import arccosh_
+from .arcsin import arcsin
+from .arctan import arctan
 from .arctan_ import arctan_
 from .arctanh import arctanh
 from .arctanh_out import arctanh_out
@@ -89,28 +94,42 @@ from .embedding import embedding
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
+from .eq_ import eq_
+from .erfc import erfc
+from .erfc_ import erfc_
 from .erfinv import erfinv
+from .erfinv_ import erfinv_
 from .euclidean_dist import euclidean_dist
 from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
+from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .fill_diagonal_ import fill_diagonal_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
+from .floor import floor
 from .frac import frac
+from .frac_ import frac_
 from .full import full
 from .full_like import full_like
 from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
 from .geometric import geometric, geometric_
+from .greater_ import greater_
 from .greater_equal_ import greater_equal_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
+from .gt_scalar_ import gt_scalar_
 from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
+from .hardshrink import hardshrink
+from .hardshrink_out import hardshrink_out
+from .hardsigmoid_backward import hardsigmoid_backward
+from .hardtanh_backward import hardtanh_backward
 from .hinge_embedding_loss import hinge_embedding_loss
 from .hstack import hstack
 from .igammac import igammac, igammac_out
@@ -120,10 +139,20 @@ from .index_copy_ import index_copy, index_copy_
 from .index_fill import index_fill, index_fill_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
+from .index_select_backward import index_select_backward
+from .inner import inner
+from .inverse import inverse
 from .isin import isin
 from .isposinf import isposinf
+from .kl_div import kl_div
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
+from .le_ import le_
+from .leaky_relu import leaky_relu
+from .leaky_relu_out import leaky_relu_out
+from .less_ import less_
+from .less_equal import less_equal
+from .less_equal_ import less_equal_
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
@@ -146,14 +175,23 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .linspace import linspace
+from .log1p import log1p
+from .log2 import log2
 from .log_ import log_
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .log_softmax_backward_data import log_softmax_backward_data
+from .logaddexp2 import logaddexp2
+from .logaddexp2_out import logaddexp2_out
 from .logical_not_ import logical_not_
+from .logical_xor_ import logical_xor_
+from .logit_ import logit_
+from .lt_ import lt_
+from .lt_scalar_ import lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
@@ -230,6 +268,8 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfc import special_erfc
 from .special_erfinv import special_erfinv
+from .special_expit import special_expit
+from .special_expm1 import special_expm1
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
 from .special_xlogy import special_xlogy
@@ -254,13 +294,13 @@ from .unsafe_index_put import unsafe_index_put
 from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
-from .upsample_nearest_exact3d_backward_grad_input import (
-    upsample_nearest_exact3d_backward_grad_input,
-)
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d_backward import upsample_nearest3d_backward
 from .upsample_nearest3d_backward_grad_input import (
     upsample_nearest3d_backward_grad_input,
+)
+from .upsample_nearest_exact3d_backward_grad_input import (
+    upsample_nearest_exact3d_backward_grad_input,
 )
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -282,6 +322,7 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -311,6 +352,10 @@ __all__ = [
     "arange",
     "arange_start",
     "arccos",
+    "arccos_",
+    "arccosh_",
+    "arcsin",
+    "arctan",
     "arctan_",
     "arctanh",
     "arctanh_out",
@@ -360,11 +405,17 @@ __all__ = [
     "dropout_",
     "embedding",
     "embedding_spmdm",
+    "eq_",
+    "erfc",
+    "erfc_",
     "erfinv",
+    "erfinv_",
     "euclidean_dist",
     "expand_copy",
     "exponential",
     "exponential_",
+    "feature_dropout",
+    "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
@@ -374,7 +425,9 @@ __all__ = [
     "flash_attn_varlen_opt_func",
     "flip",
     "float_power_scalar_tensor_out",
+    "floor",
     "frac",
+    "frac_",
     "full",
     "full_like",
     "functional_sym_constrain_range",
@@ -383,14 +436,20 @@ __all__ = [
     "gather_backward",
     "geometric",
     "geometric_",
+    "greater_",
     "greater_equal_",
     "group_norm",
     "group_norm_backward",
     "grouped_matmul",
     "gru",
     "gru_data",
+    "gt_scalar_",
     "gt_tensor_",
     "hadamard_transform",
+    "hardshrink",
+    "hardshrink_out",
+    "hardsigmoid_backward",
+    "hardtanh_backward",
     "hinge_embedding_loss",
     "hstack",
     "igammac",
@@ -406,10 +465,20 @@ __all__ = [
     "index_reduce_",
     "index_reduce_out",
     "index_select",
+    "index_select_backward",
+    "inner",
+    "inverse",
     "isin",
     "isposinf",
+    "kl_div",
     "l1_loss",
     "layer_norm",
+    "le_",
+    "leaky_relu",
+    "leaky_relu_out",
+    "less_",
+    "less_equal",
+    "less_equal_",
     "linalg_cross",
     "linalg_cross_out",
     "linalg_det",
@@ -437,8 +506,11 @@ __all__ = [
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linalg_tensorinv",
     "linear",
     "linspace",
+    "log1p",
+    "log2",
     "log_",
     "log_normal",
     "log_sigmoid_backward",
@@ -447,7 +519,13 @@ __all__ = [
     "log_softmax_backward",
     "log_softmax_backward_data",
     "log_softmax_out",
+    "logaddexp2",
+    "logaddexp2_out",
     "logical_not_",
+    "logical_xor_",
+    "logit_",
+    "lt_",
+    "lt_scalar_",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -550,6 +628,8 @@ __all__ = [
     "sparse_sampled_addmm_out",
     "special_erfc",
     "special_erfinv",
+    "special_expit",
+    "special_expm1",
     "special_log1p_out",
     "special_logit_out",
     "special_xlogy",
@@ -574,10 +654,10 @@ __all__ = [
     "unsafe_index_put",
     "unsafe_masked_index",
     "upsample_linear1d_backward",
-    "upsample_nearest_exact3d_backward_grad_input",
     "upsample_nearest2d",
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
+    "upsample_nearest_exact3d_backward_grad_input",
     "var_mean",
     "vector_norm",
     "view_copy",

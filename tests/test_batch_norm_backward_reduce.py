@@ -22,6 +22,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].
 SHAPES = [
@@ -32,6 +34,26 @@ SHAPES = [
     (64, 128, 28, 28),
     (16, 256, 14, 14),
 ]
+
+
+def _ref_batch_norm_backward_reduce(
+    grad_out, inp, mean, invstd, weight, input_g, weight_g, bias_g
+):
+    shape = [1] * grad_out.ndim
+    shape[1] = -1
+    reduce_dims = tuple(i for i in range(grad_out.ndim) if i != 1)
+    grad_out_f = grad_out.float()
+    xmu = inp.float() - mean.reshape(shape)
+    invstd_r = invstd.reshape(shape)
+    sum_dy = grad_out_f.sum(dim=reduce_dims) if input_g else None
+    sum_dy_xmu = (grad_out_f * xmu).sum(dim=reduce_dims) if input_g else None
+    grad_weight = (
+        (grad_out_f * xmu * invstd_r).sum(dim=reduce_dims).to(grad_out.dtype)
+        if weight_g
+        else None
+    )
+    grad_bias = grad_out_f.sum(dim=reduce_dims).to(grad_out.dtype) if bias_g else None
+    return sum_dy, sum_dy_xmu, grad_weight, grad_bias
 
 
 @pytest.mark.batch_norm_backward_reduce
@@ -60,27 +82,35 @@ def test_accuracy_batch_norm_backward_reduce(shape, dtype, input_g, weight_g, bi
     # We do NOT upcast because this op has no CPU backend and upcasting would
     # compare a high-precision reference against a low-precision kernel result,
     # where the precision gap of the *inputs* (not the implementation) dominates.
-    ref_out = torch.batch_norm_backward_reduce(
-        grad_output,
-        inp,
-        mean,
-        invstd,
-        weight,
-        input_g,
-        weight_g,
-        bias_g,
-    )
+    if IS_KUNLUNXIN:
+        ref_out = _ref_batch_norm_backward_reduce(
+            grad_output, inp, mean, invstd, weight, input_g, weight_g, bias_g
+        )
+        res_out = flag_gems.batch_norm_backward_reduce(
+            grad_output, inp, mean, invstd, weight, input_g, weight_g, bias_g
+        )
+    else:
+        ref_out = torch.batch_norm_backward_reduce(
+            grad_output,
+            inp,
+            mean,
+            invstd,
+            weight,
+            input_g,
+            weight_g,
+            bias_g,
+        )
 
-    res_out = torch.batch_norm_backward_reduce(
-        grad_output,
-        inp,
-        mean,
-        invstd,
-        weight,
-        input_g,
-        weight_g,
-        bias_g,
-    )
+        res_out = torch.batch_norm_backward_reduce(
+            grad_output,
+            inp,
+            mean,
+            invstd,
+            weight,
+            input_g,
+            weight_g,
+            bias_g,
+        )
 
     reduce_dim = math.prod(shape) // C
 
