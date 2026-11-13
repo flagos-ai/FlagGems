@@ -16,7 +16,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import inverse
 
 from . import base
 
@@ -66,5 +65,5 @@ def test_inverse():
         torch_op=torch.inverse,
         dtypes=INVERSE_DTYPES,
     )
-    bench.set_gems(inverse)
+    bench.set_gems(lambda matrix: flag_gems.inverse(matrix))
     bench.run()
