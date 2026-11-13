@@ -356,3 +356,77 @@ def test_index_int32_offset_overflow():
     ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
     out_t = flag_gems.index(inp.t(), [None, idx])
     utils.gems_assert_close(out_t, ref_out_t, torch.int8)
+
+
+def _index_strided_view(raw, layout):
+    if layout == "transpose":
+        return raw.transpose(0, 1)
+    if layout == "offset_permute":
+        return raw[1:5].permute(2, 0, 1)
+    return raw[1:5:2, 1:6:2, 1:8:2]
+
+
+@pytest.mark.index
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32]
+)
+@pytest.mark.parametrize("layout", ["transpose", "offset_permute", "slice"])
+@pytest.mark.parametrize("mode", ["single", "paired", "broadcast"])
+def test_index_noncontiguous_leading(dtype, layout, mode):
+    cpu_raw = (torch.arange(6 * 7 * 8) % 97).reshape(6, 7, 8).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    inp = _index_strided_view(raw, layout)
+    cpu = _index_strided_view(cpu_raw, layout)
+    cpu_indices = [torch.tensor([0, inp.size(0) - 1])]
+    if mode != "single":
+        cpu_indices.append(torch.tensor([0, inp.size(1) - 1]))
+    if mode == "broadcast":
+        cpu_indices = [cpu_indices[0][:, None], cpu_indices[1][None, :]]
+    expected = torch.ops.aten.index.Tensor(cpu, cpu_indices)
+    indices = [item.to(inp.device) for item in cpu_indices]
+    actual = flag_gems.index(inp, indices)
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(raw.cpu(), cpu_raw)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_index_noncontiguous_negative(dtype, layout):
+    cpu_raw = (torch.arange(6 * 7 * 8) % 97).reshape(6, 7, 8).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    cpu = _index_strided_view(cpu_raw, layout)
+    cpu_indices = [torch.tensor([-1, 0]), torch.tensor([-1, 0])]
+    actual = flag_gems.index(
+        _index_strided_view(raw, layout), [i.to(raw.device) for i in cpu_indices]
+    )
+    utils.gems_assert_equal(actual.cpu(), torch.ops.aten.index.Tensor(cpu, cpu_indices))
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Requires Ascend NPUGraph capture and replay",
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_index_noncontiguous_graph(dtype, layout):
+    cpu_raw = (torch.arange(6 * 7 * 8) % 97).reshape(6, 7, 8).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    inp = _index_strided_view(raw, layout)
+    index = torch.tensor([0, inp.size(0) - 1], device=inp.device)
+    flag_gems.index(inp, [index])
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.index(inp, [index])
+    for updated, positions in ((-cpu_raw, [inp.size(0) - 1, 0]), (cpu_raw + 2, [0, 1])):
+        raw.copy_(updated)
+        index.copy_(torch.tensor(positions))
+        actual.fill_(-123)
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.ops.aten.index.Tensor(
+            _index_strided_view(updated, layout), [torch.tensor(positions)]
+        )
+        utils.gems_assert_equal(actual.cpu(), expected)
+        utils.gems_assert_equal(raw.cpu(), updated)
