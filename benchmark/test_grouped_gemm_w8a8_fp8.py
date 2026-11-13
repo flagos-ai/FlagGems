@@ -35,8 +35,10 @@ class GroupedFP8Benchmark(ParallelBenchmarkMixin, Benchmark):
         for shape in self.shapes:
             if len(shape) == 5:
                 m, n, k, experts, lengths = shape
-                if len(lengths) != experts or sum(lengths) != m or any(
-                    length < 0 for length in lengths
+                if (
+                    len(lengths) != experts
+                    or sum(lengths) != m
+                    or any(length < 0 for length in lengths)
                 ):
                     raise ValueError(
                         "expert row lengths must be nonnegative and match M and E"
