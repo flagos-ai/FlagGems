@@ -39,6 +39,13 @@ MULTICAST_ON = (
     MTHREADS_GEMM_COMPILER_OPTIONS_VERSION >= 2
     and MTHREADS_TLE_CONSUMER_SYNC_VERSION >= 1
 )
+# Resolve optional TME hints at import time; older SDKs do not export this type.
+A_CACHE_POLICY = tl.constexpr(
+    TMECachePolicy(inner="normal", outer="persist") if MULTICAST_ON else None
+)
+B_CACHE_POLICY = tl.constexpr(
+    TMECachePolicy(inner="normal", outer="normal") if MULTICAST_ON else None
+)
 logger = logging.getLogger(__name__)
 CONSUMER_WARPS = 8
 PRODUCER_WARPS = 4
@@ -230,14 +237,14 @@ def grouped_fp8_producer(
                     slot.a,
                     (BM, 256),
                     (pm, block * 256),
-                    cache_policy=TMECachePolicy(inner="normal", outer="persist"),
+                    cache_policy=A_CACHE_POLICY,
                 )
                 tle.gpu.copy(
                     B,
                     slot.b,
                     (BN, 256),
                     (expert * N + pn * BN, block * 256),
-                    cache_policy=TMECachePolicy(inner="normal", outer="normal"),
+                    cache_policy=B_CACHE_POLICY,
                 )
             else:
                 tle.gpu.copy(A, slot.a, (BM, 128), (pm, block * 128))
