@@ -15,8 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.ops.upsample_lanczos2d_aa import (
-    _upsample_lanczos2d_aa,
     _upsample_lanczos2d_aa_out,
     _upsample_lanczos2d_aa_vec,
 )
@@ -114,7 +114,7 @@ def test_upsample_lanczos2d_aa():
         input_fn=_input_fn,
         op_name="upsample_lanczos2d_aa",
         torch_op=_composite_reference,
-        gems_op=_upsample_lanczos2d_aa,
+        gems_op=lambda *args: flag_gems._upsample_lanczos2d_aa(*args),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
