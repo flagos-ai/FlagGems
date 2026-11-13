@@ -57,9 +57,11 @@ def test_masked_select_backward():
     bench = MaskedSelectBackwardBenchmark(
         op_name="masked_select_backward",
         torch_op=torch.ops.aten.masked_select_backward.default,
-        gems_op=flag_gems.masked_select_backward,
         input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
+    )
+    bench.set_gems(
+        lambda *args, **kwargs: flag_gems.masked_select_backward(*args, **kwargs)
     )
     bench.run()
