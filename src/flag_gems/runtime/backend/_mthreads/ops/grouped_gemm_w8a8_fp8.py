@@ -27,10 +27,12 @@ try:
     from triton.experimental.tle.language.gpu.mthreads import (
         MTHREADS_GEMM_COMPILER_OPTIONS_VERSION,
         MTHREADS_TLE_CONSUMER_SYNC_VERSION,
+        TMECachePolicy,
     )
 except ImportError:
     MTHREADS_GEMM_COMPILER_OPTIONS_VERSION = 0
     MTHREADS_TLE_CONSUMER_SYNC_VERSION = 0
+    TMECachePolicy = None
 
 # Named readers need CTA-wide initialization and per-epoch consumer rendezvous.
 MULTICAST_ON = (
@@ -228,18 +230,14 @@ def grouped_fp8_producer(
                     slot.a,
                     (BM, 256),
                     (pm, block * 256),
-                    cache_policy=tle.gpu.mthreads.TMECachePolicy(
-                        inner="normal", outer="persist"
-                    ),
+                    cache_policy=TMECachePolicy(inner="normal", outer="persist"),
                 )
                 tle.gpu.copy(
                     B,
                     slot.b,
                     (BN, 256),
                     (expert * N + pn * BN, block * 256),
-                    cache_policy=tle.gpu.mthreads.TMECachePolicy(
-                        inner="normal", outer="normal"
-                    ),
+                    cache_policy=TMECachePolicy(inner="normal", outer="normal"),
                 )
             else:
                 tle.gpu.copy(A, slot.a, (BM, 128), (pm, block * 128))
@@ -320,9 +318,11 @@ def grouped_fp8_consumer(
                 )
                 acc += partial * sa[:, None] * sb[None, :]
             if K_BLOCKS == 2:
-                # Every consumer warp must finish both subviews before releasing their shared slot.
-                tle.gpu.barrier_arrive(reader_sync[0], phaseIdx=sequence % 2)
-                tle.gpu.barrier_wait(reader_sync[0], phaseIdx=sequence % 2)
+                # The pipe tracks every slot release. Rendezvous once per two turns
+                # of the three-slot ring to limit skew without stalling each dot pair.
+                if (sequence + 1) % 6 == 0:
+                    tle.gpu.barrier_arrive(reader_sync[0], phaseIdx=(sequence // 6) % 2)
+                    tle.gpu.barrier_wait(reader_sync[0], phaseIdx=(sequence // 6) % 2)
             reader.release(sequence)
             sequence += 1
         valid = (rows >= pm) & (tl.load(Groups + rows, rows < M, -1) == expert)
