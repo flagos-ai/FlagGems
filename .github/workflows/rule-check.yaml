@@ -42,6 +42,8 @@ jobs:
     # flaky network (injected proxy wedges git fetches ~1/3 of the time).
     # Standard actions/checkout connects directly to GitHub; no proxy needed.
     runs-on: ubuntu-latest
+    # Hard cap so a wedged step cannot hold a shared GitHub-hosted runner.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -71,7 +73,19 @@ jobs:
       - name: Install pre-commit and pyyaml
         run: pip install "pre-commit==4.2.0" "pyyaml==6.0.2"
 
-      - name: Run pre-commit (code style)
+      # On PRs lint only the files the PR touched; hooks with pass_filenames:
+      # false still run when a file matching their `files:` regex changed. The
+      # whole tree is linted on push to master, so anything that slips through
+      # is still caught there.
+      - name: Run pre-commit (code style, changed files)
+        if: github.event_name == 'pull_request'
+        run: |
+          pre-commit run --show-diff-on-failure --color=always \
+            --from-ref "${{ github.event.pull_request.base.sha }}" \
+            --to-ref "${{ github.event.pull_request.head.sha }}"
+
+      - name: Run pre-commit (code style, all files)
+        if: github.event_name != 'pull_request'
         run: pre-commit run --show-diff-on-failure --color=always --all-files
 
       # rule-check steps only make sense on pull_request events (they need a
@@ -98,6 +112,15 @@ jobs:
         if: github.event_name == 'pull_request'
         continue-on-error: true
         run: python3 tools/ci_checks/check_init_exports.py
+
+      # Runs on every PR (not only operator changes): renaming or removing a
+      # shared symbol in utils/, runtime/ or ops/ can break vendor backends
+      # whose own CI is never triggered. Needs no hardware.
+      - name: Check vendor backend imports against shared code
+        id: check-backend-imports
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: python3 tools/ci_checks/check_backend_imports.py
 
       - name: Check changed test files for use_gems
         id: check-kernelgen-tests
@@ -145,7 +168,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           failed=0
-          for step_id in check-operators-yaml check-init-exports check-kernelgen-tests check-operator-markers check-aten-operators; do
+          for step_id in check-operators-yaml check-init-exports check-backend-imports check-kernelgen-tests check-operator-markers check-aten-operators; do
             result=$(echo "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
             echo "$step_id: $result"
             if [ "$result" = "failure" ]; then
