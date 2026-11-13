@@ -1,0 +1,5753 @@
+[
+  {
+    "row": 2,
+    "model": "Protenix",
+    "description": "FP32 · [60025,128] + [128,128]",
+    "fg_us": 195.2,
+    "das_us": 84,
+    "ratio": "43.03%",
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "contiguous": true,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [
+            60025,
+            128
+          ],
+          "storage_alias": "storage_0",
+          "storage_offset": 0,
+          "stride": [
+            128,
+            1
+          ]
+        },
+        {
+          "contiguous": false,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": true,
+          "shape": [
+            128,
+            128
+          ],
+          "storage_alias": "storage_1",
+          "storage_offset": 0,
+          "stride": [
+            1,
+            128
+          ]
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 3,
+    "model": "MACE",
+    "description": "FP64 · [1344,128] + [128,128]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1344,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 49152,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 4,
+    "model": "MACE",
+    "description": "FP64 · [1344,256] + [256,128]",
+    "fg_us": 118.72,
+    "das_us": 19.36,
+    "ratio": 0.1631,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1344,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 131072,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 5,
+    "model": "MACE",
+    "description": "FP64 · [192,11392] + [11392,128]",
+    "fg_us": 4439.682,
+    "das_us": 135.68,
+    "ratio": 0.0306,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            11392
+          ],
+          "stride": [
+            11392,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            11392,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 6,
+    "model": "MACE",
+    "description": "FP64 · [192,128] + [128,128]",
+    "fg_us": 64.96,
+    "das_us": 10.08,
+    "ratio": 0.1552,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 7,
+    "model": "MACE",
+    "description": "FP64 · [192,128] + [128,16]",
+    "fg_us": 71.68,
+    "das_us": 9.92,
+    "ratio": 0.1384,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            16
+          ],
+          "stride": [
+            16,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 8,
+    "model": "MACE",
+    "description": "FP64 · [192,128] + [128,1]",
+    "fg_us": 74.88,
+    "das_us": 11.04,
+    "ratio": 0.1474,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            128
+          ],
+          "stride": [
+            512,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 9,
+    "model": "MACE",
+    "description": "FP64 · [192,16] + [16,1]",
+    "fg_us": 27.84,
+    "das_us": 6.24,
+    "ratio": 0.2241,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            16
+          ],
+          "stride": [
+            16,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            16,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 10,
+    "model": "MACE",
+    "description": "FP64 · [192,256] + [256,128]",
+    "fg_us": 121.28,
+    "das_us": 12.64,
+    "ratio": 0.1042,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            256
+          ],
+          "stride": [
+            5120,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 11,
+    "model": "MACE",
+    "description": "FP64 · [192,89] + [89,128]",
+    "fg_us": 65.28,
+    "das_us": 9.12,
+    "ratio": 0.1397,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            89
+          ],
+          "stride": [
+            89,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            89,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 12,
+    "model": "MACE",
+    "description": "FP64 · [192,89] + [89,1]",
+    "fg_us": 80.64,
+    "das_us": 9.92,
+    "ratio": 0.123,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            89
+          ],
+          "stride": [
+            89,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            89,
+            1
+          ],
+          "stride": [
+            1,
+            89
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 13,
+    "model": "MACE",
+    "description": "FP64 · [192,89] + [89,2944]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            89
+          ],
+          "stride": [
+            89,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            89,
+            2944
+          ],
+          "stride": [
+            2944,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 14,
+    "model": "MACE",
+    "description": "FP64 · [192,89] + [89,512]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            89
+          ],
+          "stride": [
+            89,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            89,
+            512
+          ],
+          "stride": [
+            512,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 15,
+    "model": "MACE",
+    "description": "FP64 · [192,89] + [89,6528]",
+    "fg_us": 220.16,
+    "das_us": 25.76,
+    "ratio": 0.117,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            89
+          ],
+          "stride": [
+            89,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            89,
+            6528
+          ],
+          "stride": [
+            6528,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 16,
+    "model": "MACE",
+    "description": "FP64 · [192,89] + [89,768]",
+    "fg_us": 56.96,
+    "das_us": 10.88,
+    "ratio": 0.191,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            192,
+            89
+          ],
+          "stride": [
+            89,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            89,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 17,
+    "model": "MACE",
+    "description": "FP64 · [2208,10] + [10,64]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2208,
+            10
+          ],
+          "stride": [
+            10,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            10,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 18,
+    "model": "MACE",
+    "description": "FP64 · [2208,3] + [3,15]",
+    "fg_us": 23.36,
+    "das_us": 5.28,
+    "ratio": 0.226,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2208,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            15
+          ],
+          "stride": [
+            15,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 19,
+    "model": "MACE",
+    "description": "FP64 · [2208,64] + [64,1280]",
+    "fg_us": 312.32,
+    "das_us": 37.6,
+    "ratio": 0.1204,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2208,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            64,
+            1280
+          ],
+          "stride": [
+            1280,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 20,
+    "model": "MACE",
+    "description": "FP64 · [2208,64] + [64,512]",
+    "fg_us": 132,
+    "das_us": 20.32,
+    "ratio": 0.1539,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2208,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            64,
+            512
+          ],
+          "stride": [
+            512,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 21,
+    "model": "MACE",
+    "description": "FP64 · [2208,64] + [64,64]",
+    "fg_us": 36.96,
+    "das_us": 8.96,
+    "ratio": 0.2424,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2208,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            64,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 22,
+    "model": "MACE",
+    "description": "FP64 · [2208,7] + [7,15]",
+    "fg_us": 30.24,
+    "das_us": 5.12,
+    "ratio": 0.1693,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2208,
+            7
+          ],
+          "stride": [
+            7,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            7,
+            15
+          ],
+          "stride": [
+            1,
+            7
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 23,
+    "model": "MACE",
+    "description": "FP64 · [24576,1] + [1,16]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            24576,
+            1
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            16
+          ],
+          "stride": [
+            16,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 24,
+    "model": "MACE",
+    "description": "FP64 · [24576,1] + [1,48]",
+    "fg_us": 102.4,
+    "das_us": 16.64,
+    "ratio": 0.1625,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            24576,
+            1
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            48
+          ],
+          "stride": [
+            48,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 25,
+    "model": "MACE",
+    "description": "FP64 · [24576,368] + [368,256]",
+    "fg_us": 3171.681,
+    "das_us": 234.72,
+    "ratio": 0.074,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            24576,
+            368
+          ],
+          "stride": [
+            368,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            368,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 26,
+    "model": "MACE",
+    "description": "FP64 · [24576,4] + [4,256]",
+    "fg_us": 554.08,
+    "das_us": 111.84,
+    "ratio": 0.2018,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            24576,
+            4
+          ],
+          "stride": [
+            4,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            4,
+            256
+          ],
+          "stride": [
+            1,
+            4
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 27,
+    "model": "MACE",
+    "description": "FP64 · [24576,6] + [6,768]",
+    "fg_us": 1549.76,
+    "das_us": 283.04,
+    "ratio": 0.1826,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            24576,
+            6
+          ],
+          "stride": [
+            6,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            6,
+            768
+          ],
+          "stride": [
+            1,
+            6
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 28,
+    "model": "MACE",
+    "description": "FP64 · [24576,816] + [816,768]",
+    "fg_us": 20105.128,
+    "das_us": 1421.12,
+    "ratio": 0.0707,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            24576,
+            816
+          ],
+          "stride": [
+            816,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            816,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 29,
+    "model": "MACE",
+    "description": "FP64 · [282624,15] + [15,3]",
+    "fg_us": 931.84,
+    "das_us": 53.28,
+    "ratio": 0.0572,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            282624,
+            15
+          ],
+          "stride": [
+            15,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            15,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 30,
+    "model": "MACE",
+    "description": "FP64 · [282624,15] + [15,7]",
+    "fg_us": 942.72,
+    "das_us": 57.76,
+    "ratio": 0.0613,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            282624,
+            15
+          ],
+          "stride": [
+            15,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            15,
+            7
+          ],
+          "stride": [
+            7,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 31,
+    "model": "MACE",
+    "description": "FP64 · [576,128] + [128,128]",
+    "fg_us": 63.04,
+    "das_us": 8.96,
+    "ratio": 0.1421,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            576,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 16384,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 32,
+    "model": "MACE",
+    "description": "FP64 · [576,384] + [384,128]",
+    "fg_us": 168.48,
+    "das_us": 23.52,
+    "ratio": 0.1396,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            576,
+            384
+          ],
+          "stride": [
+            384,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            384,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 32768,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 33,
+    "model": "MACE",
+    "description": "FP64 · [960,128] + [128,128]",
+    "fg_us": 62.72,
+    "das_us": 11.36,
+    "ratio": 0.1811,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            960,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 32768,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 34,
+    "model": "MACE",
+    "description": "FP64 · [960,384] + [384,128]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            960,
+            384
+          ],
+          "stride": [
+            384,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            384,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 81920,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 35,
+    "model": "DPA-3",
+    "description": "FP32 · [100,128] + [128,128]",
+    "fg_us": 18.4,
+    "das_us": 7.52,
+    "ratio": 0.4087,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            100,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 36,
+    "model": "DPA-3",
+    "description": "FP32 · [100,128] + [128,64]",
+    "fg_us": 18.56,
+    "das_us": 6.88,
+    "ratio": 0.3707,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            100,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 37,
+    "model": "DPA-3",
+    "description": "FP32 · [100,32] + [32,32]",
+    "fg_us": 12,
+    "das_us": 4.8,
+    "ratio": 0.4,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            100,
+            32
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            32
+          ],
+          "stride": [
+            32,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 1024,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 38,
+    "model": "DPA-3",
+    "description": "FP32 · [100,32] + [32,64]",
+    "fg_us": 14.56,
+    "das_us": 4.96,
+    "ratio": 0.3407,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            100,
+            32
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2048,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 39,
+    "model": "DPA-3",
+    "description": "FP32 · [118,118] + [118,128]",
+    "fg_us": 21.12,
+    "das_us": 6.4,
+    "ratio": 0.303,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            118,
+            118
+          ],
+          "stride": [
+            118,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            118,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 40,
+    "model": "DPA-3",
+    "description": "FP32 · [27,3] + [3,3]",
+    "fg_us": 15.36,
+    "das_us": 6.08,
+    "ratio": 0.3958,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            27,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 41,
+    "model": "DPA-3",
+    "description": "FP32 · [28852,1] + [1,32]",
+    "fg_us": 20.16,
+    "das_us": 12.32,
+    "ratio": 0.6111,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            28852,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            32
+          ],
+          "stride": [
+            32,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 42,
+    "model": "DPA-3",
+    "description": "FP32 · [28852,32] + [32,32]",
+    "fg_us": 28.8,
+    "das_us": 12.48,
+    "ratio": 0.4333,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            28852,
+            32
+          ],
+          "stride": [
+            32,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            32
+          ],
+          "stride": [
+            32,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 43,
+    "model": "DPA-3",
+    "description": "FP32 · [28852,32] + [32,64]",
+    "fg_us": 38.08,
+    "das_us": 16.48,
+    "ratio": 0.4328,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            28852,
+            32
+          ],
+          "stride": [
+            32,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 44,
+    "model": "DPA-3",
+    "description": "FP32 · [3122,32] + [32,32]",
+    "fg_us": 9.76,
+    "das_us": 5.28,
+    "ratio": 0.541,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            3122,
+            32
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            32
+          ],
+          "stride": [
+            32,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2048,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 45,
+    "model": "DPA-3",
+    "description": "FP32 · [3122,32] + [32,64]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            3122,
+            32
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 4096,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 46,
+    "model": "DPA-3",
+    "description": "FP32 · [3122,64] + [64,128]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            3122,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            64,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 32768,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 47,
+    "model": "DPA-3",
+    "description": "FP32 · [3122,64] + [64,64]",
+    "fg_us": 14.72,
+    "das_us": 8.32,
+    "ratio": 0.5652,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            3122,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            64,
+            64
+          ],
+          "stride": [
+            64,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 16384,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 48,
+    "model": "GenScore",
+    "description": "FP32 · [1220,128] + [128,128]",
+    "fg_us": 7.28,
+    "das_us": 7.52,
+    "ratio": 1.0053140096618358,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            1220,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 49,
+    "model": "GenScore",
+    "description": "FP32 · [1220,128] + [128,256]",
+    "fg_us": 8,
+    "das_us": 8.56,
+    "ratio": 1.0745098039215686,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            1220,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            256
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 50,
+    "model": "GenScore",
+    "description": "FP32 · [1220,256] + [256,128]",
+    "fg_us": 10.4,
+    "das_us": 10,
+    "ratio": 0.9576923076923078,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            1220,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 51,
+    "model": "GenScore",
+    "description": "FP32 · [126636,128] + [128,128]",
+    "fg_us": 188.07999999999998,
+    "das_us": 157.51999999999998,
+    "ratio": 0.8583967831597206,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            126636,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 52,
+    "model": "GenScore",
+    "description": "FP32 · [126636,128] + [128,256]",
+    "fg_us": 310.72,
+    "das_us": 227.84,
+    "ratio": 0.739507054461263,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            126636,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            256
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 53,
+    "model": "GenScore",
+    "description": "FP32 · [126636,256] + [256,128]",
+    "fg_us": 270.4,
+    "das_us": 256.16,
+    "ratio": 0.9601291337018982,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            126636,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 54,
+    "model": "GenScore",
+    "description": "FP32 · [2806,128] + [128,128]",
+    "fg_us": 8.8,
+    "das_us": 10.4,
+    "ratio": 1.1719967532467532,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2806,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 55,
+    "model": "GenScore",
+    "description": "FP32 · [2806,128] + [128,256]",
+    "fg_us": 11.12,
+    "das_us": 12.4,
+    "ratio": 1.0937370600414078,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2806,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            256
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 56,
+    "model": "GenScore",
+    "description": "FP32 · [2806,256] + [256,128]",
+    "fg_us": 14,
+    "das_us": 13.44,
+    "ratio": 0.9621497103673289,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2806,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 57,
+    "model": "GenScore",
+    "description": "FP32 · [4819,128] + [128,128]",
+    "fg_us": 10.24,
+    "das_us": 9.84,
+    "ratio": 0.9647836538461538,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            4819,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 58,
+    "model": "GenScore",
+    "description": "FP32 · [4819,128] + [128,256]",
+    "fg_us": 14.88,
+    "das_us": 13.68,
+    "ratio": 0.953809196980096,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            4819,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            128,
+            256
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 59,
+    "model": "GenScore",
+    "description": "FP32 · [4819,256] + [256,128]",
+    "fg_us": 16.560000000000002,
+    "das_us": 14.64,
+    "ratio": 0.8835715619332124,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            4819,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        },
+        {
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": false,
+          "requires_grad": true,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 60,
+    "model": "La-Proteina",
+    "description": "FP32 · [1024,157] + [157,256]",
+    "fg_us": 21.76,
+    "das_us": 13.6,
+    "ratio": 0.625,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1024,
+            157
+          ],
+          "stride": [
+            157,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            157,
+            256
+          ],
+          "stride": [
+            1,
+            157
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 61,
+    "model": "La-Proteina",
+    "description": "FP32 · [1024,217] + [217,256]",
+    "fg_us": 24.8,
+    "das_us": 13.92,
+    "ratio": 0.5613,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1024,
+            217
+          ],
+          "stride": [
+            217,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            217,
+            256
+          ],
+          "stride": [
+            1,
+            217
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 62,
+    "model": "La-Proteina",
+    "description": "FP32 · [1024,256] + [256,12]",
+    "fg_us": 20.48,
+    "das_us": 9.12,
+    "ratio": 0.4453,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1024,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            12
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 63,
+    "model": "La-Proteina",
+    "description": "FP32 · [1024,256] + [256,256]",
+    "fg_us": 23.04,
+    "das_us": 13.44,
+    "ratio": 0.5833,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1024,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            256
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 64,
+    "model": "La-Proteina",
+    "description": "FP32 · [1024,512] + [512,256]",
+    "fg_us": 35.2,
+    "das_us": 20,
+    "ratio": 0.5682,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1024,
+            512
+          ],
+          "stride": [
+            512,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            512,
+            256
+          ],
+          "stride": [
+            1,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 65,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,11] + [11,768]",
+    "fg_us": 11.84,
+    "das_us": 4.96,
+    "ratio": 0.4189,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            11
+          ],
+          "stride": [
+            11,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            11,
+            768
+          ],
+          "stride": [
+            1,
+            11
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 66,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,128] + [128,512]",
+    "fg_us": 17.44,
+    "das_us": 5.6,
+    "ratio": 0.3211,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            512
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 67,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,128] + [128,768]",
+    "fg_us": 14.56,
+    "das_us": 6.08,
+    "ratio": 0.4176,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            768
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 68,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,256] + [256,1024]",
+    "fg_us": 20.8,
+    "das_us": 9.92,
+    "ratio": 0.4769,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            1024
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 69,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,256] + [256,128]",
+    "fg_us": 24.64,
+    "das_us": 7.36,
+    "ratio": 0.2987,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            128
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 70,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,256] + [256,768]",
+    "fg_us": 23.52,
+    "das_us": 9.6,
+    "ratio": 0.4082,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            256
+          ],
+          "stride": [
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            256,
+            768
+          ],
+          "stride": [
+            1,
+            256
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 71,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,3072] + [3072,768]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            3072
+          ],
+          "stride": [
+            3072,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3072,
+            768
+          ],
+          "stride": [
+            1,
+            3072
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 72,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,45] + [45,768]",
+    "fg_us": 19.52,
+    "das_us": 5.92,
+    "ratio": 0.3033,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            45
+          ],
+          "stride": [
+            45,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            45,
+            768
+          ],
+          "stride": [
+            1,
+            45
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 73,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,512] + [512,256]",
+    "fg_us": 35.36,
+    "das_us": 10.72,
+    "ratio": 0.3032,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            512
+          ],
+          "stride": [
+            512,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            512,
+            256
+          ],
+          "stride": [
+            1,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 74,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,768] + [768,111]",
+    "fg_us": 46.08,
+    "das_us": 15.36,
+    "ratio": 0.3333,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            111
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 75,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,768] + [768,20]",
+    "fg_us": 47.68,
+    "das_us": 16.64,
+    "ratio": 0.349,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            20
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 76,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,768] + [768,3]",
+    "fg_us": 47.84,
+    "das_us": 16.16,
+    "ratio": 0.3378,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            3
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 77,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,768] + [768,512]",
+    "fg_us": 46.88,
+    "das_us": 14.56,
+    "ratio": 0.3106,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            512
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 78,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,768] + [768,6144]",
+    "fg_us": 51.84,
+    "das_us": 31.36,
+    "ratio": 0.6049,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            6144
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 79,
+    "model": "La-Proteina",
+    "description": "FP32 · [32,768] + [768,8]",
+    "fg_us": 47.36,
+    "das_us": 17.12,
+    "ratio": 0.3615,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            32,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            8
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 80,
+    "model": "MatterSim",
+    "description": "FP32 · [2,128] + [128,128]",
+    "fg_us": 17.12,
+    "das_us": 7.36,
+    "ratio": 0.4299,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 81,
+    "model": "MatterSim",
+    "description": "FP32 · [2,16] + [16,128]",
+    "fg_us": 10.24,
+    "das_us": 7.04,
+    "ratio": 0.6875,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2,
+            16
+          ],
+          "stride": [
+            16,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            16,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 82,
+    "model": "MatterSim",
+    "description": "FP32 · [2,1] + [1,128]",
+    "fg_us": 10.88,
+    "das_us": 7.04,
+    "ratio": 0.6471,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            1,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 83,
+    "model": "MatterSim",
+    "description": "FP32 · [2,95] + [95,128]",
+    "fg_us": 22.08,
+    "das_us": 8.96,
+    "ratio": 0.4058,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            2,
+            95
+          ],
+          "stride": [
+            95,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            95,
+            128
+          ],
+          "stride": [
+            1,
+            95
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 84,
+    "model": "MatterSim",
+    "description": "FP32 · [4,128] + [128,56]",
+    "fg_us": 18.56,
+    "das_us": 7.36,
+    "ratio": 0.3966,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            4,
+            128
+          ],
+          "stride": [
+            1,
+            4
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            128,
+            56
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 85,
+    "model": "MatterSim",
+    "description": "FP32 · [56,128] + [128,128]",
+    "fg_us": 15.52,
+    "das_us": 5.44,
+    "ratio": 0.3505,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            56,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            128,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 86,
+    "model": "MatterSim",
+    "description": "FP32 · [56,128] + [128,16]",
+    "fg_us": 17.76,
+    "das_us": 6.88,
+    "ratio": 0.3874,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            56,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            128,
+            16
+          ],
+          "stride": [
+            16,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 87,
+    "model": "MatterSim",
+    "description": "FP32 · [56,128] + [128,384]",
+    "fg_us": 18.24,
+    "das_us": 7.04,
+    "ratio": 0.386,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            56,
+            128
+          ],
+          "stride": [
+            128,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            128,
+            384
+          ],
+          "stride": [
+            384,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 88,
+    "model": "MatterSim",
+    "description": "FP32 · [56,16] + [16,128]",
+    "fg_us": 14.4,
+    "das_us": 4.16,
+    "ratio": 0.2889,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            56,
+            16
+          ],
+          "stride": [
+            16,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            16,
+            128
+          ],
+          "stride": [
+            1,
+            16
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 89,
+    "model": "MatterSim",
+    "description": "FP32 · [56,4] + [4,128]",
+    "fg_us": 16.8,
+    "das_us": 5.76,
+    "ratio": 0.3429,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            56,
+            4
+          ],
+          "stride": [
+            1,
+            56
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            4,
+            128
+          ],
+          "stride": [
+            1,
+            4
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 90,
+    "model": "eSEN",
+    "description": "FP32 · [1200,3] + [3,3]",
+    "fg_us": 6.88,
+    "das_us": 4.48,
+    "ratio": 0.6512,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1200,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 91,
+    "model": "eSEN",
+    "description": "FP32 · [2000,5] + [5,5]",
+    "fg_us": 7.04,
+    "das_us": 4.48,
+    "ratio": 0.6364,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2000,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            5,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 92,
+    "model": "eSEN",
+    "description": "FP32 · [2800,7] + [7,7]",
+    "fg_us": 6.4,
+    "das_us": 4.96,
+    "ratio": 0.775,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2800,
+            7
+          ],
+          "stride": [
+            7,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            7,
+            7
+          ],
+          "stride": [
+            7,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 93,
+    "model": "eSEN",
+    "description": "FP32 · [3600,9] + [9,9]",
+    "fg_us": 6.88,
+    "das_us": 5.12,
+    "ratio": 0.7442,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            3600,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            9,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 94,
+    "model": "eSEN",
+    "description": "FP32 · [400,1] + [1,1]",
+    "fg_us": 11.2,
+    "das_us": 3.68,
+    "ratio": 0.3286,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            400,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 95,
+    "model": "eSEN",
+    "description": "FP32 · [8,128] + [128,512]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            128
+          ],
+          "stride": [
+            3200,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [
+            128,
+            512
+          ],
+          "stride": [
+            1,
+            128
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 96,
+    "model": "eSEN",
+    "description": "FP32 · [800,1024] + [1024,1024]",
+    "fg_us": 84.16,
+    "das_us": 70.88,
+    "ratio": 0.8422,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            800,
+            1024
+          ],
+          "stride": [
+            1024,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            1024,
+            1024
+          ],
+          "stride": [
+            1,
+            1024
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 97,
+    "model": "eSEN",
+    "description": "FP32 · [800,384] + [384,768]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            800,
+            384
+          ],
+          "stride": [
+            384,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            384,
+            768
+          ],
+          "stride": [
+            1,
+            384
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 98,
+    "model": "eSEN",
+    "description": "FP32 · [800,512] + [512,1024]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            800,
+            512
+          ],
+          "stride": [
+            512,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            512,
+            1024
+          ],
+          "stride": [
+            1,
+            512
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 99,
+    "model": "eSEN",
+    "description": "FP32 · [800,768] + [768,768]",
+    "fg_us": 53.12,
+    "das_us": 40.96,
+    "ratio": 0.7711,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            800,
+            768
+          ],
+          "stride": [
+            768,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            768,
+            768
+          ],
+          "stride": [
+            1,
+            768
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 100,
+    "model": "ESM-2",
+    "description": "FP32 · [29403,120] + [120,1]",
+    "fg_us": 12.4,
+    "das_us": 29.12,
+    "ratio": 2.2733932733932734,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            29403,
+            120
+          ],
+          "stride": [
+            120,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            120,
+            1
+          ],
+          "stride": [
+            1,
+            120
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 101,
+    "model": "DiffDock",
+    "description": "FP32 · [115,15] + [15,3]",
+    "fg_us": 14.24,
+    "das_us": 5.76,
+    "ratio": 0.4045,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            15
+          ],
+          "stride": [
+            15,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            15,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 102,
+    "model": "DiffDock",
+    "description": "FP32 · [115,15] + [15,5]",
+    "fg_us": 13.92,
+    "das_us": 5.92,
+    "ratio": 0.4253,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            15
+          ],
+          "stride": [
+            15,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            15,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 103,
+    "model": "DiffDock",
+    "description": "FP32 · [115,15] + [15,7]",
+    "fg_us": 13.92,
+    "das_us": 5.92,
+    "ratio": 0.4253,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            15
+          ],
+          "stride": [
+            15,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            15,
+            7
+          ],
+          "stride": [
+            7,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 104,
+    "model": "DiffDock",
+    "description": "FP32 · [115,25] + [25,1]",
+    "fg_us": 13.76,
+    "das_us": 7.52,
+    "ratio": 0.5465,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            25
+          ],
+          "stride": [
+            25,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            25,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 105,
+    "model": "DiffDock",
+    "description": "FP32 · [115,25] + [25,3]",
+    "fg_us": 13.76,
+    "das_us": 6.72,
+    "ratio": 0.4884,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            25
+          ],
+          "stride": [
+            25,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            25,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 106,
+    "model": "DiffDock",
+    "description": "FP32 · [115,25] + [25,5]",
+    "fg_us": 15.36,
+    "das_us": 6.88,
+    "ratio": 0.4479,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            25
+          ],
+          "stride": [
+            25,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            25,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 107,
+    "model": "DiffDock",
+    "description": "FP32 · [115,25] + [25,7]",
+    "fg_us": 8.32,
+    "das_us": 5.12,
+    "ratio": 0.6154,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            25
+          ],
+          "stride": [
+            25,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            25,
+            7
+          ],
+          "stride": [
+            7,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 108,
+    "model": "DiffDock",
+    "description": "FP32 · [115,25] + [25,9]",
+    "fg_us": 8.32,
+    "das_us": 6.72,
+    "ratio": 0.8077,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            25
+          ],
+          "stride": [
+            25,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            25,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 109,
+    "model": "DiffDock",
+    "description": "FP32 · [115,5] + [5,5]",
+    "fg_us": 14.72,
+    "das_us": 6.56,
+    "ratio": 0.4457,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            115,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            5,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 110,
+    "model": "DiffDock",
+    "description": "FP32 · [33,3] + [3,9]",
+    "fg_us": 15.36,
+    "das_us": 7.52,
+    "ratio": 0.4896,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            33,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 111,
+    "model": "DiffDock",
+    "description": "FP32 · [33,5] + [5,9]",
+    "fg_us": 15.2,
+    "das_us": 6.4,
+    "ratio": 0.4211,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            33,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            5,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 112,
+    "model": "DiffDock",
+    "description": "FP32 · [542,3] + [3,9]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            542,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 113,
+    "model": "DiffDock",
+    "description": "FP32 · [542,5] + [5,9]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            542,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            5,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 114,
+    "model": "DiffDock",
+    "description": "FP32 · [6,48] + [48,1]",
+    "fg_us": 13.6,
+    "das_us": 7.04,
+    "ratio": 0.5176,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            6,
+            48
+          ],
+          "stride": [
+            48,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            48,
+            1
+          ],
+          "stride": [
+            1,
+            48
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 115,
+    "model": "DiffDock",
+    "description": "FP32 · [6,96] + [96,48]",
+    "fg_us": 16,
+    "das_us": 7.52,
+    "ratio": 0.47,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            6,
+            96
+          ],
+          "stride": [
+            96,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            96,
+            48
+          ],
+          "stride": [
+            1,
+            96
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 116,
+    "model": "DiffDock",
+    "description": "FP32 · [6432,3] + [3,9]",
+    "fg_us": 8.96,
+    "das_us": 6.08,
+    "ratio": 0.6786,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            6432,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 117,
+    "model": "DiffDock",
+    "description": "FP32 · [6432,5] + [5,9]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            6432,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            5,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 118,
+    "model": "DiffDock",
+    "description": "FP32 · [8844,3] + [3,9]",
+    "fg_us": 9.12,
+    "das_us": 5.44,
+    "ratio": 0.5965,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8844,
+            3
+          ],
+          "stride": [
+            3,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            3,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 119,
+    "model": "DiffDock",
+    "description": "FP32 · [8844,5] + [5,9]",
+    "fg_us": 9.28,
+    "das_us": 5.76,
+    "ratio": 0.6207,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8844,
+            5
+          ],
+          "stride": [
+            5,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            5,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 120,
+    "model": "ESM-2",
+    "description": "FP32 · [303,320] + [320,320]",
+    "fg_us": 12,
+    "das_us": 12.16,
+    "ratio": 1.0134234234234234,
+    "status": "平均性能≥90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            303,
+            320
+          ],
+          "stride": [
+            320,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            320,
+            320
+          ],
+          "stride": [
+            1,
+            320
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 121,
+    "model": "ESM-2",
+    "description": "FP32 · [303,320] + [320,33]",
+    "fg_us": 11.68,
+    "das_us": 7.68,
+    "ratio": 0.6575342465753424,
+    "status": "平均性能<90%",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "shape": [
+            303,
+            320
+          ],
+          "stride": [
+            320,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        },
+        {
+          "shape": [
+            320,
+            33
+          ],
+          "stride": [
+            1,
+            320
+          ],
+          "dtype": "torch.float32",
+          "device": "flagos:0"
+        }
+      ],
+      {}
+    ]
+  },
+  {
+    "row": 122,
+    "model": "STATE",
+    "description": "BF16 · [16384,10] + [10,2048]",
+    "fg_us": null,
+    "das_us": null,
+    "ratio": null,
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            16384,
+            10
+          ],
+          "stride": [
+            10,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            10,
+            2048
+          ],
+          "stride": [
+            2048,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ]
+  }
+]
