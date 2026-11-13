@@ -172,5 +172,5 @@ def test_convolution_double_backward():
         # Restricted dtype list per the worktree generator (numerical-stability / precision scope).
         dtypes=[torch.float32, torch.float16],
     )
-    bench.set_gems(flag_gems._convolution_double_backward)
+    bench.set_gems(lambda *args: flag_gems._convolution_double_backward(*args))
     bench.run()
