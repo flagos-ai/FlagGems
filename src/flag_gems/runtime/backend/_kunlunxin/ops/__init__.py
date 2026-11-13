@@ -705,6 +705,7 @@ from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
+from .native_norm import native_norm
 from .ne import ne, ne_, ne_scalar, ne_scalar_
 from .neg import neg, neg_
 from .negative import negative
@@ -827,6 +828,7 @@ from .segment_reduce import (
     segment_reduce_out,
 )
 from .select_backward import select_backward
+from .select_copy import select_copy
 from .select_scatter import select_scatter
 from .selu import selu, selu_
 from .sgn import sgn, sgn_out
@@ -930,6 +932,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .special_softmax import special_softmax
 from .special_spherical_bessel_j0 import special_spherical_bessel_j0  # noqa: F401
 from .special_xlog1py import special_xlog1py
+from .special_xlogy import special_xlogy
 from .special_zeta import (
     special_zeta,
     special_zeta_out,
@@ -1710,6 +1713,7 @@ __all__ = [
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
+    "native_norm",
     "ne",
     "ne_",
     "ne_scalar",
@@ -1854,6 +1858,7 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
@@ -1954,6 +1959,7 @@ __all__ = [
     "special_sinc",
     "special_softmax",
     "special_xlog1py",
+    "special_xlogy",
     "special_zeta",
     "special_zeta_out",
     "special_zeta_scalar_tensor",
