@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -130,7 +131,7 @@ def _cdist_forward(
     # Only support p=2.0 for now
     if p != 2.0:
         logger.debug("GEMS CDIST_FORWARD falling back to torch (p != 2.0)")
-        return torch.cdist(x1, x2, p=p, compute_mode=compute_mode)
+        return flag_gems.cdist(x1, x2, p=p, compute_mode=compute_mode)
 
     # Handle broadcasting - get shapes
     x1_shape = x1.shape

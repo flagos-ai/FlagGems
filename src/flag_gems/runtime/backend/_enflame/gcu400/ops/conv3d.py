@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.ops.conv2d import conv2d_output_size
 from flag_gems.utils import libentry
@@ -341,16 +342,16 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         pad_c = _MIN_DOT_K - weight_c
         if groups == 1:
             # Simple case: pad channel dim at the end (dim=1 for 5D input)
-            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
+            input = flag_gems.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
         else:
             # For grouped conv, must pad each group's channels independently.
             # Reshape to (N, groups, weight_c, D, H, W), pad weight_c dim, reshape back.
             N, C, D, H, W = input.shape
             input = input.reshape(N, groups, weight_c, D, H, W)
-            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
+            input = flag_gems.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
             input = input.reshape(N, groups * (weight_c + pad_c), D, H, W)
         # Pad weight: (out_c, weight_c, kD, kH, kW) -> (out_c, weight_c+pad_c, kD, kH, kW)
-        weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_c))
+        weight = flag_gems.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_c))
         weight_c = weight_c + pad_c
 
     out_depth = conv3d_output_size(

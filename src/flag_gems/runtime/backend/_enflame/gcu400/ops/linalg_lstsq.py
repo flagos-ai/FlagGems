@@ -33,6 +33,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -573,7 +574,7 @@ def _tsqr_R(aug, NC, dt, compute):
     n_chunks = triton.cdiv(M, block_m)
     pad = n_chunks * block_m - M
     if pad:
-        aug = torch.cat([aug, torch.zeros(batch, pad, NC, dtype=dt, device=dev)], dim=1)
+        aug = flag_gems.cat([aug, torch.zeros(batch, pad, NC, dtype=dt, device=dev)], dim=1)
     W = aug.reshape(batch, n_chunks, block_m, NC).reshape(-1, block_m, NC).contiguous()
     _blk_qr_kernel[(W.shape[0],)](
         W,
@@ -596,13 +597,13 @@ def _tsqr_R(aug, NC, dt, compute):
         ng = triton.cdiv(live, G)
         padb = ng * G - live
         if padb:
-            R = torch.cat(
+            R = flag_gems.cat(
                 [R, torch.zeros(batch, padb, NC, NC, dtype=dt, device=dev)], dim=1
             )
         BR = _next_pow2(G * NC)
         S = R.reshape(batch, ng, G * NC, NC)
         if BR > G * NC:
-            S = torch.cat(
+            S = flag_gems.cat(
                 [S, torch.zeros(batch, ng, BR - G * NC, NC, dtype=dt, device=dev)],
                 dim=2,
             )
@@ -875,7 +876,7 @@ def _lstsq_gels_tall_wy(A, B, rcond=None):
 
     P = _WY_PANEL
     _br, _ubr, _bc, _st = _wy_cfg(dt)
-    W = torch.cat([A.contiguous(), B.contiguous()], dim=-1).contiguous()
+    W = flag_gems.cat([A.contiguous(), B.contiguous()], dim=-1).contiguous()
     tau = torch.zeros((batch, P), dtype=dt, device=dev)
     T = torch.zeros((batch, P, P), dtype=dt, device=dev)
     npiv = min(m, NC)
@@ -961,7 +962,7 @@ def _lstsq_gels_tall_blocked(A, B, rcond=None):
     dev = A.device
     if rcond is None:
         rcond = torch.finfo(dt).eps * max(m, n)
-    aug = torch.cat([A.contiguous(), B.contiguous()], dim=-1)
+    aug = flag_gems.cat([A.contiguous(), B.contiguous()], dim=-1)
     with torch_device_fn.device(dev):
         Rf = _tsqr_R(aug, NC, dt, compute)
         X = torch.empty((batch, n, nrhs), dtype=dt, device=dev)

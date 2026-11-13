@@ -30,6 +30,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -136,13 +137,13 @@ def _public_equivalent(
     g_gate = workspace[:, 2 * hidden_size : 3 * hidden_size]
     o_gate = workspace[:, 3 * hidden_size : 4 * hidden_size]
 
-    tanh_cy = torch.tanh(cy)
+    tanh_cy = flag_gems.tanh(cy)
     d_cy = grad_hy * o_gate * (1.0 - tanh_cy * tanh_cy) + grad_cy
     grad_i = d_cy * g_gate * i_gate * (1.0 - i_gate)
     grad_f = d_cy * cx * f_gate * (1.0 - f_gate)
     grad_g = d_cy * i_gate * (1.0 - g_gate * g_gate)
     grad_o = grad_hy * tanh_cy * o_gate * (1.0 - o_gate)
-    grad_input_gates = torch.cat([grad_i, grad_f, grad_g, grad_o], dim=1)
+    grad_input_gates = flag_gems.cat([grad_i, grad_f, grad_g, grad_o], dim=1)
     grad_cx = d_cy * f_gate
     if has_bias:
         grad_biases = grad_input_gates.sum(dim=0)

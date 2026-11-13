@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -109,7 +110,7 @@ def _sspaddmm_impl(input, mat1, mat2, beta=1.0, alpha=1.0, out=None):
         active_rows = mat1_rows.new_empty((0,))
         counts = mat1_rows.new_empty((0,))
     else:
-        active_rows, counts = torch.unique_consecutive(mat1_rows, return_counts=True)
+        active_rows, counts = flag_gems.unique_consecutive(mat1_rows, return_counts=True)
     R = active_rows.numel()
 
     if R > 0:
@@ -159,7 +160,7 @@ def _sspaddmm_impl(input, mat1, mat2, beta=1.0, alpha=1.0, out=None):
         # Build indices for the mm contribution: every (active_row, col) pair.
         row_idx = active_rows.to(torch.int64).repeat_interleave(N)
         col_idx = torch.arange(N, device=device, dtype=torch.int64).repeat(R)
-        mm_indices = torch.stack([row_idx, col_idx], dim=0)
+        mm_indices = flag_gems.stack([row_idx, col_idx], dim=0)
         mm_values = dense.reshape(-1).to(device)
     else:
         mm_indices = torch.empty((2, 0), dtype=torch.int64, device=device)
@@ -170,8 +171,8 @@ def _sspaddmm_impl(input, mat1, mat2, beta=1.0, alpha=1.0, out=None):
     input_values = input.values().to(acc_dtype)
     beta_values = input_values * beta if beta != 1.0 else input_values
 
-    out_indices = torch.cat([input_indices, mm_indices], dim=1)
-    out_values = torch.cat([beta_values, mm_values], dim=0)
+    out_indices = flag_gems.cat([input_indices, mm_indices], dim=1)
+    out_values = flag_gems.cat([beta_values, mm_values], dim=0)
 
     result = torch.sparse_coo_tensor(
         out_indices, out_values, size=(n, N), dtype=acc_dtype, device=device

@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -287,7 +288,7 @@ def _run_histogram(self, bins, weight, density, out):
     if M > 0:
         # Per-dimension geometry is packed into device tensors: gcu400's
         # launcher generator rejects tuple-typed arguments outright.
-        edges_flat = torch.cat([b.contiguous() for b in edges], dim=0)
+        edges_flat = flag_gems.cat([b.contiguous() for b in edges], dim=0)
         edge_offsets = [0] * D
         for d in range(1, D):
             edge_offsets[d] = edge_offsets[d - 1] + bin_counts[d - 1]
@@ -456,7 +457,7 @@ def _apply_density(hist, edges, D, out_shape, acc_dtype, acc_triton):
     contig_strides = tuple(reversed(contig_strides))
 
     bin_counts = [b.numel() for b in edges]
-    edges_flat = torch.cat([b.contiguous() for b in edges], dim=0)
+    edges_flat = flag_gems.cat([b.contiguous() for b in edges], dim=0)
     edge_offsets = [0] * D
     for d in range(1, D):
         edge_offsets[d] = edge_offsets[d - 1] + bin_counts[d - 1]

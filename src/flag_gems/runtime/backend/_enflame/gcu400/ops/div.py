@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils.triton_lang_extension import div_rn, trunc
 
@@ -153,7 +154,7 @@ def _trunc_divide_scalars(A, B):
         return torch.tensor(-quot if (A < 0) != (B < 0) else quot)
     a = torch.tensor(float(A), dtype=torch.get_default_dtype())
     b = torch.tensor(float(B), dtype=torch.get_default_dtype())
-    return torch.trunc(a / b)
+    return flag_gems.trunc(a / b)
 
 
 def trunc_divide_(A, B):

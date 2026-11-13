@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import libentry
 
 logger = logging.getLogger("flag_gems.istft")
@@ -226,7 +227,7 @@ def istft(
         window_full = torch.ones(n_fft, dtype=out_real_dtype, device=frames_r.device)
     elif win_length != n_fft:
         left = (n_fft - win_length) // 2
-        window_full = torch.constant_pad_nd(
+        window_full = flag_gems.constant_pad_nd(
             window, (left, n_fft - win_length - left), 0.0
         ).to(out_real_dtype)
     else:
@@ -313,7 +314,7 @@ def istft(
 
     if end > expected_len:
         pad = end - expected_len
-        y = torch.constant_pad_nd(y, (0, pad), 0.0)
+        y = flag_gems.constant_pad_nd(y, (0, pad), 0.0)
     if input_dim == 3:
         y = y.squeeze(0)
     return y

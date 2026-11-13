@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -550,14 +551,14 @@ def _segment_reduce_uniform_lengths(data, reduce, lengths, axis):
     if segment_length == 1:
         return torch.squeeze(reshaped, dim=reduce_dim)
     if reduce == "sum":
-        return torch.sum(reshaped, dim=reduce_dim)
+        return flag_gems.sum_dim(reshaped, dim=reduce_dim)
     if reduce == "mean":
-        return torch.mean(reshaped, dim=reduce_dim)
+        return flag_gems.mean_dim(reshaped, dim=reduce_dim)
     if reduce == "max":
-        return torch.amax(reshaped, dim=reduce_dim)
+        return flag_gems.amax(reshaped, dim=[reduce_dim])
     if reduce == "min":
-        return torch.amin(reshaped, dim=reduce_dim)
-    return torch.prod(reshaped, dim=reduce_dim)
+        return flag_gems.amin(reshaped, dim=[reduce_dim])
+    return flag_gems.prod_dim(reshaped, dim=reduce_dim)
 
 
 def _segment_reduce_uniform_sum_mean_backward(data, grad, reduce, lengths, axis):

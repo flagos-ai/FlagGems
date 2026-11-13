@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -392,7 +393,7 @@ def _fused_rms_norm_backward(
                 COL_BLOCK_SIZE,
             )
             dw = (
-                torch.sum(partial_buffer, dim=0, dtype=torch.float32)
+                flag_gems.sum_dim(partial_buffer, dim=0, dtype=torch.float32)
                 .to(x.dtype)
                 .reshape(normalized_shape)
             )

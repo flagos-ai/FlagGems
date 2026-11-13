@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 
@@ -237,7 +238,7 @@ def _searchsorted_impl(
     sorter_contiguous = sorter.contiguous() if sorter is not None else None
     is_ascend = runtime_device.vendor_name == "ascend"
     if sorter_contiguous is not None and is_ascend:
-        sorted_sequence_contiguous = torch.gather(
+        sorted_sequence_contiguous = flag_gems.gather(
             sorted_sequence_contiguous, -1, sorter_contiguous
         )
         sorter_contiguous = None
@@ -440,7 +441,7 @@ def _searchsorted_reference_bridge(
                 isinstance(self, torch.Tensor)
                 and self.dtype.is_floating_point
                 and self.numel() <= _NAN_CHECK_NUMEL_LIMIT
-                and bool(torch.isnan(self).any())
+                and bool(flag_gems.isnan(self).any())
             ):
                 need_cpu_reference = True
         if need_cpu_reference:

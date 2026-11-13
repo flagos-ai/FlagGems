@@ -28,6 +28,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
@@ -725,7 +726,7 @@ def _blocked_pinv(W: torch.Tensor, batch: int, R: int, C: int, atol_val, rtol_va
     # pinv[i, l] = sum_j V[i, j] * W[l, j] / sigma_j^2. The contraction runs on
     # the native matmul: the Triton version crashed the XPU compiler with
     # "LLVM ERROR: Unsupported element type" on tl.trans + tl.dot tiles.
-    thr = torch.maximum(
+    thr = flag_gems.maximum(
         torch.full_like(S[:, :1], atol_val), S.amax(dim=-1, keepdim=True) * rtol_val
     )
     inv_sq = torch.where(S > thr, 1.0 / (S * S + 1e-38), torch.zeros_like(S))

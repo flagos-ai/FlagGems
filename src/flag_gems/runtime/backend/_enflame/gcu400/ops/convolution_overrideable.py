@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.ops.conv2d import conv2d_output_size
 from flag_gems.utils import libentry
 
@@ -235,13 +236,13 @@ def _conv2d_forward(input, weight, bias, stride, padding, dilation, groups):
     if weight_c % block_ci:
         pad_c = block_ci - weight_c % block_ci
         if groups == 1:
-            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+            input = flag_gems.pad(input, (0, 0, 0, 0, 0, pad_c))
         else:
             N, C, H, W = input.shape
             input = input.reshape(N, groups, weight_c, H, W)
-            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+            input = flag_gems.pad(input, (0, 0, 0, 0, 0, pad_c))
             input = input.reshape(N, groups * (weight_c + pad_c), H, W)
-        weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, pad_c))
+        weight = flag_gems.pad(weight, (0, 0, 0, 0, 0, pad_c))
         weight_c = weight_c + pad_c
 
     out_height = conv2d_output_size(

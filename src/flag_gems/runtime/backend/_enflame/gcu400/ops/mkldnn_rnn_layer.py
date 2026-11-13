@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
@@ -455,27 +456,27 @@ class MkldnnRnnLayerFunction(torch.autograd.Function):
             for t_idx in steps:
                 xt = input[t_idx]
                 gates = (
-                    torch.addmm(b_ih, xt, w_ih.t())
+                    flag_gems.addmm(b_ih, xt, w_ih.t())
                     if has_biases
-                    else torch.mm(xt, w_ih.t())
+                    else flag_gems.mm(xt, w_ih.t())
                 )
                 gates = gates + (
-                    torch.addmm(b_hh, h, w_hh.t())
+                    flag_gems.addmm(b_hh, h, w_hh.t())
                     if has_biases
-                    else torch.mm(h, w_hh.t())
+                    else flag_gems.mm(h, w_hh.t())
                 )
                 i_g, f_g, g_g, o_g = gates.chunk(4, dim=1)
-                i_g = torch.sigmoid(i_g)
-                f_g = torch.sigmoid(f_g)
-                g_g = torch.tanh(g_g)
-                o_g = torch.sigmoid(o_g)
+                i_g = flag_gems.sigmoid(i_g)
+                f_g = flag_gems.sigmoid(f_g)
+                g_g = flag_gems.tanh(g_g)
+                o_g = flag_gems.sigmoid(o_g)
                 c = f_g * c + i_g * g_g
-                h = o_g * torch.tanh(c)
+                h = o_g * flag_gems.tanh(c)
                 outputs.append(h)
 
             if reverse:
                 outputs = outputs[::-1]
-            output_native = torch.stack(outputs, dim=0)
+            output_native = flag_gems.stack(outputs, dim=0)
             hy_native = h
             cy_native = c
 

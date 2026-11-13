@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 from flag_gems.utils.device_info import is_amd_radeon
@@ -424,16 +425,16 @@ class Conv2d(torch.autograd.Function):
             pad_c = _MIN_DOT_K - weight_c
             if groups == 1:
                 # Simple case: pad channel dim at the end
-                input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+                input = flag_gems.pad(input, (0, 0, 0, 0, 0, pad_c))
             else:
                 # For grouped conv, must pad each group's channels independently.
                 # Reshape to (N, groups, weight_c, H, W), pad weight_c dim, reshape back.
                 N, C, H, W = input.shape
                 input = input.reshape(N, groups, weight_c, H, W)
-                input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
+                input = flag_gems.pad(input, (0, 0, 0, 0, 0, pad_c))
                 input = input.reshape(N, groups * (weight_c + pad_c), H, W)
             # Pad weight: (out_c, weight_c, kH, kW) -> (out_c, weight_c+pad_c, kH, kW)
-            weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, pad_c))
+            weight = flag_gems.pad(weight, (0, 0, 0, 0, 0, pad_c))
             weight_c = weight_c + pad_c
 
         out_height = conv2d_output_size(
@@ -535,7 +536,7 @@ class Conv2d(torch.autograd.Function):
         revert_padding_height = dilation_height * (weight_height - 1) - padding_height
         revert_padding_width = dilation_width * (weight_width - 1) - padding_width
         revert_weight = weight.clone()
-        revert_weight = torch.flip(revert_weight, dims=[2, 3]).contiguous()
+        revert_weight = flag_gems.flip(revert_weight, dims=[2, 3]).contiguous()
 
         if groups != 1:
             revert_weight = revert_weight.reshape(
@@ -599,18 +600,18 @@ class Conv2d(torch.autograd.Function):
             pad_c = _MIN_DOT_K - bwd_weight_c
             # Pad revert_weight on dim=1 (the out_c/group dimension)
             # revert_weight shape: [groups*weight_c, out_c, kH, kW]
-            revert_weight = torch.nn.functional.pad(
+            revert_weight = flag_gems.pad(
                 revert_weight, (0, 0, 0, 0, 0, pad_c)
             )
             # Pad new_out on channel dim (dim=1).
             # new_out shape: [N, groups*out_c, H, W]
             # Each group has out_c channels, need to pad each group to _MIN_DOT_K.
             if groups == 1:
-                new_out = torch.nn.functional.pad(new_out, (0, 0, 0, 0, 0, pad_c))
+                new_out = flag_gems.pad(new_out, (0, 0, 0, 0, 0, pad_c))
             else:
                 N_bwd, C_bwd, H_bwd, W_bwd = new_out.shape
                 new_out = new_out.reshape(N_bwd, groups, out_c, H_bwd, W_bwd)
-                new_out = torch.nn.functional.pad(new_out, (0, 0, 0, 0, 0, pad_c))
+                new_out = flag_gems.pad(new_out, (0, 0, 0, 0, 0, pad_c))
                 new_out = new_out.reshape(N_bwd, groups * (out_c + pad_c), H_bwd, W_bwd)
             bwd_weight_c = bwd_weight_c + pad_c
 

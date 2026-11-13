@@ -21,6 +21,7 @@ import triton
 import triton.language as tl
 from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
+import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
@@ -675,8 +676,8 @@ def cumprod_backward(grad, input, dim, output):
     # dtypes with a zero anywhere, recompute the forward cumprod in fp32 so
     # the reverse-cumsum below matches the reference. This is a whole-tensor
     # decision, matching aten's global branch rather than a per-line one.
-    if output.dtype in (torch.float16, torch.bfloat16) and torch.any(input == 0):
-        output = torch.cumprod(input.to(torch.float32), dim)
+    if output.dtype in (torch.float16, torch.bfloat16) and flag_gems.any(input == 0):
+        output = flag_gems.cumprod(input.to(torch.float32), dim)
 
     grad_stride = grad.stride()
     input_stride = input.stride()

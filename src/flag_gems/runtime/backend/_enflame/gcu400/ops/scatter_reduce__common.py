@@ -2265,7 +2265,7 @@ def scatter_reduce(
                     out_strides_p[4],
                 )
             has_contributions = count > 0
-            count = torch.clamp(count, min=1.0)
+            count = flag_gems.clamp(count, mini=1.0)
             out = out / count
             out = torch.where(has_contributions, out, inp_f32)
         elif reduce in ("amax", "amin"):

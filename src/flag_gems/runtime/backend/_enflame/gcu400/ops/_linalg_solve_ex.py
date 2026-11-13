@@ -24,6 +24,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
@@ -472,7 +473,7 @@ def _check_solve_ex_args(A, B, left):
 
 
 def _raise_singular(info):
-    index = int(torch.argmax((info != 0).reshape(-1).to(torch.int32)))
+    index = int(flag_gems.argmax((info != 0).reshape(-1).to(torch.int32)))
     raise torch.linalg.LinAlgError(
         f"torch.linalg.solve_ex: (Batch element {index}): The solver failed "
         "because the input matrix is singular."

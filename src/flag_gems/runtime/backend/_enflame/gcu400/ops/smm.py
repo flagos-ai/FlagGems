@@ -52,6 +52,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -405,7 +406,7 @@ def smm(self, mat):
     grid_nnz = lambda META: (triton.cdiv(nnz, META["BLOCK"]),)
     with torch_device_fn.device(device):
         smm_mark_row_starts_kernel[grid_nnz](row_indices, is_start, nnz, BLOCK=1024)
-        rank = torch.cumsum(is_start, 0, dtype=torch.int64)
+        rank = flag_gems.cumsum(is_start, 0, dtype=torch.int64)
         nrows = int(rank[-1].item())
         row_ids = torch.empty((nrows,), dtype=torch.int64, device=device)
         row_starts = torch.empty((nrows + 1,), dtype=torch.int64, device=device)

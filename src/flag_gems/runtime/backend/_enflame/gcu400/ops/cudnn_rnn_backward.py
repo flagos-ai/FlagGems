@@ -34,6 +34,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.libentry import libentry
 
@@ -269,7 +270,7 @@ def cudnn_rnn_backward(
     i_list, f_list, g_list, o_list, c_new_list = [], [], [], [], []
     for t in range(seq_len):
         if USE_ADDMM:
-            pre_gates = torch.addmm(b_hh_c, h, w_hh_c.t())
+            pre_gates = flag_gems.addmm(b_hh_c, h, w_hh_c.t())
             if PRECOMPUTE_INPUT_PROJ:
                 pre_gates.add_(input_proj[t])
             else:
@@ -383,7 +384,7 @@ def cudnn_rnn_backward(
 
     if BATCHED_BLAS:
         # 所有时间步的 weight / bias / input 梯度一次性批量计算。
-        h_prev_stack = torch.stack(h_prev_list, dim=0)
+        h_prev_stack = flag_gems.stack(h_prev_list, dim=0)
         grad_w_ih_acc = torch.einsum("tbi,tbj->ij", grad_gates_all, inp_c)
         grad_w_hh_acc = torch.einsum("tbi,tbj->ij", grad_gates_all, h_prev_stack)
         grad_bias = grad_gates_all.sum(dim=(0, 1))

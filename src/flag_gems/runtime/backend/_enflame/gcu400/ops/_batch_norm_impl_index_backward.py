@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -295,7 +296,7 @@ def _batch_norm_impl_index_backward(
         invstd = save_var_transform
     else:
         acc_dtype = torch.float32
-        invstd = torch.rsqrt(running_var.to(acc_dtype) + eps).to(input.dtype)
+        invstd = flag_gems.rsqrt(running_var.to(acc_dtype) + eps).to(input.dtype)
 
     # Empty input: nothing to reduce over.  Mirror the aten fallback that
     # produces the requested (possibly zero-element) gradients so the autograd

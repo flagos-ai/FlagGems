@@ -47,7 +47,9 @@ of the previous implementation.
 
 import torch
 
+import flag_gems
 from flag_gems import runtime
+
 
 __all__ = ["linalg_solve_ex"]
 
@@ -107,7 +109,7 @@ def _can_use_vendor_solve(A, B, left):
 
 
 def _raise_singular(info):
-    index = int(torch.argmax((info != 0).reshape(-1).to(torch.int32)))
+    index = int(flag_gems.argmax((info != 0).reshape(-1).to(torch.int32)))
     raise torch.linalg.LinAlgError(
         f"torch.linalg.solve_ex: (Batch element {index}): The solver failed "
         "because the input matrix is singular."
@@ -143,7 +145,7 @@ def _vendor_solve_ex(A, B, check_errors):
         _DEVICE_KEYSET, LU, pivots, B, left=True, adjoint=False, out=X
     )
 
-    if check_errors and torch.any(info != 0):
+    if check_errors and flag_gems.any(info != 0):
         _raise_singular(info)
 
     return X, info

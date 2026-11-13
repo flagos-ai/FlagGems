@@ -2323,7 +2323,7 @@ def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
         # torch.gather requires an int64 index; the local LU kernel stores its
         # per-matrix permutation as int32, so upcast here (a cheap on-device
         # copy) to keep one gather path for both local and external LU perms.
-        P_B = torch.gather(
+        P_B = flag_gems.gather(
             B.reshape(-1, n_perm, k),
             1,
             perm[:, :n_perm].to(torch.int64).unsqueeze(-1).expand(-1, n_perm, k),

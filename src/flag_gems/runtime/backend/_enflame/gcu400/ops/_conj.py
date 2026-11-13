@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -108,7 +109,7 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
     # conj bit 置位时逻辑值已是共轭：先物化逻辑值，再取共轭还原存储数据。
     if input.is_conj():
         resolved = input.resolve_conj()
-        return torch.conj_physical(resolved)
+        return flag_gems.conj_physical(resolved)
 
     src = input if input.is_contiguous() else input.contiguous()
     output = torch.empty_like(src)

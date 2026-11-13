@@ -55,6 +55,9 @@ import sys
 
 import torch
 
+import flag_gems
+
+
 _TARGET_MODULE = "vllm.utils.deep_gemm"
 _TRITON_BACKEND_ENV = "ENFLAME_DEEPGEMM_KERNEL_TRITON_BACKEND"
 _PAGED_KERNEL_NAME = "fp8_fp4_paged_mqa_logits"
@@ -154,7 +157,7 @@ def _torch_paged_mqa_logits_reference(
             .reshape(total_rows, block_size)
         )
         dots = torch.einsum("rhd,rpd->rhp", q_f, data)
-        scores = torch.relu(dots * scales[:, None, :])
+        scores = flag_gems.relu(dots * scales[:, None, :])
         out = (scores * w_f[:, :, None]).sum(dim=1)
 
         base = lb * block_size

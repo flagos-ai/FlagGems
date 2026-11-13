@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
@@ -569,7 +570,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             count_valid_kernel[(M,)](inp, valid_count, M, N, block_n, inp.is_cuda)
         # Replace NaN with +inf so kthvalue sorts them to the end deterministically
         kth_inp = torch.where(
-            torch.isnan(inp),
+            flag_gems.isnan(inp),
             torch.tensor(float("inf"), dtype=inp.dtype, device=inp.device),
             inp,
         )
@@ -578,7 +579,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         if min_count == max_count:
             if max_count == 0:
                 return _full_nan_result((M,), inp.dtype, inp.device)
-            values, indices = torch.kthvalue(kth_inp, (max_count + 1) // 2, dim=1)
+            values, indices = flag_gems.kthvalue(kth_inp, (max_count + 1) // 2, dim=1)
             return NanMedian(values=values, indices=indices)
 
         if max_count - min_count <= 1:
@@ -586,7 +587,7 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             max_k = (max_count + 1) // 2
 
             if min_k == max_k:
-                values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
+                values, indices = flag_gems.kthvalue(kth_inp, max_k, dim=1)
                 if min_count > 0:
                     return NanMedian(values=values, indices=indices)
                 fallback = _full_nan_result((M,), inp.dtype, inp.device)
@@ -599,14 +600,14 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             result = _full_nan_result((M,), inp.dtype, inp.device)
 
             if min_count > 0:
-                values, indices = torch.kthvalue(kth_inp, min_k, dim=1)
+                values, indices = flag_gems.kthvalue(kth_inp, min_k, dim=1)
                 mask = valid_count == min_count
                 result = NanMedian(
                     values=torch.where(mask, values, result.values),
                     indices=torch.where(mask, indices, result.indices),
                 )
 
-            values, indices = torch.kthvalue(kth_inp, max_k, dim=1)
+            values, indices = flag_gems.kthvalue(kth_inp, max_k, dim=1)
             mask = valid_count == max_count
             return NanMedian(
                 values=torch.where(mask, values, result.values),
@@ -618,14 +619,14 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             count = int(count)
             if count == 0:
                 continue
-            row_indices = torch.nonzero(valid_count == count).flatten()
-            rows = torch.index_select(kth_inp, 0, row_indices)
-            values, indices = torch.kthvalue(rows, (count + 1) // 2, dim=1)
+            row_indices = flag_gems.nonzero(valid_count == count).flatten()
+            rows = flag_gems.index_select(kth_inp, 0, row_indices)
+            values, indices = flag_gems.kthvalue(rows, (count + 1) // 2, dim=1)
             result.values[row_indices] = values
             result.indices[row_indices] = indices
         return result
     else:
-        values, indices = torch.kthvalue(inp, (N + 1) // 2, dim=1)
+        values, indices = flag_gems.kthvalue(inp, (N + 1) // 2, dim=1)
         return NanMedian(values=values, indices=indices)
 
 

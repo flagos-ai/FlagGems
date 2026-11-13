@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
 from flag_gems.utils.pointwise_dynamic import ComplexMode
@@ -207,7 +208,7 @@ def _trunc_divide_scalars(A, B):
     # and the sign of zero come out exactly as torch produces them.
     a = torch.tensor(float(A), dtype=torch.get_default_dtype())
     b = torch.tensor(float(B), dtype=torch.get_default_dtype())
-    return torch.trunc(a / b)
+    return flag_gems.trunc(a / b)
 
 
 def trunc_divide_(A, B):

@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -471,7 +472,7 @@ def _scaled_grouped_mm_fallback(
                     out_dtype,
                 )
             )
-        return torch.cat(out_chunks, dim=0)
+        return flag_gems.cat(out_chunks, dim=0)
 
     if not a_is_2d and b_is_2d:
         for group_idx in range(num_groups):
@@ -487,7 +488,7 @@ def _scaled_grouped_mm_fallback(
                     out_dtype,
                 )
             )
-        return torch.cat(out_chunks, dim=1)
+        return flag_gems.cat(out_chunks, dim=1)
 
     if a_is_2d and b_is_2d:
         scale_a = scale_a.reshape(num_groups, mat_a.shape[0])
@@ -507,7 +508,7 @@ def _scaled_grouped_mm_fallback(
                     out_dtype,
                 )
             )
-        return torch.stack(out_chunks, dim=0)
+        return flag_gems.stack(out_chunks, dim=0)
 
     for group_idx in range(num_groups):
         chunk = mat_a[group_idx].float().mm(mat_b[group_idx].float())
@@ -523,7 +524,7 @@ def _scaled_grouped_mm_fallback(
                 out_dtype,
             )
         )
-    return torch.stack(out_chunks, dim=0)
+    return flag_gems.stack(out_chunks, dim=0)
 
 
 def scaled_grouped_mm(

@@ -22,6 +22,9 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
+
 # GCU Triton casts and stores float8_e4m3fn bit-exactly (verified on L600),
 # so this backend-local copy declares fp8 support directly instead of
 # consulting the generic get_device_capability() >= (9, 0) check, which
@@ -352,7 +355,7 @@ def _install_gcu_exp2_pow2_overlay() -> None:
             return y
         if torch.is_grad_enabled() and x.requires_grad:
             return y
-        exponent = torch.floor(x)
+        exponent = flag_gems.floor(x)
         is_pow2_exponent = (x == exponent) & (exponent >= -126.0) & (exponent <= 127.0)
         code = (exponent.to(torch.int32) + 127) << 23
         exact = code.contiguous().view(torch.float32)

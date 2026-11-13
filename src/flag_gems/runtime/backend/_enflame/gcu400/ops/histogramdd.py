@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -249,7 +250,7 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
             device=input.device,
         )
     else:
-        kernel_mins, kernel_maxs = torch.aminmax(kernel_input, dim=0)
+        kernel_mins, kernel_maxs = flag_gems.aminmax(kernel_input, dim=0)
 
     total_cells = 1
     for num_bins in bins:

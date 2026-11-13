@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -287,7 +288,7 @@ _COMPLEX_FLOAT_VIEW = {
 
 
 def _real_to_pair(t):
-    return torch.stack((t, torch.zeros_like(t)), dim=-1)
+    return flag_gems.stack((t, torch.zeros_like(t)), dim=-1)
 
 
 def _pair_add(Ar, Br, alpha):

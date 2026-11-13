@@ -33,6 +33,9 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
+
+
 
 @triton.jit
 def _cholesky_ex_kernel(
@@ -184,7 +187,7 @@ def linalg_cholesky_ex(self, upper=False, check_errors=False):
     )
 
     if check_errors:
-        bad = torch.nonzero(info.reshape(-1))
+        bad = flag_gems.nonzero(info.reshape(-1))
         if bad.numel() > 0:
             first = int(info.reshape(-1)[int(bad[0])])
             raise torch.linalg.LinAlgError(

@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
@@ -213,12 +214,12 @@ def _install_native_pinverse_nonfinite_shim():
             try:
                 return current(input, rcond=rcond)
             except torch.linalg.LinAlgError:
-                if not bool(torch.isnan(input).any()):
+                if not bool(flag_gems.isnan(input).any()):
                     raise
                 cpu_input = input.cpu()
                 m, n = cpu_input.shape[-2:]
                 matrices = cpu_input.reshape(-1, m, n)
-                nan_rows = torch.isnan(matrices).flatten(1).any(1)
+                nan_rows = flag_gems.isnan(matrices).flatten(1).any(1)
                 result = torch.empty((matrices.shape[0], n, m), dtype=cpu_input.dtype)
                 result[nan_rows] = 0.0
                 finite_rows = ~nan_rows

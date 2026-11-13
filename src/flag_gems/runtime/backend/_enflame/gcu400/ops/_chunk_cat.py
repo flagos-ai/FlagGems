@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import libentry
 
 try:
@@ -381,11 +382,11 @@ def _chunk_cat_impl(
             pad_shape[dim] = chunk_size - chunk.shape[dim]
             if pad_shape[dim] > 0:
                 padding_tensor = torch.zeros(pad_shape, dtype=dtype, device=device)
-                chunk = torch.cat([chunk, padding_tensor], dim=dim)
+                chunk = flag_gems.cat([chunk, padding_tensor], dim=dim)
             padded_chunks.append(chunk)
 
         # Stack to get [num_chunks, ...] shape
-        chunked = torch.stack(padded_chunks, dim=dim)
+        chunked = flag_gems.stack(padded_chunks, dim=dim)
         all_chunked.append(chunked)
 
     # Now interleave: for each chunk index, concatenate tensors' chunks

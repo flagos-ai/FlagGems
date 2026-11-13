@@ -18,7 +18,9 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
+
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +195,7 @@ def cholesky(A, upper=False):
 
     bad = info.reshape(-1)
     if bool(torch.any(bad != 0).item()):
-        first = int(bad[int(torch.nonzero(bad)[0])])
+        first = int(bad[int(flag_gems.nonzero(bad)[0])])
         raise torch.linalg.LinAlgError(
             "cholesky: The factorization could not be completed because the "
             "input is not positive-definite (the leading minor of order %d is "

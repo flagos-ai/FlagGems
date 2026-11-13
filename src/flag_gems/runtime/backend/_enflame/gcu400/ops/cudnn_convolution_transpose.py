@@ -20,6 +20,7 @@ import torch.nn.grad  # noqa: F401
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -357,7 +358,7 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
         if crop_w:
             grad_output = grad_output[..., : grad_output.shape[-1] - crop_w]
 
-        grad_input = torch.nn.functional.conv2d(
+        grad_input = flag_gems.conv2d(
             grad_output,
             weight,
             stride=stride,

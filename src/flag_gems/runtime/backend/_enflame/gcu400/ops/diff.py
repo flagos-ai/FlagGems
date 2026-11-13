@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
@@ -105,9 +106,9 @@ def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
     logger.debug("GEMS DIFF")
 
     if prepend is not None:
-        input = torch.cat([prepend, input], dim=dim)
+        input = flag_gems.cat([prepend, input], dim=dim)
     if append is not None:
-        input = torch.cat([input, append], dim=dim)
+        input = flag_gems.cat([input, append], dim=dim)
 
     if n <= 0:
         return input

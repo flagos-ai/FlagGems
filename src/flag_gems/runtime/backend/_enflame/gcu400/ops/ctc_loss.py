@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -882,7 +883,7 @@ class CtcLossFunction(torch.autograd.Function):
             neg_log_likelihood = raw_neg_log_likelihood
             if zero_infinity:
                 neg_log_likelihood = torch.where(
-                    torch.isinf(neg_log_likelihood),
+                    flag_gems.isinf(neg_log_likelihood),
                     torch.zeros(
                         (), dtype=neg_log_likelihood.dtype, device=log_probs.device
                     ),
@@ -934,7 +935,7 @@ class CtcLossFunction(torch.autograd.Function):
         neg_log_likelihood = raw_neg_log_likelihood
         if zero_infinity:
             neg_log_likelihood = torch.where(
-                torch.isinf(neg_log_likelihood),
+                flag_gems.isinf(neg_log_likelihood),
                 torch.zeros(
                     (), dtype=neg_log_likelihood.dtype, device=log_probs.device
                 ),

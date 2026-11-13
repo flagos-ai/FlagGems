@@ -16,6 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 
 
@@ -447,7 +448,7 @@ def _unpack_fp4_e2m1_torch(packed: torch.Tensor) -> torch.Tensor:
 
 def _expand_scale_torch(scale: torch.Tensor, width: int) -> torch.Tensor:
     if scale.dtype == torch.uint8:
-        scale = torch.exp2(scale.to(torch.float32) - 127.0)
+        scale = flag_gems.exp2(scale.to(torch.float32) - 127.0)
     else:
         scale = scale.to(torch.float32)
     return torch.repeat_interleave(scale, 32, dim=-1)[..., :width]
@@ -486,7 +487,7 @@ def fp8_fp4_mega_moe_torch_ref(
             if activation_clamp is not None:
                 gate = gate.clamp(-activation_clamp, activation_clamp)
                 up = up.clamp(-activation_clamp, activation_clamp)
-            act = torch.nn.functional.silu(gate) * up
+            act = flag_gems.silu(gate) * up
             out[token] += topk_weights[token, slot].float() * torch.matmul(
                 l2[expert], act
             )

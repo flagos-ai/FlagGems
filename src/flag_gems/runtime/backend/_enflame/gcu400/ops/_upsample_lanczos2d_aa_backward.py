@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
@@ -511,8 +512,8 @@ def _gemm_backward_path(
         )
 
         grad_w = grad_output.contiguous().reshape(H_out, W_out).to(compute_dtype)
-        tmp = torch.mm(grad_w, wx)
-        out = torch.mm(wy_t, tmp)
+        tmp = flag_gems.mm(grad_w, wx)
+        out = flag_gems.mm(wy_t, tmp)
         return out.reshape(N, C, H_in, W_in).to(grad_output.dtype)
 
     wy = _get_weight_matrix(
@@ -520,9 +521,9 @@ def _gemm_backward_path(
     )
 
     grad_w = grad_output.contiguous().reshape(NC * H_out, W_out).to(compute_dtype)
-    tmp = torch.mm(grad_w, wx).reshape(NC, H_out, W_in)
+    tmp = flag_gems.mm(grad_w, wx).reshape(NC, H_out, W_in)
     tmp_h = tmp.transpose(1, 2).contiguous().reshape(NC * W_in, H_out)
-    out = torch.mm(tmp_h, wy).reshape(NC, W_in, H_in).transpose(1, 2).contiguous()
+    out = flag_gems.mm(tmp_h, wy).reshape(NC, W_in, H_in).transpose(1, 2).contiguous()
     return out.reshape(N, C, H_in, W_in).to(grad_output.dtype)
 
 
