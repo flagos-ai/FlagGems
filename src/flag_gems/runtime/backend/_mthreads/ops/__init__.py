@@ -63,6 +63,7 @@ from .conv2d import conv2d
 from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .convolution_overrideable import convolution_overrideable
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
 from .cummaxmin_backward import cummaxmin_backward
@@ -264,6 +265,7 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "convolution_overrideable",
     "copy_",
     "cudnn_convolution",
     "cummaxmin_backward",
