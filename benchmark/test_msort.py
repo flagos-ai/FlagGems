@@ -459,7 +459,6 @@ class MsortBenchmark(_MsortH800Reference, base.Benchmark):
     def build_inputs(self, case):
         plan = case.builder_args[0]
         (shape,) = plan.builder_args
-        torch.manual_seed(0)
         return (utils.generate_tensor_input(shape, case.dtype, self.device),)
 
 
@@ -490,7 +489,6 @@ class MsortOutBenchmark(MsortBenchmark):
     def build_inputs(self, case):
         plan = case.builder_args[0]
         (shape,) = plan.builder_args
-        torch.manual_seed(0)
         inp = utils.generate_tensor_input(shape, case.dtype, self.device)
         return inp, {"out": torch.empty_like(inp)}
 

@@ -2,7 +2,7 @@
   "api_version": "v6.0",
   "name": "row_stack_out",
   "requires_triton_kernel": true,
-  "description": "A variant of row_stack() that writes the result into the out tensor.",
+  "description": "ATen row_stack.out stacks tensors vertically into the keyword-only out tensor, mutates out, and returns that same tensor.",
   "parameters": [
     {
       "name": "tensors",
@@ -21,7 +21,11 @@
     "out"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
   }
 }
