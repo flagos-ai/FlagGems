@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from functools import partial
 
 import torch
 
@@ -65,7 +66,7 @@ LEGAL_CONFIGS = {
     },
 }
 
-SUPPORTED_OPS = ["mm", "bmm"]
+SUPPORTED_OPS = ["mm", "bmm", "addmm", "attention"]
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,71 @@ def validate_and_fix_config(config, arch_id, op_name, dtype):
     return config
 
 
+def _config_pre_hook(configs, op_name, nargs):
+    op_key = _strip_spacemit_suffix(op_name)
+    arch_id = get_current_arch_id()
+    # nargs is a dict mapping kernel arg names to values
+    dtype = None
+    for value in nargs.values():
+        if isinstance(value, torch.Tensor):
+            dtype = value.dtype
+            break
+
+    if arch_id not in LEGAL_CONFIGS:
+        return
+    if op_key not in LEGAL_CONFIGS[arch_id]:
+        return
+
+    legal_configs = LEGAL_CONFIGS[arch_id][op_key].get(dtype, [])
+    if not legal_configs:
+        legal_configs = LEGAL_CONFIGS[arch_id][op_key].get(torch.float32, [])
+    if not legal_configs:
+        return
+
+    current_m = nargs.get("MICRO_M", 0)
+    current_k = nargs.get("MICRO_K", 0)
+    current_n = nargs.get("MICRO_N", 0)
+
+    if "MICRO_M" not in nargs:
+        # Kernel signature has no MICRO_* params: this is the
+        # general kernel reached via intra-package imports
+        # (e.g. baddbmm backward calls ops.bmm.bmm), not the
+        # _spacemit gemm kernel. Injecting would crash the
+        # launch with "Keyword argument MICRO_M ... unrecognised".
+        return
+
+    is_legal = any(
+        cfg["MICRO_M"] == current_m
+        and cfg["MICRO_K"] == current_k
+        and cfg["MICRO_N"] == current_n
+        for cfg in legal_configs
+    )
+
+    if not is_legal:
+        fixed = legal_configs[0]
+        # Fix nargs dict (used by LibEntry path)
+        nargs["MICRO_M"] = fixed["MICRO_M"]
+        nargs["MICRO_K"] = fixed["MICRO_K"]
+        nargs["MICRO_N"] = fixed["MICRO_N"]
+        # FlagTree may call the first config's hook for the selected config.
+        # All candidates share the same architecture/dtype micro tile.
+        for config in configs:
+            config.kwargs.update(fixed)
+        logger.warning(
+            "GEMS_SPACEMIT pre_hook fixed config for op=%s arch=%s dtype=%s: "
+            "MICRO_M=%s->%s, MICRO_K=%s->%s, MICRO_N=%s->%s",
+            op_name,
+            arch_id,
+            dtype,
+            current_m,
+            fixed["MICRO_M"],
+            current_k,
+            fixed["MICRO_K"],
+            current_n,
+            fixed["MICRO_N"],
+        )
+
+
 def get_tuned_config(func):
     def _get_tuned_config(self, op_name):
         configs = func(self, op_name)
@@ -148,76 +214,32 @@ def get_tuned_config(func):
         # Remove _spacemit suffix for config lookup
         op_key = _strip_spacemit_suffix(op_name)
 
-        if op_key in SUPPORTED_OPS and configs and len(configs) > 0:
-            arch_id = get_current_arch_id()
-
-            def make_pre_hook(config_obj):
-                def pre_hook(nargs):
-                    # nargs is a dict mapping kernel arg names to values
-                    dtype = None
-                    for value in nargs.values():
-                        if isinstance(value, torch.Tensor):
-                            dtype = value.dtype
-                            break
-
-                    if arch_id not in LEGAL_CONFIGS:
-                        return
-                    if op_key not in LEGAL_CONFIGS[arch_id]:
-                        return
-
-                    legal_configs = LEGAL_CONFIGS[arch_id][op_key].get(dtype, [])
-                    if not legal_configs:
-                        legal_configs = LEGAL_CONFIGS[arch_id][op_key].get(
-                            torch.float32, []
-                        )
-                    if not legal_configs:
-                        return
-
-                    current_m = nargs.get("MICRO_M", 0)
-                    current_k = nargs.get("MICRO_K", 0)
-                    current_n = nargs.get("MICRO_N", 0)
-
-                    is_legal = any(
-                        cfg["MICRO_M"] == current_m
-                        and cfg["MICRO_K"] == current_k
-                        and cfg["MICRO_N"] == current_n
-                        for cfg in legal_configs
-                    )
-
-                    if not is_legal:
-                        fixed = legal_configs[0]
-                        # Fix nargs dict (used by LibEntry path)
-                        nargs["MICRO_M"] = fixed["MICRO_M"]
-                        nargs["MICRO_K"] = fixed["MICRO_K"]
-                        nargs["MICRO_N"] = fixed["MICRO_N"]
-                        # Fix config object kwargs (used by LibTuner path:
-                        # config.all_kwargs() is called after pre_hook)
-                        config_obj.kwargs["MICRO_M"] = fixed["MICRO_M"]
-                        config_obj.kwargs["MICRO_K"] = fixed["MICRO_K"]
-                        config_obj.kwargs["MICRO_N"] = fixed["MICRO_N"]
-                        logger.warning(
-                            "GEMS_SPACEMIT pre_hook fixed config for op=%s arch=%s dtype=%s: "
-                            "MICRO_M=%s->%s, MICRO_K=%s->%s, MICRO_N=%s->%s",
-                            op_name,
-                            arch_id,
-                            dtype,
-                            current_m,
-                            fixed["MICRO_M"],
-                            current_k,
-                            fixed["MICRO_K"],
-                            current_n,
-                            fixed["MICRO_N"],
-                        )
-
-                return pre_hook
-
-            # ensure configs list non-empty before setting pre_hook
-            if len(configs) > 0 and configs[0] is not None:
-                configs[0].pre_hook = make_pre_hook(configs[0])
+        if op_key in SUPPORTED_OPS and configs:
+            # partial keeps the hook bound to the copied candidate list when
+            # the autotuner deep-copies configs before pruning.
+            pre_hook = partial(_config_pre_hook, configs, op_name)
+            for config in configs:
+                config.pre_hook = pre_hook
 
         return configs
 
     return _get_tuned_config
+
+
+def prepare_tuned_configs(configs, nargs, **kwargs):
+    # Autotune copies launch kwargs before calling each candidate's pre-hook.
+    # Resolve dtype-dependent parameters before those copies are made.
+    for config in configs:
+        if config.pre_hook is not None:
+            config.pre_hook({**nargs, **kwargs, **config.all_kwargs()})
+    return [
+        config
+        for config in configs
+        if all(
+            config.kwargs[f"BLOCK_SIZE_{dim}"] % config.kwargs[f"MICRO_{dim}"] == 0
+            for dim in ("M", "N", "K")
+        )
+    ]
 
 
 def setup_triton_config():
