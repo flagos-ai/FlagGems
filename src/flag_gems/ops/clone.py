@@ -95,9 +95,7 @@ def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
         # kernel; use the aten reference copy instead.  A plain ``copy_``
         # would recurse when ``copy_`` itself is registered, so redispatch
         # with a keyset that skips the flag_gems Autograd alias.
-        torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, False
-        )
+        torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, dst, src, False)
         return
     n_elements = src.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
