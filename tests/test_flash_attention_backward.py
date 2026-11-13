@@ -311,9 +311,20 @@ def test_flash_attention_backward(
         **extra_bwd,
     )
 
+    # dQ/dK stay on the default tolerance: against an fp32 reference they are
+    # accurate to ~2e-6 in every configuration tested. dV cannot meet 1e-4: the
+    # tensor-core dot forces p through fp16/bf16, and since dOut is full-range
+    # the |dV| distribution has a heavy tail (up to ~2.3 under causal/window
+    # masks), so the relative quantization noise (~2^-11 fp16, ~2^-8 bf16)
+    # becomes ~2e-3 / ~1.6e-2 in absolute terms and a small fraction of the
+    # elements exceed the absolute floor at head_size=128. This is not specific
+    # to this kernel: an independent fp16 implementation (cutlass mem-efficient
+    # backward) sits at the same distance from the fp32 truth (1.953e-3) while
+    # agreeing with this kernel to within tolerance (0 elements over).
+    # 2e-2 matches the relaxation already used by test_efficient_attention_backward.
     utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
     utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
-    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True, atol=2e-2)
 
 
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
