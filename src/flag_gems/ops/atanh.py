@@ -23,7 +23,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def atanh_func(x):
     # atanh(x) = 0.5 * ln((1 + x) / (1 - x))
@@ -34,8 +34,7 @@ def atanh_func(x):
     numerator = one + x_fp32
     denominator = one - x_fp32
     # For x outside (-1, 1), log of negative or zero gives NaN/inf naturally
-    result = 0.5 * tl.math.log(numerator / denominator)
-    return result.to(x.dtype)
+    return 0.5 * tl.math.log(numerator / denominator)
 
 
 def atanh(A):
@@ -45,5 +44,12 @@ def atanh(A):
 
 def atanh_(A):
     logger.debug("GEMS ATANH_")
+    # ATen rejects in-place atanh on integer and bool inputs (the float result
+    # cannot be cast back into the output buffer); mirror that instead of
+    # silently truncating.
+    if not A.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{A.dtype}"
+        )
     atanh_func(A, out0=A)
     return A

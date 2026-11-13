@@ -206,14 +206,28 @@ from ._scaled_dot_product_fused_attention_overrideable import (
 )
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
+from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
+    _thnn_differentiable_gru_cell_backward,
+)
 from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
+from ._upsample_lanczos2d_aa_backward import (  # noqa: F401
+    upsample_lanczos2d_aa_backward,
+    upsample_lanczos2d_aa_backward_grad_input,
+)
+from ._upsample_nearest_exact1d_backward import (  # noqa: F401
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._weight_norm_differentiable_backward import (  # noqa: F401
+    weight_norm_differentiable_backward,
+)
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
@@ -225,6 +239,7 @@ from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from .adaptive_max_pool1d import adaptive_max_pool1d  # noqa: F401
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -502,6 +517,7 @@ from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_  # noqa: F401
+from .geqrf import geqrf
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
@@ -509,9 +525,12 @@ from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
 from .grid_sampler import grid_sampler
 from .grid_sampler_2d import grid_sampler_2d
+from .grid_sampler_2d_backward import grid_sampler_2d_backward
+from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
+from .gru_cell import gru_cell
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
@@ -589,6 +608,7 @@ from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
+from .linalg_polar import linalg_polar, linalg_polar_out
 from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -596,6 +616,7 @@ from .linalg_solve_triangular import (
 )
 from .linalg_svd import linalg_svd
 from .linalg_svdvals import linalg_svdvals
+from .linalg_tensorinv import linalg_tensorinv, linalg_tensorinv_out
 from .linear import linear
 from .linear_backward import linear_backward
 from .linspace import linspace
@@ -627,6 +648,8 @@ from .logit_ import logit_
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
+from .lstm import lstm
+from .lstm_cell import lstm_cell
 from .lt import less_, less_scalar_, lt, lt_, lt_scalar, lt_scalar_
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .margin_ranking_loss import margin_ranking_loss
@@ -657,6 +680,7 @@ from .miopen_batch_norm import miopen_batch_norm
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
 from .mish import mish, mish_
 from .mish_backward import mish_backward
+from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mode import mode
 from .moe_sum import moe_sum
@@ -740,6 +764,7 @@ from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .quantized_lstm import quantized_lstm
+from .quantized_max_pool3d import quantized_max_pool3d, quantized_max_pool3d_out
 from .rad2deg import rad2deg, rad2deg_
 from .rand import rand
 from .rand_like import rand_like
@@ -884,6 +909,10 @@ from .special_multigammaln import special_multigammaln
 from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
+from .special_scaled_modified_bessel_k0 import (  # noqa: F401
+    special_scaled_modified_bessel_k0,
+    special_scaled_modified_bessel_k0_out,
+)
 from .special_scaled_modified_bessel_k1 import (  # noqa: F401
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -902,6 +931,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .special_softmax import special_softmax
+from .special_spherical_bessel_j0 import special_spherical_bessel_j0  # noqa: F401
 from .special_xlog1py import special_xlog1py
 from .special_zeta import (
     special_zeta,
@@ -931,6 +961,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .trapezoid import trapezoid_x  # noqa: F401
 from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
@@ -968,6 +999,7 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
 from .weight_norm import _weight_norm
@@ -1443,6 +1475,7 @@ __all__ = [
     "gelu_backward",
     "geometric",
     "geometric_",
+    "geqrf",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -1455,10 +1488,13 @@ __all__ = [
     "grid_sample",
     "grid_sampler",
     "grid_sampler_2d",
+    "grid_sampler_2d_backward",
+    "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru_cell",
     "gt",
     "gt_scalar",
     "gt_scalar_",
@@ -1559,11 +1595,15 @@ __all__ = [
     "linalg_matrix_norm_out",
     "linalg_multi_dot",
     "linalg_multi_dot_out",
+    "linalg_polar",
+    "linalg_polar_out",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
     "linalg_svdvals",
+    "linalg_tensorinv",
+    "linalg_tensorinv_out",
     "linear",
     "linear_backward",
     "linspace",
@@ -1600,6 +1640,8 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
+    "lstm",
+    "lstm_cell",
     "lt",
     "lt_",
     "lt_scalar",
@@ -1642,6 +1684,7 @@ __all__ = [
     "mish",
     "mish_",
     "mish_backward",
+    "mixed_dtypes_linear",
     "mm",
     "mm_out",
     "mode",
@@ -1737,6 +1780,8 @@ __all__ = [
     "prod_dim",
     "quantile",
     "quantized_lstm",
+    "quantized_max_pool3d",
+    "quantized_max_pool3d_out",
     "rad2deg",
     "rad2deg_",
     "rand",
@@ -1957,6 +2002,7 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "trapezoid_x",
     "triangular_solve",
     "triangular_solve_out",
     "tril",
