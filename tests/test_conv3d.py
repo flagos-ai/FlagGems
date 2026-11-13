@@ -110,6 +110,39 @@ def test_conv3d(
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.conv3d
+def test_conv3d_large_n_offsets():
+    """Batch offsets past INT32_MAX must not wrap (Issue #6588).
+
+    `conv3d()` pads `weight_c` up to 16 before launching the kernel, so the
+    input row pitch for this patch-embedding shape is 16 * 2 * 14 * 14 = 6272
+    elements. The last of 522240 rows then starts at 3.27e9 elements, beyond
+    INT32_MAX; the 32-bit address arithmetic used to fault during autotuning.
+    """
+    if flag_gems.device != "cuda":
+        pytest.skip("requires a CUDA-compatible device")
+
+    n, out_c = 522240, 1280
+    needed = (n * 16 * 2 * 14 * 14 + n * 3 * 2 * 14 * 14 + n * out_c) * 2
+    if torch.cuda.mem_get_info()[0] < needed + 2**30:
+        pytest.skip(f"requires ~{needed / 2**30:.0f} GiB of free device memory")
+
+    inp = torch.ones((n, 3, 2, 14, 14), dtype=torch.bfloat16, device=flag_gems.device)
+    weight = torch.ones(
+        (out_c, 3, 2, 14, 14), dtype=torch.bfloat16, device=flag_gems.device
+    )
+
+    out = flag_gems.conv3d(
+        inp, weight, stride=(2, 14, 14), padding=0, dilation=1, groups=1
+    )
+
+    assert out.shape == (n, out_c, 1, 1, 1)
+    # Each output element sums one 3 x 2 x 14 x 14 patch of ones.
+    patch_sum = 3 * 2 * 14 * 14
+    assert out.min().item() == patch_sum
+    assert out.max().item() == patch_sum
+
+
 @pytest.mark.conv3d_padding
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #3023")
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV3D)
