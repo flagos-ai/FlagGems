@@ -87,6 +87,14 @@ def copy_sparse_to_sparse_(self, src, non_blocking=False):
         # One-time structural resize: copy into fresh buffers and install them
         # into self via a metadata swap. Runs once per workload (dst starts as
         # zeros_like(src), i.e. nnz=0), so it is not in the timed path.
+        if self._nnz() != 0 and any(
+            src.shape[d] < self.shape[d] for d in range(self.dim())
+        ):
+            raise RuntimeError(
+                "shrinking the size of sparse dimensions (from %s to %s) on a "
+                "non-empty sparse tensor is not supported."
+                % (list(self.shape), list(src.shape))
+            )
         new_i = torch.empty_like(s_idx)
         new_v = torch.empty(s_val.shape, dtype=self.dtype, device=self.device)
         ni = s_idx.numel()
