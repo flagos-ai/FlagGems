@@ -412,7 +412,8 @@ def avg_pool3d(
     planes.
 
     Args:
-        input: 5D tensor of shape (N, C, D, H, W).
+        input: 5D tensor of shape (N, C, D, H, W), or 4D tensor of shape
+            (C, D, H, W).
         kernel_size: Size of the pooling window. Can be int or (kD, kH, kW).
         stride: Stride of the pooling window. Default: kernel_size.
         padding: Implicit zero padding on both sides. Default: 0.
@@ -423,12 +424,19 @@ def avg_pool3d(
             pool size. Default: None.
 
     Returns:
-        5D tensor of shape (N, C, D_out, H_out, W_out).
+        5D tensor of shape (N, C, D_out, H_out, W_out), or 4D tensor of shape
+        (C, D_out, H_out, W_out) when the input is unbatched.
     """
     logger.debug("GEMS AVG_POOL3D_FORWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
+
+    # ATen also accepts an unbatched (C, D, H, W) input. Pool it as a batch of
+    # one and restore the original rank on every return path.
+    unbatched = input.dim() == 4
+    if unbatched:
+        input = input.unsqueeze(0)
 
     input = input.contiguous()
 
@@ -462,7 +470,7 @@ def avg_pool3d(
     )
 
     if output.numel() == 0:
-        return output
+        return output.squeeze(0) if unbatched else output
 
     grid = lambda meta: (
         in_n * in_c,
@@ -502,7 +510,7 @@ def avg_pool3d(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return output
+    return output.squeeze(0) if unbatched else output
 
 
 def avg_pool3d_backward(
@@ -535,6 +543,18 @@ def avg_pool3d_backward(
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
 
+    # Mirror the forward wrapper: an unbatched (C, D, H, W) input is pooled as a
+    # batch of one, so a matching 4D grad_output is promoted as well.
+    unbatched = input.dim() == 4
+    if unbatched:
+        if grad_output.dim() != 4:
+            raise ValueError(
+                "avg_pool3d_backward expects a 4D grad_output when the input "
+                f"is unbatched, but got {grad_output.dim()}D"
+            )
+        input = input.unsqueeze(0)
+        grad_output = grad_output.unsqueeze(0)
+
     grad_output = grad_output.contiguous()
 
     (
@@ -559,7 +579,8 @@ def avg_pool3d_backward(
     grad_input = torch.empty_like(input)
 
     if grad_output.numel() == 0:
-        return grad_input.zero_()
+        grad_input = grad_input.zero_()
+        return grad_input.squeeze(0) if unbatched else grad_input
 
     # Input-centric grid: iterate over input positions
     grid = lambda meta: (
@@ -600,4 +621,4 @@ def avg_pool3d_backward(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return grad_input
+    return grad_input.squeeze(0) if unbatched else grad_input
