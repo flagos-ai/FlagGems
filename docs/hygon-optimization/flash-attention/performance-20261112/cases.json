@@ -1,0 +1,334 @@
+[
+  {
+    "id": "flash-model_state",
+    "op": "aten::_scaled_dot_product_flash_attention",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8,16,2049,128],
+          "stride": [12589056,128,6144,1],
+          "dtype": "torch.bfloat16",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "qkv"
+        },
+        {
+          "tensor": true,
+          "shape": [8,16,2049,128],
+          "stride": [12589056,128,6144,1],
+          "dtype": "torch.bfloat16",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 2048,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "qkv"
+        },
+        {
+          "tensor": true,
+          "shape": [8,16,2049,128],
+          "stride": [12589056,128,6144,1],
+          "dtype": "torch.bfloat16",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 4096,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "qkv"
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [8,16,2049,128],
+          "stride": [12589056,128,6144,1],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [8,16,2049,128],
+          "stride": [12589056,128,6144,1],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 2048,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        {
+          "tensor": true,
+          "shape": [8,16,2049,128],
+          "stride": [12589056,128,6144,1],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 4096,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "seed": 20261105,
+    "sheet_row": 645,
+    "source_sheet": "大于5%的模型工况",
+    "metadata_assumptions": [],
+    "input_scope": "metadata reconstruction; original model payload and external contract not replayed"
+  },
+  {
+    "id": "flash-expanded_small",
+    "op": "aten::_scaled_dot_product_flash_attention",
+    "spec": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,3,128],
+          "storage_offset": 0,
+          "stride": [18432,128,6144,1],
+          "storage_alias": "independent-0"
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,3,128],
+          "storage_offset": 2048,
+          "stride": [18432,128,6144,1],
+          "storage_alias": "independent-1"
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,3,128],
+          "storage_offset": 4096,
+          "stride": [18432,128,6144,1],
+          "storage_alias": "independent-2"
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,3,128],
+          "storage_offset": 0,
+          "stride": [18432,128,6144,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,3,128],
+          "storage_offset": 2048,
+          "stride": [18432,128,6144,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,3,128],
+          "storage_offset": 4096,
+          "stride": [18432,128,6144,1]
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "seed": 5058009176373978791,
+    "sheet_row": 2,
+    "source_sheet": "规模扩展工况",
+    "metadata_assumptions": [],
+    "input_scope": "independent synthetic input; shape/stride/offset and seed from workbook"
+  },
+  {
+    "id": "flash-expanded_medium",
+    "op": "aten::_scaled_dot_product_flash_attention",
+    "spec": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,23,128],
+          "storage_offset": 0,
+          "stride": [141312,128,6144,1],
+          "storage_alias": "independent-0"
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,23,128],
+          "storage_offset": 2048,
+          "stride": [141312,128,6144,1],
+          "storage_alias": "independent-1"
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,23,128],
+          "storage_offset": 4096,
+          "stride": [141312,128,6144,1],
+          "storage_alias": "independent-2"
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,23,128],
+          "storage_offset": 0,
+          "stride": [141312,128,6144,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,23,128],
+          "storage_offset": 2048,
+          "stride": [141312,128,6144,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,23,128],
+          "storage_offset": 4096,
+          "stride": [141312,128,6144,1]
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "seed": 6792970978253416049,
+    "sheet_row": 3,
+    "source_sheet": "规模扩展工况",
+    "metadata_assumptions": [],
+    "input_scope": "independent synthetic input; shape/stride/offset and seed from workbook"
+  },
+  {
+    "id": "flash-expanded_large",
+    "op": "aten::_scaled_dot_product_flash_attention",
+    "spec": [
+      [
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,362,128],
+          "storage_offset": 0,
+          "stride": [2224128,128,6144,1],
+          "storage_alias": "independent-0"
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,362,128],
+          "storage_offset": 2048,
+          "stride": [2224128,128,6144,1],
+          "storage_alias": "independent-1"
+        },
+        {
+          "device": "flagos:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,362,128],
+          "storage_offset": 4096,
+          "stride": [2224128,128,6144,1],
+          "storage_alias": "independent-2"
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,362,128],
+          "storage_offset": 0,
+          "stride": [2224128,128,6144,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,362,128],
+          "storage_offset": 2048,
+          "stride": [2224128,128,6144,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [2,16,362,128],
+          "storage_offset": 4096,
+          "stride": [2224128,128,6144,1]
+        }
+      ],
+      {
+        "scale": 0.08838834764831843
+      }
+    ],
+    "seed": 8147618770989597313,
+    "sheet_row": 4,
+    "source_sheet": "规模扩展工况",
+    "metadata_assumptions": [],
+    "input_scope": "independent synthetic input; shape/stride/offset and seed from workbook"
+  }
+]

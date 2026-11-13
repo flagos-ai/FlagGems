@@ -1,0 +1,6 @@
+{
+  "operator": "aten::_scaled_dot_product_flash_attention",
+  "source_commit": "0fac4375cdf1b7d08b892ea254cf04d6c0dc1e50",
+  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
+  "status": "official-master branch prepared; focused hardware retest pending"
+}
