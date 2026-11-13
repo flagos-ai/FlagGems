@@ -1577,6 +1577,7 @@ __all__ = [
     "choose_qparams_per_tensor",
     "clamp",
     "clamp_",
+    "clamp_max",
     "clamp_max_",
     "clamp_min",
     "clamp_min_",
