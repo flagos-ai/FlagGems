@@ -953,6 +953,9 @@ from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
+from .thnn_differentiable_lstm_cell_backward import (  # noqa: F401
+    _thnn_differentiable_lstm_cell_backward,
+)
 from .threshold import threshold, threshold_, threshold_backward
 from .tile import tile
 from .to import to_copy
