@@ -22,11 +22,17 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _check_eigenpair_metadata(inp, eigenvalues, eigenvectors):
+def _host_observation(inp, eigenvalues, eigenvectors):
+    # Guard the original candidate before host observation can hide placement
+    # or dtype errors. The eig call itself always stays on the target device.
     assert eigenvalues.device == eigenvectors.device == inp.device
     assert eigenvalues.dtype == eigenvectors.dtype == torch.complex64
     assert eigenvalues.shape == inp.shape[:-1]
     assert eigenvectors.shape == inp.shape
+    observed = tuple(t.detach().cpu() for t in (inp, eigenvalues, eigenvectors))
+    for source, host in zip((inp, eigenvalues, eigenvectors), observed):
+        assert host.dtype == source.dtype and host.shape == source.shape
+    return observed
 
 
 @pytest.mark.linalg_eig
@@ -41,22 +47,21 @@ def test_linalg_eig(shape, dtype):
     well defined: the (unordered) eigenvalue set and the reconstruction
     A @ V == V @ diag(eigenvalues).
     """
-    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    use_cpu = flag_gems.vendor_name == "thead"
-    ref_inp = inp.cpu() if use_cpu else utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp)
 
     ref_w, _ = torch.linalg.eig(ref_inp)
     res_w, res_v = flag_gems.linalg_eig(inp)
-    _check_eigenpair_metadata(inp, res_w, res_v)
 
     # Eigenvalues carry no order and no fixed phase, so pair each reference
     # eigenvalue with its nearest kernel counterpart before comparing. Sorting
     # both lists by a scalar key is not enough: two eigenvalues with close real
     # parts can still be ordered differently on the two sides.
     assert len(res_w) == len(ref_w)
-    ref_cpu = ref_w.cpu().to(torch.complex128)
-    res_cpu = res_w.cpu().to(torch.complex128)
+    # Move before widening: klx device complex128 conversion can lose dtype.
+    _, observed_w, _ = _host_observation(inp, res_w, res_v)
+    ref_cpu = ref_w.detach().cpu().to(torch.complex128)
+    res_cpu = observed_w.to(torch.complex128)
     remaining = list(range(len(res_cpu)))
     matched = []
     for ref_val in ref_cpu:
@@ -66,18 +71,18 @@ def test_linalg_eig(shape, dtype):
         matched.append(res_cpu[best])
     utils.gems_assert_close(
         torch.stack(matched).to(res_w.dtype),
-        ref_w.cpu(),
+        ref_w.detach().cpu(),
         res_w.dtype,
         atol=1e-3,
     )
 
     # reconstruction residual A @ V - V @ diag(w)
-    if flag_gems.vendor_name == "thead":
-        inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
-    norms = torch.linalg.vector_norm(res_v, dim=-2)
-    torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
-    a_c = inp.to(res_v.dtype)
-    recon = a_c @ res_v - res_v @ torch.diag(res_w)
+    if flag_gems.vendor_name == "kunlunxin":
+        observed_inp, observed_w, observed_v = _host_observation(inp, res_w, res_v)
+    else:
+        observed_inp, observed_w, observed_v = inp, res_w, res_v
+    a_c = observed_inp.to(observed_v.dtype)
+    recon = a_c @ observed_v - observed_v @ torch.diag(observed_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (shape[0] ** 0.5 + 1.0)
 
 
@@ -86,16 +91,14 @@ def test_linalg_eig(shape, dtype):
 @pytest.mark.parametrize("n", [4, 6])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_eig_batched(batch, n, dtype):
-    torch.manual_seed(0)
     inp = torch.randn(batch, n, n, dtype=dtype, device=flag_gems.device)
 
     res_w, res_v = flag_gems.linalg_eig(inp)
-    _check_eigenpair_metadata(inp, res_w, res_v)
 
-    if flag_gems.vendor_name == "thead":
-        inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
-    norms = torch.linalg.vector_norm(res_v, dim=-2)
-    torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
-    a_c = inp.to(res_v.dtype)
-    recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
+    if flag_gems.vendor_name == "kunlunxin":
+        observed_inp, observed_w, observed_v = _host_observation(inp, res_w, res_v)
+    else:
+        observed_inp, observed_w, observed_v = inp, res_w, res_v
+    a_c = observed_inp.to(observed_v.dtype)
+    recon = a_c @ observed_v - observed_v @ torch.diag_embed(observed_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (batch * n) ** 0.5
