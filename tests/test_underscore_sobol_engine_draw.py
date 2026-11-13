@@ -18,12 +18,24 @@ from torch.quasirandom import SobolEngine
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
 
 @pytest.mark.underscore_sobol_engine_draw
+@pytest.mark.sobol_engine_draw
 @pytest.mark.parametrize("n", [10, 100, 1000])
 @pytest.mark.parametrize("dimension", [2, 5, 10, 20])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float64
+        and not utils.fp64_is_supported
+    ):
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # torch.empty(..., dtype=torch.float64) reports float32 and the
+        # output-dtype contract of this op can never hold there.
+        pytest.skip("float64 is not supported by this device")
     # Initialize SobolEngine to get valid state
     eng = SobolEngine(dimension=dimension, scramble=False)
 
@@ -60,6 +72,7 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
 
 
 @pytest.mark.underscore_sobol_engine_draw
+@pytest.mark.sobol_engine_draw
 @pytest.mark.parametrize("num_generated", [0, 10, 100])
 def test_accuracy_underscore_sobol_engine_draw_with_offset(num_generated):
     # Test with non-zero num_generated
@@ -105,6 +118,7 @@ def test_accuracy_underscore_sobol_engine_draw_with_offset(num_generated):
 
 
 @pytest.mark.underscore_sobol_engine_draw
+@pytest.mark.sobol_engine_draw
 def test_accuracy_underscore_sobol_engine_draw_edge_cases():
     # Test edge cases
     dimension = 1
@@ -128,6 +142,7 @@ def test_accuracy_underscore_sobol_engine_draw_edge_cases():
 
 
 @pytest.mark.underscore_sobol_engine_draw
+@pytest.mark.sobol_engine_draw
 def test_accuracy_underscore_sobol_engine_draw_large():
     # Test larger dimensions
     n = 500

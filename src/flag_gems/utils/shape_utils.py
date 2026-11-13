@@ -15,7 +15,7 @@
 import enum
 import functools
 import operator
-from typing import Iterable, Sequence, Tuple
+from typing import Iterable, Optional, Sequence, Tuple
 
 import torch
 import triton
@@ -118,6 +118,67 @@ def broadcasted_stride(shape: Shape, stride: Stride, new_shape: Shape) -> Stride
     for i in range(r1):
         new_stride[d + i] = 0 if (shape[i] == 1 and new_shape[d + i] > 1) else stride[i]
     return tuple(new_stride)
+
+
+def computeStride(
+    oldshape: Shape, oldstride: Shape, newshape: Shape
+) -> Optional[Stride]:
+    """Return the strides of a view of ``newshape`` over the given layout.
+
+    A faithful port of ``computeStride_impl`` in ``aten/src/ATen/TensorUtils.cpp``
+    (the helper backing ``Tensor::view``), so callers can decide whether a view is
+    possible without paying for the C++ exception a failing ``view`` raises. The
+    old dims are split into chunks that are contiguous in memory; the new dims
+    must tile those chunks exactly, from innermost outward. Size-1 old dims are
+    absorbed into whatever chunk surrounds them, and a size-1 new dim is valid at
+    any stride (marked ``-1``, like ATen). Returns ``None`` when the target cannot
+    be expressed as a view.
+    """
+    oldshape = list(oldshape)
+    oldstride = list(oldstride)
+    newshape = list(newshape)
+    if not oldshape:
+        return tuple([1] * len(newshape))
+    numel = 1
+    for s in oldshape:
+        numel *= s
+    zero_numel = numel == 0
+    if zero_numel and oldshape == newshape:
+        return tuple(oldstride)
+    newstride = [0] * len(newshape)
+    if zero_numel:
+        for view_d in range(len(newshape) - 1, -1, -1):
+            if view_d == len(newshape) - 1:
+                newstride[view_d] = 1
+            else:
+                newstride[view_d] = max(newshape[view_d + 1], 1) * newstride[view_d + 1]
+        return tuple(newstride)
+    view_d = len(newshape) - 1
+    chunk_base_stride = oldstride[-1]
+    tensor_numel = 1
+    view_numel = 1
+    for tensor_d in range(len(oldshape) - 1, -1, -1):
+        tensor_numel *= oldshape[tensor_d]
+        # End of a size chunk when the dim to the left is not size 1 and its
+        # stride does not continue this chunk contiguously.
+        if (
+            tensor_d == 0
+            or oldshape[tensor_d - 1] != 1
+            and oldstride[tensor_d - 1] != tensor_numel * chunk_base_stride
+        ):
+            while view_d >= 0 and (view_numel < tensor_numel or newshape[view_d] == 1):
+                newstride[view_d] = view_numel * chunk_base_stride
+                view_numel *= newshape[view_d]
+                view_d -= 1
+            if view_numel != tensor_numel:
+                return None
+            if tensor_d > 0:
+                chunk_base_stride = oldstride[tensor_d - 1]
+                tensor_numel = 1
+                view_numel = 1
+    if view_d != -1:
+        return None
+    return tuple(newstride)
 
 
 def volume(shape: Shape) -> int:

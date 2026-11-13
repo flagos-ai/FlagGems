@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# ``or`` is a Python keyword, so @pytest.mark.or is a syntax error; build the
+# aggregate operator-family mark via getattr instead.
+@getattr(pytest.mark, "or")
 @pytest.mark.or_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)

@@ -104,4 +104,4 @@ coverage run -m pytest -s tests/test_foo.py \
 coverage html
 ```
 
-See [Unit-test coverage](../coverage) for more details on the coverage report.
+See [Unit-test coverage](coverage.md) for more details on the coverage report.

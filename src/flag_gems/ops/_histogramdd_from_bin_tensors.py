@@ -231,9 +231,9 @@ def _run_histogram(self, bins, weight, density, out):
     else:
         acc = torch.zeros(out_shape, dtype=acc_dtype, device=self.device)
 
-    # One program per point-tile; 1024 points amortizes launch overhead while
+    # One program per point-tile; 256 points amortizes launch overhead while
     # keeping occupancy high for typical point-cloud sizes.
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 256
     # The per-dimension edge comparison is a (points x edges) broadcast, and a
     # tensor may hold at most 2**20 elements, so the edge axis has to be
     # walked in slabs for any dimension with more than a few hundred bins. A

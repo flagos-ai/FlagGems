@@ -32,11 +32,15 @@ SLICE_COPY_SHAPES = [
 # Every dtype aten::slice_copy accepts on CUDA. The kernel is a pure bit copy, so
 # bool / float8 go through a uint8 reinterpretation and complex through
 # view_as_real; both paths are covered here.
-_FLOAT8_DTYPES = [
-    getattr(torch, name)
-    for name in ("float8_e4m3fn", "float8_e5m2")
-    if hasattr(torch, name)
-]
+_FLOAT8_DTYPES = (
+    [
+        getattr(torch, name)
+        for name in ("float8_e4m3fn", "float8_e5m2")
+        if hasattr(torch, name)
+    ]
+    if utils.fp8_is_supported
+    else []
+)
 _BYTE_DTYPES = [torch.bool, torch.uint8, torch.int8]
 _ALL_NON_COMPLEX_DTYPES = list(
     dict.fromkeys(
@@ -268,7 +272,10 @@ def test_slice_copy_all_dtypes(dtype):
 
 
 @pytest.mark.slice_copy
-@pytest.mark.skipif(not _FLOAT8_DTYPES, reason="PyTorch build has no float8 dtypes")
+@pytest.mark.skipif(
+    not _FLOAT8_DTYPES,
+    reason="PyTorch build or device has no float8 dtypes",
+)
 @pytest.mark.parametrize("dtype", _FLOAT8_DTYPES)
 def test_slice_copy_float8_bitwise(dtype):
     # Triton has no fp8 scalar type; the kernel copies through uint8. Sweep all
@@ -282,6 +289,15 @@ def test_slice_copy_float8_bitwise(dtype):
 @pytest.mark.slice_copy
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_slice_copy_complex(dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.complex128
+        and not utils.fp64_is_supported
+    ):
+        # XPU (torch_xmlir) silently downcasts complex128 tensors to complex64,
+        # so a genuinely complex128 tensor cannot be created there and the
+        # dtype contract can never be exercised.
+        pytest.skip("complex128 is not supported by this device")
     # Triton exposes no complex scalar type, so the kernel copies complex data
     # through view_as_real; check against ATen on every kernel path.
     inp = _make_input((4, 6, 5), dtype)
@@ -388,6 +404,16 @@ def test_slice_copy_out(shape, dtype):
 @pytest.mark.slice_copy_out
 @pytest.mark.parametrize("dtype", _ALL_NON_COMPLEX_DTYPES + _COMPLEX_DTYPES)
 def test_slice_copy_out_vs_aten_all_dtypes(dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.complex128
+        and not utils.fp64_is_supported
+    ):
+        # XPU (torch_xmlir) silently downcasts complex128 tensors to complex64,
+        # so a genuinely complex128 input/out pair cannot be created there (and
+        # under --ref=cpu the CPU-side complex128 out no longer matches the
+        # downcast input at all).
+        pytest.skip("complex128 is not supported by this device")
     # Compare slice_copy.Tensor_out against ATen directly for every dtype. The
     # reference runs on the reference device (CPU under --ref=cpu), so allocate
     # its out= there too.
@@ -448,10 +474,15 @@ def test_slice_copy_out_non_contiguous(dtype):
     assert bool((big == ref_big).all())
 
     # Reverse-strided out.
-    buf = torch.zeros((4, 2), dtype=dtype, device=flag_gems.device)
-    out = buf.flip(0)
-    flag_gems.slice_copy_out(inp, 1, 1, 5, 2, out=out)
-    assert bool((out == ref_slice).all())
+    if not (flag_gems.vendor_name == "kunlunxin" and dtype.is_complex):
+        # XPU (torch_xmlir) eager flip has no complex64 kernel, so a
+        # negative-stride complex view cannot even be built there. The
+        # transposed / strided / permuted cases above still cover the
+        # non-contiguous staging path.
+        buf = torch.zeros((4, 2), dtype=dtype, device=flag_gems.device)
+        out = buf.flip(0)
+        flag_gems.slice_copy_out(inp, 1, 1, 5, 2, out=out)
+        assert bool((out == ref_slice).all())
 
     # 3-D permuted out.
     inp3 = _make_input((4, 6, 3), dtype)
@@ -466,6 +497,15 @@ def test_slice_copy_out_non_contiguous(dtype):
 def test_slice_copy_out_dtype_mismatch():
     inp = torch.randn((4, 6), device=flag_gems.device)
     for out_dtype in [torch.float16, torch.float64, torch.int32]:
+        if (
+            flag_gems.vendor_name == "kunlunxin"
+            and out_dtype == torch.float64
+            and not utils.fp64_is_supported
+        ):
+            # XPU (torch_xmlir) silently downcasts float64 allocations to
+            # float32, so a genuinely mismatched float64 out cannot be created
+            # there and the expected RuntimeError would never be raised.
+            continue
         out = torch.zeros((4, 2), dtype=out_dtype, device=flag_gems.device)
         ref_msg = None
         try:

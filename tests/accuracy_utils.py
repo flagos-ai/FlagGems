@@ -15,6 +15,7 @@
 import importlib
 import itertools
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -27,6 +28,7 @@ fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
+complex_is_supported = flag_gems.runtime.device.support_complex
 
 
 def TestForwardOnly():
@@ -271,7 +273,11 @@ ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOA
 INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = (
+    ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
+    if complex_is_supported
+    else []
+)
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
@@ -301,6 +307,61 @@ def to_reference(inp, upcast=False):
         else:
             ref_inp = ref_inp.to(torch.float64 if can_use_fp64 else torch.float32)
     return ref_inp
+
+
+def ref_div_rounding(a, b, rounding_mode):
+    # Kunlunxin eager does not implement div with a rounding_mode, or computes
+    # it with fp32 opmath that differs from CPU half-precision semantics, so
+    # compute the reference on CPU there. Other backends keep the on-device
+    # reference (their eager implementation matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        # floor/trunc at low precision: the reference must be computed on a
+        # wider type. Dividing in float16 rounds the quotient before the
+        # rounding mode is applied, which moves results across integer
+        # boundaries (the kernel follows the exact quotient, matching CUDA aten
+        # and an fp64 reference). fp32/fp64 inputs are unaffected by this
+        # upcast, so they keep the plain path.
+        if rounding_mode in ("floor", "trunc"):
+            orig_dtype = torch.result_type(a, b)
+            if orig_dtype in (torch.float16, torch.bfloat16):
+                wide = torch.float64 if fp64_is_supported else torch.float32
+                a_wide = a.to(wide) if isinstance(a, torch.Tensor) else a
+                b_wide = b.to(wide) if isinstance(b, torch.Tensor) else b
+                return torch.div(a_wide, b_wide, rounding_mode=rounding_mode).to(
+                    orig_dtype
+                )
+        return torch.div(a, b, rounding_mode=rounding_mode)
+    a_cpu = a.cpu() if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu() if isinstance(b, torch.Tensor) else b
+    ref = torch.div(a_cpu, b_cpu, rounding_mode=rounding_mode)
+    if not TO_CPU:
+        dev = None
+        for x in (a, b):
+            if isinstance(x, torch.Tensor) and x.device.type != "cpu":
+                dev = x.device
+                break
+        if dev is not None and isinstance(ref, torch.Tensor):
+            ref = ref.to(dev)
+    return ref
+
+
+def ref_fmod(a, b):
+    # Kunlunxin eager fmod is not exact on lanes whose quotient is within one
+    # ulp of an integer: it returns ~0 there instead of the correct remainder
+    # (~|y|), so the reference is computed in float64 on CPU there. The kernel
+    # follows the exact remainder, which is what this reference produces.
+    # Other backends keep the on-device reference (their eager implementation
+    # matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.fmod(a, b)
+    a_cpu = a.cpu().to(torch.float64) if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu().to(torch.float64) if isinstance(b, torch.Tensor) else b
+    ref = torch.fmod(a_cpu, b_cpu)
+    if not TO_CPU:
+        # assert_close casts the reference to the result dtype anyway; casting
+        # here lets the reference travel back to a device without fp64 support.
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
 
 
 def to_cpu(res, ref):
@@ -342,26 +403,57 @@ def init_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def gems_log_prefix(fn):
-    """Derive the expected log prefix from the resolved function module.
+def _vendor_arch_names():
+    """Return the arch directory names of the current vendor backend.
 
-    The generic implementation logs with the ``"GEMS"`` prefix, while
-    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
-    ``_<vendor>`` path component so this works for both short imported module
-    names and fully qualified backend module names.
+    ``BackendArchEvent`` treats every sub-directory of ``_<vendor>`` other than
+    ``ops``/``fused`` and private ones as an arch (e.g. ``hopper``, ``gcu300``).
+    """
+    backend_dir = Path(flag_gems.__file__).parent / "runtime" / "backend"
+    vendor_dir = backend_dir / f"_{flag_gems.vendor_name}"
+    if not vendor_dir.is_dir():
+        return set()
+    excluded = ("ops", "fused")
+    return {
+        p.name
+        for p in vendor_dir.iterdir()
+        if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
+    }
+
+
+def gems_log_prefix(fn):
+    """Return the expected log prefix for an operator implementation.
+
+    Three module naming conventions exist across backends:
+
+    1. Generic ops: ``flag_gems.ops.<op>`` -> prefix ``GEMS``
+    2. Vendor override loaded via ``import_vendor_extra_lib``:
+       ``_<vendor>.ops.<op>``, or a fully qualified
+       ``flag_gems.runtime.backend._<vendor>.ops.<op>``.
+    3. Arch-specific ops loaded by ``BackendArchEvent`` via ``sys.path``
+       injection: ``<arch>.ops.<op>`` with a bare arch name such as ``gcu300``,
+       ``hopper``, ``rdna4``, or ``tx81``, outside the ``flag_gems.*`` namespace.
+
+    Cases 2 and 3 map to ``GEMS_<VENDOR>``. Both are matched on whole path
+    segments, so a module that merely shares a prefix with the vendor or arch
+    name (e.g. ``_<vendor>_extra``) stays ``GEMS``.
     """
     module_parts = fn.__module__.split(".")
+    vendor_prefix = f"GEMS_{flag_gems.vendor_name.upper()}"
     if f"_{flag_gems.vendor_name}" in module_parts:
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
+        return vendor_prefix
+    if module_parts[0] in _vendor_arch_names():
+        return vendor_prefix
     return "GEMS"
 
 
 def gems_log_logger(fn):
-    """Return the canonical logger name used by an operator implementation.
+    """Return the logger name used by an operator implementation.
 
-    Vendor overrides may live in a vendor module while intentionally sharing
-    the generic ``flag_gems.ops.<operator>`` logger name.
+    Operator modules log with ``logging.getLogger(__name__)``, so the logger
+    name is just the resolved function's module: ``flag_gems.ops.<operator>``
+    for the generic implementation, or the vendor module's own dotted path
+    (e.g. ``_kunlunxin.ops.<operator>``) for vendor overrides, since backend
+    packages are imported under their short name.
     """
-    module = fn.__module__.split(".")
-    operator_module = module[-1]
-    return f"flag_gems.ops.{operator_module}"
+    return fn.__module__

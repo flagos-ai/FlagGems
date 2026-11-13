@@ -26,11 +26,17 @@ SOLVE_EX_DTYPES = [torch.float32]
 if flag_gems.runtime.device.support_fp64:
     SOLVE_EX_DTYPES.append(torch.float64)
 
+# Complex inputs are valid for aten::_linalg_solve_ex; they run on the vendor
+# kernels with the same factor-then-substitute structure.
+COMPLEX_DTYPES = [torch.complex64]
+if flag_gems.runtime.device.support_fp64:
+    COMPLEX_DTYPES.append(torch.complex128)
+
 # Test shapes: (n, nrhs) - cover small to medium matrices for correctness
 SOLVE_EX_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
 
 
-def _make_solve_ex_inputs(shape, k, dtype, device):
+def _make_solve_ex_inputs(shape, k, dtype, device, left=True):
     """Create well-conditioned A and random B for solve_ex test."""
     n = shape[-1]
     A = torch.randn(*shape, dtype=dtype, device=device)
@@ -38,8 +44,8 @@ def _make_solve_ex_inputs(shape, k, dtype, device):
     batch_dims = [1] * (A.ndim - 2)
     if batch_dims:
         eye = eye.view(*batch_dims, n, n)
-    A = A @ A.mT + eye * n
-    B_shape = shape[:-1] + (k,)
+    A = A @ A.mH + eye * n
+    B_shape = shape[:-1] + (k,) if left else shape[:-2] + (k, n)
     B = torch.randn(*B_shape, dtype=dtype, device=device)
     return A, B
 
@@ -76,3 +82,273 @@ def test_linalg_solve_ex_batched(batch_shape, n, k, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert torch.equal(res_info, ref_info.to(res_info.device))
+
+
+# ---------------------------------------------------------------------------
+# aten::_linalg_solve_ex
+#
+# The private primitive behind torch.linalg.solve_ex returns four values
+# (result, LU, pivots, info) where the public operator above returns two. Its
+# cases live here alongside the public ones, since both exercise the same
+# solve; what the extra outputs add is covered below.
+# ---------------------------------------------------------------------------
+
+
+def _assert_solve_ex_outputs(res, ref, dtype, n):
+    """Compare all four outputs of the private profile against ATen.
+
+    ``LU`` and ``pivots`` are compared too, not just shape-checked: the
+    autograd formula for ``linalg_solve`` reuses them as saved tensors, so a
+    placeholder there silently corrupts the backward pass.
+    """
+    res_out, res_lu, res_pivots, res_info = res
+    ref_out, ref_lu, ref_pivots, ref_info = ref
+
+    assert res_out.shape == ref_out.shape
+    assert res_lu.shape == ref_lu.shape
+    assert res_pivots.shape == ref_pivots.shape
+    assert res_info.shape == ref_info.shape
+    assert res_pivots.dtype == torch.int32
+    assert res_info.dtype == torch.int32
+
+    if res_out.numel():
+        utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
+    if res_lu.numel():
+        utils.gems_assert_close(res_lu, ref_lu, dtype, reduce_dim=n)
+    utils.gems_assert_equal(res_pivots, ref_pivots)
+    utils.gems_assert_equal(res_info, ref_info)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("shape", SOLVE_EX_SHAPES)
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex(shape, dtype):
+    n, k = shape
+    A, B = _make_solve_ex_inputs((n, n), k, dtype, flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("batch_shape", [(1,), (3,), (4,), (2, 4)])
+@pytest.mark.parametrize("n", [4, 8, 16])
+@pytest.mark.parametrize("k", [1, 4])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_batched(batch_shape, n, k, dtype):
+    shape_A = batch_shape + (n, n)
+    A, B = _make_solve_ex_inputs(shape_A, k, dtype, flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("n", [4, 8])
+@pytest.mark.parametrize("k", [1, 3])
+@pytest.mark.parametrize("batch_shape", [(), (3,)])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_left_false(batch_shape, n, k, dtype):
+    """XA = B: B constrains columns, and LU still factorizes A itself."""
+    shape_A = batch_shape + (n, n)
+    A, B = _make_solve_ex_inputs(shape_A, k, dtype, flag_gems.device, left=False)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B, left=False)
+    res = flag_gems._linalg_solve_ex(A, B, left=False)
+
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("batch_shape", [(), (3,), (2, 3)])
+@pytest.mark.parametrize("n", [4, 8])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_vector_rhs(batch_shape, n, dtype):
+    """A vector B (one dim fewer than A, matching A.shape[:-1]) stays a vector."""
+    shape_A = batch_shape + (n, n)
+    A, _ = _make_solve_ex_inputs(shape_A, 1, dtype, flag_gems.device)
+    B = torch.randn(*(batch_shape + (n,)), dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+
+    assert res[0].shape == batch_shape + (n,)
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize(
+    "a_batch, b_batch",
+    [
+        ((3,), ()),
+        ((), (5,)),
+        ((2, 1), (1, 3)),
+        ((2, 3), ()),
+    ],
+)
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_broadcast_batches(a_batch, b_batch, dtype):
+    """result broadcasts over A and B, while LU/pivots/info keep A's batch."""
+    n, k = 4, 2
+    A, _ = _make_solve_ex_inputs(a_batch + (n, n), k, dtype, flag_gems.device)
+    B = torch.randn(*(b_batch + (n, k)), dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+
+    assert res[1].shape == a_batch + (n, n)
+    assert res[2].shape == a_batch + (n,)
+    assert res[3].shape == a_batch
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("n", [4, 8])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_row_pivoting(n, dtype):
+    """A matrix whose first pivot is not on the diagonal exercises the swaps."""
+    A = torch.eye(n, dtype=dtype, device=flag_gems.device).flip(0) * 3.0
+    A = A + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.5
+    B = torch.randn(n, 2, dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+
+    # The reference pivots are non-trivial, otherwise this test proves nothing.
+    identity_pivots = torch.arange(1, n + 1, dtype=torch.int32, device=ref[2].device)
+    assert not torch.equal(ref[2], identity_pivots)
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("check_errors", [False, True])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_singular(check_errors, dtype):
+    """A singular A reports info > 0, and raises only when check_errors=True."""
+    n = 4
+    A = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    A[2, 2] = 0.0
+    B = torch.randn(n, 2, dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+
+    if check_errors:
+        with pytest.raises(torch.linalg.LinAlgError):
+            torch._linalg_solve_ex(ref_A, ref_B, check_errors=True)
+        with pytest.raises(torch.linalg.LinAlgError):
+            flag_gems._linalg_solve_ex(A, B, check_errors=True)
+        return
+
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+    assert int(ref[3]) != 0
+    utils.gems_assert_equal(res[3], ref[3])
+    utils.gems_assert_equal(res[2], ref[2])
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("n", [4, 8])
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+def test__linalg_solve_ex_complex(n, dtype):
+    """Complex inputs are accepted and match ATen on all four outputs."""
+    A, B = _make_solve_ex_inputs((n, n), 2, dtype, flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref_out, ref_lu, ref_pivots, ref_info = torch._linalg_solve_ex(ref_A, ref_B)
+    res_out, res_lu, res_pivots, res_info = flag_gems._linalg_solve_ex(A, B)
+
+    # gems_assert_close asserts against a real-dtype resolution table, so the
+    # complex outputs are compared directly here.
+    rtol = 1e-3 if dtype == torch.complex64 else 1e-7
+    torch.testing.assert_close(
+        utils.to_cpu(res_out, ref_out), ref_out, rtol=rtol, atol=1e-4 * n
+    )
+    torch.testing.assert_close(
+        utils.to_cpu(res_lu, ref_lu), ref_lu, rtol=rtol, atol=1e-4 * n
+    )
+    utils.gems_assert_equal(res_pivots, ref_pivots)
+    utils.gems_assert_equal(res_info, ref_info)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_non_contiguous(dtype):
+    """Transposed (column-major) and strided inputs give the same answer."""
+    n, k = 6, 3
+    base, _ = _make_solve_ex_inputs((n, n), k, dtype, flag_gems.device)
+    A = base.mT
+    B = torch.randn(n, 2 * k, dtype=dtype, device=flag_gems.device)[:, ::2]
+    assert not A.is_contiguous() and not B.is_contiguous()
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref = torch._linalg_solve_ex(ref_A, ref_B)
+    res = flag_gems._linalg_solve_ex(A, B)
+
+    _assert_solve_ex_outputs(res, ref, dtype, n)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+def test__linalg_solve_ex_dtype_mismatch():
+    """A and B must agree on dtype, as ATen requires."""
+    A = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
+    B = torch.randn(4, 2, dtype=torch.float64, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="same dtype"):
+        flag_gems._linalg_solve_ex(A, B)
+
+
+@pytest.mark.underscore_linalg_solve_ex
+@pytest.mark.parametrize("n", [4, 8])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_aux_outputs_usable(n, dtype):
+    """LU and pivots must be consumable the way the backward pass consumes them.
+
+    The derivative of ``linalg_solve`` is an ATen formula that saves ``LU`` and
+    ``pivots`` from this operator and replays them through ``lu_solve``. Autograd
+    sits above the dispatcher, so the formula only runs when the operator is
+    dispatched (which these tests do not do); what is checkable here is that the
+    aux outputs are a genuine factorization of A and produce the same solve as
+    ATen's own. A placeholder buffer fails both halves.
+    """
+    A, B = _make_solve_ex_inputs((n, n), 2, dtype, flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    _, ref_lu, ref_pivots, _ = torch._linalg_solve_ex(ref_A, ref_B)
+    _, res_lu, res_pivots, _ = flag_gems._linalg_solve_ex(A, B)
+
+    res_lu_cpu = utils.to_cpu(res_lu, ref_lu)
+    res_pivots_cpu = utils.to_cpu(res_pivots, ref_pivots)
+
+    # The pivots must be a usable LAPACK ipiv (1-based, in range), which a
+    # zero-filled buffer is not.
+    assert torch.all(res_pivots_cpu >= 1)
+    assert torch.all(res_pivots_cpu <= n)
+
+    # Replaying the factors through lu_solve, as the backward formula does,
+    # reproduces ATen's solve.
+    utils.gems_assert_close(
+        torch.linalg.lu_solve(res_lu_cpu, res_pivots_cpu, ref_B),
+        torch.linalg.lu_solve(ref_lu, ref_pivots, ref_B),
+        dtype,
+        reduce_dim=n,
+    )

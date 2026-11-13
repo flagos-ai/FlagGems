@@ -58,8 +58,17 @@ def _leaky_relu_autotune_configs():
     ]
 
 
+# restore_value: leaky_relu_ runs this kernel in-place (output_ptr aliases
+# input_ptr). Autotuning benchmarks each config repeatedly on that buffer, so
+# without restoring it the negative branch (x * negative_slope) compounds every
+# trial and underflows to 0. Restoring output_ptr between trials keeps the input
+# pristine; it is harmless for the out-of-place callers that pass a fresh buffer.
 @libentry()
-@triton.autotune(configs=_leaky_relu_autotune_configs(), key=["n_elements"])
+@triton.autotune(
+    configs=_leaky_relu_autotune_configs(),
+    key=["n_elements"],
+    restore_value=["output_ptr"],
+)
 @triton.jit(do_not_specialize=["negative_slope"])
 def _leaky_relu_kernel(
     input_ptr,
@@ -141,9 +150,17 @@ def leaky_relu_(A, negative_slope=0.01):
     n_elements = A.numel()
     if n_elements == 0:
         return A
+    # Autotuning re-runs the kernel on the launch arguments several times, so
+    # launching with A as both source and destination would let an early
+    # benchmark pass overwrite negative elements with scaled values that the
+    # later passes then read, compounding the scaling. Compute into a scratch
+    # buffer first and copy back, keeping the operation in-place from the
+    # caller's perspective.
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, A, n_elements, negative_slope)
+        scratch = torch.empty_like(A)
+        _leaky_relu_kernel[grid](A, scratch, n_elements, negative_slope)
+        A.copy_(scratch)
     return A
 
 

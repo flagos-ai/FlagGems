@@ -139,9 +139,145 @@ def _fused_moe_routed_gemm_kernel(
         if MUL_ROUTED_WEIGHT:
             accumulator *= routed_weight
 
-        # fg_* metadata liveness: always-true mask terms keep the params in
-        # the launcher ABI (the XPU launch-table handler reads them from
-        # kernelParams; triton drops unused args from the generated launcher).
+        # Keep the fg_* metadata params live.
+        meta_ok = (
+            (fg_num_tokens >= 0)
+            & (fg_top_k >= 0)
+            & (fg_num_experts >= 0)
+            & (fg_fuse_silu >= 0)
+            & (fg_mul_routed_weight >= 0)
+            & (fg_direct_routing >= 0)
+            & (fg_has_bias >= 0)
+        )
+        tl.store(
+            c_ptr + token * stride_cm + offs_n * stride_cn,
+            accumulator,
+            mask=valid_route & (offs_n < n_out) & meta_ok,
+        )
+
+
+@triton.jit(
+    do_not_specialize=[
+        "fg_num_tokens",
+        "fg_top_k",
+        "fg_num_experts",
+        "fg_fuse_silu",
+        "fg_mul_routed_weight",
+        "fg_direct_routing",
+        "fg_has_bias",
+    ]
+)
+def _experts_route_dot_reference(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    b_bias_ptr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    N,
+    K: tl.constexpr,
+    num_valid_tokens,
+    stride_am,
+    stride_ak,
+    stride_be,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    stride_bias_e,
+    stride_bias_n,
+    MUL_ROUTED_WEIGHT: tl.constexpr,
+    ROUTED_WEIGHT_ON_INPUT: tl.constexpr,
+    top_k: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    FUSE_SILU: tl.constexpr,
+    DIRECT_ROUTING: tl.constexpr,
+    ALIGN_BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    fg_num_tokens,
+    fg_top_k,
+    fg_num_experts,
+    fg_fuse_silu,
+    fg_mul_routed_weight,
+    fg_direct_routing,
+    fg_has_bias,
+):
+    route = tl.program_id(0)
+    n_start = tl.program_id(1) * BLOCK_SIZE_N
+    if DIRECT_ROUTING:
+        token = route
+        expert = tl.load(sorted_token_ids_ptr + route).to(tl.int64)
+        valid_route = True
+    else:
+        token = tl.load(sorted_token_ids_ptr + route).to(tl.int64)
+        expert = tl.load(expert_ids_ptr + route // ALIGN_BLOCK_SIZE_M).to(tl.int64)
+        valid_route = token < num_valid_tokens
+    n_out = N // 2 if FUSE_SILU else N
+    a_row = tl.where(valid_route, token // top_k, 0)
+    if MUL_ROUTED_WEIGHT or ROUTED_WEIGHT_ON_INPUT:
+        routed_weight = tl.load(
+            topk_weights_ptr + token, mask=valid_route, other=0.0
+        ).to(tl.float32)
+
+    for n_offset in tl.static_range(0, BLOCK_SIZE_N):
+        offs_n = n_start + n_offset
+        n_mask = valid_route & (expert >= 0) & (offs_n < n_out)
+        accumulator = 0.0
+        if FUSE_SILU:
+            up_accumulator = 0.0
+
+        for k_block in tl.static_range(0, (K + BLOCK_SIZE_K - 1) // BLOCK_SIZE_K):
+            offs_k = k_block * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+            k_mask = n_mask & (offs_k < K)
+            a = tl.load(
+                a_ptr + a_row * stride_am + offs_k * stride_ak,
+                mask=k_mask,
+                other=0.0,
+            ).to(tl.float32)
+            if ROUTED_WEIGHT_ON_INPUT:
+                a *= routed_weight
+            b = tl.load(
+                b_ptr + expert * stride_be + offs_k * stride_bk + offs_n * stride_bn,
+                mask=k_mask,
+                other=0.0,
+            ).to(tl.float32)
+            accumulator += tl.sum(a * b, axis=0)
+
+            if FUSE_SILU:
+                up = tl.load(
+                    b_ptr
+                    + expert * stride_be
+                    + offs_k * stride_bk
+                    + (offs_n + n_out) * stride_bn,
+                    mask=k_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                up_accumulator += tl.sum(a * up, axis=0)
+
+        if HAS_BIAS:
+            accumulator += tl.load(
+                b_bias_ptr + expert * stride_bias_e + offs_n * stride_bias_n,
+                mask=n_mask,
+                other=0.0,
+            ).to(tl.float32)
+            if FUSE_SILU:
+                up_accumulator += tl.load(
+                    b_bias_ptr
+                    + expert * stride_bias_e
+                    + (offs_n + n_out) * stride_bias_n,
+                    mask=n_mask,
+                    other=0.0,
+                ).to(tl.float32)
+
+        if FUSE_SILU:
+            accumulator = accumulator * tl.sigmoid(accumulator) * up_accumulator
+        if MUL_ROUTED_WEIGHT:
+            accumulator *= routed_weight
+
+        # Keep the fg_* metadata params live.
         meta_ok = (
             (fg_num_tokens >= 0)
             & (fg_top_k >= 0)
@@ -209,11 +345,8 @@ def invoke_kunlunxin_moe_sum(input: torch.Tensor, output: torch.Tensor) -> None:
     )
 
 
-# C-156: the launcher passes raw pointers and the xblas moe_fc_fusion path
-# reads the int32 routing arrays asynchronously after the launch call returns.
-# The int64->int32 casts below create temporaries that would be freed at
-# return, exposing a use-after-free window (observed as sequence-dependent
-# garbage on large-M Mixtral/DeepSeek runs). Retain the last few calls' arrays.
+# The int64->int32 casts below create temporaries that a reader may still hold
+# after the call returns; retain the last few calls' arrays to keep them alive.
 _M156_KEEPALIVE = []
 
 
@@ -232,12 +365,10 @@ def invoke_kunlunxin_fused_moe_kernel(
     FUSE_SILU: bool,
     direct_routing: bool = False,
     routed_weight_on_input: bool = False,
+    generic_route: bool = False,
 ) -> None:
     logger.debug("GEMS_KUNLUNXIN INVOKE_FUSED_MOE_KERNEL")
-    # int64 topk_ids -> "*i64" launcher signature (unmapped in the XPU
-    # type_mapping); cast to int32 for a deterministic "*int32" (type=3)
-    # read by the launch-table handler's D2H metadata pass. Lossless for
-    # expert ids.
+    # Cast the routing arrays to int32. Lossless for expert ids.
     if sorted_token_ids.dtype != torch.int32:
         sorted_token_ids = sorted_token_ids.to(torch.int32)
     if expert_ids.dtype != torch.int32:
@@ -250,7 +381,7 @@ def invoke_kunlunxin_fused_moe_kernel(
     n_out = B.size(1) // 2 if FUSE_SILU else B.size(1)
     num_routes = C.size(0) * C.size(1) if direct_routing else sorted_token_ids.numel()
     block_size_n = 4
-    # Wide N tiles stall XPU lowering for the 7168-wide DeepSeek projection.
+    # Cap the N tile for the wide DeepSeek projection.
     max_block_size_n = 8 if B.size(2) >= 7168 else 64
     program_count = num_routes * triton.cdiv(n_out, block_size_n)
     while block_size_n < max_block_size_n and (
@@ -265,13 +396,9 @@ def invoke_kunlunxin_fused_moe_kernel(
     block_size_k = min(max_block_size_k, triton.next_power_of_2(B.size(2)))
     while B.size(2) % block_size_k != 0:
         block_size_k //= 2
-    # Large-K projections must keep the unrolled (n_offset x k_block) body
-    # count within the SDNN per-core stack budget: the ELF KERNEL_STACK_SIZE
-    # grows with the body count and the pipeline rejects kernels past 8000 B
-    # ("Failed to tune buffer size"; measured 8224 B at 56 bodies, passing at
-    # 28). Widen the K tile (power-of-two divisors of K only, up to 512),
-    # then shrink the N tile until the product fits. Small-K shapes keep the
-    # legacy geometry untouched.
+    # Keep the unrolled (n_offset x k_block) body count bounded. Widen the K
+    # tile (power-of-two divisors of K only, up to 512), then shrink the N tile
+    # until the product fits. Small-K shapes keep the legacy geometry untouched.
     while (
         (B.size(2) // block_size_k) * block_size_n > 32
         and block_size_k < 512
@@ -287,7 +414,10 @@ def invoke_kunlunxin_fused_moe_kernel(
     n_blocks = triton.cdiv(n_out, block_size_n)
     align_block_size_m = config["BLOCK_SIZE_M"]
     grid = (num_routes, n_blocks)
-    _fused_moe_routed_gemm_kernel[grid](
+    route_kernel = (
+        _experts_route_dot_reference if generic_route else _fused_moe_routed_gemm_kernel
+    )
+    route_kernel[grid](
         A,
         B,
         C,
@@ -333,23 +463,11 @@ def invoke_kunlunxin_fused_moe_kernel(
 
 
 # ---------------------------------------------------------------------------
-# [0919 C-168] on-device padded->slot routing table.
+# On-device padded->slot routing table.
 #
-# The host decoder below round-trips the padded routing arrays through the
-# CPU on every call (2x blocking D2H + numpy decode + H2D): measured ~90us
-# standalone and ~190us inside the full op on the core bench shapes, versus
-# ~15us for one device kernel on the same shapes. The table is a pure
-# function of (sorted_token_ids, expert_ids, align): for every position p
-# with 0 <= sids[p] < numel, slot sids[p] maps to expert eids[blk[p]] where
-# blk[p] = p // align (same formula as the host decoder; duplicates resolve
-# last-wins on the host decoder, any-wins here -- both only arise for
-# malformed align output). Unwritten slots keep the -1 sentinel.
+# For every position p with 0 <= sids[p] < numel, slot sids[p] maps to expert
+# eids[p // align]. Unwritten slots keep the -1 sentinel.
 # FG_MOE_DISPATCH_HOSTDECODE=1 restores the host decoder (A/B, rollback).
-#
-# Note: the block table is precomputed (cached) because a runtime scalar
-# integer division (`offs // align`) in the kernel is miscompiled by the
-# current XPU backend (arith.divsi type mismatch / wrong result); the table
-# is content-constant, so caching carries no staleness risk.
 # ---------------------------------------------------------------------------
 _PADDED_TABLE_BLOCK = 1024
 _DEVICE_DECODE = os.environ.get("FG_MOE_DISPATCH_HOSTDECODE", "0") != "1"
@@ -498,8 +616,7 @@ def dispatch_kunlunxin_fused_moe_kernel(
     if A.dtype in (torch.bfloat16, torch.float16) and B_bias is None and not FUSE_SILU:
         # Restructure only for the validated acceleration profile (bf16, no
         # bias, no fused silu); everything else keeps the legacy padded launch.
-        # [0919 C-168] prefer the on-device decoder (no per-call D2H round
-        # trip); FG_MOE_DISPATCH_HOSTDECODE=1 restores the host decoder.
+        # FG_MOE_DISPATCH_HOSTDECODE=1 restores the host decoder.
         align = int(config["BLOCK_SIZE_M"])
         if _DEVICE_DECODE and align > 0:
             try:
