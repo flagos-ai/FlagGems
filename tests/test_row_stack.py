@@ -284,6 +284,9 @@ def test_row_stack_out_dtype_cast():
         pytest.skip("float64 is not supported by this device")
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     ref_inp = [utils.to_reference(e) for e in inp]
+    if flag_gems.vendor_name == "iluvatar":
+        # Native out casts can return incorrect Double values on this backend.
+        ref_inp = [value.cpu() for value in ref_inp]
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
     torch.row_stack(ref_inp, out=ref_out)
 
@@ -292,6 +295,7 @@ def test_row_stack_out_dtype_cast():
 
     assert ret is out
     assert out.dtype == torch.float64
+    assert out.device == inp[0].device
     utils.gems_assert_equal(out, ref_out)
 
 
