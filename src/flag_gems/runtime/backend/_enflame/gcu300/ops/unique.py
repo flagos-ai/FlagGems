@@ -798,6 +798,16 @@ def _unique2(
     return_counts: bool = False,
 ):
     logger.debug("GEMS_ENFLAME _UNIQUE2")
+    # aten::_unique2 always returns three tensors; an empty input yields empty
+    # int64 outputs. Short-circuit before the flat kernels (whose tile size is
+    # derived from numel) can be launched for a zero-element input.
+    if in0.numel() == 0:
+        data_out = torch.empty(0, dtype=in0.dtype, device=in0.device)
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device).view_as(
+            in0
+        )
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+        return data_out, inverse_indices, counts
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
@@ -813,8 +823,15 @@ def _unique2(
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts
         )
-    return (
-        data_out,
-        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
-        counts,
-    )
+    # Keep the ATen return contract: the auxiliary outputs are empty int64
+    # tensors when they are not requested, and counts is int64 (the kernels
+    # below compute it in int32 because GCU300 has no 64-bit arithmetic).
+    if inverse_indices is None:
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        inverse_indices = inverse_indices.view_as(in0)
+    if counts is None:
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        counts = counts.to(torch.int64)
+    return data_out, inverse_indices, counts
