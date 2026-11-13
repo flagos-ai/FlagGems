@@ -583,7 +583,7 @@ def test_aminmax():
 # ---------------------------------------------------------------------------
 
 
-class AminmaxAllReduceBenchmark(_AminmaxStaticReference, base.UnaryReductionBenchmark):
+class AminmaxAllReduceBenchmark(base.UnaryReductionBenchmark):
     def get_case_iter(self, cur_dtype):
         for ordinal, shape in enumerate(self.shapes):
             yield self._case_from_plan(
@@ -627,10 +627,6 @@ class AminmaxOutBenchmark(base.UnaryReductionBenchmark):
 
 
 @pytest.mark.underscore_aminmax
-@pytest.mark.skip_native(
-    vendors=["enflame"],
-    reason="native private _aminmax is CPU fallback; require exact shared H800 profile",
-)
 def test__aminmax():
     bench = AminmaxAllReduceBenchmark(
         op_name="_aminmax",

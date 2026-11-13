@@ -110,24 +110,20 @@ def test_row_stack_zero_sized_trailing_dims(shape, dtype):
 def test_row_stack_memory_format(shape, memory_format, dtype):
     """The output must keep the inputs' channels-last memory format."""
     if (
-        flag_gems.vendor_name == "ascend"
-        and not utils.TO_CPU
+        flag_gems.vendor_name == "kunlunxin"
         and memory_format != torch.contiguous_format
     ):
-        pytest.skip(
-            "Ascend native row_stack loses channels-last output layout; CPU reference remains covered"
-        )
+        # XPU (torch_xmlir) drops the channels-last layout when an input is
+        # moved to the reference device (.to("cpu")), so the CPU reference is
+        # computed from contiguous inputs and cannot validate the layout.
+        pytest.skip("channels-last layout is not preserved by the reference on XPU")
     inp = [
-        torch.randn(shape, dtype=dtype, device="cpu")
-        .to(memory_format=memory_format)
-        .to(flag_gems.device)
+        torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
+            memory_format=memory_format
+        )
         for _ in range(2)
     ]
     ref_inp = [utils.to_reference(e) for e in inp]
-    if flag_gems.vendor_name == "ascend" and utils.TO_CPU:
-        # NPU-to-CPU transfer makes a contiguous copy. Restore the recorded
-        # input geometry before using CPU row_stack as the layout reference.
-        ref_inp = [e.to(memory_format=memory_format) for e in ref_inp]
 
     ref_out = torch.row_stack(ref_inp)
     res_out = flag_gems.row_stack(inp)
@@ -144,10 +140,6 @@ def test_row_stack_memory_format(shape, memory_format, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_row_stack_mixed_dtype_promotion(dtype):
     """Mixed dtypes follow ATen's type promotion instead of being rejected."""
-    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float32:
-        pytest.skip(
-            "Iluvatar row_stack float32-to-float64 promotion computes incorrect device values"
-        )
     other = torch.float64 if dtype == torch.float32 else torch.int64
     if dtype in utils.FLOAT_DTYPES:
         a = torch.randn(3, 4, dtype=dtype, device=flag_gems.device)
@@ -200,8 +192,14 @@ def test_row_stack_out_memory_format(shape, memory_format, dtype):
     ATen keeps the out tensor's layout when it is already the derived format,
     and re-imposes the derived format when the shape had to be resized.
     """
-    if flag_gems.vendor_name == "ascend" and memory_format != torch.contiguous_format:
-        pytest.skip("Ascend supports only contiguous/preserve input memory formats")
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and memory_format != torch.contiguous_format
+    ):
+        # Same reference limitation as test_row_stack_memory_format: the
+        # channels-last layout is lost when the reference inputs are moved to
+        # the reference device, so the resize path cannot be validated on XPU.
+        pytest.skip("channels-last layout is not preserved by the reference on XPU")
     inp = [
         torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
             memory_format=memory_format
@@ -280,10 +278,10 @@ def test_row_stack_out_resize(shape, dtype):
 @pytest.mark.row_stack_out
 def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
-    if flag_gems.vendor_name == "iluvatar":
-        pytest.skip(
-            "Iluvatar native row_stack out computes incorrect float32-to-float64 casts"
-        )
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # a genuinely float64 out tensor cannot be created there.
+        pytest.skip("float64 is not supported by this device")
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     ref_inp = [utils.to_reference(e) for e in inp]
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
@@ -299,11 +297,11 @@ def test_row_stack_out_dtype_cast():
 
 @pytest.mark.row_stack_out
 def test_row_stack_out_non_castable_dtype_raises():
-    """An impossible cast is rejected (exception class varies by backend)."""
+    """Matching ATen, an impossible cast raises TypeError."""
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     out = torch.empty((4, 3), dtype=torch.int32, device=flag_gems.device)
 
-    with pytest.raises((TypeError, RuntimeError)):
+    with pytest.raises(TypeError):
         flag_gems.row_stack_out(inp, out=out)
 
 

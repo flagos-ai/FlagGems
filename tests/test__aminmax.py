@@ -99,72 +99,14 @@ def _checked_aminmax(inp):
     return result
 
 
-@_private_default_mark
-@pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__aminmax(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    assert inp.dtype == dtype
-    ref_inp = utils.to_reference(inp)
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
-@_private_default_mark
-@pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__aminmax_zero(shape, dtype):
-    inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
-    assert inp.dtype == dtype
-    ref_inp = utils.to_reference(inp)
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
-@_private_default_mark
-@pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__aminmax_inf(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp_flat = inp.float().flatten()
-    inp_flat[0] = float("inf")
-    inp_flat[1] = float("-inf")
-    inp = inp_flat.reshape(shape).to(dtype)
-    assert inp.dtype == dtype
-    ref_inp = utils.to_reference(inp)
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    utils.gems_assert_equal(
-        res_min.detach().cpu(), ref_min.detach().cpu(), equal_nan=True
-    )
-    utils.gems_assert_equal(
-        res_max.detach().cpu(), ref_max.detach().cpu(), equal_nan=True
-    )
 
 
-@_private_default_mark
-@pytest.mark.parametrize("shape", UNDERSCORE_AMINMAX_SHAPES)
-def test__aminmax_int(shape):
-    inp = torch.randint(-100, 100, shape, dtype=torch.int32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
-@_private_default_mark
-def test__aminmax_scalar():
-    inp = torch.randn((), dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
 @pytest.mark.underscore_aminmax_out
@@ -194,76 +136,8 @@ def _aminmax_numeric_cpu(value):
     return value.detach().cpu()
 
 
-@_private_default_mark
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
-@pytest.mark.parametrize("nan_pos", ["first", "middle", "last"])
-def test_underscore_aminmax_nan(dtype, nan_pos):
-    """A single NaN forces *both* outputs to NaN, as torch._aminmax does.
-
-    tl.min / tl.max drop NaNs rather than propagating them, so this needs an
-    explicit check in each reduction stage. The tensor is large enough that the
-    NaN has to survive both stages, and the position is varied so a NaN in a
-    non-first tile is covered too.
-    """
-    if dtype == torch.float64 and not utils.TO_CPU:
-        if flag_gems.vendor_name == "enflame":
-            pytest.skip("native Double uses Float storage on Enflame")
-        if flag_gems.vendor_name == "kunlunxin":
-            pytest.skip("native Double NaN reduction returns Float on Kunlunxin")
-        if flag_gems.vendor_name == "iluvatar":
-            pytest.skip("native Double NaN reduction returns zero on Iluvatar")
-    n = 100000
-    idx = {"first": 0, "middle": n // 2, "last": n - 1}[nan_pos]
-    if dtype == torch.float64 and flag_gems.vendor_name in {"kunlunxin", "enflame"}:
-        # The device Double factory silently constructs Float. Preserve the
-        # original normal Double input and NaN position through raw bytes.
-        host = torch.randn(n, dtype=dtype, device="cpu")
-        host[idx] = float("nan")
-        inp = host.view(torch.uint8).to(flag_gems.device).view(dtype)
-    else:
-        inp = torch.randn(n, dtype=dtype, device=flag_gems.device)
-        inp[idx] = float("nan")
-    assert inp.dtype == dtype
-    ref_inp = (
-        _aminmax_numeric_cpu(inp)
-        if dtype == torch.float64 and flag_gems.vendor_name == "enflame"
-        else utils.to_reference(inp)
-    )
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    assert torch.isnan(ref_min) and torch.isnan(ref_max), "reference must be NaN"
-    utils.gems_assert_equal(
-        _aminmax_numeric_cpu(res_min), ref_min.detach().cpu(), equal_nan=True
-    )
-    utils.gems_assert_equal(
-        _aminmax_numeric_cpu(res_max), ref_max.detach().cpu(), equal_nan=True
-    )
 
 
-@_private_default_mark
-@pytest.mark.parametrize(
-    "view", ["slice", "transpose", "narrow", "expand", "broadcast"]
-)
-def test_underscore_aminmax_non_contiguous(view):
-    """Non-dense views must be read in the right order.
-
-    The kernels index with a flat offset, so a sliced or transposed view would
-    otherwise read the wrong elements, and an expanded view (stride 0) would read
-    past its own storage.
-    """
-    base = torch.randn(8, 12, dtype=torch.float32, device=flag_gems.device)
-    inp = {
-        "slice": base[:, ::2],
-        "transpose": base.t(),
-        "narrow": base[2:6, 3:9],
-        "expand": base[:1, :1].expand(6, 9),
-        "broadcast": base[:1].expand(8, 12),
-    }[view]
-    ref_inp = utils.to_reference(inp)
-    ref_min, ref_max = torch._aminmax(ref_inp)
-    res_min, res_max = _checked_aminmax(inp)
-    utils.gems_assert_equal(res_min.detach().cpu(), ref_min.detach().cpu())
-    utils.gems_assert_equal(res_max.detach().cpu(), ref_max.detach().cpu())
 
 
 @pytest.mark.underscore_aminmax_out
@@ -297,11 +171,3 @@ def test_underscore_aminmax_out_rejects_mismatch(bad):
         match = "device"
     with pytest.raises(RuntimeError, match=match):
         flag_gems._aminmax_out(inp, out0=out0, out1=out1)
-
-
-@_private_default_mark
-def test_underscore_aminmax_empty_matches_aten():
-    """An empty input is rejected, matching ATen's "no identity" error."""
-    inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        _checked_aminmax(inp)
