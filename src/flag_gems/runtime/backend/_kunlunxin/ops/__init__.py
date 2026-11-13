@@ -706,6 +706,7 @@ from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
+from .native_norm import native_norm
 from .ne import ne, ne_, ne_scalar, ne_scalar_
 from .neg import neg, neg_
 from .negative import negative
@@ -1723,6 +1724,7 @@ __all__ = [
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
+    "native_norm",
     "ne",
     "ne_",
     "ne_scalar",
