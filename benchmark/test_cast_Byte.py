@@ -31,10 +31,13 @@ class CastByteBenchmark(Benchmark):
 
 @pytest.mark.cast_Byte
 def test_cast_Byte():
+    dtypes = [torch.float16, torch.float32]
+    if flag_gems.runtime.device.support_bf16:
+        dtypes.insert(1, torch.bfloat16)
     bench = CastByteBenchmark(
         op_name="cast_Byte",
         torch_op=torch.ops.aten._cast_Byte.default,
         gems_op=flag_gems.cast_Byte,
-        dtypes=[torch.float16, torch.bfloat16, torch.float32],
+        dtypes=dtypes,
     )
     bench.run()
