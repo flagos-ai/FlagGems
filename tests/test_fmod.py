@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    BYTE_DTYPES,
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     SCALARS,
@@ -83,3 +84,32 @@ def test_fmod_scalar_inplace(shape, scalar, dtype):
     res_out = flag_gems.fmod_scalar_(inp1, inp2)
     atol = 1e-3 if abs(scalar) < 0.01 else 1e-4
     gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
+
+@pytest.mark.fmod_scalar
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BYTE_DTYPES)
+def test_fmod_scalar_byte(shape, dtype):
+    # fmod with an integral scalar keeps the input dtype.
+    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1)
+
+    ref_out = torch.fmod(ref_inp1, 3)
+    res_out = flag_gems.fmod_scalar(inp1, 3)
+
+    assert res_out.dtype == ref_out.dtype
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.fmod_scalar_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", BYTE_DTYPES)
+def test_fmod_scalar_inplace_byte(shape, dtype):
+    inp1 = torch.randint(1, 100, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1.clone())
+
+    torch.fmod(ref_inp1, 3, out=ref_inp1)
+    res_out = flag_gems.fmod_scalar_(inp1, 3)
+
+    assert res_out.dtype == ref_inp1.dtype
+    gems_assert_close(res_out, ref_inp1, dtype)

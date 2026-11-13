@@ -51,3 +51,16 @@ def test_erfc_(shape, dtype):
     act_out = flag_gems.erfc_(x)
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
     utils.gems_assert_close(x, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.erfc
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_erfc_byte(shape, dtype):
+    # torch promotes integral erfc inputs to float32.
+    x = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_x = utils.to_reference(x)
+
+    ref_out = torch.ops.aten.erfc(ref_x)
+    act_out = flag_gems.erfc(x)
+    utils.gems_assert_close(act_out, ref_out, torch.float32, equal_nan=True)

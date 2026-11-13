@@ -19,7 +19,9 @@ variant, so ``greater_equal_`` is implemented here."""
 
 import logging
 
-from flag_gems.ops.ge import ge, ge_func, ge_scalar
+import torch
+
+from flag_gems.ops.ge import ge, ge_func, ge_func_scalar, ge_scalar
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,12 @@ def greater_equal_scalar(A, B):
 
 def greater_equal_(A, B):
     logger.debug("GEMS GREATER_EQUAL_")
-    if A.device != B.device:
-        B = B.to(A.device)
-    return ge_func(A, B, out0=A)
+    # Triton's generated store path cannot cast the bool result back to a
+    # float8 element type, matching the native not-implemented behaviour.
+    if A.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        raise NotImplementedError("greater_equal_ is not implemented for fp8 inputs")
+    # ``greater_equal_`` covers both ``greater_equal_.Tensor`` and
+    # ``greater_equal_.Scalar``; the latter must not touch ``B.device``.
+    if isinstance(B, torch.Tensor):
+        return ge_func(A, B, out0=A)
+    return ge_func_scalar(A, B, out0=A)
