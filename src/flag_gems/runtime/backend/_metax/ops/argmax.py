@@ -508,6 +508,22 @@ def argmax_global_strided(inp, out):
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_METAX ARGMAX")
+    if dim is not None and inp.ndim > 0 and inp.numel() > 0:
+        dim %= inp.ndim
+        if inp.shape[dim] == 1:
+            out_shape = list(inp.shape)
+            if keepdim:
+                out_shape[dim] = 1
+            else:
+                del out_shape[dim]
+            out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
+            if out.numel() == 0:
+                return out
+            with torch_device_fn.device(inp.device):
+                argmax_zero_kernel[(triton.cdiv(out.numel(), 512),)](
+                    out, out.numel(), 512, num_warps=4
+                )
+            return out
     if dim is not None and inp.ndim > 0 and inp.is_contiguous() and inp.numel() > 0:
         dim %= inp.ndim
         n = inp.shape[dim]
