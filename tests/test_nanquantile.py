@@ -58,7 +58,10 @@ def _assert_close(result, reference, dtype, reduction_size):
 def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
     inp = _input((7, 33), dtype).T
     q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
-    ref_inp, ref_q = utils.to_reference(inp), utils.to_reference(q)
+    # Discrete interpolation uses the input dtype to round ranks.
+    upcast = interpolation == "linear"
+    ref_inp = utils.to_reference(inp, upcast)
+    ref_q = utils.to_reference(q, upcast)
     reference = torch.ops.aten.nanquantile.default(
         ref_inp, ref_q, dim, keepdim, interpolation=interpolation
     )
@@ -264,3 +267,7 @@ def test_nanquantile_errors():
         )
     with pytest.raises(RuntimeError):
         flag_gems.nanquantile(torch.empty(0, device=inp.device), 0.5)
+    with pytest.raises(RuntimeError):
+        flag_gems.nanquantile(
+            torch.empty(0, device=inp.device), torch.tensor(0.5, device=inp.device)
+        )
