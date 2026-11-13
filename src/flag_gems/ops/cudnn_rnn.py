@@ -208,6 +208,11 @@ def _rnn_kernel(
             tl.store(output_ptr + t_out_off + h_offs, h_new, mask=h_mask)
             tl.store(h_scratch_base + h_offs, h_new, mask=h_mask)
 
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
+
     # final hidden → hy
     for hid_block in range(num_hid_blocks):
         offs = hid_block * BLOCK_SIZE + bid_offs
@@ -352,6 +357,11 @@ def _rnn_packed_kernel(
             old_h = tl.load(h_scratch_base + h_offs, mask=h_mask, other=0.0)
             merged = tl.where(pid < cur_bs, h_new, old_h)
             tl.store(h_scratch_base + h_offs, merged, mask=h_mask)
+
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
 
     # final hidden → hy
     for hid_block in range(num_hid_blocks):
@@ -567,6 +577,11 @@ def _lstm_kernel(
                     output_ptr + t_out_off + p_start + bid_offs, proj_acc, mask=p_mask
                 )
                 tl.store(h_scratch_base + p_start + bid_offs, proj_acc, mask=p_mask)
+
+    # The last time step's h_scratch/c_scratch stores use the reduction
+    # layout; the final copy below may read them from other threads. Fence
+    # the stores before the final hy/cy snapshot.
+    tl.debug_barrier()
 
     # final → hy, cy
     for hid_block in range(tl.cdiv(hidden_out, BLOCK_SIZE)):
@@ -810,6 +825,11 @@ def _lstm_packed_kernel(
                 p_final = tl.where(active, proj_acc, old_p)
                 tl.store(h_scratch_base + p_start + bid_offs, p_final, mask=p_mask)
 
+    # The last time step's h_scratch/c_scratch stores use the reduction
+    # layout; the final copy below may read them from other threads. Fence
+    # the stores before the final hy/cy snapshot.
+    tl.debug_barrier()
+
     # final → hy, cy
     for hid_block in range(tl.cdiv(hidden_out, BLOCK_SIZE)):
         offs = hid_block * BLOCK_SIZE + bid_offs
@@ -975,6 +995,11 @@ def _gru_kernel(
             tl.store(output_ptr + t_out_off + h_offs, h_new, mask=h_mask)
             tl.store(h_scratch_base + h_offs, h_new, mask=h_mask)
 
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
+
     for hid_block in range(num_hid_blocks):
         offs = hid_block * BLOCK_SIZE + bid_offs
         mask = offs < hidden_size
@@ -1132,6 +1157,11 @@ def _gru_packed_kernel(
             old_h = tl.load(h_scratch_base + h_offs, mask=h_mask, other=0.0)
             h_merged = tl.where(active, h_new, old_h)
             tl.store(h_scratch_base + h_offs, h_merged, mask=h_mask)
+
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
 
     for hid_block in range(num_hid_blocks):
         offs = hid_block * BLOCK_SIZE + bid_offs
