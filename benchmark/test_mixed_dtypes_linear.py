@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from . import base
-from .consts import FLOAT_DTYPES, BenchmarkMetrics
+from .consts import FLOAT_DTYPES
 
 # FP16/BF16 only: CUDA quantized matmul requires half-precision activation (no float32 support)
 FP16_BF16_DTYPES = [d for d in FLOAT_DTYPES if d != torch.float32]
@@ -44,8 +44,8 @@ class MixedDtypesLinearBenchmark(base.Benchmark):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.gems_op = lambda inp, w, s, b, act: flag_gems.mixed_dtypes_linear(
-            inp, w, s, bias=b, activation=act
+        self.set_gems(
+            lambda inp, w, s, **kwargs: flag_gems.mixed_dtypes_linear(inp, w, s, **kwargs)
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -55,39 +55,20 @@ class MixedDtypesLinearBenchmark(base.Benchmark):
         for shape in self.shapes:
             yield from mixed_dtypes_linear_input_fn(shape, cur_dtype, self.device)
 
-    def _run_metric(self, input_item):
-        metric = BenchmarkMetrics()
-        inp, weight, scale, bias, activation = input_item
-        metric.shape_detail = self.record_shapes(inp, weight, scale)
-        try:
-            if "latency_base" in self.to_bench_metrics:
-                metric.latency_base = self.get_latency(
-                    self.torch_op, inp, weight, scale, bias, activation
-                )
-            if "latency" in self.to_bench_metrics:
-                metric.latency = self.get_latency(
-                    self.gems_op, inp, weight, scale, bias, activation
-                )
-            if "speedup" in self.to_bench_metrics:
-                metric.speedup = metric.latency_base / metric.latency
-        except (RuntimeError, Exception) as e:
-            metric.error_msg = str(e)
-            pytest.fail(str(e))
-        return metric
 
 
 def mixed_dtypes_linear_input_fn(shape, dtype, device):
-    """Yield tuples of (input, weight_uint8, scale, bias, activation)."""
+    """Yield the tensor operands and keyword options."""
     M, K, N, mode, has_bias, activation = shape
     inp = torch.randn((M, K), dtype=dtype, device=device)
     ncols = N if mode == "int8" else N // 2
     weight = torch.randint(0, 256, (K, ncols), dtype=torch.uint8, device=device)
     scale = torch.randn((N,), dtype=dtype, device=device)
     bias = torch.randn((N,), dtype=dtype, device=device) if has_bias else None
-    yield (inp, weight, scale, bias, activation)
+    yield inp, weight, scale, {"bias": bias, "activation": activation}
 
 
-def mixed_dtypes_linear_torch(inp, weight, scale, bias, activation):
+def mixed_dtypes_linear_torch(inp, weight, scale, *, bias=None, activation=None):
     """Torch baseline: dequantize uint8 weights and compute matmul.
 
     Matches kernel order of operations (dtype-split scale placement).
