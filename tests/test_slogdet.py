@@ -363,16 +363,26 @@ def test_slogdet_backward(dtype):
         n, dtype=dtype, device=flag_gems.device
     )
 
-    ref_A = utils.to_reference(A).clone().requires_grad_(True)
+    use_cpu_oracle = flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+    ref_input = A.cpu() if use_cpu_oracle else utils.to_reference(A)
+    ref_A = ref_input.clone().requires_grad_(True)
     ref = torch.linalg.slogdet(ref_A)
     ref.logabsdet.backward()
 
     gems_A = A.clone().requires_grad_(True)
     _, logabsdet = flag_gems.slogdet(gems_A)
-    logabsdet.backward()
+    assert logabsdet.device == gems_A.device
+    if use_cpu_oracle:
+        # Create the loss seed on CPU and bypass unreliable FP64 leaf accumulation.
+        (gems_grad,) = torch.autograd.grad(logabsdet.cpu(), gems_A)
+    else:
+        logabsdet.backward()
+        gems_grad = gems_A.grad
 
+    assert gems_grad.device == gems_A.device
+    assert gems_grad.dtype == gems_A.dtype
     torch.testing.assert_close(
-        gems_A.grad.cpu(), ref_A.grad.cpu().to(gems_A.grad.dtype), **_tols(dtype, n)
+        gems_grad.cpu(), ref_A.grad.cpu().to(gems_grad.dtype), **_tols(dtype, n)
     )
 
 
@@ -386,16 +396,26 @@ def test_slogdet_batched_backward(dtype):
         n, dtype=dtype, device=flag_gems.device
     )
 
-    ref_A = utils.to_reference(A).clone().requires_grad_(True)
+    use_cpu_oracle = flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+    ref_input = A.cpu() if use_cpu_oracle else utils.to_reference(A)
+    ref_A = ref_input.clone().requires_grad_(True)
     ref = torch.linalg.slogdet(ref_A)
     ref.logabsdet.sum().backward()
 
     gems_A = A.clone().requires_grad_(True)
     _, logabsdet = flag_gems.slogdet(gems_A)
-    logabsdet.sum().backward()
+    assert logabsdet.device == gems_A.device
+    if use_cpu_oracle:
+        # Create the loss seed on CPU and bypass unreliable FP64 leaf accumulation.
+        (gems_grad,) = torch.autograd.grad(logabsdet.cpu().sum(), gems_A)
+    else:
+        logabsdet.sum().backward()
+        gems_grad = gems_A.grad
 
+    assert gems_grad.device == gems_A.device
+    assert gems_grad.dtype == gems_A.dtype
     torch.testing.assert_close(
-        gems_A.grad.cpu(), ref_A.grad.cpu().to(gems_A.grad.dtype), **_tols(dtype, n)
+        gems_grad.cpu(), ref_A.grad.cpu().to(gems_grad.dtype), **_tols(dtype, n)
     )
 
 
