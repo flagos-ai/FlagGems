@@ -20,6 +20,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.thnn_differentiable_lstm_cell_backward import (
+    _differentiable_lstm_cell_backward,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
@@ -385,50 +388,6 @@ def _validate_inputs(
     for name, bias in (("input_bias", input_bias), ("hidden_bias", hidden_bias)):
         if bias is not None and (bias.ndim != 1 or bias.numel() != gate_size):
             raise RuntimeError(f"{name} must have shape ({gate_size},)")
-
-
-def _differentiable_lstm_cell_backward(
-    grad_hy, grad_cy, input_gates, hidden_gates, input_bias, hidden_bias, cx, cy
-):
-    """ATen's composite path, retained when constructing a higher-order graph."""
-    gates = input_gates + hidden_gates
-    if input_bias is not None:
-        gates = gates + input_bias
-    if hidden_bias is not None:
-        gates = gates + hidden_bias
-    hidden_size = cx.shape[1]
-    gate_i = gates[:, :hidden_size]
-    gate_f = gates[:, hidden_size : 2 * hidden_size]
-    gate_c = gates[:, 2 * hidden_size : 3 * hidden_size]
-    gate_o = gates[:, 3 * hidden_size :]
-    input_gate = gate_i.sigmoid()  # torch-ok
-    forget_gate = gate_f.sigmoid()  # torch-ok
-    cell_gate = gate_c.tanh()  # torch-ok
-    output_gate = gate_o.sigmoid()  # torch-ok
-    cy_tanh = cy.tanh()  # torch-ok
-    if grad_hy is not None:
-        grad_output = grad_hy * cy_tanh
-        grad_output = grad_output * (1.0 - output_gate) * output_gate
-        grad_cell = grad_hy * output_gate
-        grad_cell = grad_cell * (1.0 - cy_tanh * cy_tanh)
-        if grad_cy is not None:
-            grad_cell = grad_cell + grad_cy
-    else:
-        grad_output = torch.zeros_like(cx, memory_format=torch.contiguous_format)
-        grad_cell = grad_cy
-
-    grad_input = grad_cell * cell_gate
-    grad_forget = grad_cell * cx
-    grad_candidate = grad_cell * input_gate
-    grad_cx = grad_cell * forget_gate
-    grad_input = grad_input * (1.0 - input_gate) * input_gate
-    grad_forget = grad_forget * (1.0 - forget_gate) * forget_gate
-    grad_candidate = grad_candidate * (1.0 - cell_gate * cell_gate)
-    grad_gates = torch.cat(  # torch-ok
-        (grad_input, grad_forget, grad_candidate, grad_output), dim=1
-    )
-    grad_bias = grad_gates.sum(0) if input_bias is not None else None
-    return grad_gates, grad_gates, grad_cx, grad_bias, grad_bias
 
 
 def _thnn_differentiable_lstm_cell_backward(
