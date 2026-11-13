@@ -14,7 +14,7 @@
 
 """Benchmark for aten::special_scaled_modified_bessel_k0.
 
-torch_op is the ATen reference (the perf baseline) and gems_op is the FlagGems
+torch_op is the ATen reference (the perf baseline). The runner resolves the FlagGems
 candidate; both are called as op(input), so candidate and reference share the
 same call semantics. Case listing is metadata-only, and the same case plans,
 dtype list and input builders serve --list-cases, --case-id replay and normal
@@ -87,8 +87,7 @@ def test_special_scaled_modified_bessel_k0():
         op_name="special_scaled_modified_bessel_k0",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten.special_scaled_modified_bessel_k0,
-        gems_op=getattr(flag_gems, "special_scaled_modified_bessel_k0", None),
+        torch_op=torch.ops.aten.special_scaled_modified_bessel_k0.default,
         dtypes=_DTYPES,
     )
     bench.run()
