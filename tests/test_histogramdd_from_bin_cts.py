@@ -21,7 +21,16 @@ from . import accuracy_utils as utils
 
 
 @pytest.fixture(autouse=True)
-def _seed_random_inputs():
+def _seed_random_inputs(request):
+    callspec = getattr(request.node, "callspec", None)
+    dtype = callspec.params.get("dtype") if callspec is not None else None
+    if (
+        request.node.get_closest_marker("underscore_histogramdd_from_bin_cts")
+        and flag_gems.vendor_name == "enflame"
+        and not utils.fp64_is_supported
+        and dtype == torch.float64
+    ):
+        pytest.skip("Enflame target transfers cannot preserve Float64 histogram values")
     torch.manual_seed(0)
 
 
