@@ -84,3 +84,11 @@ repos:
       language: system
       entry: python tools/ci_checks/check_fullwidth_punct.py
       types: [python]
+    # Compares the working tree with HEAD, so only lines added by the commit
+    # are checked and the legacy backlog is not flagged.
+    - id: check-no-torch-fallback
+      name: check no torch compute calls in operator code
+      language: system
+      entry: python tools/ci_checks/check_no_torch_fallback.py --base HEAD
+      files: ^src/flag_gems/(ops|fused|experimental_ops|runtime/backend/_[^/]+/.*)/.*\.py$
+      types: [python]
