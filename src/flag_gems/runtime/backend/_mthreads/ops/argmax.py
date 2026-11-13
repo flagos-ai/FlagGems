@@ -106,14 +106,108 @@ def _argmax_block_kernel(
     tl.store(out_index + rows, argmax_values, mask=row_mask)
 
 
+@libentry()
+@triton.jit
+def _argmax_block_native_kernel(
+    inp,
+    out_index,
+    M,
+    N,
+    INNER,
+    STRIDE_OUTER,
+    STRIDE_REDUCE,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    rows = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    rows = rows.to(tl.int64)
+    row_mask = rows < M
+
+    outer_idx = rows // INNER
+    inner_idx = rows % INNER
+    base_ptr = inp + outer_idx * STRIDE_OUTER + inner_idx
+
+    dtype = inp.type.element_ty
+    min_value = get_dtype_min(dtype)
+    max_values = tl.full([BLOCK_M], min_value, tl.float32)
+    argmax_values = tl.zeros([BLOCK_M], tl.int64)
+
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N).to(tl.int64)
+        mask = row_mask[:, None] & (n_offset[None, :] < N)
+        inp_ptrs = base_ptr[:, None] + n_offset[None, :] * STRIDE_REDUCE
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
+        local_max, local_argmax = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        local_max = local_max.to(tl.float32)
+        local_argmax = local_argmax.to(tl.int64) + start_n
+        update = local_max > max_values
+        max_values = tl.where(update, local_max, max_values)
+        argmax_values = tl.where(update, local_argmax, argmax_values)
+
+    tl.store(out_index + rows, argmax_values, mask=row_mask)
+
+
+@libentry()
+@triton.jit
+def _argmax_contiguous_kernel(
+    inp,
+    out_index,
+    M,
+    N,
+    STRIDE_OUTER,
+    STRIDE_REDUCE,
+    BLOCK_N: tl.constexpr,
+    CACHE_CG: tl.constexpr,
+):
+    rows = ext.program_id(0) + tl.arange(0, 1).to(tl.int64)
+    row_mask = rows < M
+    base_ptr = inp + rows * STRIDE_OUTER
+
+    dtype = inp.type.element_ty
+    min_value = get_dtype_min(dtype)
+    max_values = tl.full([1], min_value, tl.float32)
+    argmax_values = tl.zeros([1], tl.int64)
+
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N).to(tl.int64)
+        mask = row_mask[:, None] & (n_offset[None, :] < N)
+        inp_ptrs = base_ptr[:, None] + n_offset[None, :] * STRIDE_REDUCE
+        if CACHE_CG:
+            inp_vals = tl.load(
+                inp_ptrs,
+                mask=mask,
+                other=min_value,
+                cache_modifier=".cg",
+            )
+        else:
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
+        local_max, local_argmax = tl.max(
+            inp_vals,
+            axis=1,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        local_max = local_max.to(tl.float32)
+        local_argmax = local_argmax.to(tl.int64) + start_n
+        update = local_max > max_values
+        max_values = tl.where(update, local_max, max_values)
+        argmax_values = tl.where(update, local_argmax, argmax_values)
+
+    tl.store(out_index + rows, argmax_values, mask=row_mask)
+
+
 def _argmax_all(inp, keepdim=False, dtype=None):
     m = inp.numel()
     if dtype is None:
         dtype = inp.dtype
 
     sqrt_block = triton.next_power_of_2(math.ceil(math.sqrt(m)))
-    max_block = 16384 if inp.element_size() <= 2 else 8192
-    block_size = min(sqrt_block, max_block)
+    block_size = min(sqrt_block, 8192)
     mid_size = triton.cdiv(m, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
@@ -157,6 +251,23 @@ def _block_config(dtype, n, inner):
 
 
 def _argmax_blocks(inp, out_index, m, n, inner, stride_outer, stride_reduce):
+    if inp.dtype == torch.bfloat16 and m >= 65536:
+        with torch_device_fn.device(inp.device):
+            _argmax_block_native_kernel[(triton.cdiv(m, 32),)](
+                inp,
+                out_index,
+                m,
+                n,
+                inner,
+                stride_outer,
+                stride_reduce,
+                BLOCK_M=32,
+                BLOCK_N=256,
+                num_warps=4,
+                num_stages=2,
+            )
+        return
+
     block_m, block_n, num_warps, num_stages = _block_config(inp.dtype, n, inner)
     with torch_device_fn.device(inp.device):
         _argmax_block_kernel[(triton.cdiv(m, block_m),)](
@@ -169,6 +280,32 @@ def _argmax_blocks(inp, out_index, m, n, inner, stride_outer, stride_reduce):
             stride_reduce,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
+            num_warps=num_warps,
+            num_stages=num_stages,
+        )
+
+
+def _argmax_contiguous(inp, out_index, m, n, stride_outer, stride_reduce):
+    if n <= 4096:
+        block_n = triton.next_power_of_2(n)
+        if block_n == 4096:
+            block_n = 4096 if m <= 1024 else 2048
+        num_warps = 2 if block_n <= 256 else 4
+        num_stages = 2 if block_n <= 64 or block_n == 4096 else 1
+    else:
+        block_n = 4096
+        num_warps = 4 if inp.dtype == torch.float32 else 8
+        num_stages = 2
+    with torch_device_fn.device(inp.device):
+        _argmax_contiguous_kernel[(m,)](
+            inp,
+            out_index,
+            m,
+            n,
+            stride_outer,
+            stride_reduce,
+            BLOCK_N=block_n,
+            CACHE_CG=n >= 4096,
             num_warps=num_warps,
             num_stages=num_stages,
         )
@@ -228,10 +365,27 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     if not inp.is_contiguous():
         inp = inp.contiguous()
 
-    # The generic single-row kernel is faster when the reduction dimension is
-    # contiguous. The output-block kernel pays off when there are inner
-    # elements that can be coalesced across rows.
+    # Contiguous reductions do not benefit from cross-row coalescing. A
+    # row-per-CTA kernel avoids the generic dispatcher overhead and streams
+    # large rows with explicit tiles; very short rows stay on the generic path.
     if inner == 1:
+        if n > 32:
+            stride = inp.stride()
+            stride_reduce = stride[dim]
+            stride_outer = stride_reduce * n
+            out_index = torch.empty((m,), dtype=torch.int64, device=inp.device)
+            _argmax_contiguous(
+                inp,
+                out_index,
+                m,
+                n,
+                stride_outer,
+                stride_reduce,
+            )
+            out_index = out_index.view(out_shape)
+            if not keepdim:
+                out_index = torch.squeeze(out_index, dim)
+            return out_index
         return base_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
 
     if _prefer_generic_non_inner(inp, m, n, inner):
