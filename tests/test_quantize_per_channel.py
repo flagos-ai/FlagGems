@@ -49,11 +49,10 @@ def _pow2_scales(n_channels, device=flag_gems.device):
     """Per-channel scales that are exact powers of two.
 
     ``quantize_per_channel`` derives its result from a division by the scale.
-    A power-of-two scale is exact in both the fp32 reciprocal the device kernel
-    uses and the fp64 division the CPU kernel uses, so every implementation
-    rounds the identical real value. That makes ``int_repr()`` comparison able
-    to be exact instead of tolerant, for the arbitrary-scale cases as well as
-    for the rounding-tie cases below.
+    A power-of-two scale is exact under both the fp32 reciprocal used by the
+    CPU reference (FBGEMM) and the fp64 division used by the device kernel, so
+    every implementation rounds the identical real value. That makes
+    ``int_repr()`` comparison able to be exact instead of tolerant.
     """
     exponents = torch.randint(-3, 4, (n_channels,), device=device)
     return torch.pow(2.0, exponents.to(torch.float32))
@@ -226,7 +225,7 @@ def test_quantize_per_channel_round_trip(shape, axis, dtype):
     """dequantize(quantize(x)) should match torch for the round-trip values."""
     if axis >= len(shape):
         pytest.skip(f"axis {axis} out of range for {len(shape)}-d shape")
-    inp, scales, zero_points = _make_inputs(shape, axis)
+    inp, scales, zero_points = _make_inputs(shape, axis, pow2_scales=True)
 
     res_q = flag_gems.quantize_per_channel(inp, scales, zero_points, axis, dtype)
     ref_q = _reference(inp, scales, zero_points, axis, dtype)
