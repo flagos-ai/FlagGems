@@ -37,6 +37,17 @@ ATOL = 1e-2
 
 
 def _reference_linalg_polar(inp):
+    # kunlunxin: the on-device reference (``torch.linalg.svd``) is unreliable
+    # without ``--ref cpu`` — CI runs without it and the device svd hung with a
+    # NOC idle timeout — so the oracle is computed on CPU and handed back on
+    # the input device.  Mirrors test_lstm_cell.py's ``_reference_safe``.
+    if IS_KUNLUNXIN:
+        dev = inp.device
+        inp = inp.detach().cpu()
+        svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
+        polar_U = svd_U @ Vh
+        polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
+        return polar_U.to(dev), (0.5 * (polar_H + polar_H.mH)).to(dev)
     svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
     polar_U = svd_U @ Vh
     polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
