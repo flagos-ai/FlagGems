@@ -20,9 +20,42 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+# Name of the active flag_gems backend device (e.g. "cuda", "gcu"). The
+# optimized Triton path below runs on this device; tensors on other device
+# types (e.g. plain "cpu") fall through to the aten reference path. Without
+# this gate, a CPU tensor hitting the Autograd-alias registration for
+# ``clone`` would reach ``torch_device_fn.device(cpu)`` and raise
+# "Expected a gcu device, but got: cpu" (#clone-cpu-fallback).
+_DEVICE_NAME = runtime_device.name
+
+# Some integrations expose the accelerator as a *renamed* PrivateUse1 device
+# (e.g. Torch-FL reports "flagos"). There ``device.type`` differs from the
+# active backend device name even though the tensor does live on the
+# accelerator, so recognize both instead of sending a supported accelerator
+# tensor into an aten redispatch that has no device kernel (#6254).
+try:
+    _PRIVATEUSE1_DEVICE_NAME = torch._C._get_privateuse1_backend_name()
+except Exception:  # pragma: no cover - older torch builds
+    _PRIVATEUSE1_DEVICE_NAME = None
+
+_ACCELERATOR_DEVICE_TYPES = {_DEVICE_NAME}
+if _PRIVATEUSE1_DEVICE_NAME:
+    _ACCELERATOR_DEVICE_TYPES.add(_PRIVATEUSE1_DEVICE_NAME)
+
+
+def _is_accelerator_device(device: torch.device) -> bool:
+    """True when ``device`` belongs to the active accelerator backend."""
+    return device.type in _ACCELERATOR_DEVICE_TYPES
+
+
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
 @triton.jit
@@ -57,6 +90,15 @@ def _allocate_preserve_format(inp: torch.Tensor) -> torch.Tensor:
 
 
 def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
+    if not _is_accelerator_device(src.device):
+        # CPU (or any other non-accelerator device) tensors have no Triton
+        # kernel; use the aten reference copy instead.  A plain ``copy_``
+        # would recurse when ``copy_`` itself is registered, so redispatch
+        # with a keyset that skips the flag_gems Autograd alias.
+        torch.ops.aten.copy_.default.redispatch(
+            _FALLBACK_KEYSET, dst, src, False
+        )
+        return
     n_elements = src.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(src.device):
