@@ -162,6 +162,11 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     m, n, _ = _validate_addmm_shapes(bias, mat1, mat2)
+    from ..linear_projection import try_linear_affine
+
+    result = try_linear_affine(bias, mat1, mat2, beta=beta, alpha=alpha)
+    if result is not None:
+        return result
     out = torch.empty((m, n), device=mat1.device, dtype=mat1.dtype)
     return _launch_addmm(bias, mat1, mat2, out, beta=beta, alpha=alpha)
 
