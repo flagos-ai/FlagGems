@@ -134,6 +134,11 @@ def _rnn_kernel(
     h_read_base = h_read_ptr + batch_idx * hidden_out
 
     for t in range(seq_len):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         if batch_first:
             t_inp_off = batch_idx * batch_inp_stride + t * input_dim
             t_out_off = batch_idx * batch_out_stride + t * hidden_out
@@ -203,6 +208,11 @@ def _rnn_kernel(
             tl.store(output_ptr + t_out_off + h_offs, h_new, mask=h_mask)
             tl.store(h_scratch_base + h_offs, h_new, mask=h_mask)
 
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
+
     # final hidden → hy
     for hid_block in range(num_hid_blocks):
         offs = hid_block * BLOCK_SIZE + bid_offs
@@ -265,6 +275,11 @@ def _rnn_packed_kernel(
     h_read_base = h_read_ptr + pid * hidden_out
 
     for t_loop in range(num_steps):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         t = num_steps - 1 - t_loop if reverse else t_loop
         cur_bs = tl.load(batch_sizes_ptr + t).to(tl.int32)
 
@@ -342,6 +357,11 @@ def _rnn_packed_kernel(
             old_h = tl.load(h_scratch_base + h_offs, mask=h_mask, other=0.0)
             merged = tl.where(pid < cur_bs, h_new, old_h)
             tl.store(h_scratch_base + h_offs, merged, mask=h_mask)
+
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
 
     # final hidden → hy
     for hid_block in range(num_hid_blocks):
@@ -423,6 +443,11 @@ def _lstm_kernel(
     c_scratch_base = c_scratch_ptr + batch_idx * hidden_size
 
     for t in range(seq_len):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         if batch_first:
             t_inp_off = batch_idx * batch_inp_stride + t * input_dim
             t_out_off = batch_idx * batch_out_stride + t * hidden_out
@@ -553,6 +578,11 @@ def _lstm_kernel(
                 )
                 tl.store(h_scratch_base + p_start + bid_offs, proj_acc, mask=p_mask)
 
+    # The last time step's h_scratch/c_scratch stores use the reduction
+    # layout; the final copy below may read them from other threads. Fence
+    # the stores before the final hy/cy snapshot.
+    tl.debug_barrier()
+
     # final → hy, cy
     for hid_block in range(tl.cdiv(hidden_out, BLOCK_SIZE)):
         offs = hid_block * BLOCK_SIZE + bid_offs
@@ -635,6 +665,11 @@ def _lstm_packed_kernel(
     c_scratch_base = c_scratch_ptr + pid * hidden_size
 
     for t_loop in range(num_steps):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         t = num_steps - 1 - t_loop if reverse else t_loop
         cur_bs = tl.load(batch_sizes_ptr + t).to(tl.int32)
 
@@ -790,6 +825,11 @@ def _lstm_packed_kernel(
                 p_final = tl.where(active, proj_acc, old_p)
                 tl.store(h_scratch_base + p_start + bid_offs, p_final, mask=p_mask)
 
+    # The last time step's h_scratch/c_scratch stores use the reduction
+    # layout; the final copy below may read them from other threads. Fence
+    # the stores before the final hy/cy snapshot.
+    tl.debug_barrier()
+
     # final → hy, cy
     for hid_block in range(tl.cdiv(hidden_out, BLOCK_SIZE)):
         offs = hid_block * BLOCK_SIZE + bid_offs
@@ -860,6 +900,11 @@ def _gru_kernel(
     h_read_base = h_read_ptr + batch_idx * hidden_size
 
     for t in range(seq_len):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         if batch_first:
             t_inp_off = batch_idx * batch_inp_stride + t * input_dim
             t_out_off = batch_idx * batch_out_stride + t * hidden_size
@@ -950,6 +995,11 @@ def _gru_kernel(
             tl.store(output_ptr + t_out_off + h_offs, h_new, mask=h_mask)
             tl.store(h_scratch_base + h_offs, h_new, mask=h_mask)
 
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
+
     for hid_block in range(num_hid_blocks):
         offs = hid_block * BLOCK_SIZE + bid_offs
         mask = offs < hidden_size
@@ -1005,6 +1055,11 @@ def _gru_packed_kernel(
     h_read_base = h_read_ptr + pid * hidden_size
 
     for t_loop in range(num_steps):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         t = num_steps - 1 - t_loop if reverse else t_loop
         cur_bs = tl.load(batch_sizes_ptr + t).to(tl.int32)
 
@@ -1102,6 +1157,11 @@ def _gru_packed_kernel(
             old_h = tl.load(h_scratch_base + h_offs, mask=h_mask, other=0.0)
             h_merged = tl.where(active, h_new, old_h)
             tl.store(h_scratch_base + h_offs, h_merged, mask=h_mask)
+
+    # The last time step's h_scratch stores use the reduction layout; the
+    # final copy below may read them from other threads. Fence the stores
+    # before the final hy snapshot.
+    tl.debug_barrier()
 
     for hid_block in range(num_hid_blocks):
         offs = hid_block * BLOCK_SIZE + bid_offs
