@@ -16,6 +16,7 @@ import hashlib
 import inspect
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -370,7 +371,23 @@ def _run_put_bounds_child(numel, bad, accumulate, override, ref_cpu=False):
             original_sync()
             report["valid_completed"] = True
             report["phase"] = "invalid"
-            flag_gems.put(inp, index, source, accumulate=args["accumulate"])
+            previous_profile = sys.getprofile()
+            if flag_gems.vendor_name == "hygon" and actual_code is not None:
+                def record_invalid_entry(frame, event, arg):
+                    if event == "call" and frame.f_code is actual_code:
+                        sys.setprofile(previous_profile)
+                        # A fatal device abort cannot run the exception handler.
+                        # Write only after the bound callable itself is entered.
+                        entered = dict(report, status="ENTERED")
+                        if registry is not None:
+                            entered["calls"] = registry.call_counts()
+                        Path(args["report"]).write_text(json.dumps(entered))
+                sys.setprofile(record_invalid_entry)
+            try:
+                flag_gems.put(inp, index, source, accumulate=args["accumulate"])
+            finally:
+                if flag_gems.vendor_name == "hygon" and actual_code is not None:
+                    sys.setprofile(previous_profile)
             torch_device_fn.synchronize()
             report["status"] = "NO_ERROR"
         except BaseException as error:
@@ -452,7 +469,37 @@ def _put_device_fault(message):
     }
 
 
+def _is_hygon_put_vmfault(proc, report):
+    if (
+        flag_gems.vendor_name != "hygon"
+        or proc.returncode != -signal.SIGABRT
+        or report.get("phase") != "invalid"
+        or report.get("status") != "ENTERED"
+        or report.get("valid_completed") is not True
+        or report.get("binding") != _put_callable_binding(flag_gems.put)
+        or (
+            report.get("override") is not None
+            and report.get("calls", {}).get("flag_gems.put") != 2
+        )
+    ):
+        return False
+    diagnostic, separator, _ = proc.stderr.rpartition("KERNEL VMFault Analysis END")
+    if not separator:
+        return False
+    kernels = re.findall(
+        r"^HOSTQUEUE <0x[0-9a-fA-F]+>: kernel name: (\S+)$", diagnostic, re.M
+    )
+    return bool(
+        kernels
+        and kernels[-1].startswith("_ZN2at6native24index_elementwise_kernel")
+        and "cuda_take_put_kernel" in kernels[-1]
+        and "put_kernel" in kernels[-1].split("cuda_take_put_kernel", 1)[1]
+    )
+
+
 def _assert_put_bounds_failure(proc, report):
+    if _is_hygon_put_vmfault(proc, report):
+        return
     assert proc.returncode != 0, (
         "an out-of-range index was silently accepted; "
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
