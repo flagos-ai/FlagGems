@@ -90,6 +90,8 @@ def grouped_fp8_cpu_reference(a, sa, b, sb, out, lengths):
         ([1, 273, 512], 512, 128),
         ([1, 0, 7], 192, 384),
         ([1, 63, 65], 192, 128),
+        ([0, 193, 0, 1351], 768, 128),
+        ([0, 17, 137, 401], 512, 768),
     ],
 )
 def test_grouped_gemm_w8a8_fp8(lengths, n, k, column_major):
