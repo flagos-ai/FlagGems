@@ -40,9 +40,9 @@ _ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_channel_affine_backward
 
 
 def _seed():
-    torch.manual_seed(0)
+    torch.manual_seed(1234)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(0)
+        torch.cuda.manual_seed_all(1234)
 
 
 def _reference(tensor):
@@ -52,10 +52,27 @@ def _reference(tensor):
 def _make_inputs(shape, axis, quant_max):
     _seed()
     channels = shape[axis]
-    scale = torch.rand(channels, device=flag_gems.device) * 0.4 + 0.05
-    zero_point = torch.rand(channels, device=flag_gems.device) * (quant_max * 0.5)
-    self_t = torch.randn(shape, device=flag_gems.device) * (float(quant_max) * 0.05)
-    grad = torch.randn(shape, device=flag_gems.device)
+    factory = {"device": flag_gems.device, "dtype": torch.float32}
+    scale = torch.rand(channels, **factory) * 0.4 + 0.05
+    zero_point = torch.rand(channels, **factory) * (quant_max * 0.5)
+    self_t = torch.randn(shape, **factory) * (float(quant_max) * 0.05)
+    grad = torch.randn(shape, **factory)
+
+    # Avoid exact FP32 half-way ties at the quantization clamp boundary.
+    view = [1] * len(shape)
+    view[axis] = -1
+    inv_scale = (1.0 / scale).view(view)
+    for _ in range(4):
+        scaled = self_t * inv_scale
+        tie = (scaled - torch.floor(scaled)) == 0.5
+        if flag_gems.vendor_name == "hygon":
+            # Direct division and reciprocal multiplication can round to
+            # opposite sides of a half-way point in CPU/device references.
+            quotient = self_t / scale.view(view)
+            tie |= (quotient - torch.floor(quotient)) == 0.5
+        if not tie.any():
+            break
+        self_t = torch.where(tie, torch.nextafter(self_t, self_t + 1), self_t)
     return grad, self_t, scale, zero_point
 
 
@@ -88,16 +105,22 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
         grad_factor,
     )
 
+    assert len(result) == 3
     reduce_size = self_t.numel() // shape[axis]
     for index, (actual, expected) in enumerate(zip(result, ref_out)):
         utils.gems_assert_close(
             actual, expected, torch.float32, reduce_dim=1 if index == 0 else reduce_size
         )
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
+        flag_gems.testing.assert_equal(value, snapshot)
     assert result[0].shape == self_t.shape
-    assert result[1].shape == scale.shape
-    assert result[2].shape == zero_point.shape
+    if self_t.ndim == 1:
+        # ATen reduces the learnable gradients to scalars for rank-one input.
+        assert result[1].shape == ref_out[1].shape
+        assert result[2].shape == ref_out[2].shape
+    else:
+        assert result[1].shape == scale.shape
+        assert result[2].shape == zero_point.shape
     assert all(value.dtype == torch.float32 for value in result)
 
 
@@ -108,13 +131,14 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
 @pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward_extreme():
     shape, axis = (4, 16), 1
-    scale = torch.full((16,), 0.1, device=flag_gems.device)
-    zero_point = torch.zeros(16, device=flag_gems.device)
-    self_t = torch.zeros(shape, device=flag_gems.device)
+    _seed()
+    factory = {"device": flag_gems.device, "dtype": torch.float32}
+    scale = torch.full((16,), 0.1, **factory)
+    zero_point = torch.zeros(16, **factory)
+    self_t = torch.zeros(shape, **factory)
     self_t[:, 0] = float("inf")
     self_t[:, 1] = float("-inf")
-    _seed()
-    grad = torch.randn(shape, device=flag_gems.device)
+    grad = torch.randn(shape, **factory)
     inputs = grad, self_t, scale, zero_point
     ref_out = _ATEN_OP(
         *(_reference(tensor) for tensor in inputs), axis, -128, 127, 1.0
@@ -148,8 +172,8 @@ def test_fake_quantize_learnable_per_channel_affine_backward_empty():
     assert result[0].shape == self_t.shape
     assert result[1].shape == scale.shape
     assert result[2].shape == zero_point.shape
-    utils.gems_assert_equal(result[1], torch.zeros_like(scale))
-    utils.gems_assert_equal(result[2], torch.zeros_like(zero_point))
+    flag_gems.testing.assert_equal(result[1], torch.zeros_like(scale))
+    flag_gems.testing.assert_equal(result[2], torch.zeros_like(zero_point))
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
@@ -162,7 +186,9 @@ def test_fake_quantize_learnable_per_channel_affine_backward_rejects_dtype():
         torch.ones(8, device=flag_gems.device),
         torch.zeros(8, device=flag_gems.device),
     ]
-    with pytest.raises(AssertionError):
+    with pytest.raises((AssertionError, RuntimeError)) as error:
         flag_gems._fake_quantize_learnable_per_channel_affine_backward(
             *tensors, axis, -128, 127, 1.0
         )
+    if isinstance(error.value, RuntimeError):
+        assert "dY.scalar_type() == ScalarType::Float" in str(error.value)
