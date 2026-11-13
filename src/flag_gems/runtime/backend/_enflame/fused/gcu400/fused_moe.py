@@ -750,9 +750,9 @@ def _fp8_quantize(
             ).to(fp8_dtype)
             return A_q, A_scale
         else:
-            amax = flag_gems.clamp(
-                flag_gems.amax(flag_gems.abs(A)), mini=eps
-            ).to(torch.float32)
+            amax = flag_gems.clamp(flag_gems.amax(flag_gems.abs(A)), mini=eps).to(
+                torch.float32
+            )
             scale = flag_gems.true_divide(amax, fp8_max)
             iscale = flag_gems.true_divide(1.0, scale)
             A_q = flag_gems.clamp(
@@ -791,9 +791,9 @@ def _int8_quantize(
         scale = flag_gems.true_divide(amax, int8_max)
         # gcu400 round kernel only accepts contiguous input.
         scaled = flag_gems.true_divide(A_groups.float(), scale).contiguous()
-        A_q = flag_gems.clamp(
-            flag_gems.round(scaled), int8_min, int8_max
-        ).to(torch.int8)
+        A_q = flag_gems.clamp(flag_gems.round(scaled), int8_min, int8_max).to(
+            torch.int8
+        )
         A_q = A_q.reshape(orig_shape)
         scale = scale.reshape(M, K // block_k)
         return A_q, scale
@@ -806,9 +806,9 @@ def _int8_quantize(
         ).to(torch.float32)
         scale = flag_gems.true_divide(amax, int8_max)
         scaled = flag_gems.true_divide(A_flat.float(), scale).contiguous()
-        A_q = flag_gems.clamp(
-            flag_gems.round(scaled), int8_min, int8_max
-        ).to(torch.int8)
+        A_q = flag_gems.clamp(flag_gems.round(scaled), int8_min, int8_max).to(
+            torch.int8
+        )
         A_q = A_q.reshape(A.shape)
         scale = scale.reshape(A.shape[:-1] + (1,))
         return A_q, scale
@@ -817,9 +817,9 @@ def _int8_quantize(
         assert A_scale is not None, "int8 per-tensor requires A_scale"
         scale = A_scale.float().view(1, 1) if A_scale.numel() == 1 else A_scale.float()
         scaled = flag_gems.true_divide(A.float(), scale).contiguous()
-        A_q = flag_gems.clamp(
-            flag_gems.round(scaled), int8_min, int8_max
-        ).to(torch.int8)
+        A_q = flag_gems.clamp(flag_gems.round(scaled), int8_min, int8_max).to(
+            torch.int8
+        )
         return A_q, A_scale
 
 
