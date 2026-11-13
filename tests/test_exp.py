@@ -59,3 +59,30 @@ def test_exp_out(shape, dtype):
     flag_gems.exp_out(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.exp
+def test_exp_float64_keeps_double_range():
+    # Issue #6967: a float64 input used to be computed in float32, so exp(700)
+    # overflowed to inf although it is finite in double precision (and
+    # gradcheck(torch.exp) failed outright)
+    inp = torch.tensor([88.0, 300.0, 700.0, 709.0, 710.0], dtype=torch.float64, device=flag_gems.device)
+    ref = utils.to_reference(inp)
+
+    res_out = flag_gems.exp(inp)
+    ref_out = torch.exp(ref)
+
+    assert torch.equal(res_out.isfinite(), ref_out.isfinite())
+    utils.gems_assert_close(res_out, ref_out, dtype=torch.float64)
+
+
+@pytest.mark.exp_
+def test_exp__float64_keeps_double_range():
+    # Issue #6967, in-place variant: the same kernel serves exp_
+    inp = torch.tensor([700.0, 710.0], dtype=torch.float64, device=flag_gems.device)
+    ref = utils.to_reference(inp.clone())
+
+    res_out = flag_gems.exp_(inp)
+
+    ref_out = ref.exp_()
+    utils.gems_assert_close(res_out, ref_out, dtype=torch.float64)
