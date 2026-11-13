@@ -6,11 +6,14 @@ repos:
   - id: end-of-file-fixer
   - id: trailing-whitespace
   - id: flake8
-    args: ["--ignore=F405,E731,W503,E203", --max-line-length=120]
+    args: ["--ignore=F405,E731,W503,E203,F401,E402,F811", "--max-line-length=120"]
     # F405 : Name may be undefined, or defined from star imports: module
     # E731 : Do not assign a lambda expression, use a def
     # W503 : Line break before binary operator
     # E203 : Whitespace before ':'
+    # F401 : Imported but unused (for __init__.py export)
+    # E402 : Module level import not at top of file (dynamic backend dispatch)
+    # F811 : Redefinition of name (backend op override)
 
 - repo: https://github.com/pre-commit/mirrors-clang-format
   rev: v13.0.0
@@ -29,4 +32,3 @@ repos:
   rev: 23.7.0
   hooks:
     - id: black
-    - id: black-jupyter

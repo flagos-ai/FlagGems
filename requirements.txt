@@ -1,0 +1,6 @@
+torch>=2.1
+triton>=2.2
+pytest
+pytest-xdist
+numpy
+pybind11

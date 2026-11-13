@@ -110,3 +110,38 @@ def test_mm_out_self_transpose(M, K, dtype):
         torch.mm(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+def test_mm_correctness():
+    M, N, K = 512, 512, 512
+    a = torch.randn((M, K), dtype=torch.float16, device=flag_gems.device).contiguous()
+    b = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device).contiguous()
+    ref = a @ b
+    res = flag_gems.mm(a, b)
+    torch.testing.assert_close(res, ref, atol=1e-2, rtol=1e-2)
+
+
+@pytest.mark.mm
+def test_addmm_correctness():
+    M, N, K = 256, 256, 256
+    a = torch.randn((M, K), dtype=torch.float16, device=flag_gems.device).contiguous()
+    b = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device).contiguous()
+    c = torch.randn((M, N), dtype=torch.float16, device=flag_gems.device).contiguous()
+    ref = torch.addmm(c, a, b, alpha=0.5, beta=2.0)
+    res = flag_gems.addmm(a, b, c, alpha=0.5, beta=2.0)
+    torch.testing.assert_close(res, ref, atol=1e-2, rtol=1e-2)
+
+
+@pytest.mark.mm
+def test_bmm_correctness():
+    B, M, N, K = 8, 128, 128, 128
+    a = torch.randn(
+        (B, M, K), dtype=torch.float16, device=flag_gems.device
+    ).contiguous()
+    b = torch.randn(
+        (B, K, N), dtype=torch.float16, device=flag_gems.device
+    ).contiguous()
+    ref = torch.bmm(a, b)
+    res = flag_gems.bmm(a, b)
+    torch.testing.assert_close(res, ref, atol=1e-2, rtol=1e-2)
