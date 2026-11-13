@@ -32,6 +32,17 @@ QUANTIZED_LSTM_SHAPES = [
 ]
 
 
+def _quantized_engine():
+    # oneDNN preserves CellParamsBase/linear_unpack on Ascend CPU builds
+    # that do not provide FBGEMM.
+    if (
+        flag_gems.vendor_name == "ascend"
+        and "fbgemm" not in torch.backends.quantized.supported_engines
+    ):
+        return "onednn"
+    return "fbgemm"
+
+
 @pytest.fixture(autouse=True)
 def _restore_quantized_engine():
     original_engine = torch.backends.quantized.engine
@@ -154,7 +165,7 @@ def test_accuracy_quantized_lstm(shape, dtype):
     seq_len, batch_size, input_size, hidden_size = shape
     torch.manual_seed(42)
     torch_device_fn.manual_seed(42)
-    torch.backends.quantized.engine = "fbgemm"
+    torch.backends.quantized.engine = _quantized_engine()
 
     inp = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
@@ -204,7 +215,7 @@ def test_accuracy_quantized_lstm_bidirectional(shape, dtype):
     seq_len, batch_size, input_size, hidden_size = shape
     torch.manual_seed(42)
     torch_device_fn.manual_seed(42)
-    torch.backends.quantized.engine = "fbgemm"
+    torch.backends.quantized.engine = _quantized_engine()
 
     inp = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
@@ -260,7 +271,7 @@ def test_accuracy_quantized_lstm_no_bias(shape, dtype):
     seq_len, batch_size, input_size, hidden_size = shape
     torch.manual_seed(42)
     torch_device_fn.manual_seed(42)
-    torch.backends.quantized.engine = "fbgemm"
+    torch.backends.quantized.engine = _quantized_engine()
 
     inp = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
@@ -306,7 +317,7 @@ def test_quantized_lstm_multilayer_batch_first(dtype):
     """Two stacked layers preserve batch-first layout and hidden/cell ordering."""
     torch.manual_seed(42)
     torch_device_fn.manual_seed(42)
-    torch.backends.quantized.engine = "fbgemm"
+    torch.backends.quantized.engine = _quantized_engine()
     batch_size, seq_len, input_size, hidden_size, num_layers = 3, 5, 8, 12, 2
     device = flag_gems.device
     inp = torch.randn(batch_size, seq_len, input_size, dtype=dtype, device=device)
@@ -352,7 +363,7 @@ def test_quantized_lstm_training_dropout_is_seeded(dtype):
     """Training dropout is applied between layers and follows the seeded RNG stream."""
     torch.manual_seed(42)
     torch_device_fn.manual_seed(42)
-    torch.backends.quantized.engine = "fbgemm"
+    torch.backends.quantized.engine = _quantized_engine()
     seq_len, batch_size, input_size, hidden_size, num_layers = 6, 3, 8, 12, 2
     device = flag_gems.device
     inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
