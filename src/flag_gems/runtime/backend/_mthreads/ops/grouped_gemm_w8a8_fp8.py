@@ -209,6 +209,7 @@ def grouped_fp8_producer(
     BM: tl.constexpr,
     BN: tl.constexpr,
     K_BLOCKS: tl.constexpr,
+    STAGES: tl.constexpr,
 ):
     total = tl.load(Tasks + TILES) * tl.cdiv(N, BN)
     sequence = 0
@@ -245,6 +246,8 @@ def grouped_fp8_producer(
                 tle.gpu.copy(B, slot.b, (BN, 128), (expert * N + pn * BN, block * 128))
             writer.commit(sequence)
             sequence += 1
+    if K_BLOCKS == 2:
+        writer.acquire(sequence + STAGES - 1)
     tle.gpu.barrier_arrive(finish[0], phaseIdx=0)
     tle.gpu.barrier_wait(finish[0], phaseIdx=0)
 
@@ -253,6 +256,7 @@ def grouped_fp8_producer(
 def grouped_fp8_consumer(
     reader,
     finish,
+    reader_sync,
     C,
     SA,
     SB,
@@ -315,6 +319,10 @@ def grouped_fp8_consumer(
                     SB + expert * SBE + (cols // 128) * SBN + block * SBK, cols < N, 0
                 )
                 acc += partial * sa[:, None] * sb[None, :]
+            if K_BLOCKS == 2:
+                # Every consumer warp must finish both subviews before releasing their shared slot.
+                tle.gpu.barrier_arrive(reader_sync[0], phaseIdx=sequence % 2)
+                tle.gpu.barrier_wait(reader_sync[0], phaseIdx=sequence % 2)
             reader.release(sequence)
             sequence += 1
         valid = (rows >= pm) & (tl.load(Groups + rows, rows < M, -1) == expert)
@@ -367,6 +375,10 @@ def grouped_fp8_ws_kernel(
     )
     pipe = tle.pipe(capacity=STAGES, scope="cta", name="ab", readers=("r",), a=aa, b=bb)
     finish = tle.gpu.alloc_barriers(1, arrive_count=CW + PW, init=tle.gpu.PENDING)
+    if K_BLOCKS == 2:
+        reader_sync = tle.gpu.alloc_barriers(1, arrive_count=CW, init=tle.gpu.PENDING)
+    else:
+        reader_sync = finish
     tle.gpu.warp_specialize(
         [
             (
@@ -374,6 +386,7 @@ def grouped_fp8_ws_kernel(
                 (
                     pipe.reader("r", fields=("a", "b")),
                     finish,
+                    reader_sync,
                     C,
                     SA,
                     SB,
@@ -411,6 +424,7 @@ def grouped_fp8_ws_kernel(
                     BM,
                     BN,
                     K_BLOCKS,
+                    STAGES,
                 ),
             ),
         ],
@@ -509,9 +523,15 @@ def grouped_fp8_multicast_consumer(
             ready.slot.a, operand_b, tl.zeros((BM, BN), tl.float32), trans_b=True
         )
         sa = tl.load(SA + rows * SAM, rows < M, 0)
-        sb = tl.load(SB + expert * SBE + ((pn * 4 + ROLE) * BN // 128) * SBN)
+        if GROUP_M != 1:
+            sb = tl.load(SB + expert * SBE + ((pn * 4 + ROLE) * BN // 128) * SBN)
+        else:
+            sb = tl.load(SB + expert * SBE + (cols // 128) * SBN, cols < N, 0)
         partial = tle.gpu.wgmma_wait(0, partial)
-        acc = partial * (sa * sb)[:, None]
+        if GROUP_M != 1:
+            acc = partial * (sa * sb)[:, None]
+        else:
+            acc = partial * sa[:, None] * sb[None, :]
         reader.release(sequence)
         sequence += 1
         valid = tl.load(Groups + rows, rows < M, -1) == expert
@@ -694,7 +714,7 @@ def grouped_gemm_w8a8_fp8(
     is_dense = m >= experts * 64 and n % 256 == 0
     is_multicast = MULTICAST_ON and is_dense and k == 128
     if is_multicast:
-        # If a 128-row tile would be mostly empty, use a shorter tile and reuse B across tiles.
+        # Shorten the M tile when the last tile has few useful rows on average.
         mean_rows = triton.cdiv(m, experts)
         if 0 < mean_rows % 128 <= 32 and mean_rows >= 384:
             bm, bn, group_m = 64, 128, 16
