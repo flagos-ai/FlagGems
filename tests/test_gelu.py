@@ -23,6 +23,26 @@ import flag_gems
 from flag_gems.testing import RESOLUTION
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+
+def _reference_input(x):
+    """Input to build the reference from: CPU, float32.
+
+    In the default (device) reference mode the reference is the backend's own
+    implementation, and on Ascend ``gelu(approximate="none")`` is a coarse
+    approximation -- measured against fp64 it is off by up to 1.6e-2 for
+    bfloat16, 2.0e-3 for float16 and 4.7e-4 for float32, all of which exceed
+    this file's 1e-4 atol, so the kernel would be reported as failing while
+    being the more accurate of the two. CPU float32 gelu is exact to ~5e-7,
+    which keeps the check meaningful in both reference modes.
+    """
+    return x.detach().cpu().to(torch.float32)
+
+
+def _place_reference(ref, like):
+    """Put a CPU reference where ``gems_assert_close`` expects it."""
+    return ref if cfg.TO_CPU else ref.to(like.device)
 
 
 @pytest.mark.gelu
@@ -34,7 +54,7 @@ def test_gelu(shape, dtype, approximate):
     if flag_gems.vendor_name == "ascend":
         ref_inp = res_inp.to(device="cpu", dtype=torch.float64)
     else:
-        ref_inp = utils.to_reference(res_inp, True)
+        ref_inp = _reference_input(res_inp)
 
     ref_out = torch.nn.functional.gelu(ref_inp, approximate=approximate)
     res_out = flag_gems.gelu(res_inp, approximate=approximate)
@@ -45,7 +65,9 @@ def test_gelu(shape, dtype, approximate):
     atol = 1e-4
     if flag_gems.vendor_name == "aipu" and dtype == torch.float16:
         atol = 1e-3
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
+    utils.gems_assert_close(
+        res_out, _place_reference(ref_out, res_inp), dtype, atol=atol
+    )
 
 
 @pytest.mark.gelu_backward
@@ -60,8 +82,8 @@ def test_gelu_backward(shape, dtype, approximate):
         ref_inp = res_inp.to(device="cpu", dtype=torch.float64)
         ref_out = res_out.to(device="cpu", dtype=torch.float64)
     else:
-        ref_inp = utils.to_reference(res_inp, True)
-        ref_out = utils.to_reference(res_out, True)
+        ref_inp = _reference_input(res_inp)
+        ref_out = _reference_input(res_out)
 
     ref_in_grad = torch.ops.aten.gelu_backward(
         ref_out, ref_inp, approximate=approximate
@@ -71,7 +93,7 @@ def test_gelu_backward(shape, dtype, approximate):
     if ref_in_grad.device.type == "cpu":
         res_in_grad = res_in_grad.cpu()
 
-    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    utils.gems_assert_close(res_in_grad, _place_reference(ref_in_grad, res_inp), dtype)
 
 
 @pytest.mark.gelu_
@@ -84,7 +106,7 @@ def test_gelu_(shape, dtype, approximate):
     if flag_gems.vendor_name == "ascend":
         ref_inp = res_inp.to(device="cpu", dtype=torch.float64)
     else:
-        ref_inp = utils.to_reference(res_inp.clone(), True)
+        ref_inp = _reference_input(res_inp)
 
     ref_out = torch.ops.aten.gelu_.default(ref_inp, approximate=approximate)
     res_out = flag_gems.gelu_(res_inp, approximate=approximate)
@@ -92,7 +114,7 @@ def test_gelu_(shape, dtype, approximate):
     if ref_out.device.type == "cpu":
         res_out = res_out.cpu()
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, _place_reference(ref_out, res_inp), dtype)
 
 
 # Ascend coreDim and large-tensor regressions.
