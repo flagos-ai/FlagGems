@@ -671,6 +671,17 @@ def index(inp, indices):
     else:
         has_contiguous_subspace = True
 
+    # Leading-index kernels linearize logical coordinates as contiguous storage.
+    # Materialize strided inputs before selecting either existing kernel path.
+    if (
+        has_contiguous_subspace
+        and starts_from_zero
+        and tensor_indices
+        and tensor_indices[0].numel() > 0
+        and not inp.is_contiguous()
+    ):
+        inp = inp.contiguous()
+
     # Adjacent tensor indices on contiguous input, e.g. x[idx, :] or
     # x[:, idx0, idx1, :], can be linearized in place. This preserves
     # PyTorch's output order and avoids the transpose-to-front path below.
