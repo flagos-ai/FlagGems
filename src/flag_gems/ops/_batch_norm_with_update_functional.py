@@ -21,9 +21,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -47,137 +45,273 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
     return input
 
 
-@libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("batch_norm"),
-    key=["batch_dim", "spatial_dim"],
-)
-@triton.heuristics(runtime.get_heuristic_config("batch_norm"))
 @triton.jit
-def batch_norm_with_update_kernel(
-    input_pointer,
-    weight_pointer,
-    bias_pointer,
-    mean_pointer,
-    inv_std_pointer,
-    output_pointer,
-    running_mean_out_pointer,
-    running_var_out_pointer,
-    running_mean_in_pointer,
-    running_var_in_pointer,
-    batch_dim,
-    spatial_dim,
-    input_batch_stride,
-    input_feat_stride,
-    input_spatial_stride,
-    output_batch_stride,
-    output_feat_stride,
-    output_spatial_stride,
+def _bn_fused_kernel(
+    x_ptr,
+    out_ptr,
+    save_mean_ptr,
+    save_invstd_ptr,
+    rmean_in_ptr,
+    rvar_in_ptr,
+    rmean_out_ptr,
+    rvar_out_ptr,
+    w_ptr,
+    b_ptr,
+    N,
+    L,
+    sN,
+    sC,
+    sL,
+    oN,
+    oC,
     momentum,
     eps,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    HAS_W: tl.constexpr,
+    HAS_B: tl.constexpr,
+    EXACT: tl.constexpr,
+    SL1: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    feat_pid = tl.program_id(axis=0)
+    c = tl.program_id(0)
+    lnum = tl.cdiv(L, BLOCK)
 
-    # Compute batch statistics
-    mean = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    var = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    cnt = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    acc2 = tl.zeros((BLOCK,), dtype=tl.float32)
 
-    m_num_steps = tl.cdiv(batch_dim, BLOCK_M)
-    n_num_steps = tl.cdiv(spatial_dim, BLOCK_N)
+    for n in range(0, N):
+        rowbase = c * sC + n * sN
+        for lb in range(0, lnum):
+            cols = lb * BLOCK + tl.arange(0, BLOCK)
+            if SL1:
+                offs = rowbase + cols
+            else:
+                offs = rowbase + cols * sL
+            if EXACT:
+                x = tl.load(x_ptr + offs).to(tl.float32)
+            else:
+                x = tl.load(x_ptr + offs, mask=cols < L, other=0.0).to(tl.float32)
+            acc += x
+            acc2 += x * x
 
-    for m_step in range(0, m_num_steps):
-        for n_step in range(0, n_num_steps):
-            spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
-            spatial_mask = spatial_offset < spatial_dim
+    cntf = (N * L).to(tl.float32)
+    mu = tl.sum(acc) / cntf
+    var = tl.maximum(tl.sum(acc2) / cntf - mu * mu, 0.0)
+    invstd = 1.0 / tl.sqrt(var + eps)
 
-            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
-            batch_mask = batch_offset < batch_dim
+    tl.store(save_mean_ptr + c, mu)
+    tl.store(save_invstd_ptr + c, invstd)
 
-            curr_input_pointer = (
-                input_pointer
-                + input_feat_stride * feat_pid
-                + input_batch_stride * batch_offset[:, None]
-                + input_spatial_stride * spatial_offset[None, :]
-            )
-
-            mask = batch_mask[:, None] & spatial_mask[None, :]
-            curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
-
-            step = m_step * n_num_steps + n_step + 1
-            new_mean = tl.where(mask, mean + (curr_input - mean) / step, mean)
-            new_var = tl.where(
-                mask, var + (curr_input - new_mean) * (curr_input - mean), var
-            )
-            cnt += mask.to(tl.int32)
-            mean = new_mean
-            var = new_var
-
-    final_mean = tl.sum(mean * cnt) / (batch_dim * spatial_dim)
-    var = tl.sum(var + cnt * (mean - final_mean) * (mean - final_mean)) / (
-        batch_dim * spatial_dim
+    if HAS_RM:
+        rm = tl.load(rmean_in_ptr + c).to(tl.float32)
+    else:
+        rm = 0.0
+    if HAS_RV:
+        rv = tl.load(rvar_in_ptr + c).to(tl.float32)
+    else:
+        rv = 1.0
+    tl.store(rmean_out_ptr + c, (1.0 - momentum) * rm + momentum * mu)
+    tl.store(
+        rvar_out_ptr + c,
+        (1.0 - momentum) * rv + momentum * var * cntf / (cntf - 1.0),
     )
-    inv_std = tl.math.rsqrt(var + eps)
-    mean = final_mean
 
-    tl.store(feat_pid + mean_pointer, mean)
-    tl.store(feat_pid + inv_std_pointer, inv_std)
-
-    # Compute updated running statistics
-    running_mean_in = tl.load(feat_pid + running_mean_in_pointer)
-    running_var_in = tl.load(feat_pid + running_var_in_pointer)
-
-    n = batch_dim * spatial_dim
-    new_running_mean = (1 - momentum) * running_mean_in + momentum * mean
-    new_running_var = (1 - momentum) * running_var_in + momentum * var * n / (n - 1)
-
-    tl.store(feat_pid + running_mean_out_pointer, new_running_mean)
-    tl.store(feat_pid + running_var_out_pointer, new_running_var)
-
-    # Load weight and bias
-    if weight_pointer:
-        weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
+    if HAS_W:
+        w = tl.load(w_ptr + c).to(tl.float32)
     else:
-        weight = 1.0
-    if bias_pointer:
-        bias = tl.load(feat_pid + bias_pointer).to(tl.float32)
+        w = 1.0
+    if HAS_B:
+        bb = tl.load(b_ptr + c).to(tl.float32)
     else:
-        bias = 0.0
+        bb = 0.0
 
-    # Normalize input
-    for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
-        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
-            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
-            batch_mask = batch_offset < batch_dim
+    for n in range(0, N):
+        ibase = c * sC + n * sN
+        obase = c * oC + n * oN
+        for lb in range(0, lnum):
+            cols = lb * BLOCK + tl.arange(0, BLOCK)
+            if SL1:
+                ioffs = ibase + cols
+            else:
+                ioffs = ibase + cols * sL
+            ooffs = obase + cols
+            if EXACT:
+                x = tl.load(x_ptr + ioffs).to(tl.float32)
+                y = (x - mu) * invstd * w + bb
+                tl.store(out_ptr + ooffs, y)
+            else:
+                m = cols < L
+                x = tl.load(x_ptr + ioffs, mask=m, other=0.0).to(tl.float32)
+                y = (x - mu) * invstd * w + bb
+                tl.store(out_ptr + ooffs, y, mask=m)
 
-            spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
-            spatial_mask = spatial_offset < spatial_dim
 
-            curr_input_pointer = (
-                input_pointer
-                + input_feat_stride * feat_pid
-                + input_batch_stride * batch_offset[:, None]
-                + input_spatial_stride * spatial_offset[None, :]
-            )
-            curr_output_pointer = (
-                output_pointer
-                + output_feat_stride * feat_pid
-                + output_batch_stride * batch_offset[:, None]
-                + output_spatial_stride * spatial_offset[None, :]
-            )
+@triton.jit
+def _bn_stats_kernel(
+    x_ptr,
+    pmean_ptr,
+    pm2_ptr,
+    pcnt_ptr,
+    N,
+    L,
+    sN,
+    sC,
+    sL,
+    S,
+    NPS,
+    EXACT: tl.constexpr,
+    SL1: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    c = pid // S
+    s = pid - c * S
 
-            curr_input = tl.load(
-                curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
-            output = weight * (curr_input - mean) * inv_std + bias
+    n0 = s * NPS
+    n1 = tl.minimum(n0 + NPS, N)
+    lnum = tl.cdiv(L, BLOCK)
 
-            tl.store(
-                curr_output_pointer,
-                output,
-                mask=batch_mask[:, None] & spatial_mask[None, :],
-            )
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    acc2 = tl.zeros((BLOCK,), dtype=tl.float32)
+
+    for n in range(n0, n1):
+        rowbase = c * sC + n * sN
+        for lb in range(0, lnum):
+            cols = lb * BLOCK + tl.arange(0, BLOCK)
+            if SL1:
+                offs = rowbase + cols
+            else:
+                offs = rowbase + cols * sL
+            if EXACT:
+                x = tl.load(x_ptr + offs).to(tl.float32)
+            else:
+                x = tl.load(x_ptr + offs, mask=cols < L, other=0.0).to(tl.float32)
+            acc += x
+            acc2 += x * x
+
+    ssum = tl.sum(acc)
+    sss = tl.sum(acc2)
+
+    cntf = ((n1 - n0) * L).to(tl.float32)
+    mu = ssum / cntf
+    m2 = tl.maximum(sss - cntf * mu * mu, 0.0)
+
+    idx = c * S + s
+    tl.store(pmean_ptr + idx, mu)
+    tl.store(pm2_ptr + idx, m2)
+    tl.store(pcnt_ptr + idx, cntf)
+
+
+@triton.jit
+def _bn_apply_kernel(
+    x_ptr,
+    out_ptr,
+    pmean_ptr,
+    pm2_ptr,
+    pcnt_ptr,
+    save_mean_ptr,
+    save_invstd_ptr,
+    rmean_in_ptr,
+    rvar_in_ptr,
+    rmean_out_ptr,
+    rvar_out_ptr,
+    w_ptr,
+    b_ptr,
+    N,
+    L,
+    sN,
+    sC,
+    sL,
+    oN,
+    oC,
+    S,
+    NPS,
+    momentum,
+    eps,
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    HAS_W: tl.constexpr,
+    HAS_B: tl.constexpr,
+    EXACT: tl.constexpr,
+    SL1: tl.constexpr,
+    BLOCK: tl.constexpr,
+    BS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    c = pid // S
+    s = pid - c * S
+
+    lane = tl.arange(0, BS)
+    lmsk = lane < S
+    poff = c * S + lane
+    pc = tl.load(pcnt_ptr + poff, mask=lmsk, other=0.0)
+    pm = tl.load(pmean_ptr + poff, mask=lmsk, other=0.0)
+    pv = tl.load(pm2_ptr + poff, mask=lmsk, other=0.0)
+
+    ctot = tl.sum(pc)
+    mu = tl.sum(pc * pm) / ctot
+    dd = tl.where(lmsk, pm - mu, 0.0)
+    m2 = tl.sum(tl.where(lmsk, pv, 0.0)) + tl.sum(pc * dd * dd)
+    var = m2 / ctot
+    invstd = 1.0 / tl.sqrt(var + eps)
+
+    if s == 0:
+        tl.store(save_mean_ptr + c, mu)
+        tl.store(save_invstd_ptr + c, invstd)
+        if HAS_RM:
+            rm = tl.load(rmean_in_ptr + c).to(tl.float32)
+        else:
+            rm = 0.0
+        if HAS_RV:
+            rv = tl.load(rvar_in_ptr + c).to(tl.float32)
+        else:
+            rv = 1.0
+        tl.store(rmean_out_ptr + c, (1.0 - momentum) * rm + momentum * mu)
+        tl.store(
+            rvar_out_ptr + c,
+            (1.0 - momentum) * rv + momentum * var * ctot / (ctot - 1.0),
+        )
+
+    if HAS_W:
+        w = tl.load(w_ptr + c).to(tl.float32)
+    else:
+        w = 1.0
+    if HAS_B:
+        bb = tl.load(b_ptr + c).to(tl.float32)
+    else:
+        bb = 0.0
+
+    n0 = s * NPS
+    n1 = tl.minimum(n0 + NPS, N)
+    lnum = tl.cdiv(L, BLOCK)
+
+    for n in range(n0, n1):
+        ibase = c * sC + n * sN
+        obase = c * oC + n * oN
+        for lb in range(0, lnum):
+            cols = lb * BLOCK + tl.arange(0, BLOCK)
+            if SL1:
+                ioffs = ibase + cols
+            else:
+                ioffs = ibase + cols * sL
+            ooffs = obase + cols
+            if EXACT:
+                x = tl.load(x_ptr + ioffs).to(tl.float32)
+                y = (x - mu) * invstd * w + bb
+                tl.store(out_ptr + ooffs, y)
+            else:
+                m = cols < L
+                x = tl.load(x_ptr + ioffs, mask=m, other=0.0).to(tl.float32)
+                y = (x - mu) * invstd * w + bb
+                tl.store(out_ptr + ooffs, y, mask=m)
+
+
+def _next_pow2(v):
+    p = 1
+    while p < v:
+        p *= 2
+    return p
 
 
 def _batch_norm_with_update_functional(
@@ -192,50 +326,159 @@ def _batch_norm_with_update_functional(
     """Functional batch normalization with running stats update."""
     logger.debug("GEMS _BATCH_NORM_WITH_UPDATE_FUNCTIONAL")
 
-    input_3d = make_3d_for_bn(input)
+    x3 = make_3d_for_bn(input)
 
-    batch_dim, feat_dim, spatial_dim = input_3d.shape
-    output = torch.empty_like(input_3d)
+    shape = x3.shape
+    N = int(shape[0])
+    C = int(shape[1])
+    L = int(shape[2])
+    M = N * L
 
-    save_mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
-    save_invstd = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+    out = torch.empty(shape, device=x3.device, dtype=x3.dtype)
+    pack = torch.empty((4, C), device=x3.device, dtype=x3.dtype)
+    save_mean = pack[0]
+    save_invstd = pack[1]
+    running_mean_out = pack[2]
+    running_var_out = pack[3]
 
-    # Create output tensors for updated running statistics
-    running_mean_out = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
-    running_var_out = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+    reserve = torch.empty((0,), dtype=torch.uint8, device=x3.device)
 
-    # Use dummy tensors if running stats are None
-    if running_mean is None:
-        running_mean = torch.zeros(feat_dim, device=input.device, dtype=input.dtype)
-    if running_var is None:
-        running_var = torch.ones(feat_dim, device=input.device, dtype=input.dtype)
-
-    # Launches 1D grid where each program operates over one feature.
-    with torch_device_fn.device(input.device):
-        batch_norm_with_update_kernel[(feat_dim,)](
-            input_3d,
-            weight,
-            bias,
+    if C == 0 or M == 0:
+        return (
+            out.view_as(input),
             save_mean,
             save_invstd,
-            output,
+            reserve,
             running_mean_out,
             running_var_out,
-            running_mean,
-            running_var,
-            batch_dim,
-            spatial_dim,
-            *input_3d.stride(),
-            *output.stride(),
-            momentum,
-            eps,
         )
 
-    # Reserve tensor (empty, for compatibility)
-    reserve = torch.empty((0,), dtype=torch.uint8, device=input.device)
+    sN, sC, sL = (int(v) for v in x3.stride())
+    oN, oC, oL = (int(v) for v in out.stride())
+
+    has_rm = running_mean is not None
+    has_rv = running_var is not None
+    has_w = weight is not None
+    has_b = bias is not None
+
+    rm_arg = running_mean if has_rm else save_mean
+    rv_arg = running_var if has_rv else save_invstd
+    w_arg = weight if has_w else save_mean
+    b_arg = bias if has_b else save_invstd
+
+    block = min(4096, max(16, _next_pow2(max(L, 1))))
+    sl1 = sL == 1
+    exact = sl1 and (L % block == 0)
+
+    # On this backend these tiles are memory-bound and num_warps>1 costs
+    # 2-4x (measured: nw=1 is fastest at every BLOCK).  One CTA per channel
+    # (the fused kernel) is the cheapest structure -- single launch, no
+    # partial-stat buffer -- and saturates the memory system once there are
+    # >=16 channels.  With fewer channels the batch dim is split to reach
+    # ~64 programs, which wins back more bandwidth than the extra pass costs.
+    nwarps = 1
+
+    with torch_device_fn.device(x3.device):
+        if C >= 16 or M <= 16384:
+            # one launch: a single CTA per channel owns the whole channel
+            _bn_fused_kernel[(C,)](
+                x3,
+                out,
+                save_mean,
+                save_invstd,
+                rm_arg,
+                rv_arg,
+                running_mean_out,
+                running_var_out,
+                w_arg,
+                b_arg,
+                N,
+                L,
+                sN,
+                sC,
+                sL,
+                oN,
+                oC,
+                float(momentum),
+                float(eps),
+                HAS_RM=has_rm,
+                HAS_RV=has_rv,
+                HAS_W=has_w,
+                HAS_B=has_b,
+                EXACT=exact,
+                SL1=sl1,
+                BLOCK=block,
+                num_warps=nwarps,
+            )
+        else:
+            S = min(N, max(1, 64 // max(C, 1)))
+            nps = (N + S - 1) // S
+            S = (N + nps - 1) // nps
+            abl = min(2048, block)
+            aexact = sl1 and (L % abl == 0)
+
+            npart = C * S
+            pbuf = torch.empty(3 * npart, device=x3.device, dtype=torch.float32)
+            pmean = pbuf[0:npart]
+            pm2 = pbuf[npart : 2 * npart]
+            pcnt = pbuf[2 * npart :]
+
+            _bn_stats_kernel[(npart,)](
+                x3,
+                pmean,
+                pm2,
+                pcnt,
+                N,
+                L,
+                sN,
+                sC,
+                sL,
+                S,
+                nps,
+                EXACT=exact,
+                SL1=sl1,
+                BLOCK=block,
+                num_warps=nwarps,
+            )
+
+            _bn_apply_kernel[(npart,)](
+                x3,
+                out,
+                pmean,
+                pm2,
+                pcnt,
+                save_mean,
+                save_invstd,
+                rm_arg,
+                rv_arg,
+                running_mean_out,
+                running_var_out,
+                w_arg,
+                b_arg,
+                N,
+                L,
+                sN,
+                sC,
+                sL,
+                oN,
+                oC,
+                S,
+                nps,
+                float(momentum),
+                float(eps),
+                HAS_RM=has_rm,
+                HAS_RV=has_rv,
+                HAS_W=has_w,
+                HAS_B=has_b,
+                EXACT=aexact,
+                SL1=sl1,
+                BLOCK=abl,
+                BS=_next_pow2(S),
+                num_warps=nwarps,
+            )
 
     return (
-        output.view_as(input),
+        out.view_as(input),
         save_mean,
         save_invstd,
         reserve,

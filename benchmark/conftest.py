@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import json
 import logging
 import os
@@ -19,11 +20,13 @@ from pathlib import Path
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 from flag_gems.runtime import torch_device_fn
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 from . import consts
 from .baseline import BaselineData
@@ -32,6 +35,7 @@ from .reference import reference_report, validate_reference_options
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
 Config = None
@@ -117,11 +121,16 @@ class BenchConfig:
         self.preflight_only = False
         self.preflight_records = []
         self.reference_only = False
+        self.ref_as_candidate = False
         self.reference_records = []
         self.profile_warmup = 10
         self.profile_iterations = 1
         self.profile_hook = None
         self.override_registry = None
+        # Override names declared via --override that no timed case invoked.
+        # Non-empty means the candidate was never measured, so the report must
+        # not be written (see pytest_terminal_summary).
+        self.override_unused = []
         self.skip_native = False
         self.native_baseline_skip_reason = None
         self.base_data = None
@@ -372,6 +381,7 @@ def pytest_configure(config):
     )
 
     Config = BenchConfig()
+    Config.ref_as_candidate = validate_ref_as_candidate_options(config)
     Config.reference_only = validate_reference_options(config)
     CASE_LISTS.clear()
     TEST_RESULTS.clear()
@@ -494,6 +504,22 @@ def pytest_unconfigure(config):
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
+    elif (
+        vendor_name == "mthreads"
+        and Config.mode == consts.BenchMode.CUDAGRAPH
+        and not (
+            Config.list_cases
+            or Config.preflight_only
+            or Config.reference_only
+            or Config.profile_only
+        )
+    ):
+        # Graph benchmarks need CUDA-to-MUSA aliases, but collection does not.
+        next_power_of_2 = triton.next_power_of_2
+        try:
+            importlib.import_module("torchada")
+        finally:
+            triton.next_power_of_2 = next_power_of_2
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -638,6 +664,14 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.override_unused:
+        terminalreporter.write_line(
+            "ERROR: --override named {} but no timed benchmark in this session "
+            "invoked it. Those numbers would describe the built-in "
+            "implementation rather than the requested candidate, so no report "
+            "was written.".format(", ".join(repr(n) for n in Config.override_unused))
+        )
+        return
     if Config.reference_only:
         with open(REPORT_FILE, "w") as output:
             json.dump(
@@ -683,7 +717,33 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         json.dump(data, f, indent=2, default=str)
 
 
+def _unused_override_names():
+    """Override names from --override that no timed case actually invoked.
+
+    An override whose name does not match the operator being benchmarked is
+    registered but never called, so the numbers describe the built-in
+    implementation while still looking like a successful candidate run. Modes
+    that never time a candidate are excluded: for them an unused override is
+    expected rather than a mistake.
+    """
+    if Config is None or Config.override_registry is None:
+        return []
+    if (
+        Config.query
+        or Config.list_cases
+        or Config.preflight_only
+        or Config.reference_only
+        or Config.ref_as_candidate
+    ):
+        return []
+    return Config.override_registry.unused_overrides()
+
+
 def pytest_sessionfinish(session, exitstatus):
+    if Config is not None:
+        Config.override_unused = _unused_override_names()
+        if Config.override_unused and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and Config.reference_only:
         if reference_report(Config.reference_records)["status"] in {
             "UNSUPPORTED",
