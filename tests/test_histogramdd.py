@@ -21,6 +21,14 @@ from . import accuracy_utils as utils
 from .accuracy_utils import _SKIP_FP64
 
 
+def _random_input(factory, shape, dtype):
+    device = flag_gems.device
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+        # Iluvatar's device FP64 RNG produces zeros; same-dtype copies work.
+        return factory(shape, dtype=dtype, device="cpu").to(device)
+    return factory(shape, dtype=dtype, device=device)
+
+
 @pytest.mark.histogramdd
 @pytest.mark.parametrize("shape", [(50, 2), (100, 3), (80, 4)])
 @pytest.mark.parametrize("bins", [[4, 5], [3, 4, 5], [2, 3, 4, 5]])
@@ -33,11 +41,13 @@ def test_histogramdd_basic(shape, bins, dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = _random_input(torch.randn, shape, dtype)
 
     # Native histogramdd is CPU-only; compute reference on CPU
     ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins)
     res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins)
+    assert res_hist.device == inp.device
+    assert all(edge.device == inp.device for edge in res_edges)
 
     # Compare histogram (move result to CPU for comparison)
     utils.gems_assert_equal(res_hist.cpu(), ref_hist)
@@ -69,10 +79,12 @@ def test_histogramdd_with_range(shape, dtype):
     for d in range(D):
         range_vals.extend([-2.0, 2.0])
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = _random_input(torch.randn, shape, dtype)
 
     ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins, range=range_vals)
     res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins, range=range_vals)
+    assert res_hist.device == inp.device
+    assert all(edge.device == inp.device for edge in res_edges)
 
     utils.gems_assert_equal(res_hist.cpu(), ref_hist)
 
@@ -97,10 +109,12 @@ def test_histogramdd_density(shape, dtype):
     D = shape[1]
     bins = [4] * D
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = _random_input(torch.randn, shape, dtype)
 
     ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins, density=True)
     res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins, density=True)
+    assert res_hist.device == inp.device
+    assert all(edge.device == inp.device for edge in res_edges)
 
     # Density normalization may have larger relative errors
     utils.gems_assert_close(res_hist.cpu(), ref_hist, dtype, atol=1e-3)
@@ -136,6 +150,8 @@ def test_histogramdd_degenerate_range():
 
     ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins)
     res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins)
+    assert res_hist.device == inp.device
+    assert all(edge.device == inp.device for edge in res_edges)
 
     utils.gems_assert_equal(res_hist.cpu(), ref_hist)
 
