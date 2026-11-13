@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -7,6 +8,48 @@ import triton.language as tl
 from .bmm import bmm
 
 logger = logging.getLogger(__name__)
+
+try:
+    import triton.experimental.tle as tle
+
+    _TLE_OK = True
+except ImportError:
+    tle = None
+    _TLE_OK = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Raw cluster payload (`sj_svd.xpu`): the whole one-sided Jacobi SVD -- fill,
+# sweeps with all `nw/2` disjoint rotations of a round rotated concurrently by
+# one core each, singular values, descending rank permutation and U -- inside a
+# single program. It exists because the equivalent triton tile formulation is
+# rejected by the XPU backend (see solution/linalg_svd/report.md appendices B
+# and C), and it also drops the host round trip (fp64 norm) plus torch.sort and
+# torch.gather from the tail.
+_SJ_MAX = 64
+
+
+def _payload_ok(mp, nw):
+    return (
+        _TLE_OK
+        and (os.environ.get("TRITON_XPU_ARCH", "3") == "3")
+        and mp <= _SJ_MAX
+        and nw <= _SJ_MAX
+    )
+
+
+if _TLE_OK:
+
+    @tle.raw.dialect(
+        "xpu3",
+        object=os.path.join(os.path.dirname(_HERE), "payload", "obj", "sj_svd.o"),
+        arch=3,
+    )
+    def sj_svd(A, U, S, Vh, m, n, mp, nw, sweeps, bid): ...
+
+    @triton.jit(do_not_specialize=["m", "n", "sweeps"])
+    def _sj_svd_kernel(A, U, S, Vh, m, n, mp, nw, sweeps):
+        tle.raw.call(sj_svd, (A, U, S, Vh, m, n, mp, nw, sweeps, tl.program_id(0)))
 
 
 @triton.jit
@@ -111,6 +154,50 @@ def _osj_svd_impl(A, sweeps=12, full_matrices=False):
     return U, S_sorted, Vh
 
 
+def _osj_svd_payload(A, sweeps=10, full_matrices=False):
+    """Payload path: one cluster payload produces ordered ``U``, ``S`` and
+    ``Vh`` -- no host round trip, no ``torch.sort`` / ``torch.gather`` / ``bmm``.
+    The host only slices to ``k`` and pads for ``full_matrices``.
+
+    ``sweeps=10`` is the measured convergence floor: singular *values* saturate
+    by 8 sweeps, but the singular *vectors* of an ill-conditioned spectrum need
+    10 (``test_linalg_svd_orthonormal`` fails at 8 with gram error ~30, passes
+    at 10 with ~6e-5). 10 keeps the full test margin while cutting the sweep
+    loop -- and thus the (nw-1)*sweeps cluster barriers -- by 1/6 versus the 12
+    the pointer path used.
+    """
+    dev = A.device
+    if A.dim() == 2:
+        A = A.unsqueeze(0)
+    batch, m, n = A.shape
+    MP = triton.next_power_of_2(max(m, 2))
+    NW = triton.next_power_of_2(max(n, 2))
+    k = min(m, n)
+
+    U = torch.empty((batch, MP, NW), device=dev, dtype=A.dtype)
+    S_sorted = torch.empty((batch, NW), device=dev, dtype=A.dtype)
+    Vh = torch.empty((batch, NW, NW), device=dev, dtype=A.dtype)
+    for b in range(batch):
+        _sj_svd_kernel[(1,)](A[b], U[b], S_sorted[b], Vh[b], m, n, MP, NW, sweeps)
+
+    S_sorted = S_sorted[:, :k]
+    U = U[:, :m, :k].contiguous()
+    Vh = Vh[:, :k, :n]
+
+    if full_matrices:
+        if m > k:
+            pad = torch.zeros((batch, m, m - k), device=dev, dtype=A.dtype)
+            U = torch.cat([U, pad], dim=2)
+        if n > k:
+            pad = torch.zeros((batch, n - k, n), device=dev, dtype=A.dtype)
+            Vh = torch.cat([Vh, pad], dim=1)
+    Vh = Vh.contiguous()
+
+    if batch == 1:
+        return U[0], S_sorted[0], Vh[0]
+    return U, S_sorted, Vh
+
+
 def linalg_svd(A, full_matrices=True, *, driver=None):
     """Triton (XPU) implementation of ``torch.linalg.svd``.
 
@@ -120,4 +207,10 @@ def linalg_svd(A, full_matrices=True, *, driver=None):
     logger.debug("GEMS_KUNLUNXIN LINALG_SVD")
     if A.dtype != torch.float32:
         raise TypeError(f"linalg_svd only supports float32 input, got {A.dtype}")
+    m = A.shape[-2] if A.dim() >= 2 else 1
+    n = A.shape[-1] if A.dim() >= 1 else 1
+    mp = triton.next_power_of_2(max(m, 2))
+    nw = triton.next_power_of_2(max(n, 2))
+    if _payload_ok(mp, nw):
+        return _osj_svd_payload(A, full_matrices=full_matrices)
     return _osj_svd_impl(A, full_matrices=full_matrices)

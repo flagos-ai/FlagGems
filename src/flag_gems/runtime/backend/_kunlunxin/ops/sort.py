@@ -281,10 +281,18 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
 
     dtype = arr.dtype
     num_bits = 1
+    # First bit scanned by the radix passes.
+    bit_offset_base = 0
     if dtype == torch.bool:
         pass
     elif dtype == torch.bfloat16:
-        num_bits = 4 * 8
+        # The kernels promote bf16 to fp32 before deriving the sortable key
+        # (`convert_to_uint_preverse_order`).  That promotion is exact and
+        # clears the low 16 mantissa bits, so bits [0, 16) of the key are
+        # constant per sign and carry no ordering information; scanning only
+        # bits [16, 32) is order-equivalent and halves the number of passes.
+        num_bits = 16
+        bit_offset_base = 16
     else:
         num_bits = arr.element_size() * 8
     num_passes = (num_bits + k_bits - 1) // k_bits
@@ -299,7 +307,7 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
         global_offsets = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
 
         for p in range(num_passes):
-            bit_offset = p * k_bits
+            bit_offset = bit_offset_base + p * k_bits
             count_kernel[grid](
                 arr_in,
                 counts,

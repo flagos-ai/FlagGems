@@ -22,6 +22,8 @@ import triton.language as tl
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 
+from .upsample_bilinear2d_x2 import upsample_bilinear2d_x2
+
 logger = logging.getLogger(__name__)
 device = device.name
 
@@ -140,6 +142,12 @@ def upsample_bilinear2d(
 
     OH, OW = output_size
     N, C, IH, IW = input.shape
+
+    # Exact 2x fast path (tle.raw cluster kernel); returns None when it does
+    # not apply, in which case the generic gather kernel below runs.
+    fast = upsample_bilinear2d_x2(input, output_size, align_corners, scales_h, scales_w)
+    if fast is not None:
+        return fast
 
     reciprocal_scale_h = _bilinear_reciprocal_scale(IH, OH, align_corners, scales_h)
     reciprocal_scale_w = _bilinear_reciprocal_scale(IW, OW, align_corners, scales_w)
