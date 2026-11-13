@@ -106,7 +106,11 @@ def _dtype_bounds(dtype):
             torch.complex128: torch.float64,
         }[dtype]
         finfo = torch.finfo(real)
-        return finfo.min, finfo.max
+        # A complex product is ar*br - ai*bi; cap operands so the sum of the
+        # two real products stays representable and the oracle cannot become
+        # nan/inf.
+        bound = (finfo.max / 4.0) ** 0.5
+        return -bound, bound
     if dtype.is_floating_point:
         finfo = torch.finfo(dtype)
         return finfo.min, finfo.max
