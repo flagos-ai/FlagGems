@@ -457,6 +457,7 @@ __all__ = [
     "_foreach_trunc",
     "_foreach_trunc_",
     "_index_put_impl_",
+    "_philox_uniform_",
     "_scaled_dot_product_flash_attention",
     "_unique2",
     "_unsafe_masked_index",
