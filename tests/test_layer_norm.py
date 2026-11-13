@@ -91,12 +91,14 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
     )
     assert len(result) == len(ref_result) == 3
     stats_dtype = (
-        torch.float32 if flag_gems.vendor_name in ("hygon", "thead") else dtype
+        torch.float32
+        if flag_gems.vendor_name in ("hygon", "nvidia", "thead")
+        else dtype
     )
     for index, (actual, expected, expected_dtype) in enumerate(
         zip(result, ref_result, (dtype, stats_dtype, stats_dtype))
     ):
-        if flag_gems.vendor_name == "thead" and index > 0:
+        if flag_gems.vendor_name in ("nvidia", "thead") and index > 0:
             assert actual.dtype == torch.float32
         utils.gems_assert_close(actual, expected, expected_dtype)
 
@@ -195,7 +197,9 @@ def test_native_layer_norm_statistics(shape, dtype):
 
     reduce_dim = math.prod(normalized_shape)
     stats_dtype = (
-        torch.float32 if flag_gems.vendor_name in ("hygon", "thead") else dtype
+        torch.float32
+        if flag_gems.vendor_name in ("hygon", "nvidia", "thead")
+        else dtype
     )
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_mean, ref_mean, stats_dtype, reduce_dim=reduce_dim)
@@ -529,3 +533,117 @@ def test_layer_norm_saved_statistics_backward(shape, norm, dtype):
         utils.gems_assert_close(
             actual_grad, expected_grad, dtype, reduce_dim=math.prod(norm)
         )
+
+
+nvidia_only = pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="the FP32 statistics contract and row scheduling are NVIDIA-scoped",
+)
+
+# The NVIDIA entry switches schedules at a normalized width of 16384: the
+# single-pass persistent kernel with tiled rows at or below it, the two-pass
+# loop kernel above. Straddle that, and the generic host's own 128 and 4096
+# boundaries, so every path is covered.
+NVIDIA_PATH_SHAPES = [
+    (4096, 128),
+    (4096, 129),
+    (65536, 256),
+    (4096, 4096),
+    (16, 16384),
+    (16, 16385),
+    (7, 40999),
+]
+
+
+@pytest.mark.layer_norm
+@pytest.mark.native_layer_norm
+@nvidia_only
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("shape", [(37, 1152), (4, 40999)])
+def test_native_layer_norm_fp32_statistics(shape, dtype):
+    """Half-precision inputs still return FP32 statistics, as ATen does."""
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    normalized_shape = shape[1:]
+    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.randn_like(weight)
+
+    _, ref_mean, ref_rstd = torch.ops.aten.native_layer_norm(
+        utils.to_reference(inp, True),
+        normalized_shape,
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        1e-5,
+    )
+    _, res_mean, res_rstd = flag_gems.native_layer_norm(
+        inp, normalized_shape, weight, bias, 1e-5
+    )
+    assert res_mean.dtype == torch.float32
+    assert res_rstd.dtype == torch.float32
+    reduce_dim = math.prod(normalized_shape)
+    utils.gems_assert_close(res_mean, ref_mean, torch.float32, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_rstd, ref_rstd, torch.float32, reduce_dim=reduce_dim)
+
+
+@pytest.mark.layer_norm
+@nvidia_only
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", NVIDIA_PATH_SHAPES)
+def test_layer_norm_nvidia_paths(shape, dtype):
+    """Every scheduling path, including both sides of the width limit."""
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    normalized_shape = shape[1:]
+    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.randn_like(weight)
+
+    ref_out = torch.layer_norm(
+        utils.to_reference(inp, True),
+        normalized_shape,
+        weight=utils.to_reference(weight, True),
+        bias=utils.to_reference(bias, True),
+        eps=1e-5,
+    )
+    res_out, mean, rstd = flag_gems.layer_norm(
+        inp, normalized_shape, weight=weight, bias=bias, eps=1e-5
+    )
+    assert mean.shape == rstd.shape == (shape[0],)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.layer_norm
+@nvidia_only
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("shape", [(17, 37), (4, 8, 512)])
+def test_layer_norm_fp32_affine_noncontiguous(shape, dtype):
+    """FP32 affine parameters with a half-precision, strided input."""
+    torch.manual_seed(0)
+    # Slicing also exercises the layout conversion before the reduction.
+    inp = torch.randn(
+        (*shape[:-1], shape[-1] * 2), device=flag_gems.device, dtype=dtype
+    )[..., ::2]
+    assert not inp.is_contiguous()
+    weight = torch.randn(shape[-1], device=flag_gems.device, dtype=torch.float32)
+    bias = torch.randn_like(weight)
+
+    ref_out = torch.nn.functional.layer_norm(
+        utils.to_reference(inp, True),
+        (shape[-1],),
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        1e-6,
+    )
+    res_out, _, _ = flag_gems.layer_norm(inp, (shape[-1],), weight, bias, 1e-6)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.layer_norm
+@nvidia_only
+def test_layer_norm_empty_rows():
+    """A zero-sized outer dimension returns empty tensors, launching nothing."""
+    inp = torch.randn((0, 64), device=flag_gems.device)
+    weight = torch.randn(64, device=flag_gems.device)
+    out, mean, rstd = flag_gems.layer_norm(inp, (64,), weight, weight, 1e-5)
+    assert out.shape == (0, 64)
+    assert mean.numel() == rstd.numel() == 0
+    assert mean.dtype == rstd.dtype == torch.float32
