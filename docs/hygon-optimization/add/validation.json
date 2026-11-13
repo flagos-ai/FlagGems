@@ -1,0 +1,29 @@
+{
+  "operator": "aten::add",
+  "source_commit": "7ca605ff2692059e7e73e5bd144376264f6f5a37",
+  "official_master": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "internal_validation": "PR1 full revised-list validation; official-master branch retest pending",
+  "test_file": "tests/test_hygon_add.py",
+  "raw_evidence": "private D:/ZZ/analysis/ artifacts",
+  "tested_candidate": "baa3719bd423bec0c179af709dc8404f42ca655b",
+  "date": "2026-11-13",
+  "focused_hardware": {
+    "passed": 76,
+    "failed": 0,
+    "job": 1103687
+  },
+  "performance": {
+    "status": "full200 guarded current-master repeat running;preceding serial200 retained as diagnostic",
+    "hardware_job": 1103687,
+    "analysis_job": 1103688,
+    "declared_cases": 200,
+    "preceding_complete": 200,
+    "preceding_all_three_correct": 200,
+    "preceding_fg_pairs": 79,
+    "preceding_gains5": 44,
+    "preceding_qualified_regressions": 3,
+    "preceding_DAS_pairs": 99,
+    "preceding_DAS90": 75,
+    "evidence": "diagnostic-serial-20261113/README.md"
+  }
+}

@@ -54,6 +54,7 @@ from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .add import add
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
@@ -319,6 +320,7 @@ __all__ = [
     "adaptive_avg_pool2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "add",
     "addmm",
     "addmm_",
     "addmm_dtype",

@@ -1,0 +1,168 @@
+{
+  "reviewed_at": "2026-11-13T04:56:25.636862",
+  "source_result": "add-master010-guard-dated-v5.json",
+  "source_sha256": "83bba56c13c60cc3cb15074f185510baf549fc6eaddb098b06cd2daa75f3b4d1",
+  "baseline": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "measured_head": "baa3719bd423bec0c179af709dc8404f42ca655b",
+  "full_scope": {
+    "cases": 200,
+    "all6role_timing_complete": 200,
+    "correct": {
+      "old": 200,
+      "new": 200,
+      "das": 200
+    },
+    "qualified_old_new": 63,
+    "gains_above5percent": 29,
+    "accepted_gain_range": [0.9639013815377063,5.080014261217819],
+    "qualified_new_DAS": 91,
+    "DAS90": 70,
+    "new_DAS_unqualified": 109,
+    "new_correctness_regressions": [],
+    "qualified_latency_regressions_above5percent": [],
+    "qualified_DAS_misses": [
+      {
+        "id": "model285-f82b55d7fcde304e3a6a",
+        "DAS_over_new": 0.824945295404814
+      },
+      {
+        "id": "model285-32053136122b176d9e33",
+        "DAS_over_new": 0.7470930232558141
+      },
+      {
+        "id": "model285-90662720d090f17976b7",
+        "DAS_over_new": 0.7937915742793792
+      },
+      {
+        "id": "model285-a3dfabb7a403269fb980",
+        "DAS_over_new": 0.7914285714285716
+      },
+      {
+        "id": "model285-fbf7d284733486ff2fb6",
+        "DAS_over_new": 0.8831168831168831
+      },
+      {
+        "id": "model285-5545e7faf8c66e9a7231",
+        "DAS_over_new": 0.744807121661721
+      },
+      {
+        "id": "model285-765e4bfbb8649f889346",
+        "DAS_over_new": 0.7665198237885462
+      },
+      {
+        "id": "model285-e8b17bf8ff18f18b977e",
+        "DAS_over_new": 0.7546728971962616
+      },
+      {
+        "id": "model285-9eedc033714881053ee6",
+        "DAS_over_new": 0.7605633802816902
+      },
+      {
+        "id": "expanded230-b1d3b8be420d8c1e88af",
+        "DAS_over_new": 0.796242774566474
+      },
+      {
+        "id": "expanded230-25e3e5aadf6b4227e098",
+        "DAS_over_new": 0.749266862170088
+      },
+      {
+        "id": "expanded230-c63d5b4662d4b08a7f75",
+        "DAS_over_new": 0.851063829787234
+      },
+      {
+        "id": "expanded230-804e6565a39eebe7867e",
+        "DAS_over_new": 0.7385057471264368
+      },
+      {
+        "id": "expanded230-51673e23965d80a2c5a9",
+        "DAS_over_new": 0.8763040238450074
+      },
+      {
+        "id": "expanded230-061851d219a269b4ef3d",
+        "DAS_over_new": 0.5897887323943662
+      },
+      {
+        "id": "expanded230-fdcfc41621a21b944a20",
+        "DAS_over_new": 0.853968253968254
+      },
+      {
+        "id": "expanded230-c09fad472a14d9fc19bb",
+        "DAS_over_new": 0.768181818181818
+      },
+      {
+        "id": "expanded230-929b98f89ce3aba7b795",
+        "DAS_over_new": 0.7683615819209039
+      },
+      {
+        "id": "expanded230-df57098f5887340d1540",
+        "DAS_over_new": 0.7308976053179561
+      },
+      {
+        "id": "expanded230-89846d97a842495813b7",
+        "DAS_over_new": 0.7249789739276702
+      },
+      {
+        "id": "expanded230-cba70b7ad94c9345f995",
+        "DAS_over_new": 0.8293333333333334
+      }
+    ],
+    "reference_failure_diagnostics": []
+  },
+  "model_scope": {
+    "cases": 89,
+    "all6role_timing_complete": 89,
+    "correct": {
+      "old": 89,
+      "new": 89,
+      "das": 89
+    },
+    "qualified_old_new": 30,
+    "gains_above5percent": 8,
+    "accepted_gain_range": [0.9767231756258603,5.080014261217819],
+    "qualified_new_DAS": 42,
+    "DAS90": 33,
+    "new_DAS_unqualified": 47,
+    "new_correctness_regressions": [],
+    "qualified_latency_regressions_above5percent": [],
+    "qualified_DAS_misses": [
+      {
+        "id": "model285-f82b55d7fcde304e3a6a",
+        "DAS_over_new": 0.824945295404814
+      },
+      {
+        "id": "model285-32053136122b176d9e33",
+        "DAS_over_new": 0.7470930232558141
+      },
+      {
+        "id": "model285-90662720d090f17976b7",
+        "DAS_over_new": 0.7937915742793792
+      },
+      {
+        "id": "model285-a3dfabb7a403269fb980",
+        "DAS_over_new": 0.7914285714285716
+      },
+      {
+        "id": "model285-fbf7d284733486ff2fb6",
+        "DAS_over_new": 0.8831168831168831
+      },
+      {
+        "id": "model285-5545e7faf8c66e9a7231",
+        "DAS_over_new": 0.744807121661721
+      },
+      {
+        "id": "model285-765e4bfbb8649f889346",
+        "DAS_over_new": 0.7665198237885462
+      },
+      {
+        "id": "model285-e8b17bf8ff18f18b977e",
+        "DAS_over_new": 0.7546728971962616
+      },
+      {
+        "id": "model285-9eedc033714881053ee6",
+        "DAS_over_new": 0.7605633802816902
+      }
+    ],
+    "reference_failure_diagnostics": []
+  },
+  "no_selected_repeats_or_pooled_samples": true
+}
