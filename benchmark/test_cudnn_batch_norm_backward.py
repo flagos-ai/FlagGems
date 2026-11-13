@@ -177,12 +177,23 @@ class _CrossMachineMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
 
 
-SHAPES = [(16, 16, 64), (32, 64, 56, 56)]
+_EXTERNAL_BASELINE_SHAPES = [(16, 16, 64), (32, 64, 56, 56)]
+_MASTER_SHAPES = [
+    (16, 16, 64),
+    (16, 16, 1024),
+    (16, 16, 4098),
+    (1, 8, 4, 4),
+    (16, 8, 128, 128),
+]
 
 
 class OperatorCaseBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(SHAPES)
+        self.shapes = list(
+            _EXTERNAL_BASELINE_SHAPES
+            if os.environ.get("FLAGGEMS_NV_BASELINE")
+            else _MASTER_SHAPES
+        )
         self.shape_desc = "operator-specific shape"
 
     def _external_input_config(self, args):
@@ -417,9 +428,31 @@ class OperatorCaseBenchmark(OperatorBenchmark):
 def _case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
-    yield base.BenchmarkCasePlan(
-        shape={"input": list(dims)}, params={}, builder_args=(dims,)
+    external = bool(os.environ.get("FLAGGEMS_NV_BASELINE"))
+    running_stats = [False]
+    if not external and base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        running_stats.append(True)
+    for use_running_stats in running_stats:
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(dims)},
+            params={"use_running_stats": use_running_stats} if not external else {},
+            builder_args=(dims,),
+        )
+
+
+def _master_inputs(shape, dtype, device, use_running_stats):
+    param_dtype = torch.float32 if dtype == torch.float16 else dtype
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    weight = torch.randn(shape[1], dtype=param_dtype, device=device)
+    bias = torch.randn_like(weight)
+    mean = torch.zeros_like(weight) if use_running_stats else None
+    var = torch.ones_like(weight) if use_running_stats else None
+    grad = torch.randn_like(inp)
+    eps = 1e-5
+    _, saved_mean, saved_invstd, reserve = torch.ops.aten.cudnn_batch_norm.default(
+        inp, weight, bias, mean, var, True, 0.1, eps
     )
+    return inp, grad, weight, mean, var, saved_mean, saved_invstd, eps, reserve
 
 
 def _build_inputs_fn(plan, dtype, device):
@@ -439,12 +472,27 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, grad, weight, None, None, save_mean, save_var, 1e-5, reserve
 
 
+def _build_benchmark_inputs(plan, dtype, device):
+    if os.environ.get("FLAGGEMS_NV_BASELINE"):
+        return _build_inputs_fn(plan, dtype, device)
+    (shape,) = plan.builder_args
+    return _master_inputs(shape, dtype, device, plan.params["use_running_stats"])
+
+
 @pytest.mark.cudnn_batch_norm_backward
 def test_cudnn_batch_norm_backward():
+    if os.environ.get("FLAGGEMS_NV_BASELINE"):
+        dtypes = consts.FLOAT_DTYPES
+    else:
+        if flag_gems.vendor_name in ("ascend", "mthreads", "hygon"):
+            pytest.skip("native cuDNN forward is required to prepare the saved state")
+        dtypes = [torch.float16, torch.float32]
+        if flag_gems.runtime.device.support_fp64:
+            dtypes.append(torch.float64)
     OperatorCaseBenchmark(
         op_name="cudnn_batch_norm_backward",
-        torch_op=torch.ops.aten.cudnn_batch_norm_backward,
+        torch_op=torch.ops.aten.cudnn_batch_norm_backward.default,
         case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        build_inputs_fn=_build_benchmark_inputs,
+        dtypes=dtypes,
     ).run()
