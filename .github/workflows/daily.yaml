@@ -22,7 +22,7 @@
 #   validate if there are performance regress;
 # - running all SVT tests where selected models are launched for E2E tests.
 #
-# TODO(Qiming): Enable daily tests for benchmark and all backends
+# TODO(Qiming): Enable daily tests for benchmark and the remaining backends
 
 name: daily
 permissions:
@@ -53,9 +53,13 @@ jobs:
   python-op:
     needs: prepare
     concurrency:
-      group: python-op-${{ needs.prepare.outputs.datetime }}
+      group: python-op-${{ needs.prepare.outputs.datetime }}-shard${{ matrix.shard_index }}
       cancel-in-progress: true
     runs-on: jiuding
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
@@ -67,6 +71,8 @@ jobs:
       - shell: bash
         env:
           CHANGED_FILES: '__ALL__'
+          TOTAL_SHARDS: '4'
+          SHARD_INDEX: ${{ matrix.shard_index }}
         run: |
           # Invoke script to run full-range unit tests,
           # Use datetime timestamp as the fake PR ID, with optional affix if
@@ -80,12 +86,33 @@ jobs:
           # Save RUN_TAG for next step to use
           echo "RUN_TAG=${RUN_TAG}" >> $GITHUB_ENV
 
-          bash tools/test-op.sh ${RUN_TAG}
+          bash tools/test-op.sh ${RUN_TAG}-shard${{ matrix.shard_index }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: always()
         with:
-          name: op-ut-coverage
+          name: op-ut-coverage-shard${{ matrix.shard_index }}
           path: coverage/
+
+  # Full-range unit tests on Ascend. Runner label and GPU check script match
+  # the ascend-cann900 entry in .github/backends.json.
+  ascend-op:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      backend: ascend-cann900
+      runner_label: cann9
+      gpu_check_script: tools/gpu_check_ascend.sh
+      changed_files: '__ALL__'
+      pr_id: ${{ needs.prepare.outputs.datetime }}${{ github.event_name == 'workflow_dispatch' && '-manual' || '' }}-ascend-shard${{ matrix.shard_index }}
+      total_shards: '4'
+      shard_index: ${{ format('{0}', matrix.shard_index) }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
   examples:
     needs: prepare

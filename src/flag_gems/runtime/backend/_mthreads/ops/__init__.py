@@ -14,11 +14,14 @@
 
 from torch_musa import current_device, get_device_capability
 
+from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
+from ._convolution_double_backward import _convolution_double_backward
+from ._convolution_mode import _convolution_mode
 from ._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
@@ -33,6 +36,7 @@ from ._masked_scale import _masked_scale
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
+from ._weight_norm import _weight_norm
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmv_ import addmv_
@@ -59,8 +63,10 @@ from .choose_qparams_optimized import choose_qparams_optimized
 from .clip_ import clip_
 from .conv1d import conv1d
 from .conv2d import conv2d
+from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .convolution_overrideable import convolution_overrideable
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
 from .cummaxmin_backward import cummaxmin_backward
@@ -93,7 +99,10 @@ from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
 from .geometric import geometric, geometric_
+from .greater_ import greater_
+from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .hardtanh_backward import hardtanh_backward
 from .histc import histc
 from .igamma import igamma
 from .im2col import im2col
@@ -102,6 +111,7 @@ from .index_copy import index_copy
 from .index_copy_ import index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
+from .index_select_backward import index_select_backward
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
@@ -137,6 +147,7 @@ from .mish import mish
 from .mish_ import mish_
 from .mode import mode
 from .mul import mul, mul_
+from .multiply_ import multiply_
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
@@ -196,6 +207,11 @@ from .uniform import uniform
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
+from .upsample_nearest3d_backward import upsample_nearest3d_backward
+from .upsample_nearest3d_backward_grad_input import (
+    upsample_nearest3d_backward_grad_input,
+)
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
@@ -203,9 +219,12 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_compute_linear_combination",
     "_conj",
+    "_convolution_double_backward",
+    "_convolution_mode",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
@@ -219,6 +238,7 @@ __all__ = [
     "_unique2",
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact2d_backward",
+    "_weight_norm",
     "adaptive_max_pool3d_backward",
     "addmv_",
     "all",
@@ -251,9 +271,11 @@ __all__ = [
     "constant_pad_nd",
     "conv1d",
     "conv2d",
+    "conv_tbc",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "convolution_overrideable",
     "copy_",
     "cudnn_convolution",
     "cummaxmin_backward",
@@ -283,7 +305,10 @@ __all__ = [
     "gcd_",
     "geometric",
     "geometric_",
+    "greater_",
+    "grid_sampler_3d",
     "grid_sampler_3d_backward",
+    "hardtanh_backward",
     "histc",
     "igamma",
     "im2col",
@@ -294,6 +319,7 @@ __all__ = [
     "index_put",
     "index_put_",
     "index_select",
+    "index_select_backward",
     "int_mm",
     "int_mm_out",
     "inverse",
@@ -336,6 +362,7 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "multiply_",
     "mvlgamma",
     "nanmedian",
     "nanmedian_dim",
@@ -407,6 +434,9 @@ __all__ = [
     "uniform",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
+    "upsample_nearest3d_backward",
+    "upsample_nearest3d_backward_grad_input",
+    "upsample_trilinear3d_backward",
     "var",
     "var_correction",
     "var_dim",
