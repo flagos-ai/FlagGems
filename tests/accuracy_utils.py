@@ -273,6 +273,10 @@ ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOA
 INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
+# 1-byte dtypes (int8/uint8) and fp8 dtypes are not part of the default CI lists;
+# tests that target them parametrize over these constants explicitly.
+BYTE_INT_DTYPES = [torch.int8, torch.uint8]
+FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if fp8_is_supported else []
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
     if complex_is_supported
