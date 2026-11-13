@@ -46,5 +46,5 @@ def test_isreal():
         + consts.BOOL_DTYPES
         + consts.COMPLEX_DTYPES,
     )
-    bench.set_gems(flag_gems.isreal)
+    bench.set_gems(lambda inp: flag_gems.isreal(inp))
     bench.run()
