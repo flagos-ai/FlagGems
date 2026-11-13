@@ -40,3 +40,17 @@ def test_lift_fresh(shape, dtype):
     res_out = flag_gems.lift_fresh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.lift_fresh
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_lift_fresh_empty(dtype):
+    """Empty input must not launch a zero-grid copy kernel (EE1003 coreDim 0)."""
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.lift_fresh(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.lift_fresh(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)

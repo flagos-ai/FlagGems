@@ -23,6 +23,21 @@ from .zeros import zeros_kernel
 
 logger = logging.getLogger(__name__)
 
+# NPU 要求 grid 每个轴的取值落在 [1, 65535]；BLOCK_SIZE=32768 时 N 超过
+# 65535*32768（int8 约 2 GiB）就必然越界（EE1003 coreDim 越界，随后 segfault）。
+# 大张量（如 vLLM 的 KV cache）按片多次启动。
+_MAX_GRID = 65535
+_BLOCK_SIZE = 32768
+_BLOCK_SIZE_SUB = 1024
+_CHUNK = _MAX_GRID * _BLOCK_SIZE
+
+
+def _launch(out, n_elements):
+    grid_fn = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    zeros_kernel[grid_fn](
+        out, n_elements, BLOCK_SIZE=_BLOCK_SIZE, BLOCK_SIZE_SUB=_BLOCK_SIZE_SUB
+    )
+
 
 def zeros_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
@@ -36,8 +51,16 @@ def zeros_like(
         return torch.empty_like(x, device=device, dtype=dtype)
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    # grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    grid_fn = lambda meta: (triton.cdiv(N, 32768),)
     with torch_device_fn.device(x.device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=32768, BLOCK_SIZE_SUB=1024)
+        if N <= _CHUNK:
+            _launch(out, N)
+        elif out.is_contiguous():
+            # kernel 按扁平偏移写，分片要求连续布局；非连续布局保持原来的
+            # 单次启动（本就用不了分片语义）。
+            flat = out.view(-1)
+            for start in range(0, N, _CHUNK):
+                part = flat[start : start + _CHUNK]
+                _launch(part, part.numel())
+        else:
+            _launch(out, N)
     return out

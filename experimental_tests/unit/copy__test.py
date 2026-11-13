@@ -122,3 +122,17 @@ def test_copy__scalar_float(dtype, value):
         act_out = torch.ops.aten.copy_.float(act_dst, value)
 
     gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(flag_gems.device != "cuda", reason="experimental copy_ is CUDA-only")
+def test_copy__empty_tensor_and_scalar():
+    """Empty dst must not launch a zero-grid kernel.
+
+    ``n_elements == 0`` makes cdiv(0, BLOCK) == 0; the NPU rejects coreDim 0
+    (EE1003). Both the tensor and scalar overloads must short-circuit.
+    """
+    dst = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    src = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
+    assert gems_copy_(dst, src).numel() == 0
+    assert gems_copy_(dst, 1.0).numel() == 0
