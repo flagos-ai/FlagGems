@@ -19,7 +19,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -252,6 +251,6 @@ def test_bmm_w8a8_fp8(batch, M, N, K):
     B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale)
 
     ref_out = torch.bmm(A_dequant, B_dequant).to(torch.bfloat16)
-    res_out = bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
+    res_out = flag_gems.bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
 
     utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)

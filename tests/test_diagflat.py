@@ -176,6 +176,56 @@ def test_diagflat_backward(offset):
 
 
 @pytest.mark.diagflat
+@pytest.mark.parametrize("offset", [0, 2, -2])
+def test_diagflat_backward_sum(offset):
+    # torch.sum's backward hands the custom Function a stride-0 expanded grad,
+    # which the gather kernel must materialise instead of flat-addressing.
+    inp = torch.randn((32,), device=flag_gems.device, requires_grad=True)
+    ref_inp = utils.to_reference(inp.detach().clone(), False).requires_grad_()
+
+    torch.diagflat(ref_inp, offset).sum().backward()
+    flag_gems.diagflat(inp, offset).sum().backward()
+
+    utils.gems_assert_equal(inp.grad, ref_inp.grad)
+
+
+@pytest.mark.diagflat
+@pytest.mark.parametrize("offset", [0, 3, -3])
+def test_diagflat_backward_non_contiguous_grad(offset):
+    # Multiplying by a transposed weight makes the incoming grad_out a
+    # non-contiguous view, which the flat-addressed gather must materialise.
+    inp = torch.randn((16,), device=flag_gems.device, requires_grad=True)
+    ref_inp = utils.to_reference(inp.detach().clone(), False).requires_grad_()
+
+    m = 16 + abs(offset)
+    weight = torch.randn((m, m), device=flag_gems.device)
+    ref_weight = utils.to_reference(weight, False)
+    assert not weight.T.is_contiguous()
+
+    (torch.diagflat(ref_inp, offset) * ref_weight.T).sum().backward()
+    (flag_gems.diagflat(inp, offset) * weight.T).sum().backward()
+
+    utils.gems_assert_equal(inp.grad, ref_inp.grad)
+
+
+@pytest.mark.diagflat
+@pytest.mark.skipif(not utils.complex_is_supported, reason="complex unsupported")
+@pytest.mark.parametrize("offset", [0, 2])
+def test_diagflat_backward_complex_sum(offset):
+    # A stride-0 complex grad used to fail the complex-to-real view in backward.
+    inp = torch.randn(
+        (8,), dtype=torch.complex64, device=flag_gems.device, requires_grad=True
+    )
+    ref_inp = utils.to_reference(inp.detach().clone(), False).requires_grad_()
+
+    grad = torch.ones((), dtype=torch.complex64, device=ref_inp.device)
+    torch.diagflat(ref_inp, offset).sum().backward(grad)
+    flag_gems.diagflat(inp, offset).sum().backward(grad)
+
+    utils.gems_assert_equal(inp.grad, ref_inp.grad)
+
+
+@pytest.mark.diagflat
 @pytest.mark.parametrize("offset", [0, 3])
 def test_diagflat_large_output_is_deterministic(offset):
     # Above the fused-tile crossover a single kernel both zeroes a span and

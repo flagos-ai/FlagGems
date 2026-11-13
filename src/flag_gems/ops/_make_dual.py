@@ -69,10 +69,16 @@ def _make_dual(primal: torch.Tensor, tangent: torch.Tensor, level: int) -> torch
       dispatcher re-enters this override from below the autograd keys, that
       nested call redispatches directly onto the CompositeExplicitAutograd
       kernel, which is exactly the kernel an unregistered dispatch would
-      reach. In every context where the nested call can re-enter (inference
-      tensors under inference mode) the composite's InferenceMode assertion
-      holds; under a user ``AutoDispatchBelowADInplaceOrView`` guard both the
-      native and this path raise the same ``TORCH_INTERNAL_ASSERT``.
+      reach.
+    - Depth 2 is only reachable for inference tensors under
+      ``torch.inference_mode()``, the one topology in which the autograd keys
+      are absent and the composite's InferenceMode assertion holds. The
+      depth-2 branch therefore asserts ``torch.is_inference_mode_enabled()``
+      explicitly and raises a descriptive ``RuntimeError`` if it is ever
+      reached in any other context (for example after a dispatch-topology
+      change such as an extra CUDA/Autograd registration for
+      ``aten::_make_dual``), instead of relying on the composite's internal
+      ``TORCH_INTERNAL_ASSERT`` to catch it.
 
     With this mechanism the override is bit-for-bit identical to native across
     the full matrix (dual-level on/off, level 0/1, grad on / ``no_grad`` /
@@ -84,8 +90,21 @@ def _make_dual(primal: torch.Tensor, tangent: torch.Tensor, level: int) -> torch
     logger.debug("GEMS _MAKE_DUAL")
 
     if getattr(_reentry, "active", False):
-        # Depth 2: the dispatcher reached the CUDA key from below the autograd
-        # keys (inference tensors). Go straight to the native composite kernel.
+        # Depth 2: the dispatcher re-entered the CUDA key from below the
+        # autograd keys. That topology is only valid for inference tensors
+        # under torch.inference_mode(); guard the invariant explicitly rather
+        # than relying on the native composite kernel's InferenceMode
+        # assertion, then redispatch onto that composite kernel.
+        if not torch.is_inference_mode_enabled():
+            raise RuntimeError(
+                "_make_dual re-entered from below the autograd dispatch keys "
+                "outside torch.inference_mode(); re-entry is only valid for "
+                "inference tensors under inference mode, where the "
+                "CompositeExplicitAutograd kernel's InferenceMode assertion "
+                "holds. A dispatch-topology change (e.g. an extra CUDA or "
+                "Autograd registration for aten::_make_dual, or a different "
+                "torch build) is the likely cause."
+            )
         return torch.ops.aten._make_dual.default.redispatch(
             _COMPOSITE_KEYSET, primal, tangent, level
         )
