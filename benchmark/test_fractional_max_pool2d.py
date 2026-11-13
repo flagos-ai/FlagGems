@@ -41,10 +41,24 @@ def fractional_max_pool2d_backward_input_fn(shape, dtype, device):
     inp = utils.generate_tensor_input(shape, dtype, device)
     inp.requires_grad_(True)
     output_size = (shape[2] // 2, shape[3] // 2)
-    output, indices = flag_gems.fractional_max_pool2d(
-        inp, kernel_size=2, output_size=output_size
-    )
-    grad_output = torch.randn_like(output)
+    if flag_gems.vendor_name == "iluvatar":
+        # Build canonical indices on CPU so the forward kernel does not
+        # consume the backward benchmark's timeout before it can run.
+        samples = torch.rand(*shape[:2], 2, dtype=torch.float32, device=inp.device)
+        output_cpu, indices_cpu = torch.nn.functional.fractional_max_pool2d(
+            inp.detach().to(device="cpu", dtype=torch.float64),
+            kernel_size=2,
+            output_size=output_size,
+            return_indices=True,
+            _random_samples=samples.to(device="cpu", dtype=torch.float64),
+        )
+        indices = indices_cpu.to(inp.device)
+        grad_output = torch.randn(output_cpu.shape, dtype=inp.dtype, device=inp.device)
+    else:
+        output, indices = flag_gems.fractional_max_pool2d(
+            inp, kernel_size=2, output_size=output_size
+        )
+        grad_output = torch.randn_like(output)
     yield grad_output, inp, {
         "kernel_size": 2,
         "output_size": output_size,
