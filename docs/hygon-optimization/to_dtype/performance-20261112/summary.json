@@ -1,0 +1,32 @@
+{
+  "cases": 59,
+  "complete_timing": 59,
+  "new_correct": 59,
+  "qualified_fg_pairs": 8,
+  "qualified_fg_das_pairs": 11,
+  "target90": 10,
+  "regressions": [],
+  "source_fingerprints": {
+    "src/flag_gems/__init__.py": "c33e50c7b6713c9fb28ba679969df5596409bea34c380a9ae56afb370dc10acf",
+    "src/flag_gems/runtime/backend/_hygon/ops/__init__.py": "48be54b29ae4b97a4bf21796b009271fda9e9bf97eaa13a5c6b58388c48ba361",
+    "src/flag_gems/runtime/backend/_hygon/ops/to.py": "3ac938806066f3efff50abca3581c763b81655516b9b3ab62bade1809e47d446",
+    "src/flag_gems/runtime/backend/_hygon/ops/to_kernels.py": "c79f9875521cace5d46078e6703c8dc777980b184c9873da4d67ff5524047ac4"
+  },
+  "old_correct": 48,
+  "das_correct": 56,
+  "qualified_old_new": 8,
+  "qualified_new_das": 11,
+  "no_device_work": [
+    "to-row-1716",
+    "to-control-empty-preserve_format",
+    "to-control-empty-contiguous_format"
+  ],
+  "accepted_old_new_speedup_range": [0.9783113872023146,2.8690558235699517],
+  "accepted_improvements_over5_percent": 2,
+  "accepted_regressions_over5_percent": [],
+  "native_layout_failures": [
+    "to-row-1712",
+    "to-row-1713",
+    "to-control-transpose-preserve_format"
+  ]
+}

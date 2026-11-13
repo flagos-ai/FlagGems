@@ -1,0 +1,311 @@
+# Copyright 2026 FlagOS Contributors
+# SPDX-License-Identifier: Apache-2.0
+"""Hygon dtype-conversion regressions, including exact spreadsheet strides."""
+
+import importlib
+import json
+from pathlib import Path
+
+import pytest
+import torch
+
+import flag_gems
+
+pytestmark = [
+    pytest.mark.to_copy,
+    pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon cast coverage"),
+]
+CASES = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "docs/hygon-optimization/to_dtype/cases.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+def transfer_storage(x):
+    storage = x.as_strided((x.untyped_storage().nbytes() // x.element_size(),), (1,), 0)
+    return storage.to(flag_gems.device).as_strided(
+        x.shape, x.stride(), x.storage_offset()
+    )
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: str(c["row"]))
+def test_hygon_to_dtype_spreadsheet(case):
+    meta, target = case["metadata"][0]
+    dtype = getattr(torch, meta["dtype"].split(".")[-1])
+    target = getattr(torch, target.split(".")[-1])
+    size = (
+        meta.get("storage_offset", 0)
+        + 1
+        + sum((n - 1) * s for n, s in zip(meta["shape"], meta["stride"]))
+    )
+    gen = torch.Generator().manual_seed(31997 + case["row"])
+    if dtype == torch.bool:
+        storage = torch.randint(0, 2, (size,), generator=gen).bool()
+    elif dtype == torch.int64:
+        storage = torch.randint(-(2**30), 2**30, (size,), generator=gen, dtype=dtype)
+    else:
+        storage = torch.randn(size, dtype=dtype, generator=gen)
+    cpu = storage.as_strided(
+        meta["shape"], meta["stride"], meta.get("storage_offset", 0)
+    )
+    x = transfer_storage(cpu)
+    out = flag_gems.to_copy(x, dtype=target)
+    assert out is not x
+    ref = cpu.to(target, copy=True)
+    assert out.device == x.device and out.dtype == target
+    assert out.stride() == ref.stride()
+    torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "view", ["contiguous", "transpose", "offset", "holes", "empty", "scalar"]
+)
+@pytest.mark.parametrize(
+    "memory_format", [torch.preserve_format, torch.contiguous_format]
+)
+def test_hygon_to_dtype_layouts(view, memory_format):
+    gen = torch.Generator().manual_seed(713)
+    if view == "transpose":
+        cpu = torch.randn((5, 17), generator=gen).t()
+    elif view == "offset":
+        cpu = torch.randn(86, generator=gen)[1:].view(5, 17)
+    elif view == "holes":
+        cpu = torch.randn((10, 34), generator=gen)[::2, ::2]
+    elif view == "empty":
+        cpu = torch.empty((0, 17))
+    elif view == "scalar":
+        cpu = torch.tensor(1.00390625)
+    else:
+        cpu = torch.randn((5, 17), generator=gen)
+    x = transfer_storage(cpu)
+    ref = cpu.to(torch.bfloat16, memory_format=memory_format)
+    out = flag_gems.to_copy(x, dtype=torch.bfloat16, memory_format=memory_format)
+    assert out.stride() == ref.stride() and out is not x
+    torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
+
+
+def test_hygon_to_dtype_bfloat16_rounding_and_special_values():
+    bits = [
+        0,
+        0x80000000,
+        1,
+        0x00007FFF,
+        0x00008000,
+        0x00008001,
+        0x007FFFFF,
+        0x00800000,
+        0x3F800001,
+        0x3F808000,
+        0x3F818000,
+        0x7F7F8000,
+        0x7F800000,
+        0xFF800000,
+        0x7FC00001,
+        0x7F800001,
+        0xFFC01234,
+    ]
+    cpu = torch.tensor(bits, dtype=torch.int64).to(torch.int32).view(torch.float32)
+    ref = cpu.to(torch.bfloat16)
+    x = transfer_storage(cpu)
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, dtype=torch.bfloat16).cpu()
+    torch.testing.assert_close(out, ref, rtol=0, atol=0, equal_nan=True)
+    finite_or_infinite = ~torch.isnan(ref)
+    assert torch.equal(
+        out.view(torch.int16)[finite_or_infinite],
+        ref.view(torch.int16)[finite_or_infinite],
+    )
+
+
+@pytest.mark.parametrize("length", [34, 36, 2048, 2050, 2052, 4096, 4100])
+@pytest.mark.parametrize("offset", [0, 1, 2, 4])
+def test_hygon_to_dtype_packed_rounding_and_tail(monkeypatch, length, offset):
+    module = importlib.import_module(flag_gems.to_copy.__module__)
+    monkeypatch.setattr(module, "_PACKED_MIN_ELEMENTS", 0)
+    bits = [
+        0,
+        0x80000000,
+        1,
+        0x7FFF,
+        0x8000,
+        0x8001,
+        0x18000,
+        0x007FFFFF,
+        0x00800000,
+        0x3F800001,
+        0x3F808000,
+        0x3F818000,
+        0x7F7F8000,
+        0x7F800000,
+        0xFF800000,
+        0x7FC00001,
+        0xFFC01234,
+    ]
+    cpu = torch.tensor(bits, dtype=torch.int64).to(torch.int32).view(torch.float32)
+    cpu = cpu.repeat((length + offset + len(bits) - 1) // len(bits))[
+        offset : offset + length
+    ]
+    ref = cpu.to(torch.bfloat16)
+    with torch.no_grad():
+        result = flag_gems.to_copy(transfer_storage(cpu), dtype=torch.bfloat16).cpu()
+    torch.testing.assert_close(result, ref, atol=0, rtol=0, equal_nan=True)
+    valid = ~torch.isnan(ref)
+    assert torch.equal(result.view(torch.int16)[valid], ref.view(torch.int16)[valid])
+
+
+@pytest.mark.parametrize("view", ["contiguous", "transpose", "offset"])
+def test_hygon_to_dtype_bool_zero_comparison(view):
+    cpu = torch.tensor(
+        [
+            0.0,
+            -0.0,
+            0.25,
+            -0.25,
+            1.0,
+            -1.0,
+            float("inf"),
+            float("-inf"),
+            float("nan"),
+            1e-38,
+            -1e-38,
+            1e-45,
+            -1e-45,
+        ]
+    ).repeat(7)
+    if view == "transpose":
+        cpu = cpu.view(7, 13).t()
+    elif view == "offset":
+        cpu = cpu[1:]
+    x = transfer_storage(cpu)
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, dtype=torch.bool)
+    ref = cpu.to(torch.bool)
+    assert out.device == x.device and out.stride() == ref.stride()
+    assert out.data_ptr() != x.data_ptr()
+    torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "source,target", [(torch.bfloat16, torch.float32), (torch.int64, torch.float32)]
+)
+@pytest.mark.parametrize("view", ["contiguous", "transpose", "offset"])
+def test_hygon_to_dtype_dense_pairs(source, target, view):
+    if source == torch.int64:
+        cpu = torch.tensor(
+            [
+                0,
+                1,
+                -1,
+                2**24 - 1,
+                2**24 + 1,
+                -(2**24 + 1),
+                2**40,
+                -(2**40),
+                2**63 - 1,
+                -(2**63),
+            ]
+        ).repeat(7)
+    else:
+        cpu = torch.tensor(
+            [
+                0.0,
+                -0.0,
+                0.25,
+                -0.25,
+                float("inf"),
+                float("-inf"),
+                float("nan"),
+                1e-38,
+                -1e-38,
+                1.00390625,
+            ],
+            dtype=source,
+        ).repeat(7)
+    if view == "transpose":
+        cpu = cpu.view(7, 10).t()
+    elif view == "offset":
+        cpu = cpu[1:]
+    x = transfer_storage(cpu)
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, dtype=target)
+    ref = cpu.to(target)
+    assert out.device == x.device and out.stride() == ref.stride()
+    assert out.data_ptr() != x.data_ptr()
+    torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0, equal_nan=True)
+
+
+_EXTENDED_CASES = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "docs/hygon-optimization/to_dtype/extended-cases-20261110.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize("case", _EXTENDED_CASES, ids=lambda c: str(c["case"]))
+def test_hygon_to_dtype_extended_workbook_direct(case):
+    meta = case["metadata"][0][0]
+    kwargs = case["metadata"][1]
+    source = getattr(torch, meta["dtype"].split(".")[-1])
+    target = getattr(torch, kwargs["dtype"].split(".")[-1])
+    size = (
+        meta.get("storage_offset", 0)
+        + 1
+        + sum((n - 1) * stride for n, stride in zip(meta["shape"], meta["stride"]))
+    )
+    gen = torch.Generator().manual_seed(20261110 + case["case"])
+    if source == torch.int64:
+        storage = torch.randint(-(2**30), 2**30, (size,), dtype=source, generator=gen)
+    else:
+        storage = torch.randn(size, dtype=source, generator=gen)
+    cpu = storage.as_strided(
+        meta["shape"], meta["stride"], meta.get("storage_offset", 0)
+    )
+    x = transfer_storage(cpu)
+    x.requires_grad_(meta.get("requires_grad", False))
+    kw = {"dtype": target}
+    if "layout" in kwargs:
+        kw["layout"] = torch.strided
+    if "device" in kwargs:
+        kw["device"] = x.device
+    with torch.no_grad():
+        out = flag_gems.to_copy(x, **kw)
+    ref = torch.ops.aten._to_copy.default(cpu, dtype=target)
+    assert out.device == x.device and out.dtype == target
+    assert out.stride() == ref.stride() and out.data_ptr() != x.data_ptr()
+    torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
+
+
+@pytest.mark.to_copy
+@pytest.mark.parametrize("kind", ["dense_permutation", "medium_packed_range"])
+def test_official_master_cast_fallback_guards(monkeypatch, record_property, kind):
+
+    impl = importlib.import_module("flag_gems.runtime.backend._hygon.ops.to")
+    generic = impl.default_to_copy
+    observed = []
+
+    def checked_generic(x, **kwargs):
+        observed.append(True)
+        return generic(x, **kwargs)
+
+    monkeypatch.setattr(impl, "default_to_copy", checked_generic)
+    generator = torch.Generator().manual_seed(20261112)
+    if kind == "dense_permutation":
+        x = torch.randn((1, 145, 8, 256), generator=generator, dtype=torch.bfloat16)
+        x = x.transpose(1, 2)
+        dtype = torch.float32
+    else:
+        x = torch.randn((8, 2048, 10), generator=generator)
+        dtype = torch.bfloat16
+    reference = x.to(dtype)
+    record_property("direct_transfer_stride", list(x.to(flag_gems.device).stride()))
+    record_property("original_cpu_stride", list(x.stride()))
+    gpu = transfer_storage(x)
+    assert gpu.shape == x.shape and gpu.stride() == x.stride()
+    assert gpu.storage_offset() == x.storage_offset()
+    actual = impl.to_copy(gpu, dtype=dtype)
+    assert observed == [True], "regressed cast ranges must keep the generic kernel"
+    assert actual.stride() == reference.stride()
+    torch.testing.assert_close(actual.cpu(), reference, rtol=0, atol=0)
