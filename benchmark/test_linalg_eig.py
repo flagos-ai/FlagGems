@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -33,6 +35,9 @@ class LinalgEigBenchmark(base.Benchmark):
 
 
 @pytest.mark.linalg_eig
+@pytest.mark.skip_native(
+    vendors=("thead",), reason="PPU native eig terminates during factorization"
+)
 def test_linalg_eig():
     bench = LinalgEigBenchmark(
         op_name="linalg_eig",
@@ -40,4 +45,5 @@ def test_linalg_eig():
         # The Francis QR kernel runs in float32 -> complex64 output.
         dtypes=[torch.float32],
     )
+    bench.set_gems(lambda matrix: flag_gems.ops.linalg_eig(matrix))
     bench.run()
