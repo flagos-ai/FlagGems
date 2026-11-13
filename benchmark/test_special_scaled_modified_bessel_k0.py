@@ -75,10 +75,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 class SpecialScaledModifiedBesselK0Benchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # With default_shapes this assigns self.shapes directly and never calls
-        # base.set_shapes, so no set_more_shapes merge applies: the core and
-        # comprehensive levels list exactly the same cases.
-        super().set_shapes(shape_file_path, default_shapes=_SHAPES)
+        # Preserve frozen master's explicit workload selection at both levels.
+        del shape_file_path
+        self.shapes = list(_SHAPES)
+        self.shape_desc = "M, N"
 
 
 @pytest.mark.special_scaled_modified_bessel_k0

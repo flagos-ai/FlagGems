@@ -343,18 +343,6 @@ def _edge_input(dtype, kind):
     return value.reshape(1)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("shape", selected_shapes())
-@pytest.mark.parametrize("value_range", selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
-def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
-    inp = make_input(dtype, shape, value_range)
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-
-    assert_result_close(res_out, ref_out, inp.device)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0_out
@@ -375,68 +363,14 @@ def test_special_scaled_modified_bessel_k0_out(shape, value_range, dtype, out_dt
     assert_result_close(res_out, ref_out, inp.device)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("kind,shape", STRIDED_CASES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
-def test_special_scaled_modified_bessel_k0_strided(kind, shape, dtype):
-    inp = _strided_input(dtype, shape, kind)
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-
-    assert_result_close(res_out, ref_out, inp.device)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
-def test_special_scaled_modified_bessel_k0_special_values(dtype, scenario):
-    inp = make_special_input(dtype, scenario)
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-
-    assert_result_close(res_out, ref_out, inp.device)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("kind", EDGE_KINDS)
-@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
-def test_special_scaled_modified_bessel_k0_edge_values(kind, dtype):
-    inp = _edge_input(dtype, kind)
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-
-    # atol=0: the +max endpoint is a small nonzero limit value (6.79e-20 in
-    # float32, 9.35e-155 in float64), so the default absolute tolerance would
-    # let a candidate that flushes the tail to zero pass. rtol stays the shared
-    # per-dtype resolution.
-    assert_result_close(res_out, ref_out, inp.device, atol=0)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("shape", EMPTY_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
-def test_special_scaled_modified_bessel_k0_empty(shape, dtype):
-    inp = make_input(dtype, shape, ["-1", "1"])
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
-    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
-
-    assert_result_close(res_out, ref_out, inp.device)
 
 
-@pytest.mark.special_scaled_modified_bessel_k0
-@pytest.mark.parametrize("dtype", REJECTED_DTYPES)
-def test_special_scaled_modified_bessel_k0_rejects_unsupported_dtype(dtype):
-    inp = make_input(dtype, (16,), ["-1", "1"])
-
-    with pytest.raises((RuntimeError, TypeError)):
-        flag_gems.special_scaled_modified_bessel_k0(inp)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0_out
@@ -459,6 +393,94 @@ def test_special_scaled_modified_bessel_k0_rejects_positional_out():
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.special_scaled_modified_bessel_k0(inp, buf)
+
+# Frozen master cases for the selected default overload.
+
+def _master_assert_result_close(result, reference, *, atol=1e-4):
+    # K0e has a pole at 0 and returns NaN for negative inputs, so the
+    # comparison must ignore NaNs.
+    utils.gems_assert_close(
+        result, reference, dtype=result.dtype, atol=atol, equal_nan=True
+    )
+
+
+
+@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.parametrize("shape", selected_shapes())
+@pytest.mark.parametrize("value_range", selected_ranges())
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
+    inp = make_input(dtype, shape, value_range)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+
+    _master_assert_result_close(res_out, ref_out)
+
+
+@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.parametrize("kind,shape", STRIDED_CASES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+def test_special_scaled_modified_bessel_k0_strided(kind, shape, dtype):
+    inp = _strided_input(dtype, shape, kind)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+
+    _master_assert_result_close(res_out, ref_out)
+
+
+@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
+def test_special_scaled_modified_bessel_k0_special_values(dtype, scenario):
+    inp = make_special_input(dtype, scenario)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+
+    _master_assert_result_close(res_out, ref_out)
+
+
+@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.parametrize("kind", EDGE_KINDS)
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
+def test_special_scaled_modified_bessel_k0_edge_values(kind, dtype):
+    inp = _edge_input(dtype, kind)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+
+    # atol=0: the +max endpoint is a small nonzero limit value (6.79e-20 in
+    # float32, 9.35e-155 in float64), so the default absolute tolerance would
+    # let a candidate that flushes the tail to zero pass. rtol stays the shared
+    # per-dtype resolution.
+    _master_assert_result_close(res_out, ref_out, atol=0)
+
+
+@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.parametrize("shape", EMPTY_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+def test_special_scaled_modified_bessel_k0_empty(shape, dtype):
+    inp = make_input(dtype, shape, ["-1", "1"])
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+
+    _master_assert_result_close(res_out, ref_out)
+
+
+@pytest.mark.special_scaled_modified_bessel_k0
+@pytest.mark.parametrize("dtype", REJECTED_DTYPES)
+def test_special_scaled_modified_bessel_k0_rejects_unsupported_dtype(dtype):
+    inp = make_input(dtype, (16,), ["-1", "1"])
+
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems.special_scaled_modified_bessel_k0(inp)
 
 
 @pytest.mark.special_scaled_modified_bessel_k0

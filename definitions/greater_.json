@@ -2,7 +2,7 @@
   "api_version": "v6.0",
   "name": "greater_",
   "requires_triton_kernel": true,
-  "description": "Representative ATen schema: aten::greater_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!). The tests also cover aten::greater_.Scalar. Both overloads compare elementwise, write zero-or-one results into self using self's dtype, and return the same Tensor object and storage. Coverage includes equal-shape and broadcast Tensor operands, Scalar operands, zero-sized and noncontiguous inputs, float64 precision, other-input non-mutation, output metadata, and rejection of non-broadcastable shapes.",
+  "description": "aten::greater_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!). Elementwise comparison writes zero or one in self dtype and returns self. Pinned master tests cover shape/dtype grid and FP64 precision.",
   "parameters": [
     {
       "name": "self",
