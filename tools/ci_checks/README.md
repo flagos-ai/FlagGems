@@ -12,6 +12,7 @@ rule-check.yaml (GitHub Actions workflow)
     ├── check-kernelgen-tests      [blocking]  use_gems() prohibition
     ├── check-operator-markers     [blocking]  test file + marker
     ├── check-aten-operators       [blocking]  aten name format
+    ├── check-no-torch-fallback    [blocking]  no torch compute calls on added lines
     ├── check-api-logs             [warning]   logger.debug convention
     └── check-benchmark-coverage   [warning]   benchmark file existence
 ```
@@ -31,6 +32,7 @@ python tools/ci_checks/check_operator_markers.py --operators '["my_new_op"]'
 python tools/ci_checks/check_aten_operators.py --operators '["my_new_op"]'
 python tools/ci_checks/check_kernelgen_tests.py --operators '["my_new_op"]'
 python tools/ci_checks/check_api_logs.py --operators '["my_new_op"]'
+python tools/ci_checks/check_no_torch_fallback.py --base origin/master src/flag_gems/ops/my_new_op.py
 python tools/ci_checks/check_performance_reference.py --operators '["my_new_op"]'
 
 # Check all (for __init__.py)
