@@ -58,38 +58,33 @@ def grouped_fp8_gemv(
     SBE: tl.constexpr,
     SBN: tl.constexpr,
     SBK: tl.constexpr,
-    ALIGN: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
 ):
-    row = tl.program_id(0) * ALIGN
-    stop = row + ALIGN
+    row = tl.program_id(0)
     cols = tl.program_id(1) * BN + tl.arange(0, BN)
     group = tl.load(Groups + row)
     kk = tl.arange(0, BK)
     scale_k = tl.arange(0, BK // 128)
-    while (row < stop) & (group >= 0):
-        acc = tl.zeros((BN,), tl.float32)
-        for base in range(tl.cdiv(K, BK)):
-            offsets = base * BK + kk
-            a = tl.load(A + row * K + offsets, offsets < K, 0.0).to(tl.float32)
-            b = tl.load(
-                B + group.to(tl.int64) * N * K + cols[:, None] * K + offsets[None, :],
-                (cols[:, None] < N) & (offsets[None, :] < K),
-                0.0,
-            ).to(tl.float32)
-            partial = tl.sum((b * a[None, :]).reshape((BN, BK // 128, 128)), 2)
-            sk = base * (BK // 128) + scale_k
-            sa = tl.load(SA + row * SAM + sk * SAK, sk < K // 128, 0.0)
-            sb = tl.load(
-                SB + group * SBE + (cols[:, None] // 128) * SBN + sk[None, :] * SBK,
-                (cols[:, None] < N) & (sk[None, :] < K // 128),
-                0.0,
-            )
-            acc += tl.sum(partial * sa[None, :] * sb, 1)
-        tl.store(C + row * N + cols, acc, cols < N)
-        row += 1
-        group = tl.load(Groups + row, row < stop, -1)
+    acc = tl.zeros((BN,), tl.float32)
+    for base in range(tl.cdiv(K, BK)):
+        offsets = base * BK + kk
+        a = tl.load(A + row.to(tl.int64) * K + offsets, offsets < K, 0.0).to(tl.float32)
+        b = tl.load(
+            B + group.to(tl.int64) * N * K + cols[:, None] * K + offsets[None, :],
+            (cols[:, None] < N) & (offsets[None, :] < K),
+            0.0,
+        ).to(tl.float32)
+        partial = tl.sum((b * a[None, :]).reshape((BN, BK // 128, 128)), 2)
+        sk = base * (BK // 128) + scale_k
+        sa = tl.load(SA + row * SAM + sk * SAK, sk < K // 128, 0.0)
+        sb = tl.load(
+            SB + group * SBE + (cols[:, None] // 128) * SBN + sk[None, :] * SBK,
+            (cols[:, None] < N) & (sk[None, :] < K // 128),
+            0.0,
+        )
+        acc += tl.sum(partial * sa[None, :] * sb, 1)
+    tl.store(C + row * N + cols, acc, cols < N)
 
 
 @libentry()
@@ -101,6 +96,8 @@ def grouped_fp8_single_k_kernel(
     SA,
     SB,
     Groups,
+    Tasks,
+    TILES: tl.constexpr,
     M,
     N: tl.constexpr,
     SAM: tl.constexpr,
@@ -110,7 +107,9 @@ def grouped_fp8_single_k_kernel(
     BN: tl.constexpr,
 ):
     pm, pn = tl.program_id(0), tl.program_id(1)
-    group = tl.load(Groups + pm * BM)
+    active = pm < tl.load(Tasks + TILES)
+    first = tl.load(Tasks + pm, active, 0)
+    group = tl.load(Groups + first)
     aa = tle.gpu.alloc(
         (BM, 128), A.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
     )
@@ -123,20 +122,20 @@ def grouped_fp8_single_k_kernel(
     full_b = tle.gpu.alloc_barriers(
         1, arrive_count=1, init=tle.gpu.PENDING, expect_bytes=BN * 128
     )
-    if group >= 0:
-        tle.gpu.copy(A, aa, (BM, 128), (pm * BM, 0), barrier=full_a[0])
+    if active:
+        tle.gpu.copy(A, aa, (BM, 128), (first, 0), barrier=full_a[0])
         tle.gpu.copy(B, bb, (BN, 128), (group * N + pn * BN, 0), barrier=full_b[0])
         tle.gpu.barrier_wait(full_a[0], phaseIdx=0)
         tle.gpu.barrier_wait(full_b[0], phaseIdx=0)
         acc = tle.gpu.wgmma(aa, bb, tl.zeros((BM, BN), tl.float32), trans_b=True)
         acc = tle.gpu.wgmma_wait(0, acc)
-        rows = pm * BM + tl.arange(0, BM)
+        rows = first + tl.arange(0, BM)
         cols = pn * BN + tl.arange(0, BN)
         sa = tl.load(SA + rows * SAM, rows < M, 0)
         sb = tl.load(SB + group * SBE + (cols // 128) * SBN, cols < N, 0)
-        valid = tl.load(Groups + rows, rows < M, -1) >= 0
+        valid = tl.load(Groups + rows, rows < M, -1) == group
         tl.store(
-            C + rows[:, None] * N + cols[None, :],
+            C + rows.to(tl.int64)[:, None] * N + cols[None, :],
             acc * sa[:, None] * sb[None, :],
             (rows[:, None] < M) & valid[:, None] & (cols[None, :] < N),
         )
@@ -145,25 +144,35 @@ def grouped_fp8_single_k_kernel(
 @libentry()
 @triton.jit
 def grouped_fp8_tasks(
-    Groups, Tasks, TILES: tl.constexpr, BM: tl.constexpr, BLOCK: tl.constexpr
+    Counts,
+    Tasks,
+    E: tl.constexpr,
+    TILES: tl.constexpr,
+    BM: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
-    tiles = tl.arange(0, BLOCK)
-    expert = tl.load(Groups + tiles * BM, tiles < TILES, -1)
-    valid = expert >= 0
-    offsets = tl.cumsum(valid.to(tl.int32), 0) - 1
-    tl.store(Tasks + offsets, tiles, valid)
-    tl.store(Tasks + TILES, tl.sum(valid.to(tl.int32), 0))
+    # Only tile starts are materialized; A, scales, routing and C stay compact.
+    expert = tl.program_id(0)
+    ids = tl.arange(0, BLOCK_E)
+    counts = tl.load(Counts + ids, ids < expert, 0)
+    first = tl.sum(counts, 0)
+    tile = tl.sum(tl.cdiv(counts, BM), 0)
+    length = tl.load(Counts + expert)
+    nt = tl.cdiv(length, BM)
+    for chunk in range(tl.cdiv(nt, 64)):
+        i = chunk * 64 + tl.arange(0, 64)
+        tl.store(Tasks + tile + i, first + i * BM, i < nt)
+    if expert == E - 1:
+        tl.store(Tasks + TILES, tile + nt)
 
 
 @triton.jit
-def grouped_fp8_task(
-    Tasks, Groups, task, total, N: tl.constexpr, BN: tl.constexpr, BM: tl.constexpr
-):
+def grouped_fp8_task(Tasks, Groups, task, total, N: tl.constexpr, BN: tl.constexpr):
     columns: tl.constexpr = tl.cdiv(N, BN)
     is_valid = task < total
     pm = tl.load(Tasks + task // columns, is_valid, 0)
     pn = task % columns
-    expert = tl.maximum(tl.load(Groups + pm * BM), 0)
+    expert = tl.load(Groups + pm)
     return pm, pn, expert, is_valid
 
 
@@ -187,10 +196,10 @@ def grouped_fp8_producer(
     for task in tl.range(
         tl.program_id(0), tl.maximum(total, PROGRAMS), PROGRAMS, num_stages=1
     ):
-        pm, pn, expert, _ = grouped_fp8_task(Tasks, Groups, task, total, N, BN, BM)
+        pm, pn, expert, _ = grouped_fp8_task(Tasks, Groups, task, total, N, BN)
         for block in tl.range(0, K // 128, num_stages=1):
             slot = writer.acquire(sequence)
-            tle.gpu.copy(A, slot.a, (BM, 128), (pm * BM, block * 128))
+            tle.gpu.copy(A, slot.a, (BM, 128), (pm, block * 128))
             tle.gpu.copy(B, slot.b, (BN, 128), (expert * N + pn * BN, block * 128))
             writer.commit(sequence)
             sequence += 1
@@ -225,10 +234,8 @@ def grouped_fp8_consumer(
     for task in tl.range(
         tl.program_id(0), tl.maximum(total, PROGRAMS), PROGRAMS, num_stages=1
     ):
-        pm, pn, expert, is_valid = grouped_fp8_task(
-            Tasks, Groups, task, total, N, BN, BM
-        )
-        rows = pm * BM + tl.arange(0, BM)
+        pm, pn, expert, is_valid = grouped_fp8_task(Tasks, Groups, task, total, N, BN)
+        rows = pm + tl.arange(0, BM)
         cols = pn * BN + tl.arange(0, BN)
         acc = tl.zeros((BM, BN), tl.float32)
         for block in tl.range(0, K // 128, num_stages=1):
@@ -244,9 +251,9 @@ def grouped_fp8_consumer(
             acc += partial * sa[:, None] * sb[None, :]
             reader.release(sequence)
             sequence += 1
-        valid = tl.load(Groups + rows, rows < M, -1) >= 0
+        valid = tl.load(Groups + rows, rows < M, -1) == expert
         tl.store(
-            C + rows[:, None] * N + cols[None, :],
+            C + rows.to(tl.int64)[:, None] * N + cols[None, :],
             acc,
             (rows[:, None] < M) & valid[:, None] & (cols[None, :] < N) & is_valid,
         )
@@ -346,7 +353,7 @@ def grouped_fp8_multicast_producer(
     Tasks,
     Total,
     Start,
-    ITERATIONS: tl.constexpr,
+    ITERATIONS,
     PROGRAMS: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -359,10 +366,10 @@ def grouped_fp8_multicast_producer(
     sequence = 0
     for iteration in tl.range(0, ITERATIONS, num_stages=1):
         task = Start + iteration * PROGRAMS
-        pm, pn, expert, _ = grouped_fp8_task(Tasks, Groups, task, total, N, NC * BN, BM)
+        pm, pn, expert, _ = grouped_fp8_task(Tasks, Groups, task, total, N, NC * BN)
         for block in tl.range(0, K // 128, num_stages=1):
             slot = writer.acquire(sequence)
-            tle.gpu.copy(A, slot.a, (BM, 128), (pm * BM, block * 128))
+            tle.gpu.copy(A, slot.a, (BM, 128), (pm, block * 128))
             tle.gpu.copy(
                 B, slot.b0, (BN, 128), (expert * N + pn * NC * BN, block * 128)
             )
@@ -399,7 +406,7 @@ def grouped_fp8_multicast_consumer(
     M,
     Total,
     Start,
-    ITERATIONS: tl.constexpr,
+    ITERATIONS,
     PROGRAMS: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -418,9 +425,9 @@ def grouped_fp8_multicast_consumer(
     for iteration in tl.range(0, ITERATIONS, num_stages=1):
         task = Start + iteration * PROGRAMS
         pm, pn, expert, is_valid = grouped_fp8_task(
-            Tasks, Groups, task, total, N, NC * BN, BM
+            Tasks, Groups, task, total, N, NC * BN
         )
-        rows = pm * BM + tl.arange(0, BM)
+        rows = pm + tl.arange(0, BM)
         cols = pn * NC * BN + ROLE * BN + tl.arange(0, BN)
         acc = tl.zeros((BM, BN), tl.float32)
         for block in tl.range(0, K // 128, num_stages=1):
@@ -444,9 +451,9 @@ def grouped_fp8_multicast_consumer(
             acc += partial * sa[:, None] * sb[None, :]
             reader.release(sequence)
             sequence += 1
-        valid = tl.load(Groups + rows, rows < M, -1) >= 0
+        valid = tl.load(Groups + rows, rows < M, -1) == expert
         tl.store(
-            C + rows[:, None] * N + cols[None, :],
+            C + rows.to(tl.int64)[:, None] * N + cols[None, :],
             acc,
             (rows[:, None] < M) & valid[:, None] & (cols[None, :] < N) & is_valid,
         )
@@ -515,10 +522,10 @@ def grouped_fp8_multicast_kernel(
             b0=b0,
             b1=b1,
         )
-    # Named readers must execute the same number of pipe epochs, including padding.
+    # All reader partitions must use the same loop bound, including the last CTA wave.
     total = tl.load(Tasks + TILES) * tl.cdiv(N, NC * BN)
     start = tl.program_id(0)
-    iterations: tl.constexpr = tl.cdiv(TILES * tl.cdiv(N, NC * BN), PROGRAMS)
+    iterations = tl.cdiv(total, PROGRAMS)
     consumer_args: tl.constexpr = (
         C,
         SA,
@@ -600,32 +607,38 @@ def grouped_fp8_multicast_kernel(
 
 
 def grouped_gemm_w8a8_fp8(
-    lhs: tuple[torch.Tensor, torch.Tensor],
-    rhs: tuple[torch.Tensor, torch.Tensor],
+    a: torch.Tensor,
+    sa: torch.Tensor,
+    b: torch.Tensor,
+    sb: torch.Tensor,
     out: torch.Tensor,
     m_indices: torch.Tensor,
-    *,
-    alignment_m: int = 128,
+    m_rows: torch.Tensor,
 ) -> None:
-    """FP8 block-scaled NT GEMM with aligned contiguous expert segments.
+    """Compute block-scaled FP8 NT GEMM on exactly M packed rows.
 
-    A/B use E4M3 and scales (1,128)/(128,128). Negative routing rows leave
-    output unchanged. Each nonnegative expert segment starts at a multiple
-    of alignment_m; routing values are caller-provided device metadata.
+    Rows are grouped in ascending expert order. m_rows contains E nonnegative
+    counts summing to M, and m_indices gives the matching expert for each row.
+    These device metadata values are caller preconditions (no host readback).
     """
     logger.debug("GEMS_MTHREADS GROUPED_GEMM_W8A8_FP8")
-    a, sa = lhs
-    b, sb = rhs
     if a.ndim != 2 or b.ndim != 3 or out.ndim != 2:
         raise ValueError("expected A[M,K], B[E,N,K] and out[M,N]")
     m, k = a.shape
     experts, n, bk = b.shape
     if bk != k or out.shape != (m, n) or m_indices.shape != (m,):
         raise ValueError("incompatible GEMM or routing dimensions")
-    if alignment_m not in (128, 256):
-        raise ValueError("alignment_m must be 128 or 256")
-    if k == 0 or k % 128 or n == 0 or n % 64 or m % alignment_m or experts == 0:
-        raise ValueError("requires positive K%128=0, N%64=0, E and aligned M")
+    if (
+        m_rows.shape != (experts,)
+        or k == 0
+        or k % 128
+        or n == 0
+        or n % 64
+        or experts == 0
+    ):
+        raise ValueError(
+            "requires m_rows[E], positive E, K divisible by 128 and N divisible by 64"
+        )
     if a.dtype != torch.float8_e4m3fn or b.dtype != a.dtype:
         raise TypeError("A and B must use FP8 E4M3")
     if (
@@ -634,38 +647,32 @@ def grouped_gemm_w8a8_fp8(
         or sb.dtype != torch.float32
     ):
         raise TypeError("requires BF16 output and FP32 scales")
-    if m_indices.dtype != torch.int32:
-        raise TypeError("m_indices must use INT32")
+    if m_indices.dtype != torch.int32 or m_rows.dtype != torch.int32:
+        raise TypeError("routing indices and counts must use INT32")
     if sa.shape != (m, k // 128) or sb.shape != (
         experts,
         triton.cdiv(n, 128),
         k // 128,
     ):
         raise ValueError("incompatible FP8 block-scale shapes")
-    tensors = (a, b, sa, sb, out, m_indices)
+    tensors = (a, b, sa, sb, out, m_indices, m_rows)
     if a.device.type != "musa" or any(t.device != a.device for t in tensors):
         raise ValueError("all tensors must be on the same MUSA device")
-    if not all(t.is_contiguous() for t in (a, b, out, m_indices)):
-        raise ValueError("A, B, out and m_indices must be contiguous")
+    if not all(t.is_contiguous() for t in (a, b, out, m_indices, m_rows)):
+        raise ValueError("A, B, out and both routing tensors must be contiguous")
     if m == 0:
         return
-    # Share A tiles between independent SQMMA consumers on dense expert segments.
-    is_multicast = (
-        MULTICAST_ON
-        and alignment_m == 256
-        and m > experts * alignment_m
-        and n % 256 == 0
-    )
+    # Use shared A tiles when enough rows amortize warp-specialization overhead.
+    is_multicast = MULTICAST_ON and m >= experts * 64 and n % 256 == 0
     if is_multicast:
         bm, bn, consumer_warps, consumers = (
-            (128, 64, 4, 4) if k == 128 else (256, 64, 8, 2)
+            (128, 64, 4, 4) if k == 128 else (128, 128, 8, 2)
         )
     else:
         bm, bn = (64, 64) if k == 128 else (64, 256)
-    grid = (triton.cdiv(m, bm), triton.cdiv(n, bn))
     with torch_device_fn.device(a.device):
-        if k >= 2048 and n <= 256 and m <= alignment_m * 16 and m < experts * 128:
-            grouped_fp8_gemv[(m // alignment_m, triton.cdiv(n, 8))](
+        if m <= min(experts, 128 if k > 128 else 256):
+            grouped_fp8_gemv[(m, triton.cdiv(n, 8 if k > 128 else 32))](
                 a,
                 b,
                 out,
@@ -676,9 +683,8 @@ def grouped_gemm_w8a8_fp8(
                 k,
                 *sa.stride(),
                 *sb.stride(),
-                ALIGN=alignment_m,
-                BN=8,
-                BK=512,
+                BN=8 if k > 128 else 32,
+                BK=min(triton.next_power_of_2(k), 512),
                 num_warps=4,
                 num_stages=1,
             )
@@ -688,14 +694,27 @@ def grouped_gemm_w8a8_fp8(
         b_desc = TensorDescriptor(
             flat_b, list(flat_b.shape), list(flat_b.stride()), [bn, 128]
         )
+        tiles = min(m, triton.cdiv(m, bm) + experts - 1)
+        tasks = torch.empty((tiles + 1,), dtype=torch.int32, device=a.device)
+        grouped_fp8_tasks[(experts,)](
+            m_rows,
+            tasks,
+            experts,
+            tiles,
+            bm,
+            triton.next_power_of_2(experts),
+            num_warps=4,
+        )
         if k == 128 and not is_multicast:
-            grouped_fp8_single_k_kernel[grid](
+            grouped_fp8_single_k_kernel[(tiles, triton.cdiv(n, bn))](
                 a_desc,
                 b_desc,
                 out,
                 sa,
                 sb,
                 m_indices,
+                tasks,
+                tiles,
                 m,
                 n,
                 sa.stride(0),
@@ -707,21 +726,19 @@ def grouped_gemm_w8a8_fp8(
                 num_stages=1,
             )
         else:
-            tiles = m // bm
-            tasks = torch.empty((tiles + 1,), dtype=torch.int32, device=a.device)
-            grouped_fp8_tasks[(1,)](
-                m_indices, tasks, tiles, bm, triton.next_power_of_2(tiles), num_warps=4
-            )
             num_sms = torch_device_fn.get_device_properties(
                 a.device
             ).multi_processor_count
-            programs = min(num_sms, max(1, m // alignment_m) * triton.cdiv(n, bn))
+            programs = min(num_sms, tiles * triton.cdiv(n, bn))
             if is_multicast:
-                options = dict(
-                    enable_backend_opt=True,
-                    disable_max_ilp_scheduler=True,
-                    disable_sqmma_m_split_preference=False,
-                    llc_options="-mtgpu-alloc-shared-memory-from-zero=1",
+                options = (
+                    dict(
+                        enable_backend_opt=True,
+                        disable_max_ilp_scheduler=True,
+                        llc_options="-mtgpu-alloc-shared-memory-from-zero=1",
+                    )
+                    if k == 128
+                    else dict(llc_options="-mtgpu-combine-instr-with-burst=1")
                 )
                 grouped_fp8_multicast_kernel[(programs,)](
                     a_desc,

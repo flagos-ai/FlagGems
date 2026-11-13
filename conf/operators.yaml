@@ -9418,9 +9418,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '3.0'
 - id: grouped_gemm_w8a8_fp8
-  description: Block-scaled FP8 grouped NT GEMM with aligned expert segments and BF16 output.
+  description: Block-scaled FP8 grouped NT GEMM with unpadded expert segments and BF16 output.
   for:
-  - sglang.grouped_gemm_nt_f8f8bf16_contig
+  - mate.gemm.ragged_m_moe_gemm_8bit
   labels:
   - fused
   kind:

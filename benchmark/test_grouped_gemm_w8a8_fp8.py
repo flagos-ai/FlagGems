@@ -18,18 +18,18 @@ import pytest
 import torch
 
 import flag_gems
-from tests.test_grouped_gemm_w8a8_fp8 import deepgemm_grouped_fp8, make_grouped_fp8_case
+from tests.test_grouped_gemm_w8a8_fp8 import make_grouped_fp8_case, mate_grouped_fp8
 
 from .base import Benchmark
 from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
 class GroupedFP8Benchmark(ParallelBenchmarkMixin, Benchmark):
-    """Accept (M, N, K, E[, expert_lengths]); M and lengths exclude padding."""
+    """Accept (M, N, K, E[, expert_lengths]); M is the sum of expert_lengths."""
 
     RECORD_PARALLEL_RESULTS = True
     DEFAULT_SHAPES = [(45, 256, 6144, 256), (45, 6144, 128, 256)]
-    DEFAULT_SHAPE_DESC = "M,N,K,E (M before per-expert padding)"
+    DEFAULT_SHAPE_DESC = "M,N,K,E (unpadded rows)"
 
     def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
         for shape in self.shapes:
@@ -48,22 +48,19 @@ class GroupedFP8Benchmark(ParallelBenchmarkMixin, Benchmark):
                 lengths = [
                     m // experts + (expert < m % experts) for expert in range(experts)
                 ]
-            yield (
-                *make_grouped_fp8_case(lengths, n, k, self.device),
-                {"alignment_m": 256},
-            )
+            yield make_grouped_fp8_case(lengths, n, k, self.device)
 
 
 @pytest.mark.grouped_gemm_w8a8_fp8
 @pytest.mark.skipif(
     "grouped_gemm_w8a8_fp8" not in vars(flag_gems),
-    reason="requires a registered grouped FP8 contiguous GEMM backend",
+    reason="requires a registered unpadded grouped FP8 GEMM backend",
 )
 def test_grouped_gemm_w8a8_fp8():
-    pytest.importorskip("deep_gemm")
+    pytest.importorskip("mate.gemm")
     bench = GroupedFP8Benchmark(
         op_name="grouped_gemm_w8a8_fp8",
-        torch_op=deepgemm_grouped_fp8,
+        torch_op=mate_grouped_fp8,
         gems_op=flag_gems.grouped_gemm_w8a8_fp8,
         dtypes=[torch.bfloat16],
     )
