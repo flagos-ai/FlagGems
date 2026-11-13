@@ -182,6 +182,7 @@ from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .cholesky import cholesky
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .clamp_max import clamp_max
 from .clamp_max__opt import clamp_max_
 from .clip___opt import clip_
 from .clip__opt import clip
