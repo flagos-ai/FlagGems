@@ -6,6 +6,11 @@ import torch
 
 import flag_gems
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon",
+    reason="Hygon projection tests require the Hygon backend toolchain",
+)
+
 
 @pytest.mark.addmm
 @pytest.mark.skipif(
