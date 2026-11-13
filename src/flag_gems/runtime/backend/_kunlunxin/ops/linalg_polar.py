@@ -18,19 +18,17 @@ The generic implementation calls ``flag_gems.ops.svd``, whose generic Triton
 kernel is not supported on this backend (unbound loop bounds / large register
 tiles).  The backend already ships a working one-sided Jacobi SVD pipeline in
 ``_kunlunxin/ops/linalg_svd.py`` (``_osj_pipeline``) that produces, in the raw
-``B`` buffer, the rotated columns ``A v_j`` (unnormalised) and, in the ``U``
-buffer, the normalised left singular vectors ``Up``.
-
-For a tall matrix ``A = Up diag(S) Vh`` (``m >= n``) the right polar factors are
+``B`` buffer, the rotated columns ``A v_j`` (unnormalised).  For a tall matrix
+``A = Up diag(S) Vh`` (``m >= n``) the right polar factors are
 
     U = Up Vh                     (m x n, orthonormal columns)
     H = Vh^T diag(S) Vh           (n x n, symmetric positive semidefinite)
 
-Since ``Up`` has orthonormal columns, ``Vh = diag(1/S) Up^T A``, and the column
-norms of the raw ``B`` give ``S``.  All post-processing is done in Triton
-(``tl.dot``), so no host-side linear algebra is used and no sorted singular
-values are required (polar is invariant to the singular-value ordering, unlike
-``svd``).
+With ``T = B^T A``, ``Vh = diag(1/S^2) T`` and ``Up = B diag(1/S)``, so
+``U = B diag(1/S^3) B^T A`` and ``H = U^T A``; the column norms of ``B`` are
+the singular values ``S``.  All post-processing is done in Triton so no
+host-side linear algebra is used and no sorted singular values are required
+(polar is invariant to the singular-value ordering, unlike ``svd``).
 """
 
 import logging
@@ -53,40 +51,48 @@ logger = logging.getLogger(__name__)
 _SWEEPS = 6
 
 
-# NOTE(2026-11-12): on the local sdnn-build Triton, dependent back-to-back
-# ``tl.dot`` kernels do NOT order against each other: the second dot silently
-# reads the first one's stale output (~100% in controlled loops), and neither
-# ``torch.cuda.synchronize()`` nor an unrelated torch op covers the dot
-# execution context.  The one reliable cross-kernel barrier is a *torch copy of
-# the produced data itself* (``dest.copy_(src)``), exactly the pattern the osj
-# sweeps already rely on (``BP.copy_(B)`` before the first dot kernel).
-# ``@libentry()`` makes the misordering worse, so these kernels are plain
-# ``@triton.jit``.  The chain below therefore keeps every ``tl.dot`` operand
-# either torch-copied or recomputed in-kernel, with the single dot-to-dot edge
-# (``U`` -> ``H``) bridged by a torch copy:
+# NOTE(2026-11-12): every ``tl.dot`` operand below is a plain load (or
+# ``tl.trans`` of a load) and every diagonal scaling happens in pure
+# elementwise kernels.  Two platform constraints drive this:
 #
-#     p (dot)  ->  vh (pure)  ->  u (dot, recomputes 1/S itself)
-#                ->  UB.copy_(UB2)  ->  h (dot)
+# * flagtree's ``TritonSDNNOptimizeRcLayout`` crashes (``sdnn.core_specialize``
+#   type mismatch, reported as OutOfResources) when a dot operand is produced
+#   from an in-kernel reduction (``1/S`` derived from ``tl.sum``); the RC
+#   layout it back-propagates cannot enter the reduction region.  Scaling is
+#   therefore hoisted into pure kernels that write plain buffers, and the
+#   reductions live only in kernels whose dot operands are plain loads.
+# * the local sdnn-build Triton does not order dependent back-to-back dot
+#   kernels (the second dot reads the first one's stale output) and
+#   ``@libentry()`` makes it worse, so these kernels are plain ``@triton.jit``
+#   and the single dot-to-dot edge (``U`` -> ``H``) is bridged by a torch copy
+#   of the produced tile, the only reliable cross-kernel barrier there.
+#
+# Chain (per matrix, all ``tl.dot`` operands plain loads):
+#
+#     T (dot: B^T A)  ->  Bs/Vh (pure scalings)  ->  U (dot: Bs Vh)
+#                    ->  UB.copy_(UB2)           ->  H (dot: U^T A)
 #
 # ``tl.sum`` axis reductions crash in a kernel with no ``tl.dot`` (MLIR
 # UnrollControl type error) and feeding a ``tl.dot`` result into a second
 # ``tl.dot`` hangs the device task (702/KEXCEPTION), so each dot kernel carries
-# exactly one ``tl.dot`` whose operands come from loads.  The single row-vector
-# broadcast ``b * inv[None, :]`` in a dot operand is the pattern the original
-# kernel compiled with on the CI flagtree pipeline; a *doubled* broadcast
-# multiply on a dot operand is what made flagtree's ``sdnn.core_specialize`` /
-# ``TritonSDNNOptimizeRcLayout`` fail with an ``OutOfResources`` (the previous
-# CI failure).
+# exactly one ``tl.dot``.
 
 
 @triton.jit
-def _polar_p_kernel(BP, AP, P, INV, m, n, BLOCK: tl.constexpr):
-    """``P = diag(1/S) B^T A`` and the reciprocal singular values."""
+def _polar_t_kernel(BP, AP, T, INV, m, n, ONE, BLOCK: tl.constexpr):
+    """``T = B^T A`` and the reciprocal singular values ``1/S``.
+
+    ``T`` is stored zero-padded to ``BLOCK x BLOCK`` (the ``n x n`` region is
+    masked); ``INV`` holds the full ``BLOCK`` reciprocals for the pure scaling
+    kernels below.  The dot operand is ``b * ONE`` with a *runtime scalar*
+    (``ONE`` is passed as ``1.0``): a plain ``tl.trans(b)`` operand next to the
+    ``tl.sum`` reduction miscompiles on the local sdnn-build pipeline, while an
+    operand built from the reduction result (``b * inv[None, :]``) crashes
+    flagtree's ``sdnn.core_specialize`` — the runtime scalar keeps the operand
+    dynamic but load-derived, satisfying both.
+    """
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
-    rmask = rows < m
-    cmask = cols < n
-    mask = rmask[:, None] & cmask[None, :]
 
     b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
     a = tl.load(AP + rows[:, None] * BLOCK + cols[None, :])
@@ -95,30 +101,47 @@ def _polar_p_kernel(BP, AP, P, INV, m, n, BLOCK: tl.constexpr):
     s2 = tl.sum(b * b, axis=0)
     s = tl.sqrt(s2)
     inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
-    up = b * inv[None, :]
-    p = tl.dot(tl.trans(up), a, allow_tf32=False)
-    tl.store(P + rows[:, None] * BLOCK + cols[None, :], p, mask=mask)
+
+    t = tl.dot(tl.trans(b * ONE), a, allow_tf32=False)
+    tl.store(
+        T + rows[:, None] * BLOCK + cols[None, :],
+        t,
+        mask=(rows[:, None] < n) & (cols[None, :] < n),
+    )
     tl.store(INV + rows, inv)
 
 
 @triton.jit
-def _polar_vh_kernel(P, INV, VH, m, n, BLOCK: tl.constexpr):
-    """``Vh = diag(1/S) P`` — pure elementwise scaling (no ``tl.dot``)."""
+def _polar_bs_kernel(BP, INV, BS, BLOCK: tl.constexpr):
+    """``Bs = B diag(1/S)`` — pure column scaling (no ``tl.dot``).
+
+    ``INV`` is loaded as a ``(1, BLOCK)`` tile (a plain 1D load mixed with the
+    2D ``BP`` load trips the addptr verifier on this backend).
+    """
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
-
-    p = tl.load(P + rows[:, None] * BLOCK + cols[None, :])
-    inv = tl.load(INV + cols)
-    vh = p * inv[:, None]
-    tl.store(VH + rows[:, None] * BLOCK + cols[None, :], vh)
+    b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
+    inv = tl.load(INV + cols[None, :])
+    tl.store(BS + rows[:, None] * BLOCK + cols[None, :], b * inv)
 
 
 @triton.jit
-def _polar_u_kernel(BP, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
-    """``U = B diag(1/S) Vh`` — one ``tl.dot`` on loaded tiles.
+def _polar_vh_kernel(T, INV, VH, BLOCK: tl.constexpr):
+    """``Vh = diag(1/S^2) T`` — pure row scaling (no ``tl.dot``).
 
-    ``1/S`` is recomputed from ``BP`` in-kernel so this kernel never reads the
-    ``P`` dot kernel's output (a dot-to-dot dependency that races on XPU).
+    ``INV`` is loaded as a ``(BLOCK, 1)`` tile; see ``_polar_bs_kernel``.
+    """
+    rows = tl.arange(0, BLOCK)
+    cols = tl.arange(0, BLOCK)
+    t = tl.load(T + rows[:, None] * BLOCK + cols[None, :])
+    inv = tl.load(INV + rows[:, None])
+    tl.store(VH + rows[:, None] * BLOCK + cols[None, :], t * (inv * inv))
+
+
+@triton.jit
+def _polar_u_kernel(BS, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
+    """``U = Bs Vh`` — one ``tl.dot`` on two plain loads.
+
     ``UB`` is ``U`` padded to ``BLOCK``; ``_polar_h_kernel`` consumes a torch
     copy of it.
     """
@@ -128,13 +151,9 @@ def _polar_u_kernel(BP, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
     cmask = cols < n
     mask = rmask[:, None] & cmask[None, :]
 
-    b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
-    s2 = tl.sum(b * b, axis=0)
-    s = tl.sqrt(s2)
-    inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
+    bs = tl.load(BS + rows[:, None] * BLOCK + cols[None, :])
     vh = tl.load(VH + rows[:, None] * BLOCK + cols[None, :])
-    up = b * inv[None, :]
-    u = tl.dot(up, vh, allow_tf32=False)
+    u = tl.dot(bs, vh, allow_tf32=False)
     tl.store(UOUT + rows[:, None] * n + cols[None, :], u, mask=mask)
     tl.store(UB + rows[:, None] * BLOCK + cols[None, :], u, mask=mask)
 
@@ -208,15 +227,13 @@ def _polar_osj(A, out_U=None, out_H=None):
         # read the full tile.
         BP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         AP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-        P = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-        VH = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-        # Torch copies are the only reliable cross-kernel barrier on this
-        # stack: the pure ``vh`` kernel's output is copied before the ``u``
-        # dot kernel reads it, and ``U``'s dot output is copied before the
-        # ``h`` dot kernel reads it.
-        VH2 = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        T = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         INV = torch.empty((batch, block), device=dev, dtype=A.dtype)
+        BS = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        VH = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         UB = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        # Torch copy of ``UB``: the only reliable cross-kernel barrier for the
+        # dot-to-dot edge (``U`` -> ``H``) on this stack.
         UB2 = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         if out_U is not None:
             U3 = out_U.reshape(batch, m, n)
@@ -228,31 +245,37 @@ def _polar_osj(A, out_U=None, out_H=None):
         for b in range(batch):
             BP[b, :MP, :NW].copy_(B[b].reshape(MP, NW))
             AP[b, :m, :n].copy_(A2[b])
-            _polar_p_kernel[(1,)](
+            _polar_t_kernel[(1,)](
                 BP[b],
                 AP[b],
-                P[b],
+                T[b],
                 INV[b],
                 m,
                 n,
+                1.0,
+                BLOCK=block,
+                num_warps=4,
+                num_stages=1,
+            )
+            _polar_bs_kernel[(1,)](
+                BP[b],
+                INV[b],
+                BS[b],
                 BLOCK=block,
                 num_warps=4,
                 num_stages=1,
             )
             _polar_vh_kernel[(1,)](
-                P[b],
+                T[b],
                 INV[b],
                 VH[b],
-                m,
-                n,
                 BLOCK=block,
                 num_warps=4,
                 num_stages=1,
             )
-            VH2[b].copy_(VH[b])
             _polar_u_kernel[(1,)](
-                BP[b],
-                VH2[b],
+                BS[b],
+                VH[b],
                 U3[b],
                 UB[b],
                 m,
