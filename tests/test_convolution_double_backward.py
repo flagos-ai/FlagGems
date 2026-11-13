@@ -227,6 +227,7 @@ def test_convolution_double_backward(
     atol = 2e-2 if dtype == torch.float16 else 1e-4
 
     names = ["grad_ggO", "grad_self", "grad_weight"]
+    assert isinstance(res, tuple) and len(res) == len(ref) == len(names)
     for r, ref_r, name in zip(res, ref, names):
         # A None grad-output input makes the corresponding dependency output
         # None on both sides (ggI=None -> grad_weight None; ggW=None -> grad_self
@@ -237,6 +238,9 @@ def test_convolution_double_backward(
             ), f"{name} should be None when its grad-output input is missing"
             continue
         assert r is not None, f"{name} should not be None"
+        assert r.device == x.device
+        assert r.dtype == dtype
+        assert r.shape == ref_r.shape
         utils.gems_assert_close(r, ref_r, dtype, atol=atol)
 
 
