@@ -186,6 +186,7 @@ def test_cholesky_empty_batch():
     inp = torch.empty(0, 4, 4, device=flag_gems.device)
     res_out = flag_gems.cholesky(inp)
     assert res_out.shape == inp.shape
+    assert res_out.device == inp.device and res_out.dtype == inp.dtype
     assert res_out is not inp
 
 
