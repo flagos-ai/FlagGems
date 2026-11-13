@@ -25,15 +25,27 @@ from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
 class GroupedFP8Benchmark(ParallelBenchmarkMixin, Benchmark):
+    """Accept (M, N, K, E[, expert_lengths]); M and lengths exclude padding."""
+
     RECORD_PARALLEL_RESULTS = True
     DEFAULT_SHAPES = [(45, 256, 6144, 256), (45, 6144, 128, 256)]
     DEFAULT_SHAPE_DESC = "M,N,K,E (M before per-expert padding)"
 
     def get_input_iter(self, cur_dtype: torch.dtype) -> Generator:
-        for m, n, k, experts in self.shapes:
-            lengths = [
-                m // experts + (expert < m % experts) for expert in range(experts)
-            ]
+        for shape in self.shapes:
+            if len(shape) == 5:
+                m, n, k, experts, lengths = shape
+                if len(lengths) != experts or sum(lengths) != m or any(
+                    length < 0 for length in lengths
+                ):
+                    raise ValueError(
+                        "expert row lengths must be nonnegative and match M and E"
+                    )
+            else:
+                m, n, k, experts = shape
+                lengths = [
+                    m // experts + (expert < m % experts) for expert in range(experts)
+                ]
             yield (
                 *make_grouped_fp8_case(lengths, n, k, self.device),
                 {"alignment_m": 256},
