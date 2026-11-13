@@ -235,8 +235,8 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
         mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        # Masked-out lanes must not contribute: for ord<0, pow(0, ord) is
-        # inf/nan and would poison the reduction (result collapses to 0/NaN).
+        # Masked lanes load as 0.0; for negative orders pow(0, ord) is +inf and
+        # would corrupt the reduction (issue #4600), so exclude them.
         _sum += tl.where(mask, pow(tl.abs(a), ord), 0.0)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
@@ -253,7 +253,7 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    # Same as v_norm_kernel: avoid pow(0, negative) on masked lanes.
+    # Same as `v_norm_kernel`: masked lanes must not contribute pow(0, ord).
     mid = tl.sum(tl.where(mask, pow(tl.abs(x), ord), 0.0))
     tl.store(Mid, mid)
 

@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
     is_tensor=[True, False, False], promotion_methods=[(0, 1, 2, "DEFAULT")]
 )
 @triton.jit
-def clip_func(x, mini, maxi):
+def clip_func(x, min_val, max_val):
     x_fp32 = x.to(tl.float32)
-    min_fp32 = mini.to(tl.float32)
-    max_fp32 = maxi.to(tl.float32)
+    min_fp32 = min_val.to(tl.float32)
+    max_fp32 = max_val.to(tl.float32)
     result = tl.minimum(tl.maximum(x_fp32, min_fp32), max_fp32)
     return result.to(x.dtype)
 

@@ -352,15 +352,142 @@ _index_put_func = IndexPutFunction()
 
 def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS_ENFLAME INDEX_PUT")
-    # Delegate to the in-place impl which correctly handles None/tensor
-    # interleaved indices (values natural dim order vs kernel order).
+
+    indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
+    indices = [
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
+        for index in indices
+    ]
+
+    target_shape = get_max_rank_shape(indices)
+    broadcast_indices(indices, target_shape)
+
+    tensor_dims = [i for i, idx in enumerate(indices) if idx is not None]
+    none_dims = [i for i, idx in enumerate(indices) if idx is None]
+    remaining_dims = list(range(len(indices), inp.ndim))
+
+    # Permutation that brings tensor-indexed dims to the front, as the kernel
+    # always maps tensor_indices[i] to input dim i.
+    perm = tensor_dims + none_dims + remaining_dims
+    need_permute = perm != list(range(len(perm)))
+
+    # target_shape (kernel order): [index_broadcast, none_dim_sizes, remaining_dims]
+    for d in none_dims:
+        target_shape.append(inp.shape[d])
+    for d in remaining_dims:
+        target_shape.append(inp.shape[d])
+
+    tensor_indices = [indices[d] for d in tensor_dims]
+    if not tensor_indices:
+        raise ValueError("At least one non-None index tensor is required")
+
+    tensor_indices = [
+        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
+        for idx in tensor_indices
+    ]
+
+    if values.device != inp.device:
+        values = values.to(inp.device)
+    if need_permute and values.ndim == len(perm):
+        values = values.permute(perm)
+    values = torch.broadcast_to(values, target_shape)
+
     out = inp.clone()
-    return _index_put_impl_(out, indices, values, accumulate=accumulate)
+    if need_permute:
+        _index_put_func(out.permute(perm), tensor_indices, values, accumulate)
+    else:
+        _index_put_func(out, tensor_indices, values, accumulate)
+    return out
 
 
 def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS_ENFLAME INDEX_PUT_")
-    return _index_put_impl_(inp, indices, values, accumulate=accumulate)
+
+    indices = list(indices)
+    if len(indices) == 1 and indices[0].dtype == torch.bool:
+        mask = indices[0]
+
+        if mask.device != inp.device:
+            mask = mask.to(inp.device)
+
+        indices = list(torch.where(mask))
+
+        K = indices[0].numel()
+        target_shape = (K,) + inp.shape[len(indices) :]
+
+        if values.numel() == 1:
+            values = torch.full(
+                target_shape, values.item(), dtype=inp.dtype, device=inp.device
+            )
+        elif values.numel() == K:
+            values = values.reshape((K,)).expand(target_shape)
+
+    indices = [
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
+        for index in indices
+    ]
+
+    target_shape = get_max_rank_shape(indices)
+    broadcast_indices(indices, target_shape)
+
+    tensor_dims = [i for i, idx in enumerate(indices) if idx is not None]
+    none_dims = [i for i, idx in enumerate(indices) if idx is None]
+    remaining_dims = list(range(len(indices), inp.ndim))
+
+    perm = tensor_dims + none_dims + remaining_dims
+    need_permute = perm != list(range(len(perm)))
+
+    for d in none_dims:
+        target_shape.append(inp.shape[d])
+    for d in remaining_dims:
+        target_shape.append(inp.shape[d])
+
+    tensor_indices = [indices[d] for d in tensor_dims]
+    if not tensor_indices:
+        raise ValueError("At least one non-None index tensor is required")
+
+    tensor_indices = [
+        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
+        for idx in tensor_indices
+    ]
+
+    if values.device != inp.device:
+        values = values.to(inp.device)
+    if need_permute and values.ndim == len(perm):
+        values = values.permute(perm)
+    values = torch.broadcast_to(values, target_shape)
+
+    if need_permute:
+        _index_put_func(inp.permute(perm), tensor_indices, values, accumulate)
+    else:
+        _index_put_func(inp, tensor_indices, values, accumulate)
+    return inp
 
 
 def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
