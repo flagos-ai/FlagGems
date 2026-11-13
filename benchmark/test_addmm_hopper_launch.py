@@ -14,9 +14,10 @@
 
 """Public addmm_out: fixed IEEE arithmetic and pre-execution selection guards."""
 
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 
 from .test_addmm import AddmmVectorBiasBenchmark, _input_fn_vector_bias_out
 

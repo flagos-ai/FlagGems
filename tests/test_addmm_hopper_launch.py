@@ -14,9 +14,10 @@
 
 """Public addmm_out: fixed IEEE arithmetic and pre-execution selection guards."""
 
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 
 pytestmark = pytest.mark.addmm
 
