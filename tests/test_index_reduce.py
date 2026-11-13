@@ -163,6 +163,7 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
     source = _make_values(source_shape, dtype)
     index = _make_index(source_shape[dim], shape[dim], index_dtype)
 
+    snapshot = inp.clone()
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
     ref_index = utils.to_reference(index)
@@ -174,8 +175,12 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
         inp, dim, index, source, reduce, include_self=include_self
     )
 
+    assert res_out is not inp
+    assert res_out.device == inp.device
+    assert res_out.shape == inp.shape
+    assert res_out.dtype == dtype
     utils.gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=source_shape[dim])
-    utils.gems_assert_close(inp, ref_inp, dtype=dtype)
+    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
 
 
 @pytest.mark.index_reduce
@@ -186,6 +191,7 @@ def test_index_reduce_noncontiguous_out_of_place(reduce):
     source = torch.randn((8, 4), dtype=dtype, device=flag_gems.device).t()
     index = torch.tensor([0, 2, 1, 0, 3, 1, 2, 0], device=flag_gems.device)
 
+    snapshot = inp.clone()
     ref_inp = utils.to_reference(inp)
     ref_out = torch.index_reduce(
         ref_inp,
@@ -198,8 +204,12 @@ def test_index_reduce_noncontiguous_out_of_place(reduce):
     result = flag_gems.index_reduce(inp, 1, index, source, reduce, include_self=False)
 
     assert result.is_contiguous()
+    assert result is not inp
+    assert result.device == inp.device
+    assert result.shape == inp.shape
+    assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype=dtype, reduce_dim=source.size(1))
-    utils.gems_assert_close(inp, ref_inp, dtype=dtype)
+    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
 
 
 @pytest.mark.index_reduce_out
