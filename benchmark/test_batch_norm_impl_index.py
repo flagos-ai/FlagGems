@@ -17,24 +17,45 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
+def _case_fn(shape, dtype):
+    del dtype
+    channels = shape[1]
+    yield base.BenchmarkCasePlan(
+        shape={
+            "input": shape,
+            "weight": (channels,),
+            "bias": (channels,),
+            "running_mean": (channels,),
+            "running_var": (channels,),
+        },
+        params={"training": True, "momentum": 0.1, "eps": 1e-5, "cudnn_enabled": True},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs(plan, dtype, device):
+    (shape,) = plan.builder_args
+    channels = shape[1]
+    return (
+        torch.randn(shape, dtype=dtype, device=device),
+        torch.randn(channels, dtype=dtype, device=device),
+        torch.randn(channels, dtype=dtype, device=device),
+        torch.zeros(channels, dtype=dtype, device=device),
+        torch.ones(channels, dtype=dtype, device=device),
+        plan.params["training"],
+        plan.params["momentum"],
+        plan.params["eps"],
+        plan.params["cudnn_enabled"],
+    )
+
+
 @pytest.mark.batch_norm_impl_index
 def test__batch_norm_impl_index():
-    def batch_norm_impl_index_input_fn(shape, dtype, device):
-        C = shape[1]
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        weight = torch.randn(C, dtype=dtype, device=device)
-        bias = torch.randn(C, dtype=dtype, device=device)
-        running_mean = torch.zeros(C, dtype=dtype, device=device)
-        running_var = torch.ones(C, dtype=dtype, device=device)
-        yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5, True
-
     bench = NormBenchmark(
-        input_fn=batch_norm_impl_index_input_fn,
-        op_name="batch_norm_impl_index",
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs,
+        op_name="_batch_norm_impl_index",
         torch_op=torch._batch_norm_impl_index,
         dtypes=consts.FLOAT_DTYPES,
     )
-    from flag_gems.ops._batch_norm_impl_index import batch_norm_impl_index as gems_bn
-
-    bench.set_gems(gems_bn)
     bench.run()

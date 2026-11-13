@@ -33,13 +33,35 @@ class SobolDrawBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = SOBOL_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for n, dimension in self.shapes:
-            eng = SobolEngine(dimension=dimension, scramble=False)
-            quasi = eng.quasi.to(device=self.device)
-            sobolstate = eng.sobolstate.to(device=self.device)
-            num_generated = 0
-            yield (quasi, n, sobolstate, dimension, num_generated)
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, (n, dimension) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "quasi": (dimension,),
+                        "sobolstate": (dimension, SobolEngine.MAXBIT),
+                    },
+                    params={"n": n, "dimension": dimension, "num_generated": 0},
+                    builder_args=(n, dimension),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        n, dimension = plan.builder_args
+        engine = SobolEngine(dimension=dimension, scramble=False)
+        return (
+            engine.quasi.to(device=self.device),
+            n,
+            engine.sobolstate.to(device=self.device),
+            dimension,
+            plan.params["num_generated"],
+        )
 
 
 @pytest.mark.underscore_sobol_engine_draw

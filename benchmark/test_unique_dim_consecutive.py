@@ -15,23 +15,30 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 
 
-def input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, {"dim": 0, "return_inverse": True, "return_counts": False}
+def case_fn(shape, dtype):
+    del dtype
+    yield base.BenchmarkCasePlan(
+        shape=shape,
+        params={"dim": 0, "return_inverse": True, "return_counts": False},
+        builder_args=(shape,),
+    )
+
+
+def build_inputs(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return utils.generate_tensor_input(shape, dtype, device), dict(plan.params)
 
 
 @pytest.mark.unique_dim_consecutive
 def test_unique_dim_consecutive():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=input_fn,
+        case_fn=case_fn,
+        build_inputs_fn=build_inputs,
         op_name="unique_dim_consecutive",
         torch_op=torch.ops.aten.unique_dim_consecutive.default,
-        gems_op=flag_gems.unique_dim_consecutive,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
