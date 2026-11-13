@@ -102,3 +102,17 @@ def test_perf_adaptive_avg_pool3d_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+# Measured against the public ``aten::adaptive_avg_pool3d.out`` overload, which
+# is a separate dispatch entry from the underscore one benchmarked above.
+@pytest.mark.adaptive_avg_pool3d_out
+@pytest.mark.underscore_adaptive_avg_pool3d_out
+def test_perf_adaptive_avg_pool3d_public_out_overload():
+    bench = AdaptiveAvgPool3dOutBenchmark(
+        input_fn=adaptive_avg_pool3d_out_input_fn,
+        op_name="adaptive_avg_pool3d_out",
+        torch_op=torch.ops.aten.adaptive_avg_pool3d.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

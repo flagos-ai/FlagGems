@@ -15,10 +15,7 @@
 import pytest
 import torch
 
-from flag_gems.ops._upsample_nearest_exact1d_backward import (
-    _upsample_nearest_exact1d_backward,
-    _upsample_nearest_exact1d_backward_grad_input,
-)
+import flag_gems
 
 from . import base, consts
 
@@ -64,7 +61,7 @@ def test_upsample_nearest_exact1d_backward():
     bench = UpsampleNearestExact1dBackwardBenchmark(
         op_name="upsample_nearest_exact1d_backward",
         torch_op=torch.ops.aten._upsample_nearest_exact1d_backward.default,
-        gems_op=_upsample_nearest_exact1d_backward,
+        gems_op=flag_gems._upsample_nearest_exact1d_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -75,7 +72,7 @@ def test_upsample_nearest_exact1d_backward_grad_input():
     bench = UpsampleNearestExact1dBackwardOutBenchmark(
         op_name="upsample_nearest_exact1d_backward_grad_input",
         torch_op=torch.ops.aten._upsample_nearest_exact1d_backward.grad_input,
-        gems_op=_upsample_nearest_exact1d_backward_grad_input,
+        gems_op=flag_gems._upsample_nearest_exact1d_backward_grad_input,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

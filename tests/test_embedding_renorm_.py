@@ -16,7 +16,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
@@ -57,7 +56,7 @@ def test_embedding_renorm_(shape, dtype, norm_type, max_norm):
     ref_out = torch.ops.aten.embedding_renorm_(
         ref_inp, ref_indices, max_norm, norm_type
     )
-    res_out = embedding_renorm_(inp, indices, max_norm, norm_type)
+    res_out = flag_gems.embedding_renorm_(inp, indices, max_norm, norm_type)
 
     # embedding_renorm_ is in-place: validate both the returned handle and the
     # mutated input tensor against the reference.
