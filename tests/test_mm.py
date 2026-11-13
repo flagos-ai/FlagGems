@@ -245,3 +245,64 @@ def test_mm_out_self_transpose(M, K, dtype):
     flag_gems.mm_out(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
+
+
+# Public mm and mm_out accuracy regressions on Ascend.
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend mm accuracy regression"
+)
+@pytest.mark.parametrize(
+    "M, N, K",
+    [
+        (4080, 8224, 32),
+        (4096, 8192, 33),
+        (4352, 10240, 64),
+        (4096, 4096, 65),
+    ],
+)
+def test_mm_ascend_large_shapes(M, N, K):
+    """Check public mm on large outputs with short reductions."""
+    torch.manual_seed(0)
+    a = torch.randn((M, K), dtype=torch.float16, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device)
+    ref = torch.mm(utils.to_reference(a).float(), utils.to_reference(b).float())
+    out = flag_gems.mm(a, b)
+    utils.gems_assert_close(out, ref, a.dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend mm accuracy regression"
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("K", [0, 33, 64, 71, 129])
+def test_mm_ascend_transposed_inputs_and_k_tails(dtype, K):
+    """Cover transposed inputs, irregular dimensions and an empty reduction."""
+    torch.manual_seed(0)
+    M, N = 145, 97
+    a = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    b = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    ref = torch.mm(utils.to_reference(a).float(), utils.to_reference(b).float())
+    out = flag_gems.mm(a, b)
+    utils.gems_assert_close(out, ref, dtype, reduce_dim=max(K, 1))
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend mm accuracy regression"
+)
+@pytest.mark.parametrize("use_out", [False, True])
+def test_mm_ascend_large_shape_entrypoints(use_out):
+    """Check public mm and mm_out with a large output and transposed weight."""
+    torch.manual_seed(0)
+    M, N, K = 4352, 10240, 33
+    a = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
+    b = torch.randn((N, K), dtype=torch.bfloat16, device=flag_gems.device).t()
+    ref = torch.mm(utils.to_reference(a).float(), utils.to_reference(b).float())
+    if use_out:
+        out = torch.empty((M, N), dtype=a.dtype, device=a.device)
+        assert flag_gems.mm_out(a, b, out=out) is out
+    else:
+        out = flag_gems.mm(a, b)
+    utils.gems_assert_close(out, ref, a.dtype, reduce_dim=K)
