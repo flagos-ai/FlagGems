@@ -3175,10 +3175,12 @@ class _AscSortRuntime:
             [
                 sys.executable,
                 "-c",
-                "import sys; from tbe.common import platform as p; "
+                "import sys; sys.path.insert(0, sys.argv[2]); "
+                "from tbe.common import platform as p; "
                 "p.set_current_compile_soc_info(sys.argv[1]); "
                 "print('ARGSORT_UB=' + str(p.get_soc_spec('UB_SIZE')))",
                 device_name,
+                str(home / "python/site-packages"),
             ],
             capture_output=True,
             text=True,
@@ -3285,7 +3287,7 @@ def _asc_sort_get_runtime(device):
         return _ASC_SORT_RUNTIMES[key]
 
 
-def _argsort_asc_runtime(inp, descending):
+def _argsort_asc_runtime(inp, descending, *, return_proposals=False):
     n = inp.shape[-1]
     rows = inp.numel() // n
     with torch_device_fn.device(inp.device):
@@ -3302,7 +3304,11 @@ def _argsort_asc_runtime(inp, descending):
             stages.append((run, tasks, 4 * run >= n))
             run *= 4
         blocks = [min(runtime.aiv, tasks) for _, tasks, _ in stages]
-        out = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
+        out = (
+            torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
+            if not return_proposals
+            else None
+        )
         current = torch.empty(
             (2 * inp.numel() + 8,), dtype=torch.float32, device=inp.device
         )
@@ -3316,8 +3322,10 @@ def _argsort_asc_runtime(inp, descending):
         stream_object = torch.npu.current_stream()
         stream = runtime.driver.get_current_stream(inp.device.index)
         _asc_sort_require(isinstance(stream, int), "unexpected NPU stream handle")
-        for tensor in (inp, out, current, scratch, *status):
+        for tensor in (inp, current, scratch, *status):
             tensor.record_stream(stream_object)
+        if out is not None:
+            out.record_stream(stream_object)
         name = (
             "v202_fp32_initial_a"
             if inp.dtype == torch.float32
@@ -3334,18 +3342,18 @@ def _argsort_asc_runtime(inp, descending):
                 stream,
                 (
                     current,
-                    out if final else scratch,
+                    out if final and not return_proposals else scratch,
                     status[i],
                     rows,
                     n,
                     run,
                     blocks[i],
-                    int(final),
+                    int(final and not return_proposals),
                 ),
             )
-            if not final:
+            if not final or return_proposals:
                 current, scratch = scratch, current
-        return out
+        return current if return_proposals else out
 
 
 # Bound logical row batches for the legacy Ascend launch ABI.

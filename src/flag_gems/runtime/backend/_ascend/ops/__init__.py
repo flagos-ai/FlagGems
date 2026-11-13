@@ -264,7 +264,7 @@ from .smm import smm
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .softplus_backward import softplus_backward
 from .softshrink_backward import softshrink_backward
-from .sort import sort
+from .sort import sort, sort_stable
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfc import special_erfc
 from .special_erfinv import special_erfinv
@@ -624,6 +624,7 @@ __all__ = [
     "softplus_backward",
     "softshrink_backward",
     "sort",
+    "sort_stable",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_erfc",

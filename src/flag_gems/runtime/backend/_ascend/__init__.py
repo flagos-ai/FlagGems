@@ -45,8 +45,6 @@ CUSTOMIZED_UNUSED_OPS = (
     "contiguous",
     "copy_",
     "_to_copy",
-    "sort",
-    "sort_stable",
     "topk",
     "cat",  # TODO: Err occurred when running Qwen3.6 vLLM with flagtree ascend3.5
     "exponential_",  # TODO: Err occurred when running Qwen3.6 vLLM with flagtree ascend3.5
