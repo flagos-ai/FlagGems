@@ -18,14 +18,35 @@ import torch
 from . import base, consts
 
 
+class SpecialMultigammalnBenchmark(base.UnaryPointwiseBenchmark):
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"self": list(shape)},
+                    params={"p": 5},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        p = plan.params["p"]
+        torch.manual_seed(0)
+        inp = torch.rand(shape, dtype=case.dtype, device=self.device) + (p - 1) / 2 + 1.0
+        return inp, p
+
+
 @pytest.mark.special_multigammaln
 def test_special_multigammaln():
-    bench = base.UnaryPointwiseBenchmark(
+    SpecialMultigammalnBenchmark(
         op_name="special_multigammaln",
-        torch_op=lambda a: torch.special.multigammaln(a, 5),
+        torch_op=torch.ops.aten.special_multigammaln,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()
 
 
 @pytest.mark.mvlgamma_
