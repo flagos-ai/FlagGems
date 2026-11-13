@@ -123,9 +123,7 @@ def _geqrf_factor_column_kernel(
     colc = tl.where(rmask, colc, 0.0)
     for r in range(j0, c):
         tau_r = tl.load(tau_ptr + b * k + r)
-        ref = tl.load(
-            w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0
-        )
+        ref = tl.load(w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0)
         ref = tl.where((rows > r) & rmask, ref, 0.0)
         v = tl.where(rows == r, 1.0, ref)
         dot = tl.sum(v * colc)
@@ -173,9 +171,7 @@ def _geqrf_panel_apply_kernel(
     colc = tl.where(rmask, colc, 0.0)
     for r in range(j0, jend):
         tau_r = tl.load(tau_ptr + b * k + r)
-        ref = tl.load(
-            w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0
-        )
+        ref = tl.load(w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0)
         ref = tl.where((rows > r) & rmask, ref, 0.0)
         v = tl.where(rows == r, 1.0, ref)
         dot = tl.sum(v * colc)
