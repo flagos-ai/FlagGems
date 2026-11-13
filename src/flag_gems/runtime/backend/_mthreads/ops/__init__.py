@@ -34,6 +34,7 @@ from ._masked_scale import _masked_scale
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
+from ._weight_norm import _weight_norm
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmv_ import addmv_
@@ -228,6 +229,7 @@ __all__ = [
     "_unique2",
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact2d_backward",
+    "_weight_norm",
     "adaptive_max_pool3d_backward",
     "addmv_",
     "all",
