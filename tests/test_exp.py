@@ -59,3 +59,36 @@ def test_exp_out(shape, dtype):
     flag_gems.exp_out(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.exp
+def test_exp_float64_precision():
+    # FP64 must not be downcast to FP32 during computation.
+    ref_inp = torch.tensor(
+        [0.3, 90.0, 700.0],
+        dtype=torch.float64,
+    )
+    inp = ref_inp.to(flag_gems.device)
+
+    expected = torch.exp(ref_inp)
+
+    with flag_gems.use_gems():
+        actual = torch.exp(inp)
+
+    assert actual.dtype == torch.float64
+    torch.testing.assert_close(
+        actual.cpu(), expected, rtol=1e-12, atol=1e-12
+    )
+
+
+@pytest.mark.exp
+def test_exp_float64_gradcheck():
+    inp = torch.tensor(
+        [[0.1, 0.3, 0.7], [1.0, 2.0, 10.0]],
+        dtype=torch.float64,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+
+    with flag_gems.use_gems():
+        assert torch.autograd.gradcheck(torch.exp, (inp,))
