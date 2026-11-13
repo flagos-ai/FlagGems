@@ -4,6 +4,10 @@ import torch
 from . import base, consts, utils
 
 
+class IsrealBenchmark(base.GenericBenchmark, base.UnaryPointwiseBenchmark):
+    set_more_shapes = base.UnaryPointwiseBenchmark.set_more_shapes
+
+
 def _case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
@@ -18,7 +22,7 @@ def _build_inputs_fn(plan, dtype, device):
         float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
         real = torch.randn(shape, dtype=float_dtype, device=device)
         imag = torch.randn(shape, dtype=float_dtype, device=device)
-        imag.reshape(-1)[::2] = 0
+        imag[::2] = 0
         return (torch.complex(real, imag).to(dtype),)
     if dtype.is_floating_point:
         return (torch.randn(shape, dtype=dtype, device=device),)
@@ -27,7 +31,7 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.isreal
 def test_isreal():
-    bench = base.GenericBenchmark(
+    bench = IsrealBenchmark(
         op_name="isreal",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
