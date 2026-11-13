@@ -89,3 +89,23 @@ def test_any_dim(shape, dtype, keepdim, dim, kind):
     res_out = flag_gems.any_dim(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.any
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bool])
+def test_any_non_contiguous_view(dtype):
+    """`any` must reduce the view's own elements, not flat storage (Issue #6961).
+
+    The view is all zeros while the flat storage walk still crosses a nonzero,
+    so the buggy flat kernel answers True.
+    """
+    base = torch.zeros(2, 64, dtype=dtype, device=flag_gems.device)
+    base[1, 0] = 1
+    view = base[:, -1]
+    assert not view.is_contiguous()
+
+    ref_view = utils.to_reference(base)[:, -1]
+    res_out = flag_gems.any(view)
+    ref_out = torch.any(ref_view)
+
+    utils.gems_assert_equal(res_out, ref_out)
