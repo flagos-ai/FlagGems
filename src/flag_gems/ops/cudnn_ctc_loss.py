@@ -570,6 +570,15 @@ def _cudnn_ctc_loss_impl(
         raise RuntimeError("blank must be label 0 for cudnn_ctc_loss")
 
     T, batch_size, num_classes = log_probs.shape
+    # cuDNN rejects these with `CUDNN_STATUS_BAD_PARAM`. The Triton path has to
+    # reject them up front instead: `log_alpha` is `(N, T, BLOCK_S)`, so with
+    # `T == 0` every batch entry addresses offset 0 of an empty buffer and the
+    # forward kernel's store is an illegal access that poisons the whole CUDA
+    # context, not just this call.
+    if T == 0:
+        raise RuntimeError("Expected log_probs to have a positive time dimension")
+    if batch_size == 0:
+        raise RuntimeError("Expected log_probs to have a positive batch dimension")
     work_log_probs = log_probs.contiguous()
     # cuDNN requires the targets to live on the CPU, but the Triton kernels
     # run on the device. Targets and lengths are packed into a single host

@@ -175,13 +175,20 @@ def test_cudnn_ctc_loss_varying_lengths(input_lengths, target_lengths):
 
 @pytest.mark.cudnn_ctc_loss
 def test_cudnn_ctc_loss_empty_target():
-    """An empty label sequence matches cuDNN on both loss and gradient.
+    """An empty label sequence matches cuDNN on loss and on the non-blank gradient.
 
-    Compared against cuDNN itself rather than a re-derived formula: cuDNN
-    reports a zero loss for the empty label sequence and seeds the gradient
-    with `exp(log_probs)` (nothing accumulates posterior mass into state 0, so
-    the seed survives the backward pass). Only the valid time steps are
-    compared, since cuDNN leaves the padded rows uninitialized.
+    cuDNN reports a zero loss for the empty label sequence and seeds the
+    gradient with `exp(log_probs)`, which is what the kernel returns. One
+    column does not match: cuDNN subtracts `prod_t exp(log_probs[t, blank])`
+    from the blank entry, so its gradient is not `exp(log_probs)` there and its
+    rows do not sum to zero. That is not a usable gradient -- nothing
+    accumulates posterior mass into state 0 -- so it is pinned as a known
+    difference rather than reproduced. The gap shrinks with `input_lengths`,
+    which is why the earlier form of this test compared whole rows and only
+    passed at `input_lengths=[5, ...]`.
+
+    Only the valid time steps are compared, since cuDNN leaves the padded rows
+    uninitialized.
     """
     if TO_CPU:
         pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
@@ -192,7 +199,9 @@ def test_cudnn_ctc_loss_empty_target():
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = torch.log_softmax(raw, dim=-1)
     targets = torch.tensor([3], dtype=torch.int32)
-    input_lengths = [5, 8]
+    # Short enough that the blank-column difference is far above the tolerance,
+    # so the split assertion below is actually exercised.
+    input_lengths = [2, 8]
     target_lengths = [0, 1]
 
     res_loss, res_grad = flag_gems.cudnn_ctc_loss(
@@ -213,11 +222,27 @@ def test_cudnn_ctc_loss_empty_target():
 
     utils.gems_assert_close(res_loss, ref_loss, torch.float32)
     valid = input_lengths[0]
-    utils.gems_assert_close(res_grad[:valid, 0], ref_grad[:valid, 0], torch.float32)
-    # The empty-label gradient really is the `exp(log_probs)` seed, not zeros.
+    # The empty-label gradient is the `exp(log_probs)` seed verbatim, not zeros.
     utils.gems_assert_close(
         res_grad[:valid, 0], log_probs[:valid, 0].exp(), torch.float32
     )
+    # ...and it agrees with cuDNN on every column but the blank one.
+    utils.gems_assert_close(
+        res_grad[:valid, 0, 1:], ref_grad[:valid, 0, 1:], torch.float32
+    )
+    # Blank column: cuDNN subtracts the all-blank path probability.
+    blank_path = log_probs[:valid, 0, 0].exp().prod()
+    utils.gems_assert_close(
+        ref_grad[:valid, 0, 0],
+        log_probs[:valid, 0, 0].exp() - blank_path,
+        torch.float32,
+    )
+    # The two implementations differ here, and by more than the tolerance --
+    # this pins the split so the assertion above cannot silently start passing
+    # because the difference shrank.
+    assert (
+        res_grad[:valid, 0, 0] - ref_grad[:valid, 0, 0]
+    ).abs().max() > 1e-6, "blank column now matches cuDNN; collapse the split"
 
 
 @pytest.mark.cudnn_ctc_loss
@@ -423,6 +448,8 @@ def test_cudnn_ctc_loss_dispatch_overloads(monkeypatch):
 
     device = flag_gems.device
     torch.manual_seed(0)
+    # One (T, N, C, S) shape is enough: this test is about which overload the
+    # dispatcher routes to, not about size coverage.
     shape = (16, 4, 16, 5)
     log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
     inp_len = torch.tensor(input_lengths, dtype=torch.int32, device=device)
@@ -467,6 +494,8 @@ def test_cudnn_ctc_loss_out_reuses_registered_default(monkeypatch):
 
     device = flag_gems.device
     torch.manual_seed(0)
+    # One (T, N, C, S) shape is enough: the assertion is about `.out` reusing
+    # the registered `.default`, not about size coverage.
     shape = (16, 4, 16, 5)
     log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
     ref_loss, ref_grad = flag_gems.cudnn_ctc_loss(
@@ -674,3 +703,42 @@ def test_cudnn_ctc_loss_empty_input():
 
     assert torch.isinf(res_loss[0])
     assert res_grad[:, 0].count_nonzero().item() == 0
+
+
+@pytest.mark.cudnn_ctc_loss
+@pytest.mark.parametrize("empty_axis", ["time", "batch"])
+def test_cudnn_ctc_loss_empty_axis_rejected(empty_axis):
+    """Degenerate `log_probs` must raise instead of corrupting the context.
+
+    cuDNN rejects both with `CUDNN_STATUS_BAD_PARAM` and leaves the device
+    usable. The Triton path cannot match that by accident: `log_alpha` is
+    `(N, T, BLOCK_S)`, so a zero `T` sends every batch entry to offset 0 of an
+    empty buffer and the forward kernel's store faults, which poisons the whole
+    CUDA context rather than failing one call. Checking the error type is
+    enough here -- the point is that the raise happens before any kernel is
+    launched, so the assertion after it proves the context survived.
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    # Both degenerate axes, with the other dimension kept non-empty so the
+    # rejection is attributable to the axis under test.
+    shape = (0, 2, 6) if empty_axis == "time" else (8, 0, 6)
+    log_probs = torch.empty(*shape, dtype=torch.float32, device=device)
+    lengths = [0, 0] if empty_axis == "time" else []
+
+    with pytest.raises(RuntimeError, match="positive"):
+        flag_gems.cudnn_ctc_loss(
+            log_probs,
+            torch.empty(0, dtype=torch.int32),
+            lengths,
+            lengths,
+            0,
+            True,
+            False,
+        )
+
+    # No kernel ran, so the device is still usable.
+    assert torch.zeros(4, device=device).sum().item() == 0
