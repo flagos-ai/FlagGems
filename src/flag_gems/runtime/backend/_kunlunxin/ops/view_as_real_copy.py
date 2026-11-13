@@ -112,7 +112,11 @@ def view_as_real_copy(self: torch.Tensor) -> torch.Tensor:
     if n_complex == 0:
         return out
 
-    src_real = torch.view_as_real(self)
+    # The trailing size-1 axis makes the last dimension contiguous, so the
+    # complex tensor can be reinterpreted as its real pairs without a copy.
+    src_real = self.as_strided(
+        tuple(self.shape) + (1,), tuple(self.stride()) + (1,)
+    ).view(real_dtype)
     n_real = 2 * n_complex
     contiguous = src_real.is_contiguous()
     if not contiguous and self.dim() > _MAX_LEAD_RANK:
