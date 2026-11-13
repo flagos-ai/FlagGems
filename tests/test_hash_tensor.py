@@ -20,10 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _assert_hash_result(res_out, ref_out):
-    assert res_out.dtype == torch.uint64
+def _reference_hash(inp, dim, *, keepdim, mode):
+    result = torch.ops.aten.hash_tensor(inp, dim, keepdim=keepdim, mode=mode)
+    if flag_gems.vendor_name == "iluvatar" and result.dtype == torch.uint32:
+        pytest.skip("Iluvatar ATen hash_tensor returns uint32; this test requires uint64")
+    return result
+
+
+def _assert_hash_result(res_out, ref_out, device):
+    assert res_out.device == device
+    assert res_out.dtype == ref_out.dtype == torch.uint64
     assert res_out.shape == ref_out.shape
-    utils.gems_assert_equal(res_out, ref_out)
+    # The signed view compares the same 64 bits on runtimes without uint64 eq.
+    if res_out.device != ref_out.device:
+        res_out = res_out.to(ref_out.device)
+    utils.gems_assert_equal(res_out.view(torch.int64), ref_out.view(torch.int64))
 
 
 @pytest.mark.hash_tensor
@@ -38,10 +49,10 @@ def test_hash_tensor(shape, dtype, dim, keepdim):
     ref_inp = utils.to_reference(inp, False)
     dim_arg = [] if dim is None else [dim]
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=keepdim, mode=0)
+    ref_out = _reference_hash(ref_inp, dim_arg, keepdim=keepdim, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=keepdim, mode=0)
 
-    _assert_hash_result(res_out, ref_out)
+    _assert_hash_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -59,10 +70,10 @@ def test_hash_tensor_integer_and_bool(shape, dtype, dim):
     ref_inp = utils.to_reference(inp, False)
     dim_arg = [] if dim is None else [dim]
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=False, mode=0)
+    ref_out = _reference_hash(ref_inp, dim_arg, keepdim=False, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=False, mode=0)
 
-    _assert_hash_result(res_out, ref_out)
+    _assert_hash_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -80,10 +91,10 @@ def test_hash_tensor_multiple_dims(shape, dim, keepdim):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim, keepdim=keepdim, mode=0)
+    ref_out = _reference_hash(ref_inp, dim, keepdim=keepdim, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim, keepdim=keepdim, mode=0)
 
-    _assert_hash_result(res_out, ref_out)
+    _assert_hash_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -94,10 +105,21 @@ def test_hash_tensor_noncontiguous(dim):
     assert not inp.is_contiguous()
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, dim, keepdim=True, mode=0)
+    ref_out = _reference_hash(ref_inp, dim, keepdim=True, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim, keepdim=True, mode=0)
 
-    _assert_hash_result(res_out, ref_out)
+    _assert_hash_result(res_out, ref_out, inp.device)
+
+
+@pytest.mark.hash_tensor
+def test_hash_tensor_scalar():
+    inp = torch.tensor(42, dtype=torch.int64, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = _reference_hash(ref_inp, [], keepdim=False, mode=0)
+    res_out = flag_gems.hash_tensor(inp, [], keepdim=False, mode=0)
+
+    _assert_hash_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -105,9 +127,9 @@ def test_hash_tensor_scalar_and_no_grad():
     inp = torch.tensor(42.0, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.ops.aten.hash_tensor(ref_inp, [], keepdim=False, mode=0)
+    ref_out = _reference_hash(ref_inp, [], keepdim=False, mode=0)
     res_out = flag_gems.hash_tensor(inp, [], keepdim=False, mode=0)
 
-    _assert_hash_result(res_out, ref_out)
+    _assert_hash_result(res_out, ref_out, inp.device)
     assert res_out.shape == torch.Size([])
     assert not res_out.requires_grad
