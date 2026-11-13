@@ -112,13 +112,7 @@ elif arch_version == 400 or arch_version == 410:
         invoke_fused_moe_triton_kernel,
         outplace_fused_experts,
     )
-    from .gcu400.geglu import dgeglu, geglu
     from .gcu400.gelu_and_mul import gelu_and_mul
-    from .gcu400.grouped_topk import (
-        group_idx_and_topk_triton,
-        grouped_topk,
-        topk_with_k2_triton,
-    )
     from .gcu400.indexer_k_quant_and_cache import indexer_k_quant_and_cache
     from .gcu400.matmuladd import matmuladd
     from .gcu400.moe_align_block_size import (  # noqa: F401
@@ -128,9 +122,7 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.moe_sum import moe_sum  # noqa: F401
     from .gcu400.mrope import mrope  # noqa: F401
     from .gcu400.outer import outer
-    from .gcu400.post_layer_norm_residual import post_layer_norm_residual
     from .gcu400.reglu import dreglu, reglu
-    from .gcu400.reshape_and_cache import reshape_and_cache
     from .gcu400.reshape_and_cache_flash import reshape_and_cache_flash
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
     from .gcu400.silu_and_mul import silu_and_mul, silu_and_mul_out
@@ -144,7 +136,6 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.stage_deepseek_v4_mega_moe_inputs import (
         stage_deepseek_v4_mega_moe_inputs,
     )
-    from .gcu400.swiglu import dswiglu, swiglu
     from .gcu400.top_k_per_row_prefill import (
         non_tle_top_k_per_row_prefill,
         tle_top_k_per_row_prefill,
@@ -205,24 +196,15 @@ elif arch_version == 400 or arch_version == 410:
         "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
         "fused_indexer_q_rope_quant",
         "fused_inv_rope_fp8_quant",
-        "geglu",
-        "dgeglu",
-        "topk_with_k2_triton",
-        "group_idx_and_topk_triton",
-        "grouped_topk",
         "indexer_k_quant_and_cache",
         "matmuladd",
-        "post_layer_norm_residual",
         "reglu",
         "dreglu",
         "stage_deepseek_v4_mega_moe_inputs",
-        "swiglu",
-        "dswiglu",
         "tle_top_k_per_row_prefill",
         "non_tle_top_k_per_row_prefill",
         "top_k_per_row_prefill",
         "chunk_gated_delta_rule",
-        "reshape_and_cache",
         "reshape_and_cache_flash",
     ]
 
