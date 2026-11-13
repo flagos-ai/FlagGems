@@ -238,6 +238,59 @@ def test_grouped_topk_non_power_of_2_topk(topk, renormalize, scoring_func):
 
 @pytest.mark.grouped_topk
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.parametrize("topk", [10, 12, 14, 22])
+@pytest.mark.parametrize("renormalize", [True, False])
+@pytest.mark.parametrize("scoring_func", [0, 1])
+def test_grouped_topk_non_power_of_2_topk_torch_reference(
+    topk, renormalize, scoring_func
+):
+    """Dependency-free regression for the topk values Nemotron-H actually uses.
+
+    The vLLM-reference case above also covers non-power-of-2 topk, but vLLM's
+    CUDA extension is optional and absent on non-NVIDIA backends (such as the
+    PPU target this fix was validated on). This case compares against plain
+    torch so the padded block dimension is exercised on every backend.
+    """
+
+    dtype = torch.float32
+    n_expert = 128
+    n_group, topk_group = 1, 1
+    routed_scaling_factor = 2.0
+    # Strictly increasing values: no ties, so the expected ids are unambiguous.
+    scores = torch.linspace(
+        -2, 2, n_expert, dtype=dtype, device=flag_gems.device
+    ).reshape(1, -1)
+    bias = torch.zeros(n_expert, dtype=dtype, device=flag_gems.device)
+
+    weights, ids = flag_gems.grouped_topk(
+        scores,
+        n_group,
+        topk_group,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        bias,
+        scoring_func,
+    )
+
+    processed = torch.sigmoid(scores.float()) if scoring_func else scores
+    expected_ids = processed.argsort(dim=-1, descending=True, stable=True)[:, :topk]
+    expected_weights = processed.gather(1, expected_ids)
+    if renormalize:
+        expected_weights = expected_weights / (
+            expected_weights.sum(-1, keepdim=True) + 1e-20
+        )
+
+    torch.testing.assert_close(ids, expected_ids.to(torch.int32))
+    atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
+    torch.testing.assert_close(
+        weights, expected_weights * routed_scaling_factor, atol=atol, rtol=rtol
+    )
+    assert weights.shape == (1, topk) and ids.shape == (1, topk)
+
+
+@pytest.mark.grouped_topk
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
 @pytest.mark.parametrize("routed_scaling_factor", [1.0, 2.5])
 @pytest.mark.parametrize("renormalize", [True, False])
