@@ -578,9 +578,11 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .isreal import isreal  # noqa: F401
 from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
@@ -1543,9 +1545,13 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "isreal",
     "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kron",
     "kthvalue",

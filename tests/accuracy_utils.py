@@ -419,6 +419,58 @@ def ref_fmod(a, b):
     return ref
 
 
+def ref_inverse(a):
+    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
+    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
+    # the reference is computed wide on CPU there.  Other backends keep the
+    # on-device reference, upcast to fp64 when available so the comparison
+    # measures the kernel's error rather than the reference's.
+    if flag_gems.vendor_name != "kunlunxin":
+        if a.is_complex():
+            wide = torch.complex128 if fp64_is_supported else torch.complex64
+        else:
+            wide = torch.float64 if fp64_is_supported else torch.float32
+        return torch.inverse(a.to(wide)).to(a.dtype)
+    a_cpu = (
+        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
+    )
+    ref = torch.inverse(a_cpu)
+    if not TO_CPU:
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
+def ref_kaiser_window(
+    window_length,
+    periodic=True,
+    beta=12.0,
+    *,
+    dtype=None,
+    layout=torch.strided,
+    device=None,
+    pin_memory=None,
+):
+    # Kunlunxin eager has no aten::kaiser_window on the accelerator (XDNN
+    # returns CUDA_ERROR_NOT_SUPPORTED for every dtype), so the reference is
+    # computed on CPU there.  Other backends keep the on-device reference.
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.kaiser_window(
+            window_length,
+            periodic=periodic,
+            beta=beta,
+            dtype=dtype,
+            layout=layout,
+            device=device,
+            pin_memory=pin_memory,
+        )
+    ref = torch.kaiser_window(
+        window_length, periodic=periodic, beta=beta, dtype=dtype, layout=layout
+    )
+    if not TO_CPU and device is not None:
+        ref = ref.to(device)
+    return ref
+
+
 def to_cpu(res, ref):
     # Compare on the CPU whenever the reference is there (e.g. a CPU-only
     # eager op on a backend without fp64); the result tensor follows it.

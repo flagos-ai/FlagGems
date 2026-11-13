@@ -60,7 +60,7 @@ def test_kaiser_window(window_length, dtype):
     # periodic defaults to True and beta to 12.0; exercises the plain
     # aten::kaiser_window overload.
     device = "cpu" if cfg.TO_CPU else flag_gems.device
-    ref_out = torch.kaiser_window(window_length, dtype=dtype, device=device)
+    ref_out = utils.ref_kaiser_window(window_length, dtype=dtype, device=device)
     res_out = flag_gems.kaiser_window(
         window_length, dtype=dtype, device=flag_gems.device
     )
@@ -81,7 +81,7 @@ def test_kaiser_window_periodic(window_length, periodic, dtype):
     # overload; N is window_length for the periodic window and window_length - 1
     # for the symmetric one.
     device = "cpu" if cfg.TO_CPU else flag_gems.device
-    ref_out = torch.kaiser_window(
+    ref_out = utils.ref_kaiser_window(
         window_length, periodic=periodic, dtype=dtype, device=device
     )
     res_out = flag_gems.kaiser_window(
@@ -107,7 +107,7 @@ def test_kaiser_window_beta(window_length, periodic, beta, dtype):
     # within 2.4x of the float16 tolerance in `--ref cpu` mode. The long-window
     # coverage lives in the two tests above instead.
     device = "cpu" if cfg.TO_CPU else flag_gems.device
-    ref_out = torch.kaiser_window(
+    ref_out = utils.ref_kaiser_window(
         window_length, periodic=periodic, beta=beta, dtype=dtype, device=device
     )
     res_out = flag_gems.kaiser_window(
@@ -132,7 +132,9 @@ def test_kaiser_window_degenerate_lengths(dtype):
     # tensor, regardless of periodic / beta.
     device = "cpu" if cfg.TO_CPU else flag_gems.device
     for periodic in (True, False):
-        ref_one = torch.kaiser_window(1, periodic=periodic, dtype=dtype, device=device)
+        ref_one = utils.ref_kaiser_window(
+            1, periodic=periodic, dtype=dtype, device=device
+        )
         res_one = flag_gems.kaiser_window(
             1, periodic=periodic, dtype=dtype, device=flag_gems.device
         )
@@ -140,7 +142,7 @@ def test_kaiser_window_degenerate_lengths(dtype):
         assert res_one.dtype == dtype
         utils.gems_assert_close(res_one, ref_one, dtype=dtype)
 
-        ref_empty = torch.kaiser_window(
+        ref_empty = utils.ref_kaiser_window(
             0, periodic=periodic, dtype=dtype, device=device
         )
         res_empty = flag_gems.kaiser_window(
@@ -160,7 +162,7 @@ def test_kaiser_window_default_device(window_length, dtype):
     # dtype=None resolves to the global default dtype, and the window is written
     # onto the default flag_gems device.
     device = "cpu" if cfg.TO_CPU else flag_gems.device
-    ref_out = torch.kaiser_window(window_length, dtype=dtype, device=device)
+    ref_out = utils.ref_kaiser_window(window_length, dtype=dtype, device=device)
     res_out = flag_gems.kaiser_window(window_length, dtype=dtype)
 
     assert res_out.device.type == torch.device(flag_gems.device).type
