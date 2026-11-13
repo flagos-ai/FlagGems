@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,19 @@ def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
 
 
 def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
+    # Tensors that live outside the accelerator (e.g. CPU tensors materialised by
+    # a multimodal front-end) must never reach the Triton kernel: the device
+    # guard inside ``_launch_copy`` rejects them on backends such as torch_gcu
+    # ("Expected a gcu device, but got: cpu", FlagGems #8529). A native copy
+    # keeps the requested memory format and dtype without touching the device.
+    if inp.device.type != runtime.device.name:
+        if memory_format == torch.preserve_format:
+            out = _allocate_preserve_format(inp)
+        else:
+            out = torch.empty_like(inp, memory_format=memory_format)
+        out.copy_(inp)
+        return out
+
     if inp.numel() == 0:
         if memory_format == torch.preserve_format:
             return _allocate_preserve_format(inp)
