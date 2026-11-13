@@ -46,13 +46,14 @@ def perror(msg):
 
 
 def load_op_labels():
-    """Load operator labels from conf/operators.yaml."""
+    """Load labels for active and deprecated operators."""
     op_labels = {}
-    op_inventory = ROOT / "conf" / "operators.yaml"
+    catalog = []
     try:
-        with open(str(op_inventory), "r") as f:
-            data = yaml.safe_load(f)
-            catalog = data.get("ops", [])
+        for filename in ("operators.yaml", "deprecated_operators.yaml"):
+            with open(ROOT / "conf" / filename) as f:
+                data = yaml.safe_load(f)
+                catalog.extend(data.get("ops", []))
     except Exception as e:
         perror(f"Failed to load operator inventory: {e}")
         return op_labels

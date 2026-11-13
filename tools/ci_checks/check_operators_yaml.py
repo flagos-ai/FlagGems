@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Check conf/operators.yaml for schema, duplicates, and ordering issues.
+"""Check active and deprecated operator metadata for schema, duplicates, and ordering.
 
 Rules:
   1. Every entry must have required fields: id, description, for, labels, kind, stages
@@ -37,6 +37,7 @@ from pathlib import Path
 import yaml
 
 OPERATORS_YAML = Path("conf/operators.yaml")
+DEPRECATED_OPERATORS_YAML = Path("conf/deprecated_operators.yaml")
 
 REQUIRED_FIELDS = {"id", "description", "for", "labels", "kind", "stages"}
 
@@ -102,7 +103,7 @@ def check_sort_order(ops: list[dict]) -> list[str]:
                     f"  position {i + 1}: got '{ids[i]}', expected '{sorted_ids[i]}'"
                 )
         errors.append(
-            "operators.yaml is not sorted by id.casefold(). First mismatches:\n"
+            "Operator entries are not sorted by id.casefold(). First mismatches:\n"
             + "\n".join(mismatches)
         )
     return errors
@@ -123,25 +124,23 @@ def main():
     )
     args = parser.parse_args()
 
-    if not OPERATORS_YAML.exists():
-        print(f"::error::Cannot find {OPERATORS_YAML}", file=sys.stderr)
-        sys.exit(2)
-
-    try:
-        with open(OPERATORS_YAML) as f:
-            data = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        print(f"::error::Failed to parse {OPERATORS_YAML}: {e}", file=sys.stderr)
-        sys.exit(2)
-
-    ops = data.get("ops", [])
-    if not ops:
-        print(f"::error::No 'ops' key found in {OPERATORS_YAML}", file=sys.stderr)
-        sys.exit(2)
-
-    print(f"Total operators in {OPERATORS_YAML}: {len(ops)}")
-
+    ops = []
     all_errors = []
+    sort_errors = []
+    for path in (OPERATORS_YAML, DEPRECATED_OPERATORS_YAML):
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+        except (OSError, yaml.YAMLError) as e:
+            print(f"::error::Failed to load {path}: {e}", file=sys.stderr)
+            sys.exit(2)
+        if not isinstance(data, dict) or not isinstance(data.get("ops"), list):
+            print(f"::error::Expected an 'ops' list in {path}", file=sys.stderr)
+            sys.exit(2)
+        entries = data["ops"]
+        print(f"Total operators in {path}: {len(entries)}")
+        ops.extend(entries)
+        sort_errors.extend(f"{path}: {error}" for error in check_sort_order(entries))
 
     # Duplicate ID check always runs globally (cheap, catches merge conflicts)
     all_errors.extend(check_duplicate_ids(ops))
@@ -160,7 +159,6 @@ def main():
         all_errors.extend(check_required_fields(ops))
 
     # Enable sort order check
-    sort_errors = check_sort_order(ops)
     all_errors.extend(sort_errors)
 
     if all_errors:
@@ -173,7 +171,7 @@ def main():
         if sort_errors:
             print("\n💡 To fix sorting issues, run:")
             print("   python tools/ci_checks/sort_exports.py --fix")
-            print("   git add conf/operators.yaml")
+            print("   git add conf/operators.yaml conf/deprecated_operators.yaml")
             print("   git commit -m 'fix: sort operators.yaml'")
 
         sys.exit(1)
