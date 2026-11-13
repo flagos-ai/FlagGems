@@ -1,0 +1,1458 @@
+[
+  {
+    "id": "model285-56f44cd0f2fb4b41d8d6",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,3,3],
+          "stride": [9,3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,3,3],
+          "stride": [9,3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 791,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-7dd0715d8d0c152e69fd",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 792,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-73fccc13c66a0634f3b3",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,23,16],
+          "stride": [47104,16,2048,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,23,16],
+          "stride": [47104,16,2048,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 793,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-7dfd73ef3ab9acc6456f",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,3],
+          "stride": [384,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,3],
+          "stride": [384,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 794,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-220415faaeac50eebacb",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,4],
+          "stride": [512,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,4],
+          "stride": [512,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 795,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-3fb267f9d4270b27b088",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,51,16],
+          "stride": [104448,16,2048,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,51,16],
+          "stride": [104448,16,2048,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 796,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-840e27f91849caa03310",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,5],
+          "stride": [640,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,5],
+          "stride": [640,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 797,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-71343279e8c416eea666",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,6],
+          "stride": [768,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,6],
+          "stride": [768,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 798,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-964657ed2605f3a42408",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,7],
+          "stride": [896,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,7],
+          "stride": [896,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 799,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-cde7170486644c2f000f",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,89],
+          "stride": [11392,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,128,89],
+          "stride": [11392,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 800,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-6fa16e3e821caef656fc",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,3,128],
+          "stride": [384,1,3],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,3,128],
+          "stride": [384,1,3],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 801,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-734c35ad53432c99bf5b",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,3,384],
+          "stride": [5120,1,3],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 256,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,3,384],
+          "stride": [5120,1,3],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 256,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 802,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-81dbc2ff6a267a82f4fd",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 803,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-ef77b86f2ee8e6652769",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,5,128],
+          "stride": [640,1,5],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,5,128],
+          "stride": [640,1,5],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 804,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-a8853d87ed9082ecf5e1",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,5,384],
+          "stride": [5120,1,5],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 1408,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,5,384],
+          "stride": [5120,1,5],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 1408,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 805,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-a82e2890d9e3188cb536",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,7,128],
+          "stride": [896,1,7],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,7,128],
+          "stride": [896,1,7],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 806,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-0bac21b05f086283491b",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,7,256],
+          "stride": [5120,1,7],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3328,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,7,256],
+          "stride": [5120,1,7],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 3328,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 807,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-241150bb0be37e77125f",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,89],
+          "stride": [89,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,89],
+          "stride": [89,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 808,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-f37d11eae1496a95d09a",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192],
+          "stride": [1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192],
+          "stride": [1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 809,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-632d7b4de0e403c7cd7b",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1],
+          "stride": [1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1],
+          "stride": [1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 810,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-9a0e6098ff8771efb1e2",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2208,128,1,5,3],
+          "stride": [1920,15,5,1,5],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2208,128,1,5,3],
+          "stride": [1920,15,5,1,5],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 811,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-3a6169119ed8968b9ca4",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2208,128,5],
+          "stride": [640,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2208,128,5],
+          "stride": [640,1,128],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 812,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-67f6f5045bb688faa487",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2208,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2208,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 813,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-e3e74b6b1504a72211d3",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [23,16,16,16],
+          "stride": [1,23,5888,368],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [23,16,16,16],
+          "stride": [1,23,5888,368],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 814,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-01ace7389e510dc21f1f",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [3,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [3,3],
+          "stride": [3,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 815,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-86f7f25623382b1234b1",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [5,3,3],
+          "stride": [1,5,15],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [5,3,3],
+          "stride": [1,5,15],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 816,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-8a65c2e00b2a384f6d2d",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [5,3,7],
+          "stride": [7,35,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [5,3,7],
+          "stride": [7,35,1],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 817,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-d8f560cdf4576b19f456",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [51,16,3,16,16],
+          "stride": [1,51,208896,13056,816],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [51,16,3,16,16],
+          "stride": [1,51,208896,13056,816],
+          "dtype": "torch.float64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {
+        "memory_format": "torch.contiguous_format"
+      }
+    ],
+    "seed": 20261109,
+    "sheet_row": 818,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-815cba298e552108b019",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192],
+          "stride": [1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192],
+          "stride": [1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 819,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-f825aa769f6959aa62cb",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1],
+          "stride": [1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1],
+          "stride": [1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 820,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-8af7bbd2c78439e5b9a9",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2,2208],
+          "stride": [2208,1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2,2208],
+          "stride": [2208,1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 821,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  },
+  {
+    "id": "model285-209e786010b1f14007e9",
+    "op": "aten::clone",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2],
+          "stride": [1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2],
+          "stride": [1],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 822,
+    "model": "MACE",
+    "source_sheet": "model285",
+    "metadata_assumptions": [],
+    "amplitude": 0.25
+  }
+]
