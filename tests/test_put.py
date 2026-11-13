@@ -27,6 +27,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
@@ -65,7 +66,14 @@ def _reference(tensor):
 
 
 def _gems_put(*args, **kwargs):
-    return flag_gems.put(*args, **kwargs)
+    result = flag_gems.put(*args, **kwargs)
+    inp = args[0]
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == inp.shape
+    if inp.numel():
+        assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    return result
 
 
 def _gems_put_out(*args, **kwargs):
@@ -91,7 +99,18 @@ def is_exact(dtype):
     return not dtype.is_floating_point and not dtype.is_complex
 
 
+def _put_randperm(numel, *, device):
+    # Enflame's native int64 randperm aborts before the operator under test.
+    # Build the same unique-index fixture on CPU, then preserve its target ABI.
+    factory_device = "cpu" if flag_gems.vendor_name == "enflame" else device
+    return torch.randperm(numel, device=factory_device).to(device)
+
+
 def gen_input(shape, dtype, device):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        pytest.skip("Kunlunxin target storage does not retain complex128 dtype")
+    if flag_gems.vendor_name in ("ascend", "enflame") and dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device="cpu").to(device)
     if dtype.is_floating_point or dtype.is_complex:
         return torch.randn(shape, dtype=dtype, device=device, requires_grad=False)
     if dtype == torch.bool:
@@ -102,6 +121,8 @@ def gen_input(shape, dtype, device):
 
 
 def gen_source(count, dtype, device):
+    if flag_gems.vendor_name in ("ascend", "enflame") and dtype.is_complex:
+        return torch.randn(count, dtype=dtype, device="cpu").to(device)
     if dtype.is_floating_point or dtype.is_complex:
         return torch.randn(count, dtype=dtype, device=device, requires_grad=False)
     if dtype == torch.bool:
@@ -124,18 +145,55 @@ def gen_index_and_source(inp, dtype, device, accumulate, count=None):
         # unspecified -- the last writer wins and which one that is depends on
         # thread scheduling (measured: not bit-stable across 200 identical runs).
         # Draw unique indices so the expected answer is well defined.
-        index = torch.randperm(numel, device=device)[:count].to(torch.int64)
+        index = _put_randperm(numel, device=device)[:count].to(torch.int64)
     source = gen_source(count, dtype, device)
     return index, source
 
 
+def _put_assert_metadata(actual, expected, dtype):
+    target = torch.device(flag_gems.device)
+    if target.type != "cpu" and target.index is None:
+        target = torch.device(target.type, torch_device_fn.current_device())
+    assert actual.device == target
+    assert actual.dtype == dtype
+    assert actual.shape == expected.shape
+
+
+def _put_assert_close(actual, expected, dtype, **kwargs):
+    _put_assert_metadata(actual, expected, dtype)
+    if (
+        (flag_gems.vendor_name == "ascend" and expected.device.type == "cpu")
+        or flag_gems.vendor_name == "enflame"
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and actual.is_complex())
+    ):
+        actual, expected = actual.cpu(), expected.cpu()
+    utils.gems_assert_close(actual, expected, dtype, **kwargs)
+
+
+def _put_assert_exact(actual, expected, dtype):
+    _put_assert_metadata(actual, expected, dtype)
+    assert expected.dtype == dtype
+    if flag_gems.vendor_name == "enflame":
+        actual, expected = actual.cpu(), expected.cpu()
+    utils.gems_assert_equal(actual, expected)
+
+
+def _put_same_values(actual, expected):
+    _put_assert_metadata(actual, expected, expected.dtype)
+    if flag_gems.vendor_name == "enflame" or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin") and actual.is_complex()
+    ):
+        actual, expected = actual.cpu(), expected.cpu()
+    return torch.equal(actual, expected)
+
+
 def assert_put_close(res, ref, dtype, accumulate=False):
     if is_exact(dtype):
-        utils.gems_assert_equal(res, ref)
+        _put_assert_exact(res, ref, dtype)
     elif accumulate:
-        utils.gems_assert_close(res, ref, dtype, atol=accumulate_atol(dtype))
+        _put_assert_close(res, ref, dtype, atol=accumulate_atol(dtype))
     else:
-        utils.gems_assert_close(res, ref, dtype)
+        _put_assert_close(res, ref, dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -216,18 +274,25 @@ def test_put_negative_index(shape, dtype):
     count = max(1, numel // 2)
     # Unique indices so the non-accumulating overwrite is order-independent;
     # shift half of them to the negative range to exercise negative indexing.
-    perm = torch.randperm(numel, device=flag_gems.device)[:count].to(torch.int64)
-    neg_mask = torch.arange(count, device=flag_gems.device) % 2 == 0
-    index = torch.where(neg_mask, perm - numel, perm)
+    # Enflame lacks the int64 remainder fixture operation, so form the same
+    # signed indices on CPU and transfer the finished index tensor.
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else flag_gems.device
+    perm = _put_randperm(numel, device=index_device)[:count].to(torch.int64)
+    neg_mask = torch.arange(count, device=index_device) % 2 == 0
+    index = torch.where(neg_mask, perm - numel, perm).to(flag_gems.device)
     source = gen_source(count, dtype, flag_gems.device)
 
     ref_index = utils.to_reference(index, False)
     ref_source = _reference(source)
 
+    if flag_gems.vendor_name == "ascend":
+        ref_inp, ref_index, ref_source = (
+            value.cpu() for value in (ref_inp, ref_index, ref_source)
+        )
     ref_out = torch.put(ref_inp, ref_index, ref_source)
     res_out = _gems_put(inp, index, source)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _put_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.put
@@ -246,15 +311,23 @@ def test_put_index_bounds(numel, index_at, accumulate):
     index = torch.tensor([value], dtype=torch.int64, device=flag_gems.device)
     source = gen_source(1, dtype, flag_gems.device)
 
-    ref_out = torch.put(
-        _reference(inp),
-        utils.to_reference(index, False),
-        _reference(source),
-        accumulate=accumulate,
-    )
+    if flag_gems.vendor_name == "ascend" and index_at in ("neg_first", "neg_last"):
+        ref_out = torch.put(
+            _reference(inp).cpu(),
+            utils.to_reference(index, False).cpu(),
+            _reference(source).cpu(),
+            accumulate=accumulate,
+        )
+    else:
+        ref_out = torch.put(
+            _reference(inp),
+            utils.to_reference(index, False),
+            _reference(source),
+            accumulate=accumulate,
+        )
     res_out = _gems_put(inp, index, source, accumulate=accumulate)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _put_assert_close(res_out, ref_out, dtype)
 
 
 def _put_child_override(request):
@@ -355,19 +428,68 @@ def _run_put_bounds_child(numel, bad, accumulate, override, ref_cpu=False):
             )
             source = torch.randn(2, dtype=torch.float32, device=flag_gems.device)
 
+            def check_host_result(result, target, idx, values, before):
+                expected = torch.put(before, idx.cpu(), values.cpu(),
+                                     accumulate=args["accumulate"])
+                assert result.device == target.device and result.dtype == target.dtype
+                assert result.shape == target.shape
+                assert result.untyped_storage().data_ptr() != target.untyped_storage().data_ptr()
+                torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+                torch.testing.assert_close(target.cpu(), before, rtol=0, atol=0)
+
+            def tensor_abi(value):
+                return {"device": str(value.device), "dtype": str(value.dtype),
+                        "shape": list(value.shape), "stride": list(value.stride()),
+                        "offset": value.storage_offset(), "pointer": value.data_ptr(),
+                        "storage_pointer": value.untyped_storage().data_ptr()}
+
+            before_valid_abi = [tensor_abi(value) for value in (inp, index, source)]
+            before_valid_inp = inp.cpu().clone()
+            before_valid_index = index.cpu().clone()
+            before_valid_source = source.cpu().clone()
+            actual_indices = before_valid_index.tolist()
+            assert actual_indices == [0, args["bad"]]
+            assert args["bad"] < -inp.numel() or args["bad"] >= inp.numel()
+            report.update(invalid_index_values=actual_indices, actual_oob_verified=True,
+                          before_valid_abi=before_valid_abi,
+                          before_valid_values={"inp": before_valid_inp.tolist(),
+                                              "index": before_valid_index.tolist(),
+                                              "source": before_valid_source.tolist()})
             report["phase"] = "valid"
             original_sync = torch_device_fn.synchronize
+            sync_code = getattr(inspect.unwrap(original_sync), "__code__", None)
+            sync_file = getattr(sync_code, "co_filename", None)
+            report["sync_binding"] = {
+                "module": getattr(original_sync, "__module__", None),
+                "qualname": getattr(original_sync, "__qualname__", None),
+                "file": sync_file,
+                "sha256": (hashlib.sha256(Path(sync_file).read_bytes()).hexdigest()
+                           if sync_file and Path(sync_file).is_file() else None),
+            }
             def unexpected_sync(*unused_args, **unused_kwargs):
                 raise AssertionError("A valid put candidate must not synchronize")
             torch_device_fn.synchronize = unexpected_sync
             try:
-                flag_gems.put(inp, index[:1], source[:1], accumulate=args["accumulate"])
+                valid = flag_gems.put(inp, index[:1], source[:1], accumulate=args["accumulate"])
             finally:
                 torch_device_fn.synchronize = original_sync
             # This is the test helper's synchronization, after the candidate's
             # no-sync monitor has ended. An asynchronous valid-call fault must
             # not be mistaken for an expected out-of-range failure below.
             original_sync()
+            assert torch_device_fn.synchronize is original_sync
+            check_host_result(valid, inp, index[:1], source[:1], before_valid_inp)
+            torch.testing.assert_close(index.cpu(), before_valid_index, rtol=0, atol=0)
+            torch.testing.assert_close(source.cpu(), before_valid_source, rtol=0, atol=0)
+            report["valid_ABI_values"] = True
+            before_invalid_abi = [tensor_abi(value) for value in (inp, index, source)]
+            before_invalid_inp = inp.cpu().clone()
+            before_invalid_index = index.cpu().clone()
+            before_invalid_source = source.cpu().clone()
+            report.update(before_invalid_abi=before_invalid_abi,
+                          before_invalid_values={"inp": before_invalid_inp.tolist(),
+                                                 "index": before_invalid_index.tolist(),
+                                                 "source": before_invalid_source.tolist()})
             report["valid_completed"] = True
             report["phase"] = "invalid"
             flag_gems.put(inp, index, source, accumulate=args["accumulate"])
@@ -378,7 +500,41 @@ def _run_put_bounds_child(numel, bad, accumulate, override, ref_cpu=False):
                 status="ERROR", error_type=type(error).__name__, message=str(error),
                 runtime_error=isinstance(error, RuntimeError),
             )
-            if report["phase"] == "invalid":
+            if report["phase"] == "invalid" and isinstance(error, IndexError):
+                report["host_index_error"] = True
+                try:
+                    try:
+                        torch.put(before_invalid_inp.clone(), before_invalid_index.clone(),
+                                  before_invalid_source.clone(), accumulate=args["accumulate"])
+                    except IndexError as cpu_error:
+                        report["expected_host_message"] = str(cpu_error)
+                        assert type(error) is type(cpu_error)
+                        assert str(error) == str(cpu_error)
+                    else:
+                        raise AssertionError("CPU accepted the invalid put index")
+                    assert [tensor_abi(value) for value in (inp, index, source)] == before_invalid_abi
+                    torch.testing.assert_close(inp.cpu(), before_invalid_inp, rtol=0, atol=0)
+                    torch.testing.assert_close(index.cpu(), before_invalid_index, rtol=0, atol=0)
+                    torch.testing.assert_close(source.cpu(), before_invalid_source, rtol=0, atol=0)
+                    report["input_index_source_readonly"] = True
+                    fresh = torch.zeros_like(inp)
+                    before = fresh.cpu()
+                    recovered = flag_gems.put(fresh, index[:1], source[:1],
+                                              accumulate=args["accumulate"])
+                    torch_device_fn.synchronize()
+                    check_host_result(recovered, fresh, index[:1], source[:1], before)
+                    assert index[:1].numel() > 0
+                    torch.testing.assert_close(inp.cpu(), before_invalid_inp, rtol=0, atol=0)
+                    torch.testing.assert_close(index.cpu(), before_invalid_index, rtol=0, atol=0)
+                    torch.testing.assert_close(source.cpu(), before_invalid_source, rtol=0, atol=0)
+                    assert [tensor_abi(value) for value in (inp, index, source)] == before_invalid_abi
+                    report.update(recovery_ABI_values=True, recovery_nonempty_control=True,
+                                  context_failed=False)
+                except BaseException as recovery_error:
+                    report.update(recovery_ABI_values=False,
+                                  recovery_error_type=type(recovery_error).__name__,
+                                  recovery_error=str(recovery_error))
+            elif report["phase"] == "invalid":
                 try:
                     probe = torch.ones(1, device=flag_gems.device) + 1
                     torch_device_fn.synchronize()
@@ -457,9 +613,26 @@ def _assert_put_bounds_failure(proc, report):
         "an out-of-range index was silently accepted; "
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
     )
-    assert (
-        report.get("phase") == "invalid" and report.get("status") == "ERROR"
-    ), "the put child failed before its out-of-range call: " + repr(report)
+    assert report.get("phase") == "invalid" and report.get("status") == "ERROR", (
+        "the put child failed before its out-of-range call: "
+        + repr(report)
+        + f" returncode={proc.returncode}, stdout={proc.stdout!r}, stderr={proc.stderr!r}"
+    )
+    if report.get("host_index_error"):
+        # A genuine host IndexError must match CPU and leave the context healthy.
+        assert report.get("valid_completed") and report.get("valid_ABI_values")
+        assert report.get("error_type") == "IndexError"
+        assert report.get("host_index_error") is True
+        assert report.get("actual_oob_verified") and report.get(
+            "input_index_source_readonly"
+        )
+        assert report.get("recovery_nonempty_control")
+        assert report.get("message") == report.get("expected_host_message")
+        assert report.get("recovery_ABI_values") is True
+        assert report.get("context_failed") is False
+        if report.get("override") is not None:
+            assert report.get("calls", {}).get("flag_gems.put") == 3
+        return
     assert (
         report.get("runtime_error") is True
     ), "expected the target-device RuntimeError, got: " + repr(report)
@@ -505,7 +678,7 @@ def test_put_index_out_of_range(numel, bad_offset, negative, accumulate, request
     assert result.dtype == inp.dtype
     assert result.shape == inp.shape
     assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
-    utils.gems_assert_close(result, reference, inp.dtype)
+    _put_assert_close(result, reference, inp.dtype)
     torch.testing.assert_close(inp, original, rtol=0, atol=0)
 
     proc, report = _run_put_bounds_child(
@@ -532,8 +705,12 @@ def test_put_non_contiguous(shape, dtype):
     ref_out = torch.put(ref_inp, ref_index, ref_source)
     res_out = _gems_put(inp, index, source)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
-    assert res_out.stride() == ref_out.stride()
+    _put_assert_close(res_out, ref_out, dtype)
+    assert res_out.stride() == (
+        inp.stride()
+        if flag_gems.vendor_name == "kunlunxin" and utils.TO_CPU
+        else ref_out.stride()
+    )
 
 
 @pytest.mark.put
@@ -561,7 +738,11 @@ def test_put_non_contiguous_high_rank(shape, perm, accumulate):
     res_out = _gems_put(inp, index, source, accumulate=accumulate)
 
     assert_put_close(res_out, ref_out, dtype, accumulate)
-    assert res_out.stride() == ref_out.stride()
+    assert res_out.stride() == (
+        inp.stride()
+        if flag_gems.vendor_name == "kunlunxin" and utils.TO_CPU
+        else ref_out.stride()
+    )
 
 
 @pytest.mark.put
@@ -585,7 +766,7 @@ def test_put_storage_offset(dtype, accumulate):
 
     assert_put_close(res_out, ref_out, dtype, accumulate)
     # `put` is out-of-place: neither the view nor its neighbours may change.
-    assert torch.equal(base, base_snapshot)
+    assert _put_same_values(base, base_snapshot)
 
 
 @pytest.mark.put
@@ -605,7 +786,7 @@ def test_put_non_contiguous_index_and_source(dtype, accumulate):
         )
     else:
         index = (
-            torch.randperm(64, device=flag_gems.device)[:36]
+            _put_randperm(64, device=flag_gems.device)[:36]
             .to(torch.int64)
             .reshape(6, 6)
             .t()
@@ -660,7 +841,7 @@ def test_put_zero_sized_self(dtype):
     assert res_out.device == inp.device
     assert res_out.dtype == dtype
     assert res_out.shape == ref_out.shape
-    utils.gems_assert_equal(res_out, ref_out.to(dtype))
+    _put_assert_exact(res_out, ref_out.to(dtype), dtype)
 
     with pytest.raises(IndexError):
         _gems_put(
@@ -683,7 +864,7 @@ def test_put_does_not_mutate_self(dtype, accumulate, layout):
     snapshot = inp.clone()
     index, source = gen_index_and_source(inp, dtype, flag_gems.device, accumulate)
     _gems_put(inp, index, source, accumulate=accumulate)
-    assert torch.equal(inp, snapshot)
+    assert _put_same_values(inp, snapshot)
 
 
 @pytest.mark.put
@@ -712,8 +893,13 @@ def test_put_invalid_dtypes():
             gen_source(1, torch.float32, flag_gems.device),
         )
     # source must share self's dtype
+    mismatch_dtype = (
+        torch.int32 if flag_gems.vendor_name == "kunlunxin" else torch.float64
+    )
+    mismatch_source = gen_source(1, mismatch_dtype, flag_gems.device)
+    assert mismatch_source.dtype != inp.dtype
     with pytest.raises(RuntimeError):
-        _gems_put(inp, index, gen_source(1, torch.float64, flag_gems.device))
+        _gems_put(inp, index, mismatch_source)
     # index and source must have the same number of elements
     with pytest.raises(IndexError):
         _gems_put(
@@ -733,7 +919,7 @@ def test_put_index_source_diff_shapes(shape, dtype):
 
     count = max(1, inp.numel() // 2)
     # Unique indices for a deterministic, order-independent overwrite.
-    index = torch.randperm(inp.numel(), device=flag_gems.device)[:count].to(torch.int64)
+    index = _put_randperm(inp.numel(), device=flag_gems.device)[:count].to(torch.int64)
     # Reshape source to a different shape with the same number of elements.
     source = gen_source(count, dtype, flag_gems.device).reshape(
         (count // 4, 4) if count % 4 == 0 else (count,)
@@ -745,7 +931,7 @@ def test_put_index_source_diff_shapes(shape, dtype):
     ref_out = torch.put(ref_inp, ref_index, ref_source)
     res_out = _gems_put(inp, index, source)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _put_assert_close(res_out, ref_out, dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -880,12 +1066,20 @@ def test_put_out_error_leaves_out_untouched(bad_arg):
 
 
 @pytest.mark.put
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native reference does not support ComplexHalf clone/put",
+)
 def test_put_complex32_rejected():
     # Native CUDA `put` has no ComplexHalf kernel. `complex32` used to be routed
     # through the FP16 real-view path, silently producing a result where ATen
     # raises; the two must agree on the exception type and message.
-    # MUSA stores ComplexHalf, but its device fill kernel does not support it.
-    factory_device = "cpu" if flag_gems.vendor_name == "mthreads" else flag_gems.device
+    # These backends store ComplexHalf, but their device fill kernel lacks it.
+    factory_device = (
+        "cpu"
+        if flag_gems.vendor_name in ("ascend", "kunlunxin", "mthreads")
+        else flag_gems.device
+    )
     inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(
         flag_gems.device
     )
