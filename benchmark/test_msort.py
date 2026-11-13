@@ -297,9 +297,7 @@ class _MsortH800Reference:
         if target.index is None:
             target = torch.device(target.type, torch_device_fn.current_device())
         expected_id = (
-            "benchmark/test_"
-            + self.op_name
-            + ".py::test_"
+            "benchmark/test_msort.py::test_"
             + self.op_name
             + "::core::"
             + str(inp.dtype).removeprefix("torch.")
@@ -473,4 +471,39 @@ class MsortBenchmark(_MsortH800Reference, base.Benchmark):
 def test_msort():
     MsortBenchmark(
         op_name="msort", torch_op=torch.msort, dtypes=consts.FLOAT_DTYPES
+    ).run()
+
+
+class MsortOutBenchmark(MsortBenchmark):
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape), "out": list(shape)},
+                    params={},
+                    builder_args=(tuple(shape),),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        torch.manual_seed(0)
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        return inp, {"out": torch.empty_like(inp)}
+
+
+@pytest.mark.msort_out
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="S60 native msort_out aborts; consume exact native H800 core records",
+)
+def test_msort_out():
+    MsortOutBenchmark(
+        op_name="msort_out",
+        torch_op=torch.msort,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     ).run()
