@@ -150,6 +150,7 @@ from .mul import mul, mul_
 from .multiply_ import multiply_
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
+from .nansum import nansum, nansum_out
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import normal_
@@ -368,6 +369,8 @@ __all__ = [
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "nansum",
+    "nansum_out",
     "nonzero_numpy",
     "norm",
     "norm_scalar",
