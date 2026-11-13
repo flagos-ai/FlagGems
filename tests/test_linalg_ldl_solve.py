@@ -28,7 +28,9 @@ def _skip_unsupported_dtype(dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("native LDL path does not provide float64 support on this device")
     if dtype == torch.complex64 and not LDL_SOLVE_COMPLEX_SUPPORTED:
-        pytest.skip("native LDL factorization path does not support complex64 on this device")
+        pytest.skip(
+            "native LDL factorization path does not support complex64 on this device"
+        )
 
 
 def _make_ldl_inputs(batch_shape, n, k, dtype, device):
