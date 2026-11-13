@@ -344,6 +344,25 @@ def ref_div_rounding(a, b, rounding_mode):
     return ref
 
 
+def ref_fmod(a, b):
+    # Kunlunxin eager fmod is not exact on lanes whose quotient is within one
+    # ulp of an integer: it returns ~0 there instead of the correct remainder
+    # (~|y|), so the reference is computed in float64 on CPU there. The kernel
+    # follows the exact remainder, which is what this reference produces.
+    # Other backends keep the on-device reference (their eager implementation
+    # matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.fmod(a, b)
+    a_cpu = a.cpu().to(torch.float64) if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu().to(torch.float64) if isinstance(b, torch.Tensor) else b
+    ref = torch.fmod(a_cpu, b_cpu)
+    if not TO_CPU:
+        # assert_close casts the reference to the result dtype anyway; casting
+        # here lets the reference travel back to a device without fp64 support.
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 def to_cpu(res, ref):
     if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
@@ -384,15 +403,25 @@ def init_seed(seed):
 
 
 def gems_log_prefix(fn):
-    """Derive the expected log prefix from the resolved function module.
+    """Return the expected log prefix for an operator implementation.
 
-    The generic implementation logs with the ``"GEMS"`` prefix, while
-    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
-    ``_<vendor>`` path component so this works for both short imported module
-    names and fully qualified backend module names.
+    Three module naming conventions exist across backends:
+
+    1. Generic ops: ``flag_gems.ops.<op>`` → prefix ``GEMS``
+    2. Vendor override loaded via ``import_vendor_extra_lib``:
+       ``_<vendor>.ops.<op>`` — the leading ``_<vendor>`` segment identifies
+       the vendor (e.g. ``_kunlunxin.ops.add``).
+    3. Arch-specific ops loaded by ``BackendArchEvent`` via ``sys.path``
+       injection: ``<arch>.ops.<op>`` with a bare arch name such as ``gcu300``,
+       ``hopper``, ``rdna4``, or ``tx81`` — these fall entirely outside the
+       ``flag_gems.*`` namespace.
+
+    Cases 2 and 3 both map to ``GEMS_<VENDOR>``.
     """
     module_parts = fn.__module__.split(".")
     if f"_{flag_gems.vendor_name}" in module_parts:
+        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    if not fn.__module__.startswith("flag_gems."):
         return f"GEMS_{flag_gems.vendor_name.upper()}"
     return "GEMS"
 

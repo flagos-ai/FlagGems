@@ -406,16 +406,3 @@ def _rnn_relu_with_autograd(
         bidirectional,
         batch_first,
     )
-
-
-def _patch_generic_wrapper():
-    """Route direct calls to the generic module's ``rnn_relu`` to this override."""
-    import sys
-
-    # ``flag_gems.ops.rnn_relu`` is the function, not the module, so look the
-    # module up in sys.modules.
-    _generic_module = sys.modules["flag_gems.ops.rnn_relu"]
-    _generic_module.rnn_relu = _rnn_relu_with_autograd
-
-
-_patch_generic_wrapper()

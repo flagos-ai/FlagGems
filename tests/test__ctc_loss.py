@@ -22,7 +22,9 @@ from .accuracy_utils import gems_assert_close
 from .conftest import QUICK_MODE
 
 # CPU has no Half kernel for CTC loss, so comparisons stay on the float types.
-CTC_DTYPES = [torch.float32, torch.float64]
+# float64 is only exercised when the device supports it (Kunlunxin XPU
+# downgrades fp64 to fp32).
+CTC_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 
 def _make_inputs(T, N, S, C, dtype):
