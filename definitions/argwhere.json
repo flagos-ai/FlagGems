@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "argwhere",
+  "requires_triton_kernel": true,
+  "description": "Returns a newly allocated int64 tensor containing coordinates of nonzero input elements, with shape (number_of_nonzero_elements, input.ndim), on the input device. Does not mutate input. Derived from the existing master flag_gems.argwhere(input) callable.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
