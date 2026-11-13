@@ -93,6 +93,8 @@ def test_geqrf(shape, dtype):
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_A)
     res_a, res_tau = flag_gems.geqrf(A)
+    assert res_a.device == res_tau.device == A.device
+    assert res_a.dtype == res_tau.dtype == A.dtype
 
     assert res_a.shape == ref_a.shape
     assert res_tau.shape == ref_tau.shape
@@ -138,6 +140,8 @@ def test_geqrf_non_contiguous():
     At = base.t().t().t()[:8]  # non-contiguous view with the same rows
     ref = torch.ops.aten.geqrf(At.contiguous())
     res_a, res_tau = flag_gems.geqrf(At)
+    assert res_a.device == res_tau.device == At.device
+    assert res_a.dtype == res_tau.dtype == At.dtype
     max_rel = _reconstruction(res_a, res_tau, At.contiguous())
     assert max_rel <= 2e-2, f"reconstruction max_rel={max_rel:.3e}"
     assert res_tau.shape == ref[1].shape
@@ -161,10 +165,14 @@ def test_geqrf_zero_and_tiny_sizes():
     # zero-size batch
     A = _well_conditioned((0, 4, 4), torch.float32, DEVICE)
     a, tau = flag_gems.geqrf(A)
+    assert a.device == tau.device == A.device
+    assert a.dtype == tau.dtype == A.dtype
     assert a.shape == (0, 4, 4) and tau.shape == (0, 4)
     # 1x1: no reflection, tau == 0
     A = torch.tensor([[3.0]], dtype=torch.float32, device=DEVICE)
     a, tau = flag_gems.geqrf(A)
+    assert a.device == tau.device == A.device
+    assert a.dtype == tau.dtype == A.dtype
     ref_a, ref_tau = torch.ops.aten.geqrf(utils.to_reference(A))
     assert tau.item() == ref_tau.item() == 0.0
     utils.gems_assert_close(a, ref_a, torch.float32)
