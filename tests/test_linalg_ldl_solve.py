@@ -21,6 +21,14 @@ LDL_SOLVE_SHAPES = [
 LDL_SOLVE_DTYPES = [torch.float32, torch.float64, torch.complex64]
 if utils.fp64_is_supported:
     LDL_SOLVE_DTYPES.append(torch.complex128)
+LDL_SOLVE_COMPLEX_SUPPORTED = utils.complex_is_supported and utils.fp64_is_supported
+
+
+def _skip_unsupported_dtype(dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("native LDL path does not provide float64 support on this device")
+    if dtype == torch.complex64 and not LDL_SOLVE_COMPLEX_SUPPORTED:
+        pytest.skip("native LDL factorization path does not support complex64 on this device")
 
 
 def _make_ldl_inputs(batch_shape, n, k, dtype, device):
@@ -42,6 +50,7 @@ def _assert_ldl_close(res_out, ref_out, dtype):
 @pytest.mark.parametrize("shape", LDL_SOLVE_SHAPES)
 @pytest.mark.parametrize("dtype", LDL_SOLVE_DTYPES)
 def test_linalg_ldl_solve(shape, dtype):
+    _skip_unsupported_dtype(dtype)
     n, k = shape
     A, B = _make_ldl_inputs((), n, k, dtype, flag_gems.device)
 
@@ -64,6 +73,7 @@ def test_linalg_ldl_solve(shape, dtype):
 @pytest.mark.parametrize("shape", LDL_SOLVE_SHAPES)
 @pytest.mark.parametrize("dtype", LDL_SOLVE_DTYPES)
 def test_linalg_ldl_solve_batched(shape, dtype):
+    _skip_unsupported_dtype(dtype)
     batch_size = 4
     n, k = shape
     A, B = _make_ldl_inputs((batch_size,), n, k, dtype, flag_gems.device)
