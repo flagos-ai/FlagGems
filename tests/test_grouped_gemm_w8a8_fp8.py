@@ -103,6 +103,9 @@ def grouped_fp8_cpu_reference(
         ([7, 3], 256, 6144),
         ([1, 3], 6144, 128),
         ([1, 129], 512, 1024),
+        ([1] * 8 + [0] * 24, 256, 6144),
+        ([1, 273, 512], 256, 6144),
+        ([1, 273, 512], 512, 128),
     ],
 )
 def test_grouped_gemm_w8a8_fp8(lengths, n, k, column_major):
@@ -125,8 +128,9 @@ def test_grouped_gemm_w8a8_fp8_native(n, k):
 
 
 @pytest.mark.grouped_gemm_w8a8_fp8
-def test_grouped_gemm_w8a8_fp8_changing_routes():
-    args = make_grouped_fp8_case([17, 31], 128, 512, flag_gems.device)
+@pytest.mark.parametrize("n,k", [(256, 512), (512, 128)])
+def test_grouped_gemm_w8a8_fp8_changing_routes(n, k):
+    args = make_grouped_fp8_case([257, 513], n, k, flag_gems.device)
     original = args[3].clone()
     routes = (
         original,

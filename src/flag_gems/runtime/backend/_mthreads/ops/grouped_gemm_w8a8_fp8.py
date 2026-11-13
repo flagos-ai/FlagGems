@@ -23,9 +23,73 @@ from triton.tools.tensor_descriptor import TensorDescriptor
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+try:
+    from triton.experimental.tle.language.gpu.mthreads import (
+        MTHREADS_GEMM_COMPILER_OPTIONS_VERSION,
+        MTHREADS_TLE_CONSUMER_SYNC_VERSION,
+    )
+except ImportError:
+    MTHREADS_GEMM_COMPILER_OPTIONS_VERSION = 0
+    MTHREADS_TLE_CONSUMER_SYNC_VERSION = 0
+
+# Named readers need CTA-wide initialization and per-epoch consumer rendezvous.
+MULTICAST_ON = (
+    MTHREADS_GEMM_COMPILER_OPTIONS_VERSION >= 2
+    and MTHREADS_TLE_CONSUMER_SYNC_VERSION >= 1
+)
 logger = logging.getLogger(__name__)
 CONSUMER_WARPS = 8
 PRODUCER_WARPS = 4
+
+
+@libentry()
+@triton.jit
+def grouped_fp8_gemv(
+    A,
+    B,
+    C,
+    SA,
+    SB,
+    Groups,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBE: tl.constexpr,
+    SBN: tl.constexpr,
+    SBK: tl.constexpr,
+    ALIGN: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    row = tl.program_id(0) * ALIGN
+    stop = row + ALIGN
+    cols = tl.program_id(1) * BN + tl.arange(0, BN)
+    group = tl.load(Groups + row)
+    kk = tl.arange(0, BK)
+    scale_k = tl.arange(0, BK // 128)
+    while (row < stop) & (group >= 0):
+        acc = tl.zeros((BN,), tl.float32)
+        for base in range(tl.cdiv(K, BK)):
+            offsets = base * BK + kk
+            a = tl.load(A + row * K + offsets, offsets < K, 0.0).to(tl.float32)
+            b = tl.load(
+                B + group.to(tl.int64) * N * K + cols[:, None] * K + offsets[None, :],
+                (cols[:, None] < N) & (offsets[None, :] < K),
+                0.0,
+            ).to(tl.float32)
+            partial = tl.sum((b * a[None, :]).reshape((BN, BK // 128, 128)), 2)
+            sk = base * (BK // 128) + scale_k
+            sa = tl.load(SA + row * SAM + sk * SAK, sk < K // 128, 0.0)
+            sb = tl.load(
+                SB + group * SBE + (cols[:, None] // 128) * SBN + sk[None, :] * SBK,
+                (cols[:, None] < N) & (sk[None, :] < K // 128),
+                0.0,
+            )
+            acc += tl.sum(partial * sa[None, :] * sb, 1)
+        tl.store(C + row * N + cols, acc, cols < N)
+        row += 1
+        group = tl.load(Groups + row, row < stop, -1)
 
 
 @libentry()
@@ -273,6 +337,268 @@ def grouped_fp8_ws_kernel(
     )
 
 
+@triton.jit
+def grouped_fp8_multicast_producer(
+    writer,
+    A,
+    B,
+    Groups,
+    Tasks,
+    Total,
+    Start,
+    ITERATIONS: tl.constexpr,
+    PROGRAMS: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    NC: tl.constexpr,
+    STAGES: tl.constexpr,
+):
+    total = Total
+    sequence = 0
+    for iteration in tl.range(0, ITERATIONS, num_stages=1):
+        task = Start + iteration * PROGRAMS
+        pm, pn, expert, _ = grouped_fp8_task(Tasks, Groups, task, total, N, NC * BN, BM)
+        for block in tl.range(0, K // 128, num_stages=1):
+            slot = writer.acquire(sequence)
+            tle.gpu.copy(A, slot.a, (BM, 128), (pm * BM, block * 128))
+            tle.gpu.copy(
+                B, slot.b0, (BN, 128), (expert * N + pn * NC * BN, block * 128)
+            )
+            tle.gpu.copy(
+                B, slot.b1, (BN, 128), (expert * N + pn * NC * BN + BN, block * 128)
+            )
+            if NC == 4:
+                tle.gpu.copy(
+                    B,
+                    slot.b2,
+                    (BN, 128),
+                    (expert * N + pn * NC * BN + 2 * BN, block * 128),
+                )
+                tle.gpu.copy(
+                    B,
+                    slot.b3,
+                    (BN, 128),
+                    (expert * N + pn * NC * BN + 3 * BN, block * 128),
+                )
+            writer.commit(sequence)
+            sequence += 1
+    # Keep the producer alive until every reader releases the final shared slot.
+    writer.acquire(sequence + STAGES - 1)
+
+
+@triton.jit
+def grouped_fp8_multicast_consumer(
+    reader,
+    C,
+    SA,
+    SB,
+    Groups,
+    Tasks,
+    M,
+    Total,
+    Start,
+    ITERATIONS: tl.constexpr,
+    PROGRAMS: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBE: tl.constexpr,
+    SBN: tl.constexpr,
+    SBK: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    NC: tl.constexpr,
+    ROLE: tl.constexpr,
+):
+    total = Total
+    sequence = 0
+    for iteration in tl.range(0, ITERATIONS, num_stages=1):
+        task = Start + iteration * PROGRAMS
+        pm, pn, expert, is_valid = grouped_fp8_task(
+            Tasks, Groups, task, total, N, NC * BN, BM
+        )
+        rows = pm * BM + tl.arange(0, BM)
+        cols = pn * NC * BN + ROLE * BN + tl.arange(0, BN)
+        acc = tl.zeros((BM, BN), tl.float32)
+        for block in tl.range(0, K // 128, num_stages=1):
+            ready = reader.wait(sequence)
+            if ROLE == 0:
+                operand_b = ready.slot.b0
+            elif ROLE == 1:
+                operand_b = ready.slot.b1
+            elif ROLE == 2:
+                operand_b = ready.slot.b2
+            else:
+                operand_b = ready.slot.b3
+            partial = tle.gpu.wgmma(
+                ready.slot.a, operand_b, tl.zeros((BM, BN), tl.float32), trans_b=True
+            )
+            sa = tl.load(SA + rows * SAM + block * SAK, rows < M, 0)
+            sb = tl.load(
+                SB + expert * SBE + (cols // 128) * SBN + block * SBK, cols < N, 0
+            )
+            partial = tle.gpu.wgmma_wait(0, partial)
+            acc += partial * sa[:, None] * sb[None, :]
+            reader.release(sequence)
+            sequence += 1
+        valid = tl.load(Groups + rows, rows < M, -1) >= 0
+        tl.store(
+            C + rows[:, None] * N + cols[None, :],
+            acc,
+            (rows[:, None] < M) & valid[:, None] & (cols[None, :] < N) & is_valid,
+        )
+
+
+@triton.jit
+def grouped_fp8_multicast_kernel(
+    A,
+    B,
+    C,
+    SA,
+    SB,
+    Groups,
+    Tasks,
+    M,
+    TILES: tl.constexpr,
+    PROGRAMS: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBE: tl.constexpr,
+    SBN: tl.constexpr,
+    SBK: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    STAGES: tl.constexpr,
+    CW: tl.constexpr,
+    PW: tl.constexpr,
+    NC: tl.constexpr,
+):
+    aa = tle.gpu.alloc(
+        (STAGES, BM, 128), A.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+    )
+    b0 = tle.gpu.alloc(
+        (STAGES, BN, 128), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+    )
+    b1 = tle.gpu.alloc(
+        (STAGES, BN, 128), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+    )
+    if NC == 4:
+        b2 = tle.gpu.alloc(
+            (STAGES, BN, 128), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+        )
+        b3 = tle.gpu.alloc(
+            (STAGES, BN, 128), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+        )
+        pipe = tle.pipe(
+            capacity=STAGES,
+            scope="cta",
+            name="ab",
+            readers=("r0", "r1", "r2", "r3"),
+            a=aa,
+            b0=b0,
+            b1=b1,
+            b2=b2,
+            b3=b3,
+        )
+    else:
+        pipe = tle.pipe(
+            capacity=STAGES,
+            scope="cta",
+            name="ab",
+            readers=("r0", "r1"),
+            a=aa,
+            b0=b0,
+            b1=b1,
+        )
+    # Named readers must execute the same number of pipe epochs, including padding.
+    total = tl.load(Tasks + TILES) * tl.cdiv(N, NC * BN)
+    start = tl.program_id(0)
+    iterations: tl.constexpr = tl.cdiv(TILES * tl.cdiv(N, NC * BN), PROGRAMS)
+    consumer_args: tl.constexpr = (
+        C,
+        SA,
+        SB,
+        Groups,
+        Tasks,
+        M,
+        total,
+        start,
+        iterations,
+        PROGRAMS,
+        N,
+        K,
+        SAM,
+        SAK,
+        SBE,
+        SBN,
+        SBK,
+        BM,
+        BN,
+        NC,
+    )
+    producer_args: tl.constexpr = (
+        A,
+        B,
+        Groups,
+        Tasks,
+        total,
+        start,
+        iterations,
+        PROGRAMS,
+        N,
+        K,
+        BM,
+        BN,
+        NC,
+        STAGES,
+    )
+    if NC == 4:
+        tle.gpu.warp_specialize(
+            [
+                (
+                    grouped_fp8_multicast_consumer,
+                    (pipe.reader("r0", fields=("a", "b0")),) + consumer_args + (0,),
+                ),
+                (
+                    grouped_fp8_multicast_consumer,
+                    (pipe.reader("r1", fields=("a", "b1")),) + consumer_args + (1,),
+                ),
+                (
+                    grouped_fp8_multicast_consumer,
+                    (pipe.reader("r2", fields=("a", "b2")),) + consumer_args + (2,),
+                ),
+                (
+                    grouped_fp8_multicast_consumer,
+                    (pipe.reader("r3", fields=("a", "b3")),) + consumer_args + (3,),
+                ),
+                (grouped_fp8_multicast_producer, (pipe.writer(),) + producer_args),
+            ],
+            worker_num_warps=[CW, CW, CW, PW],
+            worker_num_regs=[160, 160, 160, 24],
+        )
+    else:
+        tle.gpu.warp_specialize(
+            [
+                (
+                    grouped_fp8_multicast_consumer,
+                    (pipe.reader("r0", fields=("a", "b0")),) + consumer_args + (0,),
+                ),
+                (
+                    grouped_fp8_multicast_consumer,
+                    (pipe.reader("r1", fields=("a", "b1")),) + consumer_args + (1,),
+                ),
+                (grouped_fp8_multicast_producer, (pipe.writer(),) + producer_args),
+            ],
+            worker_num_warps=[CW, PW],
+            worker_num_regs=[160, 24],
+        )
+
+
 def grouped_gemm_w8a8_fp8(
     lhs: tuple[torch.Tensor, torch.Tensor],
     rhs: tuple[torch.Tensor, torch.Tensor],
@@ -323,16 +649,46 @@ def grouped_gemm_w8a8_fp8(
         raise ValueError("A, B, out and m_indices must be contiguous")
     if m == 0:
         return
-    # Keep long-K TME tiles large enough for MP31 SQMMA scheduling.
-    bm, bn = (64, 64) if k == 128 else (64, 256)
+    # Share A tiles between independent SQMMA consumers on dense expert segments.
+    is_multicast = (
+        MULTICAST_ON
+        and alignment_m == 256
+        and m > experts * alignment_m
+        and n % 256 == 0
+    )
+    if is_multicast:
+        bm, bn, consumer_warps, consumers = (
+            (128, 64, 4, 4) if k == 128 else (256, 64, 8, 2)
+        )
+    else:
+        bm, bn = (64, 64) if k == 128 else (64, 256)
     grid = (triton.cdiv(m, bm), triton.cdiv(n, bn))
     with torch_device_fn.device(a.device):
+        if k >= 2048 and n <= 256 and m <= alignment_m * 16 and m < experts * 128:
+            grouped_fp8_gemv[(m // alignment_m, triton.cdiv(n, 8))](
+                a,
+                b,
+                out,
+                sa,
+                sb,
+                m_indices,
+                n,
+                k,
+                *sa.stride(),
+                *sb.stride(),
+                ALIGN=alignment_m,
+                BN=8,
+                BK=512,
+                num_warps=4,
+                num_stages=1,
+            )
+            return
         a_desc = TensorDescriptor(a, list(a.shape), list(a.stride()), [bm, 128])
         flat_b = b.view(experts * n, k)
         b_desc = TensorDescriptor(
             flat_b, list(flat_b.shape), list(flat_b.stride()), [bn, 128]
         )
-        if k == 128:
+        if k == 128 and not is_multicast:
             grouped_fp8_single_k_kernel[grid](
                 a_desc,
                 b_desc,
@@ -360,6 +716,39 @@ def grouped_gemm_w8a8_fp8(
                 a.device
             ).multi_processor_count
             programs = min(num_sms, max(1, m // alignment_m) * triton.cdiv(n, bn))
+            if is_multicast:
+                options = dict(
+                    enable_backend_opt=True,
+                    disable_max_ilp_scheduler=True,
+                    disable_sqmma_m_split_preference=False,
+                    llc_options="-mtgpu-alloc-shared-memory-from-zero=1",
+                )
+                grouped_fp8_multicast_kernel[(programs,)](
+                    a_desc,
+                    b_desc,
+                    out,
+                    sa,
+                    sb,
+                    m_indices,
+                    tasks,
+                    m,
+                    tiles,
+                    programs,
+                    n,
+                    k,
+                    *sa.stride(),
+                    *sb.stride(),
+                    BM=bm,
+                    BN=bn,
+                    STAGES=2 if k == 128 else 3,
+                    CW=consumer_warps,
+                    PW=PRODUCER_WARPS,
+                    NC=consumers,
+                    num_warps=consumer_warps,
+                    num_stages=1,
+                    **options,
+                )
+                return
             grouped_fp8_ws_kernel[(programs,)](
                 a_desc,
                 b_desc,
