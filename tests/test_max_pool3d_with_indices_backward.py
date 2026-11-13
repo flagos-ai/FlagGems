@@ -51,6 +51,48 @@ MAXPOOL3D_BACKWARD_CONFIGS = [
 def test_accuracy_max_pool3d_with_indices_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
+    _check_backward(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype)
+
+
+CHANNELS_LAST_3D_CONFIGS = [
+    ((4, 3, 16, 16, 16), 3, 2, 1, 1, False),
+    ((2, 8, 8, 16, 16), 2, 2, 0, 1, False),
+    ((2, 4, 15, 15, 15), 3, 2, 1, 1, True),
+]
+
+
+@pytest.mark.max_pool3d_with_indices_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode",
+    CHANNELS_LAST_3D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d_with_indices_backward_channels_last_3d(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    _check_backward(
+        shape,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        dtype,
+        memory_format=torch.channels_last_3d,
+    )
+
+
+def _check_backward(
+    shape,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode,
+    dtype,
+    *,
+    memory_format=torch.contiguous_format,
+):
     ascend_dilated_forward = (
         flag_gems.vendor_name == "ascend"
         and dtype in (torch.float16, torch.float32, torch.bfloat16)
@@ -60,8 +102,12 @@ def test_accuracy_max_pool3d_with_indices_backward(
     if ascend_dilated_forward and not TO_CPU:
         pytest.skip("Ascend native max_pool3d forward only supports dilation=1")
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, upcast=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
+        memory_format=memory_format
+    )
+    inp.requires_grad_(True)
+    assert inp.is_contiguous(memory_format=memory_format)
+    ref_inp = to_reference(inp, upcast=True).contiguous()
 
     # Forward pass to get indices (reference)
     ref_out = torch.nn.functional.max_pool3d(
