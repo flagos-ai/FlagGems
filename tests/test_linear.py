@@ -147,11 +147,10 @@ def test_linear_1d_with_bias(dtype, in_features, out_features):
 
 
 @pytest.mark.linear
-@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend bias rounding")
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("features", [64, 256, 513])
 @pytest.mark.parametrize("batch", [1, 32])
-def test_ascend_linear_bias_cancellation(dtype, features, batch):
+def test_linear_bias_cancellation(dtype, features, batch):
     epsilon = {
         torch.float16: 2**-11,
         torch.bfloat16: 2**-8,
