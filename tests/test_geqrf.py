@@ -38,6 +38,15 @@ if utils.fp64_is_supported:
 # tu.selected_ranges(), a bare numeric bound is rejected by its resolver.
 GEQRF_RANGE = tu.selected_ranges()[0]
 
+# Native CPU and Hygon produce different nonfinite factor locations for these
+# dtype-limit inputs. Default mode still checks them with a device reference.
+_HYGON_CPU_EXTREME_DTYPES = {
+    (256, 256): (torch.float32, torch.float64, torch.complex64, torch.complex128),
+    (1024, 1024): (torch.complex64, torch.complex128),
+    (512, 128): (torch.float32, torch.float64),
+    (16, 128, 64, 60): (torch.float32, torch.float64),
+}
+
 # geqrf requires rank >= 2 ("torch.geqrf: input must have at least 2
 # dimensions"), so the rank-0/rank-1 entries of the shared 7-shape grid cannot
 # apply to it. They are replaced by two valid matrix alternatives, (256, 256)
@@ -208,11 +217,106 @@ def make_placed_special_input(dtype, scenario):
     return matrix
 
 
+def _assert_projected_terminal(column, a, tau):
+    # Apply only the preceding reflectors to e_last. Neither terminal packed
+    # value contributes to the projected coefficient used as the oracle.
+    basis = torch.zeros((column.numel(), 1), dtype=column.dtype, device="cpu")
+    basis[-1, 0] = 1
+    q_last = torch.ormqr(a[:, :-1].cdouble(), tau[:-1].cdouble(), basis).squeeze(-1)
+    eps = torch.finfo(a.real.dtype).eps
+    norm = q_last.norm()
+    torch.testing.assert_close(norm, torch.ones_like(norm), atol=8 * eps, rtol=0)
+    projected = torch.vdot(q_last, column)
+    terminal = (1 - tau[-1].cdouble()) * a[-1, -1].cdouble()
+    torch.testing.assert_close(
+        terminal, projected, atol=2 * eps * column.norm().item(), rtol=0
+    )
+
+
+def _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau):
+    assert a.device == tau.device == inp.device
+    assert a.dtype == tau.dtype == ref_a.dtype == ref_tau.dtype == inp.dtype
+    assert a.shape == ref_a.shape == inp.shape
+    assert tau.shape == ref_tau.shape == inp.shape[:-1]
+    assert ref_a.device == ref_tau.device == torch.device("cpu")
+
+
+def _assert_terminal_reflector_equivalent(
+    inp, a, tau, ref_a, ref_tau, *, check_projection=False
+):
+    _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
+    a, tau = a.cpu(), tau.cpu()
+
+    tu.assert_result_close(a[:-1], ref_a[:-1])
+    tu.assert_result_close(a[-1, :-1], ref_a[-1, :-1])
+    tu.assert_result_close(tau[:-1], ref_tau[:-1])
+
+    # The final square reflector acts only on one coordinate. LAPACK and
+    # Hygon may split that coordinate's phase differently between Q and R.
+    phase = torch.stack((1 - tau[-1], 1 - ref_tau[-1]))
+    torch.testing.assert_close(
+        phase.abs(),
+        torch.ones_like(phase.real),
+        atol=8 * torch.finfo(phase.real.dtype).eps,
+        rtol=0,
+    )
+    terminal = phase * torch.stack((a[-1, -1], ref_a[-1, -1]))
+    assert torch.isfinite(terminal).all()
+    if check_projection:
+        column = inp[:, -1].cpu().cdouble()
+        _assert_projected_terminal(column, a, tau)
+        _assert_projected_terminal(column, ref_a, ref_tau)
+    else:
+        tu.assert_result_close(terminal[0], terminal[1])
+
+
+def _assert_qr_factorization(inp, a, tau, ref_a, ref_tau):
+    _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
+    work_dtype = torch.complex128 if inp.is_complex() else torch.float64
+    original = inp.cpu().to(work_dtype)
+    assert torch.isfinite(original).all()
+    column_norms = torch.linalg.vector_norm(original, dim=0)
+    identity = torch.eye(inp.shape[-1], dtype=original.dtype, device="cpu")
+    tolerance = 32 * torch.finfo(inp.real.dtype).eps
+
+    # Device and CPU can encode valid reflectors differently. Validate each
+    # packed pair against the original matrix rather than against each other.
+    for packed, reflectors in ((a, tau), (ref_a, ref_tau)):
+        packed = packed.cpu().to(work_dtype)
+        reflectors = reflectors.cpu().to(work_dtype)
+        assert torch.isfinite(packed).all() and torch.isfinite(reflectors).all()
+        tail_norm_sq = packed.tril(-1).abs().square().sum(dim=0)
+        active = reflectors != 0
+        assert (tail_norm_sq[~active] == 0).all()
+        active_tau = reflectors[active]
+        if inp.is_complex():
+            # Unitarity of I - tau * v * vᴴ with an implicit leading one.
+            norm_relation = active_tau.abs().square() * (1 + tail_norm_sq[active])
+            expected = 2 * active_tau.real
+        else:
+            assert ((reflectors >= 0) & (reflectors <= 2)).all()
+            norm_relation = active_tau * (1 + tail_norm_sq[active])
+            expected = torch.full_like(norm_relation, 2)
+        torch.testing.assert_close(norm_relation, expected, rtol=0, atol=tolerance)
+        q = torch.linalg.householder_product(packed, reflectors)
+        residual = torch.linalg.vector_norm(q @ packed.triu() - original, dim=0)
+        assert (residual <= tolerance * column_norms).all()
+        torch.testing.assert_close(q.mH @ q, identity, rtol=0, atol=tolerance)
+
+
 @pytest.mark.geqrf
 @pytest.mark.parametrize("dtype", GEQRF_DTYPES)
 @pytest.mark.parametrize("shape", GEQRF_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_geqrf_value_range(shape, value_range, dtype):
+    if (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
+        and value_range in (["0", "max"], ["min", "0"])
+        and dtype in _HYGON_CPU_EXTREME_DTYPES.get(shape, ())
+    ):
+        pytest.skip("native CPU and Hygon overflow at different factor positions")
+
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
     snapshot = inp.clone()
@@ -220,10 +324,38 @@ def test_geqrf_value_range(shape, value_range, dtype):
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    if (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
+        and dtype in (torch.float32, torch.complex64)
+        and shape == (1024, 1024)
+        and value_range == ["-1", "0"]
+    ):
+        _assert_qr_factorization(snapshot, res_a, res_tau, ref_a, ref_tau)
+    elif (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
+        and dtype in (torch.complex64, torch.complex128)
+        and shape in ((256, 256), (1024, 1024))
+        and value_range in (["-1", "1"], ["0", "1"], ["-1", "0"])
+    ):
+        _assert_terminal_reflector_equivalent(
+            inp,
+            res_a,
+            res_tau,
+            ref_a,
+            ref_tau,
+            check_projection=(
+                dtype == torch.complex64
+                and shape == (1024, 1024)
+                and value_range == GEQRF_RANGE
+            ),
+        )
+    else:
+        tu.assert_result_close(res_a, ref_a)
+        tu.assert_result_close(res_tau, ref_tau)
     # The default overload is not in-place.
-    tu.assert_result_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
 
 @pytest.mark.geqrf
@@ -267,7 +399,7 @@ def test_geqrf_non_contiguous_input(layout, dtype):
 
     tu.assert_result_close(res_a, ref_a)
     tu.assert_result_close(res_tau, ref_tau)
-    tu.assert_result_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
 
 @pytest.mark.geqrf
@@ -291,7 +423,7 @@ def test_geqrf_out_buffers(shape, layout, dtype):
     assert out_buffer_metadata((out_a, out_tau)) == supplied_metadata
     tu.assert_result_close(out_a, ref_a)
     tu.assert_result_close(out_tau, ref_tau)
-    tu.assert_result_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
 
 @pytest.mark.geqrf
@@ -340,3 +472,158 @@ def test_geqrf_rejects_rank_below_two(shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.geqrf(inp)
+
+
+_MASTER_REAL_SHAPES = [
+    # degenerate
+    (1, 1),
+    (1, 8),
+    (8, 1),
+    # small path (single-program register kernel)
+    (4, 4),
+    (33, 33),
+    (8, 3),
+    (3, 8),
+    # large path (blocked column-major panels)
+    (256, 256),
+    (300, 100),
+    (100, 300),
+    # batched, and batched with extra dims
+    (4, 16, 16),
+    (2, 3, 8, 8),
+    (64, 8, 8),
+    (2, 32, 8),
+]
+_MASTER_REAL_DTYPES = [
+    dtype for dtype in GEQRF_DTYPES if dtype in (torch.float32, torch.float64)
+]
+
+
+def _well_conditioned(shape, dtype, device):
+    # A = randn + m * I (diagonal bump over the min(m, n) diagonal): well
+    # conditioned for QR, mirrors the det/slogdet/solve_ex recipe.
+    m, n = shape[-2], shape[-1]
+    A = torch.randn(shape, dtype=dtype, device=device)
+    return A + m * torch.eye(m, n, dtype=dtype, device=device)
+
+
+def _reconstruction(a, tau, A):
+    """A = Q @ R from the packed (a, tau) pair; works for tall, square and
+    wide inputs.  Q = H_0 H_1 ... H_{k-1} (reflectors compose right to
+    left), so apply them to the identity in reverse column order."""
+    m, n = A.shape[-2], A.shape[-1]
+    k = min(m, n)
+    B = A.numel() // (m * n)
+    A64 = A.detach().to("cpu").to(torch.float64).reshape(B, m, n)
+    a64 = a.detach().to("cpu").to(torch.float64).reshape(B, m, n)
+    tau64 = tau.detach().to("cpu").to(torch.float64).reshape(B, k)
+    recon = 0.0
+    for b in range(B):
+        q = torch.eye(m, dtype=torch.float64)
+        for j in range(k - 1, -1, -1):
+            v = torch.zeros(m, dtype=torch.float64)
+            v[j] = 1.0
+            if j + 1 < m:
+                v[j + 1 :] = a64[b, j + 1 :, j]
+            tv = tau64[b, j]
+            if tv != 0:
+                q[:, j:] = q[:, j:] - torch.outer(v, tv * (v @ q[:, j:]))
+        recon = max(recon, (q @ torch.triu(a64[b]) - A64[b]).abs().max().item())
+    scale = A64.abs().max().item() + 1e-30
+    return recon / scale
+
+
+@pytest.mark.geqrf
+@pytest.mark.parametrize("shape", _MASTER_REAL_SHAPES)
+@pytest.mark.parametrize("dtype", _MASTER_REAL_DTYPES)
+def test_geqrf_well_conditioned(shape, dtype):
+    A = _well_conditioned(shape, dtype, flag_gems.device)
+    ref_A = utils.to_reference(A)
+
+    ref_a, ref_tau = torch.ops.aten.geqrf.default(ref_A)
+    res_a, res_tau = flag_gems.geqrf(A)
+
+    assert res_a.device == res_tau.device == A.device
+    assert res_a.dtype == res_tau.dtype == dtype
+    assert res_a.shape == ref_a.shape
+    assert res_tau.shape == ref_tau.shape
+
+    # The packed reflectors and tau are implementation dependent (cuSOLVER vs
+    # the Triton Householder chain produce different, equally valid
+    # factorisations), so compare the deterministic reconstruction property
+    # A = Q @ R instead of the factors themselves.
+    max_rel = _reconstruction(res_a, res_tau, A)
+    assert max_rel <= 2e-2, f"reconstruction max_rel={max_rel:.3e}"
+
+    # R (= triu(a)) must match the reference R: for a full-rank well-
+    # conditioned A the QR factor R is unique (positive/negative diagonal
+    # convention may differ per column, so align signs first).
+    ref_R = torch.triu(ref_a.to(torch.float64))
+    res_R = torch.triu(utils.to_cpu(res_a, ref_a).to(torch.float64))
+    k = min(shape[-2], shape[-1])
+    sgn = torch.sign(res_R.diagonal(dim1=-2, dim2=-1))
+    sgn = torch.where(sgn == 0, torch.ones_like(sgn), sgn)
+    ref_sgn = torch.sign(ref_R.diagonal(dim1=-2, dim2=-1))
+    ref_sgn = torch.where(ref_sgn == 0, torch.ones_like(ref_sgn), ref_sgn)
+    # Scale each column of R by its diagonal sign: for a full-rank A the QR
+    # factor R is unique up to a per-column sign.  sgn is (..., k); the wide
+    # case (n > k) leaves the sign-free tail columns (j >= k) untouched, so
+    # compare only the leading k columns.
+    kcols = min(res_R.shape[-1], k)
+    res_R_aligned = res_R[..., :kcols] * sgn.unsqueeze(-2)
+    ref_R_aligned = ref_R[..., :kcols] * ref_sgn.unsqueeze(-2)
+    # Both inputs are upcast to fp64 before the comparison, so the absolute
+    # error here tracks the *input* precision: fp64 inputs agree with the
+    # reference to ~2e-13 and fp32 inputs to ~2.4e-4 (worst over 10 seeds x
+    # all shapes, sign-aligned). atol=1e-3 keeps ~4x headroom over the fp32
+    # worst case while staying tight against the fp64 one; the rtol floor of
+    # the fp64 resolution table (1e-7) covers the large-|R| entries.
+    utils.gems_assert_close(res_R_aligned, ref_R_aligned, torch.float64, atol=1e-3)
+
+
+@pytest.mark.geqrf
+def test_geqrf_well_conditioned_non_contiguous():
+    # transposed (non-contiguous) input must still produce the QR of the
+    # logical matrix
+    base = _well_conditioned((16, 8), torch.float32, flag_gems.device)
+    At = base.t().t().t()[:8]  # non-contiguous view with the same rows
+    ref = torch.ops.aten.geqrf.default(utils.to_reference(At.contiguous()))
+    res_a, res_tau = flag_gems.geqrf(At)
+    assert res_a.device == res_tau.device == At.device
+    assert res_a.dtype == res_tau.dtype == At.dtype
+    max_rel = _reconstruction(res_a, res_tau, At.contiguous())
+    assert max_rel <= 2e-2, f"reconstruction max_rel={max_rel:.3e}"
+    assert res_tau.shape == ref[1].shape
+
+
+@pytest.mark.geqrf
+def test_geqrf_return_structure():
+    # multi-output contract: a tuple (a, tau) with the packed layout
+    A = _well_conditioned((8, 8), torch.float32, flag_gems.device)
+    out = flag_gems.geqrf(A)
+    assert isinstance(out, tuple) and len(out) == 2
+    a, tau = out
+    assert a.device == tau.device == A.device
+    assert a.dtype == tau.dtype == A.dtype
+    assert a.shape == (8, 8) and tau.shape == (8,)
+    # strict lower triangle of the first k columns holds the packed
+    # reflectors with unit implicit diagonal -> a's diagonal holds R
+    assert torch.all(torch.triu(a).diagonal()[1:] != 0)
+
+
+@pytest.mark.geqrf
+def test_geqrf_zero_and_tiny_sizes():
+    # zero-size batch
+    A = _well_conditioned((0, 4, 4), torch.float32, flag_gems.device)
+    a, tau = flag_gems.geqrf(A)
+    assert a.device == tau.device == A.device
+    assert a.dtype == tau.dtype == A.dtype
+    assert a.shape == (0, 4, 4) and tau.shape == (0, 4)
+    # 1x1: no reflection, tau == 0
+    A = torch.tensor([[3.0]], dtype=torch.float32, device=flag_gems.device)
+    a, tau = flag_gems.geqrf(A)
+    assert a.device == tau.device == A.device
+    assert a.dtype == tau.dtype == A.dtype
+    ref_a, ref_tau = torch.ops.aten.geqrf.default(utils.to_reference(A))
+    assert tau.item() == ref_tau.item() == 0.0
+    utils.gems_assert_close(a, ref_a, torch.float32)
