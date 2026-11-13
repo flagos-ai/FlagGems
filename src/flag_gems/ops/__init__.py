@@ -471,6 +471,9 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
 )
+from flag_gems.ops._validate_sparse_bsc_tensor_args import (
+    _validate_sparse_bsc_tensor_args,
+)
 from flag_gems.ops._validate_sparse_bsr_tensor_args import (
     _validate_sparse_bsr_tensor_args,
 )
@@ -2178,6 +2181,7 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
+    "_validate_sparse_bsc_tensor_args",
     "_validate_sparse_bsr_tensor_args",
     "_validate_sparse_csc_tensor_args",
     "_validate_sparse_csr_tensor_args",
