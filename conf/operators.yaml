@@ -3073,6 +3073,17 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: cast_Double
+  description: Casts a tensor to float64, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Double
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cast_Long
   description: Casts a tensor to int64, returning the input unchanged when its dtype already matches.
   for:
