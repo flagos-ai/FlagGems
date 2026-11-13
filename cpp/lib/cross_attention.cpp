@@ -443,7 +443,8 @@ at::Tensor cross_attention(const at::Tensor &query,
            has_mask,
            tiling.block_m,
            tiling.block_n,
-           tiling.pipeline_ns);
+           tiling.pipeline_ns,
+           /* TLE_PIPELINE = */ false);
   }
   return output;
 }
