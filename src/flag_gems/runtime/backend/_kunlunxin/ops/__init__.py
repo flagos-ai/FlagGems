@@ -404,7 +404,6 @@ from .dequantize import dequantize
 from .detach_copy import detach_copy
 from .diag import diag
 from .diag_embed import diag_embed
-from .diagflat import diagflat
 from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .diagonal_scatter import diagonal_scatter
@@ -1378,7 +1377,6 @@ __all__ = [
     "detach_copy",
     "diag",
     "diag_embed",
-    "diagflat",
     "diagonal_backward",
     "diagonal_copy",
     "diagonal_scatter",
