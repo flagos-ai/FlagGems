@@ -34,7 +34,7 @@ CHOLESKY_SHAPES = [
     (16, 128, 128),
     (64, 256, 256),
 ]
-_ILUVATAR_MASTER_SHAPES = [(n, n) for n in (2, 4, 8, 16, 32, 64, 128, 256)]
+_MASTER_SHAPES = [(n, n) for n in (2, 4, 8, 16, 32, 64, 128, 256)]
 
 # The factorizer implements float32/float64/complex64/complex128 only (measured on
 # this backend), so consts.FLOAT_DTYPES, which also holds fp16 and bf16, is not
@@ -59,7 +59,7 @@ def _validate_shape(shape):
 
 def _case_fn(shape, dtype):
     _validate_shape(shape)
-    master_shape = flag_gems.vendor_name == "iluvatar" and shape in _ILUVATAR_MASTER_SHAPES
+    master_shape = shape in _MASTER_SHAPES
     if master_shape and shape not in CHOLESKY_SHAPES:
         yield from _master_case(shape, dtype)
         return
@@ -107,11 +107,9 @@ class CholeskyBenchmark(OperatorBenchmark):
     # default_shapes argument, which still gives a caller-provided shape file
     # precedence over these defaults.
     def set_shapes(self, shape_file_path=None):
-        shapes = (
-            CHOLESKY_SHAPES + [shape for shape in _ILUVATAR_MASTER_SHAPES if shape not in CHOLESKY_SHAPES]
-            if flag_gems.vendor_name == "iluvatar"
-            else CHOLESKY_SHAPES
-        )
+        shapes = CHOLESKY_SHAPES + [
+            shape for shape in _MASTER_SHAPES if shape not in CHOLESKY_SHAPES
+        ]
         super().set_shapes(shape_file_path, default_shapes=shapes)
 
 
@@ -122,7 +120,6 @@ def test_cholesky():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.cholesky,
-        gems_op=getattr(flag_gems, "cholesky", None),
         dtypes=CHOLESKY_DTYPES,
     )
     bench.run()

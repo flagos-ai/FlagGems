@@ -135,10 +135,6 @@ def _assert_close(result, reference):
     tu.assert_result_close(result, reference)
 
 
-_ILUVATAR_MASTER_ONLY = pytest.mark.skipif(
-    flag_gems.vendor_name != "iluvatar",
-    reason="Master coverage synchronization for the Iluvatar suite",
-)
 _MASTER_REAL_DTYPES = [torch.float32] + (
     [torch.float64] if utils.fp64_is_supported else []
 )
@@ -170,7 +166,6 @@ def _check_master_factorization(inp, upper=False):
 
 
 @pytest.mark.cholesky
-@_ILUVATAR_MASTER_ONLY
 @pytest.mark.parametrize("shape,upper,transposed", _MASTER_PD_CASES)
 @pytest.mark.parametrize("dtype", _MASTER_REAL_DTYPES)
 def test_cholesky_master_real_grid(shape, upper, transposed, dtype):
@@ -181,7 +176,6 @@ def test_cholesky_master_real_grid(shape, upper, transposed, dtype):
 
 
 @pytest.mark.cholesky
-@_ILUVATAR_MASTER_ONLY
 @pytest.mark.parametrize("shape", [(2, 3, 3), (3, 8, 8), (2, 2, 4, 4)])
 def test_cholesky_master_non_contiguous_batch(shape):
     inp = _make_master_spd(shape, torch.float32)
@@ -191,7 +185,6 @@ def test_cholesky_master_non_contiguous_batch(shape):
 
 
 @pytest.mark.cholesky
-@_ILUVATAR_MASTER_ONLY
 @pytest.mark.parametrize("dtype", _MASTER_REAL_DTYPES)
 def test_cholesky_master_negative_definite(dtype):
     inp = -_make_master_spd((4, 4), dtype)
@@ -202,7 +195,6 @@ def test_cholesky_master_negative_definite(dtype):
 
 
 @pytest.mark.cholesky
-@_ILUVATAR_MASTER_ONLY
 def test_cholesky_master_empty_batch():
     inp = torch.empty(0, 4, 4, device=flag_gems.device)
     result = flag_gems.cholesky(inp)
