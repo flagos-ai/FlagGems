@@ -211,6 +211,7 @@ from .upsample_nearest3d_backward import upsample_nearest3d_backward
 from .upsample_nearest3d_backward_grad_input import (
     upsample_nearest3d_backward_grad_input,
 )
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
 from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
@@ -435,6 +436,7 @@ __all__ = [
     "upsample_linear1d_backward",
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
+    "upsample_trilinear3d_backward",
     "var",
     "var_correction",
     "var_dim",
