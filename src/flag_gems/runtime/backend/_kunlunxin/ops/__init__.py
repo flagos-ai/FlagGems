@@ -226,6 +226,7 @@ from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from ._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
+)
 from ._weight_norm_differentiable_backward import (  # noqa: F401
     weight_norm_differentiable_backward,
 )
