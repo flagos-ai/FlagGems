@@ -276,7 +276,17 @@ BOOL_TYPES = [torch.bool]
 # 1-byte dtypes (int8/uint8) and fp8 dtypes are not part of the default CI lists;
 # tests that target them parametrize over these constants explicitly.
 BYTE_INT_DTYPES = [torch.int8, torch.uint8]
-FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if fp8_is_supported else []
+# Triton's CUDA backend only compiles fp8e4nv (torch.float8_e4m3fn) pointers on
+# sm89+; on older arches (e.g. A100/sm80) any kernel taking an fp8e4nv pointer
+# fails at compile time, so gate the list on the actual device capability,
+# not just the backend's fp8 flag.
+_fp8_supported = (
+    fp8_is_supported
+    and flag_gems.utils.device_info.get_device_capability()[0] * 10
+    + flag_gems.utils.device_info.get_device_capability()[1]
+    >= 89
+)
+FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_supported else []
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
     if complex_is_supported
