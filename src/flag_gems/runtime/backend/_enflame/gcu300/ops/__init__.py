@@ -268,6 +268,7 @@ from .logical_xor import logical_xor
 from .logspace import logspace
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
+from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matrix_exp_backward import matrix_exp_backward
@@ -702,6 +703,8 @@ __all__ = [
     "lt_scalar",
     "masked_fill",
     "masked_fill_",
+    "masked_scatter",
+    "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
     "matrix_exp_backward",
