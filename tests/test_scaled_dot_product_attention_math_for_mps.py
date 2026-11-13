@@ -21,7 +21,6 @@ from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close
 
 
-@pytest.mark.scaled_dot_product_attention_math_for_mps
 @pytest.mark.underscore_scaled_dot_product_attention_math_for_mps
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("num_head", [4, 8])
@@ -47,19 +46,21 @@ def test_scaled_dot_product_attention_math_for_mps(
     # Reference: the math definition returns both the attention output and the
     # full softmax attention-weight matrix. The aten op only dispatches on
     # MPS/Meta, so compute the reference math directly.
+    ref_q, ref_k, ref_v = (utils.to_reference(x).float() for x in (q, k, v))
     scale = 1.0 / (head_dim**0.5)
-    scores = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+    scores = torch.matmul(ref_q, ref_k.transpose(-2, -1)) * scale
     if is_causal:
-        mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=device).tril()
+        mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=ref_q.device).tril()
         scores = scores.masked_fill(~mask, float("-inf"))
     ref_weights = torch.softmax(scores, dim=-1)
-    ref_output = torch.matmul(ref_weights, v.float())
-    ref_output = utils.to_reference(ref_output.to(dtype), True)
-    ref_weights = utils.to_reference(ref_weights.to(dtype), True)
+    ref_output = torch.matmul(ref_weights, ref_v).to(dtype)
+    ref_weights = ref_weights.to(dtype)
 
     output, attn_weights = flag_gems._scaled_dot_product_attention_math_for_mps(
         q, k, v, is_causal=is_causal
     )
+
+    assert output.device == attn_weights.device == q.device
 
     # output and attn_weights both reduce over the key/sequence dimension
     # (softmax normalization + weighted value sum), so scale atol accordingly.
