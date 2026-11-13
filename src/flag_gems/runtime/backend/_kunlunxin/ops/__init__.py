@@ -430,6 +430,7 @@ from .dropout import dropout, dropout_backward
 from .dropout_ import dropout_  # noqa: F401
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
+from .embedding_spmdm import embedding_spmdm
 from .empty import empty  # noqa: F401
 from .empty_permuted import empty_permuted  # noqa: F401
 from .eq import eq, eq_, eq_scalar, eq_scalar_
@@ -708,6 +709,7 @@ from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
+from .native_norm import native_norm
 from .ne import ne, ne_, ne_scalar, ne_scalar_
 from .neg import neg, neg_
 from .negative import negative
@@ -997,6 +999,7 @@ from .upsample_trilinear3d import upsample_trilinear3d
 from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
+from ._wrapped_linear_prepack import _wrapped_linear_prepack
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
@@ -1019,6 +1022,15 @@ from .xor import xor, xor_scalar
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+
+# ``swapdims_`` is implemented in the generic ``flag_gems.ops.swapdims_``
+# module, but the generic ``ops/__init__.py`` only exports the out-of-place
+# ``swapdims`` and does not register the in-place variant in ``_FULL_CONFIG``,
+# so ``flag_gems.swapdims_`` does not exist. Export it from the vendor layer:
+# SpecOpRegistrar writes attributes back into the ``flag_gems`` module globals,
+# which makes the module-level API used by the tests available. This is pure
+# metadata/view semantics, independent of the backend.
+from flag_gems.ops.swapdims_ import swapdims_  # noqa: F401
 
 __all__ = [
     "__iand___scalar",
@@ -1192,6 +1204,7 @@ __all__ = [
     "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
     "_weight_norm",
+    "_wrapped_linear_prepack",
     "abs",
     "abs_",
     "absolute",
@@ -1397,6 +1410,7 @@ __all__ = [
     "embedding",
     "embedding_backward",
     "embedding_dense_backward",
+    "embedding_spmdm",
     "eq",
     "eq_",
     "eq_scalar",
@@ -1716,6 +1730,7 @@ __all__ = [
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
+    "native_norm",
     "ne",
     "ne_",
     "ne_scalar",
@@ -1983,6 +1998,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "SUPPORTED_FP8_DTYPE",
+    "swapdims_",
     "t_copy",
     "t_copy_out",
     "take",

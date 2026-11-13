@@ -31,7 +31,13 @@ pow = tl_extra_shim.pow
 
 
 def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+    # The upper bound is required: for large M, next_pow2(cdiv(M, 12)) yields a
+    # huge [BLOCK_M, BLOCK_N] tile. With dim=0 on a (200, 40999, 3) input,
+    # M=122997 gives BLOCK_M=16384 while heur_block_n caps BLOCK_N at 8192,
+    # i.e. about 134M fp32 values in a single tile, which kills the process.
+    # The heuristics measured elsewhere in this file also report BLOCK_M=64
+    # (one row per core) as the fastest setting, hence the cap at 256.
+    return builtins.min(triton.next_power_of_2(triton.cdiv(args["M"], 12)), 256)
 
 
 def heur_block_n(args):
@@ -91,7 +97,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _sum += a * a
@@ -170,7 +176,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _max = tl.maximum(tl.abs(a), _max)
@@ -228,7 +234,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=float("inf")).to(tl.float32)
         _min = tl.minimum(tl.abs(a), _min)
@@ -286,7 +292,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0).to(tl.float32)
         _sum += tl.where(a != 0, 1, 0)
@@ -366,10 +372,10 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += pow(tl.abs(a), ord)
+        _sum += tl.where(mask, pow(tl.abs(a), ord), 0.0)
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
@@ -916,7 +922,7 @@ def l2_dim_mask_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         a = tl.load(Xp + cols, mask, other=0.0).to(tl.float32)
         _sum += a * a
     s = tl.sum(_sum, axis=1)
