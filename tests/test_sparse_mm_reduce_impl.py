@@ -23,6 +23,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # The implementation file is ``ops/_sparse_mm_reduce_impl.py``, whose file stem
 # derives the pytest marker ``underscore_sparse_mm_reduce_impl`` (the leading
 # underscore cannot be expressed with attribute access, hence the explicit
@@ -97,6 +99,10 @@ def _reduce_reference(sparse, mat2, reduce):
     """
     ref_sparse = utils.to_reference(sparse, True)
     ref_mat2 = utils.to_reference(mat2, True)
+    if IS_KUNLUNXIN and mat2.device.type != "cpu":
+        out, arg = _reduce_reference_cpu(sparse, mat2, reduce)
+        target = torch.device("cpu") if utils.TO_CPU else mat2.device
+        return out.to(target), arg.to(target)
     ref_csr = ref_sparse.to_sparse_csr()
     crow = ref_csr.crow_indices()
     col = ref_csr.col_indices()
@@ -106,6 +112,32 @@ def _reduce_reference(sparse, mat2, reduce):
     if reduce == "sum":
         return ref_sparse.to_dense() @ ref_mat2, arg_out
     out = torch.zeros((M, N), dtype=ref_mat2.dtype, device=ref_mat2.device)
+    for r in range(M):
+        start, end = int(crow[r]), int(crow[r + 1])
+        if end == start:
+            continue
+        prod = vals[start:end, None] * ref_mat2[col[start:end]]
+        if reduce == "mean":
+            out[r] = prod.sum(dim=0) / (end - start)
+        elif reduce == "amax":
+            out[r] = prod.max(dim=0).values
+        else:
+            out[r] = prod.min(dim=0).values
+    return out, arg_out
+
+
+def _reduce_reference_cpu(sparse, mat2, reduce):
+    ref_sparse = sparse.to("cpu").to(torch.float64)
+    ref_mat2 = mat2.to("cpu").to(torch.float64)
+    ref_csr = ref_sparse.to_sparse_csr()
+    crow = ref_csr.crow_indices()
+    col = ref_csr.col_indices()
+    vals = ref_csr.values()
+    M, N = ref_sparse.shape[0], ref_mat2.shape[1]
+    arg_out = torch.empty((0,), dtype=torch.int64)
+    if reduce == "sum":
+        return ref_sparse.to_dense() @ ref_mat2, arg_out
+    out = torch.zeros((M, N), dtype=ref_mat2.dtype)
     for r in range(M):
         start, end = int(crow[r]), int(crow[r + 1])
         if end == start:
