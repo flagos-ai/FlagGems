@@ -54,8 +54,9 @@ from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
-from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
+from .addmm import addmm_dtype, addmm_dtype_out
 from .addmm_ import addmm_
+from .addmm_kernel90 import addmm, addmm_out
 from .addmv_ import addmv_
 from .addr import addr
 from .any import any, any_dim, any_dims

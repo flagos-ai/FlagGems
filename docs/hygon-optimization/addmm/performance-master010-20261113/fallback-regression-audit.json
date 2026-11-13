@@ -1,0 +1,1637 @@
+{
+  "case": {
+    "id": "model285-0d5ec457ea9fb526f898",
+    "op": "aten::addmm",
+    "model": "DiffDock",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            48
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        {
+          "tensor": true,
+          "shape": [
+            8844,
+            48
+          ],
+          "stride": [
+            48,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-1"
+        },
+        {
+          "tensor": true,
+          "shape": [
+            48,
+            48
+          ],
+          "stride": [
+            1,
+            48
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-2"
+        }
+      ],
+      {}
+    ],
+    "historical_source": "experiments/bioscience-top20-20261021/final-results/diffdock-run-953909/boxing/aten-exact.json",
+    "seed": 20261109,
+    "sheet_row": 228,
+    "original_spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            48
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            8844,
+            48
+          ],
+          "stride": [
+            48,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        {
+          "tensor": true,
+          "shape": [
+            48,
+            48
+          ],
+          "stride": [
+            1,
+            48
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        }
+      ],
+      {}
+    ],
+    "source_sheet": "model285",
+    "source_identity_key": "0d5ec457ea9fb526f898682db9df591a36b75785946d9fd8a99e65a0024fa1ef",
+    "metadata_assumptions": [
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 2,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  },
+  "baseline": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "candidate": "bee222e93b457a9ea054860de09c8e3256637957",
+  "observed_old_us": 8.808,
+  "observed_new_us": 9.488,
+  "old_over_new": 0.9283305227655987,
+  "latency_increase_fraction": 0.07720254314259756,
+  "accepted_measurement_preserved": true,
+  "route": "Candidate eligibility false at M8844,N48,K48;both workers enter upstream packaged Hygon addmm generic launcher and addmm_kernel. Row bias selects generic kernel.",
+  "source_witnesses": {
+    "new": {
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:710:addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:318:_eligible": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:296:_small_fp32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:307:_expanded_fp32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:285:_medium_fp32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:163:addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:46:_validate_addmm_shapes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:299:_launch_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:40:_scalar_eq": 6,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/bmm/splitk.py:214:launch_small_splitk": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:269:_use_ring_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:74:_launch_addmm_generic": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:238:_select_addmm_kernel": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:65:_allow_tf32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1677:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1541:failure_states": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1632:_first_run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1666:<genexpr>": 21,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:994:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:104:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:105:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:106:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:117:<lambda>": 1
+    },
+    "das": {},
+    "aa": {
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:710:addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:318:_eligible": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:296:_small_fp32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:307:_expanded_fp32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:285:_medium_fp32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:163:addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:46:_validate_addmm_shapes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:299:_launch_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:40:_scalar_eq": 6,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/bmm/splitk.py:214:launch_small_splitk": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:269:_use_ring_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:74:_launch_addmm_generic": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:238:_select_addmm_kernel": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:65:_allow_tf32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1677:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1541:failure_states": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1632:_first_run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:1666:<genexpr>": 21,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:994:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:104:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:105:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:106:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/candidate/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:117:<lambda>": 1
+    },
+    "das_repeat": {},
+    "old": {
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:163:addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:46:_validate_addmm_shapes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:299:_launch_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:40:_scalar_eq": 6,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/bmm/splitk.py:214:launch_small_splitk": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:269:_use_ring_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:74:_launch_addmm_generic": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:238:_select_addmm_kernel": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:65:_allow_tf32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1677:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1541:failure_states": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1632:_first_run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1666:<genexpr>": 21,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:994:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:104:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:105:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:106:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:117:<lambda>": 1
+    },
+    "old_repeat": {
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:163:addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:46:_validate_addmm_shapes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:299:_launch_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:40:_scalar_eq": 6,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/bmm/splitk.py:214:launch_small_splitk": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:269:_use_ring_addmm": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:74:_launch_addmm_generic": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:238:_select_addmm_kernel": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:65:_allow_tf32": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1677:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1541:failure_states": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1632:_first_run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:1666:<genexpr>": 21,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:994:run": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 1,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:104:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:105:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py:106:<lambda>": 2,
+      "/tmp/official-luojun850-1103424-LXX8YW/sources/master/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py:117:<lambda>": 1
+    }
+  },
+  "byte_identical_fallback_files": [
+    {
+      "path": "src/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py",
+      "byte_identical": true,
+      "sha256": "c5a1ec95b3eddab8888ef964a294d381247075aaaeb483b1a5e89613d686e0cf"
+    },
+    {
+      "path": "src/flag_gems/runtime/backend/_hygon/ops/addmm/kernels.py",
+      "byte_identical": true,
+      "sha256": "d73286165c3717b78860ab0206531642a9ad63da8a75bc2d631d72ba6d373490"
+    },
+    {
+      "path": "src/flag_gems/runtime/backend/_hygon/ops/bmm/splitk.py",
+      "byte_identical": true,
+      "sha256": "995e4b3c9bb8edc0be5438043f584571af87bbcf9c39a772495454a0ab9063ff"
+    },
+    {
+      "path": "src/flag_gems/runtime/backend/_hygon/tune_configs.yaml",
+      "byte_identical": true,
+      "sha256": "0639f815039da2ca52ccfd7001c8cffb41fe371ca22249278f24b532475f160a"
+    },
+    {
+      "path": "src/flag_gems/runtime/backend/_hygon/addmm_hygon_expand.yaml",
+      "byte_identical": true,
+      "sha256": "6d9791377d12f64a04f345d8f43750b374ea804025a01ae70df475c10cce4bf9"
+    }
+  ],
+  "compiled_cache_comparison": [
+    {
+      "compiler_key": "03360e15d2f07c8b2cbdc283d38d7f586f7783c1590728b9c8bf397afa815c57",
+      "old_metadata": {
+        "hash": "03360e15d2f07c8b2cbdc283d38d7f586f7783c1590728b9c8bf397afa815c57",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "03360e15d2f07c8b2cbdc283d38d7f586f7783c1590728b9c8bf397afa815c57",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "9f100b29e3a103e266b28626e26a0ec5a36620feca0310633d5c22c5de48e7bc",
+      "new_instruction_sha256": "9f100b29e3a103e266b28626e26a0ec5a36620feca0310633d5c22c5de48e7bc",
+      "old_hsaco_sha256": "e177acf31857e8418893d61005e884cb63f4846406913903a963b3cf58385097",
+      "new_hsaco_sha256": "457addfeb229bb5cc4c29462b9f9009548e089849b980a7ff525bf4979e3a378"
+    },
+    {
+      "compiler_key": "19921d10ea1e2a78567f72479bf7388a79089c29fda107bace52ce5a8a7a142b",
+      "old_metadata": {
+        "hash": "19921d10ea1e2a78567f72479bf7388a79089c29fda107bace52ce5a8a7a142b",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "19921d10ea1e2a78567f72479bf7388a79089c29fda107bace52ce5a8a7a142b",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "23b0ef18f11dfe19c65f6131c9df4d9232caf0c495179d6afc464596d86d747a",
+      "new_instruction_sha256": "23b0ef18f11dfe19c65f6131c9df4d9232caf0c495179d6afc464596d86d747a",
+      "old_hsaco_sha256": "abe5935ce8e5a06902bc7c47b337fe09b84a2a9926b940c76af435025b55d2ee",
+      "new_hsaco_sha256": "115ac6fa9eb5461b80bf25b49911bb4f1ee62d9d6dd4c0f6efff7e2617d196b5"
+    },
+    {
+      "compiler_key": "ab17e7b6fde46a311aed265242afb9d8bafd4d108f540e858531f4a63bea4633",
+      "old_metadata": {
+        "hash": "ab17e7b6fde46a311aed265242afb9d8bafd4d108f540e858531f4a63bea4633",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "ab17e7b6fde46a311aed265242afb9d8bafd4d108f540e858531f4a63bea4633",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "2f50c72ba203e01c4b60c94c4d3ecd094cdf5dd4583c1b1e9eb5adfe6bddaf6d",
+      "new_instruction_sha256": "2f50c72ba203e01c4b60c94c4d3ecd094cdf5dd4583c1b1e9eb5adfe6bddaf6d",
+      "old_hsaco_sha256": "a657c99349f72d1543e0d57627fd78137a684beb8b2cbaeacc7304009575fb5d",
+      "new_hsaco_sha256": "341dda53300ae5d4843a3c3225d5952356b1238094a9fac034c43afb9557468e"
+    },
+    {
+      "compiler_key": "ad8966ae2084bb59115c9f184f34530e9f4038d110c451c037cb97f340e8e821",
+      "old_metadata": {
+        "hash": "ad8966ae2084bb59115c9f184f34530e9f4038d110c451c037cb97f340e8e821",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "ad8966ae2084bb59115c9f184f34530e9f4038d110c451c037cb97f340e8e821",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "5aaece2dc0fda0889b7873ec7c71b40fd77a809d6109e1686fb5ad7bb29c0a8f",
+      "new_instruction_sha256": "5aaece2dc0fda0889b7873ec7c71b40fd77a809d6109e1686fb5ad7bb29c0a8f",
+      "old_hsaco_sha256": "c5fecdcd5ceb08fffc133c2a81b1544d5577b7298da012cff0dbb69bf5b799e5",
+      "new_hsaco_sha256": "2e52e018ef478f75018a084250c6679c504de07f5e985acb1b164af5604f24a5"
+    },
+    {
+      "compiler_key": "b7bdfcb1068ee0886317fb2edf143e3d27f3270a78c6fa8c4d9b0665a43c950d",
+      "old_metadata": {
+        "hash": "b7bdfcb1068ee0886317fb2edf143e3d27f3270a78c6fa8c4d9b0665a43c950d",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "b7bdfcb1068ee0886317fb2edf143e3d27f3270a78c6fa8c4d9b0665a43c950d",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "17e8bd4967b73f5df32836bab5931b4bd72dfdba319312f661a84471cf3867d2",
+      "new_instruction_sha256": "17e8bd4967b73f5df32836bab5931b4bd72dfdba319312f661a84471cf3867d2",
+      "old_hsaco_sha256": "4758599a6a77b0baf8f0e0cff134c12815541439c39f10eafd795a79cad598db",
+      "new_hsaco_sha256": "65e1ed4229ebc26d14d6e86670c84a08434e41c67838ecff547572e9af3767c2"
+    },
+    {
+      "compiler_key": "bf2558e1119629f7e716cdf8df31fe5e5734101ef1bf26e0e08d9ac5f08f8723",
+      "old_metadata": {
+        "hash": "bf2558e1119629f7e716cdf8df31fe5e5734101ef1bf26e0e08d9ac5f08f8723",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "bf2558e1119629f7e716cdf8df31fe5e5734101ef1bf26e0e08d9ac5f08f8723",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "eabf3871337313f0224990a9ce29737ff640c2d337771c5f399950b14f92449e",
+      "new_instruction_sha256": "eabf3871337313f0224990a9ce29737ff640c2d337771c5f399950b14f92449e",
+      "old_hsaco_sha256": "318f9ff0d98c9b214a4b651527e0afeb62825f7bc181935c2ab45d05b233dc6f",
+      "new_hsaco_sha256": "b99baf9df09eebdf8e6661c390d1f254e58f9dc37b6354d281c0ad7ebfd501d1"
+    },
+    {
+      "compiler_key": "caceaa6f02312e1255b5037783d6e850c530cb8c157d8b301e6e09ff4e1da1ee",
+      "old_metadata": {
+        "hash": "caceaa6f02312e1255b5037783d6e850c530cb8c157d8b301e6e09ff4e1da1ee",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "caceaa6f02312e1255b5037783d6e850c530cb8c157d8b301e6e09ff4e1da1ee",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "8b3814aeed173db1c082f3e22e9085a8e632e643c3b7727612caad3ebc4018b8",
+      "new_instruction_sha256": "8b3814aeed173db1c082f3e22e9085a8e632e643c3b7727612caad3ebc4018b8",
+      "old_hsaco_sha256": "de75706d7c7ece3454e65a0e32e540c62ca552d8b66829a0eed9053d6b85da79",
+      "new_hsaco_sha256": "67ee92ccda01ab561cb8f029a997b53f3df0f3aaaa8090473e107c28f171dc30"
+    },
+    {
+      "compiler_key": "cc5cd20556e12677f21dd3291de7e0add941213366681199e3d88fc0d13b3616",
+      "old_metadata": {
+        "hash": "cc5cd20556e12677f21dd3291de7e0add941213366681199e3d88fc0d13b3616",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "cc5cd20556e12677f21dd3291de7e0add941213366681199e3d88fc0d13b3616",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "408921af04802dbabd619e4c98f4eb5542eb021a1c10302ad96805e6bc44e21b",
+      "new_instruction_sha256": "408921af04802dbabd619e4c98f4eb5542eb021a1c10302ad96805e6bc44e21b",
+      "old_hsaco_sha256": "77b7fcf497a4ee13d9e2d89a3eb282d691400fe25bc258239181f2f3260db844",
+      "new_hsaco_sha256": "02b44c4af82d6f2aee05df5d16f4623eae16e09fef506dcef8f479032ceff0bd"
+    },
+    {
+      "compiler_key": "fee9a2d064e5293bcc26269e282376402a8bdeb3e937bf6934e866913077b527",
+      "old_metadata": {
+        "hash": "fee9a2d064e5293bcc26269e282376402a8bdeb3e937bf6934e866913077b527",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "new_metadata": {
+        "hash": "fee9a2d064e5293bcc26269e282376402a8bdeb3e937bf6934e866913077b527",
+        "target": {
+          "backend": "hip",
+          "arch": "gfx936",
+          "warp_size": 64
+        },
+        "num_warps": 4,
+        "waves_per_eu": 1,
+        "num_stages": 1,
+        "num_ctas": 1,
+        "extern_libs": [
+          [
+            "ocml",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ocml.bc"
+          ],
+          [
+            "ockl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/ockl.bc"
+          ],
+          [
+            "hip",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/hip.bc"
+          ],
+          [
+            "opencl",
+            "/public/software/compiler/dtk-26.04/amdgcn/bitcode/opencl.bc"
+          ]
+        ],
+        "debug": false,
+        "sanitize_overflow": true,
+        "arch": "gfx936",
+        "supported_fp8_dtypes": [
+          "fp8e4nv",
+          "fp8e5"
+        ],
+        "deprecated_fp8_dot_operand_dtypes": [],
+        "default_dot_input_precision": "ieee",
+        "allowed_dot_input_precisions": [
+          "ieee"
+        ],
+        "enable_fp_fusion": true,
+        "launch_cooperative_grid": false,
+        "matrix_instr_nonkdim": 0,
+        "kpack": 1,
+        "allow_flush_denorm": false,
+        "max_num_imprecise_acc_default": 0,
+        "backend_name": "hip",
+        "instrumentation_mode": "",
+        "optimize_epilogue": false,
+        "mmac_layout_force": -1,
+        "async_copy_use_single_buffer": true,
+        "schedule_hint": "none",
+        "sched_latency": "none",
+        "wasp_enabled": false,
+        "wdra_enabled": false,
+        "wasp_num_load_warps": null,
+        "wasp_num_mma_warps": null,
+        "wdra_num_load_regs": null,
+        "wdra_num_mma_regs_main": null,
+        "wdra_num_mma_regs_tail": null,
+        "warp_size": 64,
+        "triton_version": "3.6.0",
+        "tensordesc_meta": [],
+        "use_nvshmem": false,
+        "shared": 4096,
+        "profile_scratch_size": 0,
+        "profile_scratch_align": 1,
+        "name": "addmm_kernel"
+      },
+      "instruction_body_identical_after_debug_directive_removal": true,
+      "old_instruction_sha256": "a19a7d238adc69d4f70a175142c5e2747308ffa95cf7984c428ddc1b5143def8",
+      "new_instruction_sha256": "a19a7d238adc69d4f70a175142c5e2747308ffa95cf7984c428ddc1b5143def8",
+      "old_hsaco_sha256": "a0d97707e87542ea09932408beaea3f93363dd398e834ad4f8f0839c0bf793c1",
+      "new_hsaco_sha256": "f2d21c723d06f4c730977c719cf77dd0592055067b89dc2fa79fbb99d295a8ad"
+    }
+  ],
+  "evidence_sha256": "00c98bb89508c61a6aa1dd7b5f1ab0c1b943a3c37581729a36edaa94d71b3172",
+  "limits": "Matching group-level compiler keys/instruction bodies do not identify the exact per-case dispatched cache key. HSACO binaries include different source/debug paths and are not byte-identical. No per-launch binary identity or root-cause claim; observed accepted slowdown remains unresolved. No new samples were collected or substituted."
+}

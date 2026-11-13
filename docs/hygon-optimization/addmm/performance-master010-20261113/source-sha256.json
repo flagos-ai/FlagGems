@@ -1,0 +1,5 @@
+{
+  "src/flag_gems/runtime/backend/_hygon/ops/__init__.py": "28b9de8a994ec6832b887399a15874a3d571147bee28608bc321ea77ae599f3d",
+  "src/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py": "5e263936c495a122df7de7070c1399f8cb3355325df63f16275f6f760128146f",
+  "src/flag_gems/runtime/backend/_hygon/ops/addmm_schedule.py": "9027c16a8aba9f07d0163254402de8581d0467493356535412fc790df60355b0"
+}

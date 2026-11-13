@@ -1,0 +1,720 @@
+{
+  "baseline": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+  "tested_candidate": "e42573035c2ff5a3946288542c2f0aea649241dc",
+  "candidate_src_tree": "34b2edbc03e94789123d46cbcda4458969cdf624",
+  "date": "2026-11-12",
+  "native_comparator": null,
+  "native_extension_sha256": null,
+  "case_selection_policy": null,
+  "source_equivalence": null,
+  "method": {
+    "samples_per_role": 50,
+    "blocks": 2,
+    "samples_per_block": 25,
+    "aa_drift_limit": 0.05,
+    "timing": "sum of producer-linked device activities / calls_per_roi; kernel and copy retained separately",
+    "correctness": "full output comparison against frozen reference; failures retain diagnostic timing",
+    "input_scope": "same deterministically reconstructed backing across providers; metadata assumptions disclosed per case, not original model-payload acceptance"
+  },
+  "accounting_source_sha256": "4a31440ef189811443fd4e5fadbf5c2096bdd3984505a2c70cb767c37a81a773",
+  "preserved_accounting_sha256": "fbbf76b6b5139b94c3ba2489774f6c490761678c8b9eabb910444ed61f97142f",
+  "cases": [
+    {
+      "id": "expanded230-3c72a5a491b6f928b6ab",
+      "experiment_id": null,
+      "base": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+      "head": "e42573035c2ff5a3946288542c2f0aea649241dc",
+      "primary_metric": "kernel_sum",
+      "calls_per_roi": 20,
+      "input_match": true,
+      "old_correct": true,
+      "new_correct": true,
+      "das_correct": true,
+      "old_stable": true,
+      "new_stable": true,
+      "das_stable": true,
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "old_over_new": 0.9999114948780924,
+      "das_over_new": 4.078290445742597,
+      "improvement_percent": -0.008850512190761162,
+      "latency_reduction_percent": -0.008851295575751372,
+      "target90": true,
+      "new_correctness_regression": false,
+      "new_layout_regression": false,
+      "new_numerical_failure": false,
+      "new_layout_failure": false,
+      "new_unmeasured": false,
+      "fg_input_match": true,
+      "fg_das_input_match": true,
+      "timing_failure_reason": null,
+      "unprofiled_api": {
+        "old": {
+          "n": 50,
+          "median": 41065.8285,
+          "mean": 41104.22012,
+          "min": 40591.966,
+          "max": 41468.45,
+          "raw": [40964.382,40755.158,41431.2,40824.869,41465.471,41317.007,40907.581,41446.18,40975.232,40777.389,41435.149,40858.6,41182.936,41340.818,41440.01,41010.062,41017.733,40804.429,41022.233,40889.27,41219.256,41371.569,41468.45,41109.424,40591.966,40866.75,41114.114,40929.502,41179.305,41428.82,41467.3,40803.259,40748.448,40917.191,41175.065,40970.242,41224.157,41426.169,41207.836,40853.5,40741.748,40929.561,41235.896,41021.142,41277.487,41432.6,41334.588,40905.091,41414.979,40979.882]
+        },
+        "new": {
+          "n": 50,
+          "median": 40972.807,
+          "mean": 41069.64218,
+          "min": 40652.207,
+          "max": 41498.341,
+          "raw": [41498.341,40831.479,41323.888,40869.27,41449.05,40793.99,41125.324,40824.49,41458.18,40868.211,41364.949,40865.42,41463.63,40817.539,40652.207,40861.58,41471.451,40917.081,41391.549,41136.375,41238.067,40905.041,40703.598,40917.271,41118.615,40952.272,41423.43,40939.431,41228.947,40906.311,40748.588,40863.771,41316.658,40974.712,41430.79,40970.902,41288.387,40932.972,40793.829,40906.501,41369.569,41016.333,41436.96,41033.673,41347.029,40977.442,40825.06,40932.501,41330.798,40668.647]
+        },
+        "das": {
+          "n": 50,
+          "median": 165529.416,
+          "mean": 166488.00554,
+          "min": 164279.055,
+          "max": 169661.464,
+          "raw": [164337.916,168773.44,165441.074,167962.426,164995.887,164318.915,166517.572,169634.284,165465.205,164776.303,165532.736,164472.687,164968.416,164466.268,168003.107,164303.465,167323.225,165526.096,168795.15,164970.816,167880.355,166497.452,168003.096,165420.074,167269.435,165524.685,169655.405,164988.656,169271.698,168007.137,164470.328,167284.835,169646.204,168714.899,164300.395,168094.278,164279.055,168015.157,164972.506,167270.855,164769.853,169647.964,165512.255,169203.067,165010.687,164302.315,166462.171,169661.464,165370.353,164308.655]
+        },
+        "aa": {
+          "n": 50,
+          "median": 41043.093,
+          "mean": 41087.3304,
+          "min": 40593.176,
+          "max": 41442.02,
+          "raw": [40859.57,40982.082,41125.935,41367.349,41068.823,40869.951,41334.668,41395.069,40880.141,41025.803,41231.766,41407.29,41113.254,40907.711,41216.256,41411.77,40911.501,40659.977,41301.948,41421.899,40752.819,40930.661,41332.068,41432.3,40935.822,40697.567,41370.109,41436.67,40782.409,40965.562,41365.819,41018.802,40998.912,40750.868,41395.869,41438.86,40752.148,41021.963,41411.099,41060.383,41019.973,40781.969,41418.92,41065.653,40782.159,40593.176,41442.02,41122.155,40973.372,40823.65]
+        }
+      },
+      "api_old_over_new_diagnostic": 1.0022703228509582,
+      "source_witness": {
+        "old": {
+          "src/flag_gems/ops/addmm.py:196:addmm": 1,
+          "src/flag_gems/ops/addmm.py:134:_addmm_impl": 1,
+          "src/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 2,
+          "src/flag_gems/utils/libentry.py:1541:failure_states": 2,
+          "src/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 3,
+          "src/flag_gems/utils/libentry.py:583:apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:59:resolve_cost_model_intent": 1,
+          "src/flag_gems/runtime/flagtune.py:166:_use_flagtune_setting_from_env": 3,
+          "src/flag_gems/runtime/flagtune.py:155:_optional_binary_environment": 3,
+          "src/flag_gems/flagtune/inference/cost_model.py:232:failure_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:214:identity_cache_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:227:<genexpr>": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:228:<genexpr>": 1,
+          "src/flag_gems/runtime/flagtune.py:202:resolve_tuning_mode": 2,
+          "src/flag_gems/runtime/flagtune.py:76:_normalize_op_name": 2,
+          "src/flag_gems/runtime/flagtune.py:196:get_flagtune_include": 2,
+          "src/flag_gems/runtime/flagtune.py:185:_include_from_env": 2,
+          "src/flag_gems/utils/libentry.py:615:_flagtune_configs_for_mode": 1,
+          "src/flag_gems/utils/libentry.py:569:_set_configs_and_strategy": 1,
+          "src/flag_gems/utils/libentry.py:559:_normalize_strategy": 1,
+          "src/flag_gems/utils/libentry.py:567:<listcomp>": 1,
+          "src/flag_gems/utils/libentry.py:740:get_strategy": 5,
+          "src/flag_gems/utils/libentry.py:540:_make_config_table_name": 1,
+          "src/flag_gems/utils/libentry.py:669:kernel_hash": 1,
+          "src/flag_gems/utils/libentry.py:675:configs_hash": 1,
+          "src/flag_gems/utils/libentry.py:678:<lambda>": 24,
+          "src/flag_gems/utils/libentry.py:322:__getitem__": 2,
+          "src/flag_gems/utils/libentry.py:341:get_config": 1,
+          "src/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 3,
+          "src/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 22,
+          "src/flag_gems/utils/libentry.py:994:run": 1,
+          "src/flag_gems/utils/libentry.py:1043:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:681:get_key": 1,
+          "src/flag_gems/utils/libentry.py:688:<lambda>": 5,
+          "src/flag_gems/utils/libentry.py:1266:align32_strategy": 5,
+          "src/flag_gems/utils/libentry.py:692:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:695:get_benchmark_key": 1,
+          "src/flag_gems/utils/libentry.py:704:<genexpr>": 6,
+          "src/flag_gems/utils/libentry.py:705:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:231:__contains__": 1,
+          "src/flag_gems/utils/libentry.py:245:get": 2,
+          "src/flag_gems/utils/models/sql.py:295:get_config": 2,
+          "src/flag_gems/utils/models/sql.py:214:get_key_dict": 51,
+          "src/flag_gems/utils/models/sql.py:226:<dictcomp>": 51,
+          "src/flag_gems/utils/models/sql.py:206:normalize_value": 897,
+          "src/flag_gems/utils/models/sql.py:241:get_sql_model": 51,
+          "src/flag_gems/utils/models/sql.py:186:build_sql_model_by_db": 6,
+          "src/flag_gems/utils/models/sql.py:76:set_sqlite_pragma": 1,
+          "src/flag_gems/utils/libentry.py:332:get_benchmark": 1,
+          "src/flag_gems/utils/libentry.py:255:__init__": 1,
+          "src/flag_gems/utils/libentry.py:213:__init__": 1,
+          "src/flag_gems/utils/libentry.py:771:policy": 1,
+          "src/flag_gems/utils/libentry.py:1275:default_policy": 1,
+          "src/flag_gems/utils/libentry.py:1324:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:1059:bench": 24,
+          "src/flag_gems/utils/libentry.py:283:get": 24,
+          "src/flag_gems/utils/models/sql.py:336:get_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:231:get_config_dict": 49,
+          "src/flag_gems/utils/models/sql.py:235:<dictcomp>": 49,
+          "src/flag_gems/utils/libentry.py:441:do_bench": 24,
+          "src/flag_gems/ops/addmm.py:165:<lambda>": 81,
+          "src/flag_gems/utils/libentry.py:1085:<genexpr>": 64,
+          "src/flag_gems/utils/libentry.py:280:__setitem__": 24,
+          "src/flag_gems/utils/libentry.py:286:set": 24,
+          "src/flag_gems/utils/models/sql.py:394:put_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:123:build_sql_model_by_py": 2,
+          "src/flag_gems/utils/models/sql.py:96:_get_column_type": 36,
+          "src/flag_gems/utils/models/sql.py:158:<dictcomp>": 2,
+          "src/flag_gems/utils/models/sql.py:162:<dictcomp>": 2,
+          "src/flag_gems/utils/models/session.py:21:__init__": 49,
+          "src/flag_gems/utils/models/session.py:24:commit": 25,
+          "src/flag_gems/utils/libentry.py:240:__setitem__": 1,
+          "src/flag_gems/utils/libentry.py:248:set": 1,
+          "src/flag_gems/utils/models/sql.py:367:put_config": 1,
+          "src/flag_gems/utils/models/sql.py:383:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:384:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:234:__getitem__": 1,
+          "src/flag_gems/utils/models/sql.py:323:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:328:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:331:<dictcomp>": 1
+        },
+        "new": {
+          "src/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:690:addmm": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:315:_eligible": 1,
+          "src/flag_gems/ops/addmm.py:196:addmm": 1,
+          "src/flag_gems/ops/addmm.py:134:_addmm_impl": 1,
+          "src/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 2,
+          "src/flag_gems/utils/libentry.py:1541:failure_states": 2,
+          "src/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 3,
+          "src/flag_gems/utils/libentry.py:583:apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:59:resolve_cost_model_intent": 1,
+          "src/flag_gems/runtime/flagtune.py:166:_use_flagtune_setting_from_env": 3,
+          "src/flag_gems/runtime/flagtune.py:155:_optional_binary_environment": 3,
+          "src/flag_gems/flagtune/inference/cost_model.py:232:failure_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:214:identity_cache_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:227:<genexpr>": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:228:<genexpr>": 1,
+          "src/flag_gems/runtime/flagtune.py:202:resolve_tuning_mode": 2,
+          "src/flag_gems/runtime/flagtune.py:76:_normalize_op_name": 2,
+          "src/flag_gems/runtime/flagtune.py:196:get_flagtune_include": 2,
+          "src/flag_gems/runtime/flagtune.py:185:_include_from_env": 2,
+          "src/flag_gems/utils/libentry.py:615:_flagtune_configs_for_mode": 1,
+          "src/flag_gems/utils/libentry.py:569:_set_configs_and_strategy": 1,
+          "src/flag_gems/utils/libentry.py:559:_normalize_strategy": 1,
+          "src/flag_gems/utils/libentry.py:567:<listcomp>": 1,
+          "src/flag_gems/utils/libentry.py:740:get_strategy": 5,
+          "src/flag_gems/utils/libentry.py:540:_make_config_table_name": 1,
+          "src/flag_gems/utils/libentry.py:669:kernel_hash": 1,
+          "src/flag_gems/utils/libentry.py:675:configs_hash": 1,
+          "src/flag_gems/utils/libentry.py:678:<lambda>": 24,
+          "src/flag_gems/utils/libentry.py:322:__getitem__": 2,
+          "src/flag_gems/utils/libentry.py:341:get_config": 1,
+          "src/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 3,
+          "src/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 22,
+          "src/flag_gems/utils/libentry.py:994:run": 1,
+          "src/flag_gems/utils/libentry.py:1043:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:681:get_key": 1,
+          "src/flag_gems/utils/libentry.py:688:<lambda>": 5,
+          "src/flag_gems/utils/libentry.py:1266:align32_strategy": 5,
+          "src/flag_gems/utils/libentry.py:692:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:695:get_benchmark_key": 1,
+          "src/flag_gems/utils/libentry.py:704:<genexpr>": 6,
+          "src/flag_gems/utils/libentry.py:705:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:231:__contains__": 1,
+          "src/flag_gems/utils/libentry.py:245:get": 2,
+          "src/flag_gems/utils/models/sql.py:295:get_config": 2,
+          "src/flag_gems/utils/models/sql.py:214:get_key_dict": 51,
+          "src/flag_gems/utils/models/sql.py:226:<dictcomp>": 51,
+          "src/flag_gems/utils/models/sql.py:206:normalize_value": 897,
+          "src/flag_gems/utils/models/sql.py:241:get_sql_model": 51,
+          "src/flag_gems/utils/models/sql.py:186:build_sql_model_by_db": 6,
+          "src/flag_gems/utils/models/sql.py:76:set_sqlite_pragma": 1,
+          "src/flag_gems/utils/libentry.py:332:get_benchmark": 1,
+          "src/flag_gems/utils/libentry.py:255:__init__": 1,
+          "src/flag_gems/utils/libentry.py:213:__init__": 1,
+          "src/flag_gems/utils/libentry.py:771:policy": 1,
+          "src/flag_gems/utils/libentry.py:1275:default_policy": 1,
+          "src/flag_gems/utils/libentry.py:1324:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:1059:bench": 24,
+          "src/flag_gems/utils/libentry.py:283:get": 24,
+          "src/flag_gems/utils/models/sql.py:336:get_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:231:get_config_dict": 49,
+          "src/flag_gems/utils/models/sql.py:235:<dictcomp>": 49,
+          "src/flag_gems/utils/libentry.py:441:do_bench": 24,
+          "src/flag_gems/ops/addmm.py:165:<lambda>": 81,
+          "src/flag_gems/utils/libentry.py:1085:<genexpr>": 64,
+          "src/flag_gems/utils/libentry.py:280:__setitem__": 24,
+          "src/flag_gems/utils/libentry.py:286:set": 24,
+          "src/flag_gems/utils/models/sql.py:394:put_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:123:build_sql_model_by_py": 2,
+          "src/flag_gems/utils/models/sql.py:96:_get_column_type": 36,
+          "src/flag_gems/utils/models/sql.py:158:<dictcomp>": 2,
+          "src/flag_gems/utils/models/sql.py:162:<dictcomp>": 2,
+          "src/flag_gems/utils/models/session.py:21:__init__": 49,
+          "src/flag_gems/utils/models/session.py:24:commit": 25,
+          "src/flag_gems/utils/libentry.py:240:__setitem__": 1,
+          "src/flag_gems/utils/libentry.py:248:set": 1,
+          "src/flag_gems/utils/models/sql.py:367:put_config": 1,
+          "src/flag_gems/utils/models/sql.py:383:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:384:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:234:__getitem__": 1,
+          "src/flag_gems/utils/models/sql.py:323:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:328:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:331:<dictcomp>": 1
+        },
+        "das": {},
+        "old_repeat": {
+          "src/flag_gems/ops/addmm.py:196:addmm": 1,
+          "src/flag_gems/ops/addmm.py:134:_addmm_impl": 1,
+          "src/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 2,
+          "src/flag_gems/utils/libentry.py:1541:failure_states": 2,
+          "src/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 3,
+          "src/flag_gems/utils/libentry.py:583:apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:59:resolve_cost_model_intent": 1,
+          "src/flag_gems/runtime/flagtune.py:166:_use_flagtune_setting_from_env": 3,
+          "src/flag_gems/runtime/flagtune.py:155:_optional_binary_environment": 3,
+          "src/flag_gems/flagtune/inference/cost_model.py:232:failure_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:214:identity_cache_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:227:<genexpr>": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:228:<genexpr>": 1,
+          "src/flag_gems/runtime/flagtune.py:202:resolve_tuning_mode": 2,
+          "src/flag_gems/runtime/flagtune.py:76:_normalize_op_name": 2,
+          "src/flag_gems/runtime/flagtune.py:196:get_flagtune_include": 2,
+          "src/flag_gems/runtime/flagtune.py:185:_include_from_env": 2,
+          "src/flag_gems/utils/libentry.py:615:_flagtune_configs_for_mode": 1,
+          "src/flag_gems/utils/libentry.py:569:_set_configs_and_strategy": 1,
+          "src/flag_gems/utils/libentry.py:559:_normalize_strategy": 1,
+          "src/flag_gems/utils/libentry.py:567:<listcomp>": 1,
+          "src/flag_gems/utils/libentry.py:740:get_strategy": 5,
+          "src/flag_gems/utils/libentry.py:540:_make_config_table_name": 1,
+          "src/flag_gems/utils/libentry.py:669:kernel_hash": 1,
+          "src/flag_gems/utils/libentry.py:675:configs_hash": 1,
+          "src/flag_gems/utils/libentry.py:678:<lambda>": 24,
+          "src/flag_gems/utils/libentry.py:322:__getitem__": 2,
+          "src/flag_gems/utils/libentry.py:341:get_config": 1,
+          "src/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 3,
+          "src/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 22,
+          "src/flag_gems/utils/libentry.py:994:run": 1,
+          "src/flag_gems/utils/libentry.py:1043:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:681:get_key": 1,
+          "src/flag_gems/utils/libentry.py:688:<lambda>": 5,
+          "src/flag_gems/utils/libentry.py:1266:align32_strategy": 5,
+          "src/flag_gems/utils/libentry.py:692:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:695:get_benchmark_key": 1,
+          "src/flag_gems/utils/libentry.py:704:<genexpr>": 6,
+          "src/flag_gems/utils/libentry.py:705:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:231:__contains__": 1,
+          "src/flag_gems/utils/libentry.py:245:get": 2,
+          "src/flag_gems/utils/models/sql.py:295:get_config": 2,
+          "src/flag_gems/utils/models/sql.py:214:get_key_dict": 51,
+          "src/flag_gems/utils/models/sql.py:226:<dictcomp>": 51,
+          "src/flag_gems/utils/models/sql.py:206:normalize_value": 897,
+          "src/flag_gems/utils/models/sql.py:241:get_sql_model": 51,
+          "src/flag_gems/utils/models/sql.py:186:build_sql_model_by_db": 6,
+          "src/flag_gems/utils/models/sql.py:76:set_sqlite_pragma": 1,
+          "src/flag_gems/utils/libentry.py:332:get_benchmark": 1,
+          "src/flag_gems/utils/libentry.py:255:__init__": 1,
+          "src/flag_gems/utils/libentry.py:213:__init__": 1,
+          "src/flag_gems/utils/libentry.py:771:policy": 1,
+          "src/flag_gems/utils/libentry.py:1275:default_policy": 1,
+          "src/flag_gems/utils/libentry.py:1324:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:1059:bench": 24,
+          "src/flag_gems/utils/libentry.py:283:get": 24,
+          "src/flag_gems/utils/models/sql.py:336:get_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:231:get_config_dict": 49,
+          "src/flag_gems/utils/models/sql.py:235:<dictcomp>": 49,
+          "src/flag_gems/utils/libentry.py:441:do_bench": 24,
+          "src/flag_gems/ops/addmm.py:165:<lambda>": 81,
+          "src/flag_gems/utils/libentry.py:1085:<genexpr>": 64,
+          "src/flag_gems/utils/libentry.py:280:__setitem__": 24,
+          "src/flag_gems/utils/libentry.py:286:set": 24,
+          "src/flag_gems/utils/models/sql.py:394:put_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:123:build_sql_model_by_py": 2,
+          "src/flag_gems/utils/models/sql.py:96:_get_column_type": 36,
+          "src/flag_gems/utils/models/sql.py:158:<dictcomp>": 2,
+          "src/flag_gems/utils/models/sql.py:162:<dictcomp>": 2,
+          "src/flag_gems/utils/models/session.py:21:__init__": 49,
+          "src/flag_gems/utils/models/session.py:24:commit": 25,
+          "src/flag_gems/utils/libentry.py:240:__setitem__": 1,
+          "src/flag_gems/utils/libentry.py:248:set": 1,
+          "src/flag_gems/utils/models/sql.py:367:put_config": 1,
+          "src/flag_gems/utils/models/sql.py:383:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:384:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:234:__getitem__": 1,
+          "src/flag_gems/utils/models/sql.py:323:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:328:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:331:<dictcomp>": 1
+        },
+        "aa": {
+          "src/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:690:addmm": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py:315:_eligible": 1,
+          "src/flag_gems/ops/addmm.py:196:addmm": 1,
+          "src/flag_gems/ops/addmm.py:134:_addmm_impl": 1,
+          "src/flag_gems/utils/shape_utils.py:84:broadcastable_to": 1,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1534:_apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:30:_flagtune_state_key": 2,
+          "src/flag_gems/utils/libentry.py:1541:failure_states": 2,
+          "src/flag_gems/utils/libentry.py:101:_supports_flagtune_cost_model": 3,
+          "src/flag_gems/utils/libentry.py:583:apply_flagtune": 1,
+          "src/flag_gems/runtime/flagtune.py:59:resolve_cost_model_intent": 1,
+          "src/flag_gems/runtime/flagtune.py:166:_use_flagtune_setting_from_env": 3,
+          "src/flag_gems/runtime/flagtune.py:155:_optional_binary_environment": 3,
+          "src/flag_gems/flagtune/inference/cost_model.py:232:failure_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:214:identity_cache_key": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:227:<genexpr>": 1,
+          "src/flag_gems/flagtune/inference/cost_model.py:228:<genexpr>": 1,
+          "src/flag_gems/runtime/flagtune.py:202:resolve_tuning_mode": 2,
+          "src/flag_gems/runtime/flagtune.py:76:_normalize_op_name": 2,
+          "src/flag_gems/runtime/flagtune.py:196:get_flagtune_include": 2,
+          "src/flag_gems/runtime/flagtune.py:185:_include_from_env": 2,
+          "src/flag_gems/utils/libentry.py:615:_flagtune_configs_for_mode": 1,
+          "src/flag_gems/utils/libentry.py:569:_set_configs_and_strategy": 1,
+          "src/flag_gems/utils/libentry.py:559:_normalize_strategy": 1,
+          "src/flag_gems/utils/libentry.py:567:<listcomp>": 1,
+          "src/flag_gems/utils/libentry.py:740:get_strategy": 5,
+          "src/flag_gems/utils/libentry.py:540:_make_config_table_name": 1,
+          "src/flag_gems/utils/libentry.py:669:kernel_hash": 1,
+          "src/flag_gems/utils/libentry.py:675:configs_hash": 1,
+          "src/flag_gems/utils/libentry.py:678:<lambda>": 24,
+          "src/flag_gems/utils/libentry.py:322:__getitem__": 2,
+          "src/flag_gems/utils/libentry.py:341:get_config": 1,
+          "src/flag_gems/utils/libentry.py:148:_infer_tensor_dtypes": 3,
+          "src/flag_gems/utils/libentry.py:1726:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 22,
+          "src/flag_gems/utils/libentry.py:994:run": 1,
+          "src/flag_gems/utils/libentry.py:1043:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:681:get_key": 1,
+          "src/flag_gems/utils/libentry.py:688:<lambda>": 5,
+          "src/flag_gems/utils/libentry.py:1266:align32_strategy": 5,
+          "src/flag_gems/utils/libentry.py:692:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:695:get_benchmark_key": 1,
+          "src/flag_gems/utils/libentry.py:704:<genexpr>": 6,
+          "src/flag_gems/utils/libentry.py:705:<genexpr>": 5,
+          "src/flag_gems/utils/libentry.py:231:__contains__": 1,
+          "src/flag_gems/utils/libentry.py:245:get": 2,
+          "src/flag_gems/utils/models/sql.py:295:get_config": 2,
+          "src/flag_gems/utils/models/sql.py:214:get_key_dict": 51,
+          "src/flag_gems/utils/models/sql.py:226:<dictcomp>": 51,
+          "src/flag_gems/utils/models/sql.py:206:normalize_value": 897,
+          "src/flag_gems/utils/models/sql.py:241:get_sql_model": 51,
+          "src/flag_gems/utils/models/sql.py:186:build_sql_model_by_db": 6,
+          "src/flag_gems/utils/models/sql.py:76:set_sqlite_pragma": 1,
+          "src/flag_gems/utils/libentry.py:332:get_benchmark": 1,
+          "src/flag_gems/utils/libentry.py:255:__init__": 1,
+          "src/flag_gems/utils/libentry.py:213:__init__": 1,
+          "src/flag_gems/utils/libentry.py:771:policy": 1,
+          "src/flag_gems/utils/libentry.py:1275:default_policy": 1,
+          "src/flag_gems/utils/libentry.py:1324:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:1059:bench": 24,
+          "src/flag_gems/utils/libentry.py:283:get": 24,
+          "src/flag_gems/utils/models/sql.py:336:get_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:231:get_config_dict": 49,
+          "src/flag_gems/utils/models/sql.py:235:<dictcomp>": 49,
+          "src/flag_gems/utils/libentry.py:441:do_bench": 24,
+          "src/flag_gems/ops/addmm.py:165:<lambda>": 81,
+          "src/flag_gems/utils/libentry.py:1085:<genexpr>": 64,
+          "src/flag_gems/utils/libentry.py:280:__setitem__": 24,
+          "src/flag_gems/utils/libentry.py:286:set": 24,
+          "src/flag_gems/utils/models/sql.py:394:put_benchmark": 24,
+          "src/flag_gems/utils/models/sql.py:123:build_sql_model_by_py": 2,
+          "src/flag_gems/utils/models/sql.py:96:_get_column_type": 36,
+          "src/flag_gems/utils/models/sql.py:158:<dictcomp>": 2,
+          "src/flag_gems/utils/models/sql.py:162:<dictcomp>": 2,
+          "src/flag_gems/utils/models/session.py:21:__init__": 49,
+          "src/flag_gems/utils/models/session.py:24:commit": 25,
+          "src/flag_gems/utils/libentry.py:240:__setitem__": 1,
+          "src/flag_gems/utils/libentry.py:248:set": 1,
+          "src/flag_gems/utils/models/sql.py:367:put_config": 1,
+          "src/flag_gems/utils/models/sql.py:383:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:384:<dictcomp>": 1,
+          "src/flag_gems/utils/libentry.py:234:__getitem__": 1,
+          "src/flag_gems/utils/models/sql.py:323:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:328:<dictcomp>": 1,
+          "src/flag_gems/utils/models/sql.py:331:<dictcomp>": 1
+        },
+        "das_repeat": {}
+      },
+      "arms": {
+        "old": {
+          "timing_valid": true,
+          "timing_errors": [],
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "2561ee7e6053afa1eb2c5bf858907c777b3b232c7a8201d60dc5cf3174b755d8",
+            "1": "7714ce47ebfa8e221b67c3243b109fa39677eee3a2f5ff932aa26176cc447de5",
+            "2": "d02132d84b02d56c762e06d024c54295ec991ca4132a70ae72e1d875bf401f71"
+          },
+          "device_blocks": [
+            [40946.7761,40901.080050000004,40794.93615,40847.1281,41002.4559,40926.05605,41033.3281,41007.080050000004,41065.359899999996,40980.60005,40883.5681,40955.0561,40933.94415,40843.33615,40753.21615,40837.94415,40824.8481,40825.80015,41006.568,41093.19205,40974.8241,40962.13615,40729.0402,40786.13615,40759.14415],
+            [40896.30255,40942.630450000004,40792.750550000004,40968.25485,40965.5265,40750.4785,40911.67845,40763.06255,40839.4545,40898.0065,40862.982449999996,40837.886450000005,40860.462400000004,41003.5824,40935.4305,40984.65445,41017.91045,40871.9425,40959.3744,40784.1745,40810.23845,40895.678499999995,40797.85445,40818.8385,40892.92645]
+          ],
+          "kernel_blocks": [
+            [40946.7761,40901.080050000004,40794.93615,40847.1281,41002.4559,40926.05605,41033.3281,41007.080050000004,41065.359899999996,40980.60005,40883.5681,40955.0561,40933.94415,40843.33615,40753.21615,40837.94415,40824.8481,40825.80015,41006.568,41093.19205,40974.8241,40962.13615,40729.0402,40786.13615,40759.14415],
+            [40896.30255,40942.630450000004,40792.750550000004,40968.25485,40965.5265,40750.4785,40911.67845,40763.06255,40839.4545,40898.0065,40862.982449999996,40837.886450000005,40860.462400000004,41003.5824,40935.4305,40984.65445,41017.91045,40871.9425,40959.3744,40784.1745,40810.23845,40895.678499999995,40797.85445,40818.8385,40892.92645]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": [],
+            "display_track_policy": "Shard-local process display IDs canonicalized by exact label when required; original producer identity, intervals, events and shard hashes unchanged"
+          }
+        },
+        "new": {
+          "timing_valid": true,
+          "timing_errors": [],
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "2561ee7e6053afa1eb2c5bf858907c777b3b232c7a8201d60dc5cf3174b755d8",
+            "1": "7714ce47ebfa8e221b67c3243b109fa39677eee3a2f5ff932aa26176cc447de5",
+            "2": "d02132d84b02d56c762e06d024c54295ec991ca4132a70ae72e1d875bf401f71"
+          },
+          "device_blocks": [
+            [40827.160149999996,40863.09625,40796.2163,40761.65635,40839.2083,40921.72025,40998.98425,41018.464250000005,41048.34425,41018.7283,41052.4321,40879.168300000005,40851.6083,40916.50425,40802.9923,40843.440350000004,40905.24825,40897.24825,40979.06425,40972.416249999995,40967.464250000005,40922.448300000004,40868.2083,40727.47225,40638.2963],
+            [40887.9664,40910.63835,40870.20635,40937.67035,40899.83835,40763.3664,41003.67035,40929.510350000004,40873.66235,40981.30235,40899.38235,40892.910350000006,40945.654350000004,40925.55835,40801.5663,40946.27835,40923.84635,40833.5424,41006.82225,40944.910350000006,40825.95035,40972.5264,40896.99035,40879.37435,40859.6944]
+          ],
+          "kernel_blocks": [
+            [40827.160149999996,40863.09625,40796.2163,40761.65635,40839.2083,40921.72025,40998.98425,41018.464250000005,41048.34425,41018.7283,41052.4321,40879.168300000005,40851.6083,40916.50425,40802.9923,40843.440350000004,40905.24825,40897.24825,40979.06425,40972.416249999995,40967.464250000005,40922.448300000004,40868.2083,40727.47225,40638.2963],
+            [40887.9664,40910.63835,40870.20635,40937.67035,40899.83835,40763.3664,41003.67035,40929.510350000004,40873.66235,40981.30235,40899.38235,40892.910350000006,40945.654350000004,40925.55835,40801.5663,40946.27835,40923.84635,40833.5424,41006.82225,40944.910350000006,40825.95035,40972.5264,40896.99035,40879.37435,40859.6944]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": [],
+            "display_track_policy": "Shard-local process display IDs canonicalized by exact label when required; original producer identity, intervals, events and shard hashes unchanged"
+          }
+        },
+        "das": {
+          "timing_valid": true,
+          "timing_errors": [],
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "2561ee7e6053afa1eb2c5bf858907c777b3b232c7a8201d60dc5cf3174b755d8",
+            "1": "7714ce47ebfa8e221b67c3243b109fa39677eee3a2f5ff932aa26176cc447de5",
+            "2": "d02132d84b02d56c762e06d024c54295ec991ca4132a70ae72e1d875bf401f71"
+          },
+          "device_blocks": [
+            [166777.42765,167308.37165000002,166921.5794,167141.75525,167136.97830000002,167008.79505000002,167389.82690000001,166796.19505,167086.55475,166702.3066,167368.49835,166815.2186,167542.3223,166659.34565,167499.69805,166481.9613,167294.92184999998,166293.07415,167320.19365,166490.98585,167604.5213,166222.42545,167519.85695,166081.88095,167168.45674999998],
+            [166365.55315,165611.15305000002,166495.8727,165824.9853,166629.44925,165799.7854,166843.05719999998,165927.56939999998,166782.83335,165990.36155,166804.78519999998,166014.46545,167081.28125,166012.21755,167163.32135,166358.61745,167008.6653,166506.08135,167123.00935,166584.11345,167445.80115,166482.5214,167163.6172,166717.94525,166975.14525]
+          ],
+          "kernel_blocks": [
+            [166777.42765,167308.37165000002,166921.5794,167141.75525,167136.97830000002,167008.79505000002,167389.82690000001,166796.19505,167086.55475,166702.3066,167368.49835,166815.2186,167542.3223,166659.34565,167499.69805,166481.9613,167294.92184999998,166293.07415,167320.19365,166490.98585,167604.5213,166222.42545,167519.85695,166081.88095,167168.45674999998],
+            [166365.55315,165611.15305000002,166495.8727,165824.9853,166629.44925,165799.7854,166843.05719999998,165927.56939999998,166782.83335,165990.36155,166804.78519999998,166014.46545,167081.28125,166012.21755,167163.32135,166358.61745,167008.6653,166506.08135,167123.00935,166584.11345,167445.80115,166482.5214,167163.6172,166717.94525,166975.14525]
+          ],
+          "copy_blocks": [
+            [5.5520000000000005,5.672,5.392,5.5520000000000005,5.6,5.488,5.544,5.504,5.4799999999999995,5.5520000000000005,5.5200000000000005,5.504,5.6,5.632,5.392,5.424,5.4719999999999995,5.6240000000000006,5.5920000000000005,5.608,5.4159999999999995,5.536,5.536,5.504,5.49595],
+            [5.4719999999999995,5.5600000000000005,5.5520000000000005,5.504,5.536,5.5920000000000005,5.5920000000000005,5.5600000000000005,5.4079999999999995,5.456,5.424,5.544,5.576,5.616,5.576,5.536,5.5920000000000005,5.5280000000000005,5.616,5.504,5.512,5.456,5.688000000000001,5.5600000000000005,5.311999999999999]
+          ],
+          "schema_witness": {
+            "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": [],
+            "display_track_policy": "Shard-local process display IDs canonicalized by exact label when required; original producer identity, intervals, events and shard hashes unchanged"
+          }
+        },
+        "old_repeat": {
+          "timing_valid": true,
+          "timing_errors": [],
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "2561ee7e6053afa1eb2c5bf858907c777b3b232c7a8201d60dc5cf3174b755d8",
+            "1": "7714ce47ebfa8e221b67c3243b109fa39677eee3a2f5ff932aa26176cc447de5",
+            "2": "d02132d84b02d56c762e06d024c54295ec991ca4132a70ae72e1d875bf401f71"
+          },
+          "device_blocks": [
+            [40785.12055,40698.6326,40887.9125,41004.6563,41047.66445,41049.704450000005,41044.096399999995,41033.9844,40895.5605,40867.9045,40778.57645,40778.26445,40815.8565,40808.7844,40956.60035,41132.3284,41051.52835,41018.792349999996,40992.21635,40918.200150000004,40799.45635,40805.66435,40725.0163,40818.73635,40936.752250000005],
+            [40736.11045,40808.6944,41001.64635,40790.72635,40929.98235,41022.982299999996,40930.82235,40910.8863,40943.1423,41004.6463,40839.3024,40865.03835,40807.790250000005,40843.53435,40947.918300000005,40716.1664,40920.96635,40926.23835,40798.462400000004,40860.10235,40844.05425,40920.23835,40882.19835,40934.06225,40958.24635]
+          ],
+          "kernel_blocks": [
+            [40785.12055,40698.6326,40887.9125,41004.6563,41047.66445,41049.704450000005,41044.096399999995,41033.9844,40895.5605,40867.9045,40778.57645,40778.26445,40815.8565,40808.7844,40956.60035,41132.3284,41051.52835,41018.792349999996,40992.21635,40918.200150000004,40799.45635,40805.66435,40725.0163,40818.73635,40936.752250000005],
+            [40736.11045,40808.6944,41001.64635,40790.72635,40929.98235,41022.982299999996,40930.82235,40910.8863,40943.1423,41004.6463,40839.3024,40865.03835,40807.790250000005,40843.53435,40947.918300000005,40716.1664,40920.96635,40926.23835,40798.462400000004,40860.10235,40844.05425,40920.23835,40882.19835,40934.06225,40958.24635]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": [],
+            "display_track_policy": "Shard-local process display IDs canonicalized by exact label when required; original producer identity, intervals, events and shard hashes unchanged"
+          }
+        },
+        "aa": {
+          "timing_valid": true,
+          "timing_errors": [],
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "2561ee7e6053afa1eb2c5bf858907c777b3b232c7a8201d60dc5cf3174b755d8",
+            "1": "7714ce47ebfa8e221b67c3243b109fa39677eee3a2f5ff932aa26176cc447de5",
+            "2": "d02132d84b02d56c762e06d024c54295ec991ca4132a70ae72e1d875bf401f71"
+          },
+          "device_blocks": [
+            [40916.19185,40967.37585,40902.3996,40895.25585,40792.87185,40888.7436,40873.2238,40846.7918,40838.3438,40865.69575,40932.13575,40842.967749999996,40809.9115,41002.1837,40892.503749999996,40859.9597,40916.39145,40893.0957,40890.8877,40865.09545,40975.9594,40922.37565,40989.0316,40987.4796,40887.2236],
+            [40957.029800000004,40875.18185,40781.909850000004,40980.3578,40851.46185,40762.21385,40847.18985,40864.7338,40883.9978,40850.6858,40965.3898,40917.181800000006,40988.9978,40986.3338,40888.4458,41015.6376,40912.4858,40783.9018,40909.133799999996,40882.6938,40901.8698,40893.101650000004,40947.109749999996,40969.08575,40932.933750000004]
+          ],
+          "kernel_blocks": [
+            [40916.19185,40967.37585,40902.3996,40895.25585,40792.87185,40888.7436,40873.2238,40846.7918,40838.3438,40865.69575,40932.13575,40842.967749999996,40809.9115,41002.1837,40892.503749999996,40859.9597,40916.39145,40893.0957,40890.8877,40865.09545,40975.9594,40922.37565,40989.0316,40987.4796,40887.2236],
+            [40957.029800000004,40875.18185,40781.909850000004,40980.3578,40851.46185,40762.21385,40847.18985,40864.7338,40883.9978,40850.6858,40965.3898,40917.181800000006,40988.9978,40986.3338,40888.4458,41015.6376,40912.4858,40783.9018,40909.133799999996,40882.6938,40901.8698,40893.101650000004,40947.109749999996,40969.08575,40932.933750000004]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": [],
+            "display_track_policy": "Shard-local process display IDs canonicalized by exact label when required; original producer identity, intervals, events and shard hashes unchanged"
+          }
+        },
+        "das_repeat": {
+          "timing_valid": true,
+          "timing_errors": [],
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "2561ee7e6053afa1eb2c5bf858907c777b3b232c7a8201d60dc5cf3174b755d8",
+            "1": "7714ce47ebfa8e221b67c3243b109fa39677eee3a2f5ff932aa26176cc447de5",
+            "2": "d02132d84b02d56c762e06d024c54295ec991ca4132a70ae72e1d875bf401f71"
+          },
+          "device_blocks": [
+            [166698.2256,166069.5215,166671.90515,165976.70505,166907.30490000002,166084.16095,166965.60855,165901.8805,167150.5199,165766.136,167069.5116,165595.128,166957.94335000002,165697.83145,167067.09495,165933.4792,167265.79075,165698.31075,167067.5023,165697.8933,166898.86185000002,166007.6379,167141.2855,166241.1496,166894.69335000002],
+            [166842.59720000002,166340.0851,166675.07695,166421.5649,166731.32439999998,166269.14045,167010.72324999998,166441.46025,167245.24284999998,166216.73189999998,166970.68355000002,166044.29075,167191.27425,165927.7714,167432.5308,166078.98715,167523.8029,166157.84305,167297.27485,166044.6191,167289.2188,165932.40285,167391.4266,166038.0107,167237.1226]
+          ],
+          "kernel_blocks": [
+            [166698.2256,166069.5215,166671.90515,165976.70505,166907.30490000002,166084.16095,166965.60855,165901.8805,167150.5199,165766.136,167069.5116,165595.128,166957.94335000002,165697.83145,167067.09495,165933.4792,167265.79075,165698.31075,167067.5023,165697.8933,166898.86185000002,166007.6379,167141.2855,166241.1496,166894.69335000002],
+            [166842.59720000002,166340.0851,166675.07695,166421.5649,166731.32439999998,166269.14045,167010.72324999998,166441.46025,167245.24284999998,166216.73189999998,166970.68355000002,166044.29075,167191.27425,165927.7714,167432.5308,166078.98715,167523.8029,166157.84305,167297.27485,166044.6191,167289.2188,165932.40285,167391.4266,166038.0107,167237.1226]
+          ],
+          "copy_blocks": [
+            [5.343999999999999,5.536,5.488,5.5600000000000005,5.568,5.648,5.5920000000000005,5.5280000000000005,5.616,5.4719999999999995,5.504,5.64,5.5920000000000005,5.616,5.568,5.464,5.5600000000000005,5.3839500000000005,5.304,5.6,5.4399999999999995,5.512,5.5600000000000005,5.5520000000000005,5.608],
+            [5.6,5.5520000000000005,5.5280000000000005,5.568,5.464,5.576,5.5600000000000005,5.536,5.568,5.496,5.288,5.496,5.4719999999999995,5.456,5.6240000000000006,5.5520000000000005,5.464,5.488,5.4799999999999995,5.5200000000000005,5.5520000000000005,5.6240000000000006,5.576,5.496,5.62395]
+          ],
+          "schema_witness": {
+            "aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": [],
+            "display_track_policy": "Shard-local process display IDs canonicalized by exact label when required; original producer identity, intervals, events and shard hashes unchanged"
+          }
+        }
+      }
+    }
+  ]
+}

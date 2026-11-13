@@ -1,0 +1,108 @@
+{
+  "case_id": "expanded230-3c72a5a491b6f928b6ab",
+  "shape_dtype_stride_offset": [
+    [
+      {
+        "device": "cuda:0",
+        "dtype": "torch.float32",
+        "layout": "torch.strided",
+        "requires_grad": false,
+        "shape": [
+          1
+        ],
+        "storage_offset": 0,
+        "stride": [
+          1
+        ],
+        "storage_alias": "independent-0"
+      },
+      {
+        "device": "cuda:0",
+        "dtype": "torch.float32",
+        "layout": "torch.strided",
+        "requires_grad": false,
+        "shape": [
+          1,
+          3145728
+        ],
+        "storage_offset": 0,
+        "stride": [
+          48,
+          1
+        ],
+        "storage_alias": "independent-1"
+      },
+      {
+        "device": "cuda:0",
+        "dtype": "torch.float32",
+        "layout": "torch.strided",
+        "requires_grad": false,
+        "shape": [
+          3145728,
+          1
+        ],
+        "storage_offset": 0,
+        "stride": [
+          1,
+          48
+        ],
+        "storage_alias": "independent-2"
+      }
+    ],
+    {}
+  ],
+  "seed": 20261109,
+  "amplitude": 0.25,
+  "baseline": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+  "preceding_candidate": "81fe7bf372cf3a915ba000a5d32d34011f932db6",
+  "source_bound_block0_checks": {
+    "old_correct": true,
+    "new_correct": false,
+    "das_correct": true,
+    "independent_candidate_repeat_correct": false,
+    "max_absolute_difference": 0.00012969970703125,
+    "max_relative_difference": 1.768645574884431e-06,
+    "native_reference_atol": 1e-05,
+    "native_reference_rtol": 1.3e-06
+  },
+  "classification": "New full-output comparison failure under the unchanged native FP32 reference contract; not a historical failure. FP64 split reduction uses a different accumulation order.",
+  "correction": "Retain the established generic implementation when FP32 and min(M,N)==1 and K>=2**20. Do not relax the reference tolerance.",
+  "corrected_source": "e42573035c2ff5a3946288542c2f0aea649241dc",
+  "corrected_focused_tests": {
+    "tests": 94,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "performance_status": "corrected whole-case six-role confirmation passed; remaining125-case accounting still pending",
+  "confirmation": {
+    "hardware_job": 1102530,
+    "analysis_job": 1102531,
+    "hardware_exit": "COMPLETED0:0",
+    "analysis_exit": "COMPLETED0:0",
+    "old_correct": true,
+    "new_correct": true,
+    "das_correct": true,
+    "old_over_new": 0.9999114948780924,
+    "das_over_new": 4.078290445742597,
+    "target90": true,
+    "device_us": {
+      "old": 40895.990525,
+      "new": 40899.61035,
+      "das": 166800.490125
+    },
+    "old_aa_drift": [
+      -2.1066644296685588e-05,
+      8.010888127230054e-05
+    ],
+    "new_aa_drift": [
+      0.00013352543402200823,
+      -6.236387572799984e-05
+    ],
+    "das_aa_drift": [
+      -0.0031636479949056495,
+      0.0007298771259796055
+    ],
+    "evidence": "vector-correction-20261112/README.md"
+  }
+}

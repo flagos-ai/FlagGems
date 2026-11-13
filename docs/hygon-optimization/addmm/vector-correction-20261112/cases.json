@@ -1,0 +1,107 @@
+[
+  {
+    "id": "expanded230-3c72a5a491b6f928b6ab",
+    "op": "aten::addmm",
+    "spec": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [1],
+          "storage_offset": 0,
+          "stride": [1],
+          "storage_alias": "independent-0"
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [1,3145728],
+          "storage_offset": 0,
+          "stride": [48,1],
+          "storage_alias": "independent-1"
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [3145728,1],
+          "storage_offset": 0,
+          "stride": [1,48],
+          "storage_alias": "independent-2"
+        }
+      ],
+      {}
+    ],
+    "original_spec": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [1],
+          "storage_offset": 0,
+          "stride": [1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [1,3145728],
+          "storage_offset": 0,
+          "stride": [48,1]
+        },
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [3145728,1],
+          "storage_offset": 0,
+          "stride": [1,48]
+        }
+      ],
+      {}
+    ],
+    "seed": 20261109,
+    "sheet_row": 186,
+    "model": "DiffDock",
+    "source_sheet": "expanded230",
+    "metadata_assumptions": [
+      {
+        "row": 186,
+        "model": "DiffDock",
+        "scale": "大型",
+        "notes": [
+          "最大输入元素数=3145728; 输入storage=25165828 bytes; seed=7022312509171966679; 独立合成输入",
+          "offset已采集；alias仅按已知元数据判断"
+        ]
+      },
+      {
+        "tensor": 0,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 1,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      },
+      {
+        "tensor": 2,
+        "field": "cross_input_alias",
+        "original": "uncaptured",
+        "effective": "independent_storage"
+      }
+    ],
+    "amplitude": 0.25
+  }
+]

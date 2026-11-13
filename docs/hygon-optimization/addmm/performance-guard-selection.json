@@ -1,0 +1,792 @@
+{
+  "previous_source": "e42573035c2ff5a3946288542c2f0aea649241dc",
+  "guarded_source": "0a2a9f28da8b3916c91a3b05085bca88d85c32ce",
+  "current_source_file_sha256": "0da992cedbc871f00145c3678e37e730977248c0faf69109be2f786407e1523b",
+  "compiler_target_scope": {
+    "backend": "hip",
+    "arch": "gfx936",
+    "basis": "Preceding runtime source witness enters addmm_schedule.launch/_compile, whose launch guard requires exactly HIP/gfx936; new hardware gate records actual target."
+  },
+  "module_ast_proof": "All other module AST identical after restoring _eligible and its two scalar-forwarding calls; no arithmetic kernel change. Evaluates both functions on every frozen declared metadata input, not GPU output values.",
+  "cases": [
+    {
+      "id": "model285-ab75bb96b3ded3f81104",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-d25da3b4b85f52dbeb7d",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-2ee0a7c02c97c9aab35b",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-69014211811cb5b535d5",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-8218af056554fbcce37a",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-2efedaebbfd777d8106d",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-b1b141a480abbb6e8fe7",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-22545fd72090f691a15c",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-96c5da6820f092f0fbb1",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-f5bd6691773e12278e06",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-40123590c97997a563a1",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-46e212d26ce2a951265e",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-edbe772eefadad46abe7",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-849a52f1ff4ca67f3f26",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-332c2a747fcbcb48fe09",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-df0b0b42db809e941132",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-3d16e7fdf673a5a242b1",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-f219d1bb37ca607a17c6",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-0697b32a31eb865e4d11",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-a055a54ded3b8ef2dc7a",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-48eb9e2a0f721677337a",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-f179ea387f6ad0643c96",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-8b092bcff7c14048e672",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-95c43ad1c716d658aa8a",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-4359b583e979d1a96e50",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-7d62d5c75b37a429112b",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-8a1593006a2741cf1619",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-3c4ae5b6947af99945d5",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-cfadb19214318ff3830e",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-0ba286ac697f82019db5",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-6a2fb1828951a355c34e",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-503b49a5bf3be3950964",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-ec40ea060bf5a9032112",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-f3c9d4a6663721e046ae",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-37728fce748c78539521",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-25636055b24132d6aab4",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-64fff0a8d41a65d2b528",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-733ad528654b1b2e5d00",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-817de3ed7b2dda2b07d5",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-274623ef702530eab0c0",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-56b86ca3e2c2b6bb4a57",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-95c45e2bb4e4fc5c9ac1",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-c99fc30bd72603621ff3",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-6bb9907acf0d90607d2a",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-67588ed151abd60cf336",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-89e87ed290eb5ec173fe",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "model285-2d7a70f51c3c86cfb5c4",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-6aad2d80f22691baca9d",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-f0746dc664199fde4e15",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-b83d03777cdae6ed59d7",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-82c198585798c2143050",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-dfbe0bdb3361334a4c26",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-b7e84572628086c9c72e",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-8dfb85de9108091711a2",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-272e3acf0c8a5a44aca3",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-967c2d87993698c859a7",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-86ef67ce34b4c83d3b03",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-175a3aa091b010d59571",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-93a8030df56ff06b19a9",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-7b6cb2da8b1e4ac66c92",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-bb21015736fa3fd78c32",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-4eda80d309a196d24d10",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-346cc26256e0509de9b3",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-69fd0aed51baf222f88b",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-f84ba494d75d4be33568",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-981031a048215d9ae654",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-fefd3f73f5ae3707fd67",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-162a19123175776055da",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-4c167bf0a2f9f30f2116",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-dcc631cf6f63fad8e659",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-1f8880d10b91915bcfb0",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-a1a50b4fa7c2c2787a9e",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-f295fcec1a1fa26ffef3",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-ea9a3cbc8e9dca4a70cc",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-0d5ec457ea9fb526f898",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-e70c3159a2e0c44ee906",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-e1999d89666259d3c8e5",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-52b2df554e2109a0c5ac",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-be636a685b131d10cd2a",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-c087c986fffe03150dba",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-b3105133e0dfd8158c05",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-6b16b580c5e88e6c2acb",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "model285-83f98648a8cad01d0edf",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0b7374da49c205547385",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-ddac213027da79f0b423",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-58bc89a098d3966173bb",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-609bf7b4ba43030d74f5",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-9843ba73751c519edb8d",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-a86d090ef9dbc5e078e1",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-51a545cd8965ee5c2eca",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-1a2d5106780e470dd446",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-e3f575e12ea10a863a34",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-9390aeeb4b0a170e417a",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-f1ab290daf692eeeb27d",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-67bd2b94d6eeb03e77ca",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-e568662a12b1b1989a32",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-ea46393b1de5448a9ef6",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-81290738a86f05e96b51",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-f8ffa845d09761e16302",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-d06e2f4524bab18e272a",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-e75aa785c459a3adb2fc",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-f39c59307861532a9b89",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-6022c884be3f1f7b2737",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-9a4f68763dccfbce5bc1",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-5cc6b5462e833391b86f",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-1eab1818700db7354d61",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-4681f6e77d2a13824260",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-196ed0e2f7fc45c7dbea",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-ce287e33ab156e989dac",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-33626171148e38085bf8",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-1d335135e88ab09b096c",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-c4c3333dbb5733d0a6cf",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-19978e5423b633d6554e",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-b7d5139321ab7ddffdb8",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-19580a39c1f3e8a2156c",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-dd6a7023123b6561ef66",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-48608bc8f57aad4174f5",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-88fa7fc567c6300a8bf8",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-0b2e21fd2fc3c1be5fc3",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-e14f255eeeb67179d703",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-b498a139cf4340f40634",
+      "old_eligible": true,
+      "new_eligible": false,
+      "changed_guard": true
+    },
+    {
+      "id": "expanded230-b400e7a94729d9ed9b38",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-a06209a700248bf8faba",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-3a1c1464597df66f189a",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-3c72a5a491b6f928b6ab",
+      "old_eligible": false,
+      "new_eligible": false,
+      "changed_guard": false
+    },
+    {
+      "id": "expanded230-b9d67a86adf1d353304a",
+      "old_eligible": true,
+      "new_eligible": true,
+      "changed_guard": false
+    }
+  ],
+  "affected_ids": [
+    "model285-2ee0a7c02c97c9aab35b",
+    "model285-69014211811cb5b535d5",
+    "model285-8218af056554fbcce37a",
+    "model285-2efedaebbfd777d8106d",
+    "model285-b1b141a480abbb6e8fe7",
+    "model285-22545fd72090f691a15c",
+    "model285-96c5da6820f092f0fbb1",
+    "model285-df0b0b42db809e941132",
+    "model285-3d16e7fdf673a5a242b1",
+    "model285-48eb9e2a0f721677337a",
+    "model285-f179ea387f6ad0643c96",
+    "model285-95c43ad1c716d658aa8a",
+    "model285-733ad528654b1b2e5d00",
+    "model285-89e87ed290eb5ec173fe",
+    "expanded230-1eab1818700db7354d61",
+    "expanded230-b498a139cf4340f40634"
+  ],
+  "predeclared_controls": [
+    "expanded230-f1ab290daf692eeeb27d"
+  ],
+  "case_replacement_policy": "All affected IDs plus one unchanged generic-route control selected before new measurements. Replace every complete six-role case regardless outcome; no sample pooling or successful-repeat selection.",
+  "prior_source_proof": "addmm-vector-fix-unaffected-source-proof.json"
+}

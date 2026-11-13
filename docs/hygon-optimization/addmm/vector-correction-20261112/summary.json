@@ -1,0 +1,14 @@
+{
+  "cases": 1,
+  "complete_timing": 1,
+  "new_correct": 1,
+  "qualified_fg_pairs": 1,
+  "qualified_fg_das_pairs": 1,
+  "target90": 1,
+  "regressions": [],
+  "source_fingerprints": {
+    "src/flag_gems/runtime/backend/_hygon/ops/__init__.py": "c67f61b01fd174e51cf4366089bb43abc020e1005b24a1a716fe070b3c461fe1",
+    "src/flag_gems/runtime/backend/_hygon/ops/addmm_kernel90.py": "c5d588ece6ef9d314e93a5734b472d10ba2ac0da730020c0ea4f58019f05233d",
+    "src/flag_gems/runtime/backend/_hygon/ops/addmm_schedule.py": "9027c16a8aba9f07d0163254402de8581d0467493356535412fc790df60355b0"
+  }
+}
