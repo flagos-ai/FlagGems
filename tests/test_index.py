@@ -336,23 +336,57 @@ def test_index_int32_offset_overflow():
     overflow int32 arithmetic in the generated kernels and caused
     out-of-bounds reads ("illegal memory access").
     """
-    free_bytes, _ = torch.cuda.mem_get_info(flag_gems.device)
+    device_api = getattr(torch, torch.device(flag_gems.device).type)
+    memory_info = getattr(device_api, "mem_get_info", None)
+    if memory_info is None:
+        pytest.skip(
+            "backend has no portable free-memory query; Hygon has a HIP boundary test"
+        )
+    free_bytes, _ = memory_info(flag_gems.device)
     if free_bytes < 3 * 2**30:
         pytest.skip("not enough free device memory for the int32-offset case")
 
     rows = 2**28 + 1
     inp = torch.zeros((rows, 8), dtype=torch.int8, device=flag_gems.device)
-    idx = torch.tensor([2**28], dtype=torch.int32, device=flag_gems.device)
+    index_dtypes = (torch.int32,)
+    index_values = [2**28]
+    if flag_gems.vendor_name == "hygon":
+        # Supplement the original cross-backend regression with value and
+        # negative-index coverage for the repaired Hygon gather paths.
+        sentinel = torch.tensor(
+            [1, 2, 3, 4, 5, 6, 7, 8], dtype=torch.int8, device=flag_gems.device
+        )
+        inp[-1] = sentinel
+        inp[0] = -sentinel
+        index_dtypes = (torch.int32, torch.int64)
+        index_values = [-1, 2**28, 0]
+    ref_inp = utils.to_reference(inp)
+    for index_dtype in index_dtypes:
+        idx = torch.tensor(index_values, dtype=index_dtype, device=flag_gems.device)
+        ref_idx = utils.to_reference(idx)
 
+        # Contiguous input takes the linearized adjacent-index kernel.
+        ref_out = torch.ops.aten.index(ref_inp, [ref_idx])
+        out = flag_gems.index(inp, [idx])
+        utils.gems_assert_close(out, ref_out, torch.int8)
+
+        # Transposed view also covers the strided single-axis provider.
+        ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
+        out_t = flag_gems.index(inp.t(), [None, idx])
+        utils.gems_assert_close(out_t, ref_out_t, torch.int8)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+def test_index_strided_negative_indices(index_dtype):
+    # Exercise the generic code-generated fallback directly; vendor providers
+    # can otherwise hide missing negative-index normalization in this path.
+    from flag_gems.ops.index import index as generic_index
+
+    inp = torch.arange(35, device=flag_gems.device).reshape(5, 7).t()
+    idx = torch.tensor([-5, -1, 0, 4], dtype=index_dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_idx = utils.to_reference(idx)
-
-    # Contiguous input takes the linearized adjacent-index kernel.
-    ref_out = torch.ops.aten.index(ref_inp, [ref_idx])
-    out = flag_gems.index(inp, [idx])
-    utils.gems_assert_close(out, ref_out, torch.int8)
-
-    # Transposed view takes the generic (code-generated) kernel.
-    ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
-    out_t = flag_gems.index(inp.t(), [None, idx])
-    utils.gems_assert_close(out_t, ref_out_t, torch.int8)
+    expected = torch.ops.aten.index(ref_inp, [None, ref_idx])
+    actual = generic_index(inp, [None, idx])
+    utils.gems_assert_close(actual, expected, inp.dtype)
