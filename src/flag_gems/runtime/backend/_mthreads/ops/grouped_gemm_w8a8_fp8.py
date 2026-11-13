@@ -201,7 +201,8 @@ def grouped_fp8_producer(
     B,
     Groups,
     Tasks,
-    TILES: tl.constexpr,
+    M,
+    TILES,
     PROGRAMS: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -215,6 +216,8 @@ def grouped_fp8_producer(
         tl.program_id(0), tl.maximum(total, PROGRAMS), PROGRAMS, num_stages=1
     ):
         pm, pn, expert, _ = grouped_fp8_task(Tasks, Groups, task, total, N, BN)
+        if K_BLOCKS == 2:
+            pm = tl.minimum(pm, M - BM)
         for block in tl.range(0, K // (128 * K_BLOCKS), num_stages=1):
             slot = writer.acquire(sequence)
             if K_BLOCKS == 2:
@@ -256,7 +259,7 @@ def grouped_fp8_consumer(
     Groups,
     Tasks,
     M,
-    TILES: tl.constexpr,
+    TILES,
     PROGRAMS: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -275,7 +278,12 @@ def grouped_fp8_consumer(
         tl.program_id(0), tl.maximum(total, PROGRAMS), PROGRAMS, num_stages=1
     ):
         pm, pn, expert, is_valid = grouped_fp8_task(Tasks, Groups, task, total, N, BN)
-        rows = pm + tl.arange(0, BM)
+        if K_BLOCKS == 2:
+            # Keep the whole TME read inside A, including the last expert tail.
+            first = tl.minimum(pm, M - BM)
+        else:
+            first = pm
+        rows = first + tl.arange(0, BM)
         cols = pn * BN + tl.arange(0, BN)
         acc = tl.zeros((BM, BN), tl.float32)
         for block in tl.range(0, K // (128 * K_BLOCKS), num_stages=1):
@@ -309,7 +317,7 @@ def grouped_fp8_consumer(
                 acc += partial * sa[:, None] * sb[None, :]
             reader.release(sequence)
             sequence += 1
-        valid = tl.load(Groups + rows, rows < M, -1) == expert
+        valid = (rows >= pm) & (tl.load(Groups + rows, rows < M, -1) == expert)
         tl.store(
             C + rows.to(tl.int64)[:, None] * N + cols[None, :],
             acc,
@@ -319,7 +327,7 @@ def grouped_fp8_consumer(
     tle.gpu.barrier_wait(finish[0], phaseIdx=0)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["M", "TILES"])
 def grouped_fp8_ws_kernel(
     A,
     B,
@@ -329,7 +337,7 @@ def grouped_fp8_ws_kernel(
     Groups,
     Tasks,
     M,
-    TILES: tl.constexpr,
+    TILES,
     PROGRAMS: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -395,6 +403,7 @@ def grouped_fp8_ws_kernel(
                     B,
                     Groups,
                     Tasks,
+                    M,
                     TILES,
                     PROGRAMS,
                     N,
@@ -696,7 +705,7 @@ def grouped_gemm_w8a8_fp8(
         bm, bn = 128, 128
     else:
         bm, bn = (64, 64) if k == 128 else (64, 256)
-    k_blocks = 2 if MULTICAST_ON and is_dense and k % 256 == 0 else 1
+    k_blocks = 2 if MULTICAST_ON and is_dense and m >= bm and k % 256 == 0 else 1
     with torch_device_fn.device(a.device):
         if m <= min(experts, 128 if k > 128 else 256):
             grouped_fp8_gemv[(m, triton.cdiv(n, 8 if k > 128 else 32))](
