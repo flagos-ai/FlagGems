@@ -605,6 +605,7 @@ from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
+from .linalg_polar import linalg_polar, linalg_polar_out
 from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -612,6 +613,7 @@ from .linalg_solve_triangular import (
 )
 from .linalg_svd import linalg_svd
 from .linalg_svdvals import linalg_svdvals
+from .linalg_tensorinv import linalg_tensorinv, linalg_tensorinv_out
 from .linear import linear
 from .linear_backward import linear_backward
 from .linspace import linspace
@@ -643,6 +645,8 @@ from .logit_ import logit_
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
+from .lstm import lstm
+from .lstm_cell import lstm_cell
 from .lt import less_, less_scalar_, lt, lt_, lt_scalar, lt_scalar_
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .margin_ranking_loss import margin_ranking_loss
@@ -1584,11 +1588,15 @@ __all__ = [
     "linalg_matrix_norm_out",
     "linalg_multi_dot",
     "linalg_multi_dot_out",
+    "linalg_polar",
+    "linalg_polar_out",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
     "linalg_svdvals",
+    "linalg_tensorinv",
+    "linalg_tensorinv_out",
     "linear",
     "linear_backward",
     "linspace",
@@ -1625,6 +1633,8 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
+    "lstm",
+    "lstm_cell",
     "lt",
     "lt_",
     "lt_scalar",
