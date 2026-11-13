@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # view_as_real_copy consumes a complex tensor and produces the real tensor one
 # size down: complex32 -> float16, complex64 -> float32, complex128 -> float64.
 # The tested dtypes are therefore the complex counterparts of the shared float
@@ -227,7 +229,10 @@ def test_accuracy_view_as_real_copy_independent_storage(dtype):
     res_out = flag_gems.view_as_real_copy(inp)
     ref = utils.to_reference(res_out.clone())
 
-    inp.add_(1.0)
+    if IS_KUNLUNXIN:
+        inp.real.add_(1.0)
+    else:
+        inp.add_(1.0)
     # The copy must not change when the source is mutated in place.
     utils.gems_assert_equal(_as_float32(res_out), _as_float32(ref))
 
@@ -272,13 +277,15 @@ def test_accuracy_view_as_real_copy_zero_dim():
 def test_accuracy_view_as_real_copy_error_paths():
     dev = flag_gems.device
 
+    aten_error = (RuntimeError, ValueError) if IS_KUNLUNXIN else RuntimeError
+
     # Non-complex dtypes are rejected, matching PyTorch.
     for bad_dtype in (torch.float32, torch.float16, torch.int32, torch.bool):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(aten_error):
             torch.ops.aten.view_as_real_copy(
                 torch.zeros(4, dtype=bad_dtype, device=dev)
             )
-        with pytest.raises(RuntimeError):
+        with pytest.raises(aten_error):
             flag_gems.view_as_real_copy(torch.zeros(4, dtype=bad_dtype, device=dev))
 
     # rank > _MAX_LEAD_RANK (5): a 6-D input. The guard lives on the
