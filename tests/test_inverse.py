@@ -68,10 +68,8 @@ def test_inverse(shape, dtype):
     # Inversion is ill conditioned by nature: the reference is upcast to fp64
     # so the comparison measures our error, not the reference's.
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = utils.ref_inverse(A)
 
     assert res_out.shape == A.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -82,10 +80,8 @@ def test_inverse(shape, dtype):
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
 def test_inverse_batch(shape, dtype):
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = utils.ref_inverse(A)
 
     assert res_out.shape == A.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -98,10 +94,8 @@ def test_inverse_requires_pivoting(matrix, dtype):
     # Rows must be reordered for these matrices, so this pins down the
     # partial pivoting step rather than just the elimination arithmetic.
     A = torch.tensor(matrix, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A, upcast=True)
-
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = utils.ref_inverse(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
 
@@ -133,10 +127,8 @@ def test_inverse_noncontiguous(dtype):
     A = _make_well_conditioned((64, 64), dtype, flag_gems.device)
     A_t = A.t()
 
-    ref_A = utils.to_reference(A_t, upcast=True)
-
     res_out = flag_gems.inverse(A_t)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = utils.ref_inverse(A_t)
 
     assert res_out.shape == A_t.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)

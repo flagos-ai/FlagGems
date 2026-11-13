@@ -363,6 +363,27 @@ def ref_fmod(a, b):
     return ref
 
 
+def ref_inverse(a):
+    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
+    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
+    # the reference is computed wide on CPU there.  Other backends keep the
+    # on-device reference, upcast to fp64 when available so the comparison
+    # measures the kernel's error rather than the reference's.
+    if flag_gems.vendor_name != "kunlunxin":
+        if a.is_complex():
+            wide = torch.complex128 if fp64_is_supported else torch.complex64
+        else:
+            wide = torch.float64 if fp64_is_supported else torch.float32
+        return torch.inverse(a.to(wide)).to(a.dtype)
+    a_cpu = (
+        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
+    )
+    ref = torch.inverse(a_cpu)
+    if not TO_CPU:
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 def to_cpu(res, ref):
     if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")

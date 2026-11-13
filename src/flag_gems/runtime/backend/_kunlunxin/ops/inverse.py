@@ -14,9 +14,10 @@
 
 """Kunlunxin backend override for ``inverse``.
 
-Implements matrix inversion with a single-launch, partial-pivoted Gauss-Jordan
-elimination on an augmented ``[A | I]`` system, one program per matrix.  The
-generic kernel (``flag_gems/ops/inverse.py``) is rejected by the TritonXPU
+Implements matrix inversion with a partial-pivoted Gauss-Jordan elimination on
+an augmented ``[A | I]`` system, one program per matrix, driven by a host-side
+per-column loop (pivot scan + elimination step).  The generic kernel
+(``flag_gems/ops/inverse.py``) is rejected by the TritonXPU
 legalizer because it relies on ``tl.gather`` (see the previous fallback's
 docstring for the failed alternatives); this kernel follows the proven
 ``linalg_det._det_elim_kernel`` pattern instead:
@@ -94,73 +95,6 @@ def _inv_pack_kernel(
 
 @libentry()
 @triton.jit
-def _inv_elim_kernel(
-    W0,
-    W1,
-    X0,
-    X1,
-    N,
-    LDA: tl.constexpr,
-    ROWS: tl.constexpr,
-    TOT: tl.constexpr,
-    BLK: tl.constexpr,
-):
-    """Single-launch partial-pivoted Gauss-Jordan elimination.
-
-    One program owns one matrix.  ``W0/W1`` hold the working copy of A and
-    ``X0/X1`` the inverse accumulator, both double buffered: iteration k reads
-    the buffer selected by ``k % 2 == 0`` and writes the other, so no iteration
-    ever reads the buffer it is writing (the backend reorders in-kernel
-    store->load, which corrupts a single-buffer loop even with barriers).
-    """
-    b = tl.program_id(0).to(tl.int64)
-    base = b * TOT
-    ridx = tl.arange(0, ROWS)
-    for k in range(0, N):
-        is_even = (k % 2) == 0
-        src = tl.where(is_even, W0, W1)
-        dst = tl.where(is_even, W1, W0)
-        xsrc = tl.where(is_even, X0, X1)
-        xdst = tl.where(is_even, X1, X0)
-
-        # Pivot search over column k (ROWS lanes, in range).
-        col_k_sp = tl.load(src + base + ridx * LDA + k)
-        cand = tl.where((ridx >= k) & (ridx < N), tl.abs(col_k_sp), -1.0)
-        best = tl.max(cand, axis=0)
-        prow = tl.min(tl.where(cand == best, ridx, ROWS), axis=0)
-        apk = tl.sum(tl.where(ridx == prow, col_k_sp, 0.0), axis=0)
-        akk = tl.sum(tl.where(ridx == k, col_k_sp, 0.0), axis=0)
-        safe = tl.where(apk == 0.0, 1.0, apk)
-
-        for c in range(0, TOT // BLK):
-            e = c * BLK + tl.arange(0, BLK)
-            row = e // LDA
-            col = e % LDA
-
-            w = tl.load(src + base + e)
-            row_k = tl.load(src + base + k * LDA + col)
-            row_p = tl.load(src + base + prow * LDA + col)
-            col_k = tl.load(src + base + row * LDA + k)
-
-            swapped = tl.where(row == k, row_p, tl.where(row == prow, row_k, w))
-            lcol = tl.where(row == k, apk, tl.where(row == prow, akk, col_k))
-            urow = row_p / safe
-            mult = tl.where(row != k, lcol, 0.0)
-            a_new = tl.where(row == k, urow, swapped - mult * urow)
-
-            x = tl.load(xsrc + base + e)
-            xrow_k = tl.load(xsrc + base + k * LDA + col)
-            xrow_p = tl.load(xsrc + base + prow * LDA + col)
-            xswapped = tl.where(row == k, xrow_p, tl.where(row == prow, xrow_k, x))
-            xurow = xrow_p / safe
-            x_new = tl.where(row == k, xurow, xswapped - mult * xurow)
-
-            tl.store(dst + base + e, a_new)
-            tl.store(xdst + base + e, x_new)
-
-
-@libentry()
-@triton.jit
 def _inv_unpack_kernel(
     X,
     OUT,
@@ -177,8 +111,15 @@ def _inv_unpack_kernel(
     mask = e < N * N
     row = e // N
     col = e % N
-    xval = tl.load(X + b * TOT + row * LDA + col, mask=mask, other=0.0)
-    tl.store(OUT + b * N * N + e, xval, mask=mask)
+    # Masked-out lanes address past the N x N block (N*N can be far below
+    # TOT when small n is padded up to LDA); clamp their source/destination
+    # indices before addressing.  The older flagtree compiler computes the
+    # address before applying the mask, so an unmasked out-of-bounds index
+    # faults with err_code -714 (illegal memory access).
+    src_idx = tl.where(mask, row * LDA + col, 0)
+    dst_idx = tl.where(mask, e, 0)
+    xval = tl.load(X + b * TOT + src_idx, mask=mask, other=0.0)
+    tl.store(OUT + b * N * N + dst_idx, xval, mask=mask)
 
 
 @libentry()
@@ -198,17 +139,20 @@ def _inv_pivot_scan_kernel(
     The pivot row and signed pivot values are written to side buffers so the
     chunked update kernel (launched across ``(batch, nblk)`` programs) can
     share them without recomputing a reduction per chunk.  The reduction runs
-    over ROWS lanes exactly as in ``_inv_elim_kernel``; ``tl.argmax`` is
-    unreliable on this backend, so the smallest row attaining ``tl.max`` is
-    used (LAPACK first-strict-maximum order).
+    over ``LDA`` lanes (the padded row stride) rather than ``ROWS``: a 1-D
+    ``tl.max``/``tl.min`` over a small ``ROWS`` tile is miscompiled by the
+    flagtree 0.7.0 compiler (illegal memory access for ROWS in 4..16), while
+    the ``LDA``-lane form matches the proven ``linalg_det._det_step_kernel``.
+    ``tl.argmax`` is unreliable on this backend, so the smallest row attaining
+    ``tl.max`` is used (LAPACK first-strict-maximum order).
     """
     b = tl.program_id(0).to(tl.int64)
     base = b * (ROWS * LDA)
-    ridx = tl.arange(0, ROWS)
+    ridx = tl.arange(0, LDA)
     col_k_sp = tl.load(W + base + ridx * LDA + K)
     cand = tl.where((ridx >= K) & (ridx < N), tl.abs(col_k_sp), -1.0)
     best = tl.max(cand, axis=0)
-    prow = tl.min(tl.where(cand == best, ridx, ROWS), axis=0)
+    prow = tl.min(tl.where(cand == best, ridx, LDA), axis=0)
     apk = tl.sum(tl.where(ridx == prow, col_k_sp, 0.0), axis=0)
     akk = tl.sum(tl.where(ridx == K, col_k_sp, 0.0), axis=0)
     tl.store(PR + b, prow)
@@ -234,13 +178,12 @@ def _inv_elim_step_kernel(
 ):
     """One Gauss-Jordan elimination step for a chunk of one matrix.
 
-    Used for matrices whose padded tile exceeds a single 4096-lane block
-    (``nblk > 1``), where the single-launch in-kernel chunk loop is not
-    bit-reproducible on this backend.  The caller launches one program per
-    chunk per step (grid ``(batch, nblk)``) and ping-pongs two buffers across
-    steps so a program never reads the buffer it writes.  The swap / normalise
-    / eliminate arithmetic is identical to ``_inv_elim_kernel``; only the pivot
-    values arrive through side buffers instead of an in-kernel reduction.
+    The caller launches one program per chunk per step (grid ``(batch, nblk)``)
+    and ping-pongs two buffers across steps so a program never reads the buffer
+    it writes.  The pivot values arrive through side buffers filled by
+    ``_inv_pivot_scan_kernel`` instead of an in-kernel reduction; the swap /
+    normalise / eliminate arithmetic is the partial-pivoted Gauss-Jordan
+    elimination described in the module docstring.
     """
     b = tl.program_id(0).to(tl.int64)
     blk = tl.program_id(1).to(tl.int64)
@@ -301,26 +244,36 @@ def _inverse_kernel_impl(A):
         _inv_pack_kernel[(batch, nblk)](
             A_work, w0, x0, n, LDA=lda, TOT=tot, BLK=blk, num_warps=1
         )
-        if nblk == 1:
-            _inv_elim_kernel[(batch,)](
-                w0, w1, x0, x1, n, LDA=lda, ROWS=rows, TOT=tot, BLK=blk, num_warps=2
+        # One pivot scan + one elimination step per column, ping-ponging the
+        # double buffers on the host.  The single-launch in-kernel loop faults
+        # with an illegal memory access on the flagtree 0.7.0 CI compiler for
+        # small n, so this per-step form is used for every size.
+        prow = torch.empty(batch, dtype=torch.int32, device=device)
+        apk = torch.empty(batch, dtype=A.dtype, device=device)
+        akk = torch.empty(batch, dtype=A.dtype, device=device)
+        for k in range(n):
+            if k % 2 == 0:
+                sw, dw, sx, dx = w0, w1, x0, x1
+            else:
+                sw, dw, sx, dx = w1, w0, x1, x0
+            _inv_pivot_scan_kernel[(batch,)](
+                sw, prow, apk, akk, n, k, LDA=lda, ROWS=rows, num_warps=1
             )
-        else:
-            prow = torch.empty(batch, dtype=torch.int32, device=device)
-            apk = torch.empty(batch, dtype=A.dtype, device=device)
-            akk = torch.empty(batch, dtype=A.dtype, device=device)
-            for k in range(n):
-                if k % 2 == 0:
-                    sw, dw, sx, dx = w0, w1, x0, x1
-                else:
-                    sw, dw, sx, dx = w1, w0, x1, x0
-                _inv_pivot_scan_kernel[(batch,)](
-                    sw, prow, apk, akk, n, k, LDA=lda, ROWS=rows, num_warps=1
-                )
-                _inv_elim_step_kernel[(batch, nblk)](
-                    sw, dw, sx, dx, prow, apk, akk, n, k,
-                    LDA=lda, TOT=tot, BLK=blk, num_warps=1,
-                )
+            _inv_elim_step_kernel[(batch, nblk)](
+                sw,
+                dw,
+                sx,
+                dx,
+                prow,
+                apk,
+                akk,
+                n,
+                k,
+                LDA=lda,
+                TOT=tot,
+                BLK=blk,
+                num_warps=1,
+            )
         # After the loop the result lives in the buffer written by the last
         # iteration (k = n - 1).  Even k writes to X1 (xdst = X1 for even k),
         # odd k writes to X0, so the final buffer is X0 when n is even
