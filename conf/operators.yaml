@@ -1931,6 +1931,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: batch_norm_elemt
+  description: |
+    Applies the elementwise Batch Normalization transform using precomputed
+    per-channel mean and inverse standard deviation: out = (input - mean) * invstd * weight + bias.
+  for:
+  - batch_norm_elemt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_gather_stats
   description: Triton kernel implementation for gathering per-device batch normalization
     statistics into global mean and inverse standard deviation.
@@ -4836,6 +4849,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: embedding_spmdm
+  description: 'Fixed-length embedding lookup followed by an optional per-sample
+    weighted sum; equivalent to F.embedding_bag with mode="sum" for a 2D
+    [B, bag_size] index matrix, returning a [B, D] tensor.
+    '
+  for:
+  - GenerateEmbeddingSpMDM
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
+  source:
+  - fbgemm
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -11096,6 +11125,23 @@ ops:
   stages:
   - beta: '4.0'
   - stable: '4.2'
+- id: moe_load_balance_loss
+  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss
+    L_ib = N_e * sum_i f_i P_i, where f_i is expert i''s Top-K assignment
+    frequency and P_i its mean routing probability. Both statistics are computed
+    in fp32 from the router logits; an optional attention_mask excludes zero
+    entries from both statistics and the denominator. Returns a float32 scalar.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  - MoE
+  kind:
+  - MoE
+  stages:
+  - beta: '5.5'
 - id: moe_sum
   description: 'An implementation of Mixture of Experts (MoE) with sum-based aggregation
 
@@ -15622,6 +15668,18 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
+- id: softmax_backward_data
+  description: Alias entry named after the aten symbol `_softmax_backward_data`; the
+    backward version of `softmax()` (same semantics as the `softmax_backward` entry).
+  for:
+  - _softmax_backward_data
+  labels:
+  - aten
+  - nn.functional
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
 - id: softmax_backward_out
   description: A variant of `softmax_backward()`.
   for:
