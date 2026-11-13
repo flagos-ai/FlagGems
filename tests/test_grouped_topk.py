@@ -197,6 +197,48 @@ def test_grouped_topk_large_scale(
 @pytest.mark.grouped_topk
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
+@pytest.mark.parametrize("topk", [3, 5, 10, 12, 14, 22])
+@pytest.mark.parametrize("renormalize", [True, False])
+@pytest.mark.parametrize("scoring_func", [0, 1])
+def test_grouped_topk_non_power_of_2_topk(topk, renormalize, scoring_func):
+    """topk need not be a power of two; only the Triton block dims must be.
+
+    Nemotron-H sets ``num_experts_per_tok`` per layer to 4/8/10/12/14 (MTP: 22).
+    Using topk directly as a block dimension made the Triton kernel fail with
+    ``ValueError: Shape element 0 must be a power of 2``; the padded dimension
+    must not change results for power-of-two topk nor the stored prefix for the
+    others.
+    """
+
+    torch.manual_seed(45)
+    torch.cuda.manual_seed(45)
+
+    dtype = torch.float32
+    n_expert, n_group, topk_group = 128, 8, 2
+    scores = torch.randn((8, n_expert), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((n_expert,), dtype=dtype, device=flag_gems.device)
+
+    ref_weights, ref_ids = vllm_grouped_topk(
+        scores.clone(), n_group, topk_group, topk, renormalize, 1.0, bias, scoring_func
+    )
+    res_weights, res_ids = flag_gems.grouped_topk(
+        scores.clone(), n_group, topk_group, topk, renormalize, 1.0, bias, scoring_func
+    )
+
+    utils.gems_assert_equal(res_ids, utils.to_reference(ref_ids))
+
+    atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
+    torch.testing.assert_close(
+        utils.to_reference(res_weights),
+        utils.to_reference(ref_weights),
+        atol=atol,
+        rtol=rtol,
+    )
+
+
+@pytest.mark.grouped_topk
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
 @pytest.mark.parametrize("routed_scaling_factor", [1.0, 2.5])
 @pytest.mark.parametrize("renormalize", [True, False])
 def test_grouped_topk_scaling_factor(routed_scaling_factor, renormalize):
