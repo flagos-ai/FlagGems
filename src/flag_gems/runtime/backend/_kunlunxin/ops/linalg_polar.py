@@ -58,31 +58,39 @@ _SWEEPS = 6
 # an in-kernel reduction either.  The reciprocal singular values are therefore
 # computed in a separate no-dot kernel using the per-column scalar-sum pattern
 # that ``_osj_pipeline`` already uses (which compiles on both pipelines), and
-# every ``tl.dot`` below takes only plain loads (or ``tl.trans`` of a load):
+# every ``tl.dot`` below takes only plain loads:
 #
-#     inv (no-dot: 1/S)  ->  T (dot: B^T A)  ->  Bs/Vh (pure scalings)
-#                        ->  U (dot: Bs Vh)  ->  UB.copy_(UB2)  ->  H (dot)
+#     inv (no-dot: 1/S)  ->  T (dot: B^T A)  ->  Bs3 = B diag(1/S^3)
+#                        ->  U (dot: Bs3 T)  ->  UB.copy_(UB2)  ->  H (dot)
+#
+# ``U = B diag(1/S^3) B^T A`` (see the module docstring), so folding both
+# diagonal scalings into ``Bs3`` leaves a single *column* scaling of ``B``.
+# That matters because flagtree miscompiles the ``(BLOCK, 1)`` load a *row*
+# scaling of ``T`` would need (it broadcasts ``INV[0]`` to every lane), while
+# the ``(1, BLOCK)`` row load used for column scaling compiles correctly on
+# both pipelines.
 #
 # The local sdnn-build Triton does not order dependent back-to-back dot
 # kernels (the second dot reads the first one's stale output) and
 # ``@libentry()`` makes it worse, so these kernels are plain ``@triton.jit``
 # and the single dot-to-dot edge (``U`` -> ``H``) is bridged by a torch copy
 # of the produced tile, the only reliable cross-kernel barrier there.  A plain
-# ``tl.trans(b)`` operand next to a reduction miscompiles on the local
-# pipeline and 1D loads/stores next to 2D loads trip its addptr verifier, so
-# the pure kernels load ``INV`` as 2D tiles.
+# ``tl.trans`` outside a ``tl.dot`` operand is identity/miscompiles on the
+# local pipeline and 1D loads/stores next to 2D loads trip its addptr
+# verifier, so the pure kernels load ``INV`` as ``(1, BLOCK)`` 2D tiles.
 
 
 @triton.jit
-def _polar_inv_kernel(BP, INV, BLOCK: tl.constexpr):
+def _polar_inv_kernel(B, INV, NCOL, MP: tl.constexpr, NW: tl.constexpr):
     """Reciprocal singular values ``1/S`` (column norms of ``B``).
 
-    No ``tl.dot`` and no axis reduction: per-column scalar sums, the same
-    pattern ``_osj_pipeline`` already compiles on both pipelines.
+    Loads from the flat 1D ``B`` buffer exactly like ``_osj_pipeline`` (1D
+    load + per-column scalar ``tl.sum`` in a runtime loop); loading a 2D tile
+    with 1D indexing trips flagtree's ``sdnn.ds`` mask generation.
     """
-    rows = tl.arange(0, BLOCK)
-    for j in range(0, BLOCK):
-        v = tl.load(BP + j + rows * BLOCK)
+    rows = tl.arange(0, MP)
+    for j in range(0, NCOL):
+        v = tl.load(B + j + rows * NW)
         s2 = tl.sum(v * v)
         s = tl.sqrt(s2)
         inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
@@ -112,7 +120,7 @@ def _polar_t_kernel(BP, AP, T, m, n, BLOCK: tl.constexpr):
 
 @triton.jit
 def _polar_bs_kernel(BP, INV, BS, BLOCK: tl.constexpr):
-    """``Bs = B diag(1/S)`` — pure column scaling (no ``tl.dot``).
+    """``Bs3 = B diag(1/S^3)`` — pure column scaling (no ``tl.dot``).
 
     ``INV`` is loaded as a ``(1, BLOCK)`` tile (a plain 1D load mixed with the
     2D ``BP`` load trips the addptr verifier on this backend).
@@ -121,25 +129,12 @@ def _polar_bs_kernel(BP, INV, BS, BLOCK: tl.constexpr):
     cols = tl.arange(0, BLOCK)
     b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
     inv = tl.load(INV + cols[None, :])
-    tl.store(BS + rows[:, None] * BLOCK + cols[None, :], b * inv)
+    tl.store(BS + rows[:, None] * BLOCK + cols[None, :], b * (inv * inv * inv))
 
 
 @triton.jit
-def _polar_vh_kernel(T, INV, VH, BLOCK: tl.constexpr):
-    """``Vh = diag(1/S^2) T`` — pure row scaling (no ``tl.dot``).
-
-    ``INV`` is loaded as a ``(BLOCK, 1)`` tile; see ``_polar_bs_kernel``.
-    """
-    rows = tl.arange(0, BLOCK)
-    cols = tl.arange(0, BLOCK)
-    t = tl.load(T + rows[:, None] * BLOCK + cols[None, :])
-    inv = tl.load(INV + rows[:, None])
-    tl.store(VH + rows[:, None] * BLOCK + cols[None, :], t * (inv * inv))
-
-
-@triton.jit
-def _polar_u_kernel(BS, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
-    """``U = Bs Vh`` — one ``tl.dot`` on two plain loads.
+def _polar_u_kernel(BS, T, UOUT, UB, m, n, BLOCK: tl.constexpr):
+    """``U = Bs3 T`` — one ``tl.dot`` on two plain loads.
 
     ``UB`` is ``U`` padded to ``BLOCK``; ``_polar_h_kernel`` consumes a torch
     copy of it.
@@ -151,8 +146,8 @@ def _polar_u_kernel(BS, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
     mask = rmask[:, None] & cmask[None, :]
 
     bs = tl.load(BS + rows[:, None] * BLOCK + cols[None, :])
-    vh = tl.load(VH + rows[:, None] * BLOCK + cols[None, :])
-    u = tl.dot(bs, vh, allow_tf32=False)
+    t = tl.load(T + rows[:, None] * BLOCK + cols[None, :])
+    u = tl.dot(bs, t, allow_tf32=False)
     tl.store(UOUT + rows[:, None] * n + cols[None, :], u, mask=mask)
     tl.store(UB + rows[:, None] * BLOCK + cols[None, :], u, mask=mask)
 
@@ -227,9 +222,8 @@ def _polar_osj(A, out_U=None, out_H=None):
         BP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         AP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         T = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-        INV = torch.empty((batch, block), device=dev, dtype=A.dtype)
+        INV = torch.zeros((batch, block), device=dev, dtype=A.dtype)
         BS = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-        VH = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         UB = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
         # Torch copy of ``UB``: the only reliable cross-kernel barrier for the
         # dot-to-dot edge (``U`` -> ``H``) on this stack.
@@ -245,9 +239,11 @@ def _polar_osj(A, out_U=None, out_H=None):
             BP[b, :MP, :NW].copy_(B[b].reshape(MP, NW))
             AP[b, :m, :n].copy_(A2[b])
             _polar_inv_kernel[(1,)](
-                BP[b],
+                B[b],
                 INV[b],
-                BLOCK=block,
+                nw,
+                MP=MP,
+                NW=NW,
                 num_warps=4,
                 num_stages=1,
             )
@@ -269,17 +265,9 @@ def _polar_osj(A, out_U=None, out_H=None):
                 num_warps=4,
                 num_stages=1,
             )
-            _polar_vh_kernel[(1,)](
-                T[b],
-                INV[b],
-                VH[b],
-                BLOCK=block,
-                num_warps=4,
-                num_stages=1,
-            )
             _polar_u_kernel[(1,)](
                 BS[b],
-                VH[b],
+                T[b],
                 U3[b],
                 UB[b],
                 m,
