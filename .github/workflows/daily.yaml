@@ -22,7 +22,7 @@
 #   validate if there are performance regress;
 # - running all SVT tests where selected models are launched for E2E tests.
 #
-# TODO(Qiming): Enable daily tests for benchmark and all backends
+# TODO(Qiming): Enable daily tests for benchmark and the remaining backends
 
 name: daily
 permissions:
@@ -93,6 +93,26 @@ jobs:
         with:
           name: op-ut-coverage-shard${{ matrix.shard_index }}
           path: coverage/
+
+  # Full-range unit tests on Ascend. Runner label and GPU check script match
+  # the ascend-cann900 entry in .github/backends.json.
+  ascend-op:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3]
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      backend: ascend-cann900
+      runner_label: cann9
+      gpu_check_script: tools/gpu_check_ascend.sh
+      changed_files: '__ALL__'
+      pr_id: ${{ needs.prepare.outputs.datetime }}${{ github.event_name == 'workflow_dispatch' && '-manual' || '' }}-ascend-shard${{ matrix.shard_index }}
+      total_shards: '4'
+      shard_index: ${{ format('{0}', matrix.shard_index) }}
+    secrets:
+      RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
   examples:
     needs: prepare
