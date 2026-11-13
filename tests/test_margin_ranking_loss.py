@@ -51,7 +51,7 @@ def test_margin_ranking_loss(shape, dtype, margin, reduction):
         )
     else:
         target = (
-            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2
+            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int32) * 2
             - 1
         ).to(dtype)
 
@@ -103,7 +103,7 @@ def test_margin_ranking_loss_backward(shape, dtype, margin, reduction):
         )
 
         target = (
-            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int8) * 2
+            torch.randint(0, 2, shape, device=flag_gems.device, dtype=torch.int32) * 2
             - 1
         ).to(dtype)
 
