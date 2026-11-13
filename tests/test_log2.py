@@ -19,25 +19,38 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# log2 promotes integral inputs to float in ATen, so 1-byte ints are accepted.
+LOG2_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES
+
 
 @pytest.mark.log2
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", LOG2_DTYPES)
 def test_log2(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp = torch.randint(1, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.log2(ref_inp)
     res_out = flag_gems.log2(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
 
 
 @pytest.mark.log2_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_log2_(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp = torch.randint(1, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = ref_inp.log2_()

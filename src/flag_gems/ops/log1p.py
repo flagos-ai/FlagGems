@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def log1p_func(x):
-    return tl.log(1.0 + x.to(tl.float32)).to(x.dtype)
+    return tl.log(1.0 + x.to(tl.float32))
 
 
 def log1p(A):

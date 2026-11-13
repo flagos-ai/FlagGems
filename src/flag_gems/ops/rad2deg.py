@@ -23,11 +23,11 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def rad2deg_func(x):
     # 180.0 / pi
-    return (x.to(tl.float32) * 57.29577951308232).to(x.dtype)
+    return x.to(tl.float32) * 57.29577951308232
 
 
 def rad2deg(A):
