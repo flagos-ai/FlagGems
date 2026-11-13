@@ -1,0 +1,2676 @@
+{
+  "reviewed_at": "2026-11-13T08:27:50.187805",
+  "cases": 109,
+  "result_sha256": "12c553f21e5a72c19b547f1be963ada0684e84168664776feed53eb4903dd42d",
+  "kernel_witness_sha256": "7b5abe4d9dd94d40bfd41da64d8843cac705201cb19884f0297d79b863b824f0",
+  "source_sha256": "5572c0e57ba831545f16b559aff5f28d3b7dc84d0d4353c302f3fcead85dd84a",
+  "actual_specialized_cases": 11,
+  "attributed_qualified_gains_above5percent": 4,
+  "model_attributed_qualified_gains_above5percent": 2,
+  "fallback_gains_not_attributed": [],
+  "new_correctness_regressions": [],
+  "cases_detail": [
+    {
+      "id": "model54-r2",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0000702744105237,
+      "DAS_over_new": 0.8995827291133625,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r3",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9978594854856716,
+      "DAS_over_new": 0.6854292659099367,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r4",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0018695653201541,
+      "DAS_over_new": 0.5885542106975692,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r5",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9996079869435651,
+      "DAS_over_new": 0.6448145374964325,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r6",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9980521680785599,
+      "DAS_over_new": 0.44452948118038893,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r7",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.4374100719424459,
+      "DAS_over_new": 1.2172661870503598,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        },
+        "aa": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r8",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0009359605499613,
+      "DAS_over_new": 0.6153290494143948,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r9",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.000920262889316,
+      "DAS_over_new": 0.90445620286802,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r10",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0004957238296919,
+      "DAS_over_new": 0.9042135200059026,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r11",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9996892243261626,
+      "DAS_over_new": 0.8978566067823667,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r12",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9998727987128977,
+      "DAS_over_new": 2.233160554894106,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r13",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9998872258506006,
+      "DAS_over_new": 0.42828253249082254,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r14",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9991628270459694,
+      "DAS_over_new": 1.1303686273837892,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r15",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9855924003268745,
+      "DAS_over_new": 0.6237027495145914,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r16",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.000003241620585,
+      "DAS_over_new": 2.280316470725578,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r17",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.999909021492999,
+      "DAS_over_new": 1.07221092589697,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r18",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9986020338066717,
+      "DAS_over_new": 0.8471216864062248,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r19",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9999770549784003,
+      "DAS_over_new": 4.309452846119676,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r20",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9997945638817421,
+      "DAS_over_new": 0.28511047813766544,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r21",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0000986361935833,
+      "DAS_over_new": 0.8700436428243076,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r22",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9978473422956805,
+      "DAS_over_new": 0.4664220056300279,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r23",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0002015789483951,
+      "DAS_over_new": 0.6743136480652648,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r24",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9999912299369071,
+      "DAS_over_new": 0.6885575741781104,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r25",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9989369469026548,
+      "DAS_over_new": 0.6205287610619469,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r26",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 0.9993845858895705,
+      "DAS_over_new": 0.4625766871165644,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r27",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0005649961570584,
+      "DAS_over_new": 0.6757636062052229,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r28",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.016802076872641,
+      "DAS_over_new": 0.5912037355354327,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r29",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0000018848045176,
+      "DAS_over_new": 0.7406527831965909,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r30",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9997777776167469,
+      "DAS_over_new": 0.5356618615907209,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r31",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.5707327079330227,
+      "DAS_over_new": 0.8279296991544468,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:mm_fp32_static_kernel": 1000
+        },
+        "aa": {
+          "kernel:mm_fp32_static_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r32",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0006804148756505,
+      "DAS_over_new": 0.3550313059250289,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r33",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0000374680092685,
+      "DAS_over_new": 0.43327302293364667,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r34",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0000044629012628,
+      "DAS_over_new": 0.5576876273158702,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r35",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9999349065317825,
+      "DAS_over_new": 0.5387259238582756,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r36",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0014686694719417,
+      "DAS_over_new": 0.3989682613665421,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r37",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0001221833729985,
+      "DAS_over_new": 0.6807659618160296,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r38",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0006591464267587,
+      "DAS_over_new": 0.4394686482050261,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r39",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0009217210591135,
+      "DAS_over_new": 0.46305418719211827,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r40",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0015854409839013,
+      "DAS_over_new": 0.8228786276542406,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r41",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0001022496719822,
+      "DAS_over_new": 0.5432418617786343,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r42",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9998556065808524,
+      "DAS_over_new": 0.5448022593776652,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r43",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0000019160061235,
+      "DAS_over_new": 0.5229930314857286,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r44",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0001677758820504,
+      "DAS_over_new": 0.7155733894597821,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r45",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0002505963215587,
+      "DAS_over_new": 0.8735872619535516,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r46",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9999636124137126,
+      "DAS_over_new": 0.6357719979671569,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r47",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9998647003609474,
+      "DAS_over_new": 0.5731728875999077,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r48",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.000662564058045,
+      "DAS_over_new": 0.5364050760988249,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r49",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9999898158984597,
+      "DAS_over_new": 2.5106454004172467,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "model54-r50",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.7456533213771466,
+      "DAS_over_new": 0.5961281796760539,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:mm_bf16_splitk_partial_kernel": 1000,
+          "kernel:mm_bf16_splitk_reduce_kernel": 1000
+        },
+        "aa": {
+          "kernel:mm_bf16_splitk_partial_kernel": 1000,
+          "kernel:mm_bf16_splitk_reduce_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r51",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.1048377738077666,
+      "DAS_over_new": 0.35720629437152207,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:mm_bf16_staticall_kernel": 1000
+        },
+        "aa": {
+          "kernel:mm_bf16_staticall_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r52",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 3.0482990506329113,
+      "DAS_over_new": 0.7046968687541639,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:mm_bf16_staticmasked_kernel": 1000
+        },
+        "aa": {
+          "kernel:mm_bf16_staticmasked_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": true,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r53",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 2.346105700644982,
+      "DAS_over_new": 0.9231334946027271,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:mm_bf16_staticmasked_kernel": 1000
+        },
+        "aa": {
+          "kernel:mm_bf16_staticmasked_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r54",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 1.917124499487848,
+      "DAS_over_new": 0.6285495623428624,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:mm_bf16_staticall_kernel": 1000
+        },
+        "aa": {
+          "kernel:mm_bf16_staticall_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": true,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "model54-r55",
+      "model_scope": true,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9992351366797491,
+      "DAS_over_new": 0.47545564488257763,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r345",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.99645390070922,
+      "DAS_over_new": 1.528368794326241,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r346",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9982238010657195,
+      "DAS_over_new": 1.5062166962699826,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r347",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0,
+      "DAS_over_new": 1.4502519296740997,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r348",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 1.0032154340836013,
+      "DAS_over_new": 0.7983463481855765,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r349",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0034246575342467,
+      "DAS_over_new": 1.4392069777397263,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r350",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0021881838074398,
+      "DAS_over_new": 0.9102844638949672,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r351",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.4224137931034484,
+      "DAS_over_new": 1.285919540229885,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        },
+        "aa": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "expanded55-r352",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 4.215535470668486,
+      "DAS_over_new": 10.375170532060029,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        },
+        "aa": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "expanded55-r353",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0,
+      "DAS_over_new": 1.536231884057971,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r354",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0,
+      "DAS_over_new": 1.636521739130435,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r355",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9957337883959041,
+      "DAS_over_new": 1.508532423208191,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r356",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.002299347158218,
+      "DAS_over_new": 1.4416282642089095,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r357",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9982988390509762,
+      "DAS_over_new": 1.4931820242215457,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r358",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0028227865187003,
+      "DAS_over_new": 0.7924929136908081,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r359",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9986577181208054,
+      "DAS_over_new": 0.6201342281879195,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r360",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0055511498810468,
+      "DAS_over_new": 0.8084853291038856,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r361",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0045977011494254,
+      "DAS_over_new": 0.9149425287356323,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r362",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 1.0,
+      "DAS_over_new": 0.8435251798561153,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r363",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9984686064318529,
+      "DAS_over_new": 1.4349157733537519,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r364",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9966154481750433,
+      "DAS_over_new": 0.9211913198692789,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r365",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0013434973045823,
+      "DAS_over_new": 1.4285714285714286,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r366",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0029046069118777,
+      "DAS_over_new": 1.8376922565957525,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r367",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 1.0050658561296861,
+      "DAS_over_new": 0.4468085106382979,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r368",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9997382453217526,
+      "DAS_over_new": 1.1941273115489783,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r369",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0021216407355018,
+      "DAS_over_new": 1.5275813295615275,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r370",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9971056439942111,
+      "DAS_over_new": 0.9667149059334296,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r371",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9969358189372401,
+      "DAS_over_new": 0.8167504920183687,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r372",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9944827586206897,
+      "DAS_over_new": 1.4482758620689655,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r373",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9993792543316831,
+      "DAS_over_new": 0.9421410891089108,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r374",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9993416009636444,
+      "DAS_over_new": 0.8177836180464303,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r375",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0005581297388375,
+      "DAS_over_new": 1.235888795282224,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r376",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9970972423802614,
+      "DAS_over_new": 1.4252539912917273,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r377",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9971346704871058,
+      "DAS_over_new": 1.2983501969914037,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r378",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 8.562949640287771,
+      "DAS_over_new": 78.51971672661871,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        },
+        "aa": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": true,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    },
+    {
+      "id": "expanded55-r379",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0,
+      "DAS_over_new": 0.9044756179024714,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r380",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0054231801984117,
+      "DAS_over_new": 2.1743685946223628,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r381",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 1.001137656427759,
+      "DAS_over_new": 0.380830489192264,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r382",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0122237734984207,
+      "DAS_over_new": 0.2798940211404132,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r383",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 0.998519249753208,
+      "DAS_over_new": 0.5962487660414609,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r384",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 0.9982942308404892,
+      "DAS_over_new": 0.8299352462515462,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r385",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 0.9996997596200458,
+      "DAS_over_new": 0.6446160957616693,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r386",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": false,
+      "old_over_new": 0.9999975049900198,
+      "DAS_over_new": 0.5349301397205589,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r387",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0023608645640003,
+      "DAS_over_new": 0.4271109368975546,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r388",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0003037133251833,
+      "DAS_over_new": 0.9150347646699268,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r389",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9983079526226736,
+      "DAS_over_new": 0.8115469014382403,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r390",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9915996810099508,
+      "DAS_over_new": 0.36178656110978236,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r391",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0038793826108325,
+      "DAS_over_new": 1.30351673160641,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r392",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0107731811392646,
+      "DAS_over_new": 0.4712368707232158,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r393",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 0.9833921121473405,
+      "DAS_over_new": 0.9118905754828018,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r394",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9999355655736815,
+      "DAS_over_new": 1.1907472567362476,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r395",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9953507661836553,
+      "DAS_over_new": 0.9556588287961796,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r396",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        false,
+        false,
+        false
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 0.9956994668615423,
+      "DAS_over_new": 0.46794144129865434,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r397",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 1.0002896092211917,
+      "DAS_over_new": 1.452360453467182,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": false,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r398",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": false,
+      "fg_das_qualified": false,
+      "DAS90": false,
+      "old_over_new": 1.0521521261489963,
+      "DAS_over_new": 0.7873386371780223,
+      "specialization_observed": false,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": false,
+      "specialization_kernel_counts": {
+        "new": {},
+        "aa": {}
+      },
+      "attributed_gain_above5percent": false,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "upstream fallback;do not attribute gain to new kernel"
+    },
+    {
+      "id": "expanded55-r399",
+      "model_scope": false,
+      "correct_old_new_DAS": [
+        true,
+        true,
+        true
+      ],
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "DAS90": true,
+      "old_over_new": 9.774781138955571,
+      "DAS_over_new": 5.761424290032943,
+      "specialization_observed": true,
+      "all50_samples_valid_and_expected_repeat_kernel_counts": true,
+      "specialization_kernel_counts": {
+        "new": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        },
+        "aa": {
+          "kernel:addmm_single_row_k1_kernel": 1000
+        }
+      },
+      "attributed_gain_above5percent": true,
+      "qualified_latency_regression_above5percent": false,
+      "source_entry_witness": true,
+      "classification": "specialized"
+    }
+  ]
+}
