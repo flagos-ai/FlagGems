@@ -31,6 +31,27 @@ if HAS_TLE:
 else:
     tle_gpu = None
 
+
+def _tle_gpu_pipeline_supported() -> bool:
+    """Whether the active backend whitelists the TLE ``gpu.pipeline`` primitive.
+
+    ``HAS_TLE`` only says the TLE package is importable for this vendor; a
+    backend may still reject individual primitives at compile time. Ask the
+    same whitelist the Triton TLE code generator consults.
+    """
+    if not HAS_TLE:
+        return False
+    try:
+        from triton._flagtree_backend import get_active_backend_name
+        from triton.experimental.tle import is_primitive_supported
+
+        return is_primitive_supported(get_active_backend_name(), "gpu.pipeline")
+    except (ImportError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+_HAS_TLE_PIPELINE = _tle_gpu_pipeline_supported()
+
 logger = logging.getLogger(__name__)
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _SUPPORTED_MASK_DTYPES = (torch.bool, torch.uint8)
@@ -304,6 +325,7 @@ def cross_attention_fwd_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     PIPELINE_NS: tl.constexpr,
+    TLE_PIPELINE: tl.constexpr,
 ):
     query_tile = tl.program_id(0)
     batch_head = tl.program_id(1)
@@ -353,7 +375,11 @@ def cross_attention_fwd_kernel(
     # TLE software pipelining for the K/V loop. `tle_gpu.pipeline` extends
     # `tl.range`, so the loop lowers exactly like the legacy `tl.range` form
     # and any stage count the tiling picks is valid; PIPELINE_NS carries it.
-    for key_start in tle_gpu.pipeline(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
+    # Backends that do not whitelist the `gpu.pipeline` primitive lower the
+    # same loop through `tl.range`.
+    for key_start in (tle_gpu.pipeline if TLE_PIPELINE else tl.range)(
+        0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS
+    ):
         logical_keys = key_start + key_offsets
         valid_keys = logical_keys < KEY_LEN
         key = tl.load(
@@ -441,10 +467,6 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
     logger.debug("GEMS CROSS_ATTENTION")
-    if not HAS_TLE:
-        raise RuntimeError(
-            "cross_attention is unavailable: requires triton.experimental.tle."
-        )
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]
@@ -503,6 +525,7 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             PIPELINE_NS=pipeline_ns,
+            TLE_PIPELINE=_HAS_TLE_PIPELINE,
             num_stages=2,
             num_warps=num_warps,
         )

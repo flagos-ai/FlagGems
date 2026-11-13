@@ -3073,6 +3073,17 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: cast_Double
+  description: Casts a tensor to float64, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Double
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cast_Long
   description: Casts a tensor to int64, returning the input unchanged when its dtype already matches.
   for:
@@ -19977,6 +19988,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - _sparse_csc_tensor_unsafe
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_csr_sum
+  description: 'Reduces a 2-D sparse CSR tensor along dim and returns a sparse CSR
+    tensor. Only stored entries participate, so the result sparsity follows the
+    layout: a row or column keeps one entry when it stores at least one value,
+    and a full reduction keeps a single entry only when the input stores anything.
+
+    '
+  for:
+  - _sparse_csr_sum
+  - _sparse_csr_sum.dim_dtype
+  - _sparse_csr_sum.dim_dtype_out
   labels:
   - aten
   - KernelGen
