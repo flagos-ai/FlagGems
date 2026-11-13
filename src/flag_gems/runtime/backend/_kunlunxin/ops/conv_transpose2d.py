@@ -292,13 +292,9 @@ def conv_transpose2d(
     use_cast_ride = orig_dtype == torch.bfloat16 or (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
-    # fp16 accumulation differs from the reference; widen these cases to fp32
-    # and round once on the way out.
-    fp32_ride = (
-        orig_dtype == torch.float16
-        and not use_cast_ride
-        and (dilation_h != 1 or dilation_w != 1 or bias is not None)
-    )
+    # fp16 accumulation overflows for large reduction sizes; widen every fp16
+    # case to fp32 and round once on the way out.
+    fp32_ride = orig_dtype == torch.float16 and not use_cast_ride
     scratch_x = scratch_w = None
 
     if bias is None:
