@@ -10030,8 +10030,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - beta: '5.3'
 - id: grouped_mm_w8a8
   description: |
-    MetaX grouped matrix multiplication with matching signed INT8 or E4M3FN/FNUZ
-    operands and FP32 row/column scales. Writes preallocated BF16 output in
+    Grouped matrix multiplication with FP32 row/column scales. Hygon and MetaX
+    support signed INT8 operands. MetaX also supports E4M3FN/FNUZ operands.
+    Writes preallocated BF16 output in
     place using packed expert indices and row counts; no padding is required.
   for:
   - grouped_mm_w8a8
