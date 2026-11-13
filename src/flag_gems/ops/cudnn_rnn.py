@@ -134,6 +134,11 @@ def _rnn_kernel(
     h_read_base = h_read_ptr + batch_idx * hidden_out
 
     for t in range(seq_len):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         if batch_first:
             t_inp_off = batch_idx * batch_inp_stride + t * input_dim
             t_out_off = batch_idx * batch_out_stride + t * hidden_out
@@ -265,6 +270,11 @@ def _rnn_packed_kernel(
     h_read_base = h_read_ptr + pid * hidden_out
 
     for t_loop in range(num_steps):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         t = num_steps - 1 - t_loop if reverse else t_loop
         cur_bs = tl.load(batch_sizes_ptr + t).to(tl.int32)
 
@@ -423,6 +433,11 @@ def _lstm_kernel(
     c_scratch_base = c_scratch_ptr + batch_idx * hidden_size
 
     for t in range(seq_len):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         if batch_first:
             t_inp_off = batch_idx * batch_inp_stride + t * input_dim
             t_out_off = batch_idx * batch_out_stride + t * hidden_out
@@ -635,6 +650,11 @@ def _lstm_packed_kernel(
     c_scratch_base = c_scratch_ptr + pid * hidden_size
 
     for t_loop in range(num_steps):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         t = num_steps - 1 - t_loop if reverse else t_loop
         cur_bs = tl.load(batch_sizes_ptr + t).to(tl.int32)
 
@@ -860,6 +880,11 @@ def _gru_kernel(
     h_read_base = h_read_ptr + batch_idx * hidden_size
 
     for t in range(seq_len):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         if batch_first:
             t_inp_off = batch_idx * batch_inp_stride + t * input_dim
             t_out_off = batch_idx * batch_out_stride + t * hidden_size
@@ -1005,6 +1030,11 @@ def _gru_packed_kernel(
     h_read_base = h_read_ptr + pid * hidden_size
 
     for t_loop in range(num_steps):
+        # The previous step writes h_scratch and this step's snapshot reads it;
+        # h_read/h_scratch are reused across warps. Fence at the loop entry so no
+        # warp can start the next snapshot before all warps finished the previous
+        # step's stores/loads.
+        tl.debug_barrier()
         t = num_steps - 1 - t_loop if reverse else t_loop
         cur_bs = tl.load(batch_sizes_ptr + t).to(tl.int32)
 
