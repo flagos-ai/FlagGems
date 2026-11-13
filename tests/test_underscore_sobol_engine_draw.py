@@ -24,6 +24,15 @@ import flag_gems
 @pytest.mark.parametrize("dimension", [2, 5, 10, 20])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float64
+        and not utils.fp64_is_supported
+    ):
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # torch.empty(..., dtype=torch.float64) reports float32 and the
+        # output-dtype contract of this op can never hold there.
+        pytest.skip("float64 is not supported by this device")
     # Initialize SobolEngine to get valid state
     eng = SobolEngine(dimension=dimension, scramble=False)
 
@@ -50,12 +59,20 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
     assert quasi_gems.shape == (dimension,)
     assert quasi_gems.dtype == torch.int64
 
-    # Check values are in valid range [0, 1)
-    assert (result_gems >= 0).all()
-    assert (result_gems < 1).all()
+    assert result_gems.device == quasi_cuda.device
+    assert quasi_gems.device == quasi_cuda.device
 
-    # Check match with CPU reference
-    torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)
+    result_cpu = result_gems.cpu()
+    # Iluvatar FP64 comparisons can misclassify values that round-trip exactly.
+    range_values = (
+        result_cpu
+        if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+        else result_gems
+    )
+    assert (range_values >= 0).all()
+    assert (range_values < 1).all()
+
+    torch.testing.assert_close(result_cpu, result_ref, rtol=1e-5, atol=1e-8)
     assert torch.equal(quasi_gems.cpu(), quasi_ref)
 
 

@@ -1,0 +1,84 @@
+{
+  "api_version": "v6.0",
+  "name": "_batch_norm_impl_index",
+  "requires_triton_kernel": true,
+  "description": "Normalizes input per channel, with optional affine tensors and running statistics. Training updates running_mean and running_var when supplied. The saved inverse standard deviation is not the variance. The reserve tensor and implementation index are backend-specific. The outputs do not alias the supplied inputs.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "running_mean",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "running_var",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "training",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float",
+      "default": 0.1
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float",
+      "default": 1e-05
+    },
+    {
+      "name": "cudnn_enabled",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": true
+    }
+  ],
+  "outputs": [
+    "out",
+    "save_mean",
+    "save_invstd",
+    "reserve",
+    "impl_index"
+  ],
+  "effects": {
+    "mutates": [
+      "running_mean",
+      "running_var"
+    ],
+    "returns_alias_of": {}
+  }
+}
