@@ -62,7 +62,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     return code
 
 
-def _gen_kernel_inner_body(inp_rank, indices_len, index_rank, code):
+def _gen_kernel_inner_body(
+    inp_rank, indices_len, index_rank, code, block_offsets=False
+):
     code.newline()
     code.writeline("cur_idx_n = offset1")
     for i in range(inp_rank - 1, indices_len - 1, -1):
@@ -72,15 +74,20 @@ def _gen_kernel_inner_body(inp_rank, indices_len, index_rank, code):
     code.writeline("mask1 = offset1 < N")
     code.writeline("mask = index_mask & mask0 & mask1")
     code.newline()
+    # The single-row kernel can end up with scalar offsets (e.g. rank-1 input
+    # where N == 1); the masked load/store then rejects a block mask against a
+    # scalar pointer. Broadcast with a zero block to keep the pointer typed as
+    # a block.
+    offset_tail = " + tl.zeros_like(offset1)" if block_offsets else ""
     comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
     comp += [f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)]
-    code.writeline(f"input_offset = {' + '.join(comp)}")
+    code.writeline(f"input_offset = {' + '.join(comp)}{offset_tail}")
     comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
     comp += [
         f"input_idx{indices_len + i} * values_stride{index_rank + i}"
         for i in range(inp_rank - indices_len)
     ]
-    code.writeline(f"values_offset = {' + '.join(comp)}")
+    code.writeline(f"values_offset = {' + '.join(comp)}{offset_tail}")
     code.newline()
     code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
     code.writeline("if IS_ACCUMULATE:")
@@ -222,12 +229,89 @@ def generate_index_put_kernel(
     return code
 
 
+def generate_index_put_row_kernel(
+    inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
+):
+    """Single-row kernel used when the MMU guard forbids multi-row tiles.
+
+    The tiled kernel above keeps a ``tl.range`` row loop.  With
+    ``BLOCK_SIZE0 == 1`` (forced by the 512 MiB scatter-span guard) that loop
+    makes llc run out of registers on GCU300 (FlagGems #8532/#8533).  This
+    variant walks exactly one indexed row per program: the row comes from the
+    grid (x/z), the inner dimension keeps the grid-stride loop, and there is
+    no row loop in the body.
+    """
+    code.writeline("@libentry()")
+    code.writeline("@triton.jit")
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        args = ["input_ptr,"]
+        args += [f"indices{i}_ptr," for i in range(indices_len)]
+        args += ["values_ptr,"]
+        args += [f"input_shape{i}," for i in range(inp_rank)]
+        for i in range(indices_len):
+            args += [f"indices{i}_shape{j}," for j in range(index_rank)]
+        args += [f"input_stride{i}," for i in range(inp_rank)]
+        for i in range(indices_len):
+            args += [f"indices{i}_stride{j}," for j in range(index_rank)]
+        args += [
+            f"values_stride{i}," for i in range(index_rank + inp_rank - indices_len)
+        ]
+        args += [
+            "M,",
+            "N,",
+            "IS_ACCUMULATE: tl.constexpr,",
+            "BLOCK_SIZE1: tl.constexpr,",
+        ]
+        code.writelines(args)
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("row = tl.program_id(0) + tl.program_id(2) * tl.num_programs(0)")
+        code.writeline("mask0 = row < M")
+        code.newline()
+        code.writeline("cur_idx = row")
+        for i in range(index_rank - 1, -1, -1):
+            code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
+            code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
+        code.newline()
+        for i in range(indices_len):
+            comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            code.writeline(
+                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+            )
+        code.newline()
+        index_mask = [
+            f"(cur_index{i} >= 0) & (cur_index{i} < input_shape{i})"
+            for i in range(indices_len)
+        ]
+        code.writeline(f"index_mask = {' & '.join(index_mask)}")
+        code.newline()
+        code.writeline("num_pid1 = tl.num_programs(1)")
+        code.writeline("num_blocks_n = (N + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
+        code.writeline(
+            "for pid1 in tl.range(tl.program_id(1), num_blocks_n, num_pid1):"
+        )
+        with code.indent():
+            code.writeline(
+                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+            )
+            _gen_kernel_inner_body(
+                inp_rank, indices_len, index_rank, code, block_offsets=True
+            )
+
+    code.newline()
+    code.newline()
+    return code
+
+
 def generate_index_put_wrapper(
     inp_rank,
     indices_len,
     index_rank,
     wrapper_name: str,
     kernel_name: str,
+    row_kernel_name: str,
     code: IndentedBuffer,
 ):
     code.writeline(f"def {wrapper_name}(input, indices, values, accumulate):")
@@ -243,42 +327,82 @@ def generate_index_put_wrapper(
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.writeline("element_size = input.element_size()")
         code.newline()
-        code.writeline("def grid(meta):")
+        code.writeline(
+            "from _enflame.gcu300.utils.shape_utils import mmu_requires_single_row"
+        )
+        code.writeline(
+            "if mmu_requires_single_row(input_stride, input_shape, element_size):"
+        )
         with code.indent():
-            code.writeline("block_size0, block_size1 = mmu_safe_index_put_block_sizes(")
-            code.writeline("    meta['BLOCK_SIZE0'],")
-            code.writeline("    meta['BLOCK_SIZE1'],")
-            code.writeline("    input_stride,")
-            code.writeline("    input_shape,")
-            code.writeline("    element_size,")
-            code.writeline(")")
-            code.writeline("return (")
+            code.writeline("def grid_row(meta):")
             with code.indent():
-                code.writeline("min(triton.cdiv(M, block_size0), 65535),")
-                if inp_rank != indices_len:
+                code.writeline("block_size1 = meta['BLOCK_SIZE1']")
+                code.writeline("return (")
+                with code.indent():
+                    code.writeline("min(M, 65535),")
                     code.writeline("min(triton.cdiv(N, block_size1), 255),")
-                else:
-                    code.writeline("triton.cdiv(N, block_size1),")
+                    code.writeline("max(1, triton.cdiv(M, 65535)),")
+                code.writeline(")")
+            code.newline()
+            code.writeline(f"{row_kernel_name}[grid_row](")
+            with code.indent():
+                args = ["input,"]
+                args += [f"indices[{i}]," for i in range(indices_len)]
+                args += ["values,"]
+                args += [f"input_shape[{i}]," for i in range(inp_rank)]
+                for i in range(indices_len):
+                    args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
+                args += [f"input_stride[{i}]," for i in range(inp_rank)]
+                for i in range(indices_len):
+                    args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
+                args += [
+                    f"values_stride[{i}],"
+                    for i in range(index_rank + inp_rank - indices_len)
+                ]
+                args += ["M,", "N,", "accumulate==True,"]
+                args += ["BLOCK_SIZE1=256,"]
+                code.writelines(args)
             code.writeline(")")
-        code.newline()
-        code.writeline(f"{kernel_name}[grid](")
+        code.writeline("else:")
         with code.indent():
-            args = ["input,"]
-            args += [f"indices[{i}]," for i in range(indices_len)]
-            args += ["values,"]
-            args += [f"input_shape[{i}]," for i in range(inp_rank)]
-            for i in range(indices_len):
-                args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
-            args += [f"input_stride[{i}]," for i in range(inp_rank)]
-            for i in range(indices_len):
-                args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
-            args += [
-                f"values_stride[{i}],"
-                for i in range(index_rank + inp_rank - indices_len)
-            ]
-            args += ["M,", "N,", "accumulate==True,"]
-            code.writelines(args)
-        code.writeline(")")
+            code.writeline("def grid(meta):")
+            with code.indent():
+                code.writeline(
+                    "block_size0, block_size1 = mmu_safe_index_put_block_sizes("
+                )
+                code.writeline("    meta['BLOCK_SIZE0'],")
+                code.writeline("    meta['BLOCK_SIZE1'],")
+                code.writeline("    input_stride,")
+                code.writeline("    input_shape,")
+                code.writeline("    element_size,")
+                code.writeline(")")
+                code.writeline("return (")
+                with code.indent():
+                    code.writeline("min(triton.cdiv(M, block_size0), 65535),")
+                    if inp_rank != indices_len:
+                        code.writeline("min(triton.cdiv(N, block_size1), 255),")
+                    else:
+                        code.writeline("triton.cdiv(N, block_size1),")
+                code.writeline(")")
+            code.newline()
+            code.writeline(f"{kernel_name}[grid](")
+            with code.indent():
+                args = ["input,"]
+                args += [f"indices[{i}]," for i in range(indices_len)]
+                args += ["values,"]
+                args += [f"input_shape[{i}]," for i in range(inp_rank)]
+                for i in range(indices_len):
+                    args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
+                args += [f"input_stride[{i}]," for i in range(inp_rank)]
+                for i in range(indices_len):
+                    args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
+                args += [
+                    f"values_stride[{i}],"
+                    for i in range(index_rank + inp_rank - indices_len)
+                ]
+                args += ["M,", "N,", "accumulate==True,"]
+                code.writelines(args)
+            code.writeline(")")
         code.writeline("return input")
     code.newline()
     code.newline()
@@ -301,8 +425,18 @@ def generate_code(
     code.newline()
     generate_mmu_heuristics_for_index_put(inp_rank, code)
     generate_index_put_kernel(inp_rank, indices_len, index_rank, kernel_name, code)
+    row_kernel_name = "_index_put_row_jit_function"
+    generate_index_put_row_kernel(
+        inp_rank, indices_len, index_rank, row_kernel_name, code
+    )
     generate_index_put_wrapper(
-        inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
+        inp_rank,
+        indices_len,
+        index_rank,
+        wrapper_name,
+        kernel_name,
+        row_kernel_name,
+        code,
     )
     return code
 
