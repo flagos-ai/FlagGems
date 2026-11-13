@@ -144,3 +144,30 @@ def test_linear_1d_with_bias(dtype, in_features, out_features):
     res_out = flag_gems.linear(input_tensor, weight, bias)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=in_features)
+
+
+@pytest.mark.linear
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("features", [64, 256, 513])
+@pytest.mark.parametrize("batch", [1, 32])
+def test_linear_bias_cancellation(dtype, features, batch):
+    epsilon = {
+        torch.float16: 2**-11,
+        torch.bfloat16: 2**-8,
+        torch.float32: 2**-22,
+    }[dtype]
+    cpu_input = torch.zeros((batch, features), dtype=dtype)
+    cpu_input[:, :2] = 1
+    cpu_weight = torch.zeros((33, features), dtype=dtype)
+    cpu_weight[:, 0] = 1
+    cpu_weight[::2, 1] = epsilon
+    cpu_weight[1::2, 1] = -epsilon
+    cpu_bias = torch.full((33,), -1, dtype=dtype)
+    expected = torch.nn.functional.linear(
+        cpu_input.float(), cpu_weight.float(), cpu_bias.float()
+    ).to(dtype)
+    inp = cpu_input.to(flag_gems.device)
+    weight = cpu_weight.to(inp.device)
+    bias = cpu_bias.to(inp.device)
+    actual = flag_gems.linear(inp, weight, bias)
+    utils.gems_assert_equal(actual.cpu(), expected)
