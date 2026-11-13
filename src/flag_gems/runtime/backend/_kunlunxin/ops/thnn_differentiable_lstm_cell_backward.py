@@ -401,11 +401,11 @@ def _differentiable_lstm_cell_backward(
     gate_f = gates[:, hidden_size : 2 * hidden_size]
     gate_c = gates[:, 2 * hidden_size : 3 * hidden_size]
     gate_o = gates[:, 3 * hidden_size :]
-    input_gate = gate_i.sigmoid()
-    forget_gate = gate_f.sigmoid()
-    cell_gate = gate_c.tanh()
-    output_gate = gate_o.sigmoid()
-    cy_tanh = cy.tanh()
+    input_gate = gate_i.sigmoid()  # torch-ok
+    forget_gate = gate_f.sigmoid()  # torch-ok
+    cell_gate = gate_c.tanh()  # torch-ok
+    output_gate = gate_o.sigmoid()  # torch-ok
+    cy_tanh = cy.tanh()  # torch-ok
     if grad_hy is not None:
         grad_output = grad_hy * cy_tanh
         grad_output = grad_output * (1.0 - output_gate) * output_gate
@@ -424,7 +424,7 @@ def _differentiable_lstm_cell_backward(
     grad_input = grad_input * (1.0 - input_gate) * input_gate
     grad_forget = grad_forget * (1.0 - forget_gate) * forget_gate
     grad_candidate = grad_candidate * (1.0 - cell_gate * cell_gate)
-    grad_gates = torch.cat(
+    grad_gates = torch.cat(  # torch-ok
         (grad_input, grad_forget, grad_candidate, grad_output), dim=1
     )
     grad_bias = grad_gates.sum(0) if input_bias is not None else None
