@@ -27,6 +27,13 @@ else:
     VANDER_DTYPES = utils.ALL_FLOAT_DTYPES
 
 
+def _complex_reference_input(x):
+    if flag_gems.vendor_name == "iluvatar" and x.dtype == torch.complex128:
+        # The native device reference can drop nonzero powers for complex128.
+        return x.cpu()
+    return utils.to_reference(x, False)
+
+
 def _assert_vander_close(res_out, ref_out, dtype):
     # flag_gems.testing.RESOLUTION has no entry for complex128 (only complex32/64),
     # so bypass gems_assert_close for complex128 and compare via torch.testing
@@ -97,12 +104,14 @@ def test_linalg_vander_complex(shape, dtype):
     # Complex dtype coverage: torch.linalg.vander supports complex inputs.
     # No upcast is needed because the reference supports complex natively.
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = utils.to_reference(x, False)
+    ref_x = _complex_reference_input(x)
 
     ref_out = torch.linalg.vander(ref_x)
 
     res_out = flag_gems.linalg_vander(x)
 
+    assert res_out.device == x.device
+    assert res_out.dtype == x.dtype
     _assert_vander_close(res_out, ref_out, dtype)
 
 
@@ -115,10 +124,12 @@ def test_linalg_vander_with_N_complex(shape, N, dtype):
         pytest.skip("Kunlunxin native complex vander is not implemented")
     # Test complex dtype with explicit N parameter.
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_x = utils.to_reference(x, False)
+    ref_x = _complex_reference_input(x)
 
     ref_out = torch.linalg.vander(ref_x, N=N)
 
     res_out = flag_gems.linalg_vander(x, N=N)
 
+    assert res_out.device == x.device
+    assert res_out.dtype == x.dtype
     _assert_vander_close(res_out, ref_out, dtype)
