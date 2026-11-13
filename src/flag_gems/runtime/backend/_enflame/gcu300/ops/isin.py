@@ -284,12 +284,16 @@ def isin(
     elif not torch.is_tensor(in1):
         assert torch.is_tensor(in0)
         in1 = torch.tensor(in1, device=in0.device)
-    if in0.dtype == torch.int64:
-        in0 = in0.to(torch.int32)
-    if in1.dtype == torch.int64:
-        in1 = in1.to(torch.int32)
-    if in0.numel() == 0 or in1.numel() == 0:
+    # GCU300 Triton kernels cannot *store* 64-bit elements, but loading and
+    # comparing them is supported. Truncating int64 inputs here silently mapped
+    # values such as 2**32 onto 0 (FlagGems #8527), so keep the original dtype
+    # and let the kernels compare the full 64-bit value.
+    if in0.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
+    if in1.numel() == 0:
+        # No element is contained in an empty set; `invert` flips that to all
+        # True (matching the CPU reference).
+        return torch.full_like(in0, bool(invert), dtype=torch.bool)
     elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
