@@ -102,3 +102,24 @@ def test_is_same_size_scalar_tensor(caplog):
     assert res_diff == torch.ops.aten.is_same_size(ref_a, ref_c)
     assert res_same is True
     assert res_diff is False
+
+
+@pytest.mark.is_same_size
+@pytest.mark.parametrize("shape_a,shape_b", [((0, 3), (0, 3)), ((0, 3), (0, 4))])
+def test_is_same_size_empty(shape_a, shape_b):
+    a = torch.empty(shape_a, device=flag_gems.device)
+    b = torch.empty(shape_b, device=flag_gems.device)
+    assert flag_gems.is_same_size(a, b) == torch.ops.aten.is_same_size(a, b)
+
+
+@pytest.mark.is_same_size
+def test_is_same_size_does_not_allocate(monkeypatch):
+    a = torch.empty((2, 3), device=flag_gems.device, dtype=torch.float32)
+    b = torch.empty((2, 3), device=flag_gems.device, dtype=torch.int64)
+
+    def unexpected_allocation(*args, **kwargs):
+        raise AssertionError("shape comparison must not allocate device tensors")
+
+    monkeypatch.setattr(torch, "tensor", unexpected_allocation)
+    monkeypatch.setattr(torch, "empty", unexpected_allocation)
+    assert flag_gems.is_same_size(a, b) is True
