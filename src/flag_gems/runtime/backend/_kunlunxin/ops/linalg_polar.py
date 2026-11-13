@@ -51,45 +51,50 @@ logger = logging.getLogger(__name__)
 _SWEEPS = 6
 
 
-# NOTE(2026-11-12): every ``tl.dot`` operand below is a plain load (or
-# ``tl.trans`` of a load) and every diagonal scaling happens in pure
-# elementwise kernels.  Two platform constraints drive this:
+# NOTE(2026-11-12): flagtree's ``TritonSDNNOptimizeRcLayout`` crashes on any
+# ``tl.dot`` kernel that also carries a ``tl.sum`` reduction (the RC layout it
+# assigns collides with the reduction value — ``sdnn.core_specialize`` type
+# mismatch, twice observed in CI), and it cannot take a dot operand built from
+# an in-kernel reduction either.  The reciprocal singular values are therefore
+# computed in a separate no-dot kernel using the per-column scalar-sum pattern
+# that ``_osj_pipeline`` already uses (which compiles on both pipelines), and
+# every ``tl.dot`` below takes only plain loads (or ``tl.trans`` of a load):
 #
-# * flagtree's ``TritonSDNNOptimizeRcLayout`` crashes (``sdnn.core_specialize``
-#   type mismatch, reported as OutOfResources) when a dot operand is produced
-#   from an in-kernel reduction (``1/S`` derived from ``tl.sum``); the RC
-#   layout it back-propagates cannot enter the reduction region.  Scaling is
-#   therefore hoisted into pure kernels that write plain buffers, and the
-#   reductions live only in kernels whose dot operands are plain loads.
-# * the local sdnn-build Triton does not order dependent back-to-back dot
-#   kernels (the second dot reads the first one's stale output) and
-#   ``@libentry()`` makes it worse, so these kernels are plain ``@triton.jit``
-#   and the single dot-to-dot edge (``U`` -> ``H``) is bridged by a torch copy
-#   of the produced tile, the only reliable cross-kernel barrier there.
+#     inv (no-dot: 1/S)  ->  T (dot: B^T A)  ->  Bs/Vh (pure scalings)
+#                        ->  U (dot: Bs Vh)  ->  UB.copy_(UB2)  ->  H (dot)
 #
-# Chain (per matrix, all ``tl.dot`` operands plain loads):
-#
-#     T (dot: B^T A)  ->  Bs/Vh (pure scalings)  ->  U (dot: Bs Vh)
-#                    ->  UB.copy_(UB2)           ->  H (dot: U^T A)
-#
-# ``tl.sum`` axis reductions crash in a kernel with no ``tl.dot`` (MLIR
-# UnrollControl type error) and feeding a ``tl.dot`` result into a second
-# ``tl.dot`` hangs the device task (702/KEXCEPTION), so each dot kernel carries
-# exactly one ``tl.dot``.
+# The local sdnn-build Triton does not order dependent back-to-back dot
+# kernels (the second dot reads the first one's stale output) and
+# ``@libentry()`` makes it worse, so these kernels are plain ``@triton.jit``
+# and the single dot-to-dot edge (``U`` -> ``H``) is bridged by a torch copy
+# of the produced tile, the only reliable cross-kernel barrier there.  A plain
+# ``tl.trans(b)`` operand next to a reduction miscompiles on the local
+# pipeline and 1D loads/stores next to 2D loads trip its addptr verifier, so
+# the pure kernels load ``INV`` as 2D tiles.
 
 
 @triton.jit
-def _polar_t_kernel(BP, AP, T, INV, m, n, ONE, BLOCK: tl.constexpr):
-    """``T = B^T A`` and the reciprocal singular values ``1/S``.
+def _polar_inv_kernel(BP, INV, BLOCK: tl.constexpr):
+    """Reciprocal singular values ``1/S`` (column norms of ``B``).
+
+    No ``tl.dot`` and no axis reduction: per-column scalar sums, the same
+    pattern ``_osj_pipeline`` already compiles on both pipelines.
+    """
+    rows = tl.arange(0, BLOCK)
+    for j in range(0, BLOCK):
+        v = tl.load(BP + j + rows * BLOCK)
+        s2 = tl.sum(v * v)
+        s = tl.sqrt(s2)
+        inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
+        tl.store(INV + j, inv)
+
+
+@triton.jit
+def _polar_t_kernel(BP, AP, T, m, n, BLOCK: tl.constexpr):
+    """``T = B^T A`` — one ``tl.dot`` on plain loads, no reduction.
 
     ``T`` is stored zero-padded to ``BLOCK x BLOCK`` (the ``n x n`` region is
-    masked); ``INV`` holds the full ``BLOCK`` reciprocals for the pure scaling
-    kernels below.  The dot operand is ``b * ONE`` with a *runtime scalar*
-    (``ONE`` is passed as ``1.0``): a plain ``tl.trans(b)`` operand next to the
-    ``tl.sum`` reduction miscompiles on the local sdnn-build pipeline, while an
-    operand built from the reduction result (``b * inv[None, :]``) crashes
-    flagtree's ``sdnn.core_specialize`` — the runtime scalar keeps the operand
-    dynamic but load-derived, satisfying both.
+    masked).
     """
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
@@ -97,18 +102,12 @@ def _polar_t_kernel(BP, AP, T, INV, m, n, ONE, BLOCK: tl.constexpr):
     b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
     a = tl.load(AP + rows[:, None] * BLOCK + cols[None, :])
 
-    # Column norms of the raw rotated matrix are the singular values.
-    s2 = tl.sum(b * b, axis=0)
-    s = tl.sqrt(s2)
-    inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
-
-    t = tl.dot(tl.trans(b * ONE), a, allow_tf32=False)
+    t = tl.dot(tl.trans(b), a, allow_tf32=False)
     tl.store(
         T + rows[:, None] * BLOCK + cols[None, :],
         t,
         mask=(rows[:, None] < n) & (cols[None, :] < n),
     )
-    tl.store(INV + rows, inv)
 
 
 @triton.jit
@@ -245,14 +244,19 @@ def _polar_osj(A, out_U=None, out_H=None):
         for b in range(batch):
             BP[b, :MP, :NW].copy_(B[b].reshape(MP, NW))
             AP[b, :m, :n].copy_(A2[b])
+            _polar_inv_kernel[(1,)](
+                BP[b],
+                INV[b],
+                BLOCK=block,
+                num_warps=4,
+                num_stages=1,
+            )
             _polar_t_kernel[(1,)](
                 BP[b],
                 AP[b],
                 T[b],
-                INV[b],
                 m,
                 n,
-                1.0,
                 BLOCK=block,
                 num_warps=4,
                 num_stages=1,
