@@ -132,6 +132,14 @@ def test_accuracy_rnn_relu_cell_non_contiguous(dtype):
 )
 def test_accuracy_rnn_relu_cell_zero_sized(batch, input_size, hidden_size):
     """Empty batch, empty reduction and empty hidden all return empty outputs."""
+    if flag_gems.vendor_name == "kunlunxin" and not TO_CPU and input_size == 0:
+        # XPU (torch_xmlir) native linear/relu eager decomposition is
+        # unreliable for input_size == 0 (returns garbage), so the default
+        # device-reference mode cannot produce a correct reference for the
+        # bias-only result; the gems kernel matches ATen eager semantics.
+        # Same vendor-gated pattern as PR #8700; --ref cpu keeps the full
+        # validation path.
+        pytest.skip("device reference is unreliable on XPU for input_size == 0")
     dtype = torch.float32
     input, hx, w_ih, w_hh, b_ih, b_hh = _inputs(batch, input_size, hidden_size, dtype)
     res_out = flag_gems.rnn_relu_cell(input, hx, w_ih, w_hh, b_ih, b_hh)
@@ -196,8 +204,13 @@ def test_accuracy_rnn_relu_cell_invalid_input():
     with pytest.raises(RuntimeError, match="elements"):
         flag_gems.rnn_relu_cell(input, hx, w_ih, w_hh, b_ih[:-1], b_hh)
 
+    dtype_mismatch_input = (
+        input.bfloat16() if flag_gems.vendor_name == "kunlunxin" else input.double()
+    )
+    # XPyTorch downgrades float64 to float32, so double() cannot create a dtype
+    # mismatch on kunlunxin; bfloat16 does not.
     with pytest.raises(RuntimeError, match="same dtype"):
-        flag_gems.rnn_relu_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
+        flag_gems.rnn_relu_cell(dtype_mismatch_input, hx, w_ih, w_hh, b_ih, b_hh)
 
 
 @pytest.mark.rnn_relu_cell
