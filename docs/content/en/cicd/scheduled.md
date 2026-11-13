@@ -25,18 +25,23 @@ Beyond per-PR checks, FlagGems runs broader test sweeps on a schedule to
 catch regressions that only show up across the full operator suite or across
 vendors that aren't touched by a given PR.
 
-## `daily.yaml` — full-suite regression on NVIDIA
+## `daily.yaml` — full-suite regression on NVIDIA and Ascend
 
 **Trigger:** cron `3 16 * * *` (00:03 Beijing time, daily); also manual
 `workflow_dispatch`.
 
-Runs the entire operator test suite (not just changed operators) on the
-NVIDIA runner (hosted on an **NVIDIA A100-40G** GPU server with the official upstream **Triton** compiler installed, rather than FlagTree):
+Runs the entire operator test suite (not just changed operators):
 
 - `cpp-op` — the full C++ extension test suite.
 - `python-op` — `tools/test-op.sh` with `CHANGED_FILES=__ALL__`, which
-  expands to every `tests/test*.py` file to test baseline compatibility on official Triton and Ampere architecture. Also collects coverage and
-  uploads it as the `op-ut-coverage` artifact.
+  expands to every `tests/test*.py` file. It runs as 4 matrix shards on the
+  self-hosted `jiuding` runner (an **NVIDIA A100-40G** server with the
+  official upstream **Triton** compiler installed, rather than FlagTree), to
+  test baseline compatibility on official Triton and the Ampere architecture.
+  Each shard collects coverage and uploads it as an
+  `op-ut-coverage-shard<N>` artifact.
+- `ascend-op` — the same full suite in 4 shards on the `cann9` runner, run
+  through `backend-test.yaml` with the `ascend-cann900` backend.
 - `examples` — `tools/test-examples.sh` against all example/model tests.
 
 ## `coverage.yaml` — publish coverage to the docs site
@@ -44,11 +49,17 @@ NVIDIA runner (hosted on an **NVIDIA A100-40G** GPU server with the official ups
 **Trigger:** `workflow_run` after `daily` completes; also manual
 `workflow_dispatch` with a `run_id` input.
 
-Downloads the `op-ut-coverage` artifact produced by `daily.yaml`, unpacks
-the HTML coverage report and summary markdown, commits them under
-`docs/static/coverage/<date>` and `docs/content/en/references/test/unit/`,
-and pushes directly to the `gh-pages` branch. `hugo-site.yaml` then rebuilds
-and republishes the site in response to that push.
+Downloads every artifact in the `daily` run whose name is `op-ut-coverage` or
+starts with `op-ut-coverage-` (one per NVIDIA or Ascend shard). If there are
+none, it publishes nothing. Each artifact holds the HTML report of its own
+shard and the raw coverage data is not uploaded, so the reports are not merged.
+Each one is published separately: its HTML report goes to
+`docs/static/coverage/<COVERAGE_ID>` and its summary markdown to
+`docs/content/en/references/test/unit/<COVERAGE_ID>-summary.md`, where
+`COVERAGE_ID` comes from a file in the artifact and starts with the date (for
+example `20261113-shard0`). The commits are pushed directly to the `gh-pages`
+branch. `hugo-site.yaml` rebuilds and republishes the site when `coverage`
+completes and on pushes to `gh-pages`.
 
 ## `ops-test.yaml` — multi-vendor QA acceptance testing
 
@@ -73,14 +84,9 @@ filtered by the `vendors` input (case-insensitive, empty = all enabled
 vendors); the `ops` input likewise narrows the run to specific operators
 (empty = every stage via `--stages all`).
 
-Backends are split into two execution modes:
-
-- **Container-based** (`test-container`) — runs inside the backend's Docker
-  image, for vendors whose SDK is distributed as a container. Job timeout
-  is 1440 minutes (24h) to accommodate the longest vendor runs (e.g. Ascend
-  910B).
-- **Native** (`test-native`) — runs directly on the self-hosted runner
-  without a container, with an 1080-minute (18h) job timeout.
+Every backend runs in the single `test-container` job, inside the backend's
+Docker image. Its job timeout is 1440 minutes (24h), the only timeout for the
+test run, to accommodate the longest vendor runs (e.g. Ascend 910B).
 
 Each matrix job retries checkout up to three times (with 30s backoff),
 installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
@@ -115,7 +121,8 @@ to the `FlagGems` team; otherwise the test job is skipped. The `test-operator`
 job then maps the runner label to a vendor and backend profile (for example
 `a100`/`h100`/`h20` → `nvidia-cuda133`, `ascend`/`cann9` → `ascend-cann900`;
 an unknown label is used as both values), checks out the code, runs the
-vendor's GPU check script and `setup-flaggems`, and executes
+vendor's GPU check script and `setup-project` (from `flagos-ai/FlagOps`), and
+executes
 `tools/run_tests.py --ops <operators> --gpus <gpus>`. The `results/`
 directory is uploaded as the `random-test` artifact.
 
@@ -177,13 +184,14 @@ they complement.
   Bitable for tracking pass/fail trends over time. It is triggered by
   `workflow_run` (not `pull_request`), so it executes in the base repository
   and its secrets are available even for fork PRs; the run itself only needs
-  `tools/ci_report_feishu.py` plus a token, so it uses a sparse checkout of
-  that single path. Because the GitHub API can lag behind a finished run, the
+  `tools/ci_report_feishu.py` (standard library only) plus a token, so it
+  runs on the self-hosted `cpu-runner` and checks out with `robust-checkout`
+  from `flagos-ai/FlagOps` (5 rounds, SSH then HTTPS). Because the GitHub API can lag behind a finished run, the
   script sleeps 5s and then retries up to 3 times with 10s/20s backoff. Its
   per-PR role is described under `rule-check` in
   [Pull request checks](pull-request.md).
-- `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
-  notifications via `.github/scripts/notify_feishu.py`.
+- `ops-test.yaml` sends Feishu chat notifications via
+  `.github/scripts/notify_feishu.py`.
 - `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP
   service for longer-term dashboards.
 
