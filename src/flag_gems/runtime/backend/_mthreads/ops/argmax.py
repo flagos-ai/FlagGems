@@ -226,6 +226,7 @@ def _argmax_contiguous_kernel(
     BLOCK_N: tl.constexpr,
     CACHE_CG: tl.constexpr,
     FIX_IN_KERNEL: tl.constexpr,
+    ENCODE_INF: tl.constexpr,
 ):
     rows = ext.program_id(0) + tl.arange(0, 1).to(tl.int64)
     row_mask = rows < M
@@ -288,6 +289,7 @@ def _argmax_contiguous_kernel(
                 nan_values = tl.minimum(nan_values, block_nan)
             fix = (max_values == float("inf")) & (nan_values != 0x7FFFFFFFFFFFFFFF)
             argmax_values = tl.where(fix, nan_values, argmax_values)
+        tl.store(out_index + rows, argmax_values, mask=row_mask)
     else:
         full_tiles = N // BLOCK_N
         for tile in range(0, full_tiles):
@@ -337,8 +339,94 @@ def _argmax_contiguous_kernel(
             max_values = tl.where(update, local_max, max_values)
             argmax_values = tl.where(update, local_argmax, argmax_values)
 
-        tl.store(out_value + rows, max_values, mask=row_mask)
-    tl.store(out_index + rows, argmax_values, mask=row_mask)
+        if ENCODE_INF:
+            encoded = argmax_values | tl.where(
+                max_values == float("inf"), -0x8000000000000000, 0
+            )
+            tl.store(out_index + rows, encoded, mask=row_mask)
+        else:
+            tl.store(out_value + rows, max_values, mask=row_mask)
+            tl.store(out_index + rows, argmax_values, mask=row_mask)
+
+
+@libentry()
+@triton.jit
+def _argmax_contiguous_nan_fix_kernel(
+    inp,
+    out_index,
+    M,
+    N,
+    STRIDE_OUTER,
+    STRIDE_REDUCE,
+    BLOCK_N: tl.constexpr,
+    CACHE_CG: tl.constexpr,
+):
+    rows = ext.program_id(0) + tl.arange(0, 1).to(tl.int64)
+    row_mask = rows < M
+    encoded = tl.load(out_index + rows, mask=row_mask, other=0)
+    if tl.max((encoded < 0).to(tl.int32), axis=0) != 0:
+        base_ptr = inp + rows * STRIDE_OUTER
+        min_value = get_dtype_min(inp.type.element_ty)
+        nan_values = tl.full([1], 0x7FFFFFFFFFFFFFFF, tl.int64)
+
+        full_tiles = N // BLOCK_N
+        for tile in range(0, full_tiles):
+            n_offset = tile * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int64)
+            inp_ptrs = base_ptr[:, None] + n_offset[None, :] * STRIDE_REDUCE
+            if CACHE_CG:
+                inp_vals = tl.load(inp_ptrs, cache_modifier=".cg")
+            else:
+                inp_vals = tl.load(inp_ptrs)
+            block_nan = tl.min(
+                tl.where(
+                    inp_vals != inp_vals,
+                    tl.arange(0, BLOCK_N)[None, :],
+                    0x7FFFFFFF,
+                ),
+                1,
+            )
+            block_nan = tl.where(
+                block_nan != 0x7FFFFFFF,
+                tile * BLOCK_N + block_nan.to(tl.int64),
+                0x7FFFFFFFFFFFFFFF,
+            )
+            nan_values = tl.minimum(nan_values, block_nan)
+
+        remainder = N - full_tiles * BLOCK_N
+        if remainder != 0:
+            n_offset = full_tiles * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int64)
+            mask = n_offset[None, :] < N
+            inp_ptrs = base_ptr[:, None] + n_offset[None, :] * STRIDE_REDUCE
+            if CACHE_CG:
+                inp_vals = tl.load(
+                    inp_ptrs,
+                    mask=mask,
+                    other=min_value,
+                    cache_modifier=".cg",
+                )
+            else:
+                inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
+            block_nan = tl.min(
+                tl.where(
+                    inp_vals != inp_vals,
+                    tl.arange(0, BLOCK_N)[None, :],
+                    0x7FFFFFFF,
+                ),
+                1,
+            )
+            block_nan = tl.where(
+                block_nan != 0x7FFFFFFF,
+                full_tiles * BLOCK_N + block_nan.to(tl.int64),
+                0x7FFFFFFFFFFFFFFF,
+            )
+            nan_values = tl.minimum(nan_values, block_nan)
+
+        fixed = tl.where(
+            nan_values != 0x7FFFFFFFFFFFFFFF,
+            nan_values,
+            encoded & 0x7FFFFFFFFFFFFFFF,
+        )
+        tl.store(out_index + rows, fixed, mask=row_mask & (encoded < 0))
 
 
 @libentry()
@@ -600,24 +688,25 @@ def _argmax_blocks(inp, out_index, m, n, inner, stride_outer, stride_reduce):
 
 
 def _argmax_contiguous(inp, out_index, m, n, stride_outer, stride_reduce):
-    fix_in_kernel = n <= 4096
-    max_values = None
     if n <= 4096:
+        fix_in_kernel = True
+        encode_inf = False
         block_n = triton.next_power_of_2(n)
         if block_n == 4096 and (m > 1024 or inp.dtype != torch.float32):
             block_n = 2048
         num_warps = 2 if block_n <= 256 else 4
         num_stages = 2 if block_n <= 64 or block_n == 4096 else 1
     else:
+        fix_in_kernel = False
+        encode_inf = True
         block_n = 4096
         num_warps = 4 if inp.dtype == torch.float32 else 8
         num_stages = 2
-        max_values = torch.empty((m,), dtype=torch.float32, device=inp.device)
     with torch_device_fn.device(inp.device):
         _argmax_contiguous_kernel[(m,)](
             inp,
             out_index,
-            out_index if max_values is None else max_values,
+            out_index,
             m,
             n,
             stride_outer,
@@ -625,21 +714,20 @@ def _argmax_contiguous(inp, out_index, m, n, stride_outer, stride_reduce):
             BLOCK_N=block_n,
             CACHE_CG=n >= 4096,
             FIX_IN_KERNEL=fix_in_kernel,
+            ENCODE_INF=encode_inf,
             num_warps=num_warps,
             num_stages=num_stages,
         )
-        if max_values is not None:
-            _argmax_block_nan_fix_kernel[(triton.cdiv(m, 32),)](
+        if encode_inf:
+            _argmax_contiguous_nan_fix_kernel[(m,)](
                 inp,
                 out_index,
-                max_values,
                 m,
                 n,
-                1,
                 stride_outer,
                 stride_reduce,
-                BLOCK_M=32,
-                BLOCK_N=256,
+                BLOCK_N=block_n,
+                CACHE_CG=n >= 4096,
                 num_warps=4,
                 num_stages=2,
             )
