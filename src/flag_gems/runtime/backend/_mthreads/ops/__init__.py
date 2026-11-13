@@ -141,6 +141,7 @@ from .mish import mish
 from .mish_ import mish_
 from .mode import mode
 from .mul import mul, mul_
+from .multiply_ import multiply_
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
@@ -348,6 +349,7 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "multiply_",
     "mvlgamma",
     "nanmedian",
     "nanmedian_dim",
