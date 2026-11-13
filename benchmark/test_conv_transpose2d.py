@@ -34,7 +34,8 @@ class ConvTranspose2DBenchmark(base.GenericBenchmark):
         ]
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    del dtype
     (
         batch,
         input_c,
@@ -49,19 +50,20 @@ def _input_fn(shape, dtype, device):
     ) = shape
     input_shape = (batch, input_c, input_h, input_w)
     weight_shape = (input_c, out_c // groups, kernel_h, kernel_w)
-    inp = torch.randn(size=input_shape, device=device, dtype=dtype)
-    weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
-
-    yield (
-        {
-            "input": inp,
-            "weight": weight,
-            "bias": None,
-            "groups": groups,
-            "stride": stride,
-            "padding": padding,
-        },
+    yield base.BenchmarkCasePlan(
+        shape={"input": input_shape, "weight": weight_shape},
+        params={"bias": None, "groups": groups, "stride": stride, "padding": padding},
+        builder_args=(input_shape, weight_shape),
     )
+
+
+def _build_inputs(plan, dtype, device):
+    input_shape, weight_shape = plan.builder_args
+    return ({
+        "input": torch.randn(input_shape, device=device, dtype=dtype),
+        "weight": torch.randn(weight_shape, device=device, dtype=dtype),
+        **plan.params,
+    },)
 
 
 @pytest.mark.conv_transpose2d
@@ -71,10 +73,10 @@ def test_perf_conv_transpose2d(monkeypatch):
 
     torch.backends.cudnn.allow_tf32 = False
     bench = ConvTranspose2DBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs,
         op_name="conv_transpose2d",
         torch_op=torch.nn.functional.conv_transpose2d,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.conv_transpose2d)
     bench.run()
