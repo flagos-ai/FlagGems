@@ -26,17 +26,11 @@ Target facts driving the design (established by target probes / debug jobs):
     path is selected from the ORIGINAL tensors' contiguity, because the
     float32 carrier of a permuted 64-bit tensor can look contiguous while the
     caller's frame is not.
-  * The comparison reference is the true-double power, so an f32 libdevice.pow
-    (1-3 ulp) is not accurate enough.  The value stored is a correctly rounded
-    f32 power computed with double-float (two f32 words) arithmetic:
-      - `_bar` (multiply by a runtime scalar that is always exactly 1.0) is a
-        one-instruction, non-foldable identity on this backend; without an
-        opacity barrier the fast-math pass simplifies compensated sums and
-        drops the correction, so every renormalization operand is barriered;
-      - two_sum is exact once its operands are opaque, and `x - a*b` is
-        contracted into an exact fma, which gives both the product residual and
-        the division residual of s = (m-1)/(m+1);
-      - the final rounding is the plain f32 add of the last double-float pair.
+  * The comparison reference is the true-double power. This implementation
+    evaluates the power with libdevice.pow in float32; the measured maximum
+    relative error is about 1.3e-7-1.5e-7, so a few strict fp64-tolerance
+    cases exceed the test's rtol=1e-7. Full fp64-equivalent accuracy is not
+    claimed.
 """
 
 import math
