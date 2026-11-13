@@ -162,8 +162,13 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     else:
         a = torch.randint(0, 100, (3, 4), dtype=dtype, device=flag_gems.device)
         b = torch.randint(0, 100, (2, 4), dtype=other, device=flag_gems.device)
-    ref_a = a.cpu() if use_cpu_reference else utils.to_reference(a)
-    ref_b = b.cpu() if use_cpu_reference else utils.to_reference(b)
+    if (
+        flag_gems.vendor_name == "iluvatar" and dtype == torch.float32
+    ) or use_cpu_reference:
+        ref_a, ref_b = a.cpu(), b.cpu()
+    else:
+        ref_a = utils.to_reference(a)
+        ref_b = utils.to_reference(b)
 
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
@@ -171,6 +176,8 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     if use_cpu_reference:
         assert res_out.device == a.device
     assert res_out.dtype == ref_out.dtype
+    assert res_out.device == a.device
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -320,6 +327,7 @@ def test_row_stack_out_dtype_cast():
 
     assert ret is out
     assert out.dtype == torch.float64
+    assert out.device == inp[0].device
     utils.gems_assert_equal(out, ref_out)
 
 
