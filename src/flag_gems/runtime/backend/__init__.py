@@ -149,7 +149,18 @@ class BackendArchEvent(BackendEventBase):
         return self.has_arch
 
     def get_functions_from_module(self, module):
-        return inspect.getmembers(module, inspect.isfunction) if module else []
+        # return inspect.getmembers(module, inspect.isfunction) if module else []
+        if not module:
+            return []
+        def _is_operator(value):
+            try:
+                unwrapped = inspect.unwrap(value)
+            except ValueError:
+                return False
+            return inspect.isfunction(unwrapped) or (
+                callable(value) and inspect.isfunction(getattr(value, "fn", None))
+            )
+        return inspect.getmembers(module, _is_operator)       
 
     def get_heuristics_configs(self):
         try:
@@ -404,11 +415,21 @@ def get_customized_ops(vendor_name=None):
     if _state.customized_ops is not None:
         return _state.customized_ops
     _state.customized_ops = []
+
+    def is_operator(value):
+        try:
+            unwrapped = inspect.unwrap(value)
+        except ValueError:
+            return False
+        return inspect.isfunction(unwrapped) or (
+            callable(value) and inspect.isfunction(getattr(value, "fn", None))
+        )
+
     if _state.ops_module is not None:
-        ops = inspect.getmembers(_state.ops_module, inspect.isfunction)
+        ops = inspect.getmembers(_state.ops_module, is_operator)
         _state.customized_ops += ops
     if _state.fused_module is not None:
-        fused_ops = inspect.getmembers(_state.fused_module, inspect.isfunction)
+        fused_ops = inspect.getmembers(_state.fused_module, is_operator)
         _state.customized_ops += fused_ops
     return _state.customized_ops
 

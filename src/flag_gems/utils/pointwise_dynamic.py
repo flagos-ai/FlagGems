@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import importlib
 import os
 from dataclasses import dataclass
@@ -239,7 +240,7 @@ class FunctionSchema:
         else:
             for _ in range(self.num_outputs()):
                 output_types.append("StridedBuffer")
-        sig = f'Pointwise: {", ".join(input_types)} -> {", ".join(output_types)}'
+        sig = f"Pointwise: {', '.join(input_types)} -> {', '.join(output_types)}"
         return sig
 
     def _compute_input_id(self):
@@ -262,6 +263,13 @@ class FunctionSchema:
         return self.signature(outputs_in_arg=False)
 
 
+class _PreparedKwargs(dict):
+    """Carry Trident-only launch specialization metadata."""
+
+    specialize_contiguous_strides: bool = False
+    original_outputs: Optional[List[torch.Tensor]] = None
+
+
 class KernelGenerator:
     def __init__(
         self,
@@ -270,12 +278,14 @@ class KernelGenerator:
         rank: int,
         name: str,
         config: CodeGenConfig,
+        specialize_contiguous_strides: bool = False,
     ):
         self.fx = function_schema
         self.fn = scalar_fn
         self.ndim = rank
         self.name = name
         self.config = config
+        self.specialize_contiguous_strides = specialize_contiguous_strides
 
         self.fn_name = scalar_fn.__name__
         self.fn_module = scalar_fn.__module__
@@ -286,7 +296,8 @@ class KernelGenerator:
         code.newline()
 
     def gen_decorators(self, code):
-        code.writeline("@libentry()")
+        if not self.config.enable_trident_jit:
+            code.writeline("@libentry()")
         num_non_tensor_args = self.fx.num_non_tensor_args()
         if num_non_tensor_args > 0:
             # we do not specialize non tensor args since they are passed into the inlined function
@@ -339,10 +350,17 @@ class KernelGenerator:
             # signature: strides, for each tensor arguments
             ndim = self.ndim
             if ndim > 0:
+                # Only captured wrappers need runtime strides for symbolic shapes.
+                stride_type = (
+                    "int"
+                    if self.config.enable_trident_jit
+                    and not self.specialize_contiguous_strides
+                    else "tl.constexpr"
+                )
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
                     stride_args = _cs(
-                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                        f"in{i}_stride{j}: {stride_type}" for j in range(ndim)
                     )
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
@@ -354,7 +372,7 @@ class KernelGenerator:
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
                     stride_args = _cs(
-                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                        f"out{i}_stride{j}: {stride_type}" for j in range(ndim)
                     )
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
@@ -414,14 +432,24 @@ class KernelGenerator:
             # signature: strides, for each tensor arguments
             ndim = self.ndim
             if ndim > 0:
+                stride_type = (
+                    "int"
+                    if self.config.enable_trident_jit
+                    and not self.specialize_contiguous_strides
+                    else "tl.constexpr"
+                )
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: {stride_type}" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: {stride_type}" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
 
                 # task space, used to reconstruct multi index
@@ -798,12 +826,14 @@ class WrapperGenerator:
         ndim: int,
         name: str,
         config: CodeGenConfig,
+        specialize_contiguous_strides: bool = False,
     ):
         self.fx = function_schema
         self.jit_fn_name = jit_fn_name
         self.ndim = ndim
         self.name = name
         self.config = config
+        self.specialize_contiguous_strides = specialize_contiguous_strides
 
     def input_name(self, i):
         is_tensor = self.fx.is_tensor(i)
@@ -814,7 +844,19 @@ class WrapperGenerator:
     def output_name(self, i):
         return f"out{i}"
 
-    def gen_signature(self, code: IndentedBuffer):
+    def gen_trident_decorator(self, code: IndentedBuffer):
+        decorator = "@trident.jit"
+        if not self.config.trident_dynamic:
+            decorator += "(dynamic=False)"
+        code.writeline(decorator)
+
+    def gen_signature(
+        self,
+        code: IndentedBuffer,
+        *,
+        name: Optional[str] = None,
+        include_launch_metadata: bool = False,
+    ):
         # TODO: check if triton handles constexprs transitively
         schema = self.fx
         params: List[str] = []
@@ -842,12 +884,70 @@ class WrapperGenerator:
         # tensors). We emphasize that these parameters are added in-addition, we enforce
         # that they be passed by keyword. After all, out0, out1, ... does not mismatch
         # names form the scalar function, since it does not have output parameters.
-        params.append("/")
+        # NOTE: we intentionally omit the "/" positional-only separator here to
+        # ensure Dynamo (used by Trident) can correctly capture scalar args into
+        # kernel_side_table. Without it, positional-only args like val0 are not
+        # exported and cause "missing runtime argument" errors during import.
         params.append("*")  # output params must be passed by keyword
 
         for i in range(schema.num_output_tensors()):
             params.append(f"{self.output_name(i)}: Union[torch.Tensor, StridedBuffer]")
-        code.writeline(f"def {self.name}({_cs(params)}): ")
+        if include_launch_metadata:
+            for kind, count in (
+                ("in", schema.num_input_tensors()),
+                ("out", schema.num_output_tensors()),
+            ):
+                for i in range(count):
+                    params.extend(
+                        f"{kind}{i}_stride_order{j}: int" for j in range(self.ndim)
+                    )
+            params.extend(f"tile_size{j}: int" for j in range(self.ndim))
+        code.writeline(f"def {name or self.name}({_cs(params)}): ")
+
+    def gen_launch_metadata_wrapper(self, code: IndentedBuffer, inner_name: str):
+        """Prepare concrete launch metadata outside the captured graph."""
+        self.gen_signature(code)
+        with code.indent():
+            schema = self.fx
+            self.gen_docstring(code)
+            self.gen_same_shape_check(code)
+            self.gen_shape(code)
+            code.writeline("if out0.numel() == 0:")
+            with code.indent():
+                self.gen_return(code)
+            self.gen_tile_sizes(code)
+            if not self.specialize_contiguous_strides:
+                for kind, count in (
+                    ("in", schema.num_input_tensors()),
+                    ("out", schema.num_output_tensors()),
+                ):
+                    for i in range(count):
+                        code.writeline(f"{kind}{i}_strides = {kind}{i}.stride()")
+                        code.writeline(
+                            f"{kind}{i}_stride_order = stride_order({kind}{i}_strides)"
+                        )
+
+            positional = [self.input_name(i) for i in range(schema.num_inputs())]
+            code.writeline(f"return {inner_name}({_cs(positional)},")
+            with code.indent():
+                for i in range(schema.num_output_tensors()):
+                    code.writeline(f"out{i}=out{i},")
+                for kind, count in (
+                    ("in", schema.num_input_tensors()),
+                    ("out", schema.num_output_tensors()),
+                ):
+                    for i in range(count):
+                        for j in range(self.ndim):
+                            value = (
+                                "0"
+                                if self.specialize_contiguous_strides
+                                else f"{kind}{i}_stride_order[{j}]"
+                            )
+                            code.writeline(f"{kind}{i}_stride_order{j}={value},")
+                for j in range(self.ndim):
+                    code.writeline(f"tile_size{j}=tile_sizes[{j}],")
+            code.writeline(")")
+        code.newline()
 
     def gen_docstring(self, code: IndentedBuffer):
         schema = self.fx
@@ -874,6 +974,24 @@ class WrapperGenerator:
             and major >= 9
         )
 
+    def gen_shape(self, code: IndentedBuffer):
+        shape = (
+            "(out0.numel(),)" if self.specialize_contiguous_strides else "out0.shape"
+        )
+        code.writeline(f"shape = {shape}")
+
+    def gen_tile_sizes(self, code: IndentedBuffer):
+        """Select compile-time tile sizes from the concrete outer shape."""
+        max_tile_size = self.config.max_tile_size
+        if _tensor_inputs_all_complex(self.fx):
+            max_tile_size = max_tile_size // 2
+        if self._fill_scalar_fixed_tiles():
+            code.writeline(f"tile_sizes = tuple([1] * {self.ndim - 1} + [64])")
+        else:
+            code.writeline(
+                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
+            )
+
     def gen_task_partition(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
@@ -881,25 +999,16 @@ class WrapperGenerator:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
         else:
-            code.writeline("shape = out0.shape")
+            self.gen_shape(code)
             code.writeline("num_tasks = out0.numel()")
             code.writeline("if num_tasks == 0:")
             with code.indent():
                 self.gen_return(code)
-            max_tile_size = self.config.max_tile_size
-            if _tensor_inputs_all_complex(self.fx):
-                max_tile_size = max_tile_size // 2
             fill_fixed = self._fill_scalar_fixed_tiles()
-            if fill_fixed:
-                # One tile entry per dim: a 64-wide innermost tile, 1 elsewhere.
-                code.writeline(f"tile_sizes = tuple([1] * {ndim - 1} + [64])")
-            else:
-                code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
-                )
+            self.gen_tile_sizes(code)
             code.writeline("tile_size = math.prod(tile_sizes)")
             code.writeline(
-                "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
+                "num_tiles = math.prod([triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes)])"
             )
 
             max_grid_size0 = self.config.max_grid_size[0]
@@ -918,6 +1027,36 @@ class WrapperGenerator:
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
 
+    def gen_dynamic_task_partition(self, code: IndentedBuffer):
+        """Derive exact launch sizes inside Trident from symbolic tensor shapes."""
+        code.writeline("# dynamic task partitioning")
+        self.gen_shape(code)
+        code.writeline("num_tasks = out0.numel()")
+        code.writeline("if num_tasks == 0:")
+        with code.indent():
+            self.gen_return(code)
+        tile_sizes = _cs(f"tile_size{i}" for i in range(self.ndim))
+        code.writeline(f"tile_sizes = ({tile_sizes},)")
+        code.writeline("tile_size = math.prod(tile_sizes)")
+        code.writeline(
+            "num_tiles = math.prod([triton.cdiv(size, tile_size) "
+            "for size, tile_size in zip(shape, tile_sizes)])"
+        )
+        max_grid_size0 = self.config.max_grid_size[0]
+        if self.config.balance_grid:
+            code.writeline(
+                f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+            )
+        else:
+            if self._fill_scalar_fixed_tiles():
+                code.writeline("num_ctas = num_tiles")
+            else:
+                code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+        code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
+        code.writeline("one_tile_per_cta = tiles_per_cta == 1")
+        code.writeline("grid = (num_ctas, 1, 1)")
+
     def gen_task_partition_1d(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
@@ -925,7 +1064,7 @@ class WrapperGenerator:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
         else:
-            code.writeline("shape = out0.shape")
+            self.gen_shape(code)
             code.writeline("num_tasks = out0.numel()")
             code.writeline("if num_tasks == 0:")
             with code.indent():
@@ -963,6 +1102,8 @@ class WrapperGenerator:
     def gen_kernel_launch(
         self,
         code: IndentedBuffer,
+        *,
+        precomputed_launch_metadata: bool = False,
     ):
         schema = self.fx
         ndim = self.ndim
@@ -972,15 +1113,15 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
-            if not with_block_pointer:
+            if not with_block_pointer or precomputed_launch_metadata:
                 continue
-            if ndim >= 2:  # where ndim is 1, we don't need to compute stride order
+            if ndim >= 2:
                 code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
             else:
                 code.writeline(f"in{i}_stride_order = (0,)")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
-            if not with_block_pointer:
+            if not with_block_pointer or precomputed_launch_metadata:
                 continue
             if ndim >= 2:
                 code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
@@ -1005,22 +1146,46 @@ class WrapperGenerator:
 
                 if ndim > 0:
                     for i in range(schema.num_input_tensors()):
-                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                        s = ", ".join(
+                            (
+                                "1"
+                                if self.specialize_contiguous_strides
+                                else f"in{i}_strides[{j}]"
+                            )
+                            for j in range(ndim)
+                        )
                         code.writeline(f"{s}, # stride for in{i}")
                         if not with_block_pointer:
                             continue
                         order = ", ".join(
-                            f"in{i}_stride_order[{j}]" for j in range(ndim)
+                            (
+                                f"in{i}_stride_order{j}"
+                                if precomputed_launch_metadata
+                                else f"in{i}_stride_order[{j}]"
+                            )
+                            for j in range(ndim)
                         )
                         code.writeline(f"{order}, # stride order for in{i}")
 
                     for i in range(schema.num_output_tensors()):
-                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
+                        s = ", ".join(
+                            (
+                                "1"
+                                if self.specialize_contiguous_strides
+                                else f"out{i}_strides[{j}]"
+                            )
+                            for j in range(ndim)
+                        )
                         code.writeline(f"{s}, # stride for out{i}")
                         if not with_block_pointer:
                             continue
                         order = ", ".join(
-                            f"out{i}_stride_order[{j}]" for j in range(ndim)
+                            (
+                                f"out{i}_stride_order{j}"
+                                if precomputed_launch_metadata
+                                else f"out{i}_stride_order[{j}]"
+                            )
+                            for j in range(ndim)
                         )
                         code.writeline(f"{order}, # stride orderfor out{i}")
 
@@ -1029,7 +1194,12 @@ class WrapperGenerator:
                     code.writeline("num_tasks, # num tasks")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     for i in range(ndim):
-                        code.writeline(f"tile_size{i}=tile_sizes[{i}],")
+                        value = (
+                            f"tile_size{i}"
+                            if precomputed_launch_metadata
+                            else f"tile_sizes[{i}]"
+                        )
+                        code.writeline(f"tile_size{i}={value},")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
@@ -1065,10 +1235,24 @@ class WrapperGenerator:
 
                 if ndim > 0:
                     for i in range(schema.num_input_tensors()):
-                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                        s = ", ".join(
+                            (
+                                "1"
+                                if self.specialize_contiguous_strides
+                                else f"in{i}_strides[{j}]"
+                            )
+                            for j in range(ndim)
+                        )
                         code.writeline(f"{s}, # stride for in{i}")
                     for i in range(schema.num_output_tensors()):
-                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
+                        s = ", ".join(
+                            (
+                                "1"
+                                if self.specialize_contiguous_strides
+                                else f"out{i}_strides[{j}]"
+                            )
+                            for j in range(ndim)
+                        )
                         code.writeline(f"{s}, # stride for out{i}")
 
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
@@ -1085,18 +1269,38 @@ class WrapperGenerator:
         code.writeline(f"return {return_exprs}")
 
     def codegen_nd_tile(self, code):
-        self.gen_signature(code)
+        split_stride_order = (
+            self.config.enable_trident_jit
+            and (self.config.prefer_block_pointer or self.specialize_contiguous_strides)
+            and self.ndim >= 1
+        )
+        if split_stride_order:
+            inner_name = f"{self.name}_launch"
+            self.gen_launch_metadata_wrapper(code, inner_name)
+            self.gen_trident_decorator(code)
+            self.gen_signature(code, name=inner_name, include_launch_metadata=True)
+        else:
+            if self.config.enable_trident_jit:
+                self.gen_trident_decorator(code)
+            self.gen_signature(code)
 
         with code.indent():
-            self.gen_docstring(code)
-            self.gen_same_shape_check(code)
-            self.gen_task_partition(code)
-            self.gen_kernel_launch(code)
+            if split_stride_order:
+                self.gen_docstring(code)
+                self.gen_same_shape_check(code)
+                self.gen_dynamic_task_partition(code)
+            else:
+                self.gen_docstring(code)
+                self.gen_same_shape_check(code)
+                self.gen_task_partition(code)
+            self.gen_kernel_launch(code, precomputed_launch_metadata=split_stride_order)
             self.gen_return(code)
         code.newline()
         return code
 
     def codegen_1d_tile(self, code):
+        if self.config.enable_trident_jit:
+            self.gen_trident_decorator(code)
         self.gen_signature(code)
 
         with code.indent():
@@ -1118,14 +1322,25 @@ class ModuleGenerator:
         jit_fn_name: str,
         wrapper_name: str,
         config: CodeGenConfig,
+        specialize_contiguous_strides: bool = False,
     ):
         self.config = config
         self.scalar_fn = scalar_fn
         self.wrapper_gen = WrapperGenerator(
-            function_schema, jit_fn_name, ndim, wrapper_name, config
+            function_schema,
+            jit_fn_name,
+            ndim,
+            wrapper_name,
+            config,
+            specialize_contiguous_strides,
         )
         self.kernel_gen = KernelGenerator(
-            function_schema, scalar_fn, ndim, jit_fn_name, config
+            function_schema,
+            scalar_fn,
+            ndim,
+            jit_fn_name,
+            config,
+            specialize_contiguous_strides,
         )
 
     @staticmethod
@@ -1222,12 +1437,17 @@ class ModuleGenerator:
         code.writeline("    stride_order,")
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
-        code.writeline("from flag_gems.utils.libentry import libentry")
+        if not self.config.enable_trident_jit:
+            code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         if self.config.balance_grid:
             code.writeline(
                 "from flag_gems.utils.pointwise_dynamic import _balanced_grid_partition"
             )
+
+        if self.config.enable_trident_jit:
+            code.writeline("import trident")
+            code.newline()
 
         # Generate extra imports and local JIT deps of the scalar function
         jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
@@ -1326,7 +1546,13 @@ class PointwiseDynamicFunction:
     The generated code are written out to the cache directory (defaults to ~/.flaggems).
     """
 
-    def __init__(self, op_desc: FunctionSchema, scalar_fn: JITFunction, config=None):
+    def __init__(
+        self,
+        op_desc: FunctionSchema,
+        scalar_fn: JITFunction,
+        config=None,
+        enable_trident: bool = False,
+    ):
         self.fx = op_desc
 
         assert isinstance(scalar_fn, JITFunction)
@@ -1334,7 +1560,9 @@ class PointwiseDynamicFunction:
         self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
 
-        self.config: CodeGenConfig = config or get_codegen_config()
+        self.config: CodeGenConfig = copy.copy(config or get_codegen_config())
+        if enable_trident:
+            self.config.enable_trident_jit = True
 
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
@@ -1391,15 +1619,28 @@ class PointwiseDynamicFunction:
     # -------------------- call entry --------------------
 
     def __call__(self, *args, **kwargs):
-        if self._should_use_complex_path(args):
+        if not self.config.enable_trident_jit and self._should_use_complex_path(args):
             return self._call_complex_dispatch(*args, **kwargs)
         return self._call_real_impl(*args, **kwargs)
 
     def _call_real_impl(self, *args, **kwargs):
         """Single entry point for real kernel invocation."""
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
-        overload = self.instantiate(ndim)
+        specialize_contiguous_strides = getattr(
+            kwargs, "specialize_contiguous_strides", False
+        )
+        original_outputs = getattr(kwargs, "original_outputs", None)
+        overload = self.instantiate(
+            ndim,
+            specialize_contiguous_strides=specialize_contiguous_strides,
+        )
         out = overload(*args, **kwargs)
+        if original_outputs is not None:
+            out = (
+                original_outputs[0]
+                if self.fx.num_output_tensors() == 1
+                else tuple(original_outputs)
+            )
         # Record allocated outputs so that a subsequent graph-capture run can
         # reuse the same buffers instead of calling empty_like / empty.
         if not self._is_capturing():
@@ -1666,10 +1907,60 @@ class PointwiseDynamicFunction:
             outputs_dtypes_for_allocation.append(dtype)
 
         tensors = out_tensors + in_tensors
+        specialize_contiguous_strides = False
         INT32_MAX = torch.iinfo(torch.int32).max
         if tensors[0].numel() > INT32_MAX:
             self.config.prefer_block_pointer = False
-        if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
+        if self.config.enable_trident_jit:
+            # Trident path: use raw tensors (no StridedBuffer) so Dynamo can trace.
+            # Materialize broadcasting as Tensor views: expand() keeps the inputs
+            # zero-copy while encoding broadcast dimensions with stride 0.
+            shapes = [item.shape for item in in_tensors]
+            task_shape = broadcast_shapes(shapes)
+            ndim = len(task_shape)
+
+            if out_tensors:
+                for index, item in enumerate(out_tensors):
+                    if tuple(item.shape) != tuple(task_shape):
+                        raise RuntimeError(
+                            f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
+                        )
+                    if has_internal_overlapping(item) == MemOverlap.Yes:
+                        raise RuntimeError(
+                            "Pointwise Input arguments should not have internal overlapping."
+                        )
+
+            for item in tensors:
+                if item.shape == task_shape:
+                    allocated_outputs = [
+                        torch.empty_like(item, dtype=dtype)
+                        for dtype in outputs_dtypes_for_allocation
+                    ]
+                    break
+            else:  # nobreak
+                device = tensors[0].device
+                allocated_outputs = [
+                    torch.empty(task_shape, dtype=dtype, device=device)
+                    for dtype in outputs_dtypes_for_allocation
+                ]
+
+            for seq_id, output_id in enumerate(outputs_that_need_allocation):
+                kwargs[f"out{output_id}"] = allocated_outputs[seq_id]
+
+            args = tuple(
+                (
+                    item.expand(task_shape)
+                    if schema.is_tensor(i) and item.shape != task_shape
+                    else item
+                )
+                for i, item in enumerate(args)
+            )
+
+            if self.use_fast_path(tensors) and all_c_contiguous(tensors):
+                ndim = 1
+                specialize_contiguous_strides = True
+
+        elif self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 self._alloc_output(
                     tensors[0].shape,
@@ -1768,16 +2059,30 @@ class PointwiseDynamicFunction:
                     task_shape,
                     broadcasted_stride(item.shape, item.stride(), task_shape),
                 )
+        if specialize_contiguous_strides:
+            prepared_kwargs = _PreparedKwargs(kwargs)
+            prepared_kwargs.specialize_contiguous_strides = True
+            prepared_kwargs.original_outputs = [
+                kwargs[f"out{output_id}"]
+                for output_id in range(schema.num_output_tensors())
+            ]
+            kwargs = prepared_kwargs
         return (ndim, args, kwargs)
 
     def _unwrap(self, tensors):
-        # unwrap StridedBuffer to get Tensor
+        # unwrap StridedBuffer to get Tensor; in trident mode outputs are
+        # already raw Tensors so return as-is.
         if self.fx.num_output_tensors() == 1:
             item = tensors
-            return item.unwrap()
-        return tuple(item.unwrap() for item in tensors)
+            return item.unwrap() if isinstance(item, StridedBuffer) else item
+        return tuple(
+            (item.unwrap() if isinstance(item, StridedBuffer) else item)
+            for item in tensors
+        )
 
-    def _compute_kernel_names(self, ndim: int) -> Tuple[str, str, str]:
+    def _compute_kernel_names(
+        self, ndim: int, specialize_contiguous_strides: bool = False
+    ) -> Tuple[str, str, str]:
         """Compute kernel name, wrapper name, and file path for a given ndim.
 
         This is the single source of truth for naming, used by both instantiate()
@@ -1787,13 +2092,20 @@ class PointwiseDynamicFunction:
             Tuple of (kernel_name, wrapper_name, file_path)
         """
         scalar_fn_name = self._scalar_fn.__name__
-        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
-        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
+        specialization = "_contiguous" if specialize_contiguous_strides else ""
+        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}{specialization}"
+        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}{specialization}"
+        uses_block_pointer = (
+            not specialize_contiguous_strides
+            and not self.config.prefer_1d_tile
+            and self.config.prefer_block_pointer
+        )
 
         file_name = (
             f"pointwise_dynamic_{self._scalar_fn_cache_key}_{kernel_name}_"
+            f"{'trident_' if self.config.enable_trident_jit else ''}"
             f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
-            f"{'bptr' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            f"{'bptr' if uses_block_pointer else ''}"
             f"_t{self.config.max_tile_size}"
             f"{'_balanced' if self.config.balance_grid else ''}"
             ".py"
@@ -1802,26 +2114,34 @@ class PointwiseDynamicFunction:
 
         return kernel_name, wrapper_name, file_path
 
-    def instantiate(self, ndim):
+    def instantiate(self, ndim, specialize_contiguous_strides: bool = False):
         # NOTE: manually instantiated overload does not have `prepare_args` as
         # preprocessing, so you have to manually allocate output and make sure that
         # the inputs & ouputs actually fits the manually instantiated overload
         key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
+        if specialize_contiguous_strides:
+            key += "_contiguous"
         if key in self.overloads:
             return self.overloads[key]
 
         code = IndentedBuffer()
 
         # Use helper to compute names (single source of truth)
-        kernel_name, wrapper_name, file_path = self._compute_kernel_names(ndim)
+        kernel_name, wrapper_name, file_path = self._compute_kernel_names(
+            ndim, specialize_contiguous_strides
+        )
 
+        generation_config = copy.copy(self.config)
+        if specialize_contiguous_strides:
+            generation_config.prefer_block_pointer = False
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
             ndim,
             kernel_name,
             wrapper_name,
-            self.config,
+            generation_config,
+            specialize_contiguous_strides,
         )
         module_gen.codegen(code)
 
@@ -1867,10 +2187,15 @@ class PointwiseDynamicFunction:
         )
         self._kernel_info_cache[key] = kernel_info
 
-        # LibEntry intentionally exposes the innermost generated JITFunction.
+        # Native entries expose the innermost JITFunction through LibEntry;
+        # Trident entries intentionally skip LibEntry and are JITFunctions.
         # Preserve the whole wrapper chain in ``entry`` for eager execution and
         # diagnostics; only the raw generated function crosses wrap_triton.
-        jit_function = getattr(entry, "jit_function", None)
+        jit_function = (
+            entry
+            if isinstance(entry, JITFunction)
+            else getattr(entry, "jit_function", None)
+        )
         if not isinstance(jit_function, JITFunction):
             raise RuntimeError(
                 f"Generated pointwise entry {kernel_name!r} did not expose a "
@@ -1903,7 +2228,9 @@ class PointwiseDynamicFunction:
 
         return overload
 
-    def materialize(self, ndim: int) -> PointwiseKernelMaterialization:
+    def materialize(
+        self, ndim: int, specialize_contiguous_strides: bool = False
+    ) -> PointwiseKernelMaterialization:
         """Generate once and return the compiler-facing structural handle.
 
         This method is safe to call during backend registration or warmup.  It
@@ -1912,12 +2239,16 @@ class PointwiseDynamicFunction:
         accepted, so different token counts reuse the same materialization.
         """
 
-        key = f"{ndim}_{self.config.prefer_block_pointer}"
+        key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
+        if specialize_contiguous_strides:
+            key += "_contiguous"
         if key not in self._materialization_cache:
-            self.instantiate(ndim)
+            self.instantiate(ndim, specialize_contiguous_strides)
         return self._materialization_cache[key]
 
-    def get_kernel_info(self, ndim: int) -> KernelInfo:
+    def get_kernel_info(
+        self, ndim: int, specialize_contiguous_strides: bool = False
+    ) -> KernelInfo:
         """Get kernel information for a given ndim.
 
         This method is useful for C++ integration to get the file path and
@@ -1932,10 +2263,12 @@ class PointwiseDynamicFunction:
             KernelInfo with file_path, kernel_name, wrapper_name, and ndim
         """
         key = f"{ndim}_{self.config.prefer_block_pointer}_{self.config.balance_grid}"
+        if specialize_contiguous_strides:
+            key += "_contiguous"
 
         # Ensure the kernel is instantiated
         if key not in self._kernel_info_cache:
-            self.instantiate(ndim)
+            self.instantiate(ndim, specialize_contiguous_strides)
 
         return self._kernel_info_cache[key]
 
@@ -1949,6 +2282,8 @@ def pointwise_dynamic(
     num_outputs: Optional[int] = None,
     promotion_methods: Optional[Tuple[int, ...]] = None,
     config: Optional[CodeGenConfig] = None,
+    enable_trident: bool = False,
+    dynamic: bool = True,
 ):
     def decorator(fn):
         nonlocal num_inputs
@@ -1961,7 +2296,9 @@ def pointwise_dynamic(
             num_outputs=num_outputs,
             promotion_methods=promotion_methods,
         )
-        return PointwiseDynamicFunction(op_desc, fn, config)
+        result = PointwiseDynamicFunction(op_desc, fn, config, enable_trident)
+        result.config.trident_dynamic = dynamic
+        return result
 
     if f is not None:
         return decorator(f)
