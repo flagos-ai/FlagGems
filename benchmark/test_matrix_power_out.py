@@ -28,6 +28,7 @@ class MatrixPowerBenchmark(base.BlasBenchmark, OperatorBenchmark):
     def set_more_shapes(self):
         return [(1, m, m, m) for m in (256, 512, 1024, 2048)]
 
+    get_input_iter = base.GenericBenchmark.get_input_iter
     get_case_iter = OperatorBenchmark.get_case_iter
     build_inputs = OperatorBenchmark.build_inputs
 
@@ -59,6 +60,7 @@ def test_matrix_power_out():
     MatrixPowerBenchmark(
         op_name="matrix_power_out",
         torch_op=torch.ops.aten.matrix_power.out,
+        input_fn=None,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,

@@ -30,7 +30,7 @@ class BesselY0Benchmark(base.UnaryPointwiseBenchmark):
                 ordinal,
                 base.BenchmarkCasePlan(
                     shape={"input": list(dims)},
-                    params={"domain": "positive"},
+                    params={},
                     builder_args=(dims,),
                 ),
             )
@@ -38,7 +38,11 @@ class BesselY0Benchmark(base.UnaryPointwiseBenchmark):
     def build_inputs(self, case):
         shape = case.builder_args[0].builder_args[0]
         torch.manual_seed(0)
-        inp = torch.randn(shape, dtype=case.dtype, device=self.device).abs() + 0.1
+        inp = (
+            torch.randn(shape, dtype=case.dtype, device=self.device)
+            if case.dtype == torch.float64
+            else base.generate_tensor_input(shape, case.dtype, self.device)
+        )
         return (inp,)
 
 

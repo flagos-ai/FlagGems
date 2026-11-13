@@ -66,5 +66,5 @@ def test_inverse():
         torch_op=torch.inverse,
         dtypes=INVERSE_DTYPES,
     )
-    bench.set_gems(flag_gems.inverse)
+    bench.set_gems(lambda matrix: flag_gems.inverse(matrix))
     bench.run()

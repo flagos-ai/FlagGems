@@ -151,7 +151,7 @@ def _aten_qualify_metadata(metadata, source_id):
 def _fractional_backward_forward_fixture(
     inp, kernel_size, output_size, random_samples=None
 ):
-    if flag_gems.vendor_name != "ascend":
+    if flag_gems.vendor_name not in ("ascend", "iluvatar"):
         return flag_gems.fractional_max_pool2d(
             inp,
             kernel_size=kernel_size,
@@ -160,6 +160,8 @@ def _fractional_backward_forward_fixture(
         )
     # Build canonical flat indices from the actual input and original samples.
     # Ascend's native frontend also uses a CPU fallback for this forward API.
+    # On Iluvatar the FlagGems forward fixture can exhaust the backward
+    # benchmark timeout before the injected candidate is reached.
     if random_samples is None:
         random_samples = torch.rand(
             inp.shape[0], inp.shape[1], 2, dtype=torch.float32, device=inp.device

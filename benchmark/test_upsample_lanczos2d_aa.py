@@ -15,8 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.ops.upsample_lanczos2d_aa import (
-    _upsample_lanczos2d_aa,
     _upsample_lanczos2d_aa_out,
     _upsample_lanczos2d_aa_vec,
 )
@@ -129,9 +129,11 @@ def test_upsample_lanczos2d_aa():
         build_inputs_fn=_build_inputs_fn,
         op_name="upsample_lanczos2d_aa",
         torch_op=_composite_reference,
-        gems_op=_upsample_lanczos2d_aa,
         dtypes=consts.FLOAT_DTYPES,
     )
+    registry = base.Config.override_registry
+    if registry is None or registry.get_override(bench.op_name) is None:
+        bench.set_gems(getattr(flag_gems, "_upsample_lanczos2d_aa", None))
     bench.run()
 
 

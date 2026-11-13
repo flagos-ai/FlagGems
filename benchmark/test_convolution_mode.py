@@ -20,24 +20,61 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
-CASES = [(16,32,24,24,24,3,3,1,"valid",1,1),(32,64,128,128,32,3,3,1,"valid",1,1),(32,64,210,210,16,5,5,1,"valid",1,1),(16,32,24,24,24,3,3,1,"same",1,1),(32,64,128,128,32,3,3,1,"same",1,1),(32,64,210,210,16,5,5,1,"same",2,1)]
+CASES = [
+    (16, 32, 24, 24, 24, 3, 3, 1, "valid", 1, 1),
+    (32, 64, 128, 128, 32, 3, 3, 1, "valid", 1, 1),
+    (32, 64, 210, 210, 16, 5, 5, 1, "valid", 1, 1),
+    (16, 32, 24, 24, 24, 3, 3, 1, "same", 1, 1),
+    (32, 64, 128, 128, 32, 3, 3, 1, "same", 1, 1),
+    (32, 64, 210, 210, 16, 5, 5, 1, "same", 1, 1),
+    (16, 32, 24, 24, 24, 3, 3, 1, "same", 2, 1),
+]
+
 
 class ConvolutionModeBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(CASES)
-        self.shape_desc = "N, Cin, H, W, Cout, Kh, Kw, stride, padding, dilation, groups"
+        self.shape_desc = (
+            "N, Cin, H, W, Cout, Kh, Kw, stride, padding, dilation, groups"
+        )
+
 
 def _case_fn(shape, dtype):
     del dtype
-    case=tuple(shape)
-    yield base.BenchmarkCasePlan(shape={"case":list(case)},params={},builder_args=(case,))
+    case = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"case": list(case)}, params={}, builder_args=(case,)
+    )
 
-def _build_inputs_fn(plan,dtype,device):
-    n,cin,h,w,cout,kh,kw,stride,padding,dilation,groups=plan.builder_args[0]
+
+def _build_inputs_fn(plan, dtype, device):
+    n, cin, h, w, cout, kh, kw, stride, padding, dilation, groups = plan.builder_args[0]
     torch.manual_seed(0)
-    return (torch.randn((n,cin,h,w),dtype=dtype,device=device),torch.randn((cout,cin//groups,kh,kw),dtype=dtype,device=device),None,(stride,stride),padding,(dilation,dilation),groups)
+    return (
+        torch.randn((n, cin, h, w), dtype=dtype, device=device),
+        torch.randn((cout, cin // groups, kh, kw), dtype=dtype, device=device),
+        None,
+        (stride, stride),
+        padding,
+        (dilation, dilation),
+        groups,
+    )
+
 
 @pytest.mark.convolution_mode
 @pytest.mark.underscore_convolution_mode
-def test_convolution_mode():
-    ConvolutionModeBenchmark(op_name="_convolution_mode",torch_op=torch.ops.aten._convolution_mode.default,gems_op=flag_gems._convolution_mode,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=consts.FLOAT_DTYPES).run()
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issue #4131: conv kernels not working",
+)
+def test_convolution_mode(monkeypatch):
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+    monkeypatch.setattr(torch.backends.cudnn, "allow_tf32", False)
+    ConvolutionModeBenchmark(
+        op_name="_convolution_mode",
+        torch_op=torch.ops.aten._convolution_mode.default,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    ).run()

@@ -167,3 +167,51 @@ def test_convolution_overrideable_invalid_groups():
         flag_gems.convolution_overrideable(
             inp, weight, None, [1, 1], [0, 0], [1, 1], False, [0, 0], 3
         )
+
+
+@pytest.mark.convolution_overrideable_out
+@pytest.mark.parametrize("shape, kernel, groups", CONV_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_convolution_overrideable_out(shape, kernel, groups, dtype):
+    torch.backends.cudnn.allow_tf32 = False
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
+    bias_tensor = torch.randn([kernel[0]], dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias_tensor, True)
+
+    ref_out = _reference_convolution(
+        ref_inp,
+        ref_weight,
+        ref_bias,
+        [1, 1],
+        [1, 1],
+        [1, 1],
+        False,
+        [0, 0],
+        groups,
+    ).to(dtype)
+
+    out = torch.empty_like(ref_out.to(flag_gems.device))
+    pointer = out.data_ptr()
+    res_out = flag_gems.convolution_overrideable_out(
+        inp,
+        weight,
+        bias_tensor,
+        [1, 1],
+        [1, 1],
+        [1, 1],
+        False,
+        [0, 0],
+        groups,
+        out=out,
+    )
+
+    reduce_dim = max((kernel[1]) * kernel[2] * kernel[3], 1)
+    assert res_out is out
+    assert out.data_ptr() == pointer
+    assert out.device == inp.device
+    assert out.dtype == dtype
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=reduce_dim)

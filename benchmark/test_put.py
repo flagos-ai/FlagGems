@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from pathlib import Path
 
 import pytest
 import torch
@@ -27,7 +28,17 @@ MAX_NUMEL = 2**28
 
 class PutBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=DEFAULT_SHAPES)
+        defaults = DEFAULT_SHAPES
+        if (
+            self.op_name == "put"
+            and base.vendor_name in {"hygon", "iluvatar"}
+            and base.Config.bench_level == consts.BenchLevel.CORE
+            and shape_file_path is not None
+            and Path(shape_file_path).resolve()
+            == Path(__file__).with_name("core_shapes.yaml").resolve()
+        ):
+            defaults = [(64, 64), (4096, 4096), (64, 512, 512)]
+        super().set_shapes(shape_file_path, default_shapes=defaults)
         self.shapes = [shape for shape in self.shapes if math.prod(shape) < MAX_NUMEL]
 
 

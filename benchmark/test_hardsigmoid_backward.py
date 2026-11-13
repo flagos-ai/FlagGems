@@ -15,29 +15,30 @@
 import pytest
 import torch
 
-from . import base, consts, utils
+from . import base, consts
 
 
-class HardsigmoidBackwardBenchmark(base.BinaryPointwiseBenchmark):
-    def get_case_iter(self, dtype):
-        for ordinal, shape in enumerate(self.shapes):
-            dims = tuple(shape)
-            yield self._case_from_plan(
-                dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"grad_output": list(dims), "input": list(dims)},
-                    params={},
-                    builder_args=(dims,),
-                ),
-            )
+class HardsigmoidBackwardBenchmark(base.GenericBenchmark):
+    def set_more_shapes(self):
+        return None
 
-    def build_inputs(self, case):
-        shape = case.builder_args[0].builder_args[0]
-        torch.manual_seed(0)
-        grad_output = utils.generate_tensor_input(shape, case.dtype, self.device)
-        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
-        return grad_output, inp
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": list(dims), "input": list(dims)},
+        params={},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    grad_output = torch.randn(shape, dtype=dtype, device=device)
+    return grad_output, inp
 
 
 @pytest.mark.hardsigmoid_backward
@@ -46,5 +47,7 @@ def test_hardsigmoid_backward():
         op_name="hardsigmoid_backward",
         torch_op=torch.ops.aten.hardsigmoid_backward,
         dtypes=consts.FLOAT_DTYPES,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
     )
     bench.run()

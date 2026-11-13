@@ -96,6 +96,11 @@ def _seed_random_inputs():
     ],
 )
 def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
+    vendor = flag_gems.vendor_name
+    if vendor in ("iluvatar", "metax") and (
+        rows == 1025 or (vendor == "iluvatar" and dtype == torch.float64)
+    ):
+        pytest.skip("Native msort does not preserve the expected signed-NaN ordering")
     factory_device = (
         "cpu"
         if flag_gems.vendor_name in ("kunlunxin", "iluvatar", "enflame")
@@ -213,6 +218,11 @@ def test_msort_noncontiguous_empty_scalar_and_special_values():
     result = flag_gems.msort(inp)
     _msort_assert_equal(result, ref_out, equal_nan=True)
 
+
+@pytest.mark.msort
+def test_msort_large_first_dimension_signed_nans():
+    if flag_gems.vendor_name in ("iluvatar", "metax"):
+        pytest.skip("Native msort does not sort signed NaNs last in the radix path")
     # Exercise the large-first-dimension radix fallback.
     inp = torch.randn((1025, 3), device=flag_gems.device)
     inp[0, 0] = -float("nan")

@@ -381,7 +381,6 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
         yield bias, inp1, inp2,
 
 
-@pytest.mark.addmm_activation
 @pytest.mark.underscore_addmm_activation
 def test_addmm_activation(monkeypatch):
     bench = _ActivationBenchmark(
@@ -406,7 +405,6 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
         yield bias, inp1, inp2, {"out": out}
 
 
-@pytest.mark.addmm_activation_out
 @pytest.mark.underscore_addmm_activation_out
 def test_addmm_activation_out(monkeypatch):
     bench = _ActivationBenchmark(

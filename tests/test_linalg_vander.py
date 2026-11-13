@@ -65,14 +65,9 @@ def _reference_input(value, upcast=False):
 
 
 def _reference_vander(x, **kwargs):
-    if (
-        flag_gems.vendor_name == "iluvatar"
-        and x.device.type != "cpu"
-        and x.dtype == torch.complex128
-    ):
-        pytest.skip(
-            "Iluvatar native complex128 linalg.vander computes incorrect values; CPU reference remains covered"
-        )
+    if flag_gems.vendor_name == "iluvatar" and x.dtype == torch.complex128:
+        # Native device Complex128 drops nonzero powers despite intact inputs.
+        x = x.cpu()
     try:
         return torch.linalg.vander(x, **kwargs)
     except (RuntimeError, ValueError) as error:

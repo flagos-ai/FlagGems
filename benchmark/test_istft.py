@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import replace
+
 import pytest
 import torch
 
@@ -93,7 +95,17 @@ _DEFAULT_DESCRIPTORS = (
         "return_complex": True,
     },
 )
-DEFAULT_SHAPES = ISTFT_SHAPES + _DEFAULT_DESCRIPTORS
+# Master: (batch, signal_length, n_fft, hop_length). These workloads use
+# spectrograms built from real float32 signals rather than random complex values.
+_ROUNDTRIP_SHAPES = (
+    (1, 4096, 256, 64),
+    (8, 4096, 256, 64),
+    (32, 4096, 256, 64),
+    (8, 16384, 256, 64),
+    (8, 16384, 1024, 256),
+    (1, 65536, 512, 128),
+)
+DEFAULT_SHAPES = ISTFT_SHAPES + _DEFAULT_DESCRIPTORS + _ROUNDTRIP_SHAPES
 
 _WINDOW_KINDS = ("none", "hann", "ones")
 _DESCRIPTOR_KEYS = (
@@ -253,6 +265,23 @@ def _case_fn(shape, dtype):
                 f"got {unknown}"
             )
         plans = [_plan(dims, **descriptor)]
+    elif tuple(shape) in _ROUNDTRIP_SHAPES:
+        if dtype is not torch.complex64:
+            return
+        batch, signal_length, n_fft, hop_length = shape
+        plan = _plan(
+            (batch, n_fft // 2 + 1, signal_length // hop_length + 1),
+            n_fft=n_fft,
+            hop_length=hop_length,
+            window="hann",
+        )
+        plans = [
+            replace(
+                plan,
+                params={**plan.params, "signal_length": signal_length},
+                builder_args=(*plan.builder_args, signal_length),
+            )
+        ]
     else:
         plans = [_plan(shape)]
         if tuple(shape) in _WINDOW_DESCRIPTOR_SHAPES:
@@ -264,8 +293,22 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
-    dims, n_fft, call_kwargs = plan.builder_args
+    dims, n_fft, call_kwargs, *roundtrip = plan.builder_args
     real_dtype = _COMPLEX_REAL_DTYPES[dtype]
+    if roundtrip:
+        (signal_length,) = roundtrip
+        window = torch.hann_window(n_fft, dtype=real_dtype, device=device)
+        signal = torch.randn(dims[0], signal_length, dtype=real_dtype, device=device)
+        spectrogram = torch.stft(
+            signal,
+            n_fft,
+            hop_length=call_kwargs["hop_length"],
+            win_length=n_fft,
+            window=window,
+            center=True,
+            return_complex=True,
+        )
+        return spectrogram, {"n_fft": n_fft, **call_kwargs, "window": window}
     # The shared complex branch only covers complex64, so the spectrogram is
     # built directly from its real component; a built window uses the matching
     # real dtype of that complex dtype.
@@ -301,8 +344,7 @@ def test_istft_benchmark():
         op_name="istft",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten.istft,
-        gems_op=getattr(flag_gems, "istft", None),
+        torch_op=torch.ops.aten.istft.default,
         dtypes=ISTFT_DTYPES,
     )
     bench.run()

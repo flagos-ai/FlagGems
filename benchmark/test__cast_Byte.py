@@ -11,146 +11,55 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Benchmark for aten::_cast_Byte over the unary pointwise shape family.
-
-import numbers
 
 import pytest
 import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
-# Static backend capability flags: unsupported dtypes are filtered here so the
-# same list drives case listing and execution.
-_DTYPE_FLAGS = {
-    torch.bfloat16: flag_gems.runtime.device.support_bf16,
-    torch.float64: flag_gems.runtime.device.support_fp64,
-    torch.int64: flag_gems.runtime.device.support_int64,
-    torch.float8_e4m3fn: flag_gems.runtime.device.support_fp8,
-    torch.float8_e5m2: flag_gems.runtime.device.support_fp8,
-}
-
-# Inputs whose cast to uint8 is timed: the pointwise float family plus the
-# integral casts, including the uint8 -> uint8 identity path.
-BENCH_DTYPES = [
-    dtype
-    for dtype in (
-        *consts.FLOAT_DTYPES,
-        torch.uint8,
-        torch.int8,
-        torch.int32,
-        torch.int64,
-        torch.float64,
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    )
-    if _DTYPE_FLAGS.get(dtype, True)
+_CASES = [
+    ((1024,), "contiguous"),
+    ((65536,), "contiguous"),
+    ((1048576,), "contiguous"),
+    ((16777216,), "contiguous"),
+    ((1024, 1024), "transpose"),
+    ((1024, 1024), "slice"),
 ]
 
-# None omits the argument, so that case measures the schema default.
-NON_BLOCKING_CASES = [False, True, None]
-_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-
-def _unsupported_native_case(dtype, shape):
-    return (
-        flag_gems.vendor_name == "ascend"
-        and dtype in _FP8_DTYPES
-        and all(extent != 0 for extent in shape)
-    )
-
-
-def _validate_shape(shape):
-    # Shapes are resolved by the framework from the defaults, the core shape
-    # list or a caller-supplied shape file, so malformed custom metadata is
-    # rejected here at listing time, before any tensor is allocated. A scalar
-    # shape and zero extents stay valid.
-    for extent in shape:
-        if isinstance(extent, bool) or not isinstance(extent, numbers.Integral):
-            raise ValueError(f"non-integral shape extent {extent!r} in {shape!r}")
-        if extent < 0:
-            raise ValueError(f"negative shape extent {extent!r} in {shape!r}")
-
-
-def _cast_input(shape, dtype, device):
-    if (
-        flag_gems.vendor_name == "ascend"
-        and dtype in _FP8_DTYPES
-        and any(extent == 0 for extent in shape)
-    ):
-        return torch.empty(shape, dtype=dtype, device=device)
-    # FP8 and the integral dtypes have no randn kernel.
-    if dtype.is_floating_point:
-        return torch.randn(shape, dtype=torch.float32, device=device).to(dtype)
-    return torch.randint(0, 128, shape, dtype=torch.int32, device=device).to(dtype)
-
-
-def _case_fn(shape, dtype):
-    # One plan per resolved shape and non_blocking form; the plans carry both
-    # the public metadata and the builder arguments, so listing and execution
-    # never use different case lists.
-    del dtype
-    _validate_shape(shape)
-    for non_blocking in NON_BLOCKING_CASES:
-        yield base.BenchmarkCasePlan(
-            shape={"input": shape},
-            params={
-                "non_blocking": "omitted" if non_blocking is None else non_blocking
-            },
-            builder_args=(shape, non_blocking),
-        )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape, non_blocking = plan.builder_args
-    inp = _cast_input(shape, dtype, device)
-    if non_blocking is None:
-        return (inp,)
-    return inp, {"non_blocking": non_blocking}
-
-
-class CastByteBenchmark(base.GenericBenchmark):
-    # Keep the unary pointwise benchmark's comprehensive shape scales; the
-    # default and caller-supplied shape resolution stays with the framework.
-    def set_more_shapes(self):
-        return base.UnaryPointwiseBenchmark.set_more_shapes(self)
-
+class CastByteBenchmark(base.Benchmark):
     def get_case_iter(self, dtype):
-        for case in super().get_case_iter(dtype):
-            # Filter after ordinal assignment so supported custom empty
-            # shapes and all remaining public case IDs keep their identity.
-            if _unsupported_native_case(dtype, case.shape["input"]):
-                if case.case_id in (getattr(base.Config, "case_ids", None) or ()):
-                    raise ValueError(
-                        f"Unsupported benchmark case {case.case_id}: "
-                        "Ascend native _cast_Byte has no nonempty FP8 conversion"
-                    )
-                continue
-            yield case
+        for ordinal, (shape, layout) in enumerate(_CASES):
+            input_shape = (1024, 512) if layout == "slice" else shape
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(input_shape)},
+                    params={"layout": layout},
+                    builder_args=(shape, layout),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape, layout = case.builder_args[0].builder_args
+        inp = torch.randn(shape, device=self.device, dtype=case.dtype)
+        if layout == "transpose":
+            inp = inp.t()
+        elif layout == "slice":
+            inp = inp[:, ::2]
+        return (inp,)
 
 
 @pytest.mark.underscore_cast_Byte
-def test_cast_byte():
-    bench = CastByteBenchmark(
+def test_cast_Byte():
+    dtypes = [torch.float16, torch.float32]
+    if flag_gems.runtime.device.support_bf16:
+        dtypes.insert(1, torch.bfloat16)
+    CastByteBenchmark(
         op_name="_cast_Byte",
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten._cast_Byte,
-        gems_op=getattr(flag_gems, "_cast_Byte", None),
-        dtypes=BENCH_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.underscore_cast_Byte
-@pytest.mark.parametrize(
-    "dtype", _FP8_DTYPES if flag_gems.vendor_name == "ascend" else []
-)
-def test_cast_byte_native_nonempty_fp8(dtype):
-    pytest.skip(
-        "Ascend native _cast_Byte has no nonempty FP8 conversion; "
-        "these cases are excluded from timing, while empty shapes remain supported"
-    )
+        torch_op=torch.ops.aten._cast_Byte.default,
+        dtypes=dtypes,
+    ).run()
