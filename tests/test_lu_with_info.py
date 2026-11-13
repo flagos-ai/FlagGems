@@ -195,6 +195,51 @@ def test_lu_with_info_singular(shape, dtype):
     _assert_reconstruction(inp, lu, pivots, True, dtype)
 
 
+def _make_rank_deficient_at(shape, pos, device, dtype):
+    """Construct rank deficiency from the selected row without fixing pivot order."""
+    a = torch.randn(shape, dtype=dtype, device=device)
+    if pos == 0:
+        a[..., 0, :] = 0.0
+    else:
+        a[..., pos, :] = a[..., :pos, :].sum(dim=-2) * 0.5
+    return a
+
+
+@pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
+@pytest.mark.parametrize("dtype", _TEST_DTYPES)
+@pytest.mark.parametrize("pos", [0, 31, 63])
+@pytest.mark.parametrize("shape", [(64, 64), (2, 64, 64)])
+def test_lu_with_info_singular_positions(shape, pos, dtype):
+    inp = _make_rank_deficient_at(shape, pos, DEVICE, dtype)
+    _, _, ref_info = _reference_lu(
+        utils.to_reference(inp), pivot=True, check_errors=False
+    )
+    lu, pivots, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
+
+    assert torch.isfinite(lu).all(), "LU contains non-finite values"
+    assert all(value.device == inp.device for value in (lu, pivots, info))
+    # Row combinations can cancel only approximately. Compare the exact info
+    # value against the reference instead of assuming an exact zero pivot.
+    utils.gems_assert_equal(info, ref_info)
+    _assert_reconstruction(inp, lu, pivots, True, dtype)
+
+
+@pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
+@pytest.mark.parametrize("dtype", _TEST_DTYPES)
+@pytest.mark.parametrize("shape", [(6, 6), (4, 6, 6), (2, 3, 6, 6)])
+def test_lu_with_info_info_shape(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    _, _, ref_info = _reference_lu(
+        utils.to_reference(inp), pivot=True, check_errors=False
+    )
+    _, _, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
+    assert info.device == inp.device
+    assert info.dtype == torch.int32
+    assert info.shape == ref_info.shape == inp.shape[:-2]
+
+
 @pytest.mark.lu_with_info
 @pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
@@ -276,19 +321,23 @@ def test_lu_info_nonfinite_pivots_are_not_singular():
 @pytest.mark.lu_with_info
 @pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("zero_pos", [0, 2, 4], ids=["first", "middle", "last"])
-@pytest.mark.xfail(
-    reason="shared linalg_lu_factor divides by early zero pivots",
-    strict=False,
-)
-def test_lu_with_info_exact_zero_pivot_position(zero_pos):
+def test_lu_with_info_exact_zero_pivot_position(zero_pos, request):
     if VENDOR == "kunlunxin":
         pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
     diagonal = [1.0, 2.0, 3.0, 4.0, 5.0]
     diagonal[zero_pos] = 0.0
-    inp = torch.diag(torch.tensor(diagonal, dtype=torch.float64)).to(DEVICE)
-    _, _, ref_info = _reference_lu(
-        utils.to_reference(inp, True), pivot=True, check_errors=False
-    )
-    _, _, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
+    host = torch.diag(torch.tensor(diagonal, dtype=torch.float64))
+    inp = host.to(DEVICE)
+    # Iluvatar native FP64 LU reports a first pivot for later exact zeros.
+    ref_inp = host if VENDOR == "iluvatar" else utils.to_reference(inp, True)
+    _, _, ref_info = _reference_lu(ref_inp, pivot=True, check_errors=False)
     assert int(ref_info.item()) == zero_pos + 1
-    utils.gems_assert_equal(info, ref_info)
+
+    _, _, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
+    assert info.device == inp.device and info.dtype == torch.int32
+    registry = getattr(request.config, "_override_registry", None)
+    stock = registry is None or registry.get_override("_lu_with_info") is None
+    if stock and zero_pos in (0, 2) and int(info.item()) != zero_pos + 1:
+        pytest.xfail("shared linalg_lu_factor divides by early zero pivots")
+    compared = info.cpu() if ref_info.device.type == "cpu" else info
+    utils.gems_assert_equal(compared, ref_info)
