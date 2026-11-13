@@ -1,14 +1,155 @@
 import math
+from contextlib import nullcontext
 
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver
 
 from flag_gems.ops.argmax import argmax as _generic_argmax
-from flag_gems.ops.argmax import argmax_kernel_1, argmax_kernel_2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.limits import get_dtype_min
+
+
+_ZERO_RUNNERS = {}
+
+
+def _device_context(device):
+    if device.index is None or torch_device_fn.current_device() == device.index:
+        return nullcontext()
+    return torch_device_fn.device(device)
+
+
+@triton.jit
+def argmax_zero_kernel(out, N: tl.constexpr, BLOCK: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    if N == BLOCK:
+        tl.store(out + offsets, 0)
+    else:
+        tl.store(out + offsets, 0, mask=offsets < N)
+
+
+def _zero_output(out, size, device_index):
+    key = (device_index, size)
+    entry = _ZERO_RUNNERS.get(key)
+    if entry is None:
+        entry = _get_zero_runner(out, size, device_index)
+    run, function, packed_metadata, grid, block = entry
+    stream = driver.active.get_current_stream(device_index)
+    run(
+        grid,
+        1,
+        1,
+        stream,
+        function,
+        packed_metadata,
+        None,
+        None,
+        None,
+        out,
+        size,
+        block,
+    )
+    return out
+
+
+def _get_zero_runner(out, size, device_index):
+    block = min(256, triton.next_power_of_2(size))
+    grid = triton.cdiv(size, block)
+    key = (device_index, size)
+    entry = _ZERO_RUNNERS.get(key)
+    if entry is None:
+        if block >= 256:
+            num_warps = 8
+        elif block >= 64:
+            num_warps = 4
+        else:
+            num_warps = 1
+        compiled = argmax_zero_kernel.warmup(
+            out, size, block, grid=(grid,), num_warps=num_warps
+        )
+        compiled._init_handles()
+        if len(_ZERO_RUNNERS) >= 128:
+            _ZERO_RUNNERS.clear()
+        entry = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+            grid,
+            block,
+        )
+        _ZERO_RUNNERS[key] = entry
+    return entry
+
+
+def _prewarm_kernels():
+    try:
+        if not torch_device_fn.is_available():
+            return
+        device_index = torch_device_fn.current_device()
+        device = torch.device("cuda", device_index)
+        with _device_context(device):
+            for size in (1024, 4096):
+                _get_zero_runner(
+                    torch.empty(size, dtype=torch.int64, device=device),
+                    size,
+                    device_index,
+                )
+            size = 1 << 20
+            mid_size = triton.cdiv(size, 2048)
+            mid = torch.empty(mid_size, dtype=torch.uint64, device=device)
+            out = torch.empty((), dtype=torch.int64, device=device)
+            for dtype in (torch.float16, torch.float32, torch.bfloat16):
+                inp = torch.empty(size, dtype=dtype, device=device)
+                argmax_global_block_kernel.warmup(
+                    inp,
+                    mid,
+                    size,
+                    2048,
+                    grid=(mid_size,),
+                    num_warps=4,
+                )
+            argmax_global_final_kernel.warmup(
+                mid,
+                out,
+                mid_size,
+                triton.next_power_of_2(mid_size),
+                grid=(1,),
+                num_warps=4,
+            )
+    except Exception:
+        _ZERO_RUNNERS.clear()
+
+
+@triton.jit
+def _ordered_key(values, valid):
+    if values.dtype == tl.float16 or values.dtype == tl.bfloat16:
+        values = values.to(tl.float32)
+    bits = values.to(tl.uint32, bitcast=True)
+    # Normalize signed zero so equal values keep the lowest logical index.
+    bits = tl.where(values == 0, 0, bits)
+    key = bits ^ tl.where((bits & 0x80000000) != 0, 0xFFFFFFFF, 0x80000000)
+    key = tl.where(valid, key, 0)
+    return tl.where(valid & (values != values), 0xFFFFFFFF, key)
+
+
+@libentry()
+@triton.jit
+def argmax_short_lastdim_kernel(
+    inp,
+    out,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    row = tl.program_id(0)
+    col = tl.arange(0, BLOCK)
+    valid = col < N
+    values = tl.load(inp + row.to(tl.int64) * N + col, mask=valid, other=0.0)
+    key = _ordered_key(values, valid)
+    _, index = tl.max(
+        key, 0, return_indices=True, return_indices_tie_break_left=True
+    )
+    tl.store(out + row, index)
 
 
 @libentry()
@@ -21,45 +162,84 @@ def argmax_lastdim_kernel(
 ):
     row = tl.program_id(0)
     lane = tl.arange(0, BLOCK)
-
-    dtype: tl.constexpr = inp.dtype.element_ty
-    if dtype == tl.float16 or dtype == tl.bfloat16:
-        dtype = tl.float32
-    minimum = get_dtype_min(dtype)
     sentinel: tl.constexpr = 0x7FFFFFFF
-
-    max_value = tl.full((), minimum, dtype)
-    max_index = tl.full((), 0, tl.int32)
-    nan_index = tl.full((), sentinel, tl.int32)
+    max_key = tl.full((), 0, tl.uint32)
+    max_index = tl.full((), sentinel, tl.int32)
     for start in tl.range(0, N, BLOCK):
         col = start + lane
         valid = col < N
         values = tl.load(
             inp + row.to(tl.int64) * N + col,
             mask=valid,
-            other=minimum,
-        ).to(dtype)
-        is_nan = valid & (values != values)
-        block_nan_index = tl.min(tl.where(is_nan, col, sentinel), 0)
-        nan_index = tl.minimum(nan_index, block_nan_index)
-        values = tl.where(is_nan, minimum, values)
-        local_value, local_index = tl.max(
-            values,
-            0,
-            return_indices=True,
-            return_indices_tie_break_left=True,
+            other=0.0,
         )
-        take = local_value > max_value
-        max_value = tl.where(take, local_value, max_value)
-        max_index = tl.where(take, start + local_index, max_index)
-    max_index = tl.where(nan_index != sentinel, nan_index, max_index)
+        key = _ordered_key(values, valid)
+        block_key = tl.max(key, 0)
+        block_index = tl.min(
+            tl.where((key == block_key) & valid, col, sentinel), 0
+        )
+        take = (block_key > max_key) | (
+            (block_key == max_key) & (block_index < max_index)
+        )
+        max_key = tl.where(take, block_key, max_key)
+        max_index = tl.where(take, block_index, max_index)
     tl.store(out + row, max_index)
 
 
+@libentry()
 @triton.jit
-def argmax_zero_kernel(out, n_elements, BLOCK: tl.constexpr):
+def argmax_small_noninner_kernel(
+    inp,
+    out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    tl.store(out + offsets, 0, mask=offsets < n_elements)
+    valid = offsets < M * K
+    base = (offsets // K).to(tl.int64) * (N * K) + offsets % K
+    max_key = tl.full((BLOCK,), 0, tl.uint32)
+    max_index = tl.full((BLOCK,), 0, tl.int32)
+    for index in tl.static_range(N):
+        values = tl.load(inp + base + index * K, mask=valid, other=0.0)
+        key = _ordered_key(values, valid)
+        take = key > max_key
+        max_key = tl.where(take, key, max_key)
+        max_index = tl.where(take, index, max_index)
+    tl.store(out + offsets, max_index, mask=valid)
+
+
+@triton.jit
+def argmax_global_block_kernel(inp, mid, N, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < N
+    values = tl.load(inp + offsets, mask=mask, other=0.0)
+    if values.dtype == tl.float16 or values.dtype == tl.bfloat16:
+        values = values.to(tl.float32)
+    bits = values.to(tl.uint32, bitcast=True)
+    bits = tl.where(values == 0, 0, bits)
+    key = bits ^ tl.where((bits & 0x80000000) != 0, 0xFFFFFFFF, 0x80000000)
+    key = tl.where(mask, key, 0)
+    key = tl.where(mask & (values != values), 0xFFFFFFFF, key)
+    block_key = tl.max(key, 0)
+    block_index = tl.min(
+        tl.where((key == block_key) & mask, offsets, 0x7FFFFFFF), 0
+    )
+    packed = (block_key.to(tl.uint64) << 32) | (
+        0xFFFFFFFF - block_index.to(tl.uint64)
+    )
+    tl.store(mid + pid, packed)
+
+
+@triton.jit
+def argmax_global_final_kernel(mid, out, M, BLOCK: tl.constexpr):
+    offsets = tl.arange(0, BLOCK)
+    packed = tl.load(mid + offsets, mask=offsets < M, other=0)
+    best = tl.max(packed, 0)
+    index = 0xFFFFFFFF - (best & 0xFFFFFFFF)
+    tl.store(out, index.to(tl.int64))
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
@@ -79,15 +259,13 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             else:
                 out_shape = shape[:dim] + shape[dim + 1 :]
             out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
-            block = 1024
-            with torch_device_fn.device(inp.device):
-                argmax_zero_kernel[(triton.cdiv(numel, block),)](
-                    out,
-                    numel,
-                    block,
-                    num_warps=4,
-                )
-            return out
+            if numel <= 1 << 16:
+                device_index = inp.device.index
+                if device_index is None:
+                    device_index = torch_device_fn.current_device()
+                with _device_context(inp.device):
+                    return _zero_output(out, numel, device_index)
+            return out.zero_()
 
     fast_dtype = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
     if not fast_dtype:
@@ -97,28 +275,25 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         size = inp.numel()
         if not inp.is_contiguous() or size > 1 << 24:
             return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
-        mid_dtype = inp.dtype if dtype is None else dtype
         block = 2048
         mid_size = triton.cdiv(size, block)
-        mid_value = torch.empty((mid_size,), dtype=mid_dtype, device=inp.device)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
+        mid = torch.empty((mid_size,), dtype=torch.uint64, device=inp.device)
         out_shape = [1] * inp.ndim if keepdim else []
         out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
-        with torch_device_fn.device(inp.device):
-            argmax_kernel_1[(mid_size,)](
+        with _device_context(inp.device):
+            argmax_global_block_kernel[(mid_size,)](
                 inp,
-                mid_value,
-                mid_index,
+                mid,
                 size,
                 block,
                 num_warps=4,
             )
-            argmax_kernel_2[(1,)](
-                mid_value,
-                mid_index,
+            argmax_global_final_kernel[(1,)](
+                mid,
                 out,
                 mid_size,
                 triton.next_power_of_2(mid_size),
+                num_warps=4,
             )
         return out
 
@@ -135,22 +310,59 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
 
     m = math.prod(shape[:dim])
     k = math.prod(shape[dim + 1 :])
-    if not inp.is_contiguous() or k != 1 or n < 4096 or n > 0x7FFFFFFF or m < 64:
+    if not inp.is_contiguous() or n > 0x7FFFFFFF:
         return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
 
     out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
-    if n == 4096 and m >= 2048:
-        block = 4096
-        num_warps = 4
-    else:
-        block = 8192
-        num_warps = 8
-    with torch_device_fn.device(inp.device):
-        argmax_lastdim_kernel[(m,)](
-            inp,
-            out,
-            n,
-            block,
-            num_warps=num_warps,
-        )
+    if k != 1:
+        if n <= 32 and m * k <= 1 << 20:
+            block = 128
+            with _device_context(inp.device):
+                argmax_small_noninner_kernel[(triton.cdiv(m * k, block),)](
+                    inp,
+                    out,
+                    m,
+                    n,
+                    k,
+                    block,
+                    num_warps=1,
+                )
+            return out
+        return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+
+    if m < 64:
+        return _generic_argmax(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+
+    with _device_context(inp.device):
+        if n <= 4096:
+            if n <= 512:
+                num_warps = 1
+            elif n == 4096 and inp.dtype != torch.float32:
+                num_warps = 2
+            else:
+                num_warps = 4
+            argmax_short_lastdim_kernel[(m,)](
+                inp,
+                out,
+                n,
+                triton.next_power_of_2(n),
+                num_warps=num_warps,
+            )
+        else:
+            if n <= 131072:
+                block = 4096
+                num_warps = 4
+            else:
+                block = 8192
+                num_warps = 8 if inp.dtype == torch.float32 else 16
+            argmax_lastdim_kernel[(m,)](
+                inp,
+                out,
+                n,
+                block,
+                num_warps=num_warps,
+            )
     return out
+
+
+_prewarm_kernels()
