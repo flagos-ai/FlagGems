@@ -71,6 +71,8 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
+    if dtype.is_complex and flag_gems.vendor_name == "ascend":
+        return (torch.randn(shape, dtype=dtype, device="cpu").to(device),)
     return (torch.randn(shape, dtype=dtype, device=device),)
 
 
