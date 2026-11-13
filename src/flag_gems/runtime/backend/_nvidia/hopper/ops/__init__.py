@@ -14,7 +14,6 @@
 
 import triton
 
-from .addmm import addmm_out  # noqa: F401
 from .sage_attention import sage_attention  # noqa: F401
 
 if triton.__version__ >= "3.4":
