@@ -1,0 +1,33 @@
+{
+  "verified_at": "2026-11-13T09:04:16.840704",
+  "measurement_source": "603af7eb112210767dbed397ed0bb99fe3a24dc8",
+  "current_test_source": "bc6c2f7eb674f8bca7a6392544c5d996e1a4973a",
+  "current_test_tree": "f663977daa9fbd8026a332a7cac9383f2c40aaf8",
+  "production_src_tree": "091642c92e6892ebc92ed57dbe066a347cdb99f0",
+  "production_matches_full109_measurement": true,
+  "previous_test_source_utf8": "from pathlib import Path\nfrom types import SimpleNamespace\n\nimport pytest\nimport torch\n\nimport flag_gems\n\n\n@pytest.mark.addmm\n@pytest.mark.skipif(\n    flag_gems.vendor_name != \"hygon\",\n    reason=\"The Hygon public addmm entry owns the K1 specialization\",\n)\n@pytest.mark.parametrize(\"N\", [1, 17, 257, 1025])\n@pytest.mark.parametrize(\"cancellation\", [False, True])\ndef test_addmm_single_row_k1_strided_cpu_reference(N, cancellation):\n    from flag_gems.runtime.backend._hygon.ops.addmm import addmm\n\n    # Vendor and fully qualified imports can create distinct function objects.\n    actual_provider = getattr(flag_gems, \"addmm\")\n    assert (\n        Path(actual_provider.__code__.co_filename).resolve()\n        == Path(addmm.__code__.co_filename).resolve()\n    )\n    assert actual_provider.__code__.co_firstlineno == addmm.__code__.co_firstlineno\n\n    generator = torch.Generator().manual_seed(20261109 + N)\n    backing = [\n        torch.rand(8, generator=generator) * 2 - 1,\n        torch.rand(N * 3 + 7, generator=generator) * 2 - 1,\n        torch.rand(N * 2 + 9, generator=generator) * 2 - 1,\n    ]\n    mat1 = backing[0].as_strided((1, 1), (3, 2), 2)\n    mat2 = backing[1].as_strided((1, N), (1, 3), 3)\n    bias = backing[2].as_strided((N,), (2,), 5)\n    if cancellation:\n        bias.copy_(-(mat1[0, 0] * mat2[0]))\n    expected = torch.addmm(bias, mat1, mat2)\n\n    device_backing = [x.to(flag_gems.device) for x in backing]\n    device_mat1 = device_backing[0].as_strided((1, 1), (3, 2), 2)\n    device_mat2 = device_backing[1].as_strided((1, N), (1, 3), 3)\n    device_bias = device_backing[2].as_strided((N,), (2,), 5)\n    actual = flag_gems.addmm(device_bias, device_mat1, device_mat2)\n\n    torch.testing.assert_close(actual.cpu(), expected)\n    assert actual.shape == (1, N)\n    for original, device in zip(backing, device_backing):\n        torch.testing.assert_close(device.cpu(), original, rtol=0, atol=0)\n        assert not torch._C._is_alias_of(actual, device)\n\n\n@pytest.mark.mm\n@pytest.mark.parametrize(\"dtype\", [torch.float32, torch.float64, torch.bfloat16])\ndef test_hygon_projection_keeps_general_mm_route(dtype):\n    from flag_gems.runtime.backend._hygon.ops.linear_projection import (\n        try_linear_projection,\n    )\n\n    a = torch.ones((8, 8), device=flag_gems.device, dtype=dtype)\n    b = a.t()\n    assert try_linear_projection(a, b) is None\n    actual = flag_gems.mm(a, b)\n    torch.testing.assert_close(actual.cpu(), torch.full((8, 8), 8, dtype=dtype))\n\n\ndef test_hygon_projection_defers_wide_vocabulary_before_allocation(monkeypatch):\n    from flag_gems.runtime.backend._hygon.ops.linear_projection import (\n        try_linear_projection,\n    )\n\n    device = torch.device(flag_gems.device)\n    a = SimpleNamespace(\n        ndim=2,\n        shape=(145, 2560),\n        dtype=torch.bfloat16,\n        device=device,\n        stride=lambda dim=None: (2560, 1) if dim is None else (2560, 1)[dim],\n        storage_offset=lambda: 0,\n    )\n    b = SimpleNamespace(\n        ndim=2,\n        shape=(2560, 262208),\n        dtype=torch.bfloat16,\n        device=device,\n        stride=lambda dim=None: (1, 2560) if dim is None else (1, 2560)[dim],\n        storage_offset=lambda: 0,\n    )\n\n    def unexpected_allocation(*args, **kwargs):\n        pytest.fail(\"wide-vocabulary projection must defer before allocation\")\n\n    monkeypatch.setattr(torch, \"empty\", unexpected_allocation)\n    assert try_linear_projection(a, b) is None\n",
+  "new_test_canonical_sha256": "9c221e266d8099dcf4267f04aaff812e7a43a069c191d87e97cf35a7bb7a1a1e",
+  "only_test_change": "Module pytestmark skipif vendor_name != hygon;all existing function/import/decorator/assertion/precision AST remains identical",
+  "Hygon_tests_executed": 12,
+  "skipped": 0,
+  "pytest_exit_code": 0,
+  "raw_junit_sha256": "10bcaf524f83f40d823203e0891bcd95f4e4ab61ed6832f616eb32f9253350de",
+  "published_junit_sha256": "18e2c374f0b904d8df22b15937e271cf6dcfaec133e6b1aecb80529670880711",
+  "terminal_job": {
+    "JobIDRaw": "1104102",
+    "State": "COMPLETED",
+    "ExitCode": "0:0",
+    "ElapsedRaw": "170",
+    "NodeList": "f11r2n07"
+  },
+  "preceding_unit_attempt": {
+    "job": 1104082,
+    "pytest_exit_code": 0,
+    "Hygon_tests_passed": 12,
+    "skipped": 0,
+    "wrapper_state": "FAILED",
+    "wrapper_exit_code": "1:0",
+    "reason": "Unit-only adapter used unsupported diagnosticscope;fixedmetadataonly,originalreceiptsretained"
+  },
+  "performance_scope": "Complete109 performance evidence stays fixed on identical production source;no timing sample replaced,selected,or pooled;no shared environment change."
+}
