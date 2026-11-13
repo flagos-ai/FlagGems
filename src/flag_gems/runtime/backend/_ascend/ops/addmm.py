@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import logging
-import os
 
 import torch
 import triton
@@ -25,21 +23,19 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 
+from .bmm import (
+    _launch_narrow_gemv,
+    _launch_narrow_pack,
+    _launch_nt_gemm,
+    _launch_tiled_gemm,
+    _select_rectangular_tile,
+    _use_narrow_gemv,
+    _use_narrow_pack,
+    _use_nt_gemm,
+)
+from .mm import _blockified, _mm_pack_wide_panels_kernel
+
 logger = logging.getLogger(__name__)
-
-
-# The 910B compiler reads the environment; keep compilation and launch aligned.
-@contextlib.contextmanager
-def _blockified():
-    previous = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
-    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("TRITON_ALL_BLOCKS_PARALLEL", None)
-        else:
-            os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = previous
 
 
 # Keep addmm's validated fallback independent of the shared mm tuning space.
@@ -304,9 +300,157 @@ def _addmm_small_finish(P, Bias, C, alpha, beta, N: tl.constexpr, UNIT: tl.const
     tl.store(C + idx, result, idx < N * N)
 
 
+@triton.jit
+def _addmm_scalar_dot(A, B, Bias, Out, K: tl.constexpr, BLOCK_K: tl.constexpr):
+    k = tl.arange(0, BLOCK_K)
+    a = tl.load(A + k, k < K, 0).to(tl.float32)
+    b = tl.load(B + k, k < K, 0).to(tl.float32)
+    result = tl.sum(a * b, axis=0) + tl.load(Bias).to(tl.float32)
+    tl.store(Out, result)
+
+
+@triton.jit
+def _addmm_row_vector(A, B, Bias, Out, N: tl.constexpr, K: tl.constexpr):
+    k = tl.arange(0, K)
+    n = tl.program_id(0) * 64 + tl.arange(0, 64)
+    a = tl.load(A + k).to(tl.float32)
+    b = tl.load(B + k[:, None] * N + n[None, :]).to(tl.float32)
+    value = tl.sum(a[:, None] * b, axis=0) + tl.load(Bias + n).to(tl.float32)
+    tl.store(Out + n, value)
+
+
+@triton.jit
+def _addmm_wide_panel_kernel(
+    A,
+    Packed,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    tile = tl.program_id(0)
+    panel = tile % (N // BN)
+    m = (tile // (N // BN)) * BM + tl.arange(0, BM)
+    n = tl.arange(0, BN)
+    k0 = tl.arange(0, BK)
+    acc = tl.zeros((BM, BN), tl.float32)
+    for step in range(K // BK):
+        k = step * BK + k0
+        a = tl.load(A + m[:, None] * K + k[None, :], m[:, None] < M, 0)
+        b = tl.load(Packed + panel * K * BN + k[:, None] * BN + n[None, :])
+        extension.compile_hint(a, "dot_pad_only_k")
+        extension.compile_hint(b, "dot_pad_only_k")
+        acc = tl.dot(a, b, acc, allow_tf32=False)
+    offset = m[:, None] * N + panel * BN + n[None, :]
+    acc += tl.load(Bias + offset, m[:, None] < M, 0).to(tl.float32)
+    tl.store(Out + offset, acc, m[:, None] < M)
+
+
+def _launch_wide_addmm(a, b, bias, out):
+    m, k = a.shape
+    n = b.shape[1]
+    bm = 16 if m <= 16 else 128
+    bn = 256
+    packed = torch.empty((n // bn, k, bn), device=b.device, dtype=b.dtype)
+    with torch_device_fn.device(a.device), _blockified():
+        _mm_pack_wide_panels_kernel[(n // bn * (k // 64),)](
+            b, packed, n, k, bn, 64, multibuffer=False
+        )
+        _addmm_wide_panel_kernel[(triton.cdiv(m, bm) * (n // bn),)](
+            a,
+            packed,
+            bias,
+            out,
+            m,
+            n,
+            k,
+            bm,
+            bn,
+            256,
+            multibuffer=True,
+            unit_flag=True,
+            sync_solver=False,
+        )
+    return out
+
+
 def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
     M, K = mat1.shape
     _, N = mat2.shape
+    if (
+        alpha == beta == 1
+        and bias.shape == out.shape
+        and bias.dtype == out.dtype == mat1.dtype
+        and bias.is_contiguous()
+        and out.is_contiguous()
+    ):
+        if _use_nt_gemm(mat1, mat2):
+            return _launch_nt_gemm(mat1, mat2, out, bias)
+        if _use_narrow_gemv(mat1, mat2):
+            return _launch_narrow_gemv(mat1, mat2, out, bias)
+        if _use_narrow_pack(mat1, mat2):
+            return _launch_narrow_pack(mat1, mat2, out, bias)
+        if (
+            mat1.dtype == mat2.dtype
+            and mat1.dtype in (torch.float16, torch.bfloat16)
+            and mat1.is_contiguous()
+            and mat2.is_contiguous()
+            and 0 < M <= 128
+            and 131072 <= N <= 262144
+            and N % 256 == 0
+            and 1024 <= K <= 2048
+            and K % 256 == 0
+        ):
+            return _launch_wide_addmm(mat1, mat2, bias, out)
+        tile = _select_rectangular_tile(mat1, mat2)
+        if (
+            tile is None
+            and mat1.dtype == mat2.dtype
+            and mat1.dtype in (torch.float16, torch.bfloat16)
+            and mat1.is_contiguous()
+        ):
+            if (
+                M == 1
+                and K == 128
+                and 1024 <= N <= 8192
+                and N % 512 == 0
+                and mat2.transpose(0, 1).is_contiguous()
+            ):
+                tile = (16, 512, 128, 1, False)
+            elif 0 < M <= 4 and N == 256 and K == 2048 and mat2.is_contiguous():
+                tile = (16, 64, 256, 4, True)
+        if tile is not None:
+            return _launch_tiled_gemm(mat1, mat2, out, tile, bias)
+        if (
+            M == 1
+            and K in (64, 128)
+            and N >= 1024
+            and N % 64 == 0
+            and mat1.dtype == mat2.dtype
+            and mat1.dtype in (torch.float16, torch.bfloat16)
+            and mat1.is_contiguous()
+            and mat2.is_contiguous()
+        ):
+            with torch_device_fn.device(mat1.device):
+                _addmm_row_vector[(N // 64,)](mat1, mat2, bias, out, N, K)
+            return out
+        if (
+            M == N == 1
+            and 0 < K <= 2048
+            and mat1.dtype == mat2.dtype
+            and mat1.dtype in (torch.float16, torch.bfloat16)
+            and mat1.is_contiguous()
+            and mat2.is_contiguous()
+        ):
+            with torch_device_fn.device(mat1.device):
+                _addmm_scalar_dot[(1,)](
+                    mat1, mat2, bias, out, K, triton.next_power_of_2(K)
+                )
+            return out
     # Keep row- or column-contiguous views and materialize only general strides.
     if mat1.stride(0) > 1 and mat1.stride(1) > 1:
         mat1 = mat1.contiguous()
