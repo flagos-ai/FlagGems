@@ -23,11 +23,10 @@ import flag_gems
 from flag_gems.testing import RESOLUTION
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 
 def _reference_input(x):
-    """Input to build the reference from: CPU, float32.
+    """Build the reference on CPU, using float64 on Ascend and float32 elsewhere.
 
     In the default (device) reference mode the reference is the backend's own
     implementation, and on Ascend ``gelu(approximate="none")`` is a coarse
@@ -35,14 +34,12 @@ def _reference_input(x):
     bfloat16, 2.0e-3 for float16 and 4.7e-4 for float32, all of which exceed
     this file's 1e-4 atol, so the kernel would be reported as failing while
     being the more accurate of the two. CPU float32 gelu is exact to ~5e-7,
-    which keeps the check meaningful in both reference modes.
+    which keeps the check meaningful in both reference modes. Keep the
+    reference on CPU so Ascend does not downcast float64; ``gems_assert_close``
+    moves the result to CPU for comparison.
     """
-    return x.detach().cpu().to(torch.float32)
-
-
-def _place_reference(ref, like):
-    """Put a CPU reference where ``gems_assert_close`` expects it."""
-    return ref if cfg.TO_CPU else ref.to(like.device)
+    dtype = torch.float64 if flag_gems.vendor_name == "ascend" else torch.float32
+    return x.detach().cpu().to(dtype)
 
 
 @pytest.mark.gelu
@@ -51,23 +48,15 @@ def _place_reference(ref, like):
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_gelu(shape, dtype, approximate):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    if flag_gems.vendor_name == "ascend":
-        ref_inp = res_inp.to(device="cpu", dtype=torch.float64)
-    else:
-        ref_inp = _reference_input(res_inp)
+    ref_inp = _reference_input(res_inp)
 
     ref_out = torch.nn.functional.gelu(ref_inp, approximate=approximate)
     res_out = flag_gems.gelu(res_inp, approximate=approximate)
 
-    if ref_out.device.type == "cpu":
-        res_out = res_out.cpu()
-
     atol = 1e-4
     if flag_gems.vendor_name == "aipu" and dtype == torch.float16:
         atol = 1e-3
-    utils.gems_assert_close(
-        res_out, _place_reference(ref_out, res_inp), dtype, atol=atol
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
 @pytest.mark.gelu_backward
@@ -78,22 +67,15 @@ def test_gelu_backward(shape, dtype, approximate):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_out = torch.randn_like(res_inp)
 
-    if flag_gems.vendor_name == "ascend":
-        ref_inp = res_inp.to(device="cpu", dtype=torch.float64)
-        ref_out = res_out.to(device="cpu", dtype=torch.float64)
-    else:
-        ref_inp = _reference_input(res_inp)
-        ref_out = _reference_input(res_out)
+    ref_inp = _reference_input(res_inp)
+    ref_out = _reference_input(res_out)
 
     ref_in_grad = torch.ops.aten.gelu_backward(
         ref_out, ref_inp, approximate=approximate
     )
     res_in_grad = flag_gems.gelu_backward(res_out, res_inp, approximate=approximate)
 
-    if ref_in_grad.device.type == "cpu":
-        res_in_grad = res_in_grad.cpu()
-
-    utils.gems_assert_close(res_in_grad, _place_reference(ref_in_grad, res_inp), dtype)
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.gelu_
@@ -103,18 +85,12 @@ def test_gelu_backward(shape, dtype, approximate):
 def test_gelu_(shape, dtype, approximate):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    if flag_gems.vendor_name == "ascend":
-        ref_inp = res_inp.to(device="cpu", dtype=torch.float64)
-    else:
-        ref_inp = _reference_input(res_inp)
+    ref_inp = _reference_input(res_inp)
 
     ref_out = torch.ops.aten.gelu_.default(ref_inp, approximate=approximate)
     res_out = flag_gems.gelu_(res_inp, approximate=approximate)
 
-    if ref_out.device.type == "cpu":
-        res_out = res_out.cpu()
-
-    utils.gems_assert_close(res_out, _place_reference(ref_out, res_inp), dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 # Ascend coreDim and large-tensor regressions.
