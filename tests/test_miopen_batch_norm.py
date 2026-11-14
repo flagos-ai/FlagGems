@@ -37,6 +37,16 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("affine", [True, False])
 def test_miopen_batch_norm(shape, dtype, affine):
     """Test for miopen_batch_norm operator."""
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        # XPU (torch_xmlir) native native_batch_norm updates running_var with a
+        # biased variance (missing the n/(n-1) correction), so the default
+        # device-reference mode cannot produce a correct reference; skip it
+        # (same vendor-gated pattern as PR #8700 inner). The --ref cpu mode
+        # keeps the full validation path; other backends are unchanged.
+        pytest.skip(
+            "device native_batch_norm reference is unreliable on XPU "
+            "(biased running-var update)"
+        )
     C = shape[1]
     inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     # weight is required by miopen_batch_norm schema
