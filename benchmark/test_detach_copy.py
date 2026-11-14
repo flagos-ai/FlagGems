@@ -20,7 +20,7 @@ import torch
 from . import base, consts
 
 # Select every overload and contract case with the operator marker.
-pytestmark = pytest.mark.detach_copy
+
 
 # The default overload follows the master workload grid. The independent
 # out-buffer cases keep their existing capped YAML shape set.
@@ -56,7 +56,6 @@ def test_detach_copy():
 
 
 @pytest.mark.detach_copy_out
-@pytest.mark.detach_copy
 def test_detach_copy_out():
     bench = DetachCopyOutBenchmark(
         op_name="detach_copy",

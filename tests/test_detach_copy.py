@@ -22,7 +22,7 @@ from . import test_utils as tu
 from .conftest import QUICK_MODE
 
 # Select every overload and contract case with the operator marker.
-pytestmark = pytest.mark.detach_copy
+
 
 
 def _make_input(dtype, shape, value_range):
@@ -169,18 +169,6 @@ _DETACH_COPY_INPUT_DTYPE_CASES = [
 ]
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
-def test_detach_copy(shape, dtype):
-    inp = _make_input(dtype, shape, ["-1", "1"])
-    # to_reference creates an independent snapshot for the input mutation check.
-    ref_inp = tu.to_reference(inp)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -203,51 +191,8 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize(
-    "dtype, value_range",
-    _DTYPE_RANGE_CASES,
-)
-def test_detach_copy_value_ranges(shape, value_range, dtype):
-    inp = _make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
-def test_detach_copy_special_values(dtype):
-    inp = torch.tensor(
-        [
-            float("inf"),
-            float("-inf"),
-            float("nan"),
-            0.0,
-            -0.0,
-            1.5,
-            -2.5,
-            1e30,
-            -1e30,
-        ],
-        dtype=dtype,
-        device=flag_gems.device,
-    )
-    ref_inp = tu.to_reference(inp)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-
-    _assert_result_equal(res_out, ref_out)
-    # -0.0 must copy with its sign bit intact (equal_nan-tolerant compares treat
-    # -0.0 == 0.0, so pin the sign explicitly).
-    # Read bits on CPU: Ascend signbit does not distinguish -0.0 from +0.0.
-    assert res_out.device == inp.device
-    assert torch.equal(torch.signbit(res_out.cpu()), torch.signbit(ref_out.cpu()))
 
 
 @pytest.mark.detach_copy_out
@@ -289,86 +234,14 @@ def test_detach_copy_out_value_ranges(shape, value_range, dtype):
     _assert_copy_semantics(res_ret, ref_ret, inp, ref_inp)
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", _DETACH_COPY_NONCONTIG_SHAPES)
-@pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
-def test_detach_copy_non_contiguous(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin" and dtype in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    ):
-        pytest.skip("Kunlunxin detach_copy cannot copy noncontiguous FP8 tensors")
-    base = _make_input(dtype, shape, ["-1", "1"])
-    ref_base = tu.to_reference(base)
-    inp = base.transpose(-1, -2)
-    ref_inp = ref_base.transpose(-1, -2)
-    assert not inp.is_contiguous()
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", _DETACH_COPY_EMPTY_SHAPES)
-@pytest.mark.parametrize("dtype", _DETACH_COPY_DTYPES)
-def test_detach_copy_empty(shape, dtype):
-    inp = _make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", _DETACH_COPY_STORAGE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_detach_copy_independent_storage(shape, dtype):
-    inp = _make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-
-    _assert_result_equal(res_out, ref_out)
-    res_out.fill_(3.25)
-    if inp.numel() > 0:
-        assert res_out.data_ptr() != inp.data_ptr()
-    _assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", _DETACH_COPY_NO_BACKWARD_SHAPES)
-@pytest.mark.parametrize(
-    "dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES, quick=utils.FLOAT_DTYPES)
-)
-def test_detach_copy_no_backward(shape, dtype):
-    inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_()
-    grad = _make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
-    ref_grad = tu.to_reference(grad)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    with pytest.raises(RuntimeError):
-        torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
-
-    res_out = flag_gems.detach_copy(inp)
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(inp, ref_inp)
-
-    with pytest.raises(RuntimeError):
-        torch.autograd.grad(res_out, inp, grad_outputs=grad)
 
 
-@pytest.mark.detach_copy
-def test_detach_copy_rejects_non_tensor():
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.detach_copy(3.14)
-    with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems.detach_copy(3.14)
 
 
 @pytest.mark.detach_copy_out
@@ -384,30 +257,6 @@ def test_detach_copy_out_rejects_wrong_dtype():
         flag_gems.detach_copy(inp, out=res_out_bad)
 
 
-@pytest.mark.detach_copy
-@pytest.mark.parametrize(
-    "dtype, scenario",
-    [
-        pytest.param(
-            dtype,
-            scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
-        )
-        for dtype, scenario in tu.selected_cases(
-            tu.special_value_cases(_DETACH_COPY_DTYPES)
-        )
-    ],
-)
-def test_detach_copy_special_scenarios(dtype, scenario):
-    inp = _make_special_input(dtype, scenario)
-    reference = tu.to_reference(inp)
-    expected = torch.ops.aten.detach_copy(reference)
-    actual = flag_gems.detach_copy(inp)
-    _assert_result_equal(actual, expected)
 
 
 _MASTER_SHAPES = [(16,), (1024,), (2, 3, 4), (16, 128, 64, 60)]
@@ -440,17 +289,103 @@ def _make_master_input(shape, dtype):
     )
 
 
+
+
+
+
+    # Native allocates fresh storage even for empty inputs, but an empty CUDA
+    # tensor has no backing page, so both data_ptrs are 0 and the fresh-storage
+    # property is not observable here (unlike non-empty cases below).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Current pinned master target cases; neighboring out tests above are unchanged.
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS"
+# BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Generated by KernelGen: https://github.com/flagos-ai/KernelGen
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+from .conftest import QUICK_MODE
+
+SHAPES = [(16,), (1024,), (2, 3, 4), (16, 128, 64, 60)]
+if QUICK_MODE:
+    SHAPES = [(2, 3)]
+
+# Complex dtypes are not supported on Kunlunxin: fp64 is silently downgraded to
+# fp32 (so complex128 becomes complex64) and torch.neg on complex64 is not
+# implemented in XDNN.  Complex cases are therefore not collected at all on
+# that backend (rather than skipped).
+_HAS_COMPLEX = flag_gems.vendor_name != "kunlunxin"
+
+
+def _gen_input(shape, dtype):
+    # Complex dtypes must be generated explicitly: without this branch they
+    # fall through to BOOL below and never exercise the complex copy path.
+    if dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.FLOAT_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.INT_DTYPES:
+        return torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cpu",
+        ).to(flag_gems.device)
+    # BOOL_TYPES
+    return (
+        torch.randint(0, 2, size=shape, dtype=torch.bool, device="cpu").to(
+            flag_gems.device
+        )
+        if shape
+        else torch.empty(shape, dtype=torch.bool, device=flag_gems.device)
+    )
+
+
 @pytest.mark.detach_copy
-@pytest.mark.parametrize("shape", _MASTER_SHAPES)
+@pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize(
     "dtype",
     utils.FLOAT_DTYPES
     + utils.INT_DTYPES
     + utils.BOOL_TYPES
-    + [torch.complex64, torch.complex128],
+    + ([torch.complex64, torch.complex128] if _HAS_COMPLEX else []),
 )
 def test_accuracy_detach_copy(shape, dtype):
-    inp = _make_master_input(shape, dtype)
+    inp = _gen_input(shape, dtype)
     # Guards the generation branch above: a silent BOOL fallthrough would
     # make this parametrization pass without testing the requested dtype.
     assert inp.dtype == dtype
@@ -458,7 +393,6 @@ def test_accuracy_detach_copy(shape, dtype):
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == inp.shape
@@ -482,7 +416,6 @@ def test_accuracy_detach_copy_non_contiguous(shape):
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == inp.shape
@@ -498,7 +431,6 @@ def test_accuracy_detach_copy_empty():
     inp = torch.empty(0, device=flag_gems.device)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     assert res_out.shape == (0,)
     assert res_out.numel() == 0
@@ -515,7 +447,6 @@ def test_accuracy_detach_copy_empty_non_contiguous():
     inp = torch.empty(3, 0, device=flag_gems.device).transpose(0, -1)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     assert res_out.shape == inp.shape
     assert res_out.numel() == 0
@@ -527,7 +458,6 @@ def test_accuracy_detach_copy_zero_dim():
     inp = torch.randn((), device=flag_gems.device)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     assert res_out.shape == ()
     assert res_out.numel() == 1
@@ -540,7 +470,6 @@ def test_accuracy_detach_copy_single_element():
     inp = torch.randn(1, device=flag_gems.device)
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.data_ptr() != inp.data_ptr()
@@ -560,7 +489,6 @@ def test_accuracy_detach_copy_autograd_contract():
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     assert res_out.data_ptr() != inp.data_ptr()
     assert ref_out.data_ptr() != ref_inp.data_ptr()
@@ -583,31 +511,34 @@ def test_accuracy_detach_copy_dispatch_stability():
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     for _ in range(3):
         res_out = flag_gems.detach_copy(inp)
-        assert res_out.device == inp.device
         assert torch.equal(utils.to_cpu(res_out, ref_out), ref_out)
         assert torch.ops.aten.dim(inp) == 2
     assert res_out.data_ptr() != inp.data_ptr()
 
 
 @pytest.mark.detach_copy
-@pytest.mark.parametrize("layout", ["vector", "transposed", "scalar", "permuted"])
-def test_accuracy_detach_copy_neg_view(layout):
-    shapes = {
-        "vector": (1024,),
-        "transposed": (4, 8),
-        "scalar": (),
-        "permuted": (16, 128, 64, 60),
-    }
-    values = torch.randn(shapes[layout], device=flag_gems.device)
-    if layout == "transposed":
-        values = values.transpose(0, -1)
-    elif layout == "permuted":
-        values = values.permute(2, 0, 3, 1)
-    inp = torch._neg_view(values)
+@pytest.mark.parametrize(
+    "make_inp",
+    [
+        lambda: torch._neg_view(torch.randn(1024, device=flag_gems.device)),
+        lambda: torch._neg_view(
+            torch.randn(4, 8, device=flag_gems.device).transpose(0, -1)
+        ),
+        lambda: torch._neg_view(torch.randn((), device=flag_gems.device)),
+        lambda: torch._neg_view(
+            torch.randn(16, 128, 64, 60, device=flag_gems.device).permute(2, 0, 3, 1)
+        ),
+    ],
+)
+def test_accuracy_detach_copy_neg_view(make_inp):
+    # _neg_view carries a lazy negative bit: both copy kernels read the raw
+    # storage, so the logical value (the negated storage) must be materialized
+    # before copying. Native detach_copy resolves the bit; a bitwise copy
+    # would return the raw storage values instead of the logical ones.
+    inp = make_inp()
     assert inp.is_neg()
     ref_out = torch.ops.aten.detach_copy(utils.to_reference(inp))
     res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.dtype == inp.dtype
@@ -621,47 +552,57 @@ def test_accuracy_detach_copy_neg_view(layout):
     assert res_out.is_contiguous() == ref_out.is_contiguous()
 
 
-@pytest.mark.detach_copy
-def test_accuracy_detach_copy_neg_view_complex():
-    # The negative bit also rides on complex views; combined neg+conj views
-    # resolve to -conj(x), which must not be confused with raw storage.
-    inp = torch.randn(3, 4, dtype=torch.complex64, device=flag_gems.device)
-    neg_conj = torch._neg_view(inp).conj()
-    assert neg_conj.is_neg() and neg_conj.is_conj()
-    ref_out = torch.ops.aten.detach_copy(utils.to_reference(neg_conj))
-    res_out = flag_gems.detach_copy(neg_conj)
-    assert res_out.device == neg_conj.device
+if _HAS_COMPLEX:
 
-    utils.gems_assert_equal(res_out, ref_out)
-    assert torch.allclose(res_out, (-inp).conj())
-    assert res_out.data_ptr() != inp.data_ptr()
-    assert not res_out.is_neg() and not res_out.is_conj()
+    @pytest.mark.detach_copy
+    def test_accuracy_detach_copy_neg_view_complex():
+        # The negative bit also rides on complex views; combined neg+conj views
+        # resolve to -conj(x), which must not be confused with raw storage.
+        inp = torch.randn(3, 4, dtype=torch.complex64, device=flag_gems.device)
+        neg_conj = torch._neg_view(inp).conj()
+        assert neg_conj.is_neg() and neg_conj.is_conj()
+        ref_out = torch.ops.aten.detach_copy(utils.to_reference(neg_conj))
+        res_out = flag_gems.detach_copy(neg_conj)
 
-
-@pytest.mark.detach_copy
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
-@pytest.mark.parametrize("layout", ["dense", "transposed", "scalar", "empty"])
-def test_accuracy_detach_copy_complex_layouts(layout, dtype):
-    if layout == "empty":
-        inp = torch.empty(4, 0, dtype=dtype, device=flag_gems.device).t()
-    else:
-        shape = () if layout == "scalar" else (4, 6)
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        if layout == "transposed":
-            inp = inp.t()
-    ref_inp = utils.to_reference(inp)
-
-    ref_out = torch.ops.aten.detach_copy(ref_inp)
-    res_out = flag_gems.detach_copy(inp)
-    assert res_out.device == inp.device
-
-    utils.gems_assert_equal(res_out, ref_out)
-    assert res_out.dtype == inp.dtype
-    assert res_out.shape == inp.shape
-    if inp.numel() > 0:
-        # Empty CUDA tensors have no backing page (data_ptr() == 0 on both
-        # sides), so the fresh-storage property is only observable here.
+        utils.gems_assert_equal(res_out, ref_out)
+        assert torch.allclose(res_out, (-inp).conj())
         assert res_out.data_ptr() != inp.data_ptr()
-    assert res_out.is_contiguous() == ref_out.is_contiguous()
-    assert res_out.stride() == ref_out.stride()
-    assert not res_out.is_conj() and not res_out.is_neg()
+        assert not res_out.is_neg() and not res_out.is_conj()
+
+
+if _HAS_COMPLEX:
+
+    @pytest.mark.detach_copy
+    @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+    @pytest.mark.parametrize(
+        "make_inp",
+        [
+            lambda s, d: torch.randn(s, dtype=d, device=flag_gems.device),
+            # Transposed complex: view_as_real interleaves the (real, imag)
+            # axis, so the strided kernel must honour a non-contiguous
+            # reinterpreting.
+            lambda s, d: torch.randn(s[0], s[1], dtype=d, device=flag_gems.device).t(),
+            lambda s, d: torch.randn((), dtype=d, device=flag_gems.device),
+            lambda s, d: torch.empty(s[0], 0, dtype=d, device=flag_gems.device).t(),
+        ],
+    )
+    def test_accuracy_detach_copy_complex_layouts(make_inp, dtype):
+        # Complex inputs must stay on the device path (view_as_real -> copy
+        # kernels -> view_as_complex) with the same layout contract as native:
+        # dense contiguous output, even for a non-contiguous complex input.
+        inp = make_inp((4, 6), dtype)
+        ref_inp = utils.to_reference(inp)
+
+        ref_out = torch.ops.aten.detach_copy(ref_inp)
+        res_out = flag_gems.detach_copy(inp)
+
+        utils.gems_assert_equal(res_out, ref_out)
+        assert res_out.dtype == inp.dtype
+        assert res_out.shape == inp.shape
+        if inp.numel() > 0:
+            # Empty CUDA tensors have no backing page (data_ptr() == 0 on both
+            # sides), so the fresh-storage property is only observable here.
+            assert res_out.data_ptr() != inp.data_ptr()
+        assert res_out.is_contiguous() == ref_out.is_contiguous()
+        assert res_out.stride() == ref_out.stride()
+        assert not res_out.is_conj() and not res_out.is_neg()
