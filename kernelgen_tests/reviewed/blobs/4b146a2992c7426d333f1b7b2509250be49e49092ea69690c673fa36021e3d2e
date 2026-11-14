@@ -1,0 +1,122 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Operator-local benchmark for ``foreach_trunc`` (task ascend-1869).
+
+The frozen kernelgen-dev file ``benchmark/test_foreach_trunc.py`` is kept as
+the skeleton -- same ``op_name="foreach_trunc"`` injection key, same
+``_case_fn`` / ``_build_inputs_fn`` pair, same
+``OperatorBenchmark``/``GenericBenchmark`` case interface (``get_case_iter`` +
+``build_inputs``, which is what ``base.Benchmark.supports_cases`` demands and
+what ``--list-cases``/``--case-id`` use), same ``consts.FLOAT_DTYPES``, same
+``is_inplace=False``/``fresh_inputs=False``.  Two confirmed defects are fixed:
+
+1.  SHAPES.  The frozen file inherited ``consts.DEFAULT_SHAPES``
+    (``benchmark/consts.py:63-69``: ``(1024**3,)``, ``(64, 64)``,
+    ``(4096, 4096)``, ``(64, 512, 512)``, ``(1024, 1024, 1024)``) because
+    ``base.Benchmark.set_shapes`` (``benchmark/base.py:235-263``) looks the
+    operator name up in ``benchmark/core_shapes.yaml``, then walks the MRO for
+    a class-name entry, and this operator had neither.  At list length 16 those
+    fallback shapes are the multi-GiB allocations the frozen skip registry
+    records as ascend ``OOM``.  Master instead routes the family through a
+    *class-name* entry: master ``benchmark/core_shapes.yaml:435-440``
+    (``ForeachUnaryBenchmark``) gives ``[256, 256]``, ``[512, 512]``,
+    ``[1024, 1024]`` with ``shape_desc`` "M, N (per tensor, list of 16)".  The
+    dev tree's ``core_shapes.yaml`` has no ``foreach_trunc`` /
+    ``ForeachUnaryBenchmark`` entry and that shared YAML is out of scope for
+    this repair, so the identical master shape list is supplied through the
+    already-supported ``OperatorBenchmark.set_shapes(default_shapes=...)`` hook
+    (``benchmark/generated_operator_utils.py:77-94``, same pattern as
+    ``benchmark/test__neg_view.py:62-64``).  The YAML lookup still wins if a
+    future shared file grows the entry, because the override passes the value
+    into that lookup instead of bypassing it.
+2.  LIST LENGTH / INPUT DISTRIBUTION.  Master's workload for the unary family
+    is ``ForeachUnaryBenchmark.LIST_LENGTH = 16`` tensors per shape, each
+    tensor filled with ``torch.randn(shape, device=..., dtype=...)`` (master
+    ``benchmark/test_foreach_unary.py:52,59-65``).  The frozen dev file used
+    ``_LIST_LENGTHS = (1, 16)`` and a seeded ``rand*0.8+0.1`` uniform fill.
+    Here the joint workload is master's (three shapes x 16 tensors) and the
+    element distribution is master's standard normal; the extra length-1 rows
+    are dropped as a recorded source-coverage decision (fixed workload is
+    master), not silently mixed with the master rows.
+
+NOT changed: the benchmark never reads ``flag_gems.foreach_trunc`` ahead of
+time -- the candidate is resolved by
+``base.Benchmark._candidate_call`` from the formal ``--override`` registry
+(``benchmark/base.py:621-642``) -- and ``torch_op`` stays the frozen
+``torch.ops.aten._foreach_trunc`` so the reference timing is the native
+operator.  No skip is added: ``benchmark/verified_case_skips.py`` keys each
+row by ``(vendor, case_id, sha256(dtype, shape, params))``, so the ascend OOM
+rows recorded against the old fallback shapes no longer match these case specs
+and the master-sized cases must execute for real.
+"""
+
+import pytest
+import torch
+
+from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+
+_ATEN_OP = torch.ops.aten._foreach_trunc
+
+# master benchmark/test_foreach_unary.py:45-52 (ForeachUnaryBenchmark) and
+# master benchmark/core_shapes.yaml:435-440.
+_MASTER_SHAPES = [(256, 256), (512, 512), (1024, 1024)]
+_MASTER_SHAPE_DESC = "M, N (per tensor, list of 16)"
+_MASTER_LIST_LENGTH = 16
+
+
+def _case_fn(shape, dtype):
+    """One plan per master shape: a TensorList of ``_MASTER_LIST_LENGTH``."""
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": [list(dims)] * _MASTER_LIST_LENGTH},
+        params={"list_length": _MASTER_LIST_LENGTH},
+        builder_args=(dims, _MASTER_LIST_LENGTH),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    """Master's input construction: ``randn`` per tensor, in input order."""
+    shape, length = plan.builder_args
+    values = [torch.randn(shape, device=device, dtype=dtype) for _ in range(length)]
+    return (values,)
+
+
+class ForeachTruncBenchmark(OperatorBenchmark):
+    """The frozen dev case interface with master's shape policy."""
+
+    DEFAULT_SHAPES = _MASTER_SHAPES
+    DEFAULT_SHAPE_DESC = _MASTER_SHAPE_DESC
+
+    def set_shapes(self, shape_file_path=None, *, default_shapes=None):
+        super().set_shapes(
+            shape_file_path, default_shapes=default_shapes or self.DEFAULT_SHAPES
+        )
+
+
+@pytest.mark.foreach_trunc
+def test_foreach_trunc_benchmark():
+    bench = ForeachTruncBenchmark(
+        op_name="foreach_trunc",
+        torch_op=_ATEN_OP,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=False,
+        fresh_inputs=False,
+    )
+    bench.run()

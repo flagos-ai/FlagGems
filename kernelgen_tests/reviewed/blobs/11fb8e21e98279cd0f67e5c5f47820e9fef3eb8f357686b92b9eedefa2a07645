@@ -1,0 +1,60 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared (preparation-only) reference for ``nested_tensor_from_mask``.
+
+Injected through the project's existing ``--override`` path in place of
+``flag_gems._nested_tensor_from_mask`` (accuracy suite) and resolved through the
+benchmark override registry under ``nested_tensor_from_mask`` (benchmark
+suite).  This is a reference-as-solution preparation tool, not an optimized
+candidate.
+
+Oracle choice: the frozen master test itself defines the expected value as
+``torch.ops.aten._nested_tensor_from_mask(ref_t, ref_mask, mask_check=...)``
+(``tests/test_nested_tensor_from_mask.py``).  The reference therefore delegates
+to that same native ATen kernel, which is the only implementation that can
+reproduce the frozen assertions on legacy (``torch.strided``) NestedTensor
+metadata (layout, ``_nested_tensor_size``, ``_nested_tensor_strides``,
+``_nested_tensor_storage_offsets``).
+
+Contract preserved:
+
+* candidate ABI of the frozen Definition (``definitions/nested_tensor_from_mask.json``):
+  ``(t, mask, mask_check=True)``, ``mask_check`` optional and defaulting to
+  ``True``; both positional and keyword calls are accepted.
+* inputs are used as given: no dtype upcast, no CPU round trip, no clone, no
+  input rewrite; the returned nested tensor stays on ``t.dtype``/``t.device``.
+* ``effects``: neither ``t`` nor ``mask`` is mutated, and the result is not an
+  alias of an input.
+* the ``mask_check=True`` rejection path is preserved verbatim: a mask with a
+  False-then-True gap raises the native ``RuntimeError`` (the frozen test
+  ``test_nested_tensor_from_mask_mask_check_raises`` asserts exactly that).
+* no import of ``flag_gems`` and no call to the operator under test, so this
+  wrapper cannot re-enter the injected/registered operator as its own oracle.
+"""
+
+import torch
+
+_ATEN_OP = torch.ops.aten._nested_tensor_from_mask
+
+
+def run(t, mask, mask_check=True):
+    """Return the legacy NestedTensor built by the native ATen reference."""
+    return _ATEN_OP(t, mask, mask_check=mask_check)
+
+
+# Aliases so an override spec without an explicit function name still resolves
+# to the same entrypoint (default func_name is the override op name).
+nested_tensor_from_mask = run
+_nested_tensor_from_mask = run

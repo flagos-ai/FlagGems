@@ -1,0 +1,54 @@
+"""Preparation-only reference solution for FlagGems ``tanh_backward`` (ascend).
+
+Injected only by the existing native protocol, at runtime, without touching the
+Gems tree:
+
+    --override tanh_backward:<this file>:run
+
+``run`` is the single declared entrypoint.  It is written against the two real
+callsites of this operator in the frozen suites, both on the incoming tensors
+device/dtype, with no upcast, no new stream, no alias and no in-place write.
+
+1. accuracy callsite -- ``tests/test_tanh.py::test_tanh_backward`` (frozen
+   master)::
+
+       res_in_grad = flag_gems.tanh_backward(res_grad, res_out)
+
+   two tensors in, gradient out.  Served here by ``torch.ops.aten.tanh_backward``,
+   i.e. exactly the oracle expression that the same frozen test uses for
+   ``ref_in_grad``, evaluated on the candidate-side tensors.
+
+2. benchmark callsite -- ``benchmark/test_tanh.py::test_tanh_backward`` builds
+   ``base.UnaryPointwiseBenchmark(op_name="tanh_backward", torch_op=torch.tanh,
+   dtypes=consts.FLOAT_DTYPES, is_backward=True)``.  For that class
+   ``Benchmark._benchmark_callable`` (benchmark/base.py) calls the candidate
+   once with the *forward* input tuple and times
+   ``torch.autograd.grad`` on its result, so the reference expression of that
+   frozen workload is ``torch.tanh`` itself and the timed kernel is aten's
+   native ``tanh_backward`` reached from autograd.  The one-tensor branch
+   reproduces that reference expression unchanged; it is the benchmark's own
+   callsite convention, not a new operator ABI.
+
+``run`` deliberately does not import ``flag_gems`` and does not call any
+FlagGems export, so it cannot re-enter an overridden/dispatched Gems operator.
+"""
+
+import torch
+
+
+def run(*args):
+    """tanh_backward reference for both frozen callsites of this operator."""
+    if len(args) == 2:
+        # accuracy: grad_output * (1 - output**2), aten's own formula.
+        grad_output, output = args
+        return torch.ops.aten.tanh_backward(grad_output, output)
+    if len(args) == 1:
+        # benchmark/test_tanh.py::test_tanh_backward (is_backward=True): the
+        # harness calls the injected callable once with the forward input and
+        # times autograd's backward, i.e. native aten tanh_backward.
+        return torch.tanh(args[0])
+    raise TypeError(
+        "tanh_backward reference expects (grad_output, output) from the "
+        "accuracy callsite or (input,) from the backward benchmark callsite; "
+        "got {} positional arguments".format(len(args))
+    )

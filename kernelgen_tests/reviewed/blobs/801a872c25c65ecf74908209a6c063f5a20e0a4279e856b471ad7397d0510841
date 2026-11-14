@@ -1,0 +1,36 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared torch oracle for not_equal (reference-as-solution phase).
+
+Semantics follow the frozen Definition ``definitions/not_equal.json``:
+``aten::not_equal.Tensor(Tensor self, Tensor other) -> Tensor`` computes the
+elementwise inequality of two broadcast-compatible tensors and returns a new
+``torch.bool`` tensor. ``effects.mutates`` and ``effects.returns_alias_of`` are
+both empty for this signature, so this oracle must not write into either
+operand and must not return one of them.
+
+The oracle is the native aten comparison, which is also the frozen master
+test's expected path, so dtype promotion, broadcasting, NaN semantics
+(NaN != NaN -> True) and the result device/dtype are exactly the aten ones.
+It deliberately imports neither ``flag_gems`` nor ``flag_gems.ops`` so the
+injected override can never re-enter the public export it replaces.
+"""
+
+import torch
+
+
+def run(self, other):
+    """Return ``not_equal(self, other)`` as a new ``torch.bool`` tensor."""
+    return torch.not_equal(self, other)

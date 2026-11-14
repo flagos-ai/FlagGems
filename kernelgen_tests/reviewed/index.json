@@ -1,0 +1,579 @@
+{
+  "format": "kernelgen.reviewed-pytest-index/v1",
+  "tasks": [
+    {
+      "task_id": "ascend-1769",
+      "platform": "ascend",
+      "operator": "embedding_bag_sparse_backward",
+      "manifest": "ascend-1769.json",
+      "definition": "_embedding_bag_sparse_backward"
+    },
+    {
+      "task_id": "ascend-2138",
+      "platform": "ascend",
+      "operator": "flatten_dense_tensors",
+      "manifest": "ascend-2138.json",
+      "definition": "flatten_dense_tensors"
+    },
+    {
+      "task_id": "ascend-1244",
+      "platform": "ascend",
+      "operator": "floor_divide_scalar",
+      "manifest": "ascend-1244.json",
+      "definition": "floor_divide"
+    },
+    {
+      "task_id": "ascend-1831",
+      "platform": "ascend",
+      "operator": "foreach_log2",
+      "manifest": "ascend-1831.json",
+      "definition": "foreach_log2"
+    },
+    {
+      "task_id": "ascend-1869",
+      "platform": "ascend",
+      "operator": "foreach_trunc",
+      "manifest": "ascend-1869.json",
+      "definition": "foreach_trunc"
+    },
+    {
+      "task_id": "ascend-2162",
+      "platform": "ascend",
+      "operator": "indices",
+      "manifest": "ascend-2162.json",
+      "definition": "indices"
+    },
+    {
+      "task_id": "ascend-969",
+      "platform": "ascend",
+      "operator": "linalg_vander",
+      "manifest": "ascend-969.json",
+      "definition": "linalg_vander"
+    },
+    {
+      "task_id": "ascend-973",
+      "platform": "ascend",
+      "operator": "mkldnn_rnn_layer",
+      "manifest": "ascend-973.json",
+      "definition": "mkldnn_rnn_layer"
+    },
+    {
+      "task_id": "ascend-2232",
+      "platform": "ascend",
+      "operator": "nanmean",
+      "manifest": "ascend-2232.json",
+      "definition": "nanmean"
+    },
+    {
+      "task_id": "ascend-875",
+      "platform": "ascend",
+      "operator": "special_bessel_j0",
+      "manifest": "ascend-875.json",
+      "definition": "special_bessel_j0"
+    },
+    {
+      "task_id": "ascend-879",
+      "platform": "ascend",
+      "operator": "special_chebyshev_polynomial_t",
+      "manifest": "ascend-879.json",
+      "definition": "special_chebyshev_polynomial_t"
+    },
+    {
+      "task_id": "ascend-885",
+      "platform": "ascend",
+      "operator": "special_hermite_polynomial_h",
+      "manifest": "ascend-885.json",
+      "definition": "special_hermite_polynomial_h"
+    },
+    {
+      "task_id": "ascend-994",
+      "platform": "ascend",
+      "operator": "special_round",
+      "manifest": "ascend-994.json",
+      "definition": "special_round"
+    },
+    {
+      "task_id": "ascend-2030",
+      "platform": "ascend",
+      "operator": "upsample_nearest_exact3d_backward",
+      "manifest": "ascend-2030.json",
+      "definition": "_upsample_nearest_exact3d_backward"
+    },
+    {
+      "task_id": "ascend-644",
+      "platform": "ascend",
+      "operator": "weight_int8pack_mm",
+      "manifest": "ascend-644.json",
+      "definition": "weight_int8pack_mm"
+    },
+    {
+      "task_id": "ascend-2084",
+      "platform": "ascend",
+      "operator": "conv_tbc",
+      "manifest": "ascend-2084.json",
+      "definition": "conv_tbc"
+    },
+    {
+      "task_id": "ascend-2086",
+      "platform": "ascend",
+      "operator": "conv_transpose3d",
+      "manifest": "ascend-2086.json",
+      "definition": "conv_transpose3d"
+    },
+    {
+      "task_id": "ascend-961",
+      "platform": "ascend",
+      "operator": "linalg_pinv",
+      "manifest": "ascend-961.json",
+      "definition": "linalg_pinv"
+    },
+    {
+      "task_id": "ascend-1351",
+      "platform": "ascend",
+      "operator": "sigmoid_backward",
+      "manifest": "ascend-1351.json",
+      "definition": "sigmoid_backward"
+    },
+    {
+      "task_id": "ascend-496",
+      "platform": "ascend",
+      "operator": "softplus_backward",
+      "manifest": "ascend-496.json",
+      "definition": "softplus_backward"
+    },
+    {
+      "task_id": "ascend-1168",
+      "platform": "ascend",
+      "operator": "all_dim",
+      "manifest": "ascend-1168.json",
+      "definition": "all_dim"
+    },
+    {
+      "task_id": "ascend-781",
+      "platform": "ascend",
+      "operator": "linalg_ldl_factor_ex",
+      "manifest": "ascend-781.json",
+      "definition": "ldl_factor_ex"
+    },
+    {
+      "task_id": "ascend-828",
+      "platform": "ascend",
+      "operator": "not_equal",
+      "manifest": "ascend-828.json",
+      "definition": "not_equal"
+    },
+    {
+      "task_id": "ascend-2341",
+      "platform": "ascend",
+      "operator": "unique_dim_consecutive",
+      "manifest": "ascend-2341.json",
+      "definition": "unique_dim_consecutive"
+    },
+    {
+      "task_id": "ascend-678",
+      "platform": "ascend",
+      "operator": "binary_cross_entropy",
+      "manifest": "ascend-678.json",
+      "definition": "binary_cross_entropy"
+    },
+    {
+      "task_id": "ascend-1883",
+      "platform": "ascend",
+      "operator": "histogramdd_from_bin_cts",
+      "manifest": "ascend-1883.json",
+      "definition": "_histogramdd_from_bin_cts"
+    },
+    {
+      "task_id": "ascend-780",
+      "platform": "ascend",
+      "operator": "linalg_inv_ex",
+      "manifest": "ascend-780.json",
+      "definition": "linalg_inv_ex"
+    },
+    {
+      "task_id": "ascend-964",
+      "platform": "ascend",
+      "operator": "linalg_solve_ex",
+      "manifest": "ascend-964.json",
+      "definition": "linalg_solve_ex"
+    },
+    {
+      "task_id": "ascend-2251",
+      "platform": "ascend",
+      "operator": "pinverse",
+      "manifest": "ascend-2251.json",
+      "definition": "pinverse"
+    },
+    {
+      "task_id": "ascend-849",
+      "platform": "ascend",
+      "operator": "renorm_",
+      "manifest": "ascend-849.json",
+      "definition": "renorm_"
+    },
+    {
+      "task_id": "ascend-856",
+      "platform": "ascend",
+      "operator": "rnn_relu",
+      "manifest": "ascend-856.json",
+      "definition": "rnn_relu"
+    },
+    {
+      "task_id": "ascend-877",
+      "platform": "ascend",
+      "operator": "special_bessel_y0",
+      "manifest": "ascend-877.json",
+      "definition": "special_bessel_y0"
+    },
+    {
+      "task_id": "ascend-631",
+      "platform": "ascend",
+      "operator": "thnn_fused_lstm_cell_backward_impl",
+      "manifest": "ascend-631.json",
+      "definition": "_thnn_fused_lstm_cell_backward_impl"
+    },
+    {
+      "task_id": "ascend-1472",
+      "platform": "ascend",
+      "operator": "true_divide",
+      "manifest": "ascend-1472.json",
+      "definition": "true_divide"
+    },
+    {
+      "task_id": "ascend-1374",
+      "platform": "ascend",
+      "operator": "tanh_backward",
+      "manifest": "ascend-1374.json",
+      "definition": "tanh_backward"
+    },
+    {
+      "task_id": "kunlun-1924",
+      "platform": "kunlun",
+      "operator": "nested_tensor_from_mask",
+      "manifest": "kunlun-1924.json",
+      "definition": "nested_tensor_from_mask"
+    },
+    {
+      "task_id": "kunlun-1572",
+      "platform": "kunlun",
+      "operator": "norm_scalar",
+      "manifest": "kunlun-1572.json",
+      "definition": "norm_scalar"
+    },
+    {
+      "task_id": "kunlun-1957",
+      "platform": "kunlun",
+      "operator": "slow_conv2d_forward",
+      "manifest": "kunlun-1957.json",
+      "definition": "_slow_conv2d_forward"
+    },
+    {
+      "task_id": "kunlun-2027",
+      "platform": "kunlun",
+      "operator": "upsample_lanczos2d_aa",
+      "manifest": "kunlun-2027.json",
+      "definition": "upsample_lanczos2d_aa"
+    },
+    {
+      "task_id": "kunlun-2602",
+      "platform": "kunlun",
+      "operator": "upsample_lanczos2d_aa_vec",
+      "manifest": "kunlun-2602.json",
+      "definition": "_upsample_lanczos2d_aa_vec"
+    },
+    {
+      "task_id": "kunlun-2030",
+      "platform": "kunlun",
+      "operator": "upsample_nearest_exact3d_backward",
+      "manifest": "kunlun-2030.json",
+      "definition": "_upsample_nearest_exact3d_backward"
+    },
+    {
+      "task_id": "kunlun-644",
+      "platform": "kunlun",
+      "operator": "weight_int8pack_mm",
+      "manifest": "kunlun-644.json",
+      "definition": "weight_int8pack_mm"
+    },
+    {
+      "task_id": "kunlun-1174",
+      "platform": "kunlun",
+      "operator": "arange_start_step",
+      "manifest": "kunlun-1174.json",
+      "definition": "arange_start_step"
+    },
+    {
+      "task_id": "kunlun-678",
+      "platform": "kunlun",
+      "operator": "binary_cross_entropy",
+      "manifest": "kunlun-678.json",
+      "definition": "binary_cross_entropy"
+    },
+    {
+      "task_id": "kunlun-1730",
+      "platform": "kunlun",
+      "operator": "cast_Byte",
+      "manifest": "kunlun-1730.json",
+      "definition": "_cast_Byte"
+    },
+    {
+      "task_id": "kunlun-721",
+      "platform": "kunlun",
+      "operator": "float_power_",
+      "manifest": "kunlun-721.json",
+      "definition": "float_power_tensor_tensor_"
+    },
+    {
+      "task_id": "kunlun-1833",
+      "platform": "kunlun",
+      "operator": "foreach_max",
+      "manifest": "kunlun-1833.json",
+      "definition": "foreach_max"
+    },
+    {
+      "task_id": "kunlun-2159",
+      "platform": "kunlun",
+      "operator": "histogramdd",
+      "manifest": "kunlun-2159.json",
+      "definition": "histogramdd"
+    },
+    {
+      "task_id": "kunlun-1374",
+      "platform": "kunlun",
+      "operator": "tanh_backward",
+      "manifest": "kunlun-1374.json",
+      "definition": "tanh_backward"
+    },
+    {
+      "task_id": "kunlun-631",
+      "platform": "kunlun",
+      "operator": "thnn_fused_lstm_cell_backward_impl",
+      "manifest": "kunlun-631.json",
+      "definition": "_thnn_fused_lstm_cell_backward_impl"
+    },
+    {
+      "task_id": "kunlun-2054",
+      "platform": "kunlun",
+      "operator": "argwhere",
+      "manifest": "kunlun-2054.json",
+      "definition": "argwhere"
+    },
+    {
+      "task_id": "kunlun-2152",
+      "platform": "kunlun",
+      "operator": "gradient",
+      "manifest": "kunlun-2152.json",
+      "definition": "gradient"
+    },
+    {
+      "task_id": "kunlun-780",
+      "platform": "kunlun",
+      "operator": "linalg_inv_ex",
+      "manifest": "kunlun-780.json",
+      "definition": "linalg_inv_ex"
+    },
+    {
+      "task_id": "kunlun-781",
+      "platform": "kunlun",
+      "operator": "linalg_ldl_factor_ex",
+      "manifest": "kunlun-781.json",
+      "definition": "ldl_factor_ex"
+    },
+    {
+      "task_id": "kunlun-2188",
+      "platform": "kunlun",
+      "operator": "linalg_polar",
+      "manifest": "kunlun-2188.json",
+      "definition": "linalg_polar"
+    },
+    {
+      "task_id": "kunlun-964",
+      "platform": "kunlun",
+      "operator": "linalg_solve_ex",
+      "manifest": "kunlun-964.json",
+      "definition": "linalg_solve_ex"
+    },
+    {
+      "task_id": "kunlun-2989",
+      "platform": "kunlun",
+      "operator": "quantized_max_pool1d_out",
+      "manifest": "kunlun-2989.json",
+      "definition": "quantized_max_pool1d_out"
+    },
+    {
+      "task_id": "kunlun-2293",
+      "platform": "kunlun",
+      "operator": "slogdet",
+      "manifest": "kunlun-2293.json",
+      "definition": "slogdet"
+    },
+    {
+      "task_id": "musa-994",
+      "platform": "musa",
+      "operator": "special_round",
+      "manifest": "musa-994.json",
+      "definition": "special_round"
+    },
+    {
+      "task_id": "musa-2030",
+      "platform": "musa",
+      "operator": "upsample_nearest_exact3d_backward",
+      "manifest": "musa-2030.json",
+      "definition": "_upsample_nearest_exact3d_backward"
+    },
+    {
+      "task_id": "musa-2049",
+      "platform": "musa",
+      "operator": "adaptive_max_pool1d",
+      "manifest": "musa-2049.json",
+      "definition": "adaptive_max_pool1d"
+    },
+    {
+      "task_id": "musa-1833",
+      "platform": "musa",
+      "operator": "foreach_max",
+      "manifest": "musa-1833.json",
+      "definition": "foreach_max"
+    },
+    {
+      "task_id": "musa-1883",
+      "platform": "musa",
+      "operator": "histogramdd_from_bin_cts",
+      "manifest": "musa-1883.json",
+      "definition": "_histogramdd_from_bin_cts"
+    },
+    {
+      "task_id": "musa-801",
+      "platform": "musa",
+      "operator": "lstm",
+      "manifest": "musa-801.json",
+      "definition": "lstm"
+    },
+    {
+      "task_id": "musa-1296",
+      "platform": "musa",
+      "operator": "max_pool2d_with_indices",
+      "manifest": "musa-1296.json",
+      "definition": "max_pool2d_with_indices"
+    },
+    {
+      "task_id": "musa-828",
+      "platform": "musa",
+      "operator": "not_equal",
+      "manifest": "musa-828.json",
+      "definition": "not_equal"
+    },
+    {
+      "task_id": "musa-1472",
+      "platform": "musa",
+      "operator": "true_divide",
+      "manifest": "musa-1472.json",
+      "definition": "true_divide"
+    },
+    {
+      "task_id": "musa-635",
+      "platform": "musa",
+      "operator": "unsafe_masked_index_put_accumulate",
+      "manifest": "musa-635.json",
+      "definition": "unsafe_masked_index_put_accumulate"
+    },
+    {
+      "task_id": "musa-1173",
+      "platform": "musa",
+      "operator": "arange_start",
+      "manifest": "musa-1173.json",
+      "definition": "arange_start"
+    },
+    {
+      "task_id": "musa-1174",
+      "platform": "musa",
+      "operator": "arange_start_step",
+      "manifest": "musa-1174.json",
+      "definition": "arange_start_step"
+    },
+    {
+      "task_id": "musa-678",
+      "platform": "musa",
+      "operator": "binary_cross_entropy",
+      "manifest": "musa-678.json",
+      "definition": "binary_cross_entropy"
+    },
+    {
+      "task_id": "musa-1730",
+      "platform": "musa",
+      "operator": "cast_Byte",
+      "manifest": "musa-1730.json",
+      "definition": "_cast_Byte"
+    },
+    {
+      "task_id": "musa-780",
+      "platform": "musa",
+      "operator": "linalg_inv_ex",
+      "manifest": "musa-780.json",
+      "definition": "linalg_inv_ex"
+    },
+    {
+      "task_id": "musa-964",
+      "platform": "musa",
+      "operator": "linalg_solve_ex",
+      "manifest": "musa-964.json",
+      "definition": "linalg_solve_ex"
+    },
+    {
+      "task_id": "musa-840",
+      "platform": "musa",
+      "operator": "quantized_lstm",
+      "manifest": "musa-840.json",
+      "definition": "quantized_lstm"
+    },
+    {
+      "task_id": "musa-849",
+      "platform": "musa",
+      "operator": "renorm_",
+      "manifest": "musa-849.json",
+      "definition": "renorm_"
+    },
+    {
+      "task_id": "hygon-2246",
+      "platform": "hygon",
+      "operator": "nuclear_norm",
+      "manifest": "hygon-2246.json",
+      "definition": "nuclear_norm"
+    },
+    {
+      "task_id": "hygon-849",
+      "platform": "hygon",
+      "operator": "renorm_",
+      "manifest": "hygon-849.json",
+      "definition": "renorm_"
+    },
+    {
+      "task_id": "hygon-877",
+      "platform": "hygon",
+      "operator": "special_bessel_y0",
+      "manifest": "hygon-877.json",
+      "definition": "special_bessel_y0"
+    },
+    {
+      "task_id": "hygon-631",
+      "platform": "hygon",
+      "operator": "thnn_fused_lstm_cell_backward_impl",
+      "manifest": "hygon-631.json",
+      "definition": "_thnn_fused_lstm_cell_backward_impl"
+    },
+    {
+      "task_id": "hygon-2341",
+      "platform": "hygon",
+      "operator": "unique_dim_consecutive",
+      "manifest": "hygon-2341.json",
+      "definition": "unique_dim_consecutive"
+    },
+    {
+      "task_id": "kunlun-1173",
+      "platform": "kunlun",
+      "operator": "arange_start",
+      "manifest": "kunlun-1173.json",
+      "definition": "arange_start"
+    }
+  ]
+}

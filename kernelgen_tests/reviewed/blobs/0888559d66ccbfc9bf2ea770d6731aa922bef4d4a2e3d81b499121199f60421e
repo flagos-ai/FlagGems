@@ -1,0 +1,86 @@
+"""Prepared FlagGems accuracy test for ``linalg_ldl_factor_ex`` (forward).
+
+Provenance
+----------
+* Workload, marker, parametrization order, input construction, oracle and all
+  three numerical assertions are the frozen master file
+  ``evidence/master/tests/test_linalg_ldl_factor_ex.py`` carried verbatim
+  (4 square float32 shapes, ``A @ A.mT + 0.1 * eye(n)``, ``to_reference``,
+  ``gems_assert_close`` for LD and ``gems_assert_equal`` for pivots/info).
+* The candidate-observable ABI / no-mutation / no-alias assertions are the
+  frozen dev ones from ``evidence/kernelgen-dev/tests/test_linalg_ldl_factor_ex.py``
+  (``len(res_out) == 3``; LD/pivots/info shape, dtype and device; three
+  distinct storages, none of them the input storage; ``torch.equal(A,
+  original_input)``).  ``definitions/ldl_factor_ex.json`` freezes
+  ``mutates = []`` and ``returns_alias_of = {}``, so dropping these assertions
+  would turn frozen Definition clauses into *unverified* statements; a
+  torch-owned oracle returning fresh tensors is not evidence about the
+  candidate's ABI.  They therefore stay, ahead of the numerical helpers, so a
+  ``--ref cpu`` run cannot mask them by moving tensors first.
+* Not carried from the dev file: the ``thead``/``mthreads`` CPU-reference and
+  CPU-comparison detours and the ``_reference_ldl_factor_ex`` helper import
+  from the shared family module ``tests/test_linalg_ldl_factor.py``.  Those
+  exist because the MUSA/PPU builds lack SYTRF/LAPACK; on Kunlunxin the frozen
+  master oracle ``torch.linalg.ldl_factor_ex(ref_A)`` with the default
+  (device) ``--ref`` is the same call, so the master oracle is preserved and
+  this file stays operator-local (no shared-family dependency).
+
+Direction: forward only.  The schema has no gradient/backward operands, the
+operator name carries no ``_backward`` suffix, and no test here exercises an
+autograd or backward path.  ``ldl_factor_ex`` (this operator) and
+``ldl_factor`` (the separate ``aten::linalg_ldl_factor`` op covered by
+``tests/test_linalg_ldl_factor.py``) are not interchangeable.
+"""
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+# Worktree test uses square matrices for LDL factorization.
+LDLD_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
+# PyTorch linalg_ldl_factor_ex only supports float32 on CUDA.
+LDLD_DTYPES = [torch.float32]
+
+
+@pytest.mark.linalg_ldl_factor_ex
+@pytest.mark.parametrize("shape", LDLD_SHAPES)
+@pytest.mark.parametrize("dtype", LDLD_DTYPES)
+def test_linalg_ldl_factor_ex(shape, dtype):
+    # LDL factorization requires symmetric positive definite matrices
+    # Create a random matrix and make it symmetric positive definite
+    n = shape[-1]
+    A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Make it symmetric: A = A @ A^T + small diagonal for numerical stability
+    A = A @ A.mT + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+
+    ref_A = utils.to_reference(A)
+    original_input = A.clone()
+
+    ref_out = torch.linalg.ldl_factor_ex(ref_A)
+    res_out = flag_gems.ldl_factor_ex(A)
+
+    # Frozen candidate ABI (LD, pivots, info) before any helper can move
+    # tensors: structure, per-output shape/dtype/device, no input aliasing,
+    # three distinct fresh outputs and an unmodified input.
+    assert len(res_out) == 3
+    for result, expected_shape, expected_dtype in zip(
+        res_out,
+        (A.shape, A.shape[:-1], A.shape[:-2]),
+        (dtype, torch.int32, torch.int32),
+    ):
+        assert result.device == A.device
+        assert result.dtype == expected_dtype
+        assert result.shape == expected_shape
+        assert result.untyped_storage()._cdata != A.untyped_storage()._cdata
+    assert len({result.untyped_storage()._cdata for result in res_out}) == 3
+    assert torch.equal(A, original_input)
+
+    # Compare LD matrices
+    utils.gems_assert_close(res_out[0], ref_out[0], dtype)
+    # Compare pivots
+    utils.gems_assert_equal(res_out[1], ref_out[1])
+    # Compare info (should be 0 for successful factorization)
+    utils.gems_assert_equal(res_out[2], ref_out[2])

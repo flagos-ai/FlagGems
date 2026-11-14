@@ -1,0 +1,137 @@
+"""Prepared reference solution for the ``vec`` overload of
+``_upsample_lanczos2d_aa`` (antialiased Lanczos3 2-D resampling).
+
+The pinned PyTorch build has no native Lanczos schema, so the oracle is a pure
+PyTorch composition.  It is arithmetically identical to the oracle used by
+``tests/test_upsample_lanczos2d_aa.py``: same coordinate mapping, same
+normalised Lanczos3 weights, same per-pass cast back to the input dtype and the
+same uint8 rounding/clamping.  It deliberately does not import ``flag_gems`` or
+the candidate module, so it cannot re-enter the implementation under test.
+
+The only evaluation difference is that the two separable passes are computed in
+blocks along their non-reduced axes instead of materialising the full broadcast
+intermediate ``(n, c, h, out_w, in_w)``.  Each output element is still produced
+by the same ``multiply then sum over the reduced axis`` expression, so the
+per-element arithmetic (and therefore the accuracy-suite comparison) is
+unchanged while the benchmark shapes stay within bounded temporary memory.
+"""
+
+import math
+
+import torch
+
+# Upper bound on the elements of one temporary block (~64 MiB in float32).
+_MAX_BLOCK_ELEMENTS = 1 << 24
+
+
+def _coordinate_scale(input_size, output_size, align_corners, explicit_scale):
+    """Reciprocal source-coordinate scale used by the reference kernel."""
+    if align_corners:
+        return (input_size - 1) / (output_size - 1) if output_size > 1 else 0.0
+    if explicit_scale is not None and explicit_scale > 0:
+        return 1.0 / explicit_scale
+    return input_size / output_size
+
+
+def _weight_matrix(input_size, output_size, align_corners, explicit_scale, dtype):
+    """Normalised Lanczos3 tap matrix of shape ``(output_size, input_size)``."""
+    scale = _coordinate_scale(input_size, output_size, align_corners, explicit_scale)
+    support = 3.0 * scale if scale >= 1.0 else 3.0
+    invscale = 1.0 / scale if scale >= 1.0 else 1.0
+    output_index = torch.arange(output_size, dtype=dtype)
+    input_index = torch.arange(input_size, dtype=dtype)
+    center = scale * (output_index + 0.5)
+    index_min = (center - support + 0.5).to(torch.int64).clamp_min(0)
+    index_max = (center + support + 0.5).to(torch.int64).clamp_max(input_size)
+    distance = (input_index[None, :] - center[:, None] + 0.5) * invscale
+    abs_distance = distance.abs()
+    pix = math.pi * distance
+    sinc = torch.where(abs_distance == 0, 1.0, torch.sin(pix) / pix)
+    sinc_three = torch.where(
+        abs_distance == 0, 1.0, torch.sin(pix / 3.0) / (pix / 3.0)
+    )
+    valid = (
+        (input_index[None, :] >= index_min[:, None])
+        & (input_index[None, :] < index_max[:, None])
+        & (abs_distance < 3.0)
+    )
+    weights = torch.where(valid, sinc * sinc_three, 0.0)
+    return weights / weights.sum(dim=1, keepdim=True)
+
+
+def _restore_dtype(value, dtype):
+    """Intermediate/final cast performed by the reference between passes."""
+    if dtype == torch.uint8:
+        return value.round().clamp(0, 255).to(torch.uint8)
+    return value.to(dtype)
+
+
+def _horizontal_pass(input, weights_w, opmath_dtype):
+    """Reduce the width axis: ``(n, c, h, w) -> (n, c, h, out_w)``."""
+    n, c, h, w = input.shape
+    out_w = weights_w.shape[0]
+    rows = n * c * h
+    if rows == 0 or w == 0 or out_w == 0:
+        return input.new_empty((n, c, h, out_w))
+    flat = input.to(opmath_dtype).reshape(rows, w)
+    block_rows = max(1, _MAX_BLOCK_ELEMENTS // max(1, out_w * w))
+    pieces = []
+    for start in range(0, rows, block_rows):
+        block = flat[start : start + block_rows]
+        pieces.append(
+            (block.unsqueeze(-2) * weights_w.view(1, out_w, -1)).sum(dim=-1)
+        )
+    value = torch.cat(pieces, dim=0) if len(pieces) > 1 else pieces[0]
+    return _restore_dtype(value, input.dtype).reshape(n, c, h, out_w)
+
+
+def _vertical_pass(value, weights_h, opmath_dtype):
+    """Reduce the height axis: ``(n, c, h, out_w) -> (n, c, out_h, out_w)``."""
+    n, c, h, out_w = value.shape
+    out_h = weights_h.shape[0]
+    planes = n * c
+    if planes == 0 or h == 0 or out_h == 0:
+        return value.new_empty((n, c, out_h, out_w))
+    flat = value.to(opmath_dtype).reshape(planes, h, out_w)
+    block_planes = max(1, _MAX_BLOCK_ELEMENTS // max(1, out_h * h * out_w))
+    pieces = []
+    for start in range(0, planes, block_planes):
+        block = flat[start : start + block_planes]
+        pieces.append(
+            (block.unsqueeze(1) * weights_h.view(1, out_h, h, 1)).sum(dim=2)
+        )
+    result = torch.cat(pieces, dim=0) if len(pieces) > 1 else pieces[0]
+    return _restore_dtype(result, value.dtype).reshape(n, c, out_h, out_w)
+
+
+def run(input, output_size=None, align_corners=False, scale_factors=None):
+    """Return the antialiased Lanczos3 2-D resampling of ``input``.
+
+    Exactly one of ``output_size`` and ``scale_factors`` must be given; the
+    other must be ``None``.  The result is a new tensor on the input device
+    with the input dtype; ``input`` is never modified or aliased.
+    """
+    if (output_size is None) == (scale_factors is None):
+        raise RuntimeError("Must specify exactly one of output_size and scale_factors")
+
+    if output_size is not None:
+        output_h, output_w = int(output_size[0]), int(output_size[1])
+        scales_h = scales_w = None
+    else:
+        if len(scale_factors) != 2:
+            raise RuntimeError("scale_factors must have two elements")
+        scales_h = float(scale_factors[0])
+        scales_w = float(scale_factors[1])
+        output_h = int(input.shape[-2] * scales_h)
+        output_w = int(input.shape[-1] * scales_w)
+
+    input_h, input_w = int(input.shape[-2]), int(input.shape[-1])
+    opmath_dtype = torch.float64 if input.dtype == torch.float64 else torch.float32
+    weights_w = _weight_matrix(
+        input_w, output_w, align_corners, scales_w, opmath_dtype
+    ).to(input.device)
+    weights_h = _weight_matrix(
+        input_h, output_h, align_corners, scales_h, opmath_dtype
+    ).to(input.device)
+    value = _horizontal_pass(input, weights_w, opmath_dtype)
+    return _vertical_pass(value, weights_h, opmath_dtype)

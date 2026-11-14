@@ -1,0 +1,27 @@
+"""Preparation-only reference for aten::special_bessel_y0 (operator_id 877).
+
+Exported entrypoint: ``run``.
+
+ABI is the one the frozen suites actually use:
+
+* accuracy  -> ``flag_gems.special_bessel_y0(inp)``          (one positional tensor)
+* benchmark -> ``op(*args)`` for the single built input tuple  (one positional tensor)
+
+The wrapper evaluates the native ATen oracle on the received tensor. It never
+imports ``flag_gems`` and never calls ``flag_gems.special_bessel_y0``, so it
+cannot re-enter the export that ``--override special_bessel_y0:<file>:run``
+replaces (no candidate-as-oracle, no recursion).
+
+Contract preserved from the native op / frozen Definition:
+  * dtype, device and shape of the input are preserved in the output;
+  * out-of-place: ``effects.mutates == []`` (the input tensor is not written);
+  * fresh tensor: ``effects.returns_alias_of == {}`` (no storage alias);
+  * defined boundary values of the native kernel are inherited unchanged
+    (x == 0 -> -inf, x < 0 -> nan, nan propagates).
+"""
+
+import torch
+
+
+def run(x):
+    return torch.special.bessel_y0(x)

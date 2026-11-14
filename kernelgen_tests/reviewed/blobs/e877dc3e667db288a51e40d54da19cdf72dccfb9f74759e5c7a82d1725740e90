@@ -1,0 +1,46 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference solution for the in-place ``renorm_`` operator (operator 849).
+
+Frozen Definition ``aten::renorm_(Tensor(a!) self, Scalar p, int dim,
+Scalar maxnorm) -> Tensor(a!)``:
+``effects.mutates == ["self"]`` and ``effects.returns_alias_of == {"out": "self"}``,
+so the callable must renormalize the caller's storage in place and return the
+very same Tensor object (no new storage, no copy-out).
+
+The oracle delegates to the native ATen kernel that the frozen master tests
+already use on their expected side.  It imports no FlagGems module and never
+looks up ``flag_gems.renorm_``, so the injected candidate can never serve as its
+own oracle.
+"""
+
+import torch
+
+__all__ = ["run", "renorm_"]
+
+
+def run(self, p, dim, maxnorm):
+    """Renormalize ``self`` along ``dim`` in place and return the same tensor."""
+    torch.ops.aten.renorm_(self, p, dim, maxnorm)
+    # ``aten.renorm_`` writes into ``self`` and returns it; returning the input
+    # object explicitly keeps the frozen alias/identity contract observable
+    # (``res is inp`` and an unchanged ``data_ptr()``).
+    return self
+
+
+# Same callable under the operator name: an override spec that omits the
+# explicit function name (``renorm_:<file>``) then still resolves to this
+# implementation, whose code object name stays the declared entrypoint ``run``.
+renorm_ = run

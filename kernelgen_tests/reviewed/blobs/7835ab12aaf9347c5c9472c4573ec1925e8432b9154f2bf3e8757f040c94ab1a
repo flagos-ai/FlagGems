@@ -1,0 +1,66 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-phase reference solution for ``pinverse`` (``aten::pinverse``).
+
+Numeric oracle
+--------------
+``torch.pinverse(inp, rcond=rcond)`` on the caller's own tensor: same device,
+same dtype, no CPU round trip.  This is exactly the oracle the frozen suites
+compare against (``tests/test_pinverse.py`` -> ``_reference_pinverse`` and the
+benchmark's ``torch_op``), so the injected solution and the expected side stay
+one and the same ATen contract instead of two approximations.  The module never
+imports or calls ``flag_gems.pinverse``, so it cannot re-enter the injected
+candidate nor recurse through the replaced public export.
+
+Frozen input contract (not new semantics)
+-----------------------------------------
+The rejection branches reproduce the input contract that ``definitions/pinverse.json``
+and the frozen suite assert on the candidate entry point:
+
+* rank < 2                         -> ``RuntimeError``   (``test_pinverse_invalid_input``)
+* non-float32 / non-accelerator    -> ``NotImplementedError`` (same case; it is a
+  ``RuntimeError`` subclass, which is why ``pytest.raises(RuntimeError)`` also
+  covers the float16/float64/complex64 rows)
+* ``requires_grad``                -> ``NotImplementedError`` matching "autograd"
+* negative ``rcond``               -> ``NotImplementedError`` matching "negative rcond"
+
+Order matches the frozen operation so a case that is rejected today is rejected
+for the same reason.  ``mutates``/``returns_alias_of`` stay empty: ``torch.pinverse``
+returns a fresh tensor and leaves ``inp`` untouched, and it returns a contiguous
+result whose shape is ``(*inp.shape[:-2], inp.shape[-1], inp.shape[-2])``.
+"""
+
+import torch
+
+DEFAULT_RCOND = 1e-15
+
+
+def run(inp, rcond=DEFAULT_RCOND):
+    """Return the Moore-Penrose pseudoinverse of ``inp``."""
+    if inp.ndim < 2:
+        raise RuntimeError("pinverse: expected a tensor with at least 2 dimensions")
+    if inp.device.type == "cpu" or inp.dtype != torch.float32:
+        raise NotImplementedError(
+            "FlagGems pinverse currently supports only float32 accelerator tensors"
+        )
+    if inp.requires_grad:
+        raise NotImplementedError(
+            "FlagGems pinverse does not yet support autograd inputs"
+        )
+    if rcond < 0.0:
+        raise NotImplementedError(
+            "FlagGems pinverse does not yet support negative rcond values"
+        )
+    return torch.pinverse(inp, rcond=rcond)

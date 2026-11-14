@@ -1,0 +1,33 @@
+"""Prepared reference oracle for FlagGems linalg_solve_ex (operator 964, musa).
+
+Frozen oracle used by the master correctness suite: master
+``tests/test_linalg_solve_ex.py:60-66`` computes its expected values with
+``torch.linalg.solve_ex(ref_A, ref_B)`` on the reference-side operands and then
+compares the candidate tuple with ``utils.gems_assert_close(res_out, ref_out,
+dtype)`` plus ``torch.equal(res_info, ref_info.to(res_info.device))``.  The same
+native operator is the reference timer of the master benchmark (``torch_op=
+torch.linalg.solve_ex`` at ``benchmark/test_linalg_solve_ex.py:66``).
+
+This wrapper therefore returns exactly that native ATen result.  It imports no
+``flag_gems`` symbol and never calls ``flag_gems.linalg_solve_ex``, so it cannot
+recurse into the export that the formal ``--override`` injection rebinds
+(``src/flag_gems/dynamic_registry.py:61-101,260-301`` does a module ``setattr``).
+
+Frozen ABI (definitions/linalg_solve_ex.json, api_version v6.0):
+
+    aten::linalg_solve_ex(Tensor A, Tensor B, *, bool left=True,
+                          bool check_errors=False) -> (Tensor result, Tensor info)
+
+``result`` keeps A/B dtype and device, ``info`` is int32 with A's batch shape,
+neither input is mutated or aliased, and no output aliases an input
+(effects: mutates=[], returns_alias_of={}).  ``left``/``check_errors`` stay
+keyword-only with their schema defaults, exactly as declared.
+"""
+
+import torch
+
+
+def run(A, B, *, left=True, check_errors=False):
+    """Solve AX = B (or XA = B for left=False) with the native ATen oracle."""
+    result, info = torch.linalg.solve_ex(A, B, left=left, check_errors=check_errors)
+    return result, info

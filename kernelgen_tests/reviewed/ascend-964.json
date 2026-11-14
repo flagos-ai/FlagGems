@@ -1,0 +1,148 @@
+{
+  "format": "kernelgen.reviewed-pytest/v1",
+  "task_id": "ascend-964",
+  "operator_id": 964,
+  "operator": "linalg_solve_ex",
+  "platform": "ascend",
+  "pass_count": 3,
+  "master_commit": "7d14d8ffc94c1eb31c968b3fb9767210c84690f0",
+  "base_commit": "a999343317b74835a37c4b935c5f82f39c3f3c96",
+  "files": {
+    "benchmark/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "benchmark/base.py": "b3b04ca311790f812e7b0c54e3bb4adf42322c20739214f1d9399453869049d8",
+    "benchmark/baseline.py": "064333ebb10749786c976c8f6e278b032e1bb7f0030fd2e458867d7765445dda",
+    "benchmark/benchmark_for_models.py": "98b5c5b97c68361f547b543f3b38ff4368d26497831ccc5408a9a6ba1fad07a5",
+    "benchmark/cases.py": "8dbcf48ee8fa821869c98fc5d99fe147894e1ea034218df0cf61a425e408dca6",
+    "benchmark/conftest.py": "37e285f401dfd6888e2b05bae06390bc2721bf9af211c1b2d327e1552ece4ce3",
+    "benchmark/consts.py": "7ef1bbbd3250023dac499bf1a0463b7e4aa154b75423301cfb32113d096ce426",
+    "benchmark/core_shapes.yaml": "b64f877d2f97d529a6607d17861d16f5fe99b6aa61936706594a52bc0c2a4d10",
+    "benchmark/generated_operator_utils.py": "ba10830841e14f4bc59460a3dd59eab51a00ada5a0e1593299ff092f00fcedd5",
+    "benchmark/models_benchmark/backend_request_func.py": "858add053461669eef950b56ecce3f4f565c62a7164aebd43819fb7cc76c83fd",
+    "benchmark/models_benchmark/benchmark_dataset.py": "6b6e4c1706f0f6a145afabcb20ba6aef368370685efee8bbfa3327ede851e8a0",
+    "benchmark/models_benchmark/benchmark_serving.py": "fc9766ab89bcc2492925235c6994aa6dc040b997c94a39e2fb3184f0e3dd5a5a",
+    "benchmark/models_benchmark/benchmark_throughput.py": "c7b395cd5f3caa6ac3bb570fa2396838d97aa5f04a0334982faba700050804d7",
+    "benchmark/models_benchmark/benchmark_utils.py": "abf0ec4eec46ace531cb63437c3d86695cf84d9a88dc203244b278da68fcd5de",
+    "benchmark/models_shapes/qwen25.yaml": "a36f850bca80714b20c370729a9bf1a1cef35357cfefa1428f791577498cc221",
+    "benchmark/profile_hook.py": "8c51f4fd29ed0aa5ca76da52146c44b1b287be8bf805adc6266c3d249266a66b",
+    "benchmark/reference.py": "c4694289c7da82a81e73b3b7f984ddae014437b197342fd8bb308d7b081fc645",
+    "benchmark/summary_for_plot.py": "0f909fff6d2bc8cdf62d418824a66f97b38a27dcc67df5647b419cf97dbd6d37",
+    "benchmark/test_linalg_solve_ex.py": "894c1655d927690a387dfa3d1d212002dd37a21f43e3f5d6ccd4596e2c068d3c",
+    "benchmark/utils.py": "2fa295e0f5d02e000d9e30967354cc663011de77366dd469feb8ddee7395a4a5",
+    "benchmark/verified_case_skips.json": "1b40aaa266d8f010ee68c568e8ef74236244dd1bb2602fb160a623b190b96183",
+    "benchmark/verified_case_skips.py": "7ebd29086b9d5a3c39b451d9872ec62726407b119d9d1b3de3173cfbb8fb5d2a",
+    "pytest.ini": "8875a0ccc8f78e19f3fc51a91ea47d1c04d64352b920cdca0c25957805965d43",
+    "tests/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "tests/accuracy_utils.py": "ab545c63f2d21ec15c08d1649e365eee465fba4d1836c610f159586d6b80669e",
+    "tests/conftest.py": "efefb4c0f56474a96f629fefc8aed66b0cfdc4729d63d2a7aa9a64a2faa705c2",
+    "tests/flagtune/__init__.py": "f56920a4e2903e8ea45765ac2a49387c4771b734b45e93f2b8ba7de1b5693cc2",
+    "tests/gru_cpu_reference.py": "45004eb28288499c8e3ceda76c8b72476306fa20c8db2b095ab97cbbc0503372",
+    "tests/ks_tests.py": "e789b74b5916d0e20f5986924dbc6072f792c05d35b9171645ea4d46b22afe38",
+    "tests/test_DSA/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "tests/test_DSA/torch_src/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "tests/test_DSA/torch_src/fp8_lighting_indexer.py": "43a57336b522161a4f84ffe27165569d6e75e2fdf857b94ab2898c233f2736ad",
+    "tests/test_DSA/torch_src/sparse_mla_fwd.py": "2bd4c770388ade84ac10feb4cdc6d0ac6d5709dd1eda7d1ec48bf1739c3bbafa",
+    "tests/test_DSA/utils.py": "b209e6d270c79270799bbda257f04545540c4fe6df6cf2886669f71b4e27a755",
+    "tests/test_linalg_solve_ex.py": "c05686a0ee2e316c01a031efb6ee172f60566c724a0776cb4136f700f1f213de"
+  },
+  "reference_sha256": "4260a9966022aedea8f84052f31051a906511b51b191b18313cd31e7e6fdd9a1",
+  "definition": {
+    "api_version": "v6.0",
+    "name": "linalg_solve_ex",
+    "requires_triton_kernel": true,
+    "description": "Representative ATen schema: aten::linalg_solve_ex(Tensor A, Tensor B, *, bool left=True, bool check_errors=False) -> (Tensor result, Tensor info). Solves AX=B and returns the differentiable solution plus an int32 status tensor without mutating or aliasing A or B. Coverage includes unbatched and batched systems, broadcast batches, empty batches, singular error checking, output metadata, explicit storage non-aliasing, gradients for both A and B, invalid shapes and dtypes, and the current kernel's explicit left=False rejection contract.",
+    "parameters": [
+      {
+        "name": "A",
+        "kind": "positional_or_keyword",
+        "required": true,
+        "type_hint": "Tensor"
+      },
+      {
+        "name": "B",
+        "kind": "positional_or_keyword",
+        "required": true,
+        "type_hint": "Tensor"
+      },
+      {
+        "name": "left",
+        "kind": "keyword_only",
+        "required": false,
+        "default": true,
+        "type_hint": "bool"
+      },
+      {
+        "name": "check_errors",
+        "kind": "keyword_only",
+        "required": false,
+        "default": false,
+        "type_hint": "bool"
+      }
+    ],
+    "outputs": [
+      "result",
+      "info"
+    ],
+    "effects": {
+      "mutates": [],
+      "returns_alias_of": {}
+    }
+  },
+  "definition_origin": {
+    "kind": "published",
+    "file": "definitions/linalg_solve_ex.json"
+  },
+  "definition_errors": [],
+  "suites": {
+    "tests": [
+      "tests/test_linalg_solve_ex.py"
+    ],
+    "benchmark": [
+      "benchmark/test_linalg_solve_ex.py"
+    ]
+  },
+  "markers": {
+    "accuracy": "linalg_solve_ex",
+    "benchmark": "linalg_solve_ex"
+  },
+  "override_keys": {
+    "accuracy": "linalg_solve_ex",
+    "benchmark": "linalg_solve_ex"
+  },
+  "entrypoint": "run",
+  "benchmark_file": "benchmark/base.py",
+  "review": {
+    "accuracy": {
+      "status": "READY",
+      "exit_code": 0,
+      "passed_calls": 28,
+      "observer_sha256": "a0f64458b5d3751b00b402645ba091c7741f0e486fb416bbb8a38c3c087ec5f2",
+      "packages": {
+        "pytest": "9.0.3",
+        "torch": "2.9.0+cpu",
+        "triton": null,
+        "flagtree": "0.6.0+ascend.gitc286cba6",
+        "torch-npu": "2.9.0.post2",
+        "torch-musa": null
+      },
+      "report_sha256": "925b8761e64f6e39739c32eea08f1890c3c66bdad5de2de4044a2102d5b7afea"
+    },
+    "benchmark": {
+      "status": "READY",
+      "exit_code": 0,
+      "passed_calls": 1,
+      "observer_sha256": "a0f64458b5d3751b00b402645ba091c7741f0e486fb416bbb8a38c3c087ec5f2",
+      "packages": {
+        "pytest": "9.0.3",
+        "torch": "2.9.0+cpu",
+        "triton": null,
+        "flagtree": "0.6.0+ascend.gitc286cba6",
+        "torch-npu": "2.9.0.post2",
+        "torch-musa": null
+      },
+      "report_sha256": "e32561a13b1eb7330d0d95667e9297464e1afcd499f68f7f6fd66cc14faf338c"
+    }
+  },
+  "source_acceptance": "user_selected_launch_trial_after_v24_audit_and_interface_review",
+  "optimization_readiness": "NOT_RUN",
+  "notes": "Review reference is not an optimization seed. Runtime reference/injection readiness remains required."
+}

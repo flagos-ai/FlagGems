@@ -1,0 +1,50 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference solution for ``aten::softplus_backward``.
+
+The declared entrypoint ``run`` mirrors the operator ABI that both frozen
+callsites actually use:
+
+    run(grad_output, self, beta, threshold) -> grad_input
+
+* accuracy (prepared/tests/test_softplus.py, line 117-119):
+  ``flag_gems.softplus_backward(grad, inp, beta=beta, threshold=threshold)``
+* benchmark (prepared/benchmark/test_softplus_backward.py, builds
+  ``(grad_output, self, 1.5, 20.0)`` and times the injected callable)
+
+The frozen Definition (definitions/softplus_backward.json) declares
+``grad_output``/``self`` as Tensors, ``beta``/``threshold`` as float Scalars,
+one output ``grad_input``, ``mutates: []`` and ``returns_alias_of: {}``. The
+native aten operator already satisfies that contract: it is out-of-place,
+returns a fresh dense tensor with the shape/dtype/device of ``self``, and
+leaves both inputs untouched. So the wrap returns the aten result directly
+(no ``clone``/``contiguous`` re-encoding, no in-place reuse of an input
+buffer) and does not touch either operand.
+
+This module imports only ``torch`` and calls the native aten kernel, never the
+FlagGems candidate that is being replaced, so injecting it as the candidate
+cannot recurse into itself and it is not its own oracle.
+"""
+
+import torch
+
+
+def run(grad_output, self, beta, threshold):
+    return torch.ops.aten.softplus_backward(
+        grad_output,
+        self,
+        beta=beta,
+        threshold=threshold,
+    )

@@ -1,0 +1,136 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Master ``foreach_max`` accuracy cases that the frozen dev file does not carry.
+
+Provenance (master tree, cases preserved verbatim except for the callsite):
+
+* ``tests/test_foreach_ops.py::test_accuracy_foreach_ops[_foreach_max-<dtype>]``
+  -- three shapes ``[(16, 8), (7,), (2, 3, 4)]``, master's ``_sample``
+  (``torch.rand(...) + 1.0``), ``FLOAT_DTYPES = [float16, float32, bfloat16]``,
+  ``_compare`` = same length + same shape + ``gems_assert_close(got, want, dtype)``.
+* ``tests/test_foreach_ops.py::test_accuracy_foreach_max_large_values``
+  -- fp64 values beyond the exact fp32 range and int64 values above ``2**53``;
+  the result must keep the input dtype and must not round through fp32.
+* ``tests/test_foreach_reduction_large.py::test_large_foreach_reduction_on_device[max]``
+  -- two 131072-element fp32 tensors, CPU ATen reference, ``rtol=1e-4``,
+  ``atol=1e-5``.
+
+Only the callsite is adapted.  Master reaches the wrapper through
+``flag_gems.ops._foreach_reduction.registered_wrappers()`` (``_gems("_foreach_max")``)
+or through ``flag_gems._foreach_max``; neither exists on the frozen tree, whose
+``src/flag_gems/ops/`` has no ``_foreach_binary`` / ``_foreach_reduction`` module at
+all.  The public export declared by ``definitions/foreach_max.json`` and used by
+the frozen dev test and by the formal ``--override foreach_max:<file>:run``
+injection is ``flag_gems.foreach_max``, which is what these cases call.  Oracles
+(ATen via ``to_reference`` / CPU ATen), tolerances, dtypes, shapes and assertions
+are unchanged.  Each case carries ``@pytest.mark.foreach_max`` so that the
+operator's marker selects it; master attaches the same mark to its shared param
+list / ``pytest.param`` (the large-values case sits unmarked inside the shared
+master file, which ``-m foreach_max`` therefore never selects).
+"""
+
+import pytest
+import torch
+
+import flag_gems
+
+from .accuracy_utils import gems_assert_close, to_reference
+
+# Master's module-local dtype set (tests/test_foreach_ops.py:FLOAT_DTYPES).
+FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+
+_ATEN_OP = torch.ops.aten._foreach_max
+
+
+def _sample(shape, dtype, device):
+    """Master's sampler for the shared foreach accuracy cases.
+
+    Values stay positive and away from zero, as in
+    ``tests/test_foreach_ops.py::_sample``.
+    """
+    return torch.rand(shape, dtype=dtype, device=device) + 1.0
+
+
+def _compare(res, ref, dtype):
+    """Master's comparison: same length, same shape, then ``gems_assert_close``."""
+    assert len(res) == len(ref)
+    for got, want in zip(res, ref):
+        assert got.shape == want.shape, f"{got.shape} != {want.shape}"
+        gems_assert_close(got, want, dtype)
+
+
+@pytest.mark.foreach_max
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_foreach_max_ops(dtype):
+    """Every float dtype of the shared foreach case, against ATen on device."""
+    device = flag_gems.device
+    shapes = [(16, 8), (7,), (2, 3, 4)]
+
+    inp = [_sample(s, dtype, device) for s in shapes]
+
+    # ``to_reference`` may hand back the same object, so the reference inputs are
+    # built from clones; master's ``test_accuracy_foreach_ops`` does the same to
+    # keep both calls from sharing storage.
+    ref_inp = [to_reference(t.clone()) for t in inp]
+
+    ref_out = _ATEN_OP(ref_inp)
+    res_out = flag_gems.foreach_max(inp)
+
+    _compare(res_out, ref_out, dtype)
+
+
+@pytest.mark.foreach_max
+@pytest.mark.parametrize("device_dtype", [torch.float64, torch.int64])
+def test_accuracy_foreach_max_large_values(device_dtype):
+    """``max`` keeps the input dtype and does not round through fp32.
+
+    Values beyond the exact fp32 range expose both failures at once: an fp32
+    accumulator overflows an fp64 input, and a value above ``2**53`` loses its
+    low bits on the way out.
+
+    Platform note (recorded, not skipped): the Kunlunxin backend declares
+    ``fp64_enabled=False`` (``src/flag_gems/runtime/backend/_kunlunxin/__init__.py``)
+    and its ops document that a tensor requested as ``float64`` silently reports
+    ``float32`` with 4-byte elements, so on that backend the fp64 half checks the
+    dtype passthrough rather than fp64 precision.
+    """
+    device = flag_gems.device
+    if device_dtype == torch.float64:
+        values = [1e300, -1e300, 1e299]
+        in_dtype = torch.float64
+    else:
+        values = [2**62, 3, -5]
+        in_dtype = torch.int64
+    inp = [torch.tensor(values, dtype=in_dtype, device=device)]
+
+    res = flag_gems.foreach_max(inp)
+    ref = torch._foreach_max([to_reference(inp[0])])
+
+    assert res[0].dtype == ref[0].dtype, f"{res[0].dtype} != {ref[0].dtype}"
+    assert res[0].item() == ref[0].item()
+
+
+@pytest.mark.foreach_max
+def test_large_foreach_reduction_on_device():
+    """A 131072-element per-tensor reduction against the CPU ATen reference."""
+    values = [
+        torch.linspace(-1, 1, 131072, dtype=torch.float32, device=flag_gems.device)
+        for _ in range(2)
+    ]
+    reference = [v.cpu() for v in values]
+    actual = flag_gems.foreach_max(values)
+    expected = torch._foreach_max(reference)
+    for got, want in zip(actual, expected):
+        torch.testing.assert_close(got.cpu(), want, rtol=1e-4, atol=1e-5)

@@ -1,0 +1,42 @@
+"""Prepared reference-as-solution for FlagGems ``linalg_ldl_factor_ex``.
+
+Declared entrypoint: :func:`run` (``review-manifest.json::entrypoint``).
+
+Frozen contract this wrapper has to satisfy (``definitions/ldl_factor_ex.json``):
+
+    aten::linalg_ldl_factor_ex(Tensor self, *, bool hermitian=False,
+                               bool check_errors=False)
+        -> (Tensor LD, Tensor pivots, Tensor info)
+    effects: ``mutates`` = [] and ``returns_alias_of`` = {} (the input is not
+    written and no output aliases it).
+
+The oracle below is the native ``torch.linalg.ldl_factor_ex`` applied to
+exactly the tensors the candidate receives. It deliberately does **not** import
+``flag_gems`` and does not reach ``flag_gems.ops.ldl_factor_ex`` or the
+Kunlunxin vendor module ``flag_gems.runtime.backend._kunlunxin.ops.
+linalg_ldl_factor_ex``, so the injected solution can never be its own
+reference. Because ATen owns the operation, the freezer semantics are kept
+untouched:
+
+* the ``(LD, pivots, info)`` tuple structure,
+* ``LD`` in the input dtype/device with L in the strict lower triangle and the
+  1x1/2x2 ``D`` blocks on the diagonal (``UPLO='L'`` packing),
+* 1-based signed ``int32`` pivots (two equal negative entries encode a 2x2
+  block) and ``int32`` ``info`` (0 on success), which is what the frozen master
+  test compares with ``gems_assert_equal``,
+* no input mutation and three freshly allocated, non-aliasing outputs.
+
+This mirrors the master accuracy oracle, which is the same on-device
+``torch.linalg.ldl_factor_ex(ref_A)`` call built from
+``tests/accuracy_utils.py::to_reference`` (``--ref`` stays at its default
+device value, so no CPU round trip is introduced here).
+"""
+
+import torch
+
+
+def run(A, hermitian=False, check_errors=False):
+    """Return ``torch.linalg.ldl_factor_ex(A, ...)`` for the caller's tensor."""
+    return torch.linalg.ldl_factor_ex(
+        A, hermitian=hermitian, check_errors=check_errors
+    )

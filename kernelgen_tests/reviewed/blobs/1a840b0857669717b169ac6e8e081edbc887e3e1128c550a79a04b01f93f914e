@@ -1,0 +1,61 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only reference solution for the in-place ``float_power_`` operator.
+
+This file is the reference-as-solution source injected through the native
+``--override`` option; it is not an optimization candidate.
+
+It reproduces the oracle semantics that the frozen master tests and the frozen
+dev tests already use for this operator (see
+``tests/test_float_power_.py::_reference_inplace`` and the
+``torch.float_power`` + ``copy_`` workaround in
+``tests/test_float_power_.py``):
+
+* the power is evaluated by the native ``torch.float_power`` on ``float64``
+  operands (the double-precision contract of ``float_power``), and
+* the result is written back into the caller's ``self`` tensor, which is then
+  returned unchanged in identity, storage, shape, dtype, stride and device.
+
+That write-back is required by the frozen Definition effects
+(``mutates: self``, ``returns_alias_of: out <- self``) and by the frozen dev
+assertions (``result is inp``, ``result.data_ptr() == pointer``, dtype/shape/
+stride preservation, ``exponent`` left untouched).  A wrapper that returned a
+fresh tensor would not be a faithful preparation oracle here.
+
+Only ``torch`` is imported: the file must not import ``flag_gems`` or the
+candidate under test as its own oracle, and must not re-enter the overridden
+in-place export.  ``torch.float_power`` is the out-of-place native operator, so
+no recursion into the injected ``float_power_`` implementation occurs.
+
+The same entrypoint serves both review phases, because both callsites share the
+``(self, exponent)`` tensor ABI:
+
+* accuracy phase  -> ``--override float_power_tensor_tensor_:<this file>:run``
+  (``tests/test_float_power_.py`` calls ``flag_gems.float_power_tensor_tensor_``)
+* benchmark phase -> ``--override float_power_:<this file>:run``
+  (``benchmark/test_float_power_.py`` declares ``op_name="float_power_"`` and the
+  runner resolves the candidate through the same override registry)
+"""
+
+import torch
+
+
+def run(inp, exponent):
+    """Compute ``float_power`` in double precision and write it back into ``inp``."""
+    if isinstance(exponent, torch.Tensor):
+        exponent = exponent.to(torch.float64)
+    result = torch.float_power(inp.to(torch.float64), exponent)
+    inp.copy_(result)
+    return inp

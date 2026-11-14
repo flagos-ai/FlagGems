@@ -1,0 +1,150 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Accuracy cases for ``foreach_max`` (aten::_foreach_max).
+
+Case provenance:
+
+* ``test_foreach_max`` and ``test_foreach_max_noncontiguous`` are the frozen dev
+  ``tests/test_foreach_max.py`` cases, kept verbatim: int64 exactness above the
+  fp32-exact range and a transposed float32 input, both asserting
+  zero-dimensional results that keep the input dtype and device.
+* ``test_foreach_max_random_dtypes`` ports master
+  ``tests/test_foreach_ops.py::test_accuracy_foreach_ops`` for the
+  ``_foreach_max`` key: one list of shapes (16, 8), (7,), (2, 3, 4) per dtype,
+  inputs ``rand + 1.0``, per-pair shape/dtype checks and
+  ``gems_assert_close(..., dtype)``.
+* ``test_foreach_max_large_reduction`` ports master
+  ``tests/test_foreach_reduction_large.py::test_large_foreach_reduction_on_device[max]``:
+  two 131072-element float32 ``linspace(-1, 1)`` tensors, CPU reference and
+  ``rtol=1e-4``/``atol=1e-5``.
+* ``test_foreach_max_large_values_int64`` ports the int64 half of master
+  ``tests/test_foreach_ops.py::test_accuracy_foreach_max_large_values`` (that
+  function carries no operator marker in master, so ``-m foreach_max`` does not
+  select it there; its float64 sibling is not creatable on this backend, whose
+  frozen descriptor declares ``fp64_enabled=False``).
+
+The master shared-family files cannot be imported from the frozen dev root: they
+do ``from flag_gems.ops._foreach_reduction import registered_wrappers`` and call
+``flag_gems._foreach_max``, while the dev tree ships neither that module nor that
+export.  The operator is therefore reached through the dev public export
+``flag_gems.foreach_max`` and every ported case keeps its master inputs, shapes,
+dtypes, oracle expression and comparison tolerance unchanged.
+"""
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+_ATEN_OP = torch.ops.aten._foreach_max
+
+# master tests/test_foreach_ops.py:53 uses the same float set for the shared
+# foreach family; consts.FLOAT_DTYPES holds the same three values.
+FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+
+# master tests/test_foreach_ops.py:306
+RANDOM_SHAPES = [(16, 8), (7,), (2, 3, 4)]
+
+
+def _gems_op(*args, **kwargs):
+    return flag_gems.foreach_max(*args, **kwargs)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max():
+    values = [2**62, 3, -5]
+    tensors = [
+        torch.tensor(values, dtype=torch.int64, device=flag_gems.device),
+        torch.tensor(
+            list(reversed(values)), dtype=torch.int64, device=flag_gems.device
+        ),
+    ]
+    refs = [utils.to_reference(tensor) for tensor in tensors]
+    expected = _ATEN_OP(refs)
+    actual = _gems_op(tensors)
+
+    assert len(actual) == len(expected)
+    for result, want in zip(actual, expected):
+        assert result.shape == torch.Size([])
+        assert result.dtype == want.dtype
+        utils.gems_assert_equal(result, want)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max_noncontiguous():
+    tensors = [
+        torch.arange(
+            24, dtype=torch.float32, device=flag_gems.device
+        ).reshape(4, 6).transpose(0, 1)
+    ]
+    refs = [utils.to_reference(tensor, True) for tensor in tensors]
+    expected = _ATEN_OP(refs)
+    actual = _gems_op(tensors)
+
+    assert len(actual) == len(tensors)
+    assert actual[0].dtype == tensors[0].dtype
+    assert actual[0].shape == torch.Size([])
+    assert actual[0].device == tensors[0].device
+    utils.gems_assert_close(actual[0], expected[0], tensors[0].dtype)
+
+
+@pytest.mark.foreach_max
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_foreach_max_random_dtypes(dtype):
+    """master tests/test_foreach_ops.py::test_accuracy_foreach_ops[_foreach_max-*]"""
+    tensors = [
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
+        for shape in RANDOM_SHAPES
+    ]
+    # master builds the reference inputs from clones (tests/test_foreach_ops.py:321)
+    refs = [utils.to_reference(tensor.clone()) for tensor in tensors]
+    expected = _ATEN_OP(refs)
+    actual = _gems_op(tensors)
+
+    assert len(actual) == len(expected)
+    for result, want in zip(actual, expected):
+        assert result.shape == want.shape
+        assert result.shape == torch.Size([])
+        assert result.dtype == want.dtype
+        utils.gems_assert_close(result, want, dtype)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max_large_reduction():
+    """master tests/test_foreach_reduction_large.py::test_large_foreach_reduction_on_device[max]"""
+    values = [
+        torch.linspace(-1, 1, 131072, dtype=torch.float32, device=flag_gems.device)
+        for _ in range(2)
+    ]
+    reference = [v.cpu() for v in values]
+    actual = _gems_op(values)
+    expected = _ATEN_OP(reference)
+    for got, want in zip(actual, expected):
+        torch.testing.assert_close(got.cpu(), want, rtol=1e-4, atol=1e-5)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max_large_values_int64():
+    """master tests/test_foreach_ops.py::test_accuracy_foreach_max_large_values[int64]"""
+    values = [2**62, 3, -5]
+    inp = [torch.tensor(values, dtype=torch.int64, device=flag_gems.device)]
+
+    res = _gems_op(inp)
+    ref = _ATEN_OP([utils.to_reference(inp[0])])
+
+    assert res[0].dtype == ref[0].dtype, f"{res[0].dtype} != {ref[0].dtype}"
+    assert res[0].item() == ref[0].item()

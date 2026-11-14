@@ -1,0 +1,95 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-phase reference solution for ``conv_transpose3d`` (operator 2086).
+
+This file is the *reference-as-solution* source: it is injected through the
+existing formal override path (``--override conv_transpose3d:<this file>:run``)
+in place of ``flag_gems.conv_transpose3d`` and is therefore the callable the
+frozen tests and the core benchmark actually execute.
+
+Reproduced contract (frozen ``definitions/conv_transpose3d.json``):
+
+    aten::conv_transpose3d.input(Tensor input, Tensor weight, Tensor? bias=None,
+                                 SymInt[3] stride=1, SymInt[3] padding=0,
+                                 SymInt[3] output_padding=0, SymInt groups=1,
+                                 SymInt[3] dilation=1) -> Tensor
+
+Positional/kw-only order and defaults are identical to both the public
+``flag_gems.conv_transpose3d`` export (``src/flag_gems/ops/conv_transpose3d.py``)
+and ``torch.nn.functional.conv_transpose3d``, so the frozen correctness
+callsites (all-keyword, with ``bias``/``dilation``/``output_padding``/``groups``)
+and the frozen benchmark callsite (7 positional arguments
+``(input, weight, bias, stride, padding, output_padding, groups)``) both bind
+unchanged.
+
+Oracle choice: the native PyTorch transposed-convolution implementation. The
+FlagGems candidate export is neither imported nor called here, so this file
+cannot be its own oracle and cannot recurse through the injected override.
+
+Numerics: operands are promoted to float32 when they arrive as float16 /
+bfloat16, and the result is cast back to the input dtype, which mirrors the
+frozen dev protocol helper ``tests/accuracy_utils.py::to_reference(...,
+upcast=True)`` used for the expected side.  No tolerance, shape, dtype or
+device is altered: the returned tensor lives on the input device and carries
+the input dtype (so ``flag_gems.testing.assert_close``'s ``res.dtype == dtype``
+precondition, the ``result.shape == ref.shape`` and ``result.dtype == dtype``
+assertions all hold).  Inputs are not mutated and no input storage is aliased by
+the returned tensor, matching ``effects: {"mutates": [], "returns_alias_of": {}}``.
+Declared deviation (no assertion change): on a backend where the frozen helper
+can upcast to float64 this oracle still computes in float32; Ascend does not
+expose fp64, so on the target platform both sides use float32.
+
+Invalid ``output_padding`` (``output_padding >= stride`` and
+``>= dilation``) is not silently accepted: it is delegated to the native
+implementation, which raises ``RuntimeError`` exactly as the frozen rejection
+clause expects.
+"""
+
+import torch
+
+_PROMOTE_TO_FLOAT32 = (torch.float16, torch.bfloat16)
+
+
+def _promote(tensor):
+    """Promote reduced-precision operands the way the frozen helper does."""
+    if not isinstance(tensor, torch.Tensor):
+        return tensor
+    if tensor.dtype in _PROMOTE_TO_FLOAT32:
+        return tensor.to(torch.float32)
+    return tensor
+
+
+def run(
+    input,
+    weight,
+    bias=None,
+    stride=1,
+    padding=0,
+    output_padding=0,
+    groups=1,
+    dilation=1,
+):
+    """Reference ``conv_transpose3d`` returning a new tensor in ``input.dtype``."""
+    out = torch.nn.functional.conv_transpose3d(
+        _promote(input),
+        _promote(weight),
+        bias=_promote(bias),
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
+    )
+    return out.to(input.dtype)

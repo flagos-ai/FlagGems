@@ -1,0 +1,67 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only oracle for ``flag_gems.arange_start``.
+
+This file is the reference solution injected through the native FlagGems
+override option (``--override arange_start:<this file>:run``) and therefore has
+to speak the *candidate* ABI of ``flag_gems.arange_start``:
+
+    arange_start(start, end, step=1, *, dtype=None, layout=None, device=None,
+                 pin_memory=None) -> Tensor
+
+The numerical result is delegated to native ``torch.arange`` (the same ATen
+oracle the master tests use).  Nothing here imports or calls the FlagGems
+operator, so injecting this file as the candidate cannot re-enter the
+implementation under test.
+
+Contract points mirrored from the operator/test expectations:
+
+* ``start``/``end``/``step`` are positional; ``step`` defaults to ``1``.
+* ``dtype``/``layout``/``device``/``pin_memory`` are keyword-only.
+* ``device=None`` resolves to the FlagGems device.  That is the wrapper's
+  documented deviation from ``torch.arange`` (whose own ``device=None`` means
+  CPU), and the master tests build their expected tensor on the same device.
+* ``dtype=None`` keeps ATen inference: ``torch.int64`` for all-integer
+  arguments, the process default float dtype otherwise.
+* ``pin_memory=None`` is forwarded unchanged; ATen treats it as ``False``,
+  which matches the wrapper's ``pin_memory`` normalisation.
+* ``layout`` is forwarded only when explicitly given, exactly like the wrapper
+  which ignores it for this strided-only operator.
+* The return value is a freshly allocated tensor (no in-place write, no alias
+  with the inputs), as no argument of this operator is a tensor.
+"""
+
+import torch
+
+from flag_gems import runtime
+
+
+def _target_device(device):
+    """Resolve the output device exactly as the operator wrapper does."""
+    if device is None:
+        return torch.device(runtime.device.name)
+    return torch.device(device)
+
+
+def run(start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None):
+    """Reference implementation for one ``flag_gems.arange_start`` call."""
+    kwargs = {
+        "dtype": dtype,
+        "device": _target_device(device),
+        "pin_memory": pin_memory,
+    }
+    if layout is not None:
+        kwargs["layout"] = layout
+    return torch.arange(start, end, step, **kwargs)

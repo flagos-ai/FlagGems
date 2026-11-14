@@ -1,0 +1,31 @@
+"""Preparation-only reference solution for ``linalg_ldl_factor_ex`` (ascend).
+
+Injected through the existing FlagGems override protocol
+(``--override <key>:<this file>:run``); it never imports or calls the FlagGems
+candidate, and it does not touch the frozen pytest sources.
+
+Phase keys follow the real callsites of the frozen suites:
+
+* accuracy ``tests/test_linalg_ldl_factor_ex.py`` calls the public export
+  ``flag_gems.ldl_factor_ex`` -> injected key ``ldl_factor_ex``;
+* benchmark ``benchmark/test_linalg_ldl_factor_ex.py`` resolves its candidate
+  from its own ``op_name`` -> injected key ``linalg_ldl_factor_ex``.
+
+The oracle is the very native ATen reference both frozen suites already use as
+their expected side (``torch.linalg.ldl_factor_ex``), so the candidate-side ABI
+and the frozen expected-side semantics stay the same computation.
+
+Frozen Definition contract (definitions/ldl_factor_ex.json) is kept literally:
+``effects.mutates: []`` and ``effects.returns_alias_of: {}`` - the three
+returned tensors (LD with the input dtype, pivots int32, info int32) are freshly
+allocated on the input's device and ``self`` is never written in place.
+"""
+
+import torch
+
+
+def run(self, hermitian=False, check_errors=False):
+    """Return ``(LD, pivots, info)`` for a square matrix or a batch of them."""
+    return torch.linalg.ldl_factor_ex(
+        self, hermitian=hermitian, check_errors=check_errors
+    )

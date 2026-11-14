@@ -1,0 +1,160 @@
+{
+  "format": "kernelgen.reviewed-pytest/v1",
+  "task_id": "musa-1173",
+  "operator_id": 1173,
+  "operator": "arange_start",
+  "platform": "musa",
+  "pass_count": 3,
+  "master_commit": "7d14d8ffc94c1eb31c968b3fb9767210c84690f0",
+  "base_commit": "a999343317b74835a37c4b935c5f82f39c3f3c96",
+  "files": {
+    "benchmark/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "benchmark/base.py": "b3b04ca311790f812e7b0c54e3bb4adf42322c20739214f1d9399453869049d8",
+    "benchmark/baseline.py": "064333ebb10749786c976c8f6e278b032e1bb7f0030fd2e458867d7765445dda",
+    "benchmark/benchmark_for_models.py": "98b5c5b97c68361f547b543f3b38ff4368d26497831ccc5408a9a6ba1fad07a5",
+    "benchmark/cases.py": "8dbcf48ee8fa821869c98fc5d99fe147894e1ea034218df0cf61a425e408dca6",
+    "benchmark/conftest.py": "37e285f401dfd6888e2b05bae06390bc2721bf9af211c1b2d327e1552ece4ce3",
+    "benchmark/consts.py": "7ef1bbbd3250023dac499bf1a0463b7e4aa154b75423301cfb32113d096ce426",
+    "benchmark/core_shapes.yaml": "b64f877d2f97d529a6607d17861d16f5fe99b6aa61936706594a52bc0c2a4d10",
+    "benchmark/generated_operator_utils.py": "ba10830841e14f4bc59460a3dd59eab51a00ada5a0e1593299ff092f00fcedd5",
+    "benchmark/models_benchmark/backend_request_func.py": "858add053461669eef950b56ecce3f4f565c62a7164aebd43819fb7cc76c83fd",
+    "benchmark/models_benchmark/benchmark_dataset.py": "6b6e4c1706f0f6a145afabcb20ba6aef368370685efee8bbfa3327ede851e8a0",
+    "benchmark/models_benchmark/benchmark_serving.py": "fc9766ab89bcc2492925235c6994aa6dc040b997c94a39e2fb3184f0e3dd5a5a",
+    "benchmark/models_benchmark/benchmark_throughput.py": "c7b395cd5f3caa6ac3bb570fa2396838d97aa5f04a0334982faba700050804d7",
+    "benchmark/models_benchmark/benchmark_utils.py": "abf0ec4eec46ace531cb63437c3d86695cf84d9a88dc203244b278da68fcd5de",
+    "benchmark/models_shapes/qwen25.yaml": "a36f850bca80714b20c370729a9bf1a1cef35357cfefa1428f791577498cc221",
+    "benchmark/profile_hook.py": "8c51f4fd29ed0aa5ca76da52146c44b1b287be8bf805adc6266c3d249266a66b",
+    "benchmark/reference.py": "c4694289c7da82a81e73b3b7f984ddae014437b197342fd8bb308d7b081fc645",
+    "benchmark/summary_for_plot.py": "0f909fff6d2bc8cdf62d418824a66f97b38a27dcc67df5647b419cf97dbd6d37",
+    "benchmark/test_arange.py": "60c5e054744bd257d7b53607de84ef1d3d9fb1ceb549945fcbdf565ad35494ed",
+    "benchmark/utils.py": "2fa295e0f5d02e000d9e30967354cc663011de77366dd469feb8ddee7395a4a5",
+    "benchmark/verified_case_skips.json": "1b40aaa266d8f010ee68c568e8ef74236244dd1bb2602fb160a623b190b96183",
+    "benchmark/verified_case_skips.py": "7ebd29086b9d5a3c39b451d9872ec62726407b119d9d1b3de3173cfbb8fb5d2a",
+    "pytest.ini": "8875a0ccc8f78e19f3fc51a91ea47d1c04d64352b920cdca0c25957805965d43",
+    "tests/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "tests/accuracy_utils.py": "ab545c63f2d21ec15c08d1649e365eee465fba4d1836c610f159586d6b80669e",
+    "tests/conftest.py": "efefb4c0f56474a96f629fefc8aed66b0cfdc4729d63d2a7aa9a64a2faa705c2",
+    "tests/flagtune/__init__.py": "f56920a4e2903e8ea45765ac2a49387c4771b734b45e93f2b8ba7de1b5693cc2",
+    "tests/gru_cpu_reference.py": "45004eb28288499c8e3ceda76c8b72476306fa20c8db2b095ab97cbbc0503372",
+    "tests/ks_tests.py": "e789b74b5916d0e20f5986924dbc6072f792c05d35b9171645ea4d46b22afe38",
+    "tests/test_DSA/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "tests/test_DSA/torch_src/__init__.py": "722438002fad4d34dd245e2e2345c4dcba542295822fdb7e2e8c90ab658a9cfa",
+    "tests/test_DSA/torch_src/fp8_lighting_indexer.py": "43a57336b522161a4f84ffe27165569d6e75e2fdf857b94ab2898c233f2736ad",
+    "tests/test_DSA/torch_src/sparse_mla_fwd.py": "2bd4c770388ade84ac10feb4cdc6d0ac6d5709dd1eda7d1ec48bf1739c3bbafa",
+    "tests/test_DSA/utils.py": "b209e6d270c79270799bbda257f04545540c4fe6df6cf2886669f71b4e27a755",
+    "tests/test_arange_start.py": "4ed5d2e55fe81f8a085f85342cdce38b61cd42437be3cdcd5e825767791417c7"
+  },
+  "reference_sha256": "d336d24d9d85f60c4c32df6ea5dd744a8cd28705e25377998265e23341701ff9",
+  "definition": {
+    "name": "arange_start",
+    "description": "A variant of `arange`, with `start` and/or `step` specified.",
+    "parameters": [
+      {
+        "name": "start",
+        "kind": "positional_or_keyword",
+        "required": true
+      },
+      {
+        "name": "end",
+        "kind": "positional_or_keyword",
+        "required": true
+      },
+      {
+        "name": "step",
+        "kind": "positional_or_keyword",
+        "required": false,
+        "default": 1
+      },
+      {
+        "name": "dtype",
+        "kind": "keyword_only",
+        "required": false,
+        "default": null
+      },
+      {
+        "name": "layout",
+        "kind": "keyword_only",
+        "required": false,
+        "default": null
+      },
+      {
+        "name": "device",
+        "kind": "keyword_only",
+        "required": false,
+        "default": null
+      },
+      {
+        "name": "pin_memory",
+        "kind": "keyword_only",
+        "required": false,
+        "default": null
+      }
+    ],
+    "outputs": [
+      "out"
+    ],
+    "effects": {
+      "mutates": [],
+      "returns_alias_of": {}
+    },
+    "api_version": "v6.0"
+  },
+  "definition_origin": {
+    "kind": "source_signature",
+    "operator": "arange_start"
+  },
+  "definition_errors": [],
+  "suites": {
+    "tests": [
+      "tests/test_arange_start.py"
+    ],
+    "benchmark": [
+      "benchmark/test_arange.py"
+    ]
+  },
+  "markers": {
+    "accuracy": "arange_start",
+    "benchmark": "arange_start"
+  },
+  "override_keys": {
+    "accuracy": "arange_start",
+    "benchmark": "arange_start"
+  },
+  "entrypoint": "run",
+  "benchmark_file": "benchmark/base.py",
+  "review": {
+    "accuracy": {
+      "status": "READY",
+      "exit_code": 0,
+      "passed_calls": 766,
+      "observer_sha256": "a0f64458b5d3751b00b402645ba091c7741f0e486fb416bbb8a38c3c087ec5f2",
+      "packages": {
+        "pytest": "8.4.2",
+        "torch": "2.9.1+musa5.2.0",
+        "triton": null,
+        "flagtree": "0.7.0+mthreads3.6",
+        "torch-npu": null,
+        "torch-musa": "2.9.1"
+      },
+      "report_sha256": "99ce3f0e94d6cae4dbc890b040a7cd2b98cfeec60a088a08f08d96ca5fee000c"
+    },
+    "benchmark": {
+      "status": "READY",
+      "exit_code": 0,
+      "passed_calls": 1,
+      "observer_sha256": "a0f64458b5d3751b00b402645ba091c7741f0e486fb416bbb8a38c3c087ec5f2",
+      "packages": {
+        "pytest": "8.4.2",
+        "torch": "2.9.1+musa5.2.0",
+        "triton": null,
+        "flagtree": "0.7.0+mthreads3.6",
+        "torch-npu": null,
+        "torch-musa": "2.9.1"
+      },
+      "report_sha256": "7a0b3f2dce656a4e5ff3c27c4904d6febc58c67f2b67dffc7f138046c12f3a23"
+    }
+  },
+  "source_acceptance": "user_selected_launch_trial_after_v24_audit_and_interface_review",
+  "optimization_readiness": "NOT_RUN",
+  "notes": "Review reference is not an optimization seed. Runtime reference/injection readiness remains required."
+}

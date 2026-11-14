@@ -1,0 +1,57 @@
+"""Prepared reference-as-solution oracle for ``aten::lstm.input`` (``lstm``).
+
+Single exported entry point: ``run``. It is loaded by the project's official
+override injection (``--override lstm:<this file>:run``) so that
+``flag_gems.lstm`` resolves to this wrapper, and its frame is observed by
+``probe_pytest.py`` for both the accuracy suite and the core benchmark suite.
+
+Oracle semantics are the ones the frozen master tests already declare:
+
+* ``tests/test_lstm.py`` compares ``flag_gems.lstm(...)`` against the native
+  library LSTM called as ``torch.lstm(input, (h0, c0), params, has_biases,
+  num_layers, dropout, train, bidirectional, batch_first)``;
+* ``benchmark/test_lstm.py`` declares the same native call as ``torch_op``
+  (baseline role).
+
+The wrapper therefore delegates to that same native operator on the *original*
+tensors: no dtype/device promotion, no copy, no in-place write, no alias
+introduction, and no tolerance/seed change. This module intentionally does not
+import or call the FlagGems candidate, so it can never use the implementation
+under test as its own oracle.
+"""
+
+import torch
+
+__all__ = ["run"]
+
+
+def run(
+    input,
+    hx,
+    params,
+    has_biases=True,
+    num_layers=1,
+    dropout=0.0,
+    train=False,
+    bidirectional=False,
+    batch_first=False,
+):
+    """Return ``(output, hy, cy)`` exactly as ``aten::lstm.input`` does.
+
+    ``hx`` is the ``(h0, c0)`` tensor pair and ``params`` the flat weight list
+    (``w_ih, w_hh[, b_ih, b_hh]`` per layer/direction) supplied by the tests.
+    The native operator returns freshly allocated tensors (Definition effects:
+    ``mutates: []``, ``returns_alias_of: {}``), so the returned objects match
+    the declared effect contract without extra wrapping.
+    """
+    return torch.lstm(
+        input,
+        hx,
+        params,
+        has_biases,
+        num_layers,
+        dropout,
+        train,
+        bidirectional,
+        batch_first,
+    )

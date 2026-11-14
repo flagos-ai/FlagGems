@@ -1,0 +1,92 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for ``unique_dim_consecutive`` (FlagGems).
+
+Injected contract (frozen Definition ``definitions/unique_dim_consecutive.json``
+and the frozen accuracy suite callsite ``flag_gems.unique_dim_consecutive``)::
+
+    run(input, dim, return_inverse=False, return_counts=False)
+        -> (out, inverse_indices, counts)
+
+``effects`` are empty (no input mutation, no aliasing of the input), so the
+three outputs are freshly allocated tensors on ``input.device``: ``out`` keeps
+``input.dtype``, ``inverse_indices``/``counts`` are ``int64``.
+
+Oracle choice: the native ``aten::unique_dim_consecutive`` op. That is the very
+expectation path the frozen suite already uses
+(``torch.ops.aten.unique_dim_consecutive.default`` after ``utils.to_reference``
+without upcast), so per-element equality, output dtype/shape, negative-dim
+normalisation, the "0 sized dimensions ... aren't selected" rejection and
+duplicate-detection rules are ATen's own semantics instead of a re-derivation.
+No ``flag_gems`` symbol is imported or called, and ``--override`` only replaces
+the ``flag_gems.unique_dim_consecutive`` Python attribute, so this oracle cannot
+re-enter the injected candidate (no dispatch/recursion).
+
+Two behaviours are spelled out rather than inherited, because ATen returns
+*undefined* tensors there and Python surfaces those as ``None`` while the frozen
+contract/tests require defined empty tensors:
+
+* ``return_inverse=False`` / ``return_counts=False`` ->
+  ``torch.empty(0, dtype=torch.int64, device=input.device)``
+  (Definition: "The inverse and counts tensors are empty when their respective
+  flags are false"; the tests assert ``numel() == 0``).
+* a selected ``dim`` of size 0 -> empty outputs built from the input shape,
+  without touching the unselected-zero-dim rejection path, which is still left
+  to ATen.
+
+Every other case (including all numeric cases, empty-flag combinations and error
+paths) is delegated to ATen unchanged.
+"""
+
+import torch
+
+_INDEX_DTYPE = torch.int64
+
+
+def _empty_indices(input):
+    return torch.empty(0, dtype=_INDEX_DTYPE, device=input.device)
+
+
+def _is_empty_selected_dim(input, dim):
+    """True for the documented size-0 selected dim, and only for it.
+
+    Out-of-range/0-dim inputs and a 0-sized *unselected* dim are left to ATen so
+    its rejection messages stay authoritative.
+    """
+    ndim = input.dim()
+    if ndim == 0:
+        return False
+    resolved = dim + ndim if dim < 0 else dim
+    if not 0 <= resolved < ndim:
+        return False
+    if input.shape[resolved] != 0:
+        return False
+    return all(size != 0 for index, size in enumerate(input.shape) if index != resolved)
+
+
+def run(input, dim, return_inverse=False, return_counts=False):
+    """Reference implementation of ``unique_dim_consecutive`` semantics."""
+    if _is_empty_selected_dim(input, dim):
+        out = torch.empty(input.shape, dtype=input.dtype, device=input.device)
+        return out, _empty_indices(input), _empty_indices(input)
+
+    out, inverse_indices, counts = torch.ops.aten.unique_dim_consecutive.default(
+        input, dim, return_inverse, return_counts
+    )
+    if not return_inverse:
+        inverse_indices = _empty_indices(input)
+    if not return_counts:
+        counts = _empty_indices(input)
+    return out, inverse_indices, counts

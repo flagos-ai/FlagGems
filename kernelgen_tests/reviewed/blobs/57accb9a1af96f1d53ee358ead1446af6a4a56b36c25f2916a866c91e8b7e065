@@ -1,0 +1,86 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for the FlagGems ``rnn_relu`` operator.
+
+Frozen Definition ``definitions/rnn_relu.json`` names
+``aten::rnn_relu.input``: an Elman RNN with ReLU activation that returns the
+output sequence and the final hidden state for a single, unidirectional layer
+without dropout.
+
+The entrypoint ``run`` has the operator's 9-argument positional ABI
+(``input, hx, params, has_biases, num_layers, dropout, train, bidirectional,
+batch_first``) and delegates to the *native* ATen operator, which is also the
+oracle expression used by the frozen master pytest suite
+(``tests/test_rnn_relu.py``: ``torch.rnn_relu(...)``).
+
+Why this is a faithful reference and not the candidate:
+
+* it never imports ``flag_gems`` and never calls ``flag_gems.rnn_relu``, so it
+  cannot reach the injected export that ``--override`` replaces and cannot
+  recurse into itself;
+* inputs are only read. ``definitions/rnn_relu.json`` declares
+  ``effects.mutates == []`` and ``effects.returns_alias_of == {}``, and the
+  native operator honours that: both returned tensors are freshly allocated,
+  carry the input dtype and stay on the input device;
+* the ``Tensor[] params`` sequence (PyTorch ``_flat_weights`` order
+  ``w_ih, w_hh, b_ih, b_hh``) is forwarded unchanged (only re-wrapped into a
+  list for the schema), so weight tensors keep their identity, dtype and
+  ``requires_grad`` state;
+* the op is called eagerly, so autograd still flows through it. The frozen
+  master case ``test_rnn_relu_direct_backward`` calls the candidate with
+  ``requires_grad`` operands and backpropagates, which this wrapper supports
+  unchanged.
+
+Device/precision note (no host execution was performed while preparing this
+file): the wrapper is device agnostic and runs on whatever device the operands
+live on. On the Ascend (``npu``) target the native ATen RNN kernels are used;
+that is the same situation as the frozen dev sibling suite for this family
+(``tests/test_rnn_tanh.py``), which enables its reference-as-expected path for
+``flag_gems.device == "npu"``. Whether the installed ``torch-npu`` build really
+implements ``aten::rnn_relu.input`` is a runtime fact that only the host probe
+can confirm; it is recorded as residual risk in the review manifest.
+"""
+
+import torch
+
+
+def run(
+    input,
+    hx,
+    params,
+    has_biases=True,
+    num_layers=1,
+    dropout=0.0,
+    train=False,
+    bidirectional=False,
+    batch_first=False,
+):
+    """Return ``(output, hy)`` computed by ``aten::rnn_relu.input``.
+
+    ``num_layers``/``bidirectional``/``dropout``/``train`` are forwarded as the
+    caller supplied them; the frozen master cases exercise the single-layer,
+    unidirectional, ``dropout == 0.0`` configuration only.
+    """
+    return torch.ops.aten.rnn_relu.input(
+        input,
+        hx,
+        list(params),
+        has_biases,
+        num_layers,
+        dropout,
+        train,
+        bidirectional,
+        batch_first,
+    )

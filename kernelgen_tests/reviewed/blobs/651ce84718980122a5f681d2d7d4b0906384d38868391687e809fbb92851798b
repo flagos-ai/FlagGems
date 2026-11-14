@@ -1,0 +1,28 @@
+"""Preparation oracle for FlagGems ``special_bessel_j0`` (reference-as-solution).
+
+ABI served by this file (single positional Tensor in, Tensor out):
+
+* accuracy  -- ``tests/test_special_bessel_j0.py`` calls
+  ``flag_gems.special_bessel_j0(inp)``; the formal override
+  ``--override special_bessel_j0:<this file>:run`` rebinds that public export to
+  ``run`` through ``flag_gems.dynamic_registry.DynamicOpOverride``.
+* benchmark -- ``benchmark/base.py::Benchmark._candidate_call()`` resolves the
+  same override by ``op_name`` (``special_bessel_j0``), so the timed candidate is
+  ``run`` as well.
+
+This module deliberately imports only ``torch``: the preparation oracle must not
+import ``flag_gems`` and therefore can never re-enter the operator it replaces.
+
+Oracle semantics: ``torch.special.bessel_j0`` is exactly the expression the
+frozen accuracy test already uses as its reference
+(``ref_out = torch.special.bessel_j0(ref_inp)``). It returns a new Tensor that
+keeps the input dtype/device/shape and neither mutates nor aliases the input,
+matching the frozen Definition (``mutates: []``, ``returns_alias_of: {}``).
+"""
+
+import torch
+
+
+def run(x):
+    """Elementwise Bessel function of the first kind of order zero."""
+    return torch.special.bessel_j0(x)

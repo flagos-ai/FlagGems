@@ -1,0 +1,34 @@
+"""Prepared reference solution for ``weight_int8pack_mm``.
+
+Per-channel int8 weight-only quantised GEMM: ``A`` is an fp16/bf16 activation
+of shape ``(M, K)``, ``B`` is the int8 weight of shape ``(N, K)`` (one byte per
+element, not bit-packed) and ``scales`` is a per-output-channel vector of shape
+``(N,)``.  The result is ``(M, N)`` in ``A.dtype`` on ``A.device``.
+
+The computation below is exactly the frozen master oracle
+(``tests/test_weight_int8pack_mm.py::_ref_weight_int8pack_mm``) wrapped as the
+injected candidate entrypoint ``run(A, B, scales)``:
+
+    B_fp = B.to(A.dtype)
+    result = torch.matmul(A, B_fp.T)
+    result = result * scales.unsqueeze(0)
+
+Contract preserved from the frozen Definition (outputs ``["out"]``,
+``effects.mutates = []``, ``effects.returns_alias_of = {}``):
+  * returns a freshly allocated tensor (no input is written, no aliasing);
+  * output dtype equals the activation dtype, output device equals input device;
+  * no tolerance, cast, seed or skip is introduced here.
+
+The module deliberately does not import ``flag_gems`` and does not call the
+Gems/ATen ``_weight_int8pack_mm`` export, so injecting it as the candidate
+cannot re-enter the operator under test.
+"""
+
+import torch
+
+
+def run(A, B, scales):
+    B_fp = B.to(A.dtype)
+    result = torch.matmul(A, B_fp.T)
+    result = result * scales.unsqueeze(0)
+    return result

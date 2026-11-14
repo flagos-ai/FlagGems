@@ -1,0 +1,89 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation reference for aten::_histogramdd_from_bin_cts(.out).
+
+The oracle is the native ATen CPU kernel ``torch._histogramdd_from_bin_cts``
+(and ``torch.ops.aten._histogramdd_from_bin_cts.out``), i.e. exactly the call the
+frozen master tests use to build their expected value. ``torch._histogramdd_from_bin_cts``
+is CPU-only in PyTorch, so the entry point bridges the candidate ABI
+(device tensor in, device tensor out) to that CPU kernel: it moves the operands
+to CPU, runs the native op in the *input dtype* (no upcast: the master tests
+compare an fp32 result against an fp32 CPU reference), and moves the result back
+to the operand's device.
+
+This module only imports ``torch``: it does not import, wrap or call the
+FlagGems candidate module, and it does not re-enter a FlagGems replacement of
+the aten export (the FlagGems dispatcher is registered for the accelerator
+dispatch key, while these calls run on CPU tensors).
+
+Supported call shape (both ATen overloads of the frozen schema)::
+
+    _histogramdd_from_bin_cts(Tensor self, int[] bins, *, float[]? range=None,
+                              Tensor? weight=None, bool density=False) -> Tensor
+    _histogramdd_from_bin_cts.out(Tensor self, int[] bins, *, float[]? range=None,
+                                  Tensor? weight=None, bool density=False,
+                                  Tensor(a!) out) -> Tensor(a!)
+
+The ``.out`` path keeps ATen's own out semantics: the dtype check raises exactly
+like the native op, a mis-shaped out is resized in place, the caller's object is
+returned, and a non-contiguous out keeps its storage offset/stride because the
+result is written back with ``copy_``.
+"""
+
+import torch
+
+
+def _cpu_operand(tensor):
+    """Detached CPU copy of an operand; the candidate input is never mutated."""
+    if tensor is None:
+        return None
+    return tensor.detach().to("cpu")
+
+
+def run(self, bins, *, range=None, weight=None, density=False, out=None):
+    """Candidate-ABI entry point for the functional and ``.out`` variants."""
+    device = self.device
+    inp_cpu = _cpu_operand(self)
+    weight_cpu = _cpu_operand(weight)
+
+    if out is None:
+        result = torch._histogramdd_from_bin_cts(
+            inp_cpu, bins, range=range, weight=weight_cpu, density=density
+        )
+        return result.to(device)
+
+    # The frozen out contract rejects a dtype mismatch instead of casting (the
+    # native kernel validates the same thing); keep that failure deterministic.
+    if out.dtype != self.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {self.dtype}, but got "
+            f"{out.dtype} instead"
+        )
+
+    # Mirror the caller's out buffer on CPU and let the native out variant apply
+    # its own resize contract; only then write back in place.
+    out_cpu = torch.empty(tuple(out.shape), dtype=out.dtype, device="cpu")
+    torch.ops.aten._histogramdd_from_bin_cts.out(
+        inp_cpu,
+        bins,
+        range=range,
+        weight=weight_cpu,
+        density=density,
+        out=out_cpu,
+    )
+    if tuple(out.shape) != tuple(out_cpu.shape):
+        out.resize_(out_cpu.shape)
+    out.copy_(out_cpu.to(device))
+    return out

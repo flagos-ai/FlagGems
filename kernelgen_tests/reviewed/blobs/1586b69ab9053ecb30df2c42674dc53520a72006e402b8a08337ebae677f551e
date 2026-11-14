@@ -1,0 +1,120 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only reference for ``linalg_polar`` (operator 2188, kunlunxin).
+
+This module is the reference-as-solution artefact injected through the formal
+Gems option ``--override linalg_polar:<this file>:run``.  It replaces the
+module attribute ``flag_gems.linalg_polar`` that the frozen suites call, so it
+has to keep the *caller visible* ABI of that export:
+
+* one positional/keyword argument ``A`` (frozen Definition
+  ``definitions/linalg_polar.json``: ``parameters = ["A"]``);
+* two fresh outputs ``(U, H)`` with ``U.shape == A.shape`` and
+  ``H.shape == (*A.shape[:-2], A.shape[-1], A.shape[-1])``, dtype ``A.dtype``
+  (float32; the frozen implementation rejects anything else), on ``A.device``
+  and contiguous;
+* ``A`` is neither mutated nor aliased (frozen ``effects``:
+  ``mutates = []``, ``returns_alias_of = {}``) and the returned factors do not
+  require grad (the frozen dev suite asserts the explicit autograd rejection);
+* the frozen rejection contract of ``A`` (rank < 2, ``rows < cols``, non
+  float32) is raised before any compute, exactly as
+  ``src/flag_gems/ops/linalg_polar.py::_validate_input`` does.
+
+The values are *not* re-derived here as a new mathematical definition: they
+are the oracle the frozen suites themselves declare for this backend.  The
+frozen kunlunxin branch of ``tests/test_linalg_polar.py``
+(``_reference_linalg_polar``) computes the right polar factors from an SVD
+composition on the CPU with the accelerator handed back at the end, because the
+on-device ``torch.linalg.svd`` path is recorded as unreliable on this backend.
+This module mirrors that composition (float64 CPU SVD, ``U = Up @ Vh``,
+``H = Vh.mH @ (S.unsqueeze(-1) * Vh)`` symmetrised) and nothing else.
+
+The module imports only ``torch`` (plus ``numpy`` inside the frozen LAPACK
+fallback branch): it never imports ``flag_gems``, never calls the operator
+under test and never re-enters the rebound ``flag_gems.linalg_polar``
+attribute, so it is not its own oracle.
+"""
+
+import torch
+
+__all__ = ["run"]
+
+
+def _validate_input(A):
+    """Frozen caller-visible rejection contract (checked before any compute)."""
+    if A.ndim < 2:
+        raise RuntimeError(
+            "linalg.polar: The input tensor A must have at least 2 dimensions."
+        )
+    if A.shape[-2] < A.shape[-1]:
+        raise RuntimeError(
+            "linalg.polar: input must have at least as many rows as columns, "
+            f"but got {A.shape[-2]} by {A.shape[-1]} matrices"
+        )
+    if A.dtype != torch.float32:
+        raise TypeError(f"linalg_polar only supports float32 input, got {A.dtype}")
+
+
+def _reference_factors(A):
+    """Right polar factors of ``A`` from the frozen CPU SVD composition."""
+    inp = A.detach().cpu()
+    if not inp.is_contiguous():
+        # A transposed view (the ``mT`` case) is a legal input; the reference
+        # composition works on a contiguous copy and never writes into ``A``.
+        inp = inp.contiguous()
+    # float64 on CPU: same decomposition the frozen oracle uses, only in higher
+    # precision.  The comparison tolerance (ATOL = 1e-2, dtype float32) and the
+    # comparison itself are untouched by this preparation file.
+    inp = inp.to(torch.float64)
+    try:
+        svd_u, singular_values, vh = torch.linalg.svd(inp, full_matrices=False)
+    except RuntimeError as error:
+        # Same pre-existing fallback as the frozen dev oracle: a CPU torch build
+        # without LAPACK cannot run svd.
+        if str(error) != "svd: LAPACK library not found in compilation":
+            raise
+        import numpy as np
+
+        u, values, v = np.linalg.svd(inp.numpy(), full_matrices=False)
+        svd_u, singular_values, vh = (torch.from_numpy(x) for x in (u, values, v))
+    polar_u = svd_u @ vh
+    polar_h = vh.mH @ (singular_values.unsqueeze(-1) * vh)
+    return polar_u, 0.5 * (polar_h + polar_h.mH)
+
+
+def run(A):
+    """Reference implementation of ``flag_gems.linalg_polar(A) -> (U, H)``."""
+    _validate_input(A)
+
+    u_shape = tuple(A.shape)
+    n = A.shape[-1]
+    h_shape = (*A.shape[:-2], n, n)
+    dtype = A.dtype
+    device = A.device
+
+    if A.numel() == 0:
+        # Frozen empty clause (src/flag_gems/ops/linalg_polar.py:158-164 and the
+        # kunlunxin override): empty outputs, contiguous, input dtype/device.
+        return (
+            torch.empty(u_shape, dtype=dtype, device=device),
+            torch.empty(h_shape, dtype=dtype, device=device),
+        )
+
+    with torch.no_grad():
+        polar_u, polar_h = _reference_factors(A)
+        return (
+            polar_u.to(dtype=dtype, device=device).contiguous(),
+            polar_h.to(dtype=dtype, device=device).contiguous(),
+        )

@@ -1,0 +1,59 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference oracle for FlagGems ``foreach_max`` (operator id 1833).
+
+Contract
+--------
+``definitions/foreach_max.json``: ``aten::_foreach_max(Tensor[] self) ->
+Tensor[]`` -- one maximum per input tensor, every result zero-dimensional, input
+dtype and precision preserved, ``effects.mutates == []`` and
+``effects.returns_alias_of == {}``.
+
+Callsite / ABI
+--------------
+On the frozen tree the public export of this Definition and the formal
+``--override`` injection point are both ``flag_gems.foreach_max``: one positional
+sequence of tensors.  ``run`` therefore takes exactly that one argument and
+returns a plain Python ``list`` of zero-dimensional tensors that live on the
+inputs' device and carry the inputs' dtype.
+
+Why not call the operator family here
+-------------------------------------
+The body is an independent expression of the ATen semantics (one ``max()``
+reduction per tensor).  It does not import ``flag_gems``, does not call
+``flag_gems.foreach_max`` and does not call ``torch._foreach_max``, so the
+reference-as-solution phase cannot re-enter the export that ``--override``
+replaces, and the prepared oracle is not the candidate implemented as its own
+oracle.
+
+Refusal contract
+----------------
+ATen raises for an empty input tensor ("max(): Expected reduction dim to be
+specified for input.numel() == 0", see
+``src/flag_gems/runtime/backend/_kunlunxin/ops/_foreach_reduction.py`` in the
+master tree).  ``Tensor.max()`` raises the same way, so an empty entry stays a
+refusal instead of silently yielding ``-inf``.
+
+Side effects
+------------
+No input is written and no result aliases an input: every returned tensor is a
+fresh allocation produced by the reduction, matching ``mutates: []`` /
+``returns_alias_of: {}``.
+"""
+
+
+def run(tensors):
+    """Per-tensor maximum: zero-dimensional results, input dtype and device."""
+    return [tensor.max() for tensor in tensors]

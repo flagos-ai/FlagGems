@@ -1,0 +1,78 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference-as-solution entrypoint for ``_upsample_nearest_exact3d_backward``.
+
+Entrypoint: :func:`run`.
+
+Injection site (native FlagGems, no source patching):
+  * accuracy: ``--override _upsample_nearest_exact3d_backward:<this file>:run``
+    replaces the public attribute ``flag_gems._upsample_nearest_exact3d_backward``
+    (``flag_gems/__init__.py`` registers it in ``_FULL_CONFIG`` and
+    ``flag_gems/ops/__init__.py`` re-exports it), which is exactly the callable
+    the untouched pytest case invokes.
+  * core benchmark: ``benchmark/base.py::_candidate_call`` resolves the timed
+    candidate through ``Config.override_registry.get_override(self.op_name)``
+    with ``op_name="_upsample_nearest_exact3d_backward"`` (the op_name declared
+    by ``benchmark/test_upsample_nearest_exact3d_backward.py``), so the same key
+    and entrypoint are used for both phases.
+
+The implementation is the operator's own ATen oracle, called on the original
+target tensor (device, dtype, strides and storage offsets untouched). This file
+imports only ``torch``: it does not import ``flag_gems`` and does not call any
+replaced Gems export, so injection cannot re-enter itself recursively.
+
+Frozen contract (``definitions/_upsample_nearest_exact3d_backward.json``):
+  * positional: ``grad_output`` (N, C, OD, OH, OW), ``output_size`` (3),
+    ``input_size`` (5)
+  * optional: ``scales_d`` / ``scales_h`` / ``scales_w``; ``None`` (also passed
+    explicitly positionally by the master cases) keeps the
+    ``output_size / input_size`` ratio
+  * single output ``out`` shaped ``input_size`` with ``grad_output``'s dtype and
+    device; ``effects.mutates == []`` and ``effects.returns_alias_of == {}``, so
+    a freshly allocated tensor is returned and no operand or caller buffer is
+    written -- the ATen default overload has exactly that behaviour.
+
+Scope: this file intentionally implements only the default overload. The
+``.grad_input`` overload (``_upsample_nearest_exact3d_backward_grad_input``,
+keyword-only ``grad_input`` out argument, separate Definition and out ABI) is a
+different public export and op key, so its (preserved, unmodified) pytest and
+benchmark cases are out of this operator's marker scope rather than emulated
+here.
+"""
+
+import torch
+
+# Resolved once at import time (the ``--override`` loader imports this file
+# after torch is fully initialised) so the timed candidate is a plain call.
+_BACKWARD_DEFAULT = torch.ops.aten._upsample_nearest_exact3d_backward.default
+
+
+def run(
+    grad_output,
+    output_size,
+    input_size,
+    scales_d=None,
+    scales_h=None,
+    scales_w=None,
+):
+    """Return ``aten::_upsample_nearest_exact3d_backward`` for the given case."""
+    return _BACKWARD_DEFAULT(
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+    )

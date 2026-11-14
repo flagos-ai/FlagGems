@@ -1,0 +1,45 @@
+"""Prepared reference-as-solution for aten::_histogramdd_from_bin_cts (base overload).
+
+Injected through the tree's own ``--override`` mechanism under the key
+``_histogramdd_from_bin_cts`` (the public export the frozen tests and the
+frozen benchmark actually call). This callable is the observed "solution" in
+``--phase reference-as-solution``.
+
+The oracle is the native ATen operator, evaluated on CPU, which is the same
+oracle the frozen master tests and the frozen benchmark baseline use
+(``torch._histogramdd_from_bin_cts`` is implemented for the CPU backend only).
+Points (and an optional weight) are moved to CPU, the native op is evaluated
+there, and the histogram is returned on the caller's device with the native
+dtype and the exact ``bins`` shape, so shape/dtype/device/return-value
+semantics stay as declared by the Definition
+(``definitions/_histogramdd_from_bin_cts.json``: mutates nothing,
+returns_alias_of nothing).
+
+Properties kept on purpose:
+  * No import of ``flag_gems`` and no call to any Gems export, so the wrapper
+    can never re-enter the injected candidate or a Gems-registered aten
+    override (that recursion is what breaks a naive on-device delegation).
+  * CPU evaluation keeps ATen's own validation order and messages
+    (non-finite range before min<=max, ``%g`` bound formatting, degenerate
+    range widening), which several frozen cases assert verbatim.
+  * No tolerance, casting, clamping or exception translation is introduced
+    here; the comparison-side tolerance stays in the tests.
+"""
+
+import torch
+
+
+def run(self, bins, *, range=None, weight=None, density=False):
+    """aten::_histogramdd_from_bin_cts(Tensor self, int[] bins, *, float[]? range=None, Tensor? weight=None, bool density=False) -> Tensor."""
+    cpu_input = self.detach().to(device="cpu")
+    cpu_weight = None
+    if weight is not None:
+        cpu_weight = weight.detach().to(device="cpu")
+    result = torch._histogramdd_from_bin_cts(
+        cpu_input,
+        bins,
+        range=range,
+        weight=cpu_weight,
+        density=density,
+    )
+    return result.to(self.device)

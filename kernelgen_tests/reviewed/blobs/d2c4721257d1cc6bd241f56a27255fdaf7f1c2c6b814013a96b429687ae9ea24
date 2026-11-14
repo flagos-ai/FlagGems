@@ -1,0 +1,52 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference-as-solution oracle for ``aten::_cast_Byte`` (FlagGems ``_cast_Byte``).
+
+Declared entrypoint: ``run``.
+
+The frozen Gems pytest that owns this contract is the witness for the ABI, so
+``run`` keeps exactly the representative schema it calls,
+
+    aten::_cast_Byte(Tensor self, bool non_blocking=False) -> Tensor
+
+and the observable behaviour those tests assert:
+
+* an already-``torch.uint8`` input is returned unchanged (same object, same
+  storage, same strides, no copy) - the identity/no-copy effect the Gems
+  pytest asserts with ``actual is x``;
+* every other input is converted with the native ATen operator that the same
+  tests use as ``expected``, so values (truncation, wraparound, fractional,
+  out-of-range and non-finite inputs), the output dtype ``torch.uint8``,
+  device, shape, the ``Preserve`` stride rule for non-overlapping-and-dense
+  inputs and the non-grad result all follow the device's native semantics
+  rather than a re-implementation guess.
+
+This module intentionally does not import ``flag_gems`` and does not call the
+generated candidate: the oracle is the native operator, never the
+implementation under test.  It is not a stand-in for a CPU/comparison path -
+the conversion happens on the device of ``self``.
+"""
+
+import torch
+
+_NATIVE_CAST_BYTE = torch.ops.aten._cast_Byte.default
+
+
+def run(self, non_blocking=False):
+    """Cast ``self`` to ``torch.uint8`` with native overlay semantics."""
+    if self.dtype == torch.uint8:
+        # Byte -> Byte is a no-copy identity in the frozen pytest contract.
+        return self
+    return _NATIVE_CAST_BYTE(self, non_blocking)

@@ -1,0 +1,74 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference-as-solution module for ``adaptive_max_pool1d`` (entrypoint ``run``).
+
+Callsites observed in the frozen suites (both phases inject the same public
+export, so the phase keys coincide):
+
+* ``tests/test_adaptive_max_pool1d.py``::
+
+      res_out, res_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
+
+  i.e. the public export ``flag_gems.adaptive_max_pool1d`` with the FlagGems ABI
+  ``(input, output_size) -> (values, indices)``; ``output_size`` is an ``int``
+  (``8``/``4``/``1``) or a one-element list (``[10]``).
+
+* ``benchmark/test_adaptive_max_pool1d.py``: ``op_name="adaptive_max_pool1d"``
+  with ``torch_op=torch.ops.aten.adaptive_max_pool1d``; the frozen dev base
+  resolves the candidate through ``override_registry.get_override(op_name)``
+  and calls it as ``run(inp, output_size=<int>)``.
+
+The oracle used here is exactly the one the frozen master accuracy suite
+already computes as expected output: ``torch.nn.functional.adaptive_max_pool1d``
+with ``return_indices=True``.  No FlagGems implementation is imported or called,
+so the injected solution can never become its own oracle.
+
+Frozen Definition effects (``mutates: []``, ``returns_alias_of: {}``) are kept:
+``input`` is only read, and two freshly allocated tensors (``values`` with the
+input dtype/device, ``indices`` as ``int64``) are returned.
+
+The frozen master accuracy suite additionally asserts the operator's dispatch
+log line ``"<PREFIX> ADAPTIVE_MAX_POOL1D"`` at DEBUG for the injected
+implementation.  That line is part of the frozen observable contract, so it is
+reproduced with the identical prefix rule as
+``tests/accuracy_utils.gems_log_prefix`` (applied to this module's own name).
+It has no effect on the returned values.
+"""
+
+import logging
+import sys
+
+import torch
+
+logger = logging.getLogger(__name__)
+
+
+def _dispatch_log_prefix():
+    """Same prefix rule as ``tests/accuracy_utils.gems_log_prefix``."""
+    module_parts = __name__.split(".")
+    framework = sys.modules.get("flag_gems")
+    vendor = getattr(framework, "vendor_name", None) if framework is not None else None
+    if isinstance(vendor, str) and vendor and f"_{vendor}" in module_parts:
+        return f"GEMS_{vendor.upper()}"
+    return "GEMS"
+
+
+def run(input, output_size):
+    """Return ``(values, indices)`` for adaptive max pooling over the last dim."""
+    logger.debug(f"{_dispatch_log_prefix()} ADAPTIVE_MAX_POOL1D")
+    values, indices = torch.nn.functional.adaptive_max_pool1d(
+        input, output_size, return_indices=True
+    )
+    return values, indices

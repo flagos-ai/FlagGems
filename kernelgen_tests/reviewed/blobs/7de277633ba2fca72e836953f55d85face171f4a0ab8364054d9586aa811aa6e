@@ -1,0 +1,343 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Accuracy cases for the functional ``aten::_foreach_log2`` operator.
+
+Coverage source is the frozen master family file ``tests/test_foreach_unary.py``
+of the same checkout, restricted to the rows that master's own
+``pytest.mark.foreach_log2`` marker selects (``_op_params`` attaches that marker
+per parameter, master lines 54-68). This file replaces the frozen dev file
+``tests/test_foreach_log2.py``, whose workloads are not master's: float inputs
+``(4, 7)``/``(3, 5)``, a single ``int32`` list of shape ``(11,)`` and a complex
+list of ``(9,)`` instead of the family's own dtype x shape grid.
+
+Transported rows (master line numbers in ``tests/test_foreach_unary.py``):
+
+* ``test_accuracy_foreach_unary_float[log2-float16|float32|bfloat16]``
+  (245-256): three tensors of shape ``(16, 8)``, ``_sample`` range
+  ``rand * 0.8 + 0.1``, ``to_reference`` without upcast, ATen parity.
+* ``test_accuracy_foreach_unary_int[log2-int16|int32|int64]`` (259-274):
+  three tensors of shape ``(32,)``, ``randint(1, 5)``; the promotion policy is
+  asserted through dtype equality with ATen (``int_to_float`` for ``log2``).
+* ``test_accuracy_foreach_unary_bool[log2]`` (277-292): one
+  ``[True, False, True]`` tensor. The ``abs``-only CPU workaround in that body
+  does not apply to ``log2``.
+* ``test_accuracy_foreach_unary_complex[log2-complex64]`` (295-307): two
+  complex tensors of shape ``(16,)``, gated on the extracted ``complex_fn``
+  being present, which it is for ``log2``.
+* ``test_accuracy_foreach_unary_complex_large[log2-complex64|complex128]``
+  (656-671): the modulus-overflow row; ``log2`` is in ``MODULUS_OPS``
+  (master 653) and ``LARGE_COMPLEX`` is master's ``1e20`` / ``1e200`` map
+  (master 647-650).
+
+Assertions kept from master: ``_assert_lists_close`` (length, per-tensor dtype,
+``gems_assert_close`` for floating/complex and ``gems_assert_equal`` otherwise)
+and, from the frozen Definition ``definitions/foreach_log2.json``
+(``effects.returns_alias_of == {}``), the dev file's own non-aliasing assertion
+on every out-of-place result. The dev file's ``RuntimeError`` on an empty list
+is a frozen rejection clause and is kept.
+
+Per-operator metadata is extracted, not imported. Master's table row lives in
+``src/flag_gems/ops/_foreach_unary.py``: ``UNARY_OPS`` is imported at
+``tests/test_foreach_unary.py:24``, but the frozen dev tree has no
+``flag_gems/ops/_foreach_unary.py`` at all, so that import can only fail
+collection (``ImportError`` -> probe ``API_UNAVAILABLE``). The exact row for
+``log2`` (master 655-662) and the dtype sets it references (master 535-555) are
+therefore restated below verbatim in meaning, with no re-derivation:
+
+    UnaryOp("log2", _scalar_fn(log2_func), int_to_float, NO_COMPLEX32, c_log2,
+            fn16=_fast_log2_func)
+
+Callable names: master's ``_gems_op`` resolves ``flag_gems._foreach_log2``
+(master 89-95). This version's Definition names the operator ``foreach_log2``
+and the formal override key ``foreach_log2`` assigns that module attribute
+(``dynamic_registry.DynamicOpOverride.override``, ``setattr(module, op_name,
+impl_func)``), which is also the name the frozen dev tests and Definition use,
+so the attribute is looked up by that name at call time. The ATen baseline uses
+master's own ``torch._foreach_log2`` spelling.
+
+Master rows that are NOT transported, kept here as explicit unresolved scope
+rather than silently pruned or converted into skips:
+
+* ``test_operator_markers_are_declared`` (master 180-243): a static-discovery
+  placeholder that executes nothing (metadata test).
+* ``test_foreach_unary_registration_is_live`` (master 507-542) and the three
+  ``test_foreach_unary_launch_count_*`` tests (master 561-632): they carry every
+  unary marker, but each returns before touching the operator unless
+  ``flag_gems.device == "cuda"`` (master 517-518, 570-571, 600-601, 624-625), so
+  on this ``npu`` backend they can only pass without invoking the candidate.
+  They exercise ``caplog``/Triton launch counting and CUDA device events
+  (master 545-558); neither is transportable here and neither may be turned
+  into a skip that pretends to cover them.
+* ``test_accuracy_foreach_unary_rejects_unsupported_dtype[log2]`` (master
+  310-322): ``log2``'s ``allowed`` set contains all three probe dtypes
+  (``bool``, ``int32``, ``complex64``), so the body is empty for this operator.
+* ``test_accuracy_foreach_unary_out_overload`` (master 489-504): its parameters
+  are ``REPRESENTATIVE`` (``neg``/``sin``/``abs``/``round``), so the ``log2``
+  marker does not select it; the ``.out`` overload registration gap stays
+  unresolved and uncovered here.
+* ``test_accuracy_foreach_unary_list_lengths`` / ``_mixed_shapes`` /
+  ``_empty_and_zero_dim`` / ``_mixed_dtypes`` / ``_layouts`` (master 325-414)
+  and ``test_accuracy_foreach_unary_error_parity`` (master 479-486): all
+  parameterized over ``REPRESENTATIVE``, so no ``log2`` rows exist there.
+* The in-place entry points (master 417-476) belong to the separate operator id
+  ``foreach_log2_`` (``definitions/foreach_log2_.json``) and are out of scope
+  for this task.
+* Dev-only extra workloads are not carried over: the transposed
+  ``(4, 7)``/``(3, 5)`` rows, the ``int32`` ``(11,)`` row, the mixed-shape row
+  with an empty tensor and the ``(9,)`` complex row. Workload is frozen to
+  master, and none of those rows has a master counterpart for ``log2``. The
+  consequence, stated rather than hidden, is that this file has no
+  non-contiguous / gappy-view / storage-offset case for ``log2`` at all: in
+  master those live in the ``REPRESENTATIVE``-only ``_layouts`` row.
+* The complex rows (``test_accuracy_foreach_log2_complex`` and both
+  ``test_accuracy_foreach_log2_complex_large`` parameters) are SKIPPED on this
+  Ascend backend, and only there, because the native reference they need cannot
+  produce a value: ``torch._foreach_log2`` raises ``RuntimeError: input must be
+  half, float or bfloat16`` for ``complex64``/``complex128`` _before_ the
+  candidate is called. This is measured, not assumed: in
+  ``review/artifacts/accuracy.log:4-59`` the traceback stops at
+  ``ref_out = _torch_op()(ref_inp)`` and ``review/artifacts/accuracy-native.json``
+  records those three rows with ``candidate_calls: {flag_gems.foreach_log2: 0}``.
+  The rows stay in the file and stay selected by ``-m foreach_log2``, and are
+  reported as skipped: not deleted, not cast to a real dtype, not compared
+  against an invented CPU oracle, and no numerical tolerance is touched. Every
+  float, int and bool row keeps its original assertions. No other vendor's
+  complex behaviour is inferred from this one measurement.
+"""
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+# --- extracted per-op metadata (master src/flag_gems/ops/_foreach_unary.py) ---
+# master 539-555, the dtype sets the table rows reference.
+_FLOAT = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+_INT = (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8)
+# master 553-555: NO_COMPLEX32 == _FLOAT + _INT + (bool, complex64, complex128).
+NO_COMPLEX32 = frozenset(
+    _FLOAT + _INT + (torch.bool, torch.complex64, torch.complex128)
+)
+
+_FAMILY = "log2"
+# master 655-662: the log2 row of UNARY_OPS.
+_ROW_ALLOWED = NO_COMPLEX32
+_ROW_COMPLEX_FN = True  # the row passes c_log2, not None
+_ROW_OUT_DTYPE_INT_TO_FLOAT = True  # out_dtype_fn=int_to_float
+_ROW_HAS_FAST_FN16 = True  # fn16=_fast_log2_func
+
+# master 647-650: magnitudes whose modulus is representable but whose square is
+# not, so a naive component-dtype modulus overflows.
+_LARGE_COMPLEX = {
+    torch.complex64: 1e20,
+    torch.complex128: 1e200,
+}
+
+
+def _supports(dtype):
+    """master ``_supports("log2", dtype)`` (master 118-125).
+
+    ``IS_KUNLUNXIN`` is False for this backend, so the vendor tables do not
+    apply and only the row's own ``allowed`` set decides.
+    """
+    return _ROW_ALLOWED is None or dtype in _ROW_ALLOWED
+
+
+# Measured Ascend capability limit of the reference side, not of the candidate:
+# the device-side ATen op rejects complex inputs for this operator, so there is
+# no native value to compare against. Evidence (reference-as-solution run):
+# ``review/artifacts/accuracy.log:4-59`` raises at
+# ``ref_out = _torch_op()(ref_inp)`` with "RuntimeError: input must be half,
+# float or bfloat16", and ``review/artifacts/accuracy-native.json`` records the
+# same three rows with ``candidate_calls: {flag_gems.foreach_log2: 0}``.
+# ``utils.TO_CPU`` is the dev suite's device/CPU reference switch: when the
+# reference runs on CPU ("--ref cpu") the device limit does not apply.
+_NATIVE_REFERENCE_REJECTS_COMPLEX = (
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU
+)
+
+
+def _require_native_reference(dtype):
+    """Skip a single row whose reference value this backend cannot produce.
+
+    Scope is deliberately narrow: complex dtypes only, on the one backend where
+    the rejection above was actually observed, and only while the reference runs
+    on the device. Float, int and bool rows never reach the skip.
+    """
+    if dtype.is_complex and _NATIVE_REFERENCE_REJECTS_COMPLEX:
+        pytest.skip(
+            f"no native reference on ascend for {dtype}: torch._foreach_log2 "
+            "raises 'RuntimeError: input must be half, float or bfloat16' "
+            "before the candidate is called (candidate_calls == 0); evidence "
+            "repair-v23-binding-review/tasks/ascend-1831/review/artifacts/"
+            "accuracy.log and .../accuracy-native.json"
+        )
+
+
+def _sample(shape, dtype, device):
+    """master ``_sample(shape, dtype, device, name="log2")`` (master 134-152)."""
+    if dtype.is_floating_point:
+        return torch.rand(shape, dtype=dtype, device=device) * 0.8 + 0.1
+    if dtype.is_complex:
+        real = torch.rand(shape, dtype=torch.float32, device=device) * 0.8 + 0.1
+        imag = torch.rand(shape, dtype=torch.float32, device=device) * 0.8 + 0.1
+        return torch.complex(real, imag).to(dtype)
+    if dtype is torch.bool:
+        return torch.randint(0, 2, shape, device=device).to(torch.bool)
+    # "log2" is not in master's UNIT_DOMAIN (master 131), so the integral range
+    # stays [1, 5).
+    return torch.randint(1, 5, shape, dtype=dtype, device=device)
+
+
+def _torch_op():
+    """master ``_torch_op("log2")``: ``torch._foreach_log2`` (master 85-86)."""
+    return getattr(torch, f"_foreach_{_FAMILY}")
+
+
+def _gems_op():
+    """The export the formal ``--override foreach_log2:...:run`` target sets."""
+    return getattr(flag_gems, f"foreach_{_FAMILY}")
+
+
+def _assert_lists_close(res, ref, name=_FAMILY):
+    """master ``_assert_lists_close`` (master 155-162), plus shape parity.
+
+    The shape assertion is the dev file's ``_assert_values`` check
+    (dev ``tests/test_foreach_log2.py:76``); it tightens nothing that master's
+    parity call does not already imply, and it is kept so the replacement does
+    not drop a check the executed suite had.
+    """
+    assert len(res) == len(ref)
+    for got, want in zip(res, ref):
+        assert got.shape == want.shape
+        assert got.dtype == want.dtype, f"{name}: {got.dtype} != {want.dtype}"
+        if got.dtype.is_floating_point or got.dtype.is_complex:
+            utils.gems_assert_close(got, want, got.dtype)
+        else:
+            utils.gems_assert_equal(got, want)
+
+
+def _assert_no_alias(values, result):
+    """Frozen Definition clause ``effects.returns_alias_of == {}``.
+
+    ``definitions/foreach_log2.json:19``; the same assertion the dev file made
+    (dev ``tests/test_foreach_log2.py:100-103``).
+    """
+    for output, source in zip(result, values):
+        assert (
+            output.untyped_storage().data_ptr()
+            != source.untyped_storage().data_ptr()
+        ), "result aliases its input storage; Definition forbids aliasing"
+
+
+@pytest.mark.foreach_log2
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_foreach_log2_float(dtype):
+    """master ``test_accuracy_foreach_unary_float[log2-*]`` (master 245-256)."""
+    assert _supports(dtype)
+    inp = [_sample((16, 8), dtype, flag_gems.device) for _ in range(3)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _torch_op()(ref_inp)
+    res_out = _gems_op()(inp)
+
+    _assert_lists_close(res_out, ref_out)
+    _assert_no_alias(inp, res_out)
+
+
+@pytest.mark.foreach_log2
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32, torch.int64])
+def test_accuracy_foreach_log2_int(dtype):
+    """master ``test_accuracy_foreach_unary_int[log2-*]`` (master 259-274).
+
+    The promotion policy is part of the contract: a transcendental returns
+    float32 for an integral input. It is asserted through the dtype equality
+    with the ATen result, exactly as master does, not through a hardcoded
+    target dtype.
+    """
+    assert _supports(dtype)
+    assert _ROW_OUT_DTYPE_INT_TO_FLOAT
+    inp = [_sample((32,), dtype, flag_gems.device) for _ in range(3)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _torch_op()(ref_inp)
+    res_out = _gems_op()(inp)
+
+    _assert_lists_close(res_out, ref_out)
+    _assert_no_alias(inp, res_out)
+
+
+@pytest.mark.foreach_log2
+def test_accuracy_foreach_log2_bool():
+    """master ``test_accuracy_foreach_unary_bool[log2]`` (master 277-292)."""
+    assert _supports(torch.bool)
+    inp = [torch.tensor([True, False, True], device=flag_gems.device)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _torch_op()(ref_inp)
+    res_out = _gems_op()(inp)
+
+    _assert_lists_close(res_out, ref_out)
+    _assert_no_alias(inp, res_out)
+
+
+@pytest.mark.foreach_log2
+def test_accuracy_foreach_log2_complex():
+    """master ``test_accuracy_foreach_unary_complex[log2-complex64]`` (295-307)."""
+    dtype = torch.complex64
+    assert _supports(dtype)
+    assert _ROW_COMPLEX_FN
+    _require_native_reference(dtype)
+    inp = [_sample((16,), dtype, flag_gems.device) for _ in range(2)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _torch_op()(ref_inp)
+    res_out = _gems_op()(inp)
+
+    _assert_lists_close(res_out, ref_out)
+    _assert_no_alias(inp, res_out)
+
+
+@pytest.mark.foreach_log2
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_accuracy_foreach_log2_complex_large(dtype):
+    """master ``test_accuracy_foreach_unary_complex_large[log2-*]`` (656-671)."""
+    assert _supports(dtype)
+    assert _ROW_COMPLEX_FN
+    _require_native_reference(dtype)
+    mag = _LARGE_COMPLEX[dtype]
+    base = torch.tensor([complex(mag, mag), complex(mag, -mag)], dtype=dtype)
+    inp = [base.to(flag_gems.device)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _torch_op()(ref_inp)
+    res_out = _gems_op()(inp)
+
+    _assert_lists_close(res_out, ref_out)
+    _assert_no_alias(inp, res_out)
+
+
+@pytest.mark.foreach_log2
+def test_foreach_log2_rejects_empty_list():
+    """Frozen rejection clause: an empty TensorList raises ``RuntimeError``.
+
+    Kept from the dev file (dev ``tests/test_foreach_log2.py:152-155``). Master
+    states the same clause inside ``test_accuracy_foreach_unary_error_parity``
+    (master 479-486), whose parameters are ``REPRESENTATIVE``-only, so the
+    ``log2`` marker does not select it there.
+    """
+    with pytest.raises(RuntimeError):
+        _gems_op()([])

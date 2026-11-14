@@ -1,0 +1,9 @@
+# Reviewed pytest packages for KernelGen
+
+This collection preserves 82 reviewed operator/backend pairs (57 distinct operator IDs) from the frozen three/four-chip backlog. Source files are content-addressed under `blobs/`; each task manifest maps original repository paths to SHA-256 digests. Platform variants remain independent, including shared test files with different reviewed content. Existing top-level tests and operator implementations are not replaced.
+
+The source baseline is kernelgen-dev `a999343317b74835a37c4b935c5f82f39c3f3c96`; master coverage was reviewed against `7d14d8ffc94c1eb31c968b3fb9767210c84690f0`. Manifests record both review reports' hashes, observed package versions, reference digest and Definition provenance. A passing preparation probe is not proof of generated-kernel correctness, speedup, or successful optimization startup. The stored review reference is never an optimization seed.
+
+Use KernelGen's `scripts/experiments/reviewed_pytest.py --packages <this-directory> --task <platform-id> --output <new-catalog-directory>` to materialize one verified source package. Then submit the returned Definition and Catalog through `kg run --catalog-path ... --definition ... --eval-server ...`; ordinary service-side reference and injection checks remain required. Runtime source and ABI mismatches remain explicit blockers. Optimization defaults for this trial are one Coder, ten rounds and one epoch.
+
+The existing native-source tests were not run by importing these files on the publishing host. The original target-side probe evidence is summarized per manifest. All 82 packages have been materialized and validated using KernelGen's Catalog/Bundle hashing; source changes invalidate those bindings. Backend-specific dtype or OOM skips require actual evidence; reference algorithms, CPU fallbacks, detach/cast workarounds and exception-contract changes are not introduced here.

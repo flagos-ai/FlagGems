@@ -1,0 +1,46 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-stage reference oracle for the FlagGems ``slogdet`` operator.
+
+This file is the ``reference-as-solution`` candidate: it is injected through the
+existing official override path (``--override slogdet:<this file>:run``) and is
+therefore called with exactly the ABI the frozen accuracy test uses, i.e.
+``flag_gems.slogdet(A) -> (sign, logabsdet)`` for ``A`` of shape ``(*, n, n)``.
+
+Semantics preserved from the frozen Definition
+(``definitions/slogdet.json``) and from the master test's own reference:
+
+* ``sign`` keeps the input dtype (a unit-modulus complex number for complex
+  input), ``logabsdet`` is the corresponding real dtype, both on the input's
+  device and with shape ``A.shape[:-2]``.
+* the input is never mutated and the outputs are freshly allocated
+  (``effects.mutates == []``, ``effects.returns_alias_of == {}``).
+* ATen's own rejection and autograd behaviour is kept: ``RuntimeError`` for
+  fewer than 2 dimensions / non-square batches / low-precision dtypes /
+  non floating-point-or-complex dtypes, and a differentiable ``logabsdet``.
+
+It deliberately does not import ``flag_gems`` (and never names
+``flag_gems.slogdet``), so this oracle cannot re-enter the overridden public
+export and cannot act as its own candidate. ``torch.linalg.slogdet`` is used
+unpatched: the pytest suites here never call ``flag_gems.enable()`` /
+``use_gems()``, so no ``aten::slogdet`` kernel is replaced when this runs.
+"""
+
+import torch
+
+
+def run(A):
+    """Return ``(sign, logabsdet)`` with ``torch.linalg.slogdet`` semantics."""
+    return torch.linalg.slogdet(A)

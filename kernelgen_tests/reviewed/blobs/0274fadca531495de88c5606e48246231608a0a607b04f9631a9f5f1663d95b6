@@ -1,0 +1,141 @@
+import pytest
+import torch
+
+import flag_gems
+
+from . import base, consts
+
+# conv_tbc benchmark shapes: (T, B, Cin, Cout, kW, pad). Sizes span typical
+# sequence-model conv configs (long time dim, moderate batch/channels) to
+# exercise the tiled-matmul kernel across BLOCK autotune candidates.
+CONV_TBC_BENCH_SHAPES = [
+    (128, 32, 128, 128, 3, 1),
+    (256, 16, 256, 256, 3, 1),
+    (512, 8, 128, 256, 5, 2),
+    (64, 64, 512, 512, 3, 1),
+    (1024, 4, 64, 128, 7, 3),
+]
+
+
+class ConvTBCBenchmark(base.GenericBenchmark):
+    """Frozen master workload exposed through the current case interface.
+
+    ``conv_tbc`` has no ``core_shapes.yaml`` entry (the catalog below is the
+    only workload source), so the master catalog is pinned in ``set_shapes``:
+    ``--level core`` cannot silently fall back to ``consts.DEFAULT_SHAPES`` and
+    ``--level comprehensive`` cannot merge ``set_more_shapes`` extras.
+
+    The legacy ``get_input_iter`` override is deliberately *not* redefined:
+    ``base.GenericBenchmark.supports_cases`` requires
+    ``type(self).get_input_iter is GenericBenchmark.get_input_iter``, which is
+    what enables ``--list-cases``, ``--case-id``, ``--preflight-only``,
+    ``--profile-only`` and the per-case timing path through
+    ``get_case_iter``/``build_inputs``.
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        del shape_file_path
+        self.shapes = CONV_TBC_BENCH_SHAPES
+        self.shape_desc = "T, B, Cin, Cout, kW, pad"
+
+
+# The two generators below are the frozen master input builders, kept verbatim
+# (same torch.randn call order, shapes, dtypes, devices, no seeding, no CPU
+# round trip) so the measured distributions stay identical. ``build_inputs_fn``
+# only replays one yielded item per selected case.
+def conv_tbc_input_fn(shape, dtype, device):
+    T, B, Cin, Cout, kW, pad = shape
+    input = torch.randn((T, B, Cin), device=device, dtype=dtype)
+    weight = torch.randn((kW, Cin, Cout), device=device, dtype=dtype)
+    bias = torch.randn((Cout,), device=device, dtype=dtype)
+    yield {
+        "input": input,
+        "weight": weight,
+        "bias": bias,
+        "pad": pad,
+    },
+
+
+def conv_tbc_out_input_fn(shape, dtype, device):
+    T, B, Cin, Cout, kW, pad = shape
+    input = torch.randn((T, B, Cin), device=device, dtype=dtype)
+    weight = torch.randn((kW, Cin, Cout), device=device, dtype=dtype)
+    bias = torch.randn((Cout,), device=device, dtype=dtype)
+    Tout = T + 2 * pad - kW + 1
+    out = torch.empty((Tout, B, Cout), device=device, dtype=dtype)
+    yield input, weight, bias, pad, {"out": out}
+
+
+def conv_tbc_case_fn(shape, dtype):
+    """Tensor-free case list: one case per frozen master shape."""
+    del dtype
+    T, B, Cin, Cout, kW, pad = shape
+    yield base.BenchmarkCasePlan(
+        shape={
+            "input": (T, B, Cin),
+            "weight": (kW, Cin, Cout),
+            "bias": (Cout,),
+        },
+        params={"pad": pad},
+        builder_args=(tuple(shape),),
+    )
+
+
+def conv_tbc_build_inputs_fn(plan, dtype, device):
+    """Materialize exactly one frozen master input item for the selected case."""
+    (shape,) = plan.builder_args
+    return next(iter(conv_tbc_input_fn(shape, dtype, device)))
+
+
+def conv_tbc_out_case_fn(shape, dtype):
+    """Tensor-free case list for the out variant of the frozen master shapes."""
+    del dtype
+    T, B, Cin, Cout, kW, pad = shape
+    Tout = T + 2 * pad - kW + 1
+    yield base.BenchmarkCasePlan(
+        shape={
+            "input": (T, B, Cin),
+            "weight": (kW, Cin, Cout),
+            "bias": (Cout,),
+            "out": (Tout, B, Cout),
+        },
+        params={"pad": pad},
+        builder_args=(tuple(shape),),
+    )
+
+
+def conv_tbc_out_build_inputs_fn(plan, dtype, device):
+    """Materialize exactly one frozen master out-variant input tuple."""
+    (shape,) = plan.builder_args
+    return next(iter(conv_tbc_out_input_fn(shape, dtype, device)))
+
+
+@pytest.mark.conv_tbc
+def test_conv_tbc():
+    ConvTBCBenchmark(
+        op_name="conv_tbc",
+        torch_op=torch.conv_tbc,
+        gems_op=flag_gems.conv_tbc,
+        case_fn=conv_tbc_case_fn,
+        build_inputs_fn=conv_tbc_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    ).run()
+
+
+# Unresolved out-overload scope: master keeps this node under marker
+# ``conv_tbc_out`` and ``op_name="conv_tbc_out"``, while the official override
+# registry maps the aten overload as ``("conv_tbc.out", conv_tbc_out)`` in
+# src/flag_gems/__init__.py FULL_CONFIG. There is no formal override key
+# ``conv_tbc_out``, so this node is retained exactly as frozen master content
+# (not rewritten into an invented mapping, not skipped) and is deselected by
+# the ``conv_tbc`` marker mapping used for this preparation.
+@pytest.mark.conv_tbc_out
+def test_conv_tbc_out():
+    ConvTBCBenchmark(
+        op_name="conv_tbc_out",
+        torch_op=torch.ops.aten.conv_tbc.out,
+        gems_op=flag_gems.conv_tbc_out,
+        case_fn=conv_tbc_out_case_fn,
+        build_inputs_fn=conv_tbc_out_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    ).run()

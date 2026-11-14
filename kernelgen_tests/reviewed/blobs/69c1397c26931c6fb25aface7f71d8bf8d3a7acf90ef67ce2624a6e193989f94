@@ -1,0 +1,52 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Verbatim copy of the frozen master file `benchmark/test_float_power_.py`.
+# Unchanged reference expression, dtypes, `is_inplace=True`, op_name and marker.
+#
+# Why the frozen dev `benchmark/test_float_power_.py` is replaced by this file:
+# the dev version reads `FLAGGEMS_FLOAT_POWER_INPLACE_H800_BASELINE`, asserts a
+# hard-coded NVIDIA H800 artifact digest/git_commit and derives the reference
+# latency from that cross-machine static snapshot, which is not an acceptable
+# native baseline (no fabricated/borrowed reference timing, no new runtime env
+# dependency).  This master file is self-contained: `torch_op` is the stock
+# double-precision reference and the native baseline is measured locally.
+#
+# On kunlunxin the core shape list comes from the backend shape policy in
+# `src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml` (no `float_power_`
+# op key -> MRO fallback to the `Benchmark:` entry: [64, 64], [4096, 4096],
+# [64, 512, 512]).  Backends that do not substitute that file use the
+# `float_power_:` core shapes in `benchmark/core_shapes.yaml`.
+
+import pytest
+import torch
+
+from . import base
+
+
+@pytest.mark.float_power_
+def test_float_power_():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="float_power_",
+        torch_op=lambda a, b: torch.float_power(
+            a.to(torch.float64), b.to(torch.float64)
+        ).to(a.dtype),
+        # float_power_ reference: PyTorch's implementation is broken for non-float64,
+        # so we use a custom reference that computes the expected result
+        # (compute in float64 then convert back to input dtype)
+        # Skip bfloat16 as it causes issues with .to(torch.float64)
+        dtypes=[torch.float16, torch.float32],
+        is_inplace=True,
+    )
+    bench.run()

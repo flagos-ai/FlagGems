@@ -1,0 +1,169 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Core benchmark for the functional ``aten::_foreach_log2`` operator.
+
+Workload source: the frozen master file ``benchmark/test_foreach_unary.py``,
+class ``ForeachUnaryBenchmark`` and the ``name == "log2"`` parameter of
+``test_perf_foreach_unary``. Its numbers are preserved verbatim here:
+
+* ``DEFAULT_SHAPES = [(256, 256), (512, 512), (1024, 1024)]`` and
+  ``DEFAULT_SHAPE_DESC = "M, N (per tensor, list of 16)"`` (master 45-50),
+  which are also the ``ForeachUnaryBenchmark`` block of master's
+  ``benchmark/core_shapes.yaml`` (master 435-440);
+* ``LIST_LENGTH = 16`` (master 52): every shape is expanded into sixteen
+  tensors per case, the joint workload axis of this family;
+* inputs built with ``torch.randn(shape, device=self.device, dtype=dtype)``
+  (master 59-65), with no seed and no range rescaling, so the distribution is
+  master's;
+* ``set_more_shapes`` (master 54-57) kept for the comprehensive-only merge;
+* ``dtypes=consts.FLOAT_DTYPES``, ``op_name="foreach_log2"`` and
+  ``torch_op=torch._foreach_log2`` (master 117-124), the latter being master's
+  own ``getattr(torch, "_foreach_log2")`` spelling.
+
+Two things are bound to the frozen dev tree instead of being copied:
+
+1. **Case interface.** The frozen dev framework requires
+   ``base.Benchmark.supports_cases()`` to see both ``get_case_iter`` and
+   ``build_inputs`` overridden for this version
+   (``benchmark/base.py:475-479``); a ``get_input_iter``-only subclass reports
+   ``supports_cases() == False`` and silently falls back to
+   ``_run_legacy``/``--case-id is not supported``. This file therefore keeps the
+   dev benchmark's own ``OperatorBenchmark`` + ``case_fn``/``build_inputs_fn``
+   pair (dev ``benchmark/test_foreach_log2.py:26-57``,
+   ``benchmark/generated_operator_utils.py:28-36``,
+   ``benchmark/base.py:1046-1075``), so case enumeration, ``--list-cases``,
+   ``--case-id``, preflight and reference-only modes all stay available, and
+   the shapes are still reached through ``get_case_iter`` ->
+   ``self.shapes``.
+
+2. **Shape routing.** Master reads its rows from the ``ForeachUnaryBenchmark``
+   YAML class entry through the MRO walk in ``base.Benchmark.set_shapes``
+   (``benchmark/base.py:235-299``). The frozen dev ``core_shapes.yaml`` has no
+   ``foreach_log2`` and no ``ForeachUnaryBenchmark`` entry, but it does have the
+   shared ``Benchmark:`` block (``benchmark/core_shapes.yaml:722-728``:
+   ``[1073741824]``, ``[64, 64]``, ``[4096, 4096]``, ``[64, 512, 512]``,
+   ``[1024, 1024, 1024]``), and ``Benchmark`` is in this class's MRO. The
+   unchanged fallback would therefore select those shared rows and, at sixteen
+   tensors per case, reserve tens of GiB -- the failure mode master's own
+   comment warns about (master 36-39). Rather than bypassing the YAML path or
+   editing the shared file, ``set_shapes`` passes master's rows through
+   ``OperatorBenchmark.set_shapes``' own ``default_shapes`` parameter
+   (``benchmark/generated_operator_utils.py:77-94``): the real file is still
+   read, the operator/class lookup order is unchanged, and only the "class entry
+   absent" fallback resolves to master's class values instead of the shared
+   ``Benchmark:`` block. The core path executes master's three rows; nothing
+   here can be satisfied by a huge dev default.
+
+Verified skips: ``benchmark/verified_case_skips.py`` matches on
+``(vendor, case_id, sha256(dtype, shape, params))``. The frozen ascend OOM rows
+for this operator name (``benchmark/verified_case_skips.json:194-199``) were
+recorded against the dev ``(1, 16)``-length case grid and its case digests, so
+they cannot match master's ``list_length = 16`` plans; no skip is added,
+removed or fabricated here, and a mismatched digest stays an execution failure
+rather than a suppression.
+
+Timing roles are unchanged: both timers come from
+``base.Benchmark._measure_input`` -- ``latency_base`` at
+``benchmark/base.py:876`` over ``self.torch_op`` and ``latency`` at
+``benchmark/base.py:885`` over the formally injected override resolved by
+``_candidate_call()`` -> ``Config.override_registry.get_override(
+"foreach_log2")`` (``benchmark/base.py:629-642``). ``fresh_inputs`` stays
+``False`` exactly as the dev file had it, so one case builds its tensors once
+and the same tensors feed both timers, which is master's behaviour too.
+"""
+
+import pytest
+import torch
+
+from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+# master 45-52.
+CORE_SHAPES = [
+    (256, 256),
+    (512, 512),
+    (1024, 1024),
+]
+SHAPE_DESC = "M, N (per tensor, list of 16)"
+LIST_LENGTH = 16
+
+
+def _case_fn(shape, dtype):
+    """One plan per master core shape, at master's list length (master 59-65)."""
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": [list(dims)] * LIST_LENGTH},
+        params={"list_length": LIST_LENGTH},
+        builder_args=(dims, LIST_LENGTH),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    """master's input distribution: unseeded ``torch.randn`` per tensor."""
+    shape, length = plan.builder_args
+    values = [
+        torch.randn(shape, device=device, dtype=dtype) for _ in range(length)
+    ]
+    return (values,)
+
+
+class ForeachUnaryBenchmark(OperatorBenchmark):
+    """Unary ``_foreach_*`` benchmark over a TensorList (master workload).
+
+    ``DEFAULT_SHAPES``/``DEFAULT_SHAPE_DESC`` are master's own class values; the
+    class name is kept because master's YAML block is keyed by it.
+    """
+
+    DEFAULT_SHAPES = CORE_SHAPES
+    DEFAULT_SHAPE_DESC = SHAPE_DESC
+    LIST_LENGTH = LIST_LENGTH
+
+    def set_shapes(self, shape_file_path=None):
+        # Real YAML routing (op_name -> class name -> master's class rows), with
+        # the "class entry absent" fallback pinned to master's rows so the
+        # shared `Benchmark:` block in the dev YAML cannot become this
+        # operator's core workload.
+        super().set_shapes(shape_file_path, default_shapes=self.DEFAULT_SHAPES)
+        # Preserve base.Benchmark.set_shapes' comprehensive-only merge
+        # (benchmark/base.py:273-295) so master's extra rows still exist off the
+        # pinned `--level core` path.
+        if (
+            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            and not base.Config.query
+        ):
+            additional_shapes = self.set_more_shapes()
+            if additional_shapes:
+                self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+
+    def set_more_shapes(self):
+        """master 54-57."""
+        more_shapes_1d = [(2**i,) for i in range(10, 20, 4)]
+        more_shapes_3d = [(16, 2**i, 16) for i in range(2, 10, 4)]
+        return more_shapes_1d + more_shapes_3d
+
+
+@pytest.mark.foreach_log2
+def test_perf_foreach_log2():
+    bench = ForeachUnaryBenchmark(
+        op_name="foreach_log2",
+        torch_op=torch._foreach_log2,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=False,
+        fresh_inputs=False,
+    )
+    bench.run()

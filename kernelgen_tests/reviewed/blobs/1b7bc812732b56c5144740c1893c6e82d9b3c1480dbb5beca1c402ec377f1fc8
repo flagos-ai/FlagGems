@@ -1,0 +1,57 @@
+"""Preparation reference for ``_upsample_nearest_exact3d_backward`` (out-of-place).
+
+Injected through the project's formal ``--override`` entry for the
+``reference-as-solution`` probe, i.e. ``flag_gems._upsample_nearest_exact3d_backward``
+is temporarily bound to this module's ``run`` (see
+``flag_gems.dynamic_registry.DynamicOpOverride.override_from_file``).
+
+The frozen test's own oracle is
+``torch.ops.aten._upsample_nearest_exact3d_backward.default(grad_output,
+output_size, input_size, *scales)``, so the wrapper forwards exactly that call.
+It deliberately does not import or call ``flag_gems``: the candidate export must
+not be its own oracle, and this keeps the observed chain
+``test -> flag_gems._upsample_nearest_exact3d_backward -> run -> native ATen``
+free of recursion through the replaced module attribute.
+
+ABI accepted here is the candidate-side ABI used by both suites:
+
+* ``tests/test_upsample_nearest_exact3d_backward.py`` calls
+  ``flag_gems._upsample_nearest_exact3d_backward(grad_output, output_size,
+  input_size, *scales)`` (six positional arguments, ``scales`` may be
+  ``(None, None, None)``).
+* ``benchmark/test_upsample_nearest_exact3d_backward.py`` yields
+  ``grad_output, output_size, input_size, *scales`` and the runner calls the
+  injected callable with those positional arguments.
+
+Semantics kept identical to the frozen Definition
+(``definitions/_upsample_nearest_exact3d_backward.json``): a fresh output
+tensor of shape ``input_size`` with the dtype/device of ``grad_output``; the
+operator mutates no argument and returns no alias (``mutates: []``,
+``returns_alias_of: {}``). No tolerance, dtype or device handling is added or
+relaxed here - comparisons stay in the frozen test helpers.
+"""
+
+import torch
+
+# Resolved at call time so the wrapper always uses the live ATen overload the
+# frozen test also uses as its reference; no FlagGems export is touched.
+_ATEN_BACKWARD = torch.ops.aten._upsample_nearest_exact3d_backward
+
+
+def run(
+    grad_output,
+    output_size,
+    input_size,
+    scales_d=None,
+    scales_h=None,
+    scales_w=None,
+):
+    """Return the native exact-nearest 3d backward result for ``grad_output``."""
+    return _ATEN_BACKWARD.default(
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+    )

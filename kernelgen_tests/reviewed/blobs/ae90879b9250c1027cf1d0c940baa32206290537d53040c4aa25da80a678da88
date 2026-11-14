@@ -1,0 +1,64 @@
+"""Preparation-only reference solution for ``foreach_trunc`` (operator 1869).
+
+This file stands in for the candidate during the project
+``--phase reference-as-solution`` review.  It is installed through the frozen
+FlagGems override path -- ``--override foreach_trunc:<abs path to this
+file>:run`` -- which ``src/flag_gems/cli_override.py:137-185`` parses and
+``src/flag_gems/dynamic_registry.py:260-301`` applies with ``setattr`` on the
+``flag_gems`` module.  That is exactly the attribute the frozen suites use:
+
+* accuracy callsite ``flag_gems.foreach_trunc(...)``
+  (tests/test_foreach_trunc.py:26-27,98,113,125,143);
+* benchmark callsite ``op_name="foreach_trunc"`` resolved by
+  ``Config.override_registry.get_override(self.op_name)``
+  (benchmark/test_foreach_trunc.py:50, benchmark/base.py:621-642).
+
+``--candidate`` in the probe must name this same file (real path) so that its
+content hash matches ``--reference-source``; the recorded override path must
+also resolve to the same file, because the probe identifies candidate frames by
+file and by the ``run`` entrypoint name.
+
+Oracle: the native ATen operator the frozen suites themselves use as their
+reference, ``torch.ops.aten._foreach_trunc`` (tests/test_foreach_trunc.py:23,
+97,112,123; benchmark/test_foreach_trunc.py:22).  Delegating to it preserves
+the complete semantics asserted by the frozen cases:
+
+* one freshly allocated output per input, in input order, with the input
+  dtype, shape, layout strides and device; the frozen accuracy case also
+  asserts a different ``untyped_storage().data_ptr()`` from its input;
+* integral inputs are value/dtype identity (``same_dtype`` policy: int16 /
+  int32 / int64 stay integral, no float promotion);
+* noncontiguous inputs are read through their real strides, so the frozen
+  transposed case is compared on the same values as the reference;
+* ATen's device-independent foreach preconditions: an empty tensor list raises
+  ``RuntimeError("Tensor list must have at least one tensor.")`` and bool /
+  complex dtypes raise ``NotImplementedError`` (a ``RuntimeError`` subclass),
+  which is what the frozen ``pytest.raises(RuntimeError)`` cases cover.  The
+  same restrictions for this operator are documented against the ATen
+  reference in the master backend implementation
+  (src/flag_gems/runtime/backend/_metax/ops/foreach_trunc.py:17-23,470-471);
+* no input list element is mutated (Definition effects ``mutates: []``,
+  ``returns_alias_of: {}``), so the frozen benchmark may reuse one input tuple
+  for the reference timing and the candidate timing
+  (benchmark/base.py:870-899).
+
+This module never imports ``flag_gems`` and never calls the candidate
+attribute it replaces, so it is not its own oracle and cannot re-enter the
+overridden dispatch: ``torch.ops.aten._foreach_trunc`` is only rebound to
+FlagGems kernels inside ``flag_gems.use_gems()`` / ``enable()``
+(src/flag_gems/__init__.py:1876-1920), and neither reviewed phase enters that
+scope while an override is active (``benchmark/base.py:_candidate_call``
+returns a ``nullcontext`` dispatch for an injected override, and the accuracy
+tests call the wrapper directly, never under ``use_gems``).
+"""
+
+import torch
+
+__all__ = ["run"]
+
+_ATEN_FOREACH_TRUNC = torch.ops.aten._foreach_trunc
+
+
+def run(values):
+    """``aten::_foreach_trunc(Tensor[] self) -> Tensor[]``."""
+    return _ATEN_FOREACH_TRUNC(values)

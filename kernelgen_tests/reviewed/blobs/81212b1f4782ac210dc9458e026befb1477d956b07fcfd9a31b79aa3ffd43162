@@ -1,0 +1,46 @@
+"""Reference solution for ``flag_gems.binary_cross_entropy`` (review only).
+
+Injected by the native FlagGems pytest option
+``--override binary_cross_entropy:prepared/reference.py:run`` as the candidate
+implementation of the public export ``flag_gems.binary_cross_entropy``.
+
+Contract preserved from the frozen Definition
+(``definitions/binary_cross_entropy.json``):
+``aten::binary_cross_entropy(Tensor self, Tensor target, Tensor? weight=None,
+int reduction=Mean) -> Tensor`` with ``effects.mutates = []`` and
+``effects.returns_alias_of = {}``: a fresh result tensor in the input dtype /
+device, no input (or weight) mutation.  The legacy functional string spellings
+("none"/"mean"/"sum") used by the accuracy suite are accepted too, exactly like
+the candidate ABI must accept them.
+
+The computation is delegated to the native ATen op so this file does not
+import or call the FlagGems candidate it replaces, and no reference-side
+upcasting (``utils.to_reference``) is copied into the candidate ABI.
+"""
+
+import torch
+
+_REDUCTION_ENUM = {"none": 0, "mean": 1, "sum": 2}
+
+
+def _normalize_reduction(reduction):
+    if isinstance(reduction, str):
+        try:
+            return _REDUCTION_ENUM[reduction.lower()]
+        except KeyError as error:
+            raise ValueError(f"Invalid reduction: {reduction}") from error
+    if isinstance(reduction, bool):
+        raise ValueError(f"Unsupported reduction type: {type(reduction)}")
+    if isinstance(reduction, int):
+        if reduction in (0, 1, 2):
+            return reduction
+        raise ValueError(f"Invalid reduction int: {reduction}")
+    raise ValueError(f"Unsupported reduction type: {type(reduction)}")
+
+
+def run(input, target, weight=None, reduction=1):
+    """Return ``aten::binary_cross_entropy`` of the given tensors."""
+    reduction_enum = _normalize_reduction(reduction)
+    return torch.ops.aten.binary_cross_entropy(
+        input, target, weight, reduction_enum
+    )

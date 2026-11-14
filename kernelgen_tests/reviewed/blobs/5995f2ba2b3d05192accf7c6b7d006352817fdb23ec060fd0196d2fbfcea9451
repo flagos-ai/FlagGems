@@ -1,0 +1,54 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-time reference for the in-place ``renorm_`` operator (849).
+
+Frozen Definition ``definitions/renorm_.json``:
+
+    aten::renorm_(Tensor(a!) self, Scalar p, int dim, Scalar maxnorm) -> Tensor(a!)
+    effects.mutates == ["self"]
+    effects.returns_alias_of == {"out": "self"}
+
+So the callable has to renormalize the caller's storage in place and return the
+very same Tensor object: no new storage, no copy-out, no dtype/device change.
+
+The oracle delegates to the native ATen kernel that the frozen master tests
+already use on their expected side (``tests/test_renorm_.py`` and
+``tests/test_renorm.py::test_renorm_`` both call ``torch.ops.aten.renorm_`` on a
+cloned ``to_reference`` input).  This module imports no FlagGems symbol and
+never looks up ``flag_gems.renorm_``, so the injected candidate can never serve
+as its own oracle.  ``aten.renorm_`` is only dispatch-patched inside
+``flag_gems.use_gems()``/``flag_gems.enable()``; the target tests select
+``-m renorm_`` and call the public wrapper directly, so calling the native
+kernel here does not re-enter the overridden export.
+"""
+
+import torch
+
+__all__ = ["run", "renorm_"]
+
+
+def run(self, p, dim, maxnorm):
+    """Renormalize ``self`` along ``dim`` in place and return the same tensor."""
+    torch.ops.aten.renorm_(self, p, dim, maxnorm)
+    # ``aten.renorm_`` writes into ``self`` and returns it; returning the input
+    # object explicitly keeps the frozen alias/identity contract observable
+    # (``res is inp`` and an unchanged ``data_ptr()``).
+    return self
+
+
+# Same callable under the operator name, so an override spec without an
+# explicit function name (``renorm_:<file>``) still resolves to this
+# implementation while the code object name stays the declared entrypoint.
+renorm_ = run

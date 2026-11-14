@@ -1,0 +1,30 @@
+"""Prepared reference solution for FlagGems ``weight_int8pack_mm``.
+
+Frozen source of the oracle semantics: ``tests/test_weight_int8pack_mm.py``
+(master and kernelgen-dev are byte-identical here) computes
+
+    B_fp = B.to(A.dtype)
+    result = torch.matmul(A, B_fp.T)
+    result = result * scales.unsqueeze(0)
+
+i.e. an int8 weight-only quantized MM: the int8 weight ``B`` (shape ``(N, K)``,
+one byte per element) is dequantized to the activation dtype, multiplied by
+``A`` (shape ``(M, K)``) in that same dtype, and the ``(M, N)`` product is
+scaled by the per-output-channel vector ``scales`` (shape ``(N,)``).
+
+This file is the reference-as-solution candidate observed by the project
+probe. It only uses native ``torch`` operators (no import of
+``flag_gems.weight_int8pack_mm``, no re-entry into the overridden public
+export), keeps the computation in ``A.dtype`` exactly as the frozen test does,
+returns a freshly allocated tensor (Definition ``effects.mutates`` is empty and
+``returns_alias_of`` is empty) and does not mutate ``A``, ``B`` or ``scales``.
+"""
+
+import torch
+
+
+def run(A, B, scales):
+    """Reference-as-solution entrypoint: ``weight_int8pack_mm(A, B, scales)``."""
+    B_fp = B.to(A.dtype)
+    result = torch.matmul(A, B_fp.T)
+    return result * scales.unsqueeze(0)

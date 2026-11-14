@@ -1,0 +1,44 @@
+"""Preparation-stage reference oracle for FlagGems ``linalg_inv_ex`` (op 780).
+
+Used only as the ``reference-as-solution`` file of the project pytest review:
+it is injected with the existing FlagGems override option
+
+    --override linalg_inv_ex:<this file>:run
+
+so both suites exercise the same callable at the real candidate call sites:
+
+* ``tests/test_linalg_inv_ex.py`` calls ``flag_gems.linalg_inv_ex(A, check_errors=...)``
+* ``benchmark/test_linalg_inv_ex.py`` resolves ``op_name="linalg_inv_ex"``
+  through ``Config.override_registry`` in ``benchmark/base.py``.
+
+The oracle is the very expression the frozen tests already declare as their
+reference (``torch.linalg.inv_ex``), evaluated natively on the device of the
+input tensor.  It deliberately does not import ``flag_gems`` and does not call
+any FlagGems export, so it can never re-enter the operator it replaces.
+
+Frozen ABI contract preserved here (see ``definitions/linalg_inv_ex.json``):
+
+* parameters: ``A`` (positional-or-keyword), ``check_errors`` (keyword-only,
+  default ``False``);
+* outputs: ``inverse`` (same dtype/device/shape as ``A``) and ``info``
+  (``int32``, shape ``A.shape[:-2]``, ``0`` on success);
+* effects: no input mutation, no aliasing of the input, and with
+  ``check_errors=True`` a singular matrix raises ``torch.linalg.LinAlgError``.
+
+The return value mirrors the frozen candidate's named-tuple result type (the
+``.inverse`` / ``.info`` attributes checked by the tests) instead of the
+``torch.return_types`` object, without changing dtype, device, layout,
+values or error behaviour.
+"""
+
+from collections import namedtuple
+
+import torch
+
+LinalgInvExResult = namedtuple("LinalgInvExResult", ["inverse", "info"])
+
+
+def run(A, *, check_errors=False):
+    """Return ``(inverse, info)`` for ``A`` using the native torch oracle."""
+    result = torch.linalg.inv_ex(A, check_errors=check_errors)
+    return LinalgInvExResult(result.inverse, result.info)

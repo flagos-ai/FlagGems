@@ -1,0 +1,62 @@
+"""Preparation-only reference for the FlagGems ``tanh_backward`` operator.
+
+This file is the ``--reference-source`` / ``--candidate`` injected with the
+official runtime override option::
+
+    --override tanh_backward:<this file>:run
+
+so ``run`` temporarily replaces the public ``flag_gems.tanh_backward`` export.
+It is a *reference* used to validate the pytest chain, not an optimised
+candidate: it never imports ``flag_gems`` and never calls the operator under
+test, and it performs no dtype cast and no CPU round trip (device and dtype of
+the inputs are preserved, no input is mutated).
+
+The frozen kunlunxin operator ABI is ``tanh_backward(grad_output, output)``
+(``src/flag_gems/runtime/backend/_kunlunxin/ops/tanh.py:215``) and
+``in_grad = grad_output * (1 - output * output)``.
+
+Two frozen call conventions have to be served by this single entrypoint, and
+both of them are declared by the frozen suites (no ABI is invented here):
+
+1. Accuracy — master ``tests/test_tanh.py::test_tanh_backward`` calls the
+   public export directly::
+
+       ref_in_grad = torch.ops.aten.tanh_backward(ref_grad, ref_out)
+       res_in_grad = flag_gems.tanh_backward(res_grad, res_out)
+
+   so the two-argument arm returns exactly ``torch.ops.aten.tanh_backward``,
+   the same oracle the frozen test itself declares.
+
+2. Core benchmark — ``benchmark/test_tanh.py::test_tanh_backward`` builds
+   ``base.UnaryPointwiseBenchmark(op_name="tanh_backward",
+   torch_op=torch.tanh, is_backward=True)``. That harness yields a single
+   input tensor (``benchmark/base.py:1513-1516``), calls the timed callable as
+   ``op(x)`` and then differentiates it through ``torch.autograd.grad``
+   (``benchmark/base.py:347-362``). The one-tensor callable declared by that
+   frozen benchmark is ``torch.tanh`` itself (its ``torch_op``, which is also
+   the callable the package's own ``--ref-as-candidate`` mode selects for this
+   benchmark), so the unary arm returns ``torch.tanh(x)``. The harness then
+   times the tanh-backward kernel through autograd, exactly as it does for the
+   frozen native baseline.
+
+   Note: the frozen benchmark cannot express the two-argument operator ABI —
+   with a real ``tanh_backward`` candidate it calls ``op(x)`` and raises
+   ``TypeError``. Adapting the reference to the harness' declared unary
+   convention is a preparation-side ABI adapter, recorded as such in
+   ``review-manifest.json``; the frozen ``benchmark/test_tanh.py`` and
+   ``benchmark/base.py`` are left unchanged.
+"""
+
+import torch
+
+_SENTINEL = object()
+
+
+def run(grad_output, output=_SENTINEL):
+    """Reference ``tanh_backward(grad_output, output)`` plus the harness' unary arm."""
+    if output is not _SENTINEL:
+        # Accuracy ABI: tanh_backward(grad_output, output) -> in_grad.
+        return torch.ops.aten.tanh_backward(grad_output, output)
+    # Benchmark ABI: the frozen harness' unary callable (``torch_op=torch.tanh``,
+    # ``is_backward=True``), timed through autograd.
+    return torch.tanh(grad_output)

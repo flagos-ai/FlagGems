@@ -1,0 +1,193 @@
+# Frozen master accuracy suite for ``special_round``, preserved verbatim
+# (same cases, parameters, reference calls and assertions) with the
+# dev-suite effect checks kept in substance: the frozen Definition declares
+# ``effects.mutates == []`` and ``effects.returns_alias_of == {}``, so the
+# functional candidate call is additionally held to "input untouched",
+# "result is a new tensor of the same device/dtype/shape" and "result does
+# not alias the input storage".
+#
+# The dev helpers ``_special_round_snapshot`` / ``_special_round_storage_overlaps``
+# re-read the whole storage through ``untyped_storage().cpu()`` and a uint8
+# view; they are re-expressed here with ``clone``/``data_ptr``/metadata so the
+# same clauses are checked without a storage reinterpretation on this backend.
+# No tolerance, skip, dtype, device or oracle change is introduced: the
+# expected values still come from ``torch.special.round``.
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+def _special_round_metadata(tensor):
+    return (
+        tensor.device,
+        tensor.dtype,
+        tuple(tensor.shape),
+        tensor.stride(),
+        tensor.storage_offset(),
+        tensor.data_ptr(),
+        tensor.untyped_storage().data_ptr(),
+        tensor.requires_grad,
+        tensor.is_conj(),
+        tensor.is_neg(),
+    )
+
+
+def _special_round_snapshot(tensor):
+    return _special_round_metadata(tensor), tensor.clone()
+
+
+def _special_round_assert_unchanged(tensor, snapshot):
+    assert _special_round_metadata(tensor) == snapshot[0], (
+        "candidate changed its input tensor metadata"
+    )
+    assert torch.equal(tensor, snapshot[1]), "candidate modified its input values"
+
+
+def _call_special_round_checked(inp, **kwargs):
+    """Call the candidate and hold it to the frozen effect clauses."""
+    original = _special_round_snapshot(inp)
+    try:
+        result = flag_gems.special_round(inp, **kwargs)
+    except BaseException:
+        _special_round_assert_unchanged(inp, original)
+        raise
+    _special_round_assert_unchanged(inp, original)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == inp.device and result.dtype == inp.dtype
+    assert tuple(result.shape) == tuple(inp.shape)
+    assert result is not inp
+    assert (
+        result.untyped_storage().data_ptr()
+        != inp.untyped_storage().data_ptr()
+    ), "candidate output aliases input storage"
+    return result
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
+@pytest.mark.special_round
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_round(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp)
+    res_out = _call_special_round_checked(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
+@pytest.mark.special_round_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_special_round_out(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(inp)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp)
+    res_out = flag_gems.special_round_out(inp, out)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(out, ref_out)
+
+
+# Round-half-to-even midpoint tests: verify that ties round to the nearest
+# even integer (banker's rounding), matching torch.round behavior.
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
+@pytest.mark.special_round
+def test_special_round_midpoints():
+    # Test values: inputs and expected outputs for round-half-to-even
+    test_cases = [
+        (0.0, 0.0),
+        (-0.0, 0.0),
+        (0.5, 0.0),  # tie to even (0)
+        (1.5, 2.0),  # tie to even (2)
+        (2.5, 2.0),  # tie to even (2)
+        (3.5, 4.0),  # tie to even (4)
+        (-0.5, 0.0),  # negative tie to even (0)
+        (-1.5, -2.0),  # negative tie to even (-2)
+        (-2.5, -2.0),  # negative tie to even (-2)
+        (-3.5, -4.0),  # negative tie to even (-4)
+        (1.0, 1.0),  # integer
+        (2.0, 2.0),  # integer
+        (-1.0, -1.0),  # negative integer
+        (-2.0, -2.0),  # negative integer
+        (0.3, 0.0),
+        (0.7, 1.0),
+        (-0.3, 0.0),
+        (-0.7, -1.0),
+    ]
+
+    inp_values = [v for v, _ in test_cases]
+    expected_values = [v for _, v in test_cases]
+
+    inp = torch.tensor(inp_values, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp)
+    res_out = _call_special_round_checked(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+    # Also verify the expected values match
+    expected_tensor = torch.tensor(
+        expected_values, dtype=torch.float32, device=flag_gems.device
+    )
+    utils.gems_assert_equal(res_out, utils.to_reference(expected_tensor))
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
+@pytest.mark.special_round
+@pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
+def test_special_round_decimals(decimals):
+    inp = torch.tensor(
+        [1.2345, 2.5678, -3.4567, 4.0, 0.0, -0.0, 0.5, -0.5],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp, decimals=decimals)
+    res_out = _call_special_round_checked(inp, decimals=decimals)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
+@pytest.mark.special_round_out
+@pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
+def test_special_round_out_decimals(decimals):
+    inp = torch.tensor(
+        [1.2345, 2.5678, -3.4567, 4.0, 0.0, -0.0, 0.5, -0.5],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    out = torch.empty_like(inp)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.special.round(ref_inp, decimals=decimals)
+    res_out = flag_gems.special_round_out(inp, out, decimals=decimals)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(out, ref_out)

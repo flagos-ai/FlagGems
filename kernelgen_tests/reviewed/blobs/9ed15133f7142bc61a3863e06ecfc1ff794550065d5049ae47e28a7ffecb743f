@@ -1,0 +1,73 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Core benchmark for ``foreach_max`` (one call over a list of tensors).
+
+Workload provenance: master ``benchmark/test_foreach_ops.py::ForeachOpsBenchmark``
+benchmarks this operator with ``LIST_LENGTH = 16`` tensors per call,
+``consts.FLOAT_DTYPES`` and ``torch.rand(shape) + 1.0`` inputs.  The frozen dev
+file is otherwise identical but carried ``LIST_LENGTH = 8``; only that constant
+is raised to master's 16 here, so the timed per-call workload (list length x
+dtype x shape) matches the authoritative master workload.  Case enumeration
+(``case_fn`` / ``build_inputs_fn``), the per-case seed, the input distribution,
+the marker, ``op_name`` and ``torch_op`` are unchanged.
+
+Shapes still come from the backend shape file through
+``base.Benchmark.set_shapes`` (``init_user_config`` points ``Config.shape_file``
+at ``src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml`` on this vendor,
+whose ``Benchmark:`` block is ``[64, 64]``, ``[4096, 4096]``, ``[64, 512, 512]``
+with the 1024**3 and (1024, 1024, 1024) rows commented out), exactly as master's
+``ForeachOpsBenchmark`` resolves on the same backend.  Sixteen fp32 tensors of
+``[4096, 4096]`` are 1 GiB per case, so the list length change stays well inside
+device memory.
+"""
+
+import pytest
+import torch
+
+from . import base, consts
+
+LIST_LENGTH = 16
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"tensors": [list(dims)] * LIST_LENGTH},
+        params={"reduction": "max"},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    tensors = [
+        torch.rand(shape, dtype=dtype, device=device) + 1.0
+        for _ in range(LIST_LENGTH)
+    ]
+    return (tensors,)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max():
+    bench = base.GenericBenchmark(
+        op_name="foreach_max",
+        torch_op=torch.ops.aten._foreach_max,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
