@@ -1917,6 +1917,8 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
+    ("random_", random_),
+    ("random_.from", random_from),
     ("range", range),
     ("ravel", ravel),
     (
