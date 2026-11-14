@@ -281,7 +281,7 @@ def mm_kernel_general(
             if IS_FP64:
                 acc += tl.dot(a, b, allow_tf32=False)
             else:
-                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=True)
             offset_k += BLOCK_K
 
         acc = acc.to(a_desc.dtype)
@@ -311,7 +311,7 @@ def mm_kernel_general(
             if IS_FP64:
                 acc += tl.dot(a, b, allow_tf32=False)
             else:
-                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+                acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=True)
 
         # loop peeling
         rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
@@ -332,7 +332,7 @@ def mm_kernel_general(
         if IS_FP64:
             acc += tl.dot(a, b, allow_tf32=False)
         else:
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=True)
 
         acc = acc.to(C.dtype.element_ty)
         # rematerialize rm and rn to save registers
@@ -1468,7 +1468,7 @@ def _mm_kernel_splitk(
             mask=(offs_k[:, None] < K) & (offs_bn[None, :] < N),
             other=0.0,
         )
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=True)
 
     offs_cm = offset_am + tl.arange(0, tile_m)
     offs_cn = offset_bn + tl.arange(0, tile_n)
