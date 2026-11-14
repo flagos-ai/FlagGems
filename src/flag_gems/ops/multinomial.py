@@ -82,6 +82,11 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         #   1. fp16/bf16 overflow when small q values cause prob/q -> inf
         #   2. Multiple inf values making topk return duplicate indices
         prob_f32 = prob.float()
+        if prob_f32 is prob:
+            # Tensor.float() returns the input itself for float32 inputs, so
+            # the in-place clamp below would mutate caller-owned storage.
+            # Clone first to keep multinomial a non-mutating API.
+            prob_f32 = prob_f32.clone()
         prob_f32.clamp_(min=1e-12)  # avoid 0/q=0 ties for zero-prob categories
         q = torch.empty(
             prob.shape, dtype=torch.float32, device=prob.device
