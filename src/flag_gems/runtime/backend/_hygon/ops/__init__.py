@@ -165,6 +165,7 @@ from .log_normal_ import log_normal_
 from .lstm import lstm
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
+from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_bias_activation import matmul_bias_activation
 from .matmul_int8 import matmul_int8
@@ -424,6 +425,7 @@ __all__ = [
     "lstm",
     "masked_scale",
     "masked_scatter_backward",
+    "masked_select",
     "matmul_bf16",
     "matmul_bias_activation",
     "matmul_int8",
