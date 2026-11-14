@@ -163,6 +163,96 @@ def mm_kernel(
     tl.store(c_ptr, accumulator, mask=mask_store)
 
 
+@libentry()
+@triton.jit
+def _mm_tiled(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pm = pid // tl.cdiv(N, BN)
+    pn = pid % tl.cdiv(N, BN)
+    rm = pm * BM + tl.arange(0, BM)
+    rn = pn * BN + tl.arange(0, BN)
+    rk = tl.arange(0, BK)
+    acc = tl.zeros((BM, BN), tl.float32)
+    for step in range(tl.cdiv(K, BK)):
+        kk = step * BK + rk
+        av = tl.load(
+            A + rm[:, None] * SAM + kk[None, :] * SAK,
+            mask=(rm[:, None] < M) & (kk[None, :] < K),
+            other=0.0,
+        )
+        bv = tl.load(
+            B + kk[:, None] * SBK + rn[None, :] * SBN,
+            mask=(kk[:, None] < K) & (rn[None, :] < N),
+            other=0.0,
+        )
+        acc = tl.dot(av, bv, acc, input_precision="ieee")
+    tl.store(
+        C + rm[:, None] * N + rn[None, :],
+        acc,
+        mask=(rm[:, None] < M) & (rn[None, :] < N),
+    )
+
+
+@libentry()
+@triton.jit
+def _mm_vector(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+):
+    rm = tl.program_id(0) * BM + tl.arange(0, BM)
+    rk = tl.arange(0, BK)
+    av = tl.load(
+        A + rm[:, None] * SAM + rk[None, :] * SAK,
+        mask=(rm[:, None] < M) & (rk[None, :] < K),
+        other=0.0,
+    )
+    bv = tl.load(B + rk * SBK, mask=rk < K, other=0.0)
+    out = tl.sum(av * bv[None, :], axis=1)
+    tl.store(C + rm, out, mask=rm < M)
+
+
+@libentry()
+@triton.jit
+def _mm_rank_one_kernel(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    SAM: tl.constexpr,
+    SBN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    rows = offsets // N
+    columns = offsets % N
+    a = tl.load(A + rows * SAM, mask=offsets < M * N, other=0)
+    b = tl.load(B + columns * SBN, mask=offsets < M * N, other=0)
+    tl.store(C + offsets, a * b, mask=offsets < M * N)
+
+
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
 
@@ -182,6 +272,106 @@ def get_higher_dtype(a, b):
 
 def mm(a, b):
     logger.debug("GEMS_HYGON MM")
+    if (
+        a.ndim != 2
+        or b.ndim != 2
+        or a.shape[1] != b.shape[0]
+        or a.dtype != b.dtype
+        or a.device != b.device
+        or a.dtype not in _ordered_datatypes
+    ):
+        return _mm_default(a, b)
+
+    M, K = a.shape
+    N = b.shape[1]
+    if M == 0 or N == 0:
+        return torch.empty((M, N), dtype=a.dtype, device=a.device)
+    if K == 0:
+        return torch.zeros((M, N), dtype=a.dtype, device=a.device)
+    strides = a.stride() + b.stride()
+    if any(stride < 0 for stride in strides):
+        return _mm_default(a, b)
+    if K == 1 and a.dtype in (torch.float32, torch.float64):
+        out = torch.empty((M, N), dtype=a.dtype, device=a.device)
+        with torch_device_fn.device(a.device):
+            _mm_rank_one_kernel[(triton.cdiv(M * N, 256),)](
+                a,
+                b,
+                out,
+                M,
+                N,
+                a.stride(0),
+                b.stride(1),
+                BLOCK=256,
+                num_warps=4,
+                num_stages=1,
+                enable_fp_fusion=False,
+            )
+        return out
+
+    # Bound the constexpr FP32 schedules and their 32-bit input address arithmetic.
+    # The original implementation handles other types and larger address ranges.
+    if (
+        a.dtype != torch.float32
+        or M > 1048576
+        or N > 4096
+        or K > 4096
+        or M * N >= 2**31
+        or (M - 1) * a.stride(0) + (K - 1) * a.stride(1) >= 2**31
+        or (K - 1) * b.stride(0) + (N - 1) * b.stride(1) >= 2**31
+    ):
+        return _mm_default(a, b)
+    out = torch.empty((M, N), dtype=a.dtype, device=a.device)
+    with torch_device_fn.device(a.device):
+        if N == 1 and K <= 256:
+            _mm_vector[(triton.cdiv(M, 16),)](
+                a,
+                b,
+                out,
+                M,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                BM=16,
+                BK=triton.next_power_of_2(K),
+                num_warps=4,
+                num_stages=1,
+            )
+        else:
+            if M >= 32768 and N >= 64:
+                BM, BN, BK, warps = 64, 128, 64, 8
+            elif M >= 1024 and N >= 64:
+                BM, BN, BK, warps = 32, 64, (64 if K >= 256 and N <= 128 else 32), 4
+            else:
+                BM, BN, BK, warps = (
+                    (16 if N <= 48 else 32),
+                    (16 if N <= 48 else 32),
+                    32,
+                    (1 if N <= 48 else 4),
+                )
+            grid = (triton.cdiv(M, BM) * triton.cdiv(N, BN),)
+            _mm_tiled[grid](
+                a,
+                b,
+                out,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                BM=BM,
+                BN=BN,
+                BK=BK,
+                num_warps=warps,
+                num_stages=1,
+            )
+    return out
+
+
+def _mm_default(a, b):
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
