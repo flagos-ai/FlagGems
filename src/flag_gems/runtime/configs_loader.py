@@ -135,6 +135,22 @@ class TunedConfigLoader(object):
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
+        if op_name == "mm_hygon_splitk":
+            from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
+                build_split_configs,
+            )
+
+            return build_split_configs(ranges, pre_hook=pre_hook)
+
+        if op_name == "mm_hygon_splitk_post":
+            return [
+                triton.Config(dict(BLOCK=block), num_stages=stages,
+                              num_warps=warps, pre_hook=pre_hook)
+                for block in ranges["BLOCK"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
         fields = _HYGON_BLAS_META_FIELDS.get(op_name)
         if fields is not None:
             meta_ranges = [ranges[name] for name in fields.values()]
@@ -189,6 +205,13 @@ class TunedConfigLoader(object):
                 for stages in ranges["s"]
                 for warps in ranges["w"]
             ]
+
+        if op_name == "mm_hygon":
+            from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
+                build_mm_configs,
+            )
+
+            return build_mm_configs(ranges, pre_hook=pre_hook)
 
         if op_name == "bmm":
             return [
@@ -314,6 +337,12 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mv_hygon":
+            # gfx936 uses lane-first wave64 tiles. Keep the minimum owner
+            # waves and one replicated tier: workgroup occupancy can matter
+            # even when the extra waves do not own independent elements.
+            # Leave register space for loads and addresses alongside the FP32
+            # accumulation tile. The power-of-two geometry jumps from 128 to
+            # 256 values/thread, consuming the whole VGPR budget at that tier.
             return [
                 triton.Config(
                     {
@@ -330,6 +359,8 @@ class TunedConfigLoader(object):
                 for loop_stages in ranges["LOOP_STAGES"]
                 for s in ranges["s"]
                 for w in ranges["w"]
+                if w <= 2 * max(1, block_m * block_n // 64)
+                and block_m * block_n <= 128 * 64 * w
             ]
 
         if op_name in ("mv", "mv_row", "mv_column"):
@@ -1023,6 +1054,14 @@ class TunedConfigLoader(object):
         return None
 
     def _build_expand_registry(self):
+        mm_expand_yaml_path = self._get_expand_config_path("mm")
+        hygon_mm_expand_yaml_path = (
+            mm_expand_yaml_path if self.device.vendor_name == "hygon" else None
+        )
+        mv_expand_yaml_path = hygon_mm_expand_yaml_path or self._get_expand_config_path(
+            "mv"
+        )
+
         musa_yaml = os.path.join(
             os.path.dirname(__file__), "backend", "_mthreads", "tune_configs.yaml"
         )
@@ -1264,8 +1303,30 @@ class TunedConfigLoader(object):
                 "expand_yaml_path": None,
             },
             "mm": self._build_single_expand_spec(
-                "mm", expand_yaml_path=self._get_expand_config_path("mm")
+                "mm", expand_yaml_path=mm_expand_yaml_path
             ),
+            "mm_hygon_splitk": {
+                "yaml_op_name": "mm_hygon_splitk",
+                "key": ["M", "N", "K", "stride_bk", "stride_bn", "B_K_CONTIGUOUS",
+                        "ASYNC_LOAD_MASK", "WAVE_PRIVATE_SYNC_SUPPORTED",
+                        "M_ALIGNMENT", "N_ALIGNMENT"],
+                "default_strategy": ["default"] * 10,
+                "expand_yaml_path": hygon_mm_expand_yaml_path,
+            },
+            "mm_hygon_splitk_post": {
+                "yaml_op_name": "mm_hygon_splitk_post",
+                "key": ["MN", "SPLITS"],
+                "default_strategy": ["default"] * 2,
+                "expand_yaml_path": hygon_mm_expand_yaml_path,
+            },
+            "mm_hygon": {
+                "yaml_op_name": "mm",
+                "key": ["M", "N", "K", "stride_am", "stride_bk",
+                        "LARGE_TILE_CONFIGS", "ASYNC_LOAD_MASK", "K_DIVISIBLE_BY_16",
+                        "B_K_CONTIGUOUS"],
+                "default_strategy": ["default"] * 9,
+                "expand_yaml_path": mm_expand_yaml_path,
+            },
             "mm_ppu": {
                 "yaml_op_name": "mm_ppu",
                 "key": [
@@ -1355,7 +1416,7 @@ class TunedConfigLoader(object):
                 "mm_warp_specialized_tma"
             ),
             "mv": self._build_single_expand_spec(
-                "mv", expand_yaml_path=self._get_expand_config_path("mv")
+                "mv", expand_yaml_path=mv_expand_yaml_path
             ),
             "mv_row": self._build_single_expand_spec("mv_row"),
             "mv_column": self._build_single_expand_spec("mv_column"),
@@ -1366,7 +1427,7 @@ class TunedConfigLoader(object):
             "mv_hygon": self._build_single_expand_spec(
                 "mv_hygon",
                 yaml_op_name="mv",
-                expand_yaml_path=self._get_expand_config_path("mv"),
+                expand_yaml_path=mv_expand_yaml_path,
             ),
             "mul": self._build_single_expand_spec(
                 "mul", expand_yaml_path=self._get_expand_config_path("mul")

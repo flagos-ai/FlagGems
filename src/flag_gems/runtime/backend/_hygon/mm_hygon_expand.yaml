@@ -1,0 +1,102 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# Regular gfx936 MM geometry and the existing default launch baselines,
+# 2486 candidates after copy/layout alias and profile-specific allocation checks.
+# Launch ranges are allowed values; each named profile derives one stage/wave
+# choice per tile. All ten scheduling mechanisms and the default geometry/launch
+# coverage are retained; the default table is reused rather than duplicated.
+# The generator checks proven allocation bounds for these scheduling profiles.
+# Compilation handles remaining limits. Uniform LDS-slot estimates cannot
+# exclude configurations with scalar fallback or scratch reuse.
+mm:
+  - param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        PROFILE: profile
+      num_stages: stages
+      num_warps: warps
+    block_m: [16, 32, 64, 128, 256]
+    block_n: [16, 32, 64, 128, 256]
+    block_k: [16, 32, 64, 128]
+    group_m: [1, 4, 8]
+    profile: [generic_min, generic_pipe, sync, packed, register_prefetch,
+              shared_prefetch, async_a, async_b, async_pair, async_deep,
+              default_baselines]
+    stages: [1, 2, 3, 4, 5]
+    warps: [1, 2, 4, 8]
+
+# Regular global/CTA-local K partition profiles: 918 partial candidates.
+# Global profiles write FP32 partials; local profiles reduce and store directly.
+# Profiles derive launch dimensions within these declared allowed ranges.
+mm_hygon_splitk:
+  - param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        SPLITS: splits
+        PROFILE: profile
+      num_stages: stages
+      num_warps: warps
+    bm: [16, 32, 64]
+    bn: [16, 32, 64]
+    bk: [16, 32, 64]
+    splits: [1, 2, 4, 8, 16, 32, 64]
+    profile: [global_latency, global_bandwidth, global_throughput,
+              global_async_b, local_sync_s1, local_sync_s2]
+    stages: [1, 2, 3]
+    warps: [1, 2, 4, 8]
+mm_hygon_splitk_post:
+  - param_map:
+      META:
+        BLOCK: block
+      num_warps: warps
+      num_stages: stages
+    block: [128, 256]
+    warps: [4]
+    stages: [1]
+
+# gfx936 MV Expanded: a regular geometry domain, 543 candidates.
+# The loop's explicit LOOP_STAGES controls pipelining. For this non-dot kernel,
+# global num_stages=2/3/4 reaches the same loop-stage policy; keep one value.
+# BLOCK_M is the reduction tile, BLOCK_N the output tile. All powers of two
+# in each declared interval participate, including column-major output widths.
+# The mv_hygon generator retains the minimum owner waves and one replicated
+# occupancy tier, with at most 128 nominal FP32 accumulation values/thread.
+# The next power-of-two tier consumes all 256 VGPRs before loads/addresses;
+# use smaller tiles or more owner waves instead of that register-pressure tier.
+mv:
+  - param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        LOOP_STAGES: loop_stages
+      num_warps: warps
+      num_stages: stages
+    block_m: [32, 64, 128, 256, 512, 1024, 2048, 4096]
+    block_n: [1, 2, 4, 8, 16, 32, 64]
+    loop_stages: [1, 2, 3]
+    stages: [2]
+    warps: [1, 2, 4, 8]
+  - strategy:
+      M: default
+      N: default
+      stride_an: default
+      stride_am: default
+      stride_bm: default

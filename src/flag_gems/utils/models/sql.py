@@ -14,6 +14,7 @@
 
 import os
 import sqlite3
+import time
 from hashlib import md5
 from itertools import chain
 from typing import (
@@ -77,19 +78,22 @@ class SQLPersistantModel(PersistantModel):
             def set_sqlite_pragma(dbapi_conn, connection_record):
                 cursor = dbapi_conn.cursor()
                 try:
-                    cursor.execute("PRAGMA journal_mode=WAL")
-                except sqlite3.OperationalError:
-                    # Switching a database into WAL mode needs an exclusive
-                    # lock that SQLite will not wait for (busy_timeout does not
-                    # apply here).  When multiple processes cold-start at the
-                    # same time and race to flip the journal mode, only one
-                    # wins and the others get "database is locked".  The WAL
-                    # switch is persisted in the file header once it succeeds,
-                    # so the losing connections still read/write in WAL mode
-                    # afterwards — safe to ignore this race.
-                    pass
-                cursor.execute("PRAGMA synchronous=NORMAL")
-                cursor.close()
+                    cursor.execute("PRAGMA busy_timeout=30000")
+                    # Only the first connection needs to switch journal mode.
+                    # Parallel benchmark workers can race for that lock.
+                    for attempt in range(8):
+                        try:
+                            mode = cursor.execute("PRAGMA journal_mode").fetchone()[0]
+                            if mode.lower() != "wal":
+                                cursor.execute("PRAGMA journal_mode=WAL")
+                            break
+                        except sqlite3.OperationalError as exc:
+                            if "locked" not in str(exc).lower() or attempt == 7:
+                                raise
+                            time.sleep(0.05 * (attempt + 1))
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+                finally:
+                    cursor.close()
 
         self.sql_model_pool: Dict[str, Type[Base]] = {}
 

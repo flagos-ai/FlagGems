@@ -44,6 +44,8 @@ from flag_gems.utils.libentry import (
 )
 
 libentry_mod = importlib.import_module("flag_gems.utils.libentry")
+
+
 cost_model_mod = importlib.import_module("flag_gems.flagtune.inference.cost_model")
 flagtune_runtime_mod = importlib.import_module("flag_gems.runtime.flagtune")
 _REAL_ENSURE_PROPOSER = cost_model_mod.ensure_proposer
@@ -71,6 +73,45 @@ def isolate_cost_model_state(monkeypatch):
         "ensure_proposer",
         unexpected_probe,
     )
+
+
+def test_entry_explicit_constexpr_value_is_in_do_not_specialize_key():
+    # Triton still specializes explicit constexpr objects on a parameter with
+    # do_not_specialize. Different values must not hit LibEntry's old binary.
+    entry = SimpleNamespace(divisibility=16)
+    def key(value):
+        return libentry_mod.LibEntry.key(entry, [], [value], [])
+    assert key(tl.constexpr(16)) != key(tl.constexpr(32))
+    assert key(tl.constexpr(32)) == key(tl.constexpr(32))
+    assert key(tl.constexpr(True)) != key(tl.constexpr(1))
+    assert key(16) == key(32)
+    assert key(tl.constexpr(16)) != key(16)
+
+
+def test_entry_explicit_constexpr_dispatch_separates_constants(monkeypatch):
+    @triton.jit(do_not_specialize=["scale"])
+    def kernel(output, scale):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled = []
+
+    class Compiled:
+        def __getitem__(self, grid):
+            return lambda *args: None
+
+    def compile_kernel(*args, **kwargs):
+        result = Compiled()
+        compiled.append(result)
+        return result
+
+    monkeypatch.setattr(kernel, "run", compile_kernel)
+    first, _ = entry.run(7, tl.constexpr(16), grid=(1,))
+    second, _ = entry.run(7, tl.constexpr(32), grid=(1,))
+    again, _ = entry.run(7, tl.constexpr(16), grid=(1,))
+    assert first is again and first is not second
+    assert len(compiled) == len(entry._cpu_cache) == 2
 
 
 def test_libentry_uses_platform_appropriate_lock():
@@ -709,6 +750,7 @@ class ResolvedDescriptor:
 
 @pytest.fixture
 def descriptor_module(monkeypatch):
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
     monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
@@ -729,6 +771,7 @@ def test_descriptor_cache_key_uses_resolved_type(descriptor_module):
 
 
 def test_descriptor_cache_key_without_descriptor_module(monkeypatch):
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", None)
     monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     value = object()
@@ -1976,6 +2019,37 @@ def test_cost_model_protocol_stays_explicit():
     )
 
 
+def test_replay_refinement_remeasures_close_configs_without_reusing_screen():
+    screen = object()
+    long_replay = object()
+    tuner = SimpleNamespace(
+        do_bench=screen,
+        _replay_final=SimpleNamespace(benchmark=long_replay),
+        seen_tuned_metas={"screened": (1.0, 1.0, 1.0)},
+    )
+    screened_metas = tuner.seen_tuned_metas
+    timings = {
+        "first": (1.0, 1.0, 1.0),
+        "close": (1.02, 1.02, 1.02),
+        "slow": (1.04, 1.04, 1.04),
+    }
+    calls = []
+
+    def bench(*args, config, **kwargs):
+        assert tuner.do_bench is long_replay
+        assert "screened" not in tuner.seen_tuned_metas
+        calls.append(config)
+        latency = 1.1 if config == "first" else 1.0
+        return (latency, latency, latency)
+
+    tuner._bench = bench
+    assert LibTuner._refine_replay(tuner, "first", timings, (), {}) == "close"
+    assert calls == ["first", "close"]
+    assert tuner.do_bench is screen
+    assert tuner.seen_tuned_metas is screened_metas
+    assert timings["close"] == (1.02, 1.02, 1.02)
+
+
 def test_replay_fallback_reuses_event_config_cache_namespace(monkeypatch):
     """Use the historical event cache when replay resolution falls back to event."""
 
@@ -2498,3 +2572,130 @@ def test_libcache_concurrent_write_on_signal():
                 cache_path.unlink()
             except sqlite3.Error:
                 pass
+
+
+@pytest.mark.parametrize(
+    "option,first,second",
+    [
+        ("num_warps", 4, 8),
+        ("num_stages", 1, 2),
+        ("enable_fp_fusion", False, True),
+        ("backend_schedule", "none", "post-mma"),
+        ("extern_libs", {"math": "/first.bc"}, {"math": "/second.bc"}),
+        ("nested_option", {"axes": [0, 1]}, {"axes": [1, 0]}),
+    ],
+)
+def test_libentry_separates_external_compiler_options(
+    monkeypatch, option, first, second
+):
+    """Changing a compiler option must miss; changing only grid must hit."""
+
+    @triton.jit
+    def kernel(output, size: tl.constexpr):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled, launched = [], []
+
+    class Compiled:
+        def __getitem__(self, grid):
+            return lambda *args: launched.append((self, grid, args))
+
+    def compile_kernel(*args, **kwargs):
+        result = Compiled()
+        compiled.append(result)
+        return result
+
+    monkeypatch.setattr(kernel, "run", compile_kernel)
+    a, _ = entry.run(7, 64, grid=(1,), **{option: first})
+    b, _ = entry.run(7, size=64, grid=(1,), **{option: second})
+    again, _ = entry.run(7, 64, grid=(2,), **{option: first})
+    assert a is again and a is not b
+    assert compiled == [a, b]
+    assert launched == [(a, (2, 1, 1), (7, 64))]
+    assert len(entry._cpu_cache) == 2
+
+
+def test_libentry_snapshots_mutable_options_and_ignores_mapping_order(monkeypatch):
+    @triton.jit
+    def kernel(output):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled = []
+
+    class Compiled:
+        def __getitem__(self, grid):
+            return lambda *args: None
+
+    def compile_kernel(*args, **kwargs):
+        result = Compiled()
+        compiled.append(result)
+        return result
+
+    monkeypatch.setattr(kernel, "run", compile_kernel)
+    libs = {"a": "first", "b": "second"}
+    first, _ = entry.run(7, grid=(1,), extern_libs=libs, num_warps=4)
+    same, _ = entry.run(
+        7, grid=(1,), num_warps=4, extern_libs=dict(reversed(libs.items()))
+    )
+    libs["a"] = "changed"
+    changed, _ = entry.run(7, grid=(1,), extern_libs=libs, num_warps=4)
+    assert first is same and changed is not first
+    assert len(compiled) == len(entry._cpu_cache) == 2
+
+
+@pytest.mark.parametrize("runtime_option", [{"warmup": True}, {"stream": 123}])
+def test_libentry_delegates_runtime_controls_without_cached_launch(
+    monkeypatch, runtime_option
+):
+    @triton.jit
+    def kernel(output):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    delegated, launched = [], []
+
+    class Compiled:
+        def __getitem__(self, grid):
+            return lambda *args: launched.append(args)
+
+    def run_kernel(*args, **kwargs):
+        delegated.append(kwargs)
+        return Compiled()
+
+    monkeypatch.setattr(kernel, "run", run_kernel)
+    entry.run(7, grid=(1,))
+    entry.run(7, grid=(1,), **runtime_option)
+    entry.run(7, grid=(1,), **runtime_option)
+    entry.run(7, grid=(1,))
+    assert len(delegated) == 3 and len(launched) == 1
+    assert delegated[1] == delegated[2] == {"grid": (1,), **runtime_option}
+    assert len(entry._cpu_cache) == 1
+
+
+def test_libentry_delegates_unhashable_backend_options(monkeypatch):
+    @triton.jit
+    def kernel(output):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    delegated = []
+
+    def run_kernel(*args, **kwargs):
+        delegated.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(kernel, "run", run_kernel)
+
+    class OpaqueOption:
+        __hash__ = None
+
+    option = OpaqueOption()
+    entry.run(7, grid=(1,), backend_option=option)
+    entry.run(7, grid=(1,), backend_option=option)
+    assert len(delegated) == 2 and not entry._cpu_cache
