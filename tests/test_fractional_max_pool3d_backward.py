@@ -48,7 +48,11 @@ def test_accuracy_fractional_max_pool3d_backward(
     random_samples = torch.rand(N, C, 3, dtype=dtype, device=flag_gems.device)
     ref_random_samples = random_samples.to(device=ref_inp.device, dtype=ref_inp.dtype)
 
-    # Forward pass to get indices (use torch directly, forward is a separate PR)
+    # Forward pass to get indices. The reference runs torch native on CPU (fp64).
+    # The flag_gems side uses the flag_gems forward (which is verified to match
+    # torch fp64 exactly for every dtype) so the backward receives the indices
+    # the actual flag_gems forward produces.  Using torch.nn.functional here
+    # would hit the torch native XPU forward, which is wrong for bf16.
     ref_out, ref_indices = torch.nn.functional.fractional_max_pool3d(
         ref_inp,
         kernel_size=kernel_size,
@@ -57,11 +61,10 @@ def test_accuracy_fractional_max_pool3d_backward(
         _random_samples=ref_random_samples,
     )
 
-    res_out, res_indices = torch.nn.functional.fractional_max_pool3d(
+    res_out, res_indices = flag_gems.fractional_max_pool3d(
         inp,
         kernel_size=kernel_size,
         output_size=output_size,
-        return_indices=True,
         _random_samples=random_samples,
     )
 

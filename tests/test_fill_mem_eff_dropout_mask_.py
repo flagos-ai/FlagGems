@@ -46,6 +46,10 @@ MASK_DTYPES = [torch.float32]
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="aten::_fill_mem_eff_dropout_mask_ (curand) reference unavailable on XPU",
+)
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 @pytest.mark.parametrize("seed_offset", [(42, 0), (42, 100), (7, 0), (7, 1024)])
@@ -78,6 +82,10 @@ def test_fill_mem_eff_dropout_mask__value_range(shape):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="aten::_fill_mem_eff_dropout_mask_ (curand) reference unavailable on XPU",
+)
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 def test_fill_mem_eff_dropout_mask__inplace(shape):

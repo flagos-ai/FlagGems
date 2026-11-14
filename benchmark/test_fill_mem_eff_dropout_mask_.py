@@ -32,6 +32,19 @@ def _fill_mem_eff_dropout_mask_input_fn(shape, dtype, device):
 class FillMemEffDropoutMaskBenchmark(base.GenericBenchmark4DOnly):
     DEFAULT_SHAPE_DESC = "B, H, Q, K"
 
+    def set_shapes(self, shape_file_path=None):
+        # `_fill_mem_eff_dropout_mask_` only accepts 4D float32 masks of shape
+        # (batch, heads, queries, keys). The base Benchmark YAML fallback would
+        # otherwise supply 2D/3D shapes, which are invalid for this op and made
+        # init_user_config's s[0] * s[1] * s[2] * s[3] raise
+        # IndexError: tuple index out of range.
+        self.shapes = [
+            (4, 8, 512, 128),
+            (4, 8, 1024, 128),
+            (4, 8, 2048, 128),
+            (4, 8, 4096, 128),
+        ]
+
     def set_more_shapes(self):
         return []
 
@@ -39,10 +52,21 @@ class FillMemEffDropoutMaskBenchmark(base.GenericBenchmark4DOnly):
         super().init_user_config()
         # The kernel indexes flat elements with int32 arithmetic, so cap total
         # numel below 2**31 to avoid overflow on the largest 4D shapes.
-        self.shapes = [s for s in self.shapes if 1 < s[0] * s[1] * s[2] * s[3] < 2**31]
+        self.shapes = [
+            s
+            for s in self.shapes
+            if len(s) == 4 and 1 < s[0] * s[1] * s[2] * s[3] < 2**31
+        ]
 
 
 @pytest.mark.fill_mem_eff_dropout_mask_
+@pytest.mark.skip_native(
+    vendors="kunlunxin",
+    reason=(
+        "aten::_fill_mem_eff_dropout_mask_ (curand) has no eager XPU kernel; "
+        "only the FlagGems candidate is benchmarked"
+    ),
+)
 def test_fill_mem_eff_dropout_mask_():
     bench = FillMemEffDropoutMaskBenchmark(
         op_name="fill_mem_eff_dropout_mask_",

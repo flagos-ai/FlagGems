@@ -207,9 +207,10 @@ def test_fft_rfft_rejects_complex():
 def test_fft_rfft_defaults_bind():
     """Every argument but the input is defaulted by the ATen schema."""
     inp = _real((2, 16))
-    assert torch.equal(
-        flag_gems.fft_rfft(inp), flag_gems.fft_rfft(inp, n=None, dim=-1, norm=None)
-    )
+    a = flag_gems.fft_rfft(inp)
+    b = flag_gems.fft_rfft(inp, n=None, dim=-1, norm=None)
+    # torch.equal on complex64 is unimplemented on XPU; compare real/imag parts.
+    assert torch.equal(a.real, b.real) and torch.equal(a.imag, b.imag)
 
 
 @pytest.mark.fft_rfft
