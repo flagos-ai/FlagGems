@@ -451,6 +451,7 @@ if get_device_capability(current_device())[0] >= 3:
     from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
     from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
     from .bmm import bmm, bmm_out  # noqa: F401
+    from .bmm_w8a8 import bmm_w8a8  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm, mm_out  # noqa: F401
     from .mv import mv  # noqa: F401
@@ -466,6 +467,7 @@ if get_device_capability(current_device())[0] >= 3:
             "baddbmm_out",
             "bmm",
             "bmm_out",
+            "bmm_w8a8",
             "gelu",
             "mm",
             "mm_out",
