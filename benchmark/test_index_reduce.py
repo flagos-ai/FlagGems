@@ -86,6 +86,19 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, dim, index, source, {"reduce": reduce}
 
 
+def _build_functional_inputs_fn(plan, dtype, device):
+    shape, dim, source_shape, reduce = plan.builder_args
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    index_len = source_shape[dim]
+    index = torch.randperm(shape[dim], device=device)[:index_len]
+    source = (
+        torch.ones(source_shape, dtype=dtype, device=device)
+        if reduce == "prod"
+        else torch.randn(source_shape, dtype=dtype, device=device)
+    )
+    return inp, dim, index, source, {"reduce": reduce}
+
+
 @pytest.mark.index_reduce
 @_ASCEND_NATIVE_BASELINE_SKIP
 @_TSINGMICRO_SKIP
@@ -95,7 +108,7 @@ def test_index_reduce(reduce):
         op_name="index_reduce",
         torch_op=torch.index_reduce,
         case_fn=_case_fn_factory(reduce),
-        build_inputs_fn=_build_inputs_fn,
+        build_inputs_fn=_build_functional_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
