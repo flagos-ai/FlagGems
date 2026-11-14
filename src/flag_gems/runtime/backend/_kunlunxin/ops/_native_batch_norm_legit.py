@@ -163,3 +163,34 @@ def _native_batch_norm_legit_no_stats_out(
         eps,
     )
     return _copy_outputs(result, out, save_mean, save_invstd)
+
+
+def _patch_generic_module():
+    """Route ``flag_gems.ops._native_batch_norm_legit`` to this override.
+
+    The benchmark and tests import the four functions directly from the generic
+    module (``from flag_gems.ops._native_batch_norm_legit import ...``), so the
+    ``flag_gems.<name>`` SpecOpRegistrar override never reaches them and the
+    generic training kernel is the one that fails to lower on this backend.
+    Patching the module attributes keeps the change backend-local: the generic
+    source is untouched and other vendors keep their own implementation.
+    """
+    import sys
+
+    try:
+        module = sys.modules.get("flag_gems.ops._native_batch_norm_legit")
+        if module is None:
+            import importlib
+
+            module = importlib.import_module("flag_gems.ops._native_batch_norm_legit")
+        module._native_batch_norm_legit = _native_batch_norm_legit
+        module._native_batch_norm_legit_no_stats = _native_batch_norm_legit_no_stats
+        module._native_batch_norm_legit_out = _native_batch_norm_legit_out
+        module._native_batch_norm_legit_no_stats_out = (
+            _native_batch_norm_legit_no_stats_out
+        )
+    except (ImportError, AttributeError):
+        pass
+
+
+_patch_generic_module()

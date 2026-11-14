@@ -105,13 +105,18 @@ def _pad_packed_sequence(data, batch_sizes, batch_first, padding_value, total_le
         time_offsets.append(offset)
         offset += batch_size
 
-    lengths_list = []
-    for batch_index in range(max_batch):
-        length = 0
-        for time, batch_size in enumerate(batch_sizes_list):
-            if batch_index < batch_size:
-                length = time + 1
-        lengths_list.append(length)
+    lengths_list = [0] * max_batch
+    # ``batch_sizes`` is non-increasing, so the number of active steps for
+    # batch index b is the count of t with batch_sizes[t] > b.  Filling the
+    # descending ranges gives O(max_batch + num_steps) instead of the
+    # O(max_batch * num_steps) nested scan (which costs ~130K iterations per
+    # call on the largest benchmark shape).
+    prev = batch_sizes_list[0] if batch_sizes_list else 0
+    for time in range(num_steps):
+        nxt = batch_sizes_list[time + 1] if time + 1 < num_steps else 0
+        if prev > nxt:
+            lengths_list[nxt:prev] = [time + 1] * (prev - nxt)
+        prev = nxt
 
     packed_list = [
         (start * feature_size << 32) | (batch_size * feature_size)
