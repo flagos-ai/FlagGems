@@ -56,6 +56,8 @@ CHOLESKY_SOLVE_CASES = [
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 target storage loses adjacent-double values")
     if (
         flag_gems.vendor_name == "iluvatar"
         and dtype == torch.float64
