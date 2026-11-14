@@ -547,6 +547,10 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
 from .histogramdd import histogramdd
+from .histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -565,7 +569,7 @@ from .index_copy_ import (  # noqa: F401  (registered via _FULL_CONFIG)
 from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
-from .index_reduce import index_reduce_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inverse import inverse
@@ -1511,6 +1515,8 @@ __all__ = [
     "hinge_embedding_loss",
     "histc",
     "histogramdd",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
     "hsplit",
     "hstack",
     "hypot",
@@ -1529,7 +1535,9 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
+    "index_reduce",
     "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
