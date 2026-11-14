@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,16 @@ def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None
 
     if memory_format is None:
         memory_format = torch.preserve_format
+
+    # #8566: a CPU tensor cannot enter the Triton device context.  This is not
+    # exotic: torch.compile's preserve_rng_state clones a CPU ByteTensor during
+    # compilation, so without this guard the entire inductor backend breaks.
+    # The native clone is exact for any device the Triton kernel cannot run on.
+    if inp.device.type != flag_gems.runtime.device.name:
+        out = torch.empty_like(inp, memory_format=memory_format)
+        with torch.no_grad():
+            out.copy_(inp)
+        return out
 
     # Wrap the copy in an autograd node so the output carries a grad_fn and
     # gradients keep flowing when this clone is used inside a training graph.
