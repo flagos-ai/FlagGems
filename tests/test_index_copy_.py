@@ -60,3 +60,37 @@ def test_index_copy_(shape, dim, dtype):
     ref_inp.index_copy_(dim, ref_index, ref_src)
     flag_gems.index_copy_(inp, dim, index, src)
     gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
+
+
+@pytest.mark.index_copy
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_index_copy_duplicate_indices(dtype):
+    # CPU ATen applies the copies in order, so a repeated index
+    # means the LAST source position wins — the kernel must match that instead
+    # of racing the duplicate writers
+    inp = torch.randn(2, 2, 8, 4, dtype=dtype, device=flag_gems.device)
+    src = torch.randn(2, 2, 2, 4, dtype=dtype, device=flag_gems.device)
+    index = torch.tensor([1, 1], device=flag_gems.device, dtype=torch.int64)
+    # ATen CUDA index_copy is itself nondeterministic on a repeated index, so
+    # the reference is computed on the CPU, where the copies apply in order
+    ref_out = torch.index_copy(inp.cpu(), 2, index.cpu(), src.cpu())
+    res_out = flag_gems.index_copy(inp, 2, index, src)
+    gems_assert_close(res_out.cpu(), ref_out, dtype=dtype, reduce_dim=2)
+
+
+@pytest.mark.index_copy_
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_index_copy__duplicate_indices(dtype):
+    # in-place variant with a TRIPLE duplicate: the marked row is
+    # the last writer, so it must be the one that survives
+    inp = torch.randn(4, 6, dtype=dtype, device=flag_gems.device)
+    src = torch.zeros(3, 6, dtype=dtype, device=flag_gems.device)
+    src[2] = 5.0
+    index = torch.tensor([2, 2, 2], device=flag_gems.device, dtype=torch.int64)
+
+    ref_inp = inp.clone().cpu()
+    ref_out = ref_inp.index_copy_(0, index.cpu(), src.cpu())
+
+    res_out = flag_gems.index_copy_(inp.clone(), 0, index, src)
+    gems_assert_close(res_out.cpu(), ref_out, dtype=dtype, reduce_dim=0)
+    gems_assert_close(res_out[2].cpu(), torch.full_like(res_out[2].cpu(), 5.0), dtype=dtype)
