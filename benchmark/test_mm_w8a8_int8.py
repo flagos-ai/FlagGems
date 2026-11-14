@@ -18,6 +18,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import backend
 
 from . import consts
 from .conftest import Config
@@ -183,7 +184,11 @@ class AscendMmW8A8Int8Benchmark(ParallelMmW8A8Int8Benchmark):
     ["bf16", "native_int8"] if flag_gems.vendor_name == "ascend" else ["bf16"],
 )
 def test_mm_w8a8_int8(baseline):
-    if flag_gems.vendor_name == "thead" or not hasattr(flag_gems, "mm_w8a8_int8_out"):
+    registered_ops = dict(backend.get_ops(flag_gems.vendor_name))
+    if flag_gems.vendor_name == "thead" or not {
+        "mm_w8a8_int8",
+        "mm_w8a8_int8_out",
+    }.issubset(registered_ops):
         pytest.skip("mm_w8a8_int8 is not implemented by the active backend")
     bench_cls = (
         AscendMmW8A8Int8Benchmark
@@ -250,7 +255,11 @@ class ParallelMmW8A8Int8THeadBenchmark(ParallelMmW8A8Fp8Benchmark):
 
 @pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_thead():
-    if flag_gems.vendor_name != "thead" or not hasattr(flag_gems, "mm_w8a8_int8_out"):
+    registered_ops = dict(backend.get_ops(flag_gems.vendor_name))
+    if flag_gems.vendor_name != "thead" or not {
+        "mm_w8a8_int8",
+        "mm_w8a8_int8_out",
+    }.issubset(registered_ops):
         pytest.skip("mm_w8a8_int8 benchmark requires the THead INT8 backend")
     bench = ParallelMmW8A8Int8THeadBenchmark(
         input_fn=mm_input_fn,
