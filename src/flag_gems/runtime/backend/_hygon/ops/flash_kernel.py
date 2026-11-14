@@ -231,7 +231,17 @@ def apply_softcap(S, softcap, is_softcap: tl.constexpr):
 
 
 def block_m_splitkv_heuristic(headdim):
-    return 128 if headdim <= 128 else 32
+    # headdim > 256 (e.g. Gemma4 global layers with head_dim=512): BLOCK_M=32
+    # would make the splitkv kernel request ~66.5KB of shared memory
+    # (32*512*2 Q + 512*16*2 K + 16*512*2 V + 32*16*2 P), exceeding the
+    # 64KB LDS limit on Hygon DCU (issue #4286). BLOCK_M=16 keeps the
+    # working set at ~49.7KB.
+    if headdim <= 128:
+        return 128
+    elif headdim <= 256:
+        return 32
+    else:
+        return 16
 
 
 def block_n_splitkv_heuristic(headdim):
@@ -247,7 +257,13 @@ def is_even_mn(M, N, BM, BN, WL, WR):
 
 
 def block_m_splitkv_heuristic_spec_args(args):
-    return 128 if args["d"] <= 128 else 32
+    d = args["d"]
+    if d <= 128:
+        return 128
+    elif d <= 256:
+        return 32
+    else:
+        return 16
 
 
 def block_n_splitkv_heuristic_spec_args(args):
