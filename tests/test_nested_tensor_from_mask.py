@@ -30,6 +30,14 @@ NESTED_FROM_MASK_SHAPES = [
 ]
 
 
+def _candidate(*args, **kwargs):
+    # Canonical generated key first; retain the actual private builtin fallback.
+    candidate = getattr(flag_gems, "nested_tensor_from_mask", None)
+    if candidate is None:
+        candidate = flag_gems._nested_tensor_from_mask
+    return candidate(*args, **kwargs)
+
+
 def _left_aligned_mask(N, L, device):
     """Generate a random left-aligned boolean mask of shape (N, L)."""
     lengths = torch.randint(0, L + 1, (N,), device=device)
@@ -76,7 +84,7 @@ def test_nested_tensor_from_mask(shape, dtype):
     ref_mask = utils.to_reference(mask)
 
     ref_out = torch.ops.aten._nested_tensor_from_mask(ref_t, ref_mask, mask_check=True)
-    res_out = flag_gems._nested_tensor_from_mask(t, mask, mask_check=True)
+    res_out = _candidate(t, mask, mask_check=True)
 
     _assert_nested_equal(res_out, ref_out, dtype)
 
@@ -94,7 +102,7 @@ def test_nested_tensor_from_mask_no_mask_check(shape, dtype):
     ref_mask = utils.to_reference(mask)
 
     ref_out = torch.ops.aten._nested_tensor_from_mask(ref_t, ref_mask, mask_check=False)
-    res_out = flag_gems._nested_tensor_from_mask(t, mask, mask_check=False)
+    res_out = _candidate(t, mask, mask_check=False)
 
     _assert_nested_equal(res_out, ref_out, dtype)
 
@@ -115,4 +123,4 @@ def test_nested_tensor_from_mask_mask_check_raises():
         device=flag_gems.device,
     )
     with pytest.raises(RuntimeError):
-        flag_gems._nested_tensor_from_mask(t, mask, mask_check=True)
+        _candidate(t, mask, mask_check=True)

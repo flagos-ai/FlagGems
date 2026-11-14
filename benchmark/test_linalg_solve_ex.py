@@ -51,7 +51,6 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     batch, n, nrhs = plan.builder_args
-    torch.manual_seed(0)
     base_matrix = torch.randn((batch, n, n), dtype=dtype, device=device)
     eye = torch.eye(n, dtype=dtype, device=device).unsqueeze(0)
     matrix = base_matrix @ base_matrix.mT + eye * n

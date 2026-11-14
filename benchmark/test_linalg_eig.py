@@ -39,15 +39,11 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
-    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
     return (inp,)
 
 
 @pytest.mark.linalg_eig
-@pytest.mark.skip_native(
-    vendors=("thead",), reason="PPU native eig terminates during factorization"
-)
 def test_linalg_eig():
     OperatorCaseBenchmark(
         op_name="linalg_eig",
