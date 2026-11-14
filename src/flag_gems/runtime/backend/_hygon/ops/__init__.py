@@ -163,6 +163,7 @@ from .linalg_solve_triangular import (
 from .linear import linear
 from .log_normal_ import log_normal_
 from .lstm import lstm
+from .masked_fill import masked_fill
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
@@ -422,6 +423,7 @@ __all__ = [
     "linear",
     "log_normal_",
     "lstm",
+    "masked_fill",
     "masked_scale",
     "masked_scatter_backward",
     "matmul_bf16",
