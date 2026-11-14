@@ -183,6 +183,7 @@ from .mul import mul, mul_
 from .multiply_ import multiply_
 from .mv import mv
 from .mvlgamma import mvlgamma
+from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
@@ -442,6 +443,7 @@ __all__ = [
     "multiply_",
     "mv",
     "mvlgamma",
+    "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
