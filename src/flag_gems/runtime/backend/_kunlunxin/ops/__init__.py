@@ -399,6 +399,7 @@ from .cumprod import cumprod, cumprod_
 from .cumprod_backward import cumprod_backward
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
+from .cumulative_trapezoid import cumulative_trapezoid
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .dequantize import dequantize
 from .detach_copy import detach_copy
@@ -1371,6 +1372,7 @@ __all__ = [
     "cumsum",
     "cumsum_",
     "cumsum_out",
+    "cumulative_trapezoid",
     "deg2rad",
     "deg2rad_",
     "deg2rad_out",
