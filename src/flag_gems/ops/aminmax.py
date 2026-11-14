@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.contiguous import contiguous
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
@@ -124,7 +125,14 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
     logger.debug("GEMS AMINMAX")
 
     if dim is None:
+        # The global kernels read a dense logical sequence. Use the FlagGems
+        # copy path for views; contiguous inputs (including offsets) are a no-op.
+        inp = contiguous(inp)
         M = inp.numel()
+        if M == 0:
+            raise RuntimeError(
+                "aminmax(): reduction dim is empty and does not have an identity"
+            )
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -135,17 +143,21 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         if out is not None:
             min_out = out[0] if isinstance(out, tuple) else out
             max_out = out[1] if isinstance(out, tuple) else out
-            if not keepdim:
-                min_out = min_out.squeeze()
-                max_out = max_out.squeeze()
+            # Global aminmax returns scalar outputs; squeeze caller-provided
+            # outputs as ATen does even when keepdim=True.
+            min_out = min_out.squeeze()
+            max_out = max_out.squeeze()
         else:
-            if not keepdim:
-                min_out = torch.empty([], dtype=dtype, device=inp.device)
-                max_out = torch.empty([], dtype=dtype, device=inp.device)
-            else:
-                shape = [1] * inp.dim()
-                min_out = torch.empty(shape, dtype=dtype, device=inp.device)
-                max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            # A global reduction has scalar output; keepdim only affects
+            # reductions with an explicit dimension.
+            shape = ()
+            min_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+        if inp.is_floating_point() and bool(torch.isnan(inp).any().item()):
+            min_out.fill_(float("nan"))
+            max_out.fill_(float("nan"))
+            return min_out, max_out
 
         with torch_device_fn.device(inp.device):
             aminmax_kernel_1[(mid_size, 1)](
