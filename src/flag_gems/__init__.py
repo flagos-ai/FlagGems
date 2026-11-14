@@ -763,6 +763,36 @@ _FULL_CONFIG = (
         (SPARSE_DISPATCH_KEY,),
     ),
     (
+        "_sparse_sum",
+        _sparse_sum,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim",
+        _sparse_sum_dim,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_dtype",
+        _sparse_sum_dim_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dim_out",
+        _sparse_sum_dim_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sum.dtype",
+        _sparse_sum_dtype,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
         "_sparse_sum_backward",
         _sparse_sum_backward,
         None,

@@ -422,6 +422,13 @@ from flag_gems.ops._sparse_softmax_backward_data import (
     _sparse_softmax_backward_data,
     _sparse_softmax_backward_data_out,
 )
+from flag_gems.ops._sparse_sum import (
+    _sparse_sum,
+    _sparse_sum_dim,
+    _sparse_sum_dim_dtype,
+    _sparse_sum_dim_out,
+    _sparse_sum_dtype,
+)
 from flag_gems.ops._sparse_sum_backward import (
     _sparse_sum_backward,
     _sparse_sum_backward_out,
@@ -2143,8 +2150,13 @@ __all__ = [
     "_sparse_softmax_backward_data_out",
     "_sparse_softmax_int",
     "_sparse_softmax_out",
+    "_sparse_sum",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_sparse_sum_dim",
+    "_sparse_sum_dim_dtype",
+    "_sparse_sum_dim_out",
+    "_sparse_sum_dtype",
     "_stack",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_differentiable_lstm_cell_backward",
