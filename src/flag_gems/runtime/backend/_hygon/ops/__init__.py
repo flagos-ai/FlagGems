@@ -58,6 +58,7 @@ from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
+from .all import all_dim
 from .any import any, any_dim, any_dims
 from .argsort import argsort
 from .as_strided_scatter import as_strided_scatter
@@ -326,6 +327,7 @@ __all__ = [
     "addmm_out",
     "addmv_",
     "addr",
+    "all_dim",
     "any",
     "any_dim",
     "any_dims",
