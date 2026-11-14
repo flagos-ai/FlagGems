@@ -74,6 +74,8 @@ dependencies = [
 
 [project.optional-dependencies]
 
+dsv41 = ["tilelang==0.1.12"]
+
 # --- BEGIN auto-generated from backends.yaml ---
 ascend-cann850 = [
     "torch==2.9.0+cpu",
