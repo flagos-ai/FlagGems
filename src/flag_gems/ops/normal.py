@@ -82,7 +82,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
     return transform_func_tensor_tensor(out, std, mean)
 
 
-def normal_tensor_float(mean, std, *, generator=None):
+def normal_tensor_float(mean, std=1.0, *, generator=None):
     logger.debug("GEMS NORMAL_TENSOR_FLOAT")
     shape = mean.shape
     device = mean.device
