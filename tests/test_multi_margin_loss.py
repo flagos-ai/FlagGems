@@ -122,6 +122,8 @@ def test_multi_margin_loss(shape, dtype, p, reduction, use_weight):
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("use_weight", [False, True])
 def test_multi_margin_loss_backward(shape, dtype, p, reduction, use_weight):
+    if flag_gems.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("Enflame native multi_margin_loss backward does not support float16 or bfloat16")
     if flag_gems.vendor_name == "nvidia" and shape == (4, 65) and not utils.TO_CPU:
         pytest.skip("CUDA native float64 backward is incorrect for 65 classes; CPU reference remains covered")
     input, target, weight = _make_case(shape, dtype, use_weight)
@@ -207,6 +209,8 @@ def test_multi_margin_loss_forward_backward_consistency():
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("use_weight", [False, True])
 def test_multi_margin_loss_out_variants(dtype, p, reduction, use_weight):
+    if flag_gems.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("Enflame native multi_margin_loss backward does not support float16 or bfloat16")
     input, target, weight = _make_case((3, 7), dtype, use_weight)
     out = torch.empty((2,), dtype=input.dtype, device=input.device)
     output_shape = (3,) if reduction == 0 else ()
