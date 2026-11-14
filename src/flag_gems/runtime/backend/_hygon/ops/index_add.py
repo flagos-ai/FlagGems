@@ -459,6 +459,91 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     return _run_contiguous_suffix_tile_path(out, dim, index, src, alpha)
 
 
+def _can_use_fp16_word_cas(out, src, alpha, suffix_size):
+    # Narrow out-of-place inference repair, not a performance qualification.
+    # The caller has already validated contiguous suffix shapes and indices.
+    # Every accessed uint32 word must lie entirely inside this tensor's region.
+    return (
+        out.dtype == torch.float16
+        and src.dtype == torch.float16
+        and type(alpha) in (int, float)
+        and alpha == 1
+        and not out.requires_grad
+        and not src.requires_grad
+        and out.is_contiguous()
+        and src.is_contiguous()
+        and 1 < suffix_size <= 512
+        and out.numel() > 0
+        and out.numel() % 2 == 0
+        and out.data_ptr() % 4 == 0
+    )
+
+
+@libentry()
+@triton.jit
+def _index_add_contiguous_suffix_fp16_word_cas_kernel(
+    out,
+    index,
+    src,
+    total_count,
+    index_len,
+    out_dim,
+    suffix_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = ext.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total_count
+    cols = offsets % suffix_size
+    rows = offsets // suffix_size
+    src_dim_idx = rows % index_len
+    prefix_idx = rows // index_len
+    dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
+    valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
+    out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+    # atomic_cas has no mask. All inactive/tail/invalid lanes use allocated word 0.
+    safe_offsets = tl.where(valid, out_offsets, 0)
+    word_ptr = out.to(tl.pointer_type(tl.uint32)) + safe_offsets // 2
+    shift = ((safe_offsets & 1) * 16).to(tl.uint32)
+    half_mask = tl.full((BLOCK_SIZE,), 65535, tl.uint32) << shift
+    values = tl.load(src + offsets, mask=mask, other=0.0).to(tl.float32)
+    # Atomic read: only an identical 0->0 write is possible. No racing plain load.
+    cas_zero = tl.full((BLOCK_SIZE,), 0, tl.uint32)
+    observed = tl.atomic_cas(word_ptr, cas_zero, cas_zero, sem="relaxed", scope="gpu")
+    pending = valid
+    while tl.sum(pending.to(tl.int32), axis=0) > 0:
+        half_bits = ((observed >> shift) & 65535).to(tl.uint16)
+        old_half = half_bits.to(tl.float16, bitcast=True)
+        # Round EVERY successful update back to FP16; never accumulate in FP32.
+        new_half = (old_half.to(tl.float32) + values).to(tl.float16)
+        new_bits = new_half.to(tl.uint16, bitcast=True).to(tl.uint32)
+        desired = (observed & ~half_mask) | (new_bits << shift)
+        # Completed/inactive lanes issue an identity CAS, not a second addition.
+        desired = tl.where(pending, desired, observed)
+        seen = tl.atomic_cas(word_ptr, observed, desired, sem="relaxed", scope="gpu")
+        pending = pending & (seen != observed)
+        observed = seen
+
+
+def _run_contiguous_suffix_fp16_word_cas_path(out, dim, index, src):
+    suffix_size = _volume(src.shape[dim + 1 :])
+    with torch_device_fn.device(out.device):
+        _index_add_contiguous_suffix_fp16_word_cas_kernel[
+            (triton.cdiv(src.numel(), 256),)
+        ](
+            out,
+            index,
+            src,
+            src.numel(),
+            index.numel(),
+            out.size(dim),
+            suffix_size,
+            256,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+    return out
+
+
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_HYGON INDEX_ADD")
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
@@ -468,6 +553,12 @@ def index_add(inp, dim, index, src, alpha=1):
             inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
         )
         out = inp.float() if accumulate_fp32 else inp.clone()
+        if _can_use_fp16_word_cas(
+            out, src, alpha, _volume(src.shape[normalized_dim + 1 :])
+        ):
+            return _run_contiguous_suffix_fp16_word_cas_path(
+                out, normalized_dim, index.contiguous(), src
+            )
         res = _run_contiguous_suffix_path(
             out, normalized_dim, index.contiguous(), src, alpha
         )
