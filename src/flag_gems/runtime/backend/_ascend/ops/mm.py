@@ -273,6 +273,98 @@ def _mm_narrow_n_kernel(
 
 @libentry()
 @triton.jit
+def _mm_nt_split_kernel(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLITS: tl.constexpr,
+):
+    split = tl.program_id(1)
+    pid = tl.program_id(0)
+    rows = pid // tl.cdiv(N, BLOCK_N) * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = pid % tl.cdiv(N, BLOCK_N) * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for start in tl.range(tl.cdiv(K, BLOCK_K * SPLITS)):
+        kk = (split * tl.cdiv(K, BLOCK_K * SPLITS) + start) * BLOCK_K + rk
+        a = tl.load(
+            A + rows[:, None] * K + kk[None, :],
+            mask=(rows < M)[:, None] & (kk < K)[None, :],
+            other=0.0,
+        )
+        bt = tl.load(
+            B + cols[:, None] * K + kk[None, :],
+            mask=(cols < N)[:, None] & (kk < K)[None, :],
+            other=0.0,
+        )
+        al.compile_hint(a, "dot_pad_only_k")
+        al.compile_hint(bt, "dot_pad_only_k")
+        acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
+    tl.store(
+        C + split * M * N + rows[:, None] * N + cols[None, :],
+        acc,
+        mask=(rows < M)[:, None] & (cols < N)[None, :],
+    )
+
+
+@libentry()
+@triton.jit
+def _mm_nt_merge(P, C, MN: tl.constexpr, SPLITS: tl.constexpr, BLOCK: tl.constexpr):
+    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    ss = tl.arange(0, SPLITS)
+    partial = tl.load(P + ss[:, None] * MN + idx[None, :], idx[None, :] < MN, 0)
+    out = tl.sum(partial, axis=0)
+    tl.store(C + idx, out.to(C.dtype.element_ty), idx < MN)
+
+
+@libentry()
+@triton.jit
+def _mm_nt_kernel(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    rows = pid // tl.cdiv(N, BLOCK_N) * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = pid % tl.cdiv(N, BLOCK_N) * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for start in tl.range(tl.cdiv(K, BLOCK_K)):
+        kk = start * BLOCK_K + rk
+        a = tl.load(
+            A + rows[:, None] * K + kk[None, :],
+            mask=(rows < M)[:, None] & (kk < K)[None, :],
+            other=0.0,
+        )
+        bt = tl.load(
+            B + cols[:, None] * K + kk[None, :],
+            mask=(cols < N)[:, None] & (kk < K)[None, :],
+            other=0.0,
+        )
+        al.compile_hint(a, "dot_pad_only_k")
+        al.compile_hint(bt, "dot_pad_only_k")
+        acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
+    tl.store(
+        C + rows[:, None] * N + cols[None, :],
+        acc.to(C.dtype.element_ty),
+        mask=(rows < M)[:, None] & (cols < N)[None, :],
+    )
+
+
+@libentry()
+@triton.jit
 def _mm_rectangular_kernel(
     A,
     B,
@@ -608,6 +700,33 @@ def get_higher_dtype(a, b):
             return a
 
 
+def _mm_nn_rectangular_tile(m, n, k):
+    # Avoid oversized autotuning tiles for narrow outputs and incomplete M tiles.
+    # These ranges retain enough output tiles with a 128x256 Cube tile.
+    if k % 128 != 0 or (k == 128 and m % 128 == 0):
+        return None
+    if 1 <= m <= 16 and n == 64 and 2048 <= k <= 4096:
+        return 16, 64, 256
+    # Smaller-N workloads already have efficient tuned tiles. Only their
+    # unaligned-N, long-K family needs an explicit 128-column tile.
+    if 64 <= m <= 128 and 2048 <= n <= 4096:
+        if n % 128 != 0 and 4096 <= k <= 8192:
+            return 128, 128, 128
+        return None
+    if (
+        (64 <= m <= 512 and 2048 <= n <= 12288 and n % 64 == 0 and 128 <= k <= 8192)
+        or (
+            1024 <= m <= 4096
+            and 128 <= n <= 512
+            and 4096 <= k <= 8192
+            and (n >= 512 or m >= 2048)
+        )
+        or (1024 <= m <= 4096 and 1024 <= n <= 4096 and k == 128)
+    ):
+        return 128, 256, min(256, k)
+    return None
+
+
 def mm(a, b):
     logger.debug("GEMS_ASCEND MM")
     device = a.device
@@ -617,19 +736,84 @@ def mm(a, b):
             a = _mm_materialize_broadcast(a)
         if 0 in b.stride():
             b = _mm_materialize_broadcast(b)
-    # Materialize strided operands before entering the Cube kernels. This
-    # avoids backend-specific failures for column-major test inputs.
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    # Materialize irregular operands; dense NT inputs have a direct Cube path.
     if not a.is_contiguous():
         a = a.contiguous()
-    if not b.is_contiguous():
+    if (
+        a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and b.stride(0) == 1
+        and b.stride(1) == b.shape[0]
+        and 1 <= a.shape[0] <= 128
+        and 64 <= b.shape[1] <= 1024
+        and b.shape[0] >= 1024
+    ):
+        m, k = a.shape
+        n = b.shape[1]
+        splits = 4
+        bm = 16 if m <= 16 else 32
+        bn = 64
+        c = torch.empty((m, n), device=device, dtype=a.dtype)
+        partial = torch.empty((splits, m, n), device=device, dtype=torch.float32)
+        with torch_device_fn.device(device), _blockified():
+            _mm_nt_split_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn), splits)](
+                a,
+                b,
+                partial,
+                m,
+                n,
+                k,
+                bm,
+                bn,
+                128,
+                splits,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
+            )
+            _mm_nt_merge[(triton.cdiv(m * n, 256),)](partial, c, m * n, splits, 256)
+        return c
+    # The NT kernel reads contiguous K rows from the transposed B storage.
+    # Keep the existing materialization path for irregular views and K tails.
+    direct_nt = (
+        a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and b.stride(0) == 1
+        and b.stride(1) == b.shape[0]
+        and b.shape[0] >= 128
+        and b.shape[0] % 128 == 0
+    )
+    if not b.is_contiguous() and not direct_nt:
         b = b.contiguous()
     # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
+    if direct_nt and not b.is_contiguous():
+        block_m = 16 if M <= 16 else (32 if M <= 32 else 128)
+        block_n = 16 if N <= 16 else (64 if N <= 64 else 256)
+        block_k = 256 if K % 256 == 0 else 128
+        c = torch.empty((M, N), device=device, dtype=a.dtype)
+        with torch_device_fn.device(device), _blockified():
+            _mm_nt_kernel[(triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                block_m,
+                block_n,
+                block_k,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
+            )
+        return c
     # Pack the narrow right operand once so Cube reads contiguous K rows.
     if (
-        a.dtype == b.dtype == torch.bfloat16
+        a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
         and N == 16
         and 2048 <= K <= 4096
         and K % 1024 == 0
@@ -665,7 +849,8 @@ def mm(a, b):
         return c
     # Deinterleave four BF16 columns into contiguous K vectors for Cube.
     if (
-        a.dtype == b.dtype == torch.bfloat16
+        a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
         and N == 4
         and 8192 < K <= 16384
         and K % 512 == 0
@@ -699,7 +884,8 @@ def mm(a, b):
     # For the very wide BF16 layout, pack B into contiguous N panels so that
     # Cube reads short contiguous rows instead of the original K-strided rows.
     if (
-        a.dtype == b.dtype == torch.bfloat16
+        a.dtype == b.dtype
+        and a.dtype in (torch.float16, torch.bfloat16)
         and N >= 131072
         and N % 256 == 0
         and 1024 < K <= 2048
@@ -943,6 +1129,27 @@ def mm(a, b):
                     K,
                     BLOCK_OUT=4,
                     BLOCK_K=min(2048, triton.next_power_of_2(K)),
+                )
+            return c
+        tile = _mm_nn_rectangular_tile(M, N, K) if a.dtype == torch.bfloat16 else None
+        if tile is not None:
+            block_m, block_n, block_k = tile
+            with torch_device_fn.device(device), _blockified():
+                _mm_rectangular_kernel[
+                    (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+                ](
+                    a,
+                    b,
+                    c,
+                    M,
+                    N,
+                    K,
+                    block_m,
+                    block_n,
+                    block_k,
+                    multibuffer=True,
+                    unit_flag=True,
+                    sync_solver=False,
                 )
             return c
         if M <= 32 and N >= 16384:
