@@ -71,6 +71,7 @@ from .clip_ import clip_
 from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
@@ -384,6 +385,8 @@ __all__ = [
     "column_stack_out",
     "concat",
     "concatenate",
+    "convolution_backward",
+    "convolution_backward_out",
     "cosh_",
     "cosine_embedding_loss",
     "count_nonzero",
