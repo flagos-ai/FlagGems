@@ -59,6 +59,7 @@ from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
 from .any import any, any_dim, any_dims
+from .argmax import argmax
 from .argsort import argsort
 from .as_strided_scatter import as_strided_scatter
 from .attention import (
@@ -329,6 +330,7 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "argmax",
     "argsort",
     "as_strided_scatter",
     "avg_pool1d",
