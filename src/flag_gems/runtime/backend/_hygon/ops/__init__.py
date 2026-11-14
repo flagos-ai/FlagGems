@@ -186,6 +186,7 @@ from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
+from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .norm_scalaropt_dim import norm_scalaropt_dim
 from .nuclear_norm import nuclear_norm
@@ -450,6 +451,7 @@ __all__ = [
     "nansum_out",
     "native_layer_norm",
     "nll_loss_backward",
+    "nonzero",
     "nonzero_numpy",
     "norm_scalaropt_dim",
     "nuclear_norm",
