@@ -128,6 +128,70 @@ def test_conv2d(
         utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
 
 
+@pytest.mark.conv2d
+def test_conv2d_depthwise_pads_only_the_weight(monkeypatch):
+    """The K >= 16 channel padding must not materialize a 16x input (#7075).
+
+    `conv2d` used to pad each group's input channels from `weight_c` to 16, so a
+    depthwise convolution allocated N * C * 16 * H * W, i.e. 16x the real input.
+    Only the weight is padded now and the kernel masks channels past the real
+    count. This checks the values (forward and backward) and that no `pad` call
+    touches a tensor bigger than the padded weight.
+    """
+    groups = 4
+    inp = torch.randn(
+        (2, groups, 32, 32),
+        dtype=torch.float32,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    weight = torch.randn(
+        (groups * 2, 1, 3, 3),
+        dtype=torch.float32,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+
+    padded = []
+    real_pad = torch.nn.functional.pad
+
+    def spy(tensor, pad, *args, **kwargs):
+        padded.append(tensor.numel())
+        return real_pad(tensor, pad, *args, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "pad", spy)
+
+    ref_out = torch.nn.functional.conv2d(
+        ref_inp, ref_weight, stride=1, padding=1, dilation=1, groups=groups
+    ).to(torch.float32)
+    res_out = flag_gems.conv2d(
+        inp, weight, stride=1, padding=1, dilation=1, groups=groups
+    )
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+    assert padded, "expected the weight to be padded to K >= 16"
+    assert max(padded) <= 16 * weight.numel(), (
+        f"only the weight may be channel-padded, saw tensors of {padded} elements "
+        f"(input has {inp.numel()})"
+    )
+
+    out_grad = torch.randn_like(ref_out).to(flag_gems.device)
+    ref_grad = utils.to_reference(out_grad, True)
+    ref_in_grad, ref_weight_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad
+    )
+    res_in_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), out_grad)
+    utils.gems_assert_close(
+        res_in_grad, ref_in_grad, torch.float32, reduce_dim=weight.shape[2]
+    )
+    utils.gems_assert_close(
+        res_weight_grad, ref_weight_grad, torch.float32, reduce_dim=weight.shape[0]
+    )
+    assert max(padded) <= 16 * weight.numel(), f"backward padded {padded}"
+
+
 @pytest.mark.conv2d_padding
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2802: operator doesn't work")
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
