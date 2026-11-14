@@ -531,9 +531,13 @@ if get_device_capability(current_device())[0] >= 3:
     )
 
 if get_device_capability(current_device()) >= (3, 1):
-    from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
+    from .mm_w8a8_fp8 import _HAS_WS, mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+    if _HAS_WS:
+        from .grouped_gemm_w8a8_fp8 import grouped_gemm_w8a8_fp8  # noqa: F401
+
+        __all__.append("grouped_gemm_w8a8_fp8")
 
 from .resolve_conj import resolve_conj
 from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
