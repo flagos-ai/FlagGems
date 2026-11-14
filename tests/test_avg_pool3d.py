@@ -67,6 +67,7 @@ AVGPOOL3D_CONFIGS = [
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("batched", [True, False])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -79,7 +80,10 @@ def test_avg_pool3d(
     count_include_pad,
     divisor_override,
     dtype,
+    batched,
 ):
+    if not batched:
+        shape = shape[1:]
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
@@ -103,6 +107,7 @@ def test_avg_pool3d(
         divisor_override=divisor_override,
     )
 
+    assert res_out.shape == ref_out.shape
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -112,6 +117,7 @@ def test_avg_pool3d(
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("batched", [True, False])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -124,7 +130,10 @@ def test_avg_pool3d_backward(
     count_include_pad,
     divisor_override,
     dtype,
+    batched,
 ):
+    if not batched:
+        shape = shape[1:]
     if flag_gems.vendor_name == "kunlunxin" and ceil_mode:
         pytest.skip(
             "torch_xmlir XPU native avg_pool3d_backward does not support ceil_mode"
@@ -164,6 +173,7 @@ def test_avg_pool3d_backward(
         count_include_pad,
         divisor_override,
     )
+    assert res_inp_grad.shape == inp.shape
     # 3D backward accumulates over kernel_d * kernel_h * kernel_w elements per
     # input position. With stride < kernel, each input can receive gradient
     # contributions from many overlapping output windows, amplifying fp error.
@@ -177,3 +187,11 @@ def test_avg_pool3d_backward(
     gems_assert_close(
         res_inp_grad, ref_inp_grad, dtype, reduce_dim=kernel_volume * kernel_volume
     )
+
+
+@pytest.mark.avg_pool3d_backward
+def test_avg_pool3d_unbatched_grad_rank():
+    inp = torch.randn((2, 4, 4, 4), device=flag_gems.device)
+    grad_output = torch.randn((1, 2, 2, 2, 2), device=flag_gems.device)
+    with pytest.raises((RuntimeError, ValueError)):
+        flag_gems.avg_pool3d_backward(grad_output, inp, 2, 2, 0, False, True, None)
