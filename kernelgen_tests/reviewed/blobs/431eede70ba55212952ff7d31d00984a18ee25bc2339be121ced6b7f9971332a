@@ -1,0 +1,49 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for FlagGems ``linalg_inv_ex``.
+
+Frozen Definition (``definitions/linalg_inv_ex.json``, api_version v6.0)::
+
+    run(A, *, check_errors=False) -> result with fields ``inverse`` and ``info``
+    effects.mutates = []
+    effects.returns_alias_of = {}
+
+Observable ABI required by the frozen suites
+(``tests/test_linalg_inv_ex.py``, ``benchmark/test_linalg_inv_ex.py``):
+
+* ``inverse`` -- same shape and dtype as ``A``, a newly allocated tensor.
+* ``info``    -- ``torch.int32`` tensor of shape ``A.shape[:-2]``; 0 on
+  success, a positive LAPACK-order index when a pivot is exactly zero.  No
+  ``check_errors`` keyword is passed by the benchmark, so the default path
+  must not raise for valid input.
+* ``check_errors=True`` raises ``torch.linalg.LinAlgError`` for singular input
+  (``tests/test_linalg_inv_ex.py::test_linalg_inv_ex_check_errors``).
+* ``A`` is not mutated and no output aliases its storage.
+
+Oracle choice: the frozen master test already computes its expected value with
+``torch.linalg.inv_ex(ref_A, check_errors=check_errors)``.  The existing
+``--override linalg_inv_ex:<this file>:run`` protocol only rebinds the public
+attribute ``flag_gems.linalg_inv_ex``; it does not replace ``torch.linalg.inv_ex``.
+Delegating to that same native call therefore reproduces the frozen expected
+path exactly, with no import of the current candidate and no re-entrant
+FlagGems dispatch.  No CPU fallback or tolerance change is introduced here.
+"""
+
+import torch
+
+
+def run(A, *, check_errors=False):
+    """Return the native ``torch.linalg.inv_ex`` result for the candidate ABI."""
+    return torch.linalg.inv_ex(A, check_errors=check_errors)

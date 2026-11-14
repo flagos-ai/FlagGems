@@ -1,0 +1,50 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference-as-solution source for operator ``not_equal``.
+
+Frozen Definition (definitions/not_equal.json):
+    aten::not_equal.Tensor(Tensor self, Tensor other) -> Tensor
+    effects: mutates [], returns_alias_of {}  (fresh bool output, inputs intact)
+
+The candidate ABI is the public export ``flag_gems.not_equal(self, other)`` that
+the master accuracy test and the master benchmark's ``op_name="not_equal"``
+resolve to; the existing ``--override not_equal:<this file>:run`` injection
+replaces exactly that attribute (``flag_gems.not_equal`` /
+``Config.override_registry.get_override("not_equal")``). The preparation source
+therefore reuses that same two-tensor ABI and returns the native ATen result.
+
+It never imports the FlagGems candidate op module as its own oracle: the oracle
+is ``torch.not_equal`` (plain ATen dispatch), which is also the benchmark's
+declared ``torch_op``. Neither the master accuracy test nor the benchmark
+candidate path enters ``flag_gems.use_gems()``, so this call cannot re-enter the
+injected candidate.
+"""
+
+import torch
+
+
+def run(self, other):
+    """Elementwise ``self != other`` as a fresh ``torch.bool`` tensor.
+
+    Non-mutating and alias-free per the frozen Definition. Broadcasting and
+    dtype promotion, including scalar ``other``, follow ATen ``not_equal``
+    semantics exactly.
+    """
+    return torch.not_equal(self, other)
+
+
+# The override spec also permits the default function-name form
+# ("not_equal:<file>"), where the callable is looked up under the op name.
+not_equal = run

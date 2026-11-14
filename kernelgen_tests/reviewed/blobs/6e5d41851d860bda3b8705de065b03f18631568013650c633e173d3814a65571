@@ -1,0 +1,83 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+from . import base, consts
+from .generated_operator_utils import _clone_benchmark_inputs
+
+# ``renorm_`` rewrites its operand in place, so benchmarking it is stateful: the
+# reference timing and the candidate timing must each run on their own snapshot
+# of the master input.  Reusing one buffer would time the candidate on data the
+# reference pass already renormalized, and it would make the two roles share a
+# storage identity.  ``_clone_benchmark_inputs`` is the frozen dev helper that
+# the case-driven benchmarks use for exactly this (``fresh_inputs=True``); it
+# clones tensors and passes scalars through, and the clone happens outside the
+# timed callable, never inside a sample.
+#
+# The recent snapshots stay referenced so the device allocator cannot hand the
+# block just written by the reference pass to the candidate snapshot.
+_LIVE_SNAPSHOTS = []
+
+
+def _independent_snapshot(args, kwargs):
+    snapshot = _clone_benchmark_inputs((args, kwargs))
+    _LIVE_SNAPSHOTS.append(snapshot)
+    del _LIVE_SNAPSHOTS[:-4]
+    return snapshot
+
+
+class RenormBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        # 2D shapes: (num_slices, slice_size) to benchmark renorm across different dimensions
+        self.shapes = [
+            (16, 256),
+            (32, 512),
+            (64, 1024),
+            (128, 2048),
+            (256, 4096),
+            (512, 8192),
+        ]
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
+            yield inp, 2.0, 1, 1.0
+
+    def get_latency(self, op, *args, **kwargs):
+        """Transparent forwarder that hands each timing role a private operand.
+
+        ``self`` and ``op`` are forwarded unchanged, so
+        ``base.Benchmark.get_latency`` still owns the timing and the
+        ``metric.latency_base`` / ``metric.latency`` role assignments; only the
+        stateful operand is replaced by an independent snapshot.  This wrapper
+        is for the ``--override`` injection path; like every custom-timer
+        benchmark in this suite it is rejected by ``--ref-as-candidate``.
+        """
+        fresh_args, fresh_kwargs = _independent_snapshot(args, kwargs)
+        return super().get_latency(op, *fresh_args, **fresh_kwargs)
+
+
+@pytest.mark.renorm_
+def test_renorm_():
+    bench = RenormBenchmark(
+        op_name="renorm_",
+        torch_op=torch.ops.aten.renorm_,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

@@ -1,0 +1,33 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Preparation-only reference oracle for the frozen candidate ABI
+# `linalg_pinv(A, *, atol=None, rtol=None, hermitian=False) -> Tensor`.
+#
+# It is a faithful stand-in for `flag_gems.linalg_pinv` and does not import or
+# call the FlagGems candidate. The delegated native op is the exact expression
+# the frozen master accuracy tests already use as their expected value
+# (`torch.linalg.pinv(ref_A)` with the default `--ref <device>` path), so
+# dtype/device/shape, the `max(m, n) * eps`/atol cutoff semantics, the
+# "no input mutation, no output aliasing" effect contract from the frozen
+# Definition, and the original tolerances are all preserved. No Gems dispatch
+# context is entered here, so the native op is not re-routed through the
+# overridden `flag_gems.linalg_pinv` attribute.
+
+import torch
+
+
+def run(A, *, atol=None, rtol=None, hermitian=False):
+    """Return the Moore-Penrose pseudoinverse of ``A`` via native ATen pinv."""
+    return torch.linalg.pinv(A, atol=atol, rtol=rtol, hermitian=hermitian)

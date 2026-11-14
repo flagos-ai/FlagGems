@@ -1,0 +1,31 @@
+"""Prepared reference solution for ``linalg_inv_ex`` (reference-as-solution probe).
+
+Frozen contract (``definitions/linalg_inv_ex.json``):
+
+* ``linalg_inv_ex(A, *, check_errors=False)``
+* ``A``: positional-or-keyword square matrix, shape ``(*, n, n)``
+* ``check_errors``: keyword-only bool, default ``False``
+* outputs: ``inverse`` (same shape/dtype/device as ``A``) and ``info``
+  (``int32``, shape ``A.shape[:-2]``; ``0`` = success, ``i`` = the i-th
+  diagonal element of U in the LU decomposition is exactly zero)
+* effects: ``A`` is not mutated and neither output aliases it
+
+The oracle is ATen's native ``torch.linalg.inv_ex``, i.e. the same primitive the
+frozen accuracy suite already uses for its expected value
+(``tests/test_linalg_inv_ex.py`` line 70). It runs on the caller's own device and
+dtype, so device placement, dtype, the ``info`` (int32) contract and the
+``check_errors`` -> ``torch.linalg.LinAlgError`` behaviour are preserved exactly;
+no tolerance, dtype promotion or CPU round trip is introduced.
+
+This module deliberately does not import ``flag_gems`` and does not look up the
+operator under test, so it cannot be its own oracle: injecting it with
+``--override linalg_inv_ex:<this file>:run`` replaces the public export with an
+independent native call.
+"""
+
+import torch
+
+
+def run(A, *, check_errors=False):
+    """Return ``(inverse, info)`` for the square matrix ``A``."""
+    return torch.linalg.inv_ex(A, check_errors=check_errors)

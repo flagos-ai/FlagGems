@@ -1,0 +1,49 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only reference-as-solution for ``aten::indices`` (operator 2162).
+
+The entrypoint ``run`` is the declared ABI of the injected candidate
+(``--override indices:<this file>:run``), so it takes exactly one positional
+operand and returns the native ATen result.
+
+Why the native op is the faithful oracle here:
+
+* ``aten::indices(Tensor(a) self) -> Tensor(a)`` is a sparse COO metadata
+  accessor. Its result is the operand's stored index tensor itself, so the
+  returned object inherits the operand's strides and storage offset and shares
+  the coordinate storage (writes through the result land in the operand and a
+  later call sees them). The native call is the only oracle that reproduces
+  that identity, the int64 promotion and the ``(sparse_dim, nnz)`` shape for
+  hybrid operands without re-implementing any of it here.
+* The operator's rejection contract is caller-visible and byte-exact: an
+  uncoalesced COO operand, a dense/strided operand and a CSR/CSC operand are
+  all refused with the native ``RuntimeError`` text, a non-tensor operand and a
+  missing operand raise at call binding. Delegating keeps those messages and
+  error types native instead of retyping them, which is what the frozen tests
+  compare against ``torch.ops.aten.indices`` element-by-element.
+
+It imports no ``flag_gems`` symbol and never calls ``flag_gems.indices``, so it
+is not its own oracle and cannot recurse into the rebound export while the
+override is installed. It is a preparation tool for the review chain, not an
+optimised candidate: it performs no computation of its own and claims nothing
+about candidate numerics or performance.
+"""
+
+import torch
+
+
+def run(self):
+    """Return ``torch.ops.aten.indices(self)`` (native oracle, unchanged)."""
+    return torch.ops.aten.indices(self)

@@ -1,0 +1,77 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-stage reference solution for FlagGems ``histogramdd``.
+
+Reference-as-solution oracle: the native ATen ``torch.histogramdd`` run on a
+CPU copy of the caller's tensors.  The frozen master suite preserved verbatim
+in ``tests/test_histogramdd.py`` states the same thing for this build
+("Native histogramdd is CPU-only; compute reference on CPU") and itself calls
+``torch.histogramdd(inp.cpu(), ...)``; this wrapper is the injectable form of
+exactly that oracle.  It never imports ``flag_gems`` and never calls
+``flag_gems.histogramdd``, so it cannot re-enter the replaced export and is not
+its own oracle.
+
+Preserved semantics (frozen Definition ``definitions/histogramdd.json``):
+
+* signature ``histogramdd(self, bins, range=None, weight=None, density=False)``
+  -- ``bins`` may be an int, a per-dimension count list, or a list/tuple of edge
+  tensors;
+* ``(hist, bin_edges)`` tuple where ``bin_edges`` is one 1-D edge tensor per
+  dimension, dtype taken from the native reference (the input dtype);
+* the histogram and the edges are copied back to the caller's device so the
+  returned structure keeps the declared dtype/device (a plain contiguous copy,
+  it does not change any value);
+* arguments are only read (``detach`` + copy): nothing is mutated and no alias
+  of an input or of the weight tensor is returned (``effects.mutates`` is empty
+  and ``effects.returns_alias_of`` is empty in the frozen Definition).
+"""
+
+import torch
+
+
+def _cpu_copy(value):
+    """Read-only CPU copy of an optional tensor argument."""
+    if not isinstance(value, torch.Tensor):
+        return value
+    return value.detach().to("cpu")
+
+
+def _cpu_bins(bins):
+    """Move tensor bin edges to CPU; pass ints/lists of ints through."""
+    if isinstance(bins, torch.Tensor):
+        return _cpu_copy(bins)
+    if isinstance(bins, (list, tuple)) and len(bins) and isinstance(
+        bins[0], torch.Tensor
+    ):
+        return type(bins)(_cpu_copy(edge) for edge in bins)
+    return bins
+
+
+def run(input, bins, range=None, weight=None, density=False):
+    """Native CPU histogramdd oracle, results returned on the caller device."""
+    inp_cpu = _cpu_copy(input)
+    bins_cpu = _cpu_bins(bins)
+    weight_cpu = _cpu_copy(weight)
+
+    hist, bin_edges = torch.histogramdd(
+        inp_cpu,
+        bins=bins_cpu,
+        range=range,
+        weight=weight_cpu,
+        density=density,
+    )
+
+    device = input.device
+    return hist.to(device), [edge.to(device) for edge in bin_edges]

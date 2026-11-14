@@ -1,0 +1,82 @@
+"""Prepared benchmark for ``linalg_ldl_factor_ex`` (ascend) over frozen master.
+
+Workload source: frozen master ``benchmark/test_linalg_ldl_factor_ex.py``. The
+master case grid, dtypes, SPD input recipe, ``torch_op`` and markers are kept
+byte-for-byte; only the two protocol gaps of the frozen kernelgen-dev benchmark
+framework are filled in:
+
+* ``benchmark/base.py`` ``Benchmark.supports_cases`` /
+  ``GenericBenchmark.supports_cases`` only report a case interface when an
+  explicit ``case_fn``/``build_inputs_fn`` pair (or an overridden
+  ``get_case_iter`` + ``build_inputs``) is present. The master file passes the
+  legacy ``input_fn`` only, so ``supports_cases()`` was false and
+  ``--list-cases`` / ``--case-id`` could not reach the master cases. The two
+  helpers below restore that interface without changing the workload.
+* the master ``op_name="linalg_ldl_factor_ex"`` is the ATen schema label
+  registered in ``src/flag_gems/__init__.py`` ``_FULL_CONFIG`` for
+  ``torch.library.Library("aten", "IMPL")``; it is not a ``flag_gems.<name>``
+  attribute. The public callable export is ``flag_gems.ldl_factor_ex``
+  (``src/flag_gems/ops/__init__.py`` import + ``__all__``), which is also the
+  callsite of the frozen accuracy suite, so the override key is bound to that
+  name for both phases.
+"""
+
+import pytest
+import torch
+
+from . import base
+
+# Match the worktree accuracy-test square matrices; LDL requires N x N inputs.
+LDL_FACTOR_EX_SHAPES = [
+    (4, 4),
+    (8, 8),
+    (16, 16),
+    (32, 32),
+]
+
+
+def linalg_ldl_factor_ex_input_fn(shape, cur_dtype, device):
+    """Frozen master input recipe; the only source of the timed tensors."""
+    n = shape[-1]
+    a = torch.randn(shape, dtype=cur_dtype, device=device)
+    # Symmetric positive definite input avoids singular LDL cases.
+    yield (a @ a.mT + torch.eye(n, dtype=cur_dtype, device=device) * 0.1,)
+
+
+def _case_fn(shape, dtype):
+    """Tensor-free master case plan: one SPD N x N case per master shape."""
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={}, builder_args=(dims,)
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    """Materialize one planned case with the unchanged master recipe above."""
+    (dims,) = plan.builder_args
+    (inputs,) = linalg_ldl_factor_ex_input_fn(dims, dtype, device)
+    return inputs
+
+
+class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        # Pin the master core shapes: no core_shapes.yaml entry exists for this
+        # operator, so the generic (huge) dev defaults must never be reached.
+        self.shapes = LDL_FACTOR_EX_SHAPES
+        self.shape_desc = "N, N"
+
+
+@pytest.mark.linalg_ldl_factor_ex
+@pytest.mark.ldl_factor_ex
+def test_linalg_ldl_factor_ex():
+    bench = LinalgLdlFactorExBenchmark(
+        # Real public candidate/override name, not the ATen schema label.
+        op_name="ldl_factor_ex",
+        torch_op=torch.linalg.ldl_factor_ex,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        # PyTorch linalg_ldl_factor_ex only supports float32 on CUDA.
+        dtypes=[torch.float32],
+    )
+    bench.run()

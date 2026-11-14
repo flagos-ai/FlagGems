@@ -1,0 +1,32 @@
+"""Preparation oracle for ``linalg_solve_ex`` (FlagGems operator 964).
+
+This file is the reference-as-solution candidate that the project's own
+injection option
+
+    --override linalg_solve_ex:<this file>:run
+
+installs on ``flag_gems.linalg_solve_ex``.  It therefore exposes exactly the
+frozen public ABI from ``definitions/linalg_solve_ex.json``:
+
+    aten::linalg_solve_ex(Tensor A, Tensor B, *, bool left=True,
+                          bool check_errors=False) -> (Tensor result, Tensor info)
+
+The oracle is ATen's own ``torch.linalg.solve_ex``, i.e. the very expected value
+the frozen master tests compute for themselves.  It is called on the caller's
+tensors, so it keeps their dtype and device, allocates fresh outputs and never
+mutates or aliases ``A``/``B`` -- the frozen Definition effects
+(``mutates: []``, ``returns_alias_of: {}``) are preserved rather than relaxed.
+
+This module must not import ``flag_gems`` (or the generated candidate): the
+preparation oracle has to stay independent of the implementation under review.
+The selected master suites reach the export through the module attribute
+(``flag_gems.linalg_solve_ex(A, B)``) without entering ``flag_gems.use_gems()``,
+so delegating to the native operator cannot re-enter the replaced dispatch.
+"""
+
+import torch
+
+
+def run(A, B, *, left=True, check_errors=False):
+    """Return the native ``(result, info)`` pair for ``AX = B`` (or ``XA = B``)."""
+    return torch.linalg.solve_ex(A, B, left=left, check_errors=check_errors)

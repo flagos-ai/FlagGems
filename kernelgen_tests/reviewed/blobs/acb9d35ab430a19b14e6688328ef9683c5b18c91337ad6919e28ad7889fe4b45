@@ -1,0 +1,125 @@
+"""Prepared FlagGems benchmark for ``linalg_ldl_factor_ex`` (forward direction).
+
+Provenance
+----------
+* Frozen master workload: ``evidence/master/benchmark/test_linalg_ldl_factor_ex.py``
+  (4 square float32 shapes, ``a @ a.mT + 0.1 * eye(n)`` construction,
+  ``op_name``/``torch_op``/``dtypes``, ``LinalgLdlFactorExBenchmark.set_shapes``
+  and the ``linalg_ldl_factor_ex`` marker are carried verbatim).
+* Case interface: the frozen dev ``benchmark/base.py`` case API
+  (``GenericBenchmark(case_fn=..., build_inputs_fn=...)`` ->
+  ``BenchmarkCasePlan``/``BenchmarkCaseSpec``), which is what
+  ``GenericBenchmark.supports_cases()`` requires.  The master file passed the
+  legacy ``input_fn=`` generator instead, and with the frozen
+  ``base.GenericBenchmark.supports_cases()`` (``benchmark/base.py:1046-1055``)
+  a legacy instance reports ``False``: ``run()`` silently falls back to
+  ``_run_legacy()`` (``base.py:986``) and ``--list-cases`` /
+  ``--case-id`` / ``--preflight-only`` / ``--reference-only`` all raise or
+  skip (``base.py:514-517, 646-649, 980-983, 693-702``).  That is the
+  confirmed ``CONFIRMED_CASE_INTERFACE_REGRESSION`` and it is repaired here by
+  expressing the *same* master workload through the case interface.
+
+Identity / naming
+-----------------
+The ATen schema (``definitions/ldl_factor_ex.json``) is
+``aten::linalg_ldl_factor_ex(Tensor self, *, bool hermitian=False,
+bool check_errors=False) -> (Tensor LD, Tensor pivots, Tensor info)`` -- a
+forward operator.  ``linalg_ldl_factor_ex`` is the ATen overload label used by
+``flag_gems._FULL_CONFIG`` (master ``src/flag_gems/__init__.py:1554``, dev
+``:1005``); it is *not* a Python attribute of ``flag_gems``.  The callable
+export is ``ldl_factor_ex`` (``flag_gems.ops`` export, rebound to the
+Kunlunxin vendor implementation by ``SpecOpRegistrar``), and the override
+registry keys on ``f"flag_gems.{op_name}"``
+(``flag_gems/dynamic_registry.py:89,224,286``; ``benchmark/base.py:630,880``).
+``op_name`` therefore uses the callable name ``ldl_factor_ex``, so the same
+formal override key serves both the accuracy suite (``flag_gems.ldl_factor_ex``)
+and this benchmark, instead of parking an injected callable on a phantom
+``flag_gems.linalg_ldl_factor_ex`` attribute that no real dispatch reaches.
+
+Workload (unchanged from master, exactly one case per master shape)
+------------------------------------------------------------------
+* ``LDL_FACTOR_EX_SHAPES`` = ``[(4, 4), (8, 8), (16, 16), (32, 32)]``
+* ``dtypes`` = ``[torch.float32]``
+* input = ``a @ a.mT + torch.eye(n) * 0.1`` with ``a = torch.randn(shape)``
+  on the benchmark device (symmetric positive definite; avoids singular LDL).
+
+Shape routing
+-------------
+``set_shapes`` keeps the master override, so ``init_user_config()`` ->
+``set_shapes(Config.shape_file)`` uses the master table and never reaches the
+YAML/MRO lookup or ``GenericBenchmark.set_more_shapes``
+(``base.py:235-304``).  Neither ``benchmark/core_shapes.yaml`` nor
+``_kunlunxin/core_shapes.yaml`` has an ``ldl_factor_ex`` /
+``LinalgLdlFactorExBenchmark`` / ``GenericBenchmark`` row, so the inherited
+lookup would fall back to ``consts.DEFAULT_SHAPES`` (the huge dev default).
+``DEFAULT_SHAPES``/``DEFAULT_DTYPES``/``DEFAULT_SHAPE_DESC`` are also bound on
+the class so the ``--list-cases`` path (``list_cases(initialize=False)``,
+``base.py:972-978``) lists the master workload instead of that default.
+
+Deliberately not carried from the frozen dev benchmark: the
+``FLAGGEMS_LDL_H800_BASELINE`` imported H800 snapshot reader and its
+``get_latency``/``_candidate_call``/``_measure_input`` overrides.  That is
+dev-only extra workload, it needs an artifact that is not part of this task,
+and it would violate the frozen ``--ref-as-candidate`` reference contract
+(``benchmark/base.py:135-148`` rejects subclasses that override ``run``,
+``_measure_input``, ``get_latency`` or ``_candidate_call``).
+"""
+
+import pytest
+import torch
+
+from . import base
+
+# Match the worktree accuracy-test square matrices; LDL requires N x N inputs.
+LDL_FACTOR_EX_SHAPES = [
+    (4, 4),
+    (8, 8),
+    (16, 16),
+    (32, 32),
+]
+# PyTorch linalg_ldl_factor_ex only supports float32 on CUDA.
+LDL_FACTOR_EX_DTYPES = [torch.float32]
+
+
+def _case_fn(shape, dtype):
+    """Tensor-free plan for one master shape (1:1 with the master input_fn)."""
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={}, builder_args=(dims,)
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    """Materialize the master input tuple for one selected case."""
+    (shape,) = plan.builder_args
+    n = shape[-1]
+    a = torch.randn(shape, dtype=dtype, device=device)
+    # Symmetric positive definite input avoids singular LDL cases.
+    return (a @ a.mT + torch.eye(n, dtype=dtype, device=device) * 0.1,)
+
+
+class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
+    # Keep the master workload on the non-initialized (--list-cases) path too.
+    DEFAULT_SHAPES = LDL_FACTOR_EX_SHAPES
+    DEFAULT_DTYPES = LDL_FACTOR_EX_DTYPES
+    DEFAULT_SHAPE_DESC = "N, N"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = LDL_FACTOR_EX_SHAPES
+        self.shape_desc = "N, N"
+
+
+@pytest.mark.linalg_ldl_factor_ex
+def test_linalg_ldl_factor_ex():
+    bench = LinalgLdlFactorExBenchmark(
+        # Callable/override key, not the ATen overload label
+        # ("linalg_ldl_factor_ex" is not a ``flag_gems`` attribute).
+        op_name="ldl_factor_ex",
+        torch_op=torch.linalg.ldl_factor_ex,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        # PyTorch linalg_ldl_factor_ex only supports float32 on CUDA.
+        dtypes=LDL_FACTOR_EX_DTYPES,
+    )
+    bench.run()

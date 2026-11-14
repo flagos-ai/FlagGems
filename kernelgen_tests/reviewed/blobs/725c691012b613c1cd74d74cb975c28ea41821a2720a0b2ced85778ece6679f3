@@ -1,0 +1,30 @@
+"""Prepared reference solution for operator ``special_round`` (FlagGems, ascend).
+
+Reference-as-solution source for the native pytest ``--override`` protocol:
+
+    --override special_round:<this file>:run
+
+Contract preserved from the frozen Definition
+(``definitions/special_round.json``, api_version v6.0) and from the frozen
+master callsite ``flag_gems.special_round(inp[, decimals=...])``:
+
+* signature: ``run(input, *, decimals=0)``; ``decimals`` is keyword-only,
+  exactly like the representative ATen schema
+  ``aten::special_round(Tensor self, *, int decimals=0) -> Tensor``;
+* dtype / device / shape are those of the input (native elementwise op);
+* ``effects.mutates`` is empty: the input tensor is never written, and
+  ``effects.returns_alias_of`` is empty: the result is a fresh tensor that
+  shares no storage with the input.
+
+The oracle is the project's own reference computation used by the master
+pytest (``torch.special.round``).  This file deliberately does not import
+``flag_gems`` and does not call the current candidate implementation, so the
+injected solution cannot act as its own oracle.
+"""
+
+import torch
+
+
+def run(input, *, decimals=0):
+    """Round ``input`` to ``decimals`` places (round half to even)."""
+    return torch.special.round(input, decimals=decimals)

@@ -1,0 +1,60 @@
+"""Preparation-only reference for ``aten::flatten_dense_tensors``.
+
+This file is injected through the frozen FlagGems ``--override`` path
+(``--override flatten_dense_tensors:<this file>:run``, parsed by
+``src/flag_gems/cli_override.py`` and set on the ``flag_gems`` module by
+``src/flag_gems/dynamic_registry.py``), so it stands in for the candidate
+during the project ``--phase reference-as-solution`` review.
+
+The oracle is the native ATen operator that the frozen tests themselves use
+(``torch.ops.aten.flatten_dense_tensors``); a single contiguous input is
+returned as a ``view(-1)`` so the frozen zero-copy view fast path is
+preserved, and everything else is delegated to that native operator.  This
+module never imports or calls the FlagGems export it replaces, so it is not
+its own oracle and cannot re-enter the overridden dispatch.  Values, dtype
+promotion, shape, stride, device and mutation/alias behaviour therefore stay
+those of the frozen suite's own reference.
+"""
+
+import torch
+
+__all__ = ["run"]
+
+
+def _tensor_list(tensors):
+    """Validate the frozen ``Tensor[]`` argument and return a plain list.
+
+    The frozen operator rejects a bare Tensor and any non-Tensor element
+    before touching device memory; the messages below are the caller-visible
+    rejections the frozen correctness tests assert.
+    """
+    if isinstance(tensors, torch.Tensor):
+        raise TypeError(
+            "flatten_dense_tensors(): argument 'tensors' (position 1) must be "
+            "a list of Tensors, not Tensor"
+        )
+    items = list(tensors)
+    for item in items:
+        if not isinstance(item, torch.Tensor):
+            raise TypeError(
+                "flatten_dense_tensors(): expected Tensor as element, but got "
+                f"{type(item).__name__}"
+            )
+    return items
+
+
+def run(tensors):
+    """``aten::flatten_dense_tensors(Tensor[] tensors) -> Tensor``."""
+    items = _tensor_list(tensors)
+    if not items:
+        # No empty-list result exists; this is the frozen rejection text.
+        raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
+    if len(items) == 1 and items[0].is_contiguous() and items[0].numel() != 0:
+        # The frozen contract keeps a zero-copy flattened view for a single
+        # contiguous input; the view has the same values, dtype, shape,
+        # stride and device as the native operator and does not write to the
+        # input.  Every other input (non-contiguous single, empty, or a list)
+        # goes through the native operator itself, so aliasing and strides are
+        # exactly the reference's.
+        return items[0].view(-1)
+    return torch.ops.aten.flatten_dense_tensors.default(items)

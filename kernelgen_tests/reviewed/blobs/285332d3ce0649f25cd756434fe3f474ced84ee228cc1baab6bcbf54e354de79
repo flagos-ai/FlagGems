@@ -1,0 +1,76 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Master workload, kept verbatim from
+# master/benchmark/test_special_bessel_j0.py:
+#   * op_name="special_bessel_j0", torch_op=torch.special.bessel_j0
+#   * dtypes=[torch.float32, torch.float64]
+#   * shapes come from benchmark/core_shapes.yaml via the UnaryPointwiseBenchmark
+#     entry (special_bessel_j0 itself has no override there), so the core
+#     workload is unchanged
+#   * per-dtype input construction is unchanged: plain float64 randn for fp64,
+#     base.generate_tensor_input for everything else
+# Only the input-enumeration hook is restated on the frozen dev case protocol
+# (get_case_iter/build_inputs next to the legacy get_input_iter), because the
+# dev base materializes benchmark inputs from case specs; leaving the master
+# get_input_iter override alone would silently drop the fp64 branch (dev
+# generate_tensor_input has no float64 entry) instead of running master's case.
+
+import pytest
+import torch
+
+from . import base
+
+
+_DTYPES = [torch.float32, torch.float64]
+
+
+class BesselJ0Benchmark(base.UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            if cur_dtype == torch.float64:
+                inp = torch.randn(shape, dtype=torch.float64, device=self.device)
+            else:
+                inp = base.generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            dims = tuple(shape)
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(dims)},
+                    params={},
+                    builder_args=(dims,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        if case.dtype == torch.float64:
+            return (torch.randn(shape, dtype=torch.float64, device=self.device),)
+        return (base.generate_tensor_input(shape, case.dtype, self.device),)
+
+
+@pytest.mark.special_bessel_j0
+def test_special_bessel_j0():
+    bench = BesselJ0Benchmark(
+        op_name="special_bessel_j0",
+        torch_op=torch.special.bessel_j0,
+        # torch.special.bessel_j0 supports float32 and float64
+        dtypes=_DTYPES,
+    )
+    bench.run()

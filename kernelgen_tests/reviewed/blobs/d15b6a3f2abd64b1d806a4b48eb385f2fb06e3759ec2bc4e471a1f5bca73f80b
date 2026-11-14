@@ -1,0 +1,75 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for the FlagGems ``arange_start`` operator.
+
+This file is the reference-as-solution candidate: inject it through the
+project's existing formal override hook, for example
+
+    --override arange_start:<abs path of this file>:run
+
+and observe it at the real call site ``flag_gems.arange_start`` (accuracy
+suite) / ``op_name="arange_start"`` (benchmark suite).  ``run`` is the only
+declared entrypoint.
+
+The oracle is ATen ``torch.arange``; the FlagGems candidate implementation is
+never imported, wrapped or delegated to.  The single ``flag_gems.runtime``
+lookup below only reproduces the frozen wrapper's documented ``device=None``
+default (``runtime.device.name``), which the paired test applies to its own
+torch reference as well, so both sides stay on the same device.
+"""
+
+import torch
+
+
+def _frozen_default_device():
+    """Mirror the frozen wrapper: ``device=None`` means the FlagGems device.
+
+    ATen's own default for ``device=None`` is CPU, so a wrapper that forwards
+    the raw argument would diverge from the operator contract.  This resolves
+    the device only; the returned tensor is still computed by ``torch.arange``.
+    """
+    from flag_gems.runtime import device as runtime_device
+
+    return runtime_device.name
+
+
+def run(
+    start,
+    end,
+    step=1,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=None,
+):
+    """Return ``torch.arange(start, end, step, ...)`` under the frozen ABI.
+
+    Positional ``(start, end, step)`` and the keyword-only
+    ``dtype``/``layout``/``device``/``pin_memory`` parameters match the frozen
+    ``arange_start`` signature.  ``None`` keeps ATen's default behaviour for
+    ``layout``/``pin_memory`` and ``dtype=None`` keeps ATen's inference
+    (int64 for all-integral arguments, the default float dtype otherwise).
+    """
+    if device is None:
+        device = _frozen_default_device()
+
+    kwargs = {"dtype": dtype, "device": device}
+    if layout is not None:
+        kwargs["layout"] = layout
+    if pin_memory is not None:
+        kwargs["pin_memory"] = pin_memory
+
+    return torch.arange(start, end, step, **kwargs)

@@ -1,0 +1,68 @@
+"""Reference solution for the FlagGems ``binary_cross_entropy`` operator (ascend).
+
+Prepared entrypoint for the project pytest-review ``reference-as-solution``
+phase (``--candidate`` and ``--reference-source`` point at this file, entrypoint
+``run``).
+
+Oracle
+------
+The frozen accuracy cases build their expected value with
+``torch.nn.functional.binary_cross_entropy`` applied to
+``tests/accuracy_utils.py::to_reference(inp, True)`` tensors, and the core
+benchmark declares ``torch.ops.aten.binary_cross_entropy`` as its native
+baseline (``benchmark/test_binary_cross_entropy.py``). ``run`` therefore
+delegates to exactly that native ATen computation on the caller's own tensors,
+so dtype promotion, output dtype, device, shape, the -100 log clamp, the
+reduction semantics (0=none, 1=mean, 2=sum) and autograd behave natively.
+
+Contract
+--------
+* ABI follows ``definitions/binary_cross_entropy.json``:
+  ``binary_cross_entropy(Tensor self, Tensor target, Tensor? weight=None,
+  int reduction=Mean) -> Tensor``. ``reduction`` is accepted both as the frozen
+  int enum (0/1/2, default 1) and as the legacy functional strings
+  (``"none"``/``"mean"``/``"sum"``) that the frozen accuracy tests pass, because
+  the frozen FlagGems export normalises both spellings
+  (``src/flag_gems/ops/binary_cross_entropy.py::_normalize_reduction``).
+* ``effects.mutates == []`` and ``returns_alias_of == {}``: inputs are neither
+  written nor aliased, and the result is always a freshly allocated tensor in
+  the input dtype on the input device.
+
+This module imports only ``torch``. It never imports ``flag_gems`` and never
+calls the FlagGems candidate it replaces, so it cannot re-enter the injected
+implementation or borrow it as an oracle.
+"""
+
+import torch
+
+# aten::binary_cross_entropy(Tensor self, Tensor target, Tensor? weight=None,
+#                            int reduction=Mean) -> Tensor
+_REDUCTION_BY_ENUM = {0: "none", 1: "mean", 2: "sum"}
+_REDUCTION_BY_NAME = ("none", "mean", "sum")
+
+
+def _reduction_name(reduction):
+    """Map the frozen int enum and the legacy string spellings to aten names."""
+    if isinstance(reduction, bool):
+        raise ValueError(f"Invalid reduction: {reduction!r}")
+    if isinstance(reduction, int):
+        try:
+            return _REDUCTION_BY_ENUM[reduction]
+        except KeyError:
+            raise ValueError(f"Invalid reduction enum: {reduction}") from None
+    if isinstance(reduction, str):
+        name = reduction.lower()
+        if name in _REDUCTION_BY_NAME:
+            return name
+        raise ValueError(f"Invalid reduction: {reduction!r}")
+    raise ValueError(f"Unsupported reduction type: {type(reduction)!r}")
+
+
+def run(input, target, weight=None, reduction="mean"):
+    """Native binary cross entropy with the frozen candidate ABI."""
+    return torch.nn.functional.binary_cross_entropy(
+        input,
+        target,
+        weight=weight,
+        reduction=_reduction_name(reduction),
+    )

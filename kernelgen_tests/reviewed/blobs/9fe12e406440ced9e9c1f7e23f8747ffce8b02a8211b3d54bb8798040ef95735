@@ -1,0 +1,61 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for ``aten::_slow_conv2d_forward``.
+
+The frozen master accuracy test and the frozen master benchmark both use
+ATen's reference 2-D convolution as the golden oracle, so the same registered
+ATen kernel is the preparation oracle here.  This module is *not* the FlagGems
+candidate and deliberately does not import or call ``flag_gems`` at all, so
+injecting it can never re-enter the operator being prepared.
+
+ABI is taken from the real callsites, unchanged:
+
+* ``tests/test_slow_conv2d_forward.py``::
+
+      flag_gems._slow_conv2d_forward(
+          inp, weight, [kh, kw], bias, [stride_h, stride_w], [pad_h, pad_w]
+      )
+
+* ``benchmark/test_slow_conv2d_forward.py`` yields
+  ``(inp, weight, [k, k], bias, [stride, stride], [padding, padding])`` for the
+  benchmark's override-resolved callable.
+
+Both call the operator positionally in the order
+``(self, weight, kernel_size, bias, stride, padding)``, which is exactly the
+registered ``aten::_slow_conv2d_forward`` schema.  Inputs, lists, ``None`` bias
+and the returned tensor are passed through untouched, so dtype, device,
+contiguity, stride layout and the absence of input mutation keep the semantics
+of the original reference.  The ``.output`` overload listed by the frozen
+Definition is honoured when a caller supplies an output buffer; no frozen
+master workload uses it.
+"""
+
+import torch
+
+
+def run(inp, weight, kernel_size, bias, stride, padding, *, output=None):
+    """Evaluate ATen's reference forward on the caller's exact arguments."""
+    forward = torch.ops.aten._slow_conv2d_forward
+    if output is not None:
+        return torch.ops.aten._slow_conv2d_forward.output(
+            inp,
+            weight,
+            kernel_size,
+            bias,
+            stride,
+            padding,
+            output=output,
+        )
+    return forward(inp, weight, kernel_size, bias, stride, padding)

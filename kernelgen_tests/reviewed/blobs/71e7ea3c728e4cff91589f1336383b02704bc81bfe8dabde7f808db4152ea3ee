@@ -1,0 +1,42 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference-as-solution wrapper for ``_cast_Byte`` (``aten::_cast_Byte``).
+
+This file is the preparation-stage reference solution for the operator that the
+frozen kernelgen-dev suite calls as ``flag_gems._cast_Byte``. It is loaded by the
+official runtime injector (``--override _cast_Byte:<this file>:run``), so the
+receiving ABI is exactly the candidate ABI: ``(self, non_blocking=False)``.
+
+The oracle is the backend's native ATen operator, which is also the reference
+used by the frozen master test (``torch.ops.aten._cast_Byte``). It is *not* the
+current candidate: ``flag_gems`` is never imported here, and the injected
+candidate is a plain ``flag_gems._cast_Byte`` attribute, so no Gems dispatch
+path is re-entered and no recursion into the candidate is possible.
+
+Keeping the native operator preserves the vendor-observable cast semantics that
+the master workloads assert: uint8 inputs are returned unchanged (same object,
+same device, no copy), non-uint8 inputs produce a new uint8 tensor whose layout
+follows ATen ``empty_like`` Preserve semantics (so stride assertions hold), the
+result never requires grad, and floating inputs follow the vendor narrowing
+rules (saturating ``f32/f16/bf16/f64 -> int`` then truncation to ``uint8``),
+including the fractional/out-of-range/non-finite cases in the master suite.
+"""
+
+import torch
+
+
+def run(x, non_blocking=False):
+    """Cast ``x`` to ``torch.uint8`` with ``aten::_cast_Byte`` semantics."""
+    return torch.ops.aten._cast_Byte.default(x, non_blocking)

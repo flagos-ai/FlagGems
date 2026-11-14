@@ -1,0 +1,94 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Core benchmark for ``_cast_Byte`` (frozen master workloads, dev protocol).
+
+The workload table is the frozen master ``benchmark/test_cast_Byte.py``:
+four contiguous 1-D shapes ``(1024,)``, ``(65536,)``, ``(1048576,)``,
+``(16777216,)``, plus ``x.t()`` and ``x[:, ::2]`` of a ``(1024, 1024)`` tensor,
+for dtypes ``float16``, ``bfloat16`` and ``float32``. The builder reproduces
+those exact inputs (the ``slice`` case slices a ``(1024, 1024)`` base, so the
+timed tensor is ``(1024, 512)`` with stride ``(1024, 2)``).
+
+Adaptations are protocol-only and follow the kernelgen-dev tree:
+
+* the Definition name is ``_cast_Byte``, so ``op_name`` (the runtime override key
+  the benchmark resolves its candidate through) is ``_cast_Byte`` and the marker
+  is ``underscore_cast_Byte``;
+* ``gems_op`` is not passed: the dev tree has no public ``_cast_Byte`` export
+  before injection, and the base class resolves the injected callable from the
+  override registry instead of reading an export ahead of injection;
+* the tensor-free ``get_case_iter`` / ``build_inputs`` case interface of the
+  frozen dev ``benchmark/base.py`` is used, so ``--list-cases``/``--case-id``
+  keep working and each timed case carries an ID.
+
+The native baseline is the ATen operator, so both roles of the documented
+``base.py`` timing contract (``latency_base`` and ``latency``) are produced; no
+``skip_native`` marker, no skip and no metric change is introduced.
+"""
+
+import pytest
+import torch
+
+from . import base
+
+# Frozen master workload table: (shape of the tensor handed to the operator, layout).
+_CASES = [
+    ((1024,), "contiguous"),
+    ((65536,), "contiguous"),
+    ((1048576,), "contiguous"),
+    ((16777216,), "contiguous"),
+    ((1024, 1024), "transpose"),
+    ((1024, 1024), "slice"),
+]
+
+
+def _case_shape(shape, layout):
+    """Shape of the tensor actually timed for ``(shape, layout)``."""
+    if layout == "slice":
+        return [shape[0], shape[1] // 2]
+    return list(shape)
+
+
+class CastByteBenchmark(base.Benchmark):
+    def get_case_iter(self, dtype):
+        for ordinal, (shape, layout) in enumerate(_CASES):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": _case_shape(shape, layout)},
+                    params={"layout": layout},
+                    builder_args=(shape, layout),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape, layout = case.builder_args[0].builder_args
+        inp = torch.randn(shape, device=self.device, dtype=case.dtype)
+        if layout == "transpose":
+            inp = inp.t()
+        elif layout == "slice":
+            inp = inp[:, ::2]
+        return (inp,)
+
+
+@pytest.mark.underscore_cast_Byte
+def test_cast_Byte():
+    bench = CastByteBenchmark(
+        op_name="_cast_Byte",
+        torch_op=torch.ops.aten._cast_Byte.default,
+        dtypes=[torch.float16, torch.bfloat16, torch.float32],
+    )
+    bench.run()

@@ -1,0 +1,63 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference solution for ``aten::_embedding_bag_sparse_backward``.
+
+The declared entrypoint ``run`` mirrors the operator call ABI that the frozen
+correctness test and the frozen benchmark actually use:
+
+    run(grad, indices, offsets, offset2bag, bag_size, num_weights,
+        scale_grad_by_freq, mode, per_sample_weights, padding_idx)
+
+``grad`` is ``(num_bags, embedding_dim)``; the result is the operator's own
+sparse (COO) embedding-table gradient of shape ``(num_weights, embedding_dim)``:
+one stored entry per non-padding sample (``nnz == indices.numel()`` minus the
+padding-index samples), ``indices`` kept in input sample order, ``values``
+``(nnz, embedding_dim)`` carrying the per-sample scaled gradient. Layout,
+``sparse_dim``/``dense_dim``, ``nnz`` and the dtype/device of the inputs are
+part of the contract, so the wrap returns the tensor unchanged instead of
+re-encoding it (no ``coalesce()``/``to_dense()``) and never mutates an input.
+
+This wrap is the oracle only for the preparation phase: it calls the native
+aten operator, not the FlagGems candidate that is being replaced, so injecting
+it as the candidate cannot recurse into itself.
+"""
+
+import torch
+
+
+def run(
+    grad,
+    indices,
+    offsets,
+    offset2bag,
+    bag_size,
+    num_weights,
+    scale_grad_by_freq,
+    mode,
+    per_sample_weights=None,
+    padding_idx=-1,
+):
+    return torch.ops.aten._embedding_bag_sparse_backward(
+        grad,
+        indices,
+        offsets,
+        offset2bag,
+        bag_size,
+        num_weights,
+        scale_grad_by_freq,
+        mode,
+        per_sample_weights,
+        padding_idx,
+    )

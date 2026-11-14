@@ -1,0 +1,47 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation reference for FlagGems ``linalg_solve_ex``.
+
+This file is the ``--reference-source`` of the pytest review probe and is
+injected unchanged through the native override entrypoint
+``linalg_solve_ex:<this file>:run``.  It stands in for the solution under
+``--phase reference-as-solution``; it is a preparation oracle, not an
+optimized candidate and not the FlagGems implementation.
+
+Oracle choice: the native ATen operator ``torch.linalg.solve_ex`` evaluated on
+the *actual* operand tensors, i.e. the same native expression the frozen
+master accuracy tests use for their expected value.  Keeping the native call
+preserves the frozen contract instead of re-deriving it:
+
+* returns the ``(result, info)`` tuple with ``info`` int32 on the operands'
+  device (the frozen Definition's ``outputs`` are ``result`` and ``info``);
+* dtypes are preserved (float32/float64 are solved natively, no silent
+  upcast or downcast of the result);
+* ``effects`` are ``mutates: []`` / ``returns_alias_of: {}``: neither ``A``
+  nor ``B`` is mutated and the two fresh outputs never alias an input;
+* ``left`` / ``check_errors`` keep the frozen keyword-only schema and their
+  eager vs. ``LinAlgError`` behaviour.
+
+The FlagGems implementation (``flag_gems.linalg_solve_ex``) and the private
+Gems module are never imported or called here, so this oracle cannot recurse
+into, or borrow results from, the candidate it is standing in for.
+"""
+
+import torch
+
+
+def run(A, B, *, left=True, check_errors=False):
+    """Evaluate ``aten::linalg_solve_ex(A, B, left, check_errors)`` natively."""
+    return torch.linalg.solve_ex(A, B, left=left, check_errors=check_errors)

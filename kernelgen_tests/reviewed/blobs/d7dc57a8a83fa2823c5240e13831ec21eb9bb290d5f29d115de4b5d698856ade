@@ -1,0 +1,209 @@
+# Copyright 2026 FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Prepared reference solution for ``quantized_max_pool1d_out``.
+
+Declared entrypoint: ``run``. Injected through the existing FlagGems override
+mechanism (``--override quantized_max_pool1d_out:<this file>:run``), so it
+replaces ``flag_gems.quantized_max_pool1d_out`` and is the observed solution in
+the reference-as-solution phase.
+
+Numeric oracle: ATen's CPU ``torch.quantized_max_pool1d`` applied to the
+input's exact integer representation (``int_repr`` equivalent), which is also
+the native baseline for this operator (PyTorch ships no QuantizedCUDA
+``quantized_max_pool1d``). This file deliberately does not import FlagGems, the
+candidate module, or the Triton kernel, so it cannot re-enter the operator it
+replaces.
+
+The candidate ABI and the frozen Definition effects are implemented around that
+oracle:
+
+* ``out`` is mutated in place and resized to the computed output shape,
+* the returned ``result`` aliases ``out`` (the very same tensor object),
+* ``out`` adopts the input's ``q_scale`` / ``q_zero_point``,
+* writes honour ``out``'s own strides and storage offset (the neighbouring
+  elements of a strided ``out`` are untouched),
+* the input's integer values are snapshotted before ``out`` is touched, because
+  ``out is input`` is a legal call whose resize would otherwise change the data
+  that is pooled.
+"""
+
+import torch
+
+_QUANT_TO_INT = {
+    torch.quint8: torch.uint8,
+    torch.qint8: torch.int8,
+    torch.qint32: torch.int32,
+}
+
+_PER_TENSOR_AFFINE = torch.per_tensor_affine
+
+
+def _int_dtype(qdtype):
+    try:
+        return _QUANT_TO_INT[qdtype]
+    except KeyError:
+        raise ValueError(
+            f"quantized_max_pool1d expects a quantized tensor, but got {qdtype}"
+        ) from None
+
+
+def _int_view_of(qtensor):
+    """Integer tensor aliasing ``qtensor``'s storage, strides and offset.
+
+    ``int_repr()`` allocates a fresh contiguous copy, so it can neither be
+    written back nor read a strided quantized view without a strided quantized
+    copy kernel. An integer tensor of the matching width placed over the same
+    storage is a real view.
+    """
+    return torch.empty(
+        0, dtype=_int_dtype(qtensor.dtype), device=qtensor.device
+    ).set_(
+        qtensor.untyped_storage(),
+        qtensor.storage_offset(),
+        tuple(qtensor.shape),
+        qtensor.stride(),
+    )
+
+
+def _contiguous_strides(shape):
+    strides = [1] * len(shape)
+    for i in range(len(shape) - 2, -1, -1):
+        strides[i] = strides[i + 1] * shape[i + 1]
+    return tuple(strides)
+
+
+def _check_input(input):
+    if input.dtype not in _QUANT_TO_INT:
+        raise ValueError(
+            f"quantized_max_pool1d expects a quantized tensor, but got {input.dtype}"
+        )
+    if input.dim() not in (2, 3):
+        raise RuntimeError(
+            "max_pool1d() Expected 2D or 3D input tensor, but got "
+            f"{list(input.shape)}"
+        )
+    if input.qscheme() != _PER_TENSOR_AFFINE:
+        raise RuntimeError(
+            "Expected quantizer->qscheme() == kPerTensorAffine to be true, but got "
+            "false."
+        )
+
+
+def _check_out(input, out):
+    if not isinstance(out, torch.Tensor):
+        raise RuntimeError(f"Expected out to be a Tensor, but got {type(out)}")
+    if out.device != input.device:
+        raise RuntimeError(
+            f"Expected out tensor to have device {input.device}, but got "
+            f"{out.device} instead"
+        )
+    if out.dtype != input.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {input.dtype}, but got {out.dtype} "
+            "instead"
+        )
+    if out.qscheme() != _PER_TENSOR_AFFINE:
+        raise RuntimeError("Quantized Copy only works with same qscheme")
+
+
+def _resize_out(out, out_shape):
+    """Resize ``out`` in place the way aten's out= wrapper does.
+
+    ``Tensor.resize_`` has no QuantizedCUDA kernel here, so the resize goes
+    through ``set_``: sizes become ``out_shape``, strides become contiguous and
+    the storage offset is preserved, growing the storage only when the new
+    extent no longer fits.
+    """
+    if tuple(out.shape) == tuple(out_shape):
+        return
+    numel = 1
+    for size in out_shape:
+        numel *= size
+    offset = out.storage_offset()
+    storage = out.untyped_storage()
+    needed = (offset + numel) * out.element_size()
+    if storage.nbytes() < needed:
+        storage = torch.empty(
+            needed, dtype=torch.uint8, device=out.device
+        ).untyped_storage()
+    out.set_(storage, offset, tuple(out_shape), _contiguous_strides(tuple(out_shape)))
+
+
+def _sync_out_quantizer(out, scale, zero_point):
+    """Give ``out`` the pooled result's quantization parameters, bytes intact.
+
+    A quantized tensor's scale/zero-point live in its quantizer and cannot be
+    reassigned from Python. Copying from a same-storage, same-layout alias that
+    carries the target quantizer moves the parameters over without disturbing
+    the bytes (or the neighbours of a strided view).
+    """
+    if out.q_scale() == scale and out.q_zero_point() == zero_point:
+        return
+    alias = torch._empty_affine_quantized(
+        (0,), scale=scale, zero_point=zero_point, dtype=out.dtype, device=out.device
+    )
+    alias.set_(
+        out.untyped_storage(), out.storage_offset(), tuple(out.shape), out.stride()
+    )
+    out.copy_(alias)
+
+
+def run(
+    input,
+    kernel_size,
+    stride=[],
+    padding=[0],
+    dilation=[1],
+    ceil_mode=False,
+    *,
+    out=None,
+):
+    """aten::quantized_max_pool1d.out on a device-resident quantized input."""
+    _check_input(input)
+    if out is not None:
+        _check_out(input, out)
+
+    scale = float(input.q_scale())
+    zero_point = int(input.q_zero_point())
+
+    # Snapshot the integer values before ``out`` is touched: an ``out`` that
+    # aliases the input is legal, and resizing it would change what we pool.
+    pooled_input_int = _int_view_of(input).to("cpu").contiguous()
+
+    pooled_cpu = torch.quantized_max_pool1d(
+        torch._make_per_tensor_quantized_tensor(
+            pooled_input_int, scale, zero_point
+        ),
+        kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    result_int = pooled_cpu.int_repr().contiguous()
+
+    if out is None:
+        return torch._make_per_tensor_quantized_tensor(
+            result_int, scale, zero_point
+        ).to(input.device)
+
+    _resize_out(out, tuple(result_int.shape))
+    _sync_out_quantizer(out, scale, zero_point)
+    if out.numel() == 0:
+        return out
+
+    # Write through out's own layout so a strided/storage-offset out keeps its
+    # neighbours and its identity.
+    _int_view_of(out).copy_(result_int.to(input.device))
+    return out

@@ -1,0 +1,57 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only reference solution for the frozen ``all_dim`` operator.
+
+This file is injected at runtime through the native FlagGems override path
+(``--override all_dim:<this file>:run``) and is also the ``--reference-source``
+for the pytest-review probe, so the two hashes are identical by construction.
+
+It is a drop-in for the caller-visible ABI of the public export
+``flag_gems.all_dim(inp, dim=None, keepdim=False)`` that the frozen tests call:
+
+  * accuracy: ``flag_gems.all_dim(inp, dim=dim, keepdim=keepdim)``
+    (tests/test_all.py::test_all_dim, marker ``all_dim``) compared against
+    ``torch.all(utils.to_reference(inp), dim=dim, keepdim=keepdim)``;
+  * benchmark: ``UnaryReductionBenchmark(op_name="all_dim", torch_op=torch.all)``
+    invokes the candidate exactly like the reference, i.e. ``(inp, 1)`` for
+    shapes with ``ndim > 1`` and ``(inp,)`` for the 1-D shape
+    (benchmark/base.py UnaryReductionBenchmark.get_case_iter/build_inputs).
+
+The oracle is the native ``torch.all`` reduction itself: it keeps the input
+dtype/device, returns a ``torch.bool`` tensor on the input device, reduces over
+the requested ``dim`` with ``keepdim`` semantics, and does not upcast. It
+imports no FlagGems symbol and never calls the injected candidate, so it cannot
+use the candidate as its own oracle. The frozen tests do not run inside
+``flag_gems.use_gems()``; the override is a plain attribute replacement on the
+``flag_gems`` module, so ``torch.all`` here is not re-dispatched to the
+overridden export.
+"""
+
+import torch
+
+
+def run(inp, dim=None, keepdim=False):
+    """Reduce the truth value of ``inp`` over ``dim``.
+
+    Mirrors ``flag_gems.all_dim``: ``dim=None`` means "reduce all dims" (a
+    0-dim bool tensor, reshaped to ``[1] * inp.ndim`` when ``keepdim`` is set),
+    otherwise the reduction is taken along the requested ``dim``.
+    """
+    if dim is None:
+        out = torch.all(inp)
+        if keepdim:
+            out = out.reshape([1] * inp.ndim)
+        return out
+    return torch.all(inp, dim=dim, keepdim=keepdim)

@@ -1,0 +1,108 @@
+import pytest
+import torch
+
+from . import base, consts
+
+
+class LSTMBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        # LSTM core shapes follow generated single-layer benchmark coverage.
+        # This subclass override is the only shape source that takes effect, and
+        # it must stay: replacing base.Benchmark.set_shapes means
+        # init_user_config's set_shapes(Config.shape_file) never runs the YAML
+        # lookup for this class. benchmark/core_shapes.yaml has no "lstm",
+        # "LSTMBenchmark" or "GenericBenchmark" key, so that lookup would fall
+        # through the MRO to the generic "Benchmark:" entry (the huge
+        # 1073741824 / 4096x4096 defaults) instead of these master core shapes.
+        # Replacing the base method also removes the comprehensive-only
+        # GenericBenchmark.set_more_shapes merge, so these three tuples are the
+        # executed set at core and comprehensive level alike.
+        self.shapes = [
+            (2, 4, 8, 16, 1, False),
+            (4, 8, 16, 32, 1, False),
+            (8, 8, 16, 32, 1, False),
+        ]
+
+
+def lstm_case_fn(shape, dtype):
+    """Frozen master case plan (tensor-free stage of the case protocol)."""
+    del dtype
+    batch_size, seq_len, input_size, hidden_size, num_layers, bidirectional = shape
+    num_directions = 2 if bidirectional else 1
+    yield base.BenchmarkCasePlan(
+        shape={
+            "input": [batch_size, seq_len, input_size],
+            "hx": [num_layers * num_directions, batch_size, hidden_size],
+        },
+        params={
+            "has_biases": True,
+            "num_layers": num_layers,
+            "dropout": 0.0,
+            "train": False,
+            "bidirectional": bidirectional,
+            "batch_first": True,
+        },
+        builder_args=(tuple(shape),),
+    )
+
+
+def lstm_build_inputs_fn(plan, dtype, device):
+    """Materialize the frozen master input tuple for one selected case.
+
+    The construction is the frozen master one: a bias-enabled
+    ``torch.nn.LSTM`` created on ``device``/``dtype``, standard-normal
+    input/h0/c0 with the master shapes, and the module flat weights in PyTorch
+    order. The returned nine-argument ``aten::lstm.input`` tuple is what the
+    master ``lstm_input_fn`` yielded, so the joint workload, the input
+    distribution and the callable signature are unchanged.
+    """
+    (
+        batch_size,
+        seq_len,
+        input_size,
+        hidden_size,
+        num_layers,
+        bidirectional,
+    ) = plan.builder_args[0]
+    has_biases = plan.params["has_biases"]
+    batch_first = plan.params["batch_first"]
+
+    lstm = torch.nn.LSTM(
+        input_size=input_size,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        bias=has_biases,
+        bidirectional=bidirectional,
+        batch_first=batch_first,
+    ).to(device=device, dtype=dtype)
+
+    input = torch.randn(batch_size, seq_len, input_size, dtype=dtype, device=device)
+    num_directions = 2 if bidirectional else 1
+    state_shape = (num_layers * num_directions, batch_size, hidden_size)
+    h0 = torch.randn(state_shape, dtype=dtype, device=device)
+    c0 = torch.randn(state_shape, dtype=dtype, device=device)
+    params = tuple(lstm._flat_weights)
+
+    return (
+        input,
+        (h0, c0),
+        params,
+        has_biases,
+        num_layers,
+        plan.params["dropout"],
+        plan.params["train"],
+        bidirectional,
+        batch_first,
+    )
+
+
+@pytest.mark.lstm
+def test_lstm():
+    bench = LSTMBenchmark(
+        op_name="lstm",
+        torch_op=torch.lstm,
+        case_fn=lstm_case_fn,
+        build_inputs_fn=lstm_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

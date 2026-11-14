@@ -1,0 +1,83 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0
+
+import pytest
+import torch
+
+from . import base
+from .generated_operator_utils import OperatorBenchmark
+
+# Frozen master ``benchmark/test_thnn_fused_lstm_cell_backward_impl.py`` hardcodes
+# the whole (batch, hidden) grid because ``--level core`` would otherwise replace a
+# GenericBenchmark shape list. The same 25 master shapes are kept here, unchanged in
+# order and values, and are expressed through the existing dev case protocol so the
+# op keeps ``--list-cases`` / stable case IDs. ``float32`` is the only master dtype
+# (the underlying aten operator does not support half/bfloat16).
+SHAPES = [
+    (1, 4),
+    (1, 8),
+    (1, 16),
+    (1, 32),
+    (1, 64),
+    (2, 4),
+    (2, 8),
+    (2, 16),
+    (2, 32),
+    (2, 64),
+    (4, 4),
+    (4, 8),
+    (4, 16),
+    (4, 32),
+    (4, 64),
+    (8, 4),
+    (8, 8),
+    (8, 16),
+    (8, 32),
+    (8, 64),
+    (16, 4),
+    (16, 8),
+    (16, 16),
+    (16, 32),
+    (16, 64),
+]
+
+
+class LstmCellBackwardBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "batch,hidden"
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"cx": list(dims), "workspace": [dims[0], 4 * dims[1]]},
+        params={"has_bias": True}, builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    torch.manual_seed(0)
+    batch, hidden = plan.builder_args[0]
+    input_gates = torch.randn(batch, 4 * hidden, dtype=dtype, device=device)
+    hidden_gates = torch.randn_like(input_gates)
+    cx = torch.randn(batch, hidden, dtype=dtype, device=device)
+    input_bias = torch.zeros(4 * hidden, dtype=dtype, device=device)
+    hidden_bias = torch.randn(4 * hidden, dtype=dtype, device=device)
+    hx, cy, workspace = torch.ops.aten._thnn_fused_lstm_cell(
+        input_gates, hidden_gates, cx, input_bias, hidden_bias
+    )
+    return torch.randn_like(hx), torch.randn_like(cy), cx, cy, workspace, True
+
+
+@pytest.mark.thnn_fused_lstm_cell_backward_impl
+@pytest.mark.underscore_thnn_fused_lstm_cell_backward_impl
+def test_thnn_fused_lstm_cell_backward_impl():
+    LstmCellBackwardBenchmark(
+        op_name="_thnn_fused_lstm_cell_backward_impl",
+        torch_op=torch.ops.aten._thnn_fused_lstm_cell_backward_impl,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.float32],
+    ).run()

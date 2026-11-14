@@ -1,0 +1,58 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference solution for the FlagGems ``argwhere`` operator.
+
+This file is the reference-as-solution artifact for the project ``pytest-review``
+probe. It is injected by the existing FlagGems mechanism
+``--override argwhere:<this file>:run`` and is therefore the candidate observed
+by the frozen master suites, never by modifying Gems sources.
+
+Contract taken from the frozen master tests
+(``tests/test_argwhere.py`` lines 24-120, ``benchmark/test_argwhere.py``
+lines 23-31) and from the master implementation's documented behaviour
+(``src/flag_gems/ops/argwhere.py`` lines 161-229):
+
+* input: one tensor, any rank (0-element shapes and ranks 1..9 are exercised);
+  dtypes float16/float32/bfloat16, int16/int32 and bool; contiguous, strided
+  (``randn(8, 8)[::2, ::3]``) and -0.0 / NaN / inf element values;
+* output: a NEW ``torch.int64`` tensor of shape ``(num_nonzero, input.ndim)``
+  on the input device, holding the multi-dimensional coordinates of every
+  non-zero element in row-major flat-index order; ``-0.0`` is zero while NaN
+  and inf are non-zero;
+* no input mutation, no aliasing of the input storage, no ``out=`` argument and
+  no autograd requirement (the operator returns indices, not a differentiable
+  quantity).
+
+The expected values of the frozen tests are computed with the native
+``torch.argwhere``; this reference delegates to that same ATen operator so the
+declared ABI (positional single tensor argument, int64 index tensor result) and
+the oracle semantics stay exactly the ones the master suites assert. It does
+not import, copy or otherwise consult the current FlagGems candidate, and it
+performs no CPU round-trip and no dtype/device rewriting.
+
+The ATen callable is bound once at import time, i.e. before any FlagGems
+dispatch scope is entered, so instantiating this reference can never re-enter a
+replaced ``flag_gems``/dispatch wrapper for the same operator.
+"""
+
+import torch
+
+# Native ATen argwhere, bound before any Gems dispatch scope exists.
+_NATIVE_ARGWHERE = torch.argwhere
+
+
+def run(input):
+    """Return the ``(num_nonzero, input.ndim)`` int64 index tensor of ``input``."""
+    return _NATIVE_ARGWHERE(input)

@@ -1,0 +1,32 @@
+"""Preparation-only reference solution for ``_thnn_fused_lstm_cell_backward_impl``.
+
+This file is the ``--candidate`` / ``--reference-source`` of the reference-as-
+solution readiness run. It is a preparation tool, not a generated candidate and
+not an optimized kernel.
+
+Oracle choice (frozen master semantics, not a new oracle): the frozen master
+accuracy test uses
+``torch.ops.aten._thnn_fused_lstm_cell_backward_impl`` as its expected side and
+the frozen master benchmark uses the same ATen packet as ``torch_op``. ``run``
+therefore delegates to that exact native ATen expression, keeping the frozen
+return structure ``(grad_input_gates, grad_cx, grad_biases)``, the output
+dtype/device produced by ATen, and the ``has_bias=False`` path untouched.
+
+It does not import ``flag_gems`` and never calls the module attribute that the
+formal ``--override`` replaces, so it can neither re-enter nor be its own
+oracle.
+
+ABI matches the frozen Definition ``_thnn_fused_lstm_cell_backward_impl.json``:
+parameter order/names (grad_hy, grad_cy, cx, cy, workspace, has_bias), all
+positional-or-keyword, no defaults; effects: no mutation, no aliasing of
+inputs.
+"""
+
+import torch
+
+
+def run(grad_hy, grad_cy, cx, cy, workspace, has_bias):
+    """Return the ATen LSTM-cell-backward gradients for the given arguments."""
+    return torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
+        grad_hy, grad_cy, cx, cy, workspace, has_bias
+    )

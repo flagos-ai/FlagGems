@@ -1,0 +1,100 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference-as-solution oracle for ``special_hermite_polynomial_h``.
+
+This file is a preparation/test-harness oracle for the pytest review probe
+(``--phase reference-as-solution --entrypoint run``), not the optimized
+candidate.  It is imported by the frozen FlagGems dynamic override registry
+(``--override special_hermite_polynomial_h:<file>:run``) and therefore has the
+same call ABI as the public export it replaces.
+
+Faithfulness notes (from the frozen master/dev tests and ops source):
+
+* The frozen test compares the candidate against
+  ``torch.special.hermite_polynomial_h`` evaluated in the *input's own* dtype
+  (``utils.to_reference(inp)`` without upcast), so the oracle computes on the
+  target device in the input dtype and never upcasts to float64 or round-trips
+  through CPU.  The output is a fresh tensor in ``x.dtype``/``x.device`` with
+  ``x``'s (broadcast) shape; neither input is mutated or aliased, matching the
+  frozen Definition ``effects: {mutates: [], returns_alias_of: {}}``.
+* Caller-visible rejection is part of the contract: only float32/float64 ``x``
+  is accepted, and tensor or Python-scalar degrees outside ``[0, 9]`` raise
+  ``ValueError`` containing ``"only supports n"``.  The frozen tests assert
+  that message with ``pytest.raises(ValueError, match="only supports n")`` for
+  ``n = 10``, ``n = -1`` and for int32 tensor degrees ``10``/``-1``.
+* The numerical kernel is the native ATen reference the frozen test itself
+  uses.  ``flag_gems`` only registers aten implementations inside an explicit
+  ``flag_gems.enable()``/``use_gems()`` scope, which these suites never enter
+  (the benchmark harness passes a ``nullcontext`` dispatch whenever an
+  ``--override`` is active), so this call does not re-enter the replaced
+  FlagGems export and cannot recurse.
+* The FlagGems candidate is never imported or used as this oracle.
+"""
+
+import logging
+
+import torch
+
+logger = logging.getLogger(__name__)
+
+MAX_DEGREE = 9
+SUPPORTED_DTYPES = (torch.float32, torch.float64)
+
+__all__ = ["run"]
+
+
+def _raise_out_of_range(observed):
+    raise ValueError(
+        "special_hermite_polynomial_h only supports n in [0, 9], got n=%s"
+        % (observed,)
+    )
+
+
+def _validate_tensor_degree(n):
+    """Reject out-of-range tensor degrees without materialising an int copy.
+
+    ``min``/``max`` allocate only a 0-dim result, which keeps the check usable
+    for the benchmark's full-size degree tensors (the workloads go up to 2**30
+    elements).
+    """
+    if n.numel() == 0:
+        return
+    low = float(n.min().item())
+    high = float(n.max().item())
+    if low < 0 or high > MAX_DEGREE:
+        _raise_out_of_range("[%s, %s]" % (low, high))
+
+
+def run(x, n):
+    """Reference solution for ``special_hermite_polynomial_h(x, n)``."""
+    logger.debug("GEMS SPECIAL_HERMITE_POLYNOMIAL_H")
+    if not isinstance(x, torch.Tensor):
+        raise ValueError("First argument must be a tensor")
+    if x.dtype not in SUPPORTED_DTYPES:
+        raise ValueError("Unsupported dtype %s" % (x.dtype,))
+
+    if isinstance(n, torch.Tensor):
+        _validate_tensor_degree(n)
+        # Keep the degree tensor's own dtype: the native reference (and the
+        # frozen test's expected value) promote from it.
+        return torch.special.hermite_polynomial_h(x, n)
+
+    if isinstance(n, (bool, int, float)):
+        degree = int(n)
+        if degree < 0 or degree > MAX_DEGREE:
+            _raise_out_of_range(n)
+        return torch.special.hermite_polynomial_h(x, degree)
+
+    raise ValueError("Second argument must be a Tensor or a number")

@@ -1,0 +1,56 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference oracle for FlagGems operator ``floor_divide_scalar``.
+
+Used only for the review phase ``--phase reference-as-solution``: the file is
+loaded through the project's existing ``--override`` mechanism, so it is the
+observed solution, not a candidate implementation. It does not import, wrap or
+call ``flag_gems`` or the candidate under review, therefore it cannot re-enter
+the replaced export as its own oracle.
+
+Observed callsites in the unchanged frozen suites (marker
+``floor_divide_scalar``):
+
+* ``tests/test_floor_divide.py::test_floor_divide_mixed``
+  -> ``flag_gems.floor_divide(x, y)``, expected ``torch.div(x, y, rounding_mode="floor")``
+* ``tests/test_floor_divide.py::test_floor_divide_scalar_tensor``
+  -> ``flag_gems.floor_divide(x, y)``, expected ``torch.div(x, y, rounding_mode="floor")``
+* ``tests/test_floor_divide.py::test_floor_divide_scalar_scalar``
+  -> ``flag_gems.floor_divide(a, b)`` with Python scalars,
+  expected ``torch.floor_divide(a, b)``
+* ``benchmark/test_floor_divide.py::test_floor_divide_scalar``
+  -> ``op(inp, 3)`` for ``consts.INT_DTYPES`` inputs
+
+Hence the per-phase keys differ (accuracy public export ``floor_divide``,
+benchmark ``op_name`` ``floor_divide_scalar``) while the same entrypoint below
+serves both, keeping ``--candidate`` and ``--reference-source`` identical.
+"""
+
+import torch
+
+__all__ = ["run"]
+
+
+def run(a, b):
+    """Element-wise floor division with native ATen semantics.
+
+    ``torch.floor_divide(a, b)`` is the same ATen operator as
+    ``torch.div(a, b, rounding_mode="floor")``; the frozen tests use both
+    spellings to build their own expected values, so dtype promotion, output
+    dtype, device, shape and rounding mode here follow exactly the semantics
+    those assertions compare against. Tensor/tensor, tensor/scalar and
+    scalar/scalar (Python ``int``/``float``) callsites are all covered.
+    """
+    return torch.floor_divide(a, b)

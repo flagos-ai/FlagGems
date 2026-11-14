@@ -1,0 +1,365 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Operator-local accuracy suite for ``foreach_trunc`` (task ascend-1869).
+
+PROVENANCE / EDIT POLICY
+========================
+This file is the frozen kernelgen-dev per-operator suite
+``tests/test_foreach_trunc.py`` plus (a) this provenance docstring and (b) the
+master rows appended below the ``MASTER-ALIGNED ROWS`` banner.  The dev part
+is byte-for-byte the frozen file: same license header, same imports, same
+helpers, same five test functions, same ten collected items, same assertions.
+Nothing in it was loosened, renamed or dropped: it carries the
+frozen-ABI/refusal clauses of
+``definitions/foreach_trunc.json`` (``outputs: ["out"]``, ``mutates: []``,
+``returns_alias_of: {}``), i.e. the per-output non-aliasing storage check and
+the empty-list / complex rejections.
+
+Everything below the banner restores the master coverage for this operator.
+The frozen master suite is the *shared-family* file
+``tests/test_foreach_unary.py`` (30 unary ``_foreach_*`` operators, no
+per-operator trunc file), which parameterizes through
+``flag_gems.ops._foreach_unary.UNARY_OPS``.  That module does not exist in the
+kernelgen-dev tree, so the master rows cannot be imported; instead the exact
+``trunc`` metadata row is extracted here verbatim from the frozen master
+source and the master test bodies are reproduced with the same shapes, dtype
+lists, sampling distribution and assertions:
+
+* ``src/flag_gems/ops/_foreach_unary.py:539-541`` -- ``_FLOAT`` / ``_INT``
+  dtype tuples;
+* ``:546`` -- ``NO_BOOL_NO_COMPLEX = frozenset(_FLOAT + _INT)``;
+* ``:558-579`` -- ``class UnaryOp`` (``name``, ``fn``, ``out_dtype_fn``,
+  ``allowed``, ``complex_fn``, ``fn16``);
+* ``:707`` -- ``UnaryOp("trunc", _scalar_fn(trunc_func), same_dtype,
+  NO_BOOL_NO_COMPLEX)``, i.e. same-dtype (identity) output policy, float and
+  integer inputs allowed, bool and complex rejected, ``complex_fn`` None;
+* ``tests/test_foreach_unary.py:50-51`` -- ``FLOAT_DTYPES`` /
+  ``INT_DTYPES``;
+* ``:134-152`` -- ``_sample`` (uniform ``rand*0.8+0.1`` for floats,
+  ``randint(1, 5)`` for integral dtypes, ``UNIT_DOMAIN`` narrowing not
+  applicable to ``trunc``);
+* ``:155-162`` -- ``_assert_lists_close``;
+* ``:118-125`` -- ``_supports`` (non-kunlunxin branch);
+* ``:245-274`` -- float / int rows; ``:310-322`` -- the
+  ``rejects_unsupported_dtype`` row.
+
+The master rows that are *not* reproduced, and why (recorded instead of
+silently skipped):
+
+* ``test_accuracy_foreach_unary_bool`` and
+  ``test_accuracy_foreach_unary_complex`` -- for ``name="trunc"`` both return
+  before making any call (``_supports`` is False for ``torch.bool`` /
+  ``torch.complex64`` and ``complex_fn is None``), so they assert nothing and
+  never reach the candidate.  Reproducing them would add two zero-assertion
+  items; the bool/complex refusals they appear to cover are actually asserted
+  by ``test_accuracy_foreach_unary_rejects_unsupported_dtype_trunc`` below.
+* the ``REPRESENTATIVE``-only rows (list lengths, mixed shapes, empty/zero-dim,
+  mixed dtypes, layouts, error parity, ``.out`` overload) -- ``trunc`` is not
+  in ``REPRESENTATIVE = ["neg", "sin", "abs", "round"]`` (master ``:40``), so
+  they generate no ``trunc`` item at all.  The ``.out`` overload gap they hint
+  at is an open master scope item, not operator coverage (see
+  ``repair-report.json::unresolved_gaps``).
+* the ``_`` (in-place) rows -- task scope is ``foreach_trunc`` only;
+  ``_foreach_trunc_`` is a separate operator/Definition.
+* the family-wide launch-count / marker-declaration items -- they are marked
+  with every unary marker but call ``_foreach_sin`` / ``_foreach_exp`` /
+  ``_foreach_log`` and are guarded to ``flag_gems.device == "cuda"``; they are
+  native master metadata tests, retained as unresolved scope.
+"""
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+_ATEN_OP = torch.ops.aten._foreach_trunc
+
+
+def _gems_op(*args, **kwargs):
+    return flag_gems.foreach_trunc(*args, **kwargs)
+
+
+_FAMILY = "trunc"
+_INTEGER_SUPPORTED = True
+_COMPLEX_SUPPORTED = False
+_SAME_DTYPE_INTEGER = True
+
+
+def _sample(shape, dtype, *, noncontiguous=False):
+    torch.manual_seed(0)
+    source_shape = (
+        tuple(reversed(shape)) if noncontiguous and len(shape) == 2 else shape
+    )
+    if dtype.is_complex:
+        real = torch.rand(source_shape, dtype=torch.float32, device=flag_gems.device)
+        imag = torch.rand(source_shape, dtype=torch.float32, device=flag_gems.device)
+        value = torch.complex(real, imag).to(dtype)
+    elif dtype.is_floating_point:
+        value = torch.rand(source_shape, dtype=dtype, device=flag_gems.device)
+    else:
+        value = torch.randint(1, 5, source_shape, dtype=dtype, device=flag_gems.device)
+    if dtype.is_floating_point:
+        value.mul_(0.8).add_(0.1)
+    if noncontiguous and len(shape) == 2:
+        value = value.transpose(0, 1)
+    return value
+
+
+def _reference(values):
+    references = []
+    for value in values:
+        if value.dtype.is_floating_point or value.dtype.is_complex:
+            references.append(utils.to_reference(value.clone(), True))
+        else:
+            references.append(utils.to_reference(value.clone()))
+    return references
+
+
+def _output_dtype(dtype):
+    if _FAMILY == "abs" and dtype == torch.complex64:
+        return torch.float32
+    if _FAMILY == "abs" and dtype == torch.complex128:
+        return torch.float64
+    return dtype
+
+
+def _assert_values(actual, expected, expected_dtype):
+    assert len(actual) == len(expected)
+    for result, reference in zip(actual, expected):
+        assert result.shape == reference.shape
+        assert result.dtype == expected_dtype
+        if result.dtype.is_floating_point or result.dtype.is_complex:
+            utils.gems_assert_close(result, reference, result.dtype)
+        else:
+            utils.gems_assert_equal(result, reference)
+
+
+@pytest.mark.foreach_trunc
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "noncontiguous", [False, True], ids=["contiguous", "noncontiguous"]
+)
+def test_foreach_trunc_accuracy(dtype, noncontiguous):
+    values = [
+        _sample((4, 7), dtype, noncontiguous=noncontiguous),
+        _sample((3, 5), dtype, noncontiguous=noncontiguous),
+    ]
+    reference_values = _reference(values)
+
+    expected = _ATEN_OP(reference_values)
+    result = _gems_op(values)
+
+    _assert_values(result, expected, _output_dtype(dtype))
+    for output, source in zip(result, values):
+        assert output.untyped_storage().data_ptr() != source.untyped_storage().data_ptr()
+
+
+@pytest.mark.foreach_trunc
+def test_foreach_trunc_mixed_shapes_and_empty_tensor():
+    values = [
+        _sample((17,), torch.float32),
+        _sample((2, 3, 4), torch.float32),
+        torch.empty(0, dtype=torch.float32, device=flag_gems.device),
+    ]
+    expected = _ATEN_OP(_reference(values))
+    result = _gems_op(values)
+    _assert_values(result, expected, torch.float32)
+
+
+@pytest.mark.foreach_trunc
+def test_foreach_trunc_integer_promotion():
+    values = [_sample((11,), torch.int32)]
+    reference_values = _reference(values)
+    if not _INTEGER_SUPPORTED:
+        with pytest.raises(RuntimeError):
+            _ATEN_OP(reference_values)
+        with pytest.raises(RuntimeError):
+            _gems_op(values)
+        return
+    expected = _ATEN_OP(reference_values)
+    result = _gems_op(values)
+    _assert_values(result, expected, expected[0].dtype)
+
+
+@pytest.mark.foreach_trunc
+def test_foreach_trunc_complex_values():
+    values = [_sample((9,), torch.complex64)]
+    reference_values = _reference(values)
+    if not _COMPLEX_SUPPORTED:
+        with pytest.raises(RuntimeError):
+            _ATEN_OP(reference_values)
+        with pytest.raises(RuntimeError):
+            _gems_op(values)
+        return
+    expected = _ATEN_OP(reference_values)
+    result = _gems_op(values)
+    _assert_values(result, expected, _output_dtype(torch.complex64))
+
+
+@pytest.mark.foreach_trunc
+def test_foreach_trunc_rejects_empty_list():
+    with pytest.raises(RuntimeError):
+        _gems_op([])
+
+
+# ===========================================================================
+# MASTER-ALIGNED ROWS
+# ===========================================================================
+#
+# Extracted ``trunc`` row of the master table.  The master table cannot be
+# imported (``flag_gems.ops._foreach_unary`` is absent from kernelgen-dev), so
+# the row is transcribed field by field; the citation next to each constant
+# says where the value comes from.  ``out_dtype_fn`` is ``same_dtype``: the
+# output dtype is the input dtype for every accepted dtype (no int->float
+# promotion, unlike the transcendentals).
+
+_TRUNC_NAME = "trunc"
+
+# master src/flag_gems/ops/_foreach_unary.py:539-541
+_FLOAT = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+_INT = (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8)
+
+# master :546 -- NO_BOOL_NO_COMPLEX, the ``allowed`` set of the trunc row.
+_TRUNC_ALLOWED = frozenset(_FLOAT + _INT)
+
+# master :707 -- UnaryOp("trunc", _scalar_fn(trunc_func), same_dtype,
+# NO_BOOL_NO_COMPLEX): no complex kernel and no 16-bit fast variant.
+_TRUNC_COMPLEX_FN = None
+_TRUNC_OUT_DTYPE_POLICY = "same_dtype"
+
+# master :51 -- INT_DTYPES; master :50 -- FLOAT_DTYPES.
+_MASTER_FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+_MASTER_INT_DTYPES = [torch.int16, torch.int32, torch.int64]
+
+# master :131 -- UNIT_DOMAIN; ``trunc`` is not in it, so integral samples use
+# randint(1, 5).
+_UNIT_DOMAIN = {"acos", "asin"}
+
+
+def _trunc_supports(dtype):
+    """master :118-125 ``_supports`` for ``trunc`` on a non-kunlunxin backend.
+
+    ``allowed is None or dtype in allowed``; the kunlunxin-only branch of the
+    master helper does not apply to this backend.
+    """
+    allowed = _TRUNC_ALLOWED
+    return allowed is None or dtype in allowed
+
+
+def _master_sample(shape, dtype, name=_TRUNC_NAME):
+    """master :134-152 ``_sample`` reproduced for ``name="trunc"``.
+
+    Floats: ``rand * 0.8 + 0.1`` (positive, sub-unit).  Integers:
+    ``randint(1, 5)`` because ``trunc`` is outside ``UNIT_DOMAIN``.  Complex and
+    bool branches are kept identical to the master helper even though this
+    operator's ``allowed`` set rejects both.
+    """
+    if dtype.is_floating_point:
+        return torch.rand(shape, dtype=dtype, device=flag_gems.device) * 0.8 + 0.1
+    if dtype.is_complex:
+        real = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) * 0.8 + 0.1
+        imag = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) * 0.8 + 0.1
+        return torch.complex(real, imag).to(dtype)
+    if dtype is torch.bool:
+        return torch.randint(0, 2, shape, device=flag_gems.device).to(torch.bool)
+    high = 2 if name in _UNIT_DOMAIN else 5
+    return torch.randint(
+        0 if name in _UNIT_DOMAIN else 1,
+        high,
+        shape,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+
+def _assert_lists_close(res, ref, name=_TRUNC_NAME):
+    """master :155-162 ``_assert_lists_close`` (dtype parity, then values)."""
+    assert len(res) == len(ref)
+    for got, want in zip(res, ref):
+        assert got.dtype == want.dtype, f"{name}: {got.dtype} != {want.dtype}"
+        if got.dtype.is_floating_point or got.dtype.is_complex:
+            utils.gems_assert_close(got, want, got.dtype)
+        else:
+            utils.gems_assert_equal(got, want)
+
+
+@pytest.mark.foreach_trunc
+@pytest.mark.parametrize("dtype", _MASTER_FLOAT_DTYPES)
+def test_accuracy_foreach_unary_float_trunc(dtype):
+    """master ``test_accuracy_foreach_unary_float[name=trunc]`` (master :245-256).
+
+    Three ``(16, 8)`` tensors per call, reference built with ``to_reference``
+    without an upcast (master keeps the reference dtype), candidate called
+    through ``flag_gems.foreach_trunc``.
+    """
+    if not _trunc_supports(dtype):
+        return
+    inp = [_master_sample((16, 8), dtype) for _ in range(3)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _ATEN_OP(ref_inp)
+    res_out = _gems_op(inp)
+
+    _assert_lists_close(res_out, ref_out)
+
+
+@pytest.mark.foreach_trunc
+@pytest.mark.parametrize("dtype", _MASTER_INT_DTYPES)
+def test_accuracy_foreach_unary_int_trunc(dtype):
+    """master ``test_accuracy_foreach_unary_int[name=trunc]`` (master :259-274).
+
+    int16/int32/int64, three ``(32,)`` tensors, ``trunc`` keeps the input dtype
+    (``same_dtype``) and the values are compared exactly.
+    """
+    if not _trunc_supports(dtype):
+        return
+    inp = [_master_sample((32,), dtype, _TRUNC_NAME) for _ in range(3)]
+    ref_inp = [utils.to_reference(t) for t in inp]
+
+    ref_out = _ATEN_OP(ref_inp)
+    res_out = _gems_op(inp)
+
+    _assert_lists_close(res_out, ref_out)
+
+
+@pytest.mark.foreach_trunc
+def test_accuracy_foreach_unary_rejects_unsupported_dtype_trunc():
+    """master ``test_accuracy_foreach_unary_rejects_unsupported_dtype[name=trunc]``.
+
+    Master :310-322 walks ``(torch.bool, torch.int32, torch.complex64)``,
+    skips the dtypes the table allows and requires ``RuntimeError`` from the
+    candidate for the rest.  For ``trunc`` (``allowed=NO_BOOL_NO_COMPLEX``)
+    that is ``torch.bool`` and ``torch.complex64``; ``torch.int32`` is allowed,
+    so it is skipped exactly as in master.  This is the master bool-refusal row
+    that the frozen dev suite lacked.
+    """
+    allowed = _TRUNC_ALLOWED
+    if allowed is None:
+        return
+    refused = []
+    for dtype in (torch.bool, torch.int32, torch.complex64):
+        if dtype in allowed:
+            continue
+        inp = [_master_sample((8,), dtype, _TRUNC_NAME)]
+        with pytest.raises(RuntimeError):
+            _gems_op(inp)
+        refused.append(dtype)
+    # Preparation-side guard only: master has no trailing assertion, but a
+    # wrong transcription of ``allowed`` would turn this row into a vacuous
+    # pass and silently drop the bool/complex refusal coverage.
+    assert refused == [torch.bool, torch.complex64], refused

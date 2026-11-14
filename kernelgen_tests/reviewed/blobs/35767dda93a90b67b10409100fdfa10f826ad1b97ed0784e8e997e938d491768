@@ -1,0 +1,88 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Core benchmark for ``foreach_max`` (aten::_foreach_max).
+
+The workload is the master ``benchmark/test_foreach_ops.py``
+``ForeachOpsBenchmark`` row selected for the ``_foreach_max`` key, which is the
+frozen master core workload for this operator: 16 tensors per call, shapes
+(256, 256), (512, 512), (1024, 1024) (master
+``benchmark/core_shapes.yaml::ForeachOpsBenchmark``), ``dtypes=FLOAT_DTYPES`` and
+inputs ``torch.rand(shape) + 1.0``.
+
+The frozen dev ``benchmark/core_shapes.yaml`` has no ``ForeachOpsBenchmark`` or
+``foreach_max`` entry, so the unchanged dev per-operator file would fall through
+to the shared ``Benchmark`` rows (1073741824, (64, 64), (4096, 4096),
+(64, 512, 512), (1024, 1024, 1024)) -- eight tensors of those sizes at once,
+several of them far beyond the master core workload.  That shared table is a
+cross-operator file and is left untouched; the operator-local benchmark pins the
+three master rows instead.  Case enumeration, tensor construction, the candidate
+resolution (``op_name`` override key) and the timing call path
+(``benchmark/base.py``) are the existing dev protocol helpers.
+
+``op_name`` stays ``foreach_max`` because that is the key the accuracy export and
+the master benchmark use, and ``torch_op`` stays the native op so the reference
+role timed by ``base.Benchmark._measure_input`` is untouched.
+"""
+
+import pytest
+import torch
+
+from . import base, consts
+
+LIST_LENGTH = 16
+CORE_SHAPES = [(256, 256), (512, 512), (1024, 1024)]
+SHAPE_DESC = "M, N (per tensor, list of 16)"
+
+
+class ForeachMaxBenchmark(base.GenericBenchmark):
+    """``GenericBenchmark`` pinned to the master ``ForeachOpsBenchmark`` rows."""
+
+    def init_user_config(self):
+        super().init_user_config()
+        # ``super()`` resolves shapes through ``core_shapes.yaml``; the shared
+        # ``Benchmark`` fallback is not the master workload for this operator.
+        self.shapes = [tuple(shape) for shape in CORE_SHAPES]
+        self.shape_desc = SHAPE_DESC
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"tensors": [list(dims)] * LIST_LENGTH},
+        params={"reduction": "max"},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    tensors = [
+        torch.rand(shape, dtype=dtype, device=device) + 1.0
+        for _ in range(LIST_LENGTH)
+    ]
+    return (tensors,)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max():
+    bench = ForeachMaxBenchmark(
+        op_name="foreach_max",
+        torch_op=torch.ops.aten._foreach_max,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

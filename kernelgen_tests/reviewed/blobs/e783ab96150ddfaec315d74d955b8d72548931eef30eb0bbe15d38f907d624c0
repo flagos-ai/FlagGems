@@ -1,0 +1,55 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for the ``true_divide`` operator (MUSA review).
+
+Injected through the project's existing formal override entry point:
+
+    --override true_divide:<this file>:run
+
+Two prepared callsites use this single entrypoint, both of which call the
+public export ``flag_gems.true_divide``:
+
+* accuracy  ``tests/test_true_divide.py -m div_tensor``
+  (``res_out = flag_gems.true_divide(inp1, inp2)``)
+* benchmark ``benchmark/test_true_divide.py -m true_divide``
+  (``op_name="true_divide"``, resolved by
+  ``Benchmark._candidate_call`` -> ``DynamicOpOverride.get_override``)
+
+The body is exactly the frozen master oracle expression of those cases
+(``torch.true_divide(operand, operand)`` on the original same-device
+operands), so the declared contract is preserved without reinterpretation:
+
+* out-of-place: a new tensor is returned, no input is mutated, nothing is
+  aliased (frozen Definition ``true_divide_tensor``:
+  ``effects.mutates == []``, ``returns_alias_of == {}``);
+* dtype/device follow ATen type promotion for the real operands, so the
+  reviewed ``assert_close`` dtype assertion and the device contract are kept;
+* scalar operands degrade to the same ATen scalar overload rather than a
+  hand-written formula, so no tolerance/alternative-result logic is added.
+
+This module never imports or calls ``flag_gems`` (the current candidate under
+review) and never touches the injected attribute, so there is no dispatch
+re-entry: the reviewed accuracy path does not open ``flag_gems.use_gems()``,
+and ``Benchmark._candidate_call`` returns a ``nullcontext`` whenever an
+override is present. ``torch.true_divide`` is therefore the native ATen
+operator in both processes.
+"""
+
+import torch
+
+
+def run(self, other):
+    """Elementwise true division (aten::true_divide.Tensor), out-of-place."""
+    return torch.true_divide(self, other)

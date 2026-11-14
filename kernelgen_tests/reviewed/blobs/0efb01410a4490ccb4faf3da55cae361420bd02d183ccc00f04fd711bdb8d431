@@ -1,0 +1,38 @@
+"""Prepared reference solution for FlagGems ``norm_scalar`` (aten::norm.Scalar).
+
+Master workload this wrapper has to reproduce
+(``tests/test_norm.py::test_norm_scalar``)::
+
+    ref_out = torch.ops.aten.norm.Scalar(ref_inp)   # ref_inp = to_reference(inp, True)
+    res_out = flag_gems.norm_scalar(inp)            # candidate ABI
+    gems_assert_close(res_out, ref_out, dtype)
+
+so the oracle is the native ``aten::norm.Scalar`` kernel over *all* elements
+(``p`` defaults to 2), returning a new 0-dim tensor with the input dtype,
+without mutating or aliasing the input (``definitions/norm_scalar.json``:
+``parameters`` x (required) / p (optional, default 2), ``outputs`` ["out"],
+``effects`` mutates=[] / returns_alias_of={}).
+
+The candidate ABI seen at the callsites is ``norm_scalar(x)`` in accuracy and
+``norm_scalar(x)`` in the benchmark; ``p`` is kept because the frozen
+Definition exposes it.
+
+This module is the file handed to the existing ``--override`` injection
+(``norm_scalar:<this file>:run``) and is also the ``--reference-source``. It
+uses only native ATen: the candidate's own ``norm_scalar`` export
+(``flag_gems.norm_scalar``) is never imported or called as an oracle.
+
+No ``flag_gems.use_gems()`` scope is active at either gated callsite (the
+accuracy test calls the export directly; the benchmark invokes the injected
+override under a ``nullcontext``), so ``aten::norm.Scalar`` here is the native
+kernel and cannot re-enter the injected candidate.
+"""
+
+import torch
+
+
+def run(x, p=2):
+    """Return the p-norm (default 2-norm) of all elements of ``x`` as a 0-dim tensor."""
+    if p is None or p == 2:
+        return torch.ops.aten.norm.Scalar(x)
+    return torch.ops.aten.norm.Scalar(x, p)

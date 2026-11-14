@@ -1,0 +1,93 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Master ``renorm_`` benchmark, made stateful-safe for reference review.
+
+The frozen master benchmark (``benchmark/test_renorm_.py``) keeps its own class
+bodies, shapes, dtypes, parameter tuple and native call path here unchanged:
+``op_name="renorm_"``, ``torch_op=torch.ops.aten.renorm_``, the six 2-D shapes
+(16, 256) ... (512, 8192) and the input tuple ``(inp, 2.0, 1, 1.0)`` produced by
+``get_input_iter``.
+
+One addition is needed because ``renorm_`` rewrites its operand in place.  A
+single input tuple cannot serve both timing roles: the reference pass
+renormalizes the buffer that the candidate pass is then timed on (so the
+candidate workload is "renorm_ applied to already renormalized data"), and the
+two roles share one storage identity, which the reviewer reports as a reused,
+mutated reference input.  ``_clone_benchmark_inputs`` is the frozen dev helper
+the case-driven benchmarks use for exactly this reason
+(``fresh_inputs=True``): it clones tensors, passes scalars through, and the
+clone happens outside the timed callable - never inside a sample.
+
+``base.get_latency`` stays the timing entry point, so the explicit
+``metric.latency_base`` / ``metric.latency`` assignments in
+``benchmark/base.py`` keep owning the reference/candidate roles; this override
+is a transparent forward (same ``self``, same ``op``) that only swaps the
+input snapshot.  No tolerance, dtype, shape, parameter or native-op change.
+"""
+
+import pytest
+import torch
+
+from . import base, consts
+from .generated_operator_utils import _clone_benchmark_inputs
+
+# Recent snapshots stay referenced so the device allocator cannot hand the block
+# just written by the reference pass to the candidate pass.
+_LIVE_SNAPSHOTS = []
+
+
+def _independent_snapshot(args, kwargs):
+    snapshot = _clone_benchmark_inputs((args, kwargs))
+    _LIVE_SNAPSHOTS.append(snapshot)
+    del _LIVE_SNAPSHOTS[:-4]
+    return snapshot
+
+
+class RenormBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        # 2D shapes: (num_slices, slice_size) to benchmark renorm across different dimensions
+        self.shapes = [
+            (16, 256),
+            (32, 512),
+            (64, 1024),
+            (128, 2048),
+            (256, 4096),
+            (512, 8192),
+        ]
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
+            yield inp, 2.0, 1, 1.0
+
+    def get_latency(self, op, *args, **kwargs):
+        # Each role (reference / candidate) times its own snapshot of the master
+        # input; the snapshot is built before the start clock of every sample.
+        fresh_args, fresh_kwargs = _independent_snapshot(args, kwargs)
+        return super().get_latency(op, *fresh_args, **fresh_kwargs)
+
+
+@pytest.mark.renorm_
+def test_renorm_():
+    bench = RenormBenchmark(
+        op_name="renorm_",
+        torch_op=torch.ops.aten.renorm_,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()

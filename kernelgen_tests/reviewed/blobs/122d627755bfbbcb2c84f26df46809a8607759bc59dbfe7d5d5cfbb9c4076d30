@@ -1,0 +1,35 @@
+# Prepared reference solution for the FlagGems ``special_round`` operator.
+#
+# It is injected at run time by Gems' own ``--override`` protocol
+# (``flag_gems.cli_override`` -> ``DynamicOpOverride.override_from_file``)
+# under the public candidate attributes ``flag_gems.special_round`` and
+# ``flag_gems.special_round_out``; the declared probe entrypoint is ``run``.
+#
+# Oracle: PyTorch's own ``aten::special_round`` (``torch.special.round``).
+# That is exactly the operator the frozen master tests use as their expected
+# value (``ref_out = torch.special.round(ref_inp)``), so this prepared
+# solution reproduces the frozen expected values bit-for-bit and does not
+# restate, relax or re-derive them.
+#
+# This module deliberately imports nothing from ``flag_gems``: it can never
+# re-enter the overridden candidate (no recursive oracle) and it carries no
+# RNG, tolerance, device or dtype rewrite.
+#
+# ABI covered by the single entrypoint:
+#   * functional form  ``special_round(self, *, decimals=0) -> Tensor``
+#     (frozen Definition: aten::special_round(Tensor self, *, int decimals=0))
+#   * out form         ``special_round_out(self, out, *, decimals=0) -> Tensor``
+#     (frozen gem signature; writes ``out`` and returns it)
+
+import torch
+
+
+def run(x, out=None, *, decimals=0):
+    """Round ``x`` half-to-even with ``decimals`` decimal digits.
+
+    ``out is None`` returns a fresh tensor (no input mutation, no aliasing of
+    ``x``); ``out=<tensor>`` is the out/alias ABI and writes into ``out``.
+    """
+    if out is None:
+        return torch.special.round(x, decimals=decimals)
+    return torch.special.round(x, decimals=decimals, out=out)

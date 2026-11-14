@@ -1,0 +1,49 @@
+# Prepared ATen oracle for FlagGems operator 678 `binary_cross_entropy`.
+#
+# Reference-as-solution wrapper for the pytest-review probe. It is injected
+# through the existing formal override path
+# (``--override binary_cross_entropy:<this file>:run``), so the frozen tests call
+# it exactly where they call the public export ``flag_gems.binary_cross_entropy``.
+#
+# Faithfulness notes (frozen Definition of operator 678,
+# aten::binary_cross_entropy(Tensor self, Tensor target, Tensor? weight=None,
+#                            int reduction=Mean) -> Tensor):
+#   * the same native ATen op the frozen tests use to build their own expected
+#     value computes the result, so reduction semantics (0/none, 1/mean, 2/sum),
+#     the -100 log clamp at probability boundaries and NaN handling are ATen's;
+#   * it returns a fresh tensor in the input dtype and on the input device, with
+#     the input shape for reduction="none" and a scalar otherwise, so the
+#     observable ABI (dtype/device/shape/alias/effects, ``mutates: []``) matches
+#     the frozen Definition: inputs are never mutated and no output aliases an
+#     input;
+#   * the candidate ABI is the one the frozen suite and benchmark use: the
+#     Python wrapper spelling ``reduction`` as a string; the ATen int enum is
+#     also accepted and mapped to the same three values, it does not change any
+#     numerically computed result.
+#
+# This module does not import the candidate implementation and does not call
+# ``flag_gems.*``; it only delegates to native PyTorch.
+import torch
+
+_REDUCTION_NAMES = {0: "none", 1: "mean", 2: "sum"}
+
+
+def _reduction_name(reduction):
+    """Map the FlagGems string form or the ATen int enum to the ATen spelling."""
+    if isinstance(reduction, str):
+        name = reduction.lower()
+        if name not in ("none", "mean", "sum"):
+            raise ValueError(f"Invalid reduction: {reduction}")
+        return name
+    if isinstance(reduction, int) and not isinstance(reduction, bool):
+        try:
+            return _REDUCTION_NAMES[reduction]
+        except KeyError:
+            raise ValueError(f"Invalid reduction int: {reduction}") from None
+    raise ValueError(f"Unsupported reduction type: {type(reduction)}")
+
+
+def run(input, target, weight=None, reduction="mean"):
+    return torch.nn.functional.binary_cross_entropy(
+        input, target, weight=weight, reduction=_reduction_name(reduction)
+    )

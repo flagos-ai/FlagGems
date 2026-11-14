@@ -1,0 +1,57 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only reference solution for ``flag_gems.linalg_vander``.
+
+This file is injected unchanged by the native FlagGems pytest option
+
+    --override linalg_vander:<this file>:run
+
+so the very same file is the "candidate" the review probe observes and the
+reference semantics behind both suites. It is a preparation oracle, not an
+optimised kernel, and it does not import ``flag_gems`` (the injected export is
+never used as its own oracle).
+
+Entry ABI follows the frozen definition (``definitions/linalg_vander.json``):
+
+    run(x, N=None) -> out
+
+* positional/keyword ``x`` (required), optional keyword ``N`` defaulting to
+  ``None`` -> ``x.shape[-1]``, exactly like ``torch.linalg.vander``;
+* ``out.shape == x.shape[:-1] + (x.shape[-1], N)``;
+* pure function: no mutation of ``x``, no alias/shared storage with ``x``
+  (matches ``effects: {"mutates": [], "returns_alias_of": {}}``);
+* output dtype equals the input dtype, output device equals ``x.device``.
+
+Semantics:
+
+* ``torch.linalg.vander`` is the authoritative native oracle and natively
+  supports float32/float64/complex inputs, so those dtypes are delegated
+  directly (the accuracy test computes its expectation with the same call).
+* The native op rejects float16/bfloat16 (the accuracy test itself upcasts the
+  reference input for those dtypes). They are therefore evaluated in float32 --
+  the same compute dtype the frozen FlagGems kernel uses for every non-float64
+  output, "libdevice pow is not accurate at low precision" -- and cast back to
+  the incoming dtype so the returned dtype still equals the input dtype.
+"""
+
+import torch
+
+
+def run(x, N=None):
+    dtype = x.dtype
+    if dtype in (torch.float16, torch.bfloat16):
+        wide = torch.linalg.vander(x.to(torch.float32), N=N)
+        return wide.to(dtype)
+    return torch.linalg.vander(x, N=N)

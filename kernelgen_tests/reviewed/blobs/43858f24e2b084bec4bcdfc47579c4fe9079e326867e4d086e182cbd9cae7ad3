@@ -1,0 +1,78 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-only oracle for the FlagGems ``_upsample_nearest_exact3d_backward``.
+
+This file is the reference-as-solution artifact, not an optimized candidate and
+not a numerical claim.  It is injected through the existing FlagGems pytest
+protocol only:
+
+    --override _upsample_nearest_exact3d_backward:<this file>:run
+
+``flag_gems.cli_override.apply_overrides_from_args`` ->
+``dynamic_registry.DynamicOpOverride.override_from_file`` does
+``setattr(flag_gems, "_upsample_nearest_exact3d_backward", wrapper)``, so the
+public attribute that the frozen suites call (master
+``tests/test_upsample_nearest_exact3d_backward.py`` lines 50/71/89) is replaced
+by ``run``.  ``torch.ops.aten`` keeps dispatching to native ATen because the
+override only rebinds a Python attribute and never enables ``use_gems()``.
+
+Faithfulness notes
+------------------
+* The frozen cases compute their expected value with
+  ``torch.ops.aten._upsample_nearest_exact3d_backward.default(grad_output,
+  output_size, input_size, *scales)`` (master test lines 41-49, 68-70, 86-88),
+  so ``run`` delegates to that very operator with the same positional
+  ``(scales_d, scales_h, scales_w)`` arguments, which may be ``None`` or the
+  explicit float triple (``(0.6, 1.75, 8/3)``, ``(1.5, 2.5, 0.75)``,
+  ``(None, 1.0, -1.0)``).  Non-positive/absent scales keep the native
+  ``output_size/input_size`` fallback instead of being re-derived here.
+* Return contract comes from ``definitions/_upsample_nearest_exact3d_backward.json``
+  (``outputs: ["out"]``, ``effects.mutates: []``,
+  ``effects.returns_alias_of: {}``): a new tensor with ``grad_output``'s dtype
+  and device and ``input_size`` shape, produced without writing into
+  ``grad_output``; a non-contiguous ``grad_output`` stays untouched and native
+  stride handling is preserved (master test lines 82-92).
+* Only ``torch`` is imported: the oracle never imports ``flag_gems``, never
+  reads the replaced export and never runs the frozen Triton kernel, so it is
+  not its own oracle and cannot re-enter the overridden callable.
+
+The sibling out overload (``_upsample_nearest_exact3d_backward_grad_input``,
+``definitions/_upsample_nearest_exact3d_backward_grad_input.json``) is a
+different public export with a different ``--override`` key; the one-key-per-
+phase review protocol cannot inject both, so it is deliberately not declared in
+``review-manifest.json`` (see ``source_alignment_notes`` there) rather than being
+run un-injected or exercised through an out-of-band side effect here.
+"""
+
+import torch
+
+
+def run(
+    grad_output,
+    output_size,
+    input_size,
+    scales_d=None,
+    scales_h=None,
+    scales_w=None,
+):
+    """Native ATen reference for the non-out ``_upsample_nearest_exact3d_backward``."""
+    return torch.ops.aten._upsample_nearest_exact3d_backward.default(
+        grad_output,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+    )

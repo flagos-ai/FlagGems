@@ -1,0 +1,43 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Reference-as-solution entrypoint for ``_thnn_fused_lstm_cell_backward_impl``.
+
+The operator's own pytest oracle in
+``tests/test_thnn_fused_lstm_cell_backward_impl.py`` is
+``torch.ops.aten._thnn_fused_lstm_cell_backward_impl`` evaluated outside
+``flag_gems.use_gems()``.  The faithful reference therefore delegates to that
+same ATen op while keeping the candidate ABI exactly:
+
+    run(grad_hy, grad_cy, cx, cy, workspace, has_bias)
+        -> (grad_input_gates, grad_cx, grad_biases)
+
+Contract preserved: positional signature, ``bool`` has_bias flag, three
+tensor outputs in ATen order, unchanged output dtype/device (same dtype as
+``cx``), no aliasing of inputs and no in-place mutation of any input
+(``grad_hy``/``grad_cy``/``cx``/``cy``/``workspace`` are only read).
+
+This module imports only ``torch``: it does not import ``flag_gems`` and does
+not call the FlagGems implementation it is standing in for, so it cannot
+re-enter the injected candidate or use the candidate as its own oracle.
+"""
+
+import torch
+
+
+def run(grad_hy, grad_cy, cx, cy, workspace, has_bias):
+    """Return fused LSTM-cell backward gradients via the ATen oracle."""
+    return torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
+        grad_hy, grad_cy, cx, cy, workspace, has_bias
+    )

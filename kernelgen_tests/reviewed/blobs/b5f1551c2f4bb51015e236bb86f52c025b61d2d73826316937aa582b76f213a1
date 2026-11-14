@@ -1,0 +1,43 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prepared reference solution for FlagGems ``nuclear_norm``.
+
+Candidate ABI (frozen Definition ``definitions/nuclear_norm.json``,
+``aten::nuclear_norm(Tensor self, bool keepdim=False) -> Tensor``):
+
+* input:  ``self`` = tensor with 2 or more dims, ``keepdim`` bool (default False)
+* output: sum of the singular values over the last two dims; shape ``(*,)`` when
+  ``keepdim`` is False and ``(*, 1, 1)`` when it is True
+* effects: ``mutates: []``, ``returns_alias_of: {}`` -- the result is a new
+  tensor, it keeps the input dtype/device, and the input is not written.
+
+The oracle is the same one the frozen master correctness suite uses
+(``torch.linalg.matrix_norm(..., ord="nuc")``), so the wrapper adds no
+tolerance, dtype, layout or device adaptation.  ``flag_gems`` is not imported
+and ``flag_gems.nuclear_norm`` is never called, so the injected candidate is not
+used as its own oracle.  FlagGems does register ``aten::linalg_matrix_norm``,
+but this file runs with gems dispatch disabled (the suites call the
+``flag_gems.*`` export directly and the benchmark resolves the ``--override``
+callable instead of ``use_gems``), and even under gems dispatch the
+``linalg_matrix_norm`` implementation computes ``ord="nuc"`` through its own
+``_svdvals_for_norm`` path rather than calling ``nuclear_norm``.
+"""
+
+import torch
+
+
+def run(self, keepdim=False):
+    """Return the nuclear norm of ``self`` (sum of its singular values)."""
+    return torch.linalg.matrix_norm(self, ord="nuc", keepdim=keepdim)

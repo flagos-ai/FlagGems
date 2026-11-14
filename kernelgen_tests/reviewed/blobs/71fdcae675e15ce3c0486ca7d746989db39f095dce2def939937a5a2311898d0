@@ -1,0 +1,44 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Preparation-only reference oracle for the true_divide tensor overload.
+
+This file is the reference-as-solution candidate observed by the pytest review
+probe.  It is injected through the existing formal ``--override`` mechanism, so
+the reviewed call sites stay untouched:
+
+* accuracy: ``flag_gems.true_divide(lhs, rhs)`` in
+  ``tests/test_true_divide.py::test_true_divide`` and in the
+  ``div_tensor``-marked cases of ``tests/test_div.py`` (override key
+  ``true_divide``).
+* benchmark: ``op_name="true_divide"`` in ``benchmark/test_true_divide.py``,
+  whose ``latency_base`` is the native ``torch.ops.aten.true_divide.Tensor``
+  (override key ``true_divide``).
+
+Contract of the representative Definition ``true_divide_tensor``
+(aten::true_divide.Tensor(Tensor self, Tensor other) -> Tensor): out-of-place
+elementwise true division, returns a fresh tensor, keeps aten dtype promotion
+and device, does not mutate and does not alias its operands.
+
+The oracle must not import or call the FlagGems candidate; ``torch.true_divide``
+is the native ATen implementation and is only reached without ``use_gems()``
+dispatch, which is how the reviewed tests and the override benchmark path call
+it.
+"""
+
+import torch
+
+
+def run(lhs, rhs):
+    """Elementwise true division with native ATen semantics."""
+    return torch.true_divide(lhs, rhs)

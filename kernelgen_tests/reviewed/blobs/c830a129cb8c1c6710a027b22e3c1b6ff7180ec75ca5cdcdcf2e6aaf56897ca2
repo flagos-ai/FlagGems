@@ -1,0 +1,47 @@
+"""Prepared reference solution for ``flag_gems.max_pool2d_with_indices`` (musa / vendor mthreads).
+
+Reference-as-solution preparation artifact only.  It is injected through the
+official FlagGems pytest override option::
+
+    --override max_pool2d_with_indices:/abs/path/prepared/reference.py:run
+
+and is therefore observed by the project probe exactly like a candidate
+solution.  It computes the two frozen Definition outputs ``(values, indices)``
+with the native ATen implementation - the same oracle expression the frozen
+accuracy suite (``tests/test_max_pool2d.py``) and the frozen core benchmark
+(``benchmark/test_max_pool2d.py``) already use - on the input's own device and
+dtype.
+
+Fidelity notes (definitions/max_pool2d_with_indices.json):
+  * signature ``(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False)``
+    matches the frozen Definition parameter list, including ``stride=None``.
+  * outputs are ``values`` (input dtype) and ``indices`` (torch int64, the
+    canonical flat ``h_in * in_w + w_in`` indices of the aten/gems contract).
+  * ``effects.mutates == []`` and ``effects.returns_alias_of == {}``: both
+    results are freshly allocated, the input is never written or aliased.
+  * this module imports only ``torch``: it does not import ``flag_gems`` and
+    never calls the candidate export, so it cannot re-enter the injected
+    override and is not its own oracle.
+"""
+
+import torch
+
+
+def run(
+    input,
+    kernel_size,
+    stride=None,
+    padding=0,
+    dilation=1,
+    ceil_mode=False,
+):
+    """Return ``(values, indices)`` for 2D max pooling with the native oracle."""
+    values, indices = torch.nn.functional.max_pool2d_with_indices(
+        input,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    return values, indices

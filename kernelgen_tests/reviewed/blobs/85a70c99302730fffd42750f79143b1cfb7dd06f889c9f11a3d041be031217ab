@@ -1,0 +1,151 @@
+"""Prepared reference solution for ``aten::mkldnn_rnn_layer`` (single-layer LSTM, mode=2).
+
+This module is the reference-as-solution candidate injected through the existing
+official FlagGems override path::
+
+    --override mkldnn_rnn_layer:<abs path>/prepared/reference.py:run
+
+It implements the frozen, 16-argument positional candidate ABI declared by
+``definitions/mkldnn_rnn_layer.json``:
+
+    input, weight0, weight1, weight2, weight3, hx_, cx_, reverse, batch_sizes,
+    mode, hidden_size, num_layers, has_biases, bidirectional, batch_first, train
+
+and returns the declared 4-tuple ``(output, hy, cy, workspace)``.
+
+Semantics (identical to the pure-PyTorch LSTM reference already used by
+``tests/test_mkldnn_rnn_layer.py`` and by the benchmark baseline, i.e. the
+frozen oracle of this operator):
+
+    i = sigmoid(W_i x_t + U_i h + b_i)   (gate order i, f, g, o in the packed
+    f = sigmoid(W_f x_t + U_f h + b_f)    (4H, *) weights/biases)
+    g = tanh   (W_g x_t + U_g h + b_g)
+    o = sigmoid(W_o x_t + U_o h + b_o)
+    c' = f * c + i * g
+    h' = o * tanh(c')
+
+Accumulation happens in float32 (as the on-device kernel and the frozen
+reference both do) and the results are cast back to the input dtype, because
+``flag_gems.testing.assert_close`` asserts the returned dtype equals the input
+dtype.
+
+Only native ``torch`` operators are used: the module deliberately does not
+import or call ``flag_gems`` (in particular not the candidate
+``flag_gems.mkldnn_rnn_layer``), so it can never act as its own oracle. Because
+the recurrence is expressed with differentiable torch ops, ``train=True`` /
+``requires_grad`` callers get a real autograd graph, which is what
+``test_mkldnn_rnn_layer_direct_backward`` exercises.
+
+Contract preservation:
+  * inputs are never mutated and no output aliases an input;
+  * ``output`` is a fresh ``(T, N, H)`` tensor, ``hy``/``cy`` are fresh
+    ``(N, H)`` tensors on the input device with the input dtype;
+  * ``workspace`` is the opaque oneDNN scratch buffer that only the (separate)
+    backward primitive consumes, so it is returned as the same empty
+    placeholder the reference wrapper exposes to satisfy the 4-output schema;
+  * the unsupported configurations of this primitive (non-LSTM ``mode``,
+    multi-layer/bidirectional, ``batch_first``, packed ``batch_sizes``) raise
+    ``NotImplementedError`` instead of silently computing something else.
+"""
+
+import torch
+
+_LSTM_MODE = 2
+
+
+def _lstm_layer(
+    input, w_ih, w_hh, b_ih, b_hh, hx, cx, reverse, hidden_size, has_biases
+):
+    """Single-layer, unidirectional LSTM forward in native PyTorch ops."""
+    seq_len = input.shape[0]
+
+    x = input.to(torch.float32)
+    wih = w_ih.to(torch.float32)
+    whh = w_hh.to(torch.float32)
+    if has_biases:
+        bih = b_ih.to(torch.float32)
+        bhh = b_hh.to(torch.float32)
+    else:
+        # oneDNN always applies both bias vectors; no-bias is emulated by zeros
+        # of the packed (4H,) shape.
+        bih = torch.zeros(4 * hidden_size, dtype=torch.float32, device=input.device)
+        bhh = torch.zeros(4 * hidden_size, dtype=torch.float32, device=input.device)
+
+    h = hx.to(torch.float32)
+    c = cx.to(torch.float32)
+
+    steps = range(seq_len - 1, -1, -1) if reverse else range(seq_len)
+    outputs = [None] * seq_len
+    for t in steps:
+        gates = torch.addmm(bih, x[t], wih.t()) + torch.addmm(bhh, h, whh.t())
+        i_g, f_g, g_g, o_g = gates.chunk(4, dim=1)
+        i_g = torch.sigmoid(i_g)
+        f_g = torch.sigmoid(f_g)
+        g_g = torch.tanh(g_g)
+        o_g = torch.sigmoid(o_g)
+        c = f_g * c + i_g * g_g
+        h = o_g * torch.tanh(c)
+        # reverse=True consumes the sequence back-to-front, so every step is
+        # stored at its own time index.
+        outputs[t] = h
+
+    output = torch.stack(outputs, dim=0)
+
+    dtype = input.dtype
+    return output.to(dtype), h.to(dtype), c.to(dtype)
+
+
+def run(
+    input,
+    weight0,
+    weight1,
+    weight2,
+    weight3,
+    hx_,
+    cx_,
+    reverse,
+    batch_sizes,
+    mode,
+    hidden_size,
+    num_layers,
+    has_biases,
+    bidirectional,
+    batch_first,
+    train,
+):
+    """Reference implementation of the frozen ``mkldnn_rnn_layer`` candidate ABI."""
+    if mode != _LSTM_MODE:
+        raise NotImplementedError("mkldnn_rnn_layer reference only supports LSTM (mode=2)")
+    if num_layers != 1 or bidirectional:
+        raise NotImplementedError(
+            "mkldnn_rnn_layer reference only supports single-layer unidirectional"
+        )
+    if batch_first:
+        raise NotImplementedError(
+            "mkldnn_rnn_layer reference only supports batch_first=False (T, N, *)"
+        )
+    if batch_sizes is not None and len(batch_sizes) > 0:
+        raise NotImplementedError(
+            "mkldnn_rnn_layer reference does not support packed sequences"
+        )
+
+    # A single-layer LSTM has no dropout, so `train` does not change the forward
+    # output; the backward is supplied by autograd over the recurrence above.
+    del train
+
+    output, hy, cy = _lstm_layer(
+        input,
+        weight0,
+        weight1,
+        weight2,
+        weight3,
+        hx_,
+        cx_,
+        reverse,
+        hidden_size,
+        has_biases,
+    )
+
+    # Opaque oneDNN workspace placeholder, kept to satisfy the 4-output schema.
+    workspace = torch.empty(0, dtype=input.dtype, device=input.device)
+    return output, hy, cy, workspace

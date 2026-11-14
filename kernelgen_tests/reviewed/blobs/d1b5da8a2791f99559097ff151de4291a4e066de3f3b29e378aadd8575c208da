@@ -1,0 +1,73 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Preparation-stage reference solution for ``aten::gradient`` (operator 2152).
+
+This file is injected by the existing FlagGems pytest option
+``--override gradient:<this file>:run``: ``flag_gems.gradient`` then resolves to
+``run`` while the frozen master suites execute.  It is the reference-as-solution
+candidate, not a kernel and not a wrapper around the generated candidate: the
+numeric oracle is the native ATen composite ``torch.gradient`` (the same
+``aten::gradient`` op family the frozen tests call as their reference through
+``torch.ops.aten.gradient.array / .scalarint / .scalararray / .scalarrayint /
+.tensorarray``).  No FlagGems symbol is imported, so the injected candidate can
+never re-enter itself as its own oracle, and ``torch.gradient`` is not patched by
+this tree (no ``gradient`` entry in flag_gems/config.py aten_patch_list, none in
+flag_gems/patches, and no ops/gradient.py), so the call stays native.
+
+Contract kept from the frozen Definition and the frozen master callsites:
+
+* keyword-only ``spacing`` (``None`` | Scalar | Scalar[] | Tensor[]), ``dim``
+  (``None`` | int | int[]) and ``edge_order`` (1 | 2), with defaults
+  ``None`` / ``None`` / ``1``;
+* one output tensor per requested dim, ordered like ``dim`` (``dim=None`` means
+  every dim in ascending order), dtype/device of the native result preserved -
+  integral input is promoted by the true division with a scalar, tensor spacing
+  promotes with ``promote_types(self, coords)``;
+* unsupported dtypes: ``uint8`` and ``bool`` raise ``RuntimeError`` (frozen
+  Definition clause, asserted by ``test_gradient_error_paths``).  The check is
+  explicit because the promotion path of the native composite is not guaranteed
+  to reject those two dtypes on every backend; the exception type is the one the
+  frozen test requires.
+* ``RuntimeError`` for an unsupported ``edge_order``, repeated dims, a
+  differentiated dimension smaller than ``edge_order + 1`` and malformed
+  spacing, and ``IndexError`` for an out-of-range ``dim`` - all raised by the
+  native composite itself;
+* ``self`` is only read (Definition ``effects.mutates`` is empty and
+  ``returns_alias_of`` is empty), so the timed reference pass leaves the shared
+  benchmark input untouched and the output never aliases the input.
+
+Arguments that the caller left at their default are dropped before forwarding so
+that "argument omitted" and "argument explicitly ``None``" stay equivalent to
+the frozen master calls.
+"""
+
+import torch
+
+
+def run(input, *, spacing=None, dim=None, edge_order=1):
+    # Frozen Definition: integral/bool promotion is not part of the contract for
+    # these two dtypes; they must be rejected before any numeric path runs.
+    if input.dtype in (torch.uint8, torch.bool):
+        raise RuntimeError(
+            f"torch.gradient does not support {str(input.dtype)} input."
+        )
+
+    kwargs = {"edge_order": edge_order}
+    if spacing is not None:
+        kwargs["spacing"] = spacing
+    if dim is not None:
+        kwargs["dim"] = dim
+    # Public native binding: it resolves Scalar / Scalar[] / Tensor[] spacing and
+    # int / int[] dim exactly like the frozen oracle overloads do.
+    return torch.gradient(input, **kwargs)

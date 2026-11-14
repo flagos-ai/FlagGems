@@ -1,0 +1,93 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""ATen calling-convention accuracy cases for ``flag_gems.binary_cross_entropy``.
+
+The frozen Definition (``definitions/binary_cross_entropy.json``) declares
+``aten::binary_cross_entropy(Tensor self, Tensor target, Tensor? weight=None,
+int reduction=Mean) -> Tensor``: ``reduction`` is the integer enum
+0=none / 1=mean / 2=sum.  That is also the spelling the benchmark suite drives
+(``reduction=1`` at ``--level core``).
+
+The frozen ``tests/test_binary_cross_entropy.py`` exercises the public export
+with the legacy functional string spellings only, and the int-enum spelling
+appears in the shared family only inside the *separate* ``binary_cross_entropy_out``
+overload cases.  The cases below close that gap for this operator:
+
+* same public entry point as the frozen suite (``flag_gems.binary_cross_entropy``,
+  i.e. the same override key ``binary_cross_entropy``);
+* same reference oracle the frozen suite uses for this op
+  (``torch.ops.aten.binary_cross_entropy`` applied to ``utils.to_reference(...)``
+  inputs, i.e. the fp64/fp32 upcasted reference);
+* same comparison helper and tolerance (``utils.gems_assert_close`` ->
+  ``flag_gems.testing.assert_close`` with the family's ``reduce_dim`` handling
+  for ``sum``), same input construction (``sigmoid(randn)`` probabilities with
+  binary targets, ``torch.rand`` weights), same shape/dtype tables
+  (``utils.REDUCTION_SHAPES`` x ``utils.FLOAT_DTYPES``).
+
+No frozen file, no shared helper and no native call path is modified.
+"""
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
+_SHAPES = utils.REDUCTION_SHAPES
+_REDUCTIONS = [0, 1, 2]
+
+
+def _inputs(shape, dtype, weighted):
+    torch.manual_seed(0)
+    inp = torch.sigmoid(torch.randn(shape, dtype=dtype, device=flag_gems.device))
+    target = torch.randint(0, 2, shape, device=flag_gems.device).to(dtype)
+    weight = (
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) if weighted else None
+    )
+    return inp, target, weight
+
+
+@pytest.mark.binary_cross_entropy
+@pytest.mark.parametrize("reduction", _REDUCTIONS)
+@pytest.mark.parametrize("shape", _SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("weighted", [False, True])
+def test_binary_cross_entropy_reduction_enum(shape, dtype, reduction, weighted):
+    inp, target, weight = _inputs(shape, dtype, weighted)
+    ref_inp = utils.to_reference(inp, True)
+    ref_target = utils.to_reference(target, True)
+    ref_weight = utils.to_reference(weight, True) if weight is not None else None
+
+    reference = torch.ops.aten.binary_cross_entropy(
+        ref_inp, ref_target, ref_weight, reduction
+    )
+    result = flag_gems.binary_cross_entropy(
+        inp, target, weight=weight, reduction=reduction
+    )
+
+    utils.gems_assert_close(
+        result,
+        reference,
+        dtype,
+        equal_nan=True,
+        reduce_dim=max(inp.numel(), 1) if reduction == 2 else 1,
+    )

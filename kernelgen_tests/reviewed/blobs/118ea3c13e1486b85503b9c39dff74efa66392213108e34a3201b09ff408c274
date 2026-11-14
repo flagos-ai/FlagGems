@@ -1,0 +1,55 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Preparation-stage reference solution for ``unique_dim_consecutive``.
+
+Injected with the project's official runtime injection option, e.g.::
+
+    --override unique_dim_consecutive:/abs/path/to/reference.py:run
+
+Deliberately does not import ``flag_gems`` (and therefore not the generated
+candidate): the oracle is the native ATen operator that the frozen master
+tests already use as ``expected``
+(``torch.ops.aten.unique_dim_consecutive.default``), evaluated on the tensor
+the caller passes in, at its original dtype and device.
+
+ABI mirrored from the frozen Definition
+(``definitions/unique_dim_consecutive.json``):
+
+    parameters: input (Tensor), dim (int),
+                return_inverse (bool, default False),
+                return_counts (bool, default False)
+    outputs:    (out, inverse_indices, counts)
+    effects:    mutates nothing, returns no alias of ``input``
+
+``inverse_indices`` / ``counts`` are empty int64 tensors when their flag is
+false (Definition description plus the frozen master tests' ``numel() == 0``
+assertions). ATen reports those unrequested outputs as undefined tensors, so
+they are normalized to the declared empty tensors; when ATen already returns a
+tensor it is passed through unchanged.
+"""
+
+import torch
+
+
+def run(input, dim, return_inverse=False, return_counts=False):
+    """Consecutive-only unique along ``dim``; returns (out, inverse, counts)."""
+    out, inverse_indices, counts = torch.ops.aten.unique_dim_consecutive.default(
+        input, dim, return_inverse, return_counts
+    )
+    if not isinstance(inverse_indices, torch.Tensor):
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=input.device)
+    if not isinstance(counts, torch.Tensor):
+        counts = torch.empty(0, dtype=torch.int64, device=input.device)
+    return out, inverse_indices, counts

@@ -1,0 +1,42 @@
+"""Reference solution provider for FlagGems ``nanmean`` (operator 2232, ascend).
+
+The frozen accuracy tests build their expected value with ``torch.nanmean`` on a
+``utils.to_reference`` tensor and compare it with the injected candidate, and the
+frozen benchmark uses ``torch_op=torch.nanmean`` as the baseline.  The faithful
+reference-as-solution provider for this operator is therefore native ATen
+``torch.nanmean`` itself: no re-derivation, no tolerance change, no extra
+validation that would invent an ABI the frozen Definition does not have.
+
+``flag_gems`` is deliberately not imported here.  With
+``--override nanmean:<this file>:run`` the public export ``flag_gems.nanmean``
+*is* this ``run``, so importing the package back would make the oracle call
+itself (the recursion pattern recorded for other operators).  The accuracy suite
+never opens a ``use_gems()`` scope, and ``benchmark/base.py:_candidate_call``
+uses a plain ``nullcontext()`` whenever an ``--override`` is present, so
+``torch.nanmean`` below is the native ATen kernel in both review processes.
+
+Overload coverage: ``run`` mirrors the full frozen ABI, i.e. the functional
+export (``nanmean(inp, dim=None, keepdim=False, *, dtype=None)``) and the
+``out`` export from ``definitions/nanmean_out.json`` (extra keyword-only
+``out``; the result aliases and mutates ``out``).  This review manifest declares
+the ``nanmean`` export only -- see review-manifest.json for the recorded
+nanmean_out gap -- but the wrapper stays faithful so it is not an
+oracle that silently drops the frozen ``out`` contract.
+"""
+
+import torch
+
+
+def run(inp, dim=None, keepdim=False, *, dtype=None, out=None):
+    """Delegate to native ``torch.nanmean`` with the frozen candidate ABI."""
+    kwargs = {}
+    if dtype is not None:
+        kwargs["dtype"] = dtype
+    if out is not None:
+        kwargs["out"] = out
+    # Positional dim/keepdim keeps the frozen positional_or_keyword contract;
+    # dim=None is the ATen "reduce all" default.  torch raises its own
+    # IndexError/RuntimeError for duplicate or out-of-range dims, for `out`
+    # dtype/device mismatches and for `out` with autograd, which is exactly the
+    # rejection behaviour the frozen tests assert.
+    return torch.nanmean(inp, dim, keepdim, **kwargs)

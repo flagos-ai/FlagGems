@@ -1,0 +1,52 @@
+"""Prepared reference solution for the frozen FlagGems ``arange_start`` ABI.
+
+This file is the preparation-phase oracle for operator ``arange_start_step``
+(``flag_gems.arange_start`` / the ``arange_start_step`` benchmark op_name). It is
+loaded by the existing, unmodified injection path
+(``--override <key>:<this file>:run``) and observed by the project pytest-review
+probe as the candidate solution; it never imports the FlagGems candidate it is
+compared against.
+
+Contract preserved from the frozen master accuracy test
+``tests/test_arange_start.py`` (see ``flag_gems.arange_start`` calls there) and
+from the frozen master benchmark ``benchmark/test_arange.py``
+(``op_name="arange_start_step"``, ``torch_op=torch.arange``):
+
+* position-independent signature ``(start, end, step, dtype=None, device=None,
+  pin_memory=None)`` -- the accuracy tests pass ``start``, ``end``, ``step``
+  positionally and ``dtype``/``device``/``pin_memory`` as keywords, while the
+  legacy benchmark input factory passes every argument as a keyword;
+* ``device=None`` resolves to ``flag_gems.device``, exactly as the master test
+  documents and relies on for its own expected value
+  (``target_device = ... (device or flag_gems.device)``);
+* ``pin_memory=None`` behaves like the ATen default (``False``);
+* the produced tensor keeps the native dtype inference (default float dtype when
+  ``dtype`` is ``None``), the native shape/step semantics and the requested
+  device, because the value is computed by the same native operator the frozen
+  test uses for its expected value. No tolerance, cast, skip or assertion of the
+  frozen tests is altered by this wrapper.
+"""
+
+import torch
+
+import flag_gems
+
+
+def run(start, end, step, dtype=None, device=None, pin_memory=None):
+    """Return ``torch.arange(start, end, step)`` on the FlagGems device.
+
+    Mirrors ``flag_gems.arange_start(start, end, step, dtype=..., device=...,
+    pin_memory=...)``: ``device=None`` targets ``flag_gems.device``.
+    """
+    if device is None:
+        device = flag_gems.device
+    if pin_memory is None:
+        pin_memory = False
+    return torch.arange(
+        start,
+        end,
+        step,
+        dtype=dtype,
+        device=device,
+        pin_memory=pin_memory,
+    )
