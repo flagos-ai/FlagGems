@@ -1438,6 +1438,11 @@ def libtuner(
 
 
 class LibEntry(triton.KernelInterface):
+    # `key()` may be called on plain stand-ins that never ran `__init__` (see
+    # tests/test_libentry.py); an absent `_tensor_spec_fn` then means "not
+    # resolved yet" rather than "no hook".
+    _TENSOR_SPEC_UNRESOLVED = object()
+
     def __init__(
         self,
         fn,
@@ -1607,8 +1612,17 @@ class LibEntry(triton.KernelInterface):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
                 base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
-                if self._tensor_spec_fn is not None:
-                    return base + (self._tensor_spec_fn(arg),)
+                # `key()` is also called with plain stand-ins in tests (see
+                # tests/test_libentry.py), which never run LibEntry.__init__.
+                # Resolve the hook lazily for those instead of assuming "none".
+                spec_fn = getattr(
+                    self, "_tensor_spec_fn", LibEntry._TENSOR_SPEC_UNRESOLVED
+                )
+                if spec_fn is LibEntry._TENSOR_SPEC_UNRESOLVED:
+                    # `self` may be a plain stand-in: resolve through the class.
+                    spec_fn = LibEntry._resolve_tensor_spec_fn()
+                if spec_fn is not None:
+                    return base + (spec_fn(arg),)
                 return base
             return (type(arg), arg)
 
