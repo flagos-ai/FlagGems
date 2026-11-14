@@ -26,6 +26,11 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def _acc_dtype(dtype):
+    # Accumulate in fp64 for fp64 inputs; fp32 otherwise (fp16/bf16/fp32).
+    return tl.float64 if dtype == torch.float64 else tl.float32
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mv"),
@@ -46,6 +51,7 @@ def mv_kernel(
     stride_cn,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
 ):
     pid = ext.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
@@ -53,11 +59,11 @@ def mv_kernel(
     n_mask = offset_n < N
     A_ptrs = A + offset_n * stride_an + offset_m * stride_am
     B_ptrs = B + offset_m * stride_bm
-    acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=ACC_DTYPE)
     for m in range(0, M, BLOCK_M):
         m_mask = m + offset_m < M
-        a = tl.load(A_ptrs, mask=n_mask & m_mask, other=0.0).to(tl.float32)
-        b = tl.load(B_ptrs, mask=m_mask, other=0.0).to(tl.float32)
+        a = tl.load(A_ptrs, mask=n_mask & m_mask, other=0.0).to(ACC_DTYPE)
+        b = tl.load(B_ptrs, mask=m_mask, other=0.0).to(ACC_DTYPE)
         acc += a * b
         A_ptrs += BLOCK_M * stride_am
         B_ptrs += BLOCK_M * stride_bm
@@ -84,5 +90,6 @@ def mv(inp, vec):
             inp.stride(1),
             vec.stride(0),
             out.stride(0),
+            ACC_DTYPE=_acc_dtype(inp.dtype),
         )
     return out

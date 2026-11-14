@@ -47,3 +47,17 @@ def test_mv(M, N, dtype):
     res_out = flag_gems.mv(matrix, vector)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
+
+
+@pytest.mark.mv
+@pytest.mark.parametrize("M, N", [(4096, 64), (16384, 8)])
+def test_mv_float64_precision(M, N):
+    # float64 inputs must be accumulated in float64 (issue #6725).
+    matrix = torch.randn((N, M), dtype=torch.float64, device=flag_gems.device)
+    vector = torch.randn((M,), dtype=torch.float64, device=flag_gems.device)
+    ref_out = torch.mv(matrix.cpu(), vector.cpu())
+
+    res_out = flag_gems.mv(matrix, vector)
+
+    assert res_out.dtype == torch.float64
+    torch.testing.assert_close(res_out.cpu(), ref_out, rtol=1e-10, atol=1e-10)
