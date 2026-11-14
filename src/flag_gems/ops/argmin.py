@@ -89,6 +89,7 @@ def argmin_kernel_opt_k1(
 ):
     pid_m = ext.program_id(0)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    m_mask = m_offset < M
 
     dtype = inp.type.element_ty
     acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
@@ -99,7 +100,8 @@ def argmin_kernel_opt_k1(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None].to(tl.int64) * N + n_offset[None, :].to(tl.int64)
-        inp_vals = tl.load(inp + offset, mask=True)
+        mask = m_mask[:, None] & (n_offset[None, :] < N)
+        inp_vals = tl.load(inp + offset, mask=mask, other=max_val)
 
         local_min, local_argmin = tl.min(
             inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
@@ -109,7 +111,7 @@ def argmin_kernel_opt_k1(
         argmin_vals = tl.where(update, start_n + local_argmin, argmin_vals)
 
     out_ptr = out_index + m_offset
-    tl.store(out_ptr, argmin_vals, mask=True)
+    tl.store(out_ptr, argmin_vals, mask=m_mask)
 
 
 @libentry()
