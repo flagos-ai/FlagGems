@@ -1015,6 +1015,7 @@ from flag_gems.ops.infinitely_differentiable_gelu_backward import (
     infinitely_differentiable_gelu_backward,
 )
 from flag_gems.ops.inner import inner
+from flag_gems.ops.int8_gemm import int8_gemm
 from flag_gems.ops.int_mm import int_mm, int_mm_out
 from flag_gems.ops.int_repr import int_repr
 from flag_gems.ops.inverse import inverse
@@ -2730,6 +2731,7 @@ __all__ = [
     "indices_copy_out",
     "infinitely_differentiable_gelu_backward",
     "inner",
+    "int8_gemm",
     "int_mm",
     "int_mm_out",
     "int_repr",
