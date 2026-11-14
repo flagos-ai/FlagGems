@@ -6248,6 +6248,56 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: fast_hadamard_transform
+  description: Applies a fast Hadamard transform along the last dimension, padding
+    to the next power of two and cropping the result to the original size.
+  for: []
+  labels:
+  - custom
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: fast_hadamard_transform_12N
+  description: Applies the order-12 special fast Hadamard transform along the last
+    dimension, with implicit padding and cropping.
+  for: []
+  labels:
+  - custom
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: fast_hadamard_transform_20N
+  description: Applies the order-20 special fast Hadamard transform along the last
+    dimension, with implicit padding and cropping.
+  for: []
+  labels:
+  - custom
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: fast_hadamard_transform_28N
+  description: Applies the order-28 special fast Hadamard transform along the last
+    dimension, with implicit padding and cropping.
+  for: []
+  labels:
+  - custom
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: fast_hadamard_transform_40N
+  description: Applies the order-40 special fast Hadamard transform along the last
+    dimension, with implicit padding and cropping.
+  for: []
+  labels:
+  - custom
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: feature_alpha_dropout
   description: Applies alpha dropout independently to each feature map, preserving
     the self-normalizing properties of SELU activations.

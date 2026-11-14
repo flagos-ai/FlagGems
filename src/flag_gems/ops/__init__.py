@@ -952,6 +952,11 @@ from flag_gems.ops.gru import gru, gru_data
 from flag_gems.ops.gru_cell import gru_cell
 from flag_gems.ops.gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from flag_gems.ops.hadamard_transform import (
+    fast_hadamard_transform,
+    fast_hadamard_transform_12N,
+    fast_hadamard_transform_20N,
+    fast_hadamard_transform_28N,
+    fast_hadamard_transform_40N,
     hadamard_transform,
     hadamard_transform_12N,
     hadamard_transform_20N,
@@ -2550,6 +2555,11 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask",
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "fake_quantize_per_tensor_affine_cachemask_out",
+    "fast_hadamard_transform",
+    "fast_hadamard_transform_12N",
+    "fast_hadamard_transform_20N",
+    "fast_hadamard_transform_28N",
+    "fast_hadamard_transform_40N",
     "feature_alpha_dropout",
     "feature_alpha_dropout_",
     "feature_dropout",
