@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - depends on the installed FlagTree buil
     tle = None
 
 from . import backward as _baddbmm_backward
+from . import catalog_shapes as _catalog_shapes
 from . import generic as _baddbmm_generic
 
 _BADDBMM_TLE_PRIMITIVES = (
@@ -308,6 +309,16 @@ def _new_output(A, B):
 
 def _dispatch_specialized_forward(bias, A, B, alpha, beta, out=None):
     """Run a validated specialized path, or return ``None`` for fallback."""
+    if _catalog_shapes.is_eligible(bias, A, B, alpha, beta, out):
+        return _catalog_shapes.launch(
+            bias,
+            A,
+            B,
+            out,
+            alpha=alpha,
+            beta=beta,
+        )
+
     tle_path = _tle_forward_path(bias, A, B, alpha, beta, out)
     if tle_path is not None:
         out = _new_output(A, B) if out is None else out
