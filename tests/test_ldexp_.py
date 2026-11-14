@@ -243,7 +243,13 @@ def test_ldexp_rejects_integer_self_(self_dtype):
 @pytest.mark.ldexp_
 def test_ldexp_rejects_complex_to_real_():
     self = torch.ones((17,), dtype=torch.float32, device=flag_gems.device)
-    other = torch.ones((17,), dtype=torch.complex64, device=flag_gems.device)
+    # torch.ones -> fill.Scalar which XDNN does not implement for complex64
+    # (fill.cpp:54); only the kunlunxin backend needs the zeros workaround (the
+    # test only checks that ldexp_ raises, the values are irrelevant).
+    if flag_gems.vendor_name == "kunlunxin":
+        other = torch.zeros((17,), dtype=torch.complex64, device=flag_gems.device)
+    else:
+        other = torch.ones((17,), dtype=torch.complex64, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ldexp_(self, other)
 
@@ -258,6 +264,8 @@ def test_ldexp_rejects_expanding_self_():
 
 @pytest.mark.ldexp_
 def test_ldexp_mixed_precision_extreme_exponent_():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     self = torch.tensor(
         [2.0**-126, 2.0**-127, 0.0, float("inf")], device=flag_gems.device
     )
@@ -290,6 +298,8 @@ def test_ldexp_int64_exponent_outside_int32_range_():
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 @pytest.mark.parametrize("conjugated", [False, True])
 def test_ldexp_complex_integral_extremes_(dtype, conjugated):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("complex128 is not supported by this device")
     self = torch.tensor(
         [
             complex(0, 1),

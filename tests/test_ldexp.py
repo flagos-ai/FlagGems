@@ -26,6 +26,8 @@ from . import conftest as cfg
     "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
 )
 def test_ldexp_integral_exponent_boundaries(dtype, exponent):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     inp = torch.tensor(
         [2.0 ** (-exponent + 2), 2.0 ** (-exponent + 1), 0.0, float("inf")],
         dtype=dtype,
@@ -65,6 +67,8 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
 @pytest.mark.ldexp_out
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_ldexp_real_operands_complex_out(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("complex128 is not supported by this device")
     inp = torch.randn(17, device=flag_gems.device)
     other = torch.randint(-3, 4, (17,), device=inp.device)
     reference_input = utils.to_reference(inp)
@@ -127,6 +131,8 @@ def test_ldexp(shape, dtype):
     ],
 )
 def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
+    if flag_gems.vendor_name == "kunlunxin" and other_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     shape = (37, 53)
     if self_dtype == torch.bool:
         self = torch.randint(0, 2, shape, device=flag_gems.device).bool()
