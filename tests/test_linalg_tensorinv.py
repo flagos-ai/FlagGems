@@ -5,6 +5,50 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+@pytest.fixture(autouse=True)
+def _force_cpu_reference():
+    # On-device native linalg references are unreliable without ``--ref cpu``
+    # (CI runs without it; the on-device svd reference in the polar tests hung
+    # with a NOC idle timeout, same class), so the oracle is computed on CPU
+    # and handed back on the result device for comparison.  Patched inside an
+    # autouse fixture (not at module import) so the shared ``utils``
+    # monkeypatch cannot leak into other test modules collected into the same
+    # pytest process (CI's combined ``-m "linalg_polar or ..."`` run).
+    if not IS_KUNLUNXIN:
+        yield
+        return
+
+    _orig_to_reference = utils.to_reference
+    _orig_gems_assert_close = utils.gems_assert_close
+
+    def _to_reference(inp, upcast=False):
+        ref = _orig_to_reference(inp, upcast)
+        return ref.cpu() if isinstance(ref, torch.Tensor) and ref.is_cuda else ref
+
+    def _gems_assert_close(res, ref, *args, **kwargs):
+        if (
+            isinstance(ref, torch.Tensor)
+            and isinstance(res, torch.Tensor)
+            and ref.is_cpu
+            and not res.is_cpu
+            and not utils.TO_CPU
+        ):
+            # without --ref cpu the shared to_cpu helper keeps both on device
+            ref = ref.to(res.device)
+        _orig_gems_assert_close(res, ref, *args, **kwargs)
+
+    utils.to_reference = _to_reference
+    utils.gems_assert_close = _gems_assert_close
+    try:
+        yield
+    finally:
+        utils.to_reference = _orig_to_reference
+        utils.gems_assert_close = _orig_gems_assert_close
+
+
 # Shapes for linalg_tensorinv tests
 # Each shape must satisfy prod(shape[:ind]) == prod(shape[ind:])
 TENSORINV_SHAPES_IND2 = [

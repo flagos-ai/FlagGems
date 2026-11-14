@@ -46,6 +46,16 @@ on:
         required: false
         type: string
         default: ''
+      total_shards:
+        description: 'Total number of shards for full-range runs (native runner path only). Leave empty to disable sharding.'
+        required: false
+        type: string
+        default: ''
+      shard_index:
+        description: 'Zero-based index of this shard. Used together with total_shards.'
+        required: false
+        type: string
+        default: ''
       container_image:
         description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (enflame-tops1106, hygon-dtk2604, iluvatar-corex450, kunlunxin-xre5371, metax-maca3810, mthreads-musa520). See .github/backends.json.'
         required: false
@@ -79,7 +89,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}-shard${{ inputs.shard_index }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -98,14 +108,33 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      # The workspace may be reused across jobs; drop any coverage/ left by an
+      # earlier run so a failed shard cannot upload stale results.
+      - name: Clean stale coverage output
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        run: rm -rf coverage
+
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          TOTAL_SHARDS: ${{ inputs.total_shards }}
+          SHARD_INDEX: ${{ inputs.shard_index }}
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
+
+      # test-op.sh only produces coverage/ (htmlcov + ut-summary.md) for
+      # full-range runs, so skip this step for per-PR runs.
+      - name: Upload coverage and summary
+        if: ${{ always() && inputs.test_script == '' && inputs.changed_files == '__ALL__' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: op-ut-coverage-${{ inputs.backend }}${{ inputs.shard_index != '' && format('-shard{0}', inputs.shard_index) || '' }}
+          path: coverage/
+          if-no-files-found: warn
 
   # Kunlunxin runs inside a container on the klx-p800 server, since the XPU
   # driver/runtime it needs is only set up inside this image.
