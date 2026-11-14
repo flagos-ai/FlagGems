@@ -152,3 +152,200 @@ def test_apply_rotary_pos_emb(
 
     utils.gems_assert_close(q_embed_out, q_embed_ref, dtype)
     utils.gems_assert_close(k_embed_out, k_embed_ref, dtype)
+
+
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("q_heads,k_heads", [(8, 2), (1, 1)])
+@pytest.mark.parametrize(
+    "rotary_interleaved,has_pos_id", [(False, False), (True, True)]
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_apply_rotary_pos_emb_inplace(
+    dtype, q_heads, k_heads, rotary_interleaved, has_pos_id
+):
+    batch_size = 2
+    head_dim = 96
+    max_seq_len = 64
+    cos, sin = _get_rope_cos_sin(max_seq_len, head_dim, dtype, device=flag_gems.device)
+
+    # Both token counts map to the same tuning bucket. This also checks that a
+    # cached kernel still launches the exact grid required by the current input.
+    for seq_len in (17, 31):
+        q = torch.randn(
+            (batch_size, seq_len, q_heads, head_dim),
+            dtype=dtype,
+            device=flag_gems.device,
+        )
+        k = torch.randn(
+            (batch_size, seq_len, k_heads, head_dim),
+            dtype=dtype,
+            device=flag_gems.device,
+        )
+        position_ids = torch.randint(
+            0, max_seq_len, (batch_size, seq_len), device=flag_gems.device
+        )
+
+        q_embed_ref, k_embed_ref = _torch_apply_rotary_pos_emb(
+            q=utils.to_reference(q, True),
+            k=utils.to_reference(k, True),
+            cos=utils.to_reference(cos, True),
+            sin=utils.to_reference(sin, True),
+            position_ids=utils.to_reference(position_ids) if has_pos_id else None,
+            rotary_interleaved=rotary_interleaved,
+        )
+        q_data_ptr = q.data_ptr()
+        k_data_ptr = k.data_ptr()
+
+        q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
+            q=q,
+            k=k,
+            cos=cos,
+            sin=sin,
+            position_ids=position_ids if has_pos_id else None,
+            rotary_interleaved=rotary_interleaved,
+            inplace=True,
+        )
+
+        assert q_embed_out.data_ptr() == q_data_ptr
+        assert k_embed_out.data_ptr() == k_data_ptr
+        utils.gems_assert_close(q_embed_out, q_embed_ref, dtype)
+        utils.gems_assert_close(k_embed_out, k_embed_ref, dtype)
+
+
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.skipif(not utils.bf16_is_supported, reason="Requires BF16 support")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_apply_rotary_pos_emb_inplace_long_sequence_deterministic():
+    # Reproduce the long-input race reported on AMD gfx1201. Fresh clones are
+    # required: applying RoPE repeatedly to an already rotated input is different.
+    seq_len = 300 if cfg.TO_CPU or cfg.QUICK_MODE else 1336
+    dtype = torch.bfloat16
+    q = torch.randn((seq_len, 64, 64), dtype=dtype, device=flag_gems.device)
+    k = torch.randn((seq_len, 8, 64), dtype=dtype, device=flag_gems.device)
+    position_ids = torch.arange(seq_len, device=flag_gems.device)
+    cos, sin = _get_rope_cos_sin(seq_len, 64, dtype, base=150000)
+    q_ref, k_ref = _torch_apply_rotary_pos_emb(
+        utils.to_reference(q, True),
+        utils.to_reference(k, True),
+        utils.to_reference(cos, True),
+        utils.to_reference(sin, True),
+        utils.to_reference(position_ids),
+    )
+
+    first_result = None
+    for _ in range(3 if cfg.QUICK_MODE else 6):
+        q_input, k_input = q.clone(), k.clone()
+        q_output, k_output = flag_gems.apply_rotary_pos_emb(
+            q_input, k_input, cos, sin, position_ids, inplace=True
+        )
+        assert q_output.data_ptr() == q_input.data_ptr()
+        assert k_output.data_ptr() == k_input.data_ptr()
+        utils.gems_assert_close(q_output, q_ref, dtype)
+        utils.gems_assert_close(k_output, k_ref, dtype)
+        if first_result is None:
+            first_result = (q_output, k_output)
+        else:
+            torch.testing.assert_close(q_output, first_result[0], rtol=0, atol=0)
+            torch.testing.assert_close(k_output, first_result[1], rtol=0, atol=0)
+
+
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.parametrize("rotary_interleaved", [False, True])
+@pytest.mark.skipif(not utils.bf16_is_supported, reason="Requires BF16 support")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("nvidia", "amd"),
+    reason="PT2 Triton compilation requires a CUDA/ROCm Torch build",
+)
+def test_apply_rotary_pos_emb_inplace_pt2(rotary_interleaved):
+    from flag_gems.pt2.rotary_embedding import (
+        rotary_embedding_inplace,
+        supports_pt2_triton,
+    )
+
+    if not hasattr(torch, "compile") or not supports_pt2_triton():
+        pytest.skip("Requires torch.compile and torch.library Triton APIs")
+
+    compiled = torch.compile(rotary_embedding_inplace, fullgraph=True)
+    dtype = torch.bfloat16
+    cos, sin = _get_rope_cos_sin(64, 96, dtype)
+    # Exercise the direct raw-kernel launch and the grid after the token count
+    # changes. The public eager autotuner does not cover this PT2 entry point.
+    for seq_len in ((17,) if cfg.TO_CPU or cfg.QUICK_MODE else (17, 31)):
+        q = torch.randn((seq_len, 8, 96), dtype=dtype, device=flag_gems.device)
+        k = torch.randn((seq_len, 2, 96), dtype=dtype, device=flag_gems.device)
+        position_ids = torch.arange(seq_len, device=flag_gems.device)
+        q_ref, k_ref = _torch_apply_rotary_pos_emb(
+            utils.to_reference(q, True),
+            utils.to_reference(k, True),
+            utils.to_reference(cos, True),
+            utils.to_reference(sin, True),
+            utils.to_reference(position_ids),
+            rotary_interleaved,
+        )
+        q_eager, k_eager = q.clone(), k.clone()
+        rotary_embedding_inplace(
+            q_eager, k_eager, cos, sin, position_ids, rotary_interleaved
+        )
+        q_compiled, k_compiled = q.clone(), k.clone()
+        q_data_ptr, k_data_ptr = q_compiled.data_ptr(), k_compiled.data_ptr()
+        compiled(q_compiled, k_compiled, cos, sin, position_ids, rotary_interleaved)
+
+        assert q_compiled.data_ptr() == q_data_ptr
+        assert k_compiled.data_ptr() == k_data_ptr
+        utils.gems_assert_close(q_eager, q_ref, dtype)
+        utils.gems_assert_close(k_eager, k_ref, dtype)
+        torch.testing.assert_close(q_compiled, q_eager, rtol=0, atol=0)
+        torch.testing.assert_close(k_compiled, k_eager, rtol=0, atol=0)
+
+
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.parametrize("interleaved", [False, True])
+@pytest.mark.parametrize("raise_on_second", [False, True])
+def test_rope_inplace_tuning_restores_candidate_inputs(interleaved, raise_on_second):
+    import triton
+
+    from flag_gems.fused.rotary_embedding import (
+        _RopeInplaceTuner,
+        _RopeInterleavedTuner,
+    )
+
+    configs = [
+        triton.Config({"HEAD_BLOCK_SIZE": 0}, num_warps=4, num_stages=3),
+        triton.Config({"HEAD_BLOCK_SIZE": 1}, num_warps=4, num_stages=3),
+    ]
+    q = torch.tensor([1.0, 2.0], device="cpu")
+    k = torch.tensor([3.0, 4.0], device="cpu")
+    original_q, original_k = q.clone(), k.clone()
+    tuner_class = _RopeInterleavedTuner if interleaved else _RopeInplaceTuner
+    # Exercise the real policy without constructing a kernel/autotuner. The
+    # fake benchmark checks its inputs, then models an in-place kernel mutation.
+    tuner = object.__new__(tuner_class)
+    args = (q, k, q, k) if interleaved else (q, k)
+    visited = []
+
+    def benchmark(config):
+        torch.testing.assert_close(q, original_q, rtol=0, atol=0)
+        torch.testing.assert_close(k, original_k, rtol=0, atol=0)
+        visited.append(config)
+        q.add_(7)
+        k.neg_()
+        if raise_on_second and config is configs[1]:
+            raise RuntimeError("candidate benchmark failed")
+        return [3.0] * 3 if config is configs[0] else [1.0] * 3
+
+    if raise_on_second:
+        with pytest.raises(RuntimeError, match="candidate benchmark failed"):
+            tuner.policy(benchmark, configs, args, {})
+    else:
+        best_config, timings = tuner.policy(benchmark, configs, args, {})
+        assert best_config is configs[1]
+        assert timings == {configs[0]: [3.0] * 3, configs[1]: [1.0] * 3}
+
+    assert visited == configs
+    torch.testing.assert_close(q, original_q, rtol=0, atol=0)
+    torch.testing.assert_close(k, original_k, rtol=0, atol=0)

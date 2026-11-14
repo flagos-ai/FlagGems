@@ -168,9 +168,13 @@ namespace {
     return {64, 64, 4, ns};
   }
 
-  // Fallback used with the backend-neutral kernel: correct for every shape
-  // (that kernel masks all lanes), only slower than the calibrated table.
-  Tiling select_generic_tiling() {
+  // Fallback used with the backend-neutral kernel.
+  Tiling select_generic_tiling(int64_t qk_dim, int64_t value_dim, bool is_fp32) {
+    // Match the Python narrow/tail-layout compatibility path: wider M tiles
+    // reproduce incorrect results for these low-precision layouts on Hopper.
+    if (!is_fp32 && qk_dim <= 128 && value_dim <= 32 && (qk_dim > value_dim || value_dim % 16 != 0)) {
+      return {16, 64, 4, 2};
+    }
     return {64, 64, 4, 2};
   }
 
@@ -318,15 +322,16 @@ at::Tensor cross_attention(const at::Tensor &query,
   // source tree actually carries it (see is_thead_ppu_device).
   const bool use_ppu_kernel = is_thead_ppu_device(query.device()) && std::filesystem::exists(ppu_kernel_path);
 
-  const Tiling tiling = use_ppu_kernel ? select_ppu_tiling(query_len,
-                                                           key_len,
-                                                           qk_dim,
-                                                           value_dim,
-                                                           has_mask,
-                                                           query.scalar_type() == at::kFloat,
-                                                           batch,
-                                                           query_heads)
-                                       : select_generic_tiling();
+  const Tiling tiling = use_ppu_kernel
+                            ? select_ppu_tiling(query_len,
+                                                key_len,
+                                                qk_dim,
+                                                value_dim,
+                                                has_mask,
+                                                query.scalar_type() == at::kFloat,
+                                                batch,
+                                                query_heads)
+                            : select_generic_tiling(qk_dim, value_dim, query.scalar_type() == at::kFloat);
   const bool use_exact_bounds =
       use_ppu_kernel && exact_bounds(query_len, key_len, qk_dim, value_dim, tiling, qk_block, value_block);
   // fp32 inputs are emulated with three bf16 MMAs over a hi/lo operand split.
@@ -438,7 +443,8 @@ at::Tensor cross_attention(const at::Tensor &query,
            has_mask,
            tiling.block_m,
            tiling.block_n,
-           tiling.pipeline_ns);
+           tiling.pipeline_ns,
+           /* TLE_PIPELINE = */ false);
   }
   return output;
 }
