@@ -13,10 +13,7 @@
 # limitations under the License.
 #
 # Third-party dependencies (external baselines used at benchmark time):
-#   AITER (https://github.com/ROCm/aiter) -- MIT License.
-#     Calls moe_c_moe_gemm_marlin_w8a8, moe_sorting_fwd, moe_layout_shuffle_gemm1/2
-#     and reads the installed moe_c_configs tuning tables. The Marlin MoE kernel
-#     lineage is MIT (https://github.com/IST-DASLab/marlin).
+#   LightOp and lmslim (Hygon DAS) -- installed external baseline.
 #   DeepGEMM (https://github.com/deepseek-ai/DeepGEMM) -- MIT License.
 #     Optional MetaX contiguous INT8 baseline
 #     (m_grouped_gemm_int8_int8_bf16_nt_contiguous), imported via importorskip.
@@ -33,7 +30,7 @@ JSON stays outside the repository and is supplied with --shape_file PATH.
 It preserves per-scenario call counts, captured first-observation expert counts,
 cumulative offsets and tensor layouts. Operand values and scales are generated
 deterministically, not captured model values. MetaX uses ContinuousGroupedGEMM.
-Hygon uses AITER INT8 MoE GEMM.
+Hygon uses LightOp INT8 MoE GEMM with per-call routing and prepacked weights.
 Prepared external INT8/FP8 diagnostic JSON files are also accepted; their
 classification must identify synthetic routing.
 
@@ -71,91 +68,70 @@ def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constex
     tl.store(Weights + groups, groups, groups < G)
 
 
-class HygonAiterReference:
-    """Prepare the AITER reference for one packed INT8 replay case."""
+class HygonLightOpReference:
+    """Prepare the LightOp reference for one packed INT8 replay case."""
 
     def __init__(self, stage, a, b, sa, sb, output, indices):
-        # AITER is MIT-licensed; used as an external baseline through its
-        # public Python API.
-        import aiter
-        from aiter.jit.module_moe_c_kernel import moe_c_moe_gemm_marlin_w8a8
-        from aiter.ops.moe_sorting import moe_sorting_fwd
-        from aiter.ops.shuffle import moe_layout_shuffle_gemm1, moe_layout_shuffle_gemm2
-
-        # The down table is named for the paired gate/up projection's width.
+        lightop = pytest.importorskip("lightop")
+        routing = pytest.importorskip("lmslim.vllm_compat.moe_align_block_size")
         experts, n, k = b.shape
         geometry = {"gate_up": (512, 6144), "down": (6144, 256)}
         if experts != 257 or geometry.get(stage) != (n, k):
-            raise ValueError(
-                f"No Hygon AITER tuning table mapped for {stage}, {b.shape}"
-            )
-        self.down = stage == "down"
-        device = a.device
-        properties = torch.cuda.get_device_properties(device)
-        arch = properties.gcnArchName.split(":")[0]
-        suffix = ",is_bottom=True" if self.down else ""
-        # Replay adds one shared expert to the 256 routed experts. Use the
-        # nearest vendor table for tuning, but pass all 257 experts to sorting.
-        config = Path(aiter.__file__).with_name("moe_c_configs") / (
-            f"E=256,N=512,gfx_version={arch},num_cus={properties.multi_processor_count},"
-            f"dtype=int8_w8a8{suffix}.json"
-        )
-        options = {
-            int(key): value for key, value in json.loads(config.read_text()).items()
-        }
-        m = a.shape[0]
-        self.bucket = min(options, key=lambda size: abs(size - m))
-        self.tile = options[self.bucket]["BLOCK_SIZE_M"]
-        self.mode = options[self.bucket]["MODE"]
+            raise ValueError(f"No Hygon LightOp configuration for {stage}, {b.shape}")
 
-        self.gemm = moe_c_moe_gemm_marlin_w8a8
-        self.sort = moe_sorting_fwd
-        shuffle = moe_layout_shuffle_gemm2 if self.down else moe_layout_shuffle_gemm1
+        m = a.shape[0]
+        properties = torch.cuda.get_device_properties(a.device)
+        gate_n, gate_k = geometry["gate_up"]
+        down_n, down_k = geometry["down"]
+        gate, down, supported = lightop.get_moe_cuda_marlin_config(
+            experts,
+            m,
+            gate_n,
+            gate_k,
+            down_n,
+            down_k,
+            1,
+            properties.name,
+            properties.multi_processor_count,
+            "int8",
+        )
+        if not supported:
+            raise ValueError(f"LightOp does not support {stage}, {a.shape}, {b.shape}")
+
+        self.gemm = lightop.moe_gemm_marlin_w8a8
+        self.align = routing.moe_align_block_size
+        self.config = down if stage == "down" else gate
+        # Marlin's paired projections share the gate/up routing tile.
+        self.tile = gate["BLOCK_SIZE_M"]
         self.a, self.sa, self.sb = a, sa[:, None], sb[:, :, None]
-        self.b = shuffle(b).view_as(b)
+        # Pack [E, K/64, N, 64] before timing and preserve the API shape.
+        self.b = b.reshape(experts, n, k // 64, 64).transpose(1, 2).contiguous()
+        self.b = self.b.view_as(b)
         self.output = output[:, None, :]
         self.experts = experts
         self.indices = indices[:, None]
-        self.route_weights = torch.ones((m, 1), dtype=torch.float32, device=device)
-        capacity = m + experts * self.tile - 1
-        blocks = (capacity + self.tile - 1) // self.tile
-        self.sorted_ids = torch.empty(capacity, dtype=torch.int32, device=device)
-        self.sorted_weights = torch.empty(capacity, dtype=torch.float32, device=device)
-        self.sorted_experts = torch.empty(blocks, dtype=torch.int32, device=device)
-        self.expert_positions = torch.empty(
-            2 * experts, dtype=torch.int32, device=device
+        self.route_weights = (
+            torch.ones((m, 1), dtype=torch.float32, device=a.device)
+            if stage == "down"
+            else None
         )
-        self.padded = torch.empty(1, dtype=torch.int32, device=device)
 
     def run(self):
-        self.sort(
-            self.indices,
-            self.route_weights,
-            self.sorted_ids,
-            self.sorted_weights,
-            self.sorted_experts,
-            self.expert_positions,
-            self.padded,
-            None,
-            self.experts,
-            self.tile,
+        sorted_ids, sorted_experts, padded = self.align(
+            self.indices, self.tile, self.experts
         )
-        # GEMM2 indexes routing weights by original row ID. Top-1 unit weights
-        # preserve the packed operator's semantics and select the GEMM2 layout.
         self.gemm(
             self.a,
             self.b,
             self.output,
             self.sa,
             self.sb,
-            self.route_weights if self.down else None,
-            self.sorted_ids,
-            self.sorted_experts,
-            self.padded,
+            self.route_weights,
+            sorted_ids,
+            sorted_experts,
+            padded,
             1,
-            self.mode,
-            1,
-            self.bucket,
+            self.config,
         )
 
 
@@ -177,7 +153,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             if self.use_deepgemm or self.dataset.get("input_dtype") != "int8":
                 raise ValueError("Hygon grouped_mm_w8a8 replay requires INT8 inputs")
             self.torch_op = self.hygon_reference
-            self.baseline_name = "Hygon AITER native INT8 MoE GEMM; CK routing included"
+            self.baseline_name = "Hygon LightOp INT8 MoE GEMM, routing included"
         elif self.use_deepgemm:
             self.torch_op = self.deepgemm_reference
             self.baseline_name = (
@@ -320,7 +296,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             torch.arange(g, dtype=torch.int32, device=a.device), lengths, output_size=m
         )
         if self.use_hygon:
-            self.hygon_native = HygonAiterReference(
+            self.hygon_native = HygonLightOpReference(
                 row["stage"], a, b, sa, sb, output, indices
             )
         return a, sa[:, None], b, sb[:, :, None], output, indices, lengths
