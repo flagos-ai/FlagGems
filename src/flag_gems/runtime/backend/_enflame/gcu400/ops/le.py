@@ -15,7 +15,6 @@
 import logging
 
 import triton
-import triton.language as tl
 
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
 
@@ -40,12 +39,15 @@ logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
-    config=CodeGenConfig(16384, (12, 1, 1), 4, True, False, False),
+    config=CodeGenConfig(16384, (48, 1, 1), 4, True, False, False),
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
 )
 @triton.jit
 def le_func(x, y):
-    return x.to(tl.float32) <= y
+    # 直接按原 dtype 比较：<= 是精确比较，无需上采样到 float32；
+    # 省掉一次 f16/bf16 -> f32 的转换后，小张量（如 [1024,16]）与中等张量
+    # 的带宽利用率明显提升（GRID 放宽到 12 SIP * 4 CTA = 48 个 program）。
+    return x <= y
 
 
 def le(A, B):
@@ -54,13 +56,13 @@ def le(A, B):
 
 
 @pointwise_dynamic(
-    config=CodeGenConfig(16384, (12, 1, 1), 4, True, False, False),
+    config=CodeGenConfig(16384, (48, 1, 1), 4, True, False, False),
     is_tensor=[True, False],
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
 )
 @triton.jit
 def le_func_scalar(x, y):
-    return x.to(tl.float32) <= y
+    return x <= y
 
 
 def le_scalar(A, B):

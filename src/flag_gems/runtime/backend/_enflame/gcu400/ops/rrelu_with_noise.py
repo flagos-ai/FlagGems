@@ -120,22 +120,24 @@ def _rrelu_with_noise_train_kernel(
     value's counter follows from its element index, so the same generator state
     has to be consumed on the same tiling to draw the same values.
     """
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    zero = c0 * 0
+    seed = philox_seed.to(tl.int64)
+    offset = philox_offset.to(tl.int64)
+    lane_offsets = tl.arange(0, BLOCK)
+    c0 = (offset & 0xFFFFFFFF).to(tl.uint32) + tl.program_id(0) * BLOCK + lane_offsets
+    c1 = ((offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    # The Philox counter's c2/c3 limbs are constant zero, so they are spelled as
+    # a compile-time constant instead of ``c0 * 0``: the runtime multiply cost
+    # 2-4% of this kernel on top of the draw itself, and the draw dominates it.
+    zero_limb = tl.zeros([BLOCK], dtype=tl.uint32)
 
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, zero, zero)
+    r0, r1, r2, r3 = tl.philox(seed, c0, c1, zero_limb, zero_limb)
     scale = upper - lower
     r0 = uint_to_uniform_float(r0) * scale + lower
     r1 = uint_to_uniform_float(r1) * scale + lower
     r2 = uint_to_uniform_float(r2) * scale + lower
     r3 = uint_to_uniform_float(r3) * scale + lower
 
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    off_0 = tl.program_id(0) * BLOCK * 4 + lane_offsets
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK

@@ -30,6 +30,35 @@ logger = logging.getLogger(__name__)
 NUM_SIPS = 24
 _SGN_GRID_CAP = NUM_SIPS * 2
 
+# BLOCK 分档（2026-11-15 实测，MACHINE=local，A084P50610002，do_bench 3 轮交替采样）：
+# 原实现固定 BLOCK=1024，配合持久网格（grid 上限 48）时每个 program 要循环
+# n/1024/48 次，循环与掩码的标量开销完全压过数据搬运 —— 536M 元素 fp16 实测
+# 5.23ms，换成大 tile 后 0.80ms（6.5x）；fp32 5.61ms→1.40ms、bf16 5.02ms→1.39ms；
+# 16.7M 元素 fp16 0.167ms→0.029ms。
+#   * <=8192：launch 开销支配，2048 优于 16384（3.42us vs 4.75us），单独一档；
+#   * fp16/int16 等 2 字节：16384 全面最优（16.7M: 28.6us vs 65536 的 32.0us）；
+#   * bf16：65536 明显更优（16.7M: 29.8~38.9us vs 16384 的 43.4~50.7us，
+#     53M: 128us vs 180us），536M 两者在噪声内相当，故统一走大 tile；
+#   * fp32/int32：n>=1M 时 65536 更优（16.7M: 49.4us vs 60.2us），
+#     小规模反过来（262144: 6.46us vs 5.79us），因此带规模门槛；
+#   * 8 字节 dtype 未实测大 tile，保守沿用 16384，避免寄存器溢出。
+_SGN_SMALL_ELEMENTS = 8192
+_SGN_SMALL_BLOCK = 2048
+_SGN_DEFAULT_BLOCK = 16384
+_SGN_WIDE_BLOCK = 65536
+_SGN_WIDE_MIN_ELEMENTS = 1 << 20
+
+
+def _select_block(n_elements: int, dtype: torch.dtype) -> int:
+    """按元素规模与 dtype 宽度选 tile，摊薄持久循环的标量开销。"""
+    if n_elements <= _SGN_SMALL_ELEMENTS:
+        return _SGN_SMALL_BLOCK
+    if n_elements >= _SGN_WIDE_MIN_ELEMENTS and (
+        dtype in (torch.bfloat16, torch.float32, torch.int32)
+    ):
+        return _SGN_WIDE_BLOCK
+    return _SGN_DEFAULT_BLOCK
+
 
 @triton.jit
 def sgn_real_kernel(
@@ -154,7 +183,7 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
                 x_contig.view(-1),
                 out_contig.view(-1),
                 n_elements,
-                BLOCK_SIZE=1024,
+                BLOCK_SIZE=_select_block(n_elements, x.dtype),
                 IS_BOOL=x.dtype == torch.bool,
             )
 

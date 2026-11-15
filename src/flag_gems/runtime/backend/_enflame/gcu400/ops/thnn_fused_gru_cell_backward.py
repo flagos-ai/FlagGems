@@ -79,6 +79,7 @@ def _gru_cell_backward_fused_kernel(
     BLOCK_B: tl.constexpr,
     BLOCK_H: tl.constexpr,
     BIAS_QUANTIZE: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
 ):
     # 每个 program 负责一段 hidden 列；rows 在 batch 维按 BLOCK_B 分块循环，
     # 因此无需跨 CTA 的 atomic 归约即可支持任意 batch_size。
@@ -87,6 +88,8 @@ def _gru_cell_backward_fused_kernel(
     accumulator_dtype = tl.float64 if IS_FP64 else tl.float32
     output_dtype = grad_input_ptr.dtype.element_ty
 
+    # has_bias=False 时整段 bias 归约在编译期被消除，bias 指针不会被解引用
+    # （非 out 重载在没有 bias 时不会分配 out3/out4）。
     bias_input_reset = tl.zeros((BLOCK_H,), accumulator_dtype)
     bias_input_input = tl.zeros((BLOCK_H,), accumulator_dtype)
     bias_input_new = tl.zeros((BLOCK_H,), accumulator_dtype)
@@ -180,7 +183,9 @@ def _gru_cell_backward_fused_kernel(
 
         # 公共实现先写回量化后的梯度张量、再由 bias kernel 读取累加；
         # 这里通过 to(output_dtype).to(accumulator_dtype) 复现该量化步骤。
-        if BIAS_QUANTIZE:
+        if not HAS_BIAS:
+            pass
+        elif BIAS_QUANTIZE:
             sum_input_reset = tl.sum(
                 grad_reset.to(output_dtype).to(accumulator_dtype), axis=0
             )
@@ -202,43 +207,99 @@ def _gru_cell_backward_fused_kernel(
             sum_hidden_reset = sum_input_reset
             sum_hidden_input = sum_input_input
             sum_hidden_new = tl.sum(grad_hidden_new.to(accumulator_dtype), axis=0)
-        bias_input_reset += sum_input_reset
-        bias_input_input += sum_input_input
-        bias_input_new += sum_input_new
-        bias_hidden_reset += sum_hidden_reset
-        bias_hidden_input += sum_hidden_input
-        bias_hidden_new += sum_hidden_new
+        if HAS_BIAS:
+            bias_input_reset += sum_input_reset
+            bias_input_input += sum_input_input
+            bias_input_new += sum_input_new
+            bias_hidden_reset += sum_hidden_reset
+            bias_hidden_input += sum_hidden_input
+            bias_hidden_new += sum_hidden_new
 
-    tl.store(
-        grad_input_bias_ptr + cols * grad_input_bias_stride,
-        bias_input_reset,
-        mask=col_mask,
-    )
-    tl.store(
-        grad_input_bias_ptr + (H + cols) * grad_input_bias_stride,
-        bias_input_input,
-        mask=col_mask,
-    )
-    tl.store(
-        grad_input_bias_ptr + (2 * H + cols) * grad_input_bias_stride,
-        bias_input_new,
-        mask=col_mask,
-    )
-    tl.store(
-        grad_hidden_bias_ptr + cols * grad_hidden_bias_stride,
-        bias_hidden_reset,
-        mask=col_mask,
-    )
-    tl.store(
-        grad_hidden_bias_ptr + (H + cols) * grad_hidden_bias_stride,
-        bias_hidden_input,
-        mask=col_mask,
-    )
-    tl.store(
-        grad_hidden_bias_ptr + (2 * H + cols) * grad_hidden_bias_stride,
-        bias_hidden_new,
-        mask=col_mask,
-    )
+    if HAS_BIAS:
+        tl.store(
+            grad_input_bias_ptr + cols * grad_input_bias_stride,
+            bias_input_reset,
+            mask=col_mask,
+        )
+        tl.store(
+            grad_input_bias_ptr + (H + cols) * grad_input_bias_stride,
+            bias_input_input,
+            mask=col_mask,
+        )
+        tl.store(
+            grad_input_bias_ptr + (2 * H + cols) * grad_input_bias_stride,
+            bias_input_new,
+            mask=col_mask,
+        )
+        tl.store(
+            grad_hidden_bias_ptr + cols * grad_hidden_bias_stride,
+            bias_hidden_reset,
+            mask=col_mask,
+        )
+        tl.store(
+            grad_hidden_bias_ptr + (H + cols) * grad_hidden_bias_stride,
+            bias_hidden_input,
+            mask=col_mask,
+        )
+        tl.store(
+            grad_hidden_bias_ptr + (2 * H + cols) * grad_hidden_bias_stride,
+            bias_hidden_new,
+            mask=col_mask,
+        )
+
+
+def _launch_fused_kernel(
+    grad_hy: torch.Tensor,
+    workspace: torch.Tensor,
+    out0: torch.Tensor,
+    out1: torch.Tensor,
+    out2: torch.Tensor,
+    out3: torch.Tensor | None,
+    out4: torch.Tensor | None,
+    has_bias: bool,
+):
+    """单次 launch 的融合 kernel，non-out 与 out 两个重载共用。"""
+    batch_size, hidden_size = grad_hy.shape
+    # has_bias=False 时 bias 段被编译期消除；指针仍需可解引用，用 out2 占位。
+    bias_ptr = out2 if not has_bias else out3
+    bias_stride = 1 if not has_bias else out3.stride(0)
+    hidden_bias_ptr = out2 if not has_bias else out4
+    hidden_bias_stride = 1 if not has_bias else out4.stride(0)
+    # 小规模问题（如 1x32）下固定 128x128 的 tile 会空转，按实际尺寸收窄到
+    # 2 的幂；大规模仍用 BLOCK_B/BLOCK_H 上限，保证向量化宽度。
+    block_h = min(BLOCK_H, triton.next_power_of_2(max(hidden_size, 1)))
+    block_b = min(BLOCK_B, triton.next_power_of_2(max(batch_size, 1)))
+    grid = (triton.cdiv(hidden_size, block_h),)
+    with torch_device_fn.device(grad_hy.device):
+        _gru_cell_backward_fused_kernel[grid](
+            grad_hy,
+            workspace,
+            out0,
+            out1,
+            out2,
+            bias_ptr,
+            hidden_bias_ptr,
+            batch_size,
+            hidden_size,
+            grad_hy.stride(0),
+            grad_hy.stride(1),
+            workspace.stride(0),
+            workspace.stride(1),
+            out0.stride(0),
+            out0.stride(1),
+            out1.stride(0),
+            out1.stride(1),
+            out2.stride(0),
+            out2.stride(1),
+            bias_stride,
+            hidden_bias_stride,
+            IS_FP64=grad_hy.dtype == torch.float64,
+            BLOCK_B=block_b,
+            BLOCK_H=block_h,
+            BIAS_QUANTIZE=BIAS_QUANTIZE,
+            HAS_BIAS=has_bias,
+            num_warps=NUM_WARPS,
+        )
 
 
 def _thnn_fused_gru_cell_backward_out(
@@ -284,34 +345,7 @@ def _thnn_fused_gru_cell_backward_out(
     if batch_size * hidden_size == 0:
         return out0, out1, out2, out3, out4
 
-    grid = (triton.cdiv(hidden_size, BLOCK_H),)
-    with torch_device_fn.device(grad_hy.device):
-        _gru_cell_backward_fused_kernel[grid](
-            grad_hy,
-            workspace,
-            out0,
-            out1,
-            out2,
-            out3,
-            out4,
-            batch_size,
-            hidden_size,
-            grad_hy.stride(0),
-            grad_hy.stride(1),
-            workspace.stride(0),
-            workspace.stride(1),
-            out0.stride(0),
-            out0.stride(1),
-            out1.stride(0),
-            out1.stride(1),
-            out2.stride(0),
-            out2.stride(1),
-            out3.stride(0),
-            out4.stride(0),
-            IS_FP64=grad_hy.dtype == torch.float64,
-            BLOCK_B=BLOCK_B,
-            BLOCK_H=BLOCK_H,
-            BIAS_QUANTIZE=BIAS_QUANTIZE,
-            num_warps=NUM_WARPS,
-        )
+    _launch_fused_kernel(
+        grad_hy, workspace, out0, out1, out2, out3, out4, has_bias=True
+    )
     return out0, out1, out2, out3, out4

@@ -93,7 +93,7 @@ def _choose_block(n_total, itemsize):
         return max(triton.next_power_of_2(n_total), 2)
     if n_total <= 65536:
         return 8192
-    if n_total <= 524288:
+    if n_total <= 262144:
         return 32768
     if n_total > (1 << 28) and itemsize <= 2:
         return 131072

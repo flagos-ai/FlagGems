@@ -249,6 +249,13 @@ mm:
     SPLIT_K: 1
   num_stages: 2
   num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+    SPLIT_K: 2
+  num_stages: 2
+  num_warps: 4
 softmax_non_inner:
 - META:
     TILE_K: 32

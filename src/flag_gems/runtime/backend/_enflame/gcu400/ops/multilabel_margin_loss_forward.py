@@ -44,10 +44,23 @@ _SUPPORTED_INPUT_DTYPES = (
 )
 _IS_ASCEND = runtime_device.vendor_name == "ascend"
 _IS_ILUVATAR = runtime_device.vendor_name == "iluvatar"
+_IS_ENFLAME = runtime_device.vendor_name == "enflame"
+# target 方向的 tile 宽度。BLOCK_T=8 时一个 (BLOCK_C=128, BLOCK_T=8) tile 只有
+# 1024 元素、target 循环要迭代 C/8 次。L600 实测扫描（BLOCK_T 8/16/32/64/128 ×
+# BLOCK_C 128/256，core shapes 总延迟）：5.64 / 4.20 / 3.65 / 3.48 / 3.50 ms，
+# 32~128 已进入平台区，取最小值 64 作为默认值。
+_ENFLAME_LOSS_TARGET_BLOCK = 64
 _BACKEND_LOSS_TARGET_BLOCK = (
-    _ILUVATAR_LOSS_TARGET_BLOCK if _IS_ILUVATAR else _LOSS_TARGET_BLOCK
+    _ILUVATAR_LOSS_TARGET_BLOCK
+    if _IS_ILUVATAR
+    else (_ENFLAME_LOSS_TARGET_BLOCK if _IS_ENFLAME else _LOSS_TARGET_BLOCK)
 )
-_RETURN_MAX_TARGET_LENGTH = _IS_ASCEND
+# 返回最大 target 长度让 host 侧能把 target 方向的 tile / 循环截断到
+# ``max_target_length``：所有 ``target_offsets >= target_length`` 的 pair 都被
+# ``active_target`` 掩掉、贡献恒为 0，遍历它们纯属浪费。enflame 走同一套
+# `_reduce_invalid_flags_kernel`，额外代价只是读 n_rows 个 int64，因此这里
+# 一并打开（原先只有 ascend 打开，enflame 只能按完整 C 遍历）。
+_RETURN_MAX_TARGET_LENGTH = _IS_ASCEND or _IS_ENFLAME
 _INVALID_RESULT_DTYPE = torch.int64 if _RETURN_MAX_TARGET_LENGTH else torch.int32
 _ascend_vector_cores = None
 
@@ -78,14 +91,18 @@ def _get_program_limits():
 @triton.jit
 def _build_is_target_kernel(
     target_ptr,
-    membership_ptr,
+    is_target_ptr,
     target_lengths_ptr,
     invalid_flags_ptr,
     n_rows,
     n_classes,
     BLOCK: tl.constexpr,
 ):
-    """Validate every target value and build the active-prefix membership mask."""
+    """Validate every target value and build the active-prefix membership mask.
+
+    ``is_target_ptr`` 既是输出也是 scratch：调用前已由 `_fill_zero_kernel` 清零，
+    这里只在命中位置写 1，因此无需单独的 int32 membership 暂存缓冲。
+    """
     pid = tl.program_id(0)
     n_programs = tl.num_programs(0)
     program_invalid = tl.zeros((), dtype=tl.int32)
@@ -140,7 +157,7 @@ def _build_is_target_kernel(
             # constant keeps duplicate IDs deterministic across target blocks;
             # only the final nonzero state matters, not the returned count.
             # (No atomics on GCU: see knowledge coding_rules.)
-            tl.store(membership_ptr + row_base + safe_ids, 1, mask=active)
+            tl.store(is_target_ptr + row_base + safe_ids, 1, mask=active)
 
     tl.store(invalid_flags_ptr + pid, program_invalid != 0)
 
@@ -205,17 +222,18 @@ def _build_is_target_vector_kernel(
 
 @libentry()
 @triton.jit
-def _clear_membership_kernel(
-    membership_ptr,
+def _fill_zero_kernel(
+    output_ptr,
     n_elements,
     BLOCK: tl.constexpr,
 ):
+    """把任意 dtype 的输出缓冲清零（store 会按指针类型隐式转换）。"""
     pid = tl.program_id(0)
     n_programs = tl.num_programs(0)
     for block_start in range(pid * BLOCK, n_elements, n_programs * BLOCK):
         offsets = block_start + tl.arange(0, BLOCK)
         mask = offsets < n_elements
-        tl.store(membership_ptr + offsets, 0, mask=mask)
+        tl.store(output_ptr + offsets, 0, mask=mask)
 
 
 @libentry()
@@ -250,6 +268,7 @@ def _fused_row_loss_kernel(
     n_rows,
     n_classes,
     divisor,
+    target_bound,  # 所有行的最大有效 target 长度；超出部分恒不参与比较
     ACC_FP64: tl.constexpr,
     ATOMIC_REDUCE: tl.constexpr,
     SKIP_EMPTY_CLASS_TILE: tl.constexpr,
@@ -302,7 +321,9 @@ def _fused_row_loss_kernel(
                 class_has_non_target = tl.sum(non_target.to(tl.int32), axis=0) != 0
 
             if class_has_non_target:
-                for target_start in range(0, n_classes, BLOCK_T):
+                # ``target_bound`` 是全局最大有效 target 长度，超过它的 offset
+                # 在所有行都是 padding，贡献恒为 0，因此可以安全截断循环。
+                for target_start in range(0, target_bound, BLOCK_T):
                     target_offsets = target_start + tl.arange(0, BLOCK_T)[:, None]
                     active_target = target_offsets < target_length
                     target_ids = tl.load(
@@ -377,42 +398,57 @@ def _tiled_loss_kernel(
         target_length = tl.load(target_lengths_ptr + row)
         active_target = target_offsets < target_length
 
-        target_ids = tl.load(
-            target_ptr + row_base + target_offsets,
-            mask=active_target,
-            other=0,
-        )
-        valid_id = (target_ids >= 0) & (target_ids < n_classes)
-        safe_ids = tl.where(active_target & valid_id, target_ids, 0)
-        target_values = tl.load(
-            input_ptr + row_base + safe_ids,
-            mask=active_target & valid_id,
-            other=0.0,
-        )
-        class_values = tl.load(
-            input_ptr + row_base + class_offsets,
-            mask=class_mask,
-            other=0.0,
-        )
-        class_is_target = tl.load(
-            is_target_ptr + row_base + class_offsets,
-            mask=class_mask,
-            other=0.0,
-        )
-        if not ACC_FP64:
-            target_values = target_values.to(tl.float32)
-            class_values = class_values.to(tl.float32)
-
         # GCU P03 workaround (same as _fused_row_loss_kernel): the half-dtype
         # value comparison lowers through an unrelocatable cvt intrinsic, so
         # the non-target filter rides on the exact {0,1} arithmetic weight.
-        pair_mask = active_target & valid_id & class_mask
-        non_target_weight = 1.0 - class_is_target
-        margins = 1.0 - target_values + class_values
-        contributions = (
-            tl.where(pair_mask & (margins > 0.0), margins, 0.0) * non_target_weight
+        # Padding lanes load as 1.0, i.e. weight 0; they are excluded by
+        # class_mask inside pair_mask anyway, so this stays exact and lets the
+        # same weight double as the empty-class-tile test below.
+        class_is_target = tl.load(
+            is_target_ptr + row_base + class_offsets,
+            mask=class_mask,
+            other=1.0,
         )
-        partial = tl.sum(tl.sum(contributions, axis=1), axis=0)
+        non_target_weight = 1.0 - class_is_target
+
+        if ACC_FP64:
+            partial = tl.zeros((), dtype=tl.float64)
+        else:
+            partial = tl.zeros((), dtype=tl.float32)
+
+        # 两类 tile 的贡献恒为 0，提前退出可省掉整块 (BLOCK_C x BLOCK_T) 运算：
+        # 1) 该 target tile 整块落在 target_length 之外（active_target 全为 false）；
+        # 2) 该 class tile 的所有 class 都是 target（non_target_weight 全为 0），
+        #    例如 benchmark 输入 target=arange(C) 的前半段对应的 class tile。
+        tile_non_target_weight = tl.sum(tl.sum(non_target_weight, axis=1), axis=0)
+        if (target_tile * BLOCK_T < target_length) and (tile_non_target_weight != 0.0):
+            target_ids = tl.load(
+                target_ptr + row_base + target_offsets,
+                mask=active_target,
+                other=0,
+            )
+            valid_id = (target_ids >= 0) & (target_ids < n_classes)
+            safe_ids = tl.where(active_target & valid_id, target_ids, 0)
+            target_values = tl.load(
+                input_ptr + row_base + safe_ids,
+                mask=active_target & valid_id,
+                other=0.0,
+            )
+            class_values = tl.load(
+                input_ptr + row_base + class_offsets,
+                mask=class_mask,
+                other=0.0,
+            )
+            if not ACC_FP64:
+                target_values = target_values.to(tl.float32)
+                class_values = class_values.to(tl.float32)
+
+            pair_mask = active_target & valid_id & class_mask
+            margins = 1.0 - target_values + class_values
+            contributions = (
+                tl.where(pair_mask & (margins > 0.0), margins, 0.0) * non_target_weight
+            )
+            partial += tl.sum(tl.sum(contributions, axis=1), axis=0)
         tl.store(partial_ptr + tile, partial)
 
 
@@ -663,9 +699,6 @@ def multilabel_margin_loss_forward(
     input_contiguous = input.contiguous()
     target_contiguous = target.contiguous()
     is_target = torch.empty(input.shape, dtype=input.dtype, device=input.device)
-    membership = torch.empty(
-        (n_rows * n_classes,), dtype=torch.int32, device=input.device
-    )
     target_lengths = torch.empty((n_rows,), dtype=torch.int64, device=input.device)
     row_program_limit, loss_program_limit = _get_program_limits()
     validation_grid = min(n_rows, row_program_limit)
@@ -713,12 +746,15 @@ def multilabel_margin_loss_forward(
             triton.cdiv(n_rows * n_classes, _VALIDATION_BLOCK),
             loss_program_limit,
         )
-        _clear_membership_kernel[(membership_grid,)](
-            membership,
-            n_rows * n_classes,
-            BLOCK=_VALIDATION_BLOCK,
-        )
         if use_vector_validation:
+            membership = torch.empty(
+                (n_rows * n_classes,), dtype=torch.int32, device=input.device
+            )
+            _fill_zero_kernel[(membership_grid,)](
+                membership,
+                n_rows * n_classes,
+                BLOCK=_VALIDATION_BLOCK,
+            )
             _build_is_target_vector_kernel[(1,)](
                 target_contiguous,
                 membership,
@@ -736,9 +772,17 @@ def multilabel_margin_loss_forward(
             invalid_flags = torch.empty(
                 (validation_grid,), dtype=torch.int32, device=input.device
             )
+            # 直接把 is_target 当作 scratch 缓冲：先清零整块，再由校验 kernel 在
+            # 命中的位置上写 1。这样省掉了 N*C 的 int32 暂存缓冲、它的一次读写
+            # 以及一次额外的 kernel 发射（原来需要 clear + build + convert 三次）。
+            _fill_zero_kernel[(membership_grid,)](
+                is_target,
+                n_rows * n_classes,
+                BLOCK=_VALIDATION_BLOCK,
+            )
             _build_is_target_kernel[(validation_grid,)](
                 target_contiguous,
-                membership,
+                is_target,
                 target_lengths,
                 invalid_flags,
                 n_rows,
@@ -765,12 +809,13 @@ def multilabel_margin_loss_forward(
                 "multilabel_margin_loss_forward: target values must be -1 or in [0, C)"
             )
 
-        _membership_to_output_kernel[(membership_grid,)](
-            membership,
-            is_target,
-            n_rows * n_classes,
-            BLOCK=_VALIDATION_BLOCK,
-        )
+        if use_vector_validation:
+            _membership_to_output_kernel[(membership_grid,)](
+                membership,
+                is_target,
+                n_rows * n_classes,
+                BLOCK=_VALIDATION_BLOCK,
+            )
 
         if n_classes <= _FUSED_CLASS_LIMIT:
             loss_grid = min(n_rows, row_program_limit)
@@ -783,6 +828,7 @@ def multilabel_margin_loss_forward(
                 n_rows,
                 n_classes,
                 reduction_divisor,
+                max_target_length,
                 ACC_FP64=acc_fp64,
                 ATOMIC_REDUCE=atomic_row_reduce,
                 SKIP_EMPTY_CLASS_TILE=skip_empty_class_tile,
@@ -792,19 +838,18 @@ def multilabel_margin_loss_forward(
         else:
             class_tiles = triton.cdiv(n_classes, _LOSS_CLASS_BLOCK)
             full_target_tiles = triton.cdiv(n_classes, _BACKEND_LOSS_TARGET_BLOCK)
-            target_tiles = full_target_tiles
-            if _IS_ASCEND and reduction in (0, 1):
-                active_target_tiles = triton.cdiv(
-                    max_target_length, _BACKEND_LOSS_TARGET_BLOCK
-                )
-                target_tiles = (
-                    min(
-                        full_target_tiles,
-                        triton.next_power_of_2(active_target_tiles),
-                    )
-                    if active_target_tiles > 0
-                    else 1
-                )
+            # target 方向的 tile 数按全局最大有效 target 长度精确截断：任何
+            # ``target_offsets >= target_length`` 的 pair 都被 active_target
+            # 掩掉、贡献恒为 0，遍历它们纯属浪费。benchmark 输入 target_length
+            # 为 C/2，这一条即可省掉一半 target tile。
+            active_target_tiles = triton.cdiv(
+                max_target_length, _BACKEND_LOSS_TARGET_BLOCK
+            )
+            target_tiles = (
+                min(full_target_tiles, active_target_tiles)
+                if active_target_tiles > 0
+                else 1
+            )
             use_class_tiled_loss = _IS_ASCEND and reduction == 2
             if use_class_tiled_loss:
                 tiles_per_row = class_tiles

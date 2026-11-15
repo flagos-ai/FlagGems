@@ -143,6 +143,8 @@ def _run_irfft_2d(x2d, n_out, out_dtype, compute_dtype):
         N_IN=x2d.shape[1],
         OUT_DTYPE=out_tl_dtype,
         COMPUTE_DTYPE=compute_tl_dtype,
+        num_warps=1,
+        num_stages=2,
     )
     return yr
 

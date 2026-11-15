@@ -29,6 +29,20 @@ from .contiguous import contiguous
 logger = logging.getLogger(__name__)
 
 _REGISTER_TILE_LIMIT = 32
+# 批量版单个 program 的 (batch, n, n) tile 元素上限，以及期望的 CTA 数（12 SIP * 4）
+_BATCH_TILE_ELEMENTS = 8192
+_TARGET_CTA_COUNT = 48
+_MIN_BATCH_FOR_BATCHED_KERNEL = 256
+
+
+def _pick_block_batch(block_n: int, batch_count: int) -> int:
+    """选择每个 program 处理的矩阵数：batch 太小则退回单矩阵 kernel（避免 tile 里
+    全是 mask 掉的空矩阵），否则在 tile 容量与 CTA 数量之间取折中。"""
+    if batch_count < _MIN_BATCH_FOR_BATCHED_KERNEL:
+        return 1
+    capacity = max(1, _BATCH_TILE_ELEMENTS // (block_n * block_n))
+    target = triton.next_power_of_2(max(1, batch_count // _TARGET_CTA_COUNT))
+    return max(1, min(capacity, target))
 
 
 @libentry()
@@ -91,6 +105,88 @@ def _logdet_register_kernel(
     tl.store(out + pid, result)
 
 
+@triton.jit
+def _logdet_batch_register_kernel(
+    inp,
+    out,
+    batch_count,
+    n: tl.constexpr,
+    block_n: tl.constexpr,
+    block_batch: tl.constexpr,
+):
+    """一次处理 block_batch 个矩阵：把 batch 轴并入 tile，使小矩阵（n<=16）也能把
+    向量宽度铺满。消元步骤与单矩阵版本完全一致，只是所有行/列抽取都退化成沿
+    axis=1 / axis=2 的规约，并在 batch 轴上并行。"""
+    pid = tle.program_id(0)
+    rows = tl.arange(0, block_n)
+    cols = tl.arange(0, block_n)
+    batch_idx = pid * block_batch + tl.arange(0, block_batch)
+    batch_mask = batch_idx < batch_count
+
+    tile_mask = (
+        batch_mask[:, None, None]
+        & (rows[None, :, None] < n)
+        & (cols[None, None, :] < n)
+    )
+    offsets = (
+        batch_idx[:, None, None] * (n * n)
+        + rows[None, :, None] * n
+        + cols[None, None, :]
+    )
+    work = tl.load(inp + offsets, mask=tile_mask, other=0.0)
+
+    swap_count = tl.zeros((block_batch,), dtype=tl.int32)
+    singular = tl.zeros((block_batch,), dtype=tl.int1)
+
+    for k in range(n):
+        # 依次：取第 k 列 -> 选主元行 -> 交换 -> 计算消元乘子 -> 秩 1 更新
+        column = tl.sum(tl.where(cols[None, None, :] == k, work, 0.0), axis=2)
+        abs_column = tl.where(
+            (rows[None, :] >= k) & (rows[None, :] < n), tl.abs(column), -float("inf")
+        )
+        pivot_abs = tl.max(abs_column, axis=1)
+        pivot_row = tl.min(
+            tl.where(abs_column == pivot_abs[:, None], rows[None, :], block_n), axis=1
+        )
+        singular |= pivot_abs == 0.0
+
+        row_k = tl.sum(tl.where(rows[None, :, None] == k, work, 0.0), axis=1)
+        row_p = tl.sum(
+            tl.where(rows[None, :, None] == pivot_row[:, None, None], work, 0.0), axis=1
+        )
+        work = tl.where(rows[None, :, None] == k, row_p[:, None, :], work)
+        work = tl.where(
+            rows[None, :, None] == pivot_row[:, None, None], row_k[:, None, :], work
+        )
+        swap_count += pivot_row != k
+
+        column = tl.sum(tl.where(cols[None, None, :] == k, work, 0.0), axis=2)
+        pivot = tl.sum(tl.where(rows[None, :] == k, column, 0.0), axis=1)
+        safe_pivot = tl.where(pivot == 0.0, 1.0, pivot)
+        multiplier = tl.where(rows[None, :] > k, column / safe_pivot[:, None], 0.0)
+        update_mask = (rows[None, :, None] > k) & (cols[None, None, :] > k)
+        # 乘子为 0 的行显式置 0，避免 0*inf/NaN 污染整行
+        update = tl.where(
+            multiplier[:, :, None] == 0.0,
+            0.0,
+            multiplier[:, :, None] * row_p[:, None, :],
+        )
+        work = tl.where(update_mask, work - update, work)
+
+    diagonal = tl.sum(
+        tl.where(rows[None, :, None] == cols[None, None, :], work, 0.0), axis=1
+    )
+    valid_diagonal = cols[None, :] < n
+    singular |= tl.sum(tl.where(valid_diagonal & (diagonal == 0.0), 1, 0), axis=1) > 0
+    negative_count = tl.sum(tl.where(valid_diagonal & (diagonal < 0.0), 1, 0), axis=1)
+    negative = (negative_count + swap_count) % 2 != 0
+    logabsdet = tl.sum(tl.where(valid_diagonal, tl.log(tl.abs(diagonal)), 0.0), axis=1)
+
+    result = tl.where(negative, float("nan"), logabsdet)
+    result = tl.where(singular, -float("inf"), result)
+    tl.store(out + batch_idx, result, mask=batch_mask)
+
+
 def logdet(inp):
     logger.debug("GEMS LOGDET")
 
@@ -121,14 +217,31 @@ def logdet(inp):
     inp_contiguous = contiguous(inp).reshape(batch_count, n, n)
     out = torch.empty(batch_count, dtype=inp.dtype, device=inp.device)
     block_n = max(2, triton.next_power_of_2(n))
-    num_warps = min(8, max(1, (block_n * block_n * inp.element_size()) // 4096))
+    block_batch = _pick_block_batch(block_n, batch_count)
 
     with torch_device_fn.device(inp.device):
-        _logdet_register_kernel[(batch_count,)](
-            inp_contiguous,
-            out,
-            n=n,
-            block_n=block_n,
-            num_warps=num_warps,
-        )
+        if block_batch > 1:
+            # 批量版：每个 program 吃掉 block_batch 个矩阵，让小矩阵也能铺满向量宽度
+            num_warps = min(
+                8,
+                max(1, (block_batch * block_n * block_n * inp.element_size()) // 4096),
+            )
+            _logdet_batch_register_kernel[(triton.cdiv(batch_count, block_batch),)](
+                inp_contiguous,
+                out,
+                batch_count,
+                n=n,
+                block_n=block_n,
+                block_batch=block_batch,
+                num_warps=num_warps,
+            )
+        else:
+            num_warps = min(8, max(1, (block_n * block_n * inp.element_size()) // 4096))
+            _logdet_register_kernel[(batch_count,)](
+                inp_contiguous,
+                out,
+                n=n,
+                block_n=block_n,
+                num_warps=num_warps,
+            )
     return out.reshape(batch_shape)

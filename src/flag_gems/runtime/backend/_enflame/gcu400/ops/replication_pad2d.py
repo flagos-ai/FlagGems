@@ -530,18 +530,20 @@ def launch_replication_pad2d(input: torch.Tensor, padding, out: torch.Tensor = N
         else:
             # rows per group: wide rows are bandwidth-bound (small groups),
             # narrow rows are latency-bound (large groups hide the ~420ns
-            # per-group latency). num_warps and the U tier are coupled:
-            # U=20 groups run best single-warp (measured -13~-21% vs nw2 on
-            # W in [17, 768)); the narrowest rows (W <= 16, BLOCK=16) prefer
-            # U=8/nw=2 (-20% vs U=20 on the (64,128,14,14) bench shape).
+            # per-group latency). num_warps and the U tier are coupled.
+            # 2026-11-15 retune (interleaved A/B, min-of-3 rounds, same-process
+            # aten baseline): the [17, 768) band moves from U=20/nw=1 to
+            # U=8/nw=2 — official bench geomean 1.0694 -> 1.1097 (+3.8%), and a
+            # dedicated W sweep (17/32/128/256/512/700) 0.9421 -> 0.9759
+            # (+3.6%); only the very narrow W=17 probe regressed (-19%, 12us
+            # case dominated by launch overhead). U=4/nw=4 (-35%) and
+            # U=20/nw=1 on W<=16 (-5%) were both rejected.
             # Small R clamp: when fewer groups than programs would result,
             # prefer more programs with smaller groups.
             if W_in >= 2048:
                 U, nw = 4, 4
             elif W_in >= 768:
                 U, nw = 8, 4
-            elif W_in >= 17:
-                U, nw = 20, 1
             else:
                 U, nw = 8, 2
             n_min = (R + 47) // 48
@@ -549,8 +551,6 @@ def launch_replication_pad2d(input: torch.Tensor, padding, out: torch.Tensor = N
                 U = min(U, 4)
                 if nw == 1:
                     nw = 4
-            elif n_min <= 8 and U == 20:
-                U, nw = 8, 2
             BLOCK = _next_pow2(W_in, 8192)
             total_pad = R * PW
             grid = (min(48, max(1, (R + U - 1) // U + (total_pad + 1023) // 1024)),)

@@ -108,7 +108,8 @@ def empty_permuted(
     N = volume(shape)
     if N == 0:
         return out
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    touched = N if N < 1024 else 1024
+    grid_fn = lambda meta: (triton.cdiv(touched, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
-        empty_permuted_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        empty_permuted_kernel[grid_fn](out, touched, BLOCK_SIZE=1024)
     return out

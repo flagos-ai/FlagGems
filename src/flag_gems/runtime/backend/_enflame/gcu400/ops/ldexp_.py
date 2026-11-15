@@ -49,6 +49,23 @@ _WRAP_INTEGER_EXPONENT = tuple(map(int, torch.__version__.split(".")[:2])) >= (2
 
 
 @triton.jit
+def _pow2_scale(exponent):
+    """构造 2**exponent 的 f32 位模式，要求 -126 <= exponent <= 127。"""
+    return ((exponent + 127) << 23).to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _ldexp_pow2(x, exponent):
+    """x * 2**exponent，用三段 2 的幂乘法代替 SFU 版 ldexp（细节见 ldexp.py）。"""
+    exponent = tl.maximum(tl.minimum(exponent, 381), -378)
+    first = tl.maximum(tl.minimum(exponent, 127), -126)
+    rest_after_first = exponent - first
+    second = tl.maximum(tl.minimum(rest_after_first, 127), -126)
+    third = rest_after_first - second
+    return x * _pow2_scale(first) * _pow2_scale(second) * _pow2_scale(third)
+
+
+@triton.jit
 def _scale_exp2(x, e):
     """x * 2**e in the destination precision.
 
@@ -79,7 +96,7 @@ def ldexp_inplace_integral_func(x, other, wrap_exponent: tl.constexpr):
     exponent = other.to(tl.int32)
     if not wrap_exponent:
         exponent = tl.maximum(tl.minimum(other, 2147483647), -2147483648).to(tl.int32)
-    return _ldexp(x.to(tl.float32), exponent)
+    return _ldexp_pow2(x.to(tl.float32), exponent)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -274,6 +291,10 @@ def ldexp_(self, other):
         )
 
     integral_exponent = not other.is_floating_point() and not other.is_complex()
+    # GCU400 的 pointwise_dynamic 在两输入 stride 不一致时会对非连续操作数的尾部
+    # 索引错位（见 ldexp.py 同名说明），先把非连续的指数张量实体化。
+    if not other.is_contiguous():
+        other = other.contiguous()
     if self.is_complex():
         if integral_exponent:
             _ldexp_complex_integral_(self, other)

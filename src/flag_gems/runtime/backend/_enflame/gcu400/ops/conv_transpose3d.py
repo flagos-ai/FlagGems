@@ -418,7 +418,7 @@ def conv_transpose3d(
         BLOCK_N=block_n,
         BLOCK_CI=block_ci,
         BLOCK_CO=block_co,
-        num_warps=4,
+        num_warps=1,
         num_stages=2,
     )
 

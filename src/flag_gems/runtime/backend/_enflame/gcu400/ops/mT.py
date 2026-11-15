@@ -123,6 +123,8 @@ def _order_workspace(device):
 def mT(self):
     global _LAST_DEVICE_INDEX, _LAST_RANK
 
+    logger.debug("GEMS MT")
+
     # Zero-cost type guard: a non-Tensor argument has no ``dim``, exactly like
     # the native operator's "must be Tensor" rejection.
     try:
@@ -138,7 +140,7 @@ def mT(self):
         # again for an already-materialized pair would add device work without
         # changing any observable behaviour.
         device = self.device
-        device_index = self.device.index
+        device_index = device.index
         if device_index != _LAST_DEVICE_INDEX or ndim != _LAST_RANK:
             _mt_order_kernel[(1,)](
                 _order_workspace(device), ndim, MAX_DIM=_MAX_DIM, num_warps=1

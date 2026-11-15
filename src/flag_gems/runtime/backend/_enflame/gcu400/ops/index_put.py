@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # 整数索引（可能重复、走原子累加）用较小 tile 保住 fp16 大 shape 时延
 BLOCK_SIZE0 = 64
 # bool mask 展开后写者唯一，索引量大，用较大 tile 压 program 调度开销
-BLOCK_SIZE0_UNIQUE = 128
+BLOCK_SIZE0_UNIQUE = 64
 BLOCK_SIZE1 = 2048
 GRID_CAP = 65535
 # --- TUNING PARAMS END ---

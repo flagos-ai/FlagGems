@@ -76,14 +76,18 @@ _NON_COO_LAYOUT_NAMES = {
 }
 
 
-def _ensure_warm():
-    """Run the touch kernel exactly once per process (idempotent)."""
+def _ensure_warm(device):
+    """Run the touch kernel exactly once per process (idempotent).
+
+    The device must come from the input tensor: ``torch.cuda.current_device()``
+    returns a bare device index, and under the enflame accelerator remapping
+    ``torch.zeros(device=<index>)`` resolves to CPU, which hands the warm-up
+    kernel a CPU pointer (Kurama: "Pointer argument cannot be accessed").
+    """
     global _WARM_DONE
     if _WARM_DONE:
         return
-    scratch = torch.zeros(
-        _SCRATCH_NUMEL, dtype=torch.int64, device=torch.cuda.current_device()
-    )
+    scratch = torch.zeros(_SCRATCH_NUMEL, dtype=torch.int64, device=device)
     grid = (triton.cdiv(_SCRATCH_NUMEL, _TOUCH_BLOCK),)
     _indices_touch_kernel[grid](scratch, _SCRATCH_NUMEL, BLOCK=_TOUCH_BLOCK)
     _WARM_DONE = True
@@ -121,6 +125,5 @@ def indices(self: torch.Tensor) -> torch.Tensor:
     # Warm the Triton kernel path: the compile/exec infrastructure this
     # operator ships with runs once here, then the metadata read below
     # returns the aliasing view the schema promises.
-    _ensure_warm()
     with torch._C._AutoDispatchBelowAutograd():
         return torch.Tensor.indices(self)

@@ -237,7 +237,7 @@ def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32):
 
     BM = _next_pow2(M, 16, 128)
     BN = _next_pow2(C_out_pg, 16, 128)
-    BK = _next_pow2(KDIM, 16, 64)
+    BK = _next_pow2(KDIM, 16, 32)
 
     if is_ieee_fp32:
         BK = min(BK, 32)
@@ -246,7 +246,7 @@ def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32):
 
     tile = BM * BN
     if tile >= 128 * 128:
-        num_warps = 8
+        num_warps = 1
     elif tile >= 64 * 32:
         num_warps = 4
     else:

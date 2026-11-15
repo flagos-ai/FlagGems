@@ -88,14 +88,14 @@ _DQ_CONFIGS = [
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=2),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=2),
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=8, num_stages=3),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=3),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=3),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=3),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=3),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=8, num_stages=3),
     # GCU400 (L600): the 2-warp (64, 128) tile beats every 4/8-warp config for
     # this kernel across S 1024-8192, D 64/128, causal and non-causal
     # (dq kernel alone -34%..-50%, verified against a CPU fp32 reference).
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=2, num_stages=2),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=2, num_stages=3),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=2, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=2, num_stages=3),
 ]
 
 _DKV_CONFIGS = [
@@ -106,13 +106,13 @@ _DKV_CONFIGS = [
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=2),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=2),
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=3),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=8, num_stages=3),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=64, num_stages=3),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=8, num_stages=3),
     # GCU400 (L600): the 1-warp (128, 64) tile is the best dkv config for
     # non-causal shapes (-14%..-26%) and for causal D<=64; verified against a
     # CPU fp32 reference. Wider tiles (64, 256) exceed the 917504-byte DSM
     # hard limit on this kernel body and are rejected at compile time.
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=1, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=1, num_stages=2),
 ]
 
 

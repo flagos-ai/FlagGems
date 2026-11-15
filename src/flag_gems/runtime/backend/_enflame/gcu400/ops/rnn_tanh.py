@@ -39,6 +39,12 @@ _DOT_PRECISION = tl.constexpr(
     "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
 )
 
+# packed 前向的「核内时间步循环」持久化开关。
+# 未开启时每个时间步单独 launch 一次 kernel；开启后整条时间轴在同一个 CTA 内循环，
+# 把 T 次小 kernel launch（每次 grid 只有 1 个 CTA）压缩成 1 次，权重也只加载一次。
+_PERSISTENT_PACKED_FORWARD = True
+_PERSISTENT_BLOCK_B = 16
+
 
 @triton.jit
 def _load_input(
@@ -1517,6 +1523,132 @@ def rnn_tanh_packed_forward_step_dot_kernel(
 
 @libentry()
 @triton.jit
+def rnn_tanh_packed_forward_persistent_kernel(
+    input_ptr,
+    hidden_ptr,
+    weight_ih_ptr,
+    weight_hh_ptr,
+    bias_ih_ptr,
+    bias_hh_ptr,
+    output_ptr,
+    previous_ptr,
+    sizes_ptr,
+    offsets_ptr,
+    num_steps,
+    max_batch,
+    input_size,
+    hidden_size,
+    input_stride_row,
+    input_stride_i,
+    weight_ih_stride_h,
+    weight_ih_stride_i,
+    weight_hh_stride_h0,
+    weight_hh_stride_h1,
+    bias_ih_stride,
+    bias_hh_stride,
+    output_feature_size,
+    state_index,
+    direction: tl.constexpr,
+    dropout_p,
+    dropout_seed,
+    dropout_base,
+    HAS_BIAS: tl.constexpr,
+    APPLY_DROPOUT: tl.constexpr,
+    REVERSE: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    BLOCK_I: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    """packed 前向的持久化版本：一个 CTA 内循环所有时间步。
+
+    语义与 ``rnn_tanh_packed_forward_step_dot_kernel`` 逐步调用完全等价：
+    每步先把更新前的 h 写入 ``previous``（反向 BPTT 用），再算
+    ``h_t = tanh(x_t W_ih^T + h_{t-1} W_hh^T + b)`` 写回 hidden 与 output。
+    因 active batch 随时间单调变化（正向递减 / 反向递增），未被激活的 batch 行
+    必须保留寄存器里的旧 h，不能让清零的 ``current`` 覆盖。
+    """
+    batch_start = tl.program_id(0) * BLOCK_B
+    b_offs = batch_start + tl.arange(0, BLOCK_B)
+    i_offs = tl.arange(0, BLOCK_I)
+    h_offs = tl.arange(0, BLOCK_H)
+    h_mask = h_offs < hidden_size
+    batch_valid = b_offs < max_batch
+    hidden_offsets = (state_index * max_batch + b_offs[:, None]) * hidden_size + h_offs[
+        None, :
+    ]
+    hidden = tl.load(
+        hidden_ptr + hidden_offsets,
+        mask=batch_valid[:, None] & h_mask[None, :],
+        other=0.0,
+    ).to(tl.float32)
+    # 权重只与 hidden/input 尺寸有关，与时间步无关：在进入时间循环前加载一次。
+    w_ih_hoisted = tl.load(
+        weight_ih_ptr
+        + h_offs[:, None] * weight_ih_stride_h
+        + i_offs[None, :] * weight_ih_stride_i,
+        mask=h_mask[:, None] & (i_offs[None, :] < input_size),
+        other=0.0,
+    )
+    w_hh_hoisted = tl.load(
+        weight_hh_ptr
+        + h_offs[:, None] * weight_hh_stride_h0
+        + h_offs[None, :] * weight_hh_stride_h1,
+        mask=h_mask[:, None] & h_mask[None, :],
+        other=0.0,
+    )
+    for step in range(num_steps):
+        time_index = (num_steps - 1 - step) if REVERSE else step
+        active_batch = tl.load(sizes_ptr + time_index)
+        row_offset = tl.load(offsets_ptr + time_index)
+        active_mask = (b_offs < active_batch)[:, None] & h_mask[None, :]
+        previous_offsets = (row_offset + b_offs[:, None]) * hidden_size + h_offs[
+            None, :
+        ]
+        tl.store(previous_ptr + previous_offsets, hidden, mask=active_mask)
+        input_offsets = (row_offset + b_offs[:, None]) * input_stride_row + i_offs[
+            None, :
+        ] * input_stride_i
+        input_mask = (b_offs < active_batch)[:, None] & (i_offs[None, :] < input_size)
+        x = tl.load(input_ptr + input_offsets, mask=input_mask, other=0.0)
+        if APPLY_DROPOUT:
+            random_offsets = (
+                dropout_base
+                + (row_offset + b_offs[:, None]) * input_size
+                + i_offs[None, :]
+            )
+            keep = tl.rand(dropout_seed, random_offsets) > dropout_p
+            x = tl.where(keep & input_mask, x / (1.0 - dropout_p), 0.0)
+
+        w_ih = w_ih_hoisted
+        w_hh = w_hh_hoisted
+        acc = tl.dot(
+            x.to(w_ih.dtype), tl.trans(w_ih), input_precision=_DOT_PRECISION
+        ).to(tl.float32)
+        acc += tl.dot(
+            hidden.to(w_hh.dtype), tl.trans(w_hh), input_precision=_DOT_PRECISION
+        ).to(tl.float32)
+        if HAS_BIAS:
+            bias = tl.load(
+                bias_ih_ptr + h_offs * bias_ih_stride, mask=h_mask, other=0.0
+            ).to(tl.float32)
+            bias += tl.load(
+                bias_hh_ptr + h_offs * bias_hh_stride, mask=h_mask, other=0.0
+            ).to(tl.float32)
+            acc += bias[None, :]
+        current = tl_extra_shim.tanh(acc)
+        # 未激活行保持旧 h：反向方向下它们稍后才会被激活。
+        hidden = tl.where(active_mask, current, hidden)
+        tl.store(hidden_ptr + hidden_offsets, hidden, mask=active_mask)
+        output_offsets = (
+            (row_offset + b_offs[:, None]) * output_feature_size
+            + direction * hidden_size
+            + h_offs[None, :]
+        )
+        tl.store(output_ptr + output_offsets, hidden, mask=active_mask)
+
+
+@libentry()
+@triton.jit
 def rnn_tanh_packed_forward_step_vector_kernel(
     input_ptr,
     hidden_ptr,
@@ -2825,6 +2957,80 @@ def _packed_layout(batch_sizes, rows):
     return sizes, tuple(offsets)
 
 
+def _packed_step_metadata(batch_sizes_host, row_offsets, reference):
+    """把每步的 active batch 与 packed 行偏移搬到 device，供持久化 kernel 核内索引。
+
+    batch_sizes 在 ATen schema 中是 CPU 元数据，这里只用于构造 launch 几何；
+    真正的时间步索引由 kernel 从这两个 int32 小张量读取，避免逐步 launch。
+    """
+    sizes = torch.tensor(batch_sizes_host, dtype=torch.int32, device=reference.device)
+    offsets = torch.tensor(row_offsets, dtype=torch.int32, device=reference.device)
+    return sizes, offsets
+
+
+def _launch_packed_persistent_direction(
+    current_input,
+    hidden,
+    layer_output,
+    previous,
+    step_sizes,
+    step_offsets,
+    params_state,
+    has_biases,
+    max_batch,
+    input_size,
+    hidden_size,
+    feature_size,
+    state_index,
+    direction,
+    dropout,
+    dropout_seed,
+    dropout_base,
+    apply_dropout,
+    num_steps,
+):
+    """单 (layer, direction) 的持久化 packed 前向：一次 launch 覆盖整条时间轴。"""
+    weight_ih, weight_hh, bias_ih, bias_hh = params_state
+    block_b = _PERSISTENT_BLOCK_B
+    block_i = max(16, triton.next_power_of_2(input_size))
+    block_h = max(16, triton.next_power_of_2(hidden_size))
+    rnn_tanh_packed_forward_persistent_kernel[(triton.cdiv(max_batch, block_b),)](
+        current_input,
+        hidden,
+        weight_ih,
+        weight_hh,
+        bias_ih,
+        bias_hh,
+        layer_output,
+        previous,
+        step_sizes,
+        step_offsets,
+        num_steps,
+        max_batch,
+        input_size,
+        hidden_size,
+        *current_input.stride(),
+        *weight_ih.stride(),
+        *weight_hh.stride(),
+        bias_ih.stride(0) if has_biases else 0,
+        bias_hh.stride(0) if has_biases else 0,
+        feature_size,
+        state_index,
+        direction,
+        dropout,
+        dropout_seed,
+        dropout_base,
+        HAS_BIAS=has_biases,
+        APPLY_DROPOUT=apply_dropout,
+        REVERSE=direction == 1,
+        BLOCK_B=block_b,
+        BLOCK_I=block_i,
+        BLOCK_H=block_h,
+        num_warps=2,
+        num_stages=2,
+    )
+
+
 def _launch_packed_forward(
     data,
     batch_sizes_host,
@@ -2859,6 +3065,16 @@ def _launch_packed_forward(
     current_input = data
     current_input_size = first_input_size
     current_strides = data.stride()
+    # 持久化路径要求整个 active batch 落在单个 batch-block 内（grid 恒为 1），
+    # 这样同一次 launch 才能在核内顺序串起所有时间步。
+    persistent_ready = _PERSISTENT_PACKED_FORWARD and (
+        triton.cdiv(max_batch, _PERSISTENT_BLOCK_B) == 1
+    )
+    step_sizes = step_offsets = None
+    if persistent_ready:
+        step_sizes, step_offsets = _packed_step_metadata(
+            batch_sizes_host, row_offsets, data
+        )
 
     for layer in range(num_layers):
         feature_size = directions * hidden_size
@@ -2877,8 +3093,30 @@ def _launch_packed_forward(
                 and hidden_size <= 256
                 and current_input_size >= 16
                 and hidden_size >= 16
-                and data.dtype != torch.bfloat16
             )
+            if persistent_ready and use_dot:
+                _launch_packed_persistent_direction(
+                    current_input,
+                    hidden,
+                    layer_output,
+                    previous,
+                    step_sizes,
+                    step_offsets,
+                    (weight_ih, weight_hh, bias_ih, bias_hh),
+                    has_biases,
+                    max_batch,
+                    current_input_size,
+                    hidden_size,
+                    feature_size,
+                    state_index,
+                    direction,
+                    dropout,
+                    dropout_seed,
+                    dropout_base,
+                    apply_dropout,
+                    len(batch_sizes_host),
+                )
+                continue
             time_indices = (
                 range(len(batch_sizes_host))
                 if direction == 0

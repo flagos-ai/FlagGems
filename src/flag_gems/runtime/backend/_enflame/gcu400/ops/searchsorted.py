@@ -25,12 +25,15 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 _CUDA_BLOCK_SIZE = 256
-# scalar 入口只有一个 value，用更小的向量宽度避免空转 lane。
+# 整数序列保守回退通用向量 kernel：整数路径已达标（1.8x），不值得为窄整型
+# 与 python int 标量实参的混合比较再承担一次未验证的 GCU 风险；块宽压小以
+# 避免 1 个元素时的 lane 空转。
 SCALAR_BLOCK_SIZE = 64
 # 1D 序列上用 int32 索引替代 int64，降低地址计算开销。
 GCU400_SCALAR_INT32_INDEX = True
 # GCU400 tensor 路径同样用 int32 索引（i64 地址状态链软模拟开销大），numel 超 2^31
-# 自动回退 i64 保正确；BLOCK 512/w4 为 kernel-only sweep 定标（B256/w4 远离最优）。
+# 自动回退 i64 保正确；标量入口走 _searchsorted_scalar_kernel（全程标量二分，
+# 无 lane 空转），块宽由 _select_launch_config 按 dtype/工作量选定。
 GCU400_TENSOR_INT32_INDEX = True
 _GCU_BLOCK_SIZE = 512
 _GCU_NUM_WARPS = 4
@@ -104,6 +107,60 @@ def _searchsorted_kernel(
         low = tl.where(active & ~go_left, mid + 1, low)
 
     tl.store(out + offsets, low, mask=mask)
+
+
+@triton.jit
+def _searchsorted_scalar_kernel(
+    sorted_sequence,
+    out,
+    value,
+    sequence_len,
+    LOG_SEQUENCE_LEN: tl.constexpr,
+    RIGHT: tl.constexpr,
+    OUT_INT32: tl.constexpr,
+):
+    """单个标量值的二分查找：全程标量运算，无 arange / 无向量 lane 空转。
+
+    指针按 dtype 宽度偏移由 Triton 自行完成；mid 会被钳到 [0, sequence_len-1]
+    以免 low>=high 时越界，此时该次比较结果被 active 屏蔽。
+    """
+    low = tl.zeros((), dtype=tl.int32)
+    high = low + sequence_len
+    last = sequence_len - 1
+    for _ in range(LOG_SEQUENCE_LEN):
+        active = low < high
+        mid = low + (high - low) // 2
+        probe = tl.minimum(mid, last)
+        mid_value = tl.load(sorted_sequence + probe)
+        if RIGHT:
+            go_left = value < mid_value
+        else:
+            go_left = value <= mid_value
+        high = tl.where(active & go_left, mid, high)
+        low = tl.where(active & ~go_left, mid + 1, low)
+    if OUT_INT32:
+        tl.store(out, low.to(tl.int32))
+    else:
+        tl.store(out, low.to(tl.int64))
+
+
+def _select_launch_config(dtype, numel, is_1d_sequence):
+    """按元素宽度与工作量选 (BLOCK_SIZE, num_warps)。
+
+    该 kernel 的瓶颈是 sorted_sequence 上的非连续 gather（每步一次）：
+    - 2 字节浮点（fp16/bf16）单次 gather 事务只搬一半字节，放大块能摊薄
+      每步的固定开销，实测大 case 2048/w4 比 512/w4 快 1.6x；
+    - 4/8 字节元素放大块反而更慢（gather 事务数翻倍、寄存器压力上升），
+      保持 512/w4；1D 序列上 2 字节浮点用 512/w2 最快。
+    以上来自 gcu400 kernel-only sweep（256/512/1024/2048 × w2/w4）。
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        if numel >= 65536:
+            return 2048, 4
+        if not is_1d_sequence:
+            return 1024, 4
+        return 512, 2
+    return _GCU_BLOCK_SIZE, _GCU_NUM_WARPS
 
 
 def _normalize_right(right: bool, side: str | None) -> bool:
@@ -206,6 +263,88 @@ def _prepare_out(
     return out
 
 
+def _prepare_scalar_out(
+    sorted_sequence: torch.Tensor,
+    out_int32: bool,
+    out: torch.Tensor | None,
+):
+    """标量入口的 out 准备：0 维输出，不需要 values 张量。"""
+    out_dtype = torch.int32 if out_int32 else torch.int64
+    if out is None:
+        return torch.empty((), dtype=out_dtype, device=sorted_sequence.device)
+    if out.dtype != out_dtype:
+        raise RuntimeError(
+            "torch.searchsorted(): output tensor's dtype is wrong, it can only be "
+            "Int(int32) or Long(int64) depending on whether out_int32 flag is True"
+        )
+    if out.device != sorted_sequence.device:
+        raise RuntimeError(
+            "torch.searchsorted(): output tensor must be on the same device as input"
+        )
+    if tuple(out.shape) != ():
+        out.resize_(())
+    return out
+
+
+def _searchsorted_scalar_impl(
+    sorted_sequence: torch.Tensor,
+    value,
+    *,
+    out_int32: bool,
+    right: bool,
+    side: str | None,
+    sorter: torch.Tensor | None,
+    out: torch.Tensor | None = None,
+):
+    """python 标量入口。
+
+    原实现先 `torch.scalar_tensor(value, device=...)` 造一个 0 维设备张量（每次
+    调用一次 H2D 拷贝），再跑向量 kernel（多 lane 空转）。改为把标量直接作为
+    kernel 实参、全程标量二分，省掉 H2D 与 lane 空转；带 sorter 或 ascend
+    仍走通用张量路径。
+    """
+    right = _normalize_right(right, side)
+    _check_dtype(sorted_sequence, "sorted_sequence")
+    _check_scalar_values_shape(sorted_sequence)
+    _check_sorter(sorted_sequence, sorter)
+    if (
+        sorter is not None
+        or runtime_device.vendor_name == "ascend"
+        or not sorted_sequence.dtype.is_floating_point
+    ):
+        values = torch.tensor(value, device=sorted_sequence.device)
+        return _searchsorted_impl(
+            sorted_sequence,
+            values,
+            out_int32=out_int32,
+            right=right,
+            side=None,
+            sorter=sorter,
+            out=out,
+        )
+
+    out = _prepare_scalar_out(sorted_sequence, out_int32, out)
+    if sorted_sequence.shape[-1] == 0:
+        out.zero_()
+        return out
+    sorted_sequence_contiguous = sorted_sequence.contiguous()
+    kernel_out = out if out.is_contiguous() else torch.empty_like(out)
+    with torch_device_fn.device(sorted_sequence.device):
+        _searchsorted_scalar_kernel[(1,)](
+            sorted_sequence_contiguous,
+            kernel_out,
+            value,
+            sorted_sequence.shape[-1],
+            LOG_SEQUENCE_LEN=sorted_sequence.shape[-1].bit_length(),
+            RIGHT=right,
+            OUT_INT32=kernel_out.dtype == torch.int32,
+            num_warps=1,
+        )
+    if kernel_out is not out:
+        out.copy_(kernel_out)
+    return out
+
+
 def _searchsorted_impl(
     sorted_sequence: torch.Tensor,
     values: torch.Tensor,
@@ -250,17 +389,22 @@ def _searchsorted_impl(
 
     sequence_len = sorted_sequence.shape[-1]
     values_per_row = values.shape[-1] if sorted_sequence.dim() != 1 else values.numel()
+    is_1d_sequence = sorted_sequence.dim() == 1
+    scalar_values = values.numel() == 1
     if is_ascend:
         block_size = (
             _ASCEND_BLOCK_SIZE
             if sorted_sequence.dtype.is_floating_point
             else _CUDA_BLOCK_SIZE
         )
+        num_warps = _GCU_NUM_WARPS
     else:
-        block_size = _GCU_BLOCK_SIZE
-    scalar_values = values.numel() == 1
-    if scalar_values:
-        block_size = SCALAR_BLOCK_SIZE
+        block_size, num_warps = _select_launch_config(
+            sorted_sequence.dtype, values.numel(), is_1d_sequence
+        )
+        if scalar_values:
+            # 单元素仍走向量 kernel 时（整数 dtype 回退路径），压小块宽
+            block_size, num_warps = SCALAR_BLOCK_SIZE, _GCU_NUM_WARPS
     int32_index_safe = (
         values.numel() < torch.iinfo(torch.int32).max
         and sorted_sequence.numel() < torch.iinfo(torch.int32).max
@@ -290,10 +434,10 @@ def _searchsorted_impl(
             LOG_SEQUENCE_LEN=sequence_len.bit_length(),
             RIGHT=right,
             HAS_SORTER=sorter_contiguous is not None,
-            IS_1D_SEQUENCE=sorted_sequence.dim() == 1,
+            IS_1D_SEQUENCE=is_1d_sequence,
             USE_INT32_INDEX=use_int32_index,
             BLOCK_SIZE=block_size,
-            num_warps=_GCU_NUM_WARPS,
+            num_warps=num_warps,
         )
 
     if kernel_out is not out:
@@ -432,10 +576,17 @@ def _searchsorted_reference_bridge(
             right = _normalize_right(right, side)
             side = None
         need_cpu_reference = False
-        if isinstance(self, float):
+        if isinstance(self, (int, float)):
+            # python 标量（含 int）：native 对 int16 等窄整型序列 + int 标量同样
+            # 硬 abort（test_searchsorted_scalar[int16-...] 实测栈落在本函数末行），
+            # 因此 int/float 标量统一走 CPU 参考。
             need_cpu_reference = True
         elif isinstance(sorted_sequence, torch.Tensor):
             if sorted_sequence.dim() > 0 and sorted_sequence.shape[-1] == 0:
+                need_cpu_reference = True
+            elif isinstance(self, torch.Tensor) and self.numel() == 0:
+                # 空 values（如 values.shape=(2,0)）同样落在 native 破损失域：
+                # test_searchsorted_tensor[empty_values-*] 直接 TOPSATEN 硬 abort。
                 need_cpu_reference = True
             elif (
                 isinstance(self, torch.Tensor)
@@ -459,6 +610,42 @@ def _searchsorted_reference_bridge(
         out_int32=out_int32,
         right=right,
         side=side,
+        sorter=sorter,
+        out=out,
+    )
+
+
+def _searchsorted_tensor_out_gcu_impl(
+    sorted_sequence,
+    self,
+    *,
+    out_int32=False,
+    right=False,
+    side=None,
+    sorter=None,
+    out=None,
+):
+    # 本槽位（searchsorted.Tensor_out@PrivateUse1）修前对任意 out 布局 100% 硬
+    # abort（TOPSATEN_STATUS_BAD_PARAM，见 log_ss_tensor_out.log：连 contiguous
+    # out 也 abort），因此参考实现不可用、tests/test_searchsorted.py 的
+    # test_searchsorted_tensor_out 无法通过。修法与 Scalar_out 槽位一致：
+    # use_gems 激活时委托 FlagGems kernel（保住 Triton 主路径），否则回退 CPU 参考。
+    if _gems_runtime_active():
+        return searchsorted_out(
+            sorted_sequence,
+            self,
+            out_int32=out_int32,
+            right=right,
+            side=side,
+            sorter=sorter,
+            out=out,
+        )
+    right = _normalize_right(right, side)
+    return _searchsorted_cpu_reference(
+        sorted_sequence,
+        self,
+        out_int32=out_int32,
+        right=right,
         sorter=sorter,
         out=out,
     )
@@ -522,6 +709,20 @@ def _install_searchsorted_reference_bridge():
             "registered: %s",
             err,
         )
+    try:
+        library.impl(
+            "searchsorted.Tensor_out",
+            _searchsorted_tensor_out_gcu_impl,
+            "PrivateUse1",
+            allow_override=True,
+        )
+        _SCALAR_OUT_BRIDGE_LIBRARY = library
+    except Exception as err:
+        logger.warning(
+            "searchsorted reference bridge: Tensor_out@PrivateUse1 not "
+            "registered: %s",
+            err,
+        )
 
 
 _install_searchsorted_reference_bridge()
@@ -537,11 +738,9 @@ def searchsorted_scalar(
     sorter=None,
 ):
     logger.debug("GEMS SEARCHSORTED_SCALAR")
-    _check_scalar_values_shape(sorted_sequence)
-    values = torch.scalar_tensor(self, device=sorted_sequence.device)
-    return _searchsorted_impl(
+    return _searchsorted_scalar_impl(
         sorted_sequence,
-        values,
+        self,
         out_int32=out_int32,
         right=right,
         side=side,
@@ -560,11 +759,9 @@ def searchsorted_scalar_out(
     out,
 ):
     logger.debug("GEMS SEARCHSORTED_SCALAR_OUT")
-    _check_scalar_values_shape(sorted_sequence)
-    values = torch.scalar_tensor(self, device=sorted_sequence.device)
-    return _searchsorted_impl(
+    return _searchsorted_scalar_impl(
         sorted_sequence,
-        values,
+        self,
         out_int32=out_int32,
         right=right,
         side=side,

@@ -383,6 +383,11 @@ def scatter(inp, dim, index, src, reduce=None):
         if needs_upcast:
             out = out.to(orig_dtype)
         return out
+    if reduce == "multiply" and is_last_dim_flat(out, dim, index, src_strided):
+        scatter_last_dim_multiply(out, dim, index, src_strided)
+        if needs_upcast:
+            out = out.to(orig_dtype)
+        return out
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
@@ -430,6 +435,11 @@ def scatter_(inp, dim, index, src, reduce=None):
     src_restrided = src.as_strided(index.shape, src.stride())
     if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_restrided):
         scatter_last_dim(out, dim, index, src_restrided, reduce == "add")
+        if needs_upcast:
+            inp.copy_(out.to(orig_dtype))
+        return inp
+    if reduce == "multiply" and is_last_dim_flat(out, dim, index, src_restrided):
+        scatter_last_dim_multiply(out, dim, index, src_restrided)
         if needs_upcast:
             inp.copy_(out.to(orig_dtype))
         return inp
@@ -537,6 +547,112 @@ def scatter_last_dim_kernel(
                 tl.store(out_ptr + out_off, src_val)
             else:
                 tl.store(out_ptr + out_off, src_val, mask=mask)
+
+
+@triton.jit(
+    do_not_specialize=[
+        "rows",
+        "width",
+        "idx_row_stride",
+        "src_row_stride",
+        "out_row_stride",
+        "num_col_tile",
+    ]
+)
+def scatter_last_dim_mul_kernel(
+    src_ptr,
+    index_ptr,
+    out_ptr,
+    rows,
+    width,
+    idx_row_stride,
+    src_row_stride,
+    out_row_stride,
+    num_col_tile,
+    INT32: tl.constexpr,
+    EVEN: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """尾维 scatter 乘法：out[.., index] *= src，用 CAS 循环保交换律语义。
+
+    与 scatter_last_dim_kernel 的区别是走乘法，没有原生 atomic_mul，只能用
+    atomic_cas 做读-乘-写重试。tile 内部一次乘加即可定位地址（省掉通用 kernel
+    的 rank 次 / %），i32 偏移，未完成 lane 以「写回原值」空转。
+    """
+    pid = tl.program_id(0)
+    num_cta = tl.num_programs(0)
+    num_tile = tl.cdiv(rows, BLOCK_M) * num_col_tile
+    for tile in range(pid, num_tile, num_cta):
+        row_tile = tile // num_col_tile
+        col_tile = tile - row_tile * num_col_tile
+        row_idx = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        col_idx = col_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        idx_off = row_idx[:, None] * idx_row_stride + col_idx[None, :]
+        src_off = row_idx[:, None] * src_row_stride + col_idx[None, :]
+        if EVEN:
+            index_val = tl.load(index_ptr + idx_off)
+            src_val = tl.load(src_ptr + src_off)
+        else:
+            mask = (row_idx[:, None] < rows) & (col_idx[None, :] < width)
+            index_val = tl.load(index_ptr + idx_off, mask=mask, other=0)
+            src_val = tl.load(src_ptr + src_off, mask=mask, other=0)
+        if INT32:
+            out_off = row_idx[:, None].to(tl.int32) * out_row_stride
+            out_off += index_val.to(tl.int32)
+        else:
+            out_off = row_idx[:, None].to(tl.int64) * out_row_stride
+            out_off += index_val
+        running = tl.load(out_ptr + out_off)
+        pending = tl.full((BLOCK_M, BLOCK_N), 1, dtype=tl.int1)
+        if not EVEN:
+            pending = pending & mask
+        block_stop = tl.sum(pending.to(tl.int32)) == 0
+        while not block_stop:
+            updated = tl.where(pending, running * src_val, running)
+            observed = tl.atomic_cas(out_ptr + out_off, running, updated)
+            done = (observed == running) & pending
+            running = tl.where(done, updated, observed)
+            pending = pending & (~done)
+            block_stop = tl.sum(pending.to(tl.int32)) == 0
+
+
+# 乘法 CAS 路径实测网格放大无收益（原子吞吐才是上限），上限取一个够用的常数
+SCATTER_MUL_MAX_GRID = 4096
+
+
+def scatter_last_dim_multiply(out, dim, index, src):
+    """尾维 scatter(乘法) 的 host 侧派发，就地写 out 并返回它。"""
+    rank = index.dim()
+    width = index.shape[-1]
+    rows = index.numel() // width
+    block_m = 1
+    block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
+    num_col_tile = triton.cdiv(width, block_n)
+    # 并行度不足时收窄列块，让更多 CTA 参与到同一行
+    while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
+        block_n //= 2
+        num_col_tile = triton.cdiv(width, block_n)
+    grid = min(triton.cdiv(rows, block_m) * num_col_tile, SCATTER_MUL_MAX_GRID)
+    even = rows % block_m == 0 and width % block_n == 0
+    int32 = all(_max_offset(t) < 2**31 for t in (out, index, src))
+    scatter_last_dim_mul_kernel[(grid,)](
+        src,
+        index,
+        out,
+        rows,
+        width,
+        index.stride(rank - 2),
+        src.stride(rank - 2),
+        out.stride(rank - 2),
+        num_col_tile,
+        INT32=int32,
+        EVEN=even,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=4,
+    )
+    return out
 
 
 def _max_offset(tensor):

@@ -62,7 +62,7 @@ _Q_TO_INT = {
 }
 
 # Number of elements each program copies along a dense/linear span.
-_BLOCK = 4096
+_BLOCK = 16384
 # Small program used for the unaligned head of a split span.
 _HEAD_BLOCK = 32
 # Longest rank the generic (strided) kernel decomposes in one unrolled pass.

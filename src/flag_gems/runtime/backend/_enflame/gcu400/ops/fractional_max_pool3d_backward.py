@@ -207,8 +207,13 @@ def _fmp3d_bwd_probe_kernel(
     BLOCK: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """建 inverse map：inv[目标地址] = 最后写入该地址的输出序号。
+    """建 inverse map：inv[目标地址] = 写该地址的最大输出序号 + 1。
 
+    这里必须用 atomic_max 而不是普通 store：同一目标地址可能被多个 program
+    并发写入，普通 store 的最终值是未定义的（既不保证有 lane 写入，也不保证
+    读回与写入一致），会让重复检测偶发漏判，进而让零原子 store 路径覆盖掉
+    本应累加的梯度。atomic_max 是确定性的：重复组里只有序号最大的输出能读到
+    自己，其余输出必然读到不同的值而被判定为重复，从而安全回退到原子路径。
     同时用 flags[0] 记录越界索引；越界时统一回退到原子路径，由参考语义处理。
     """
     pid = tl.program_id(0)
@@ -220,7 +225,9 @@ def _fmp3d_bwd_probe_kernel(
         plane = out_offsets // out_spatial
         target_offsets = plane * in_spatial + idx_vals
         valid_mask = out_mask & (idx_vals >= 0) & (idx_vals < in_spatial)
-        tl.store(inv_ptr + target_offsets, out_offsets.to(tl.int32), mask=valid_mask)
+        tl.atomic_max(
+            inv_ptr + target_offsets, (out_offsets + 1).to(tl.int32), mask=valid_mask
+        )
         has_invalid = tl.sum((out_mask & ~valid_mask).to(tl.int32), axis=0) > 0
         tl.store(flags_ptr, 1, mask=has_invalid)
 
@@ -247,14 +254,12 @@ def _fmp3d_bwd_dup_kernel(
         plane = out_offsets // out_spatial
         target_offsets = plane * in_spatial + idx_vals
         valid_mask = out_mask & (idx_vals >= 0) & (idx_vals < in_spatial)
-        owner = tl.load(
-            inv_ptr + target_offsets,
-            mask=valid_mask,
-            other=out_offsets.to(tl.int32),
-        )
+        # inv 中存的是「最大输出序号 + 1」，0 表示该目标地址没有被任何输出写过；
+        # 两种情况都说明不能走零原子 store 路径，必须由原子累加兜底。
+        owner = tl.load(inv_ptr + target_offsets, mask=valid_mask, other=0)
         has_dup = (
             tl.sum(
-                (valid_mask & (owner != out_offsets.to(tl.int32))).to(tl.int32),
+                (valid_mask & (owner != (out_offsets + 1).to(tl.int32))).to(tl.int32),
                 axis=0,
             )
             > 0
@@ -272,7 +277,8 @@ def _can_use_store_path(
         return False
 
     flags = torch.zeros(2, dtype=torch.int32, device=device)
-    inv_map = torch.empty(
+    # 必须零初始化：0 表示「该目标地址未被写入」，未写的地址一律按重复处理。
+    inv_map = torch.zeros(
         (in_spatial * (total_out // out_spatial),), dtype=torch.int32, device=device
     )
     num_blocks = triton.cdiv(total_out, CHECK_BLOCK)

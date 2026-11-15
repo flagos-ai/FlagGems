@@ -388,6 +388,12 @@ def _strided_args(x, out):
 
 
 def _psi_launch(x, out):
+    # GCU 上 kernel 内的 int64 -> float32 转换会整片产出 NaN（实测 int64 输入
+    # psi(1) 得 NaN，参考实现得 -0.577216），而 ATen 的 integral 路径本来就在
+    # float32 上计算并输出 float32，所以在 host 侧先把 bool/int 输入提升成
+    # float32，数值语义与参考完全一致。
+    if not x.is_floating_point():
+        x = x.to(torch.float32)
     n = x.numel()
     dtype = out.dtype
     if x.is_contiguous() and out.is_contiguous():

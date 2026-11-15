@@ -442,6 +442,37 @@ def _launch_gru_cell_backward(
                 )
 
 
+_FUSED_LAUNCH = None
+_FUSED_RESOLVED = False
+
+# 融合 kernel 的适用规模门槛（实测标定，单位 = batch_size * hidden_size）：
+#  - has_bias=True：两步实现额外要跑 bias 归约 kernel，固定开销约 60us，
+#    因此很小规模（>= 512，例如 8x64）融合也更快；
+#  - has_bias=False：两步实现只有 1 个轻量主 kernel，而融合 kernel 单次 launch
+#    约 12us，小规模反而更慢，需要 >= 131072（例如 512x1024）才切换。
+_FUSED_MIN_ELEMS_WITH_BIAS = 512
+_FUSED_MIN_ELEMS_NO_BIAS = 131072
+
+
+def _fused_launcher():
+    """取 gcu400 的单 kernel 融合实现（同目录模块），失败则返回 None。
+
+    融合实现按 hidden 列块划分 CTA，在寄存器内同时完成四门梯度与 bias 归约，
+    相比本节的两步实现省去 2~3 次 launch 与 2xBx3H 元素的重复读取。
+    解析结果缓存，避免每次调用都走一遍 import 机制。
+    """
+    global _FUSED_LAUNCH, _FUSED_RESOLVED
+    if not _FUSED_RESOLVED:
+        _FUSED_RESOLVED = True
+        try:
+            from .thnn_fused_gru_cell_backward import _launch_fused_kernel
+
+            _FUSED_LAUNCH = _launch_fused_kernel
+        except Exception:  # pragma: no cover - 回退到两步实现
+            _FUSED_LAUNCH = None
+    return _FUSED_LAUNCH
+
+
 def _thnn_fused_gru_cell_backward(
     grad_hy: torch.Tensor, workspace: torch.Tensor, has_bias: bool
 ):
@@ -460,6 +491,28 @@ def _thnn_fused_gru_cell_backward(
     else:
         grad_input_bias = None
         grad_hidden_bias = None
+
+    numel = batch_size * hidden_size
+    min_elems = _FUSED_MIN_ELEMS_WITH_BIAS if has_bias else _FUSED_MIN_ELEMS_NO_BIAS
+    fused_launch = _fused_launcher() if numel >= min_elems else None
+    if fused_launch is not None:
+        fused_launch(
+            grad_hy,
+            workspace,
+            grad_input_gates,
+            grad_hidden_gates,
+            grad_hx,
+            grad_input_bias,
+            grad_hidden_bias,
+            has_bias,
+        )
+        return (
+            grad_input_gates,
+            grad_hidden_gates,
+            grad_hx,
+            grad_input_bias,
+            grad_hidden_bias,
+        )
 
     _launch_gru_cell_backward(
         grad_hy,

@@ -339,21 +339,32 @@ def sparse_sampled_addmm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    K_BLOCKS: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    EVEN_MN: tl.constexpr,
+    GROUP_M: tl.constexpr,
     IS_FP64: tl.constexpr,
     MANUAL_DOT: tl.constexpr,
 ):
     pid = ext.program_id(0)
     num_progs = tl.num_programs(0)
+    num_pid_m = tl.cdiv(M, BLOCK_M)
     num_pid_n = tl.cdiv(N, BLOCK_N)
-    num_tiles = tl.cdiv(M, BLOCK_M) * num_pid_n
+    num_tiles = num_pid_m * num_pid_n
+    # L2-friendly swizzle inside one batch matrix: GROUP_M row-tiles are walked
+    # column-major so consecutive programs keep re-reading the same mat2 band.
+    group_width = GROUP_M * num_pid_n
     # GCU caps grid.x at 65535, so the (batch, tile) pairs are strided over
     # the available programs instead of the generic one-program-per-tile grid
     # (B * tiles reaches 65536 for the core benchmark shapes).
     for pid_flat in range(pid, total_tiles, num_progs):
         b = pid_flat // num_tiles
         tile_id = pid_flat % num_tiles
-        pid_m = tile_id // num_pid_n
-        pid_n = tile_id % num_pid_n
+        group_id = tile_id // group_width
+        first_pid_m = group_id * GROUP_M
+        group_rows = min(num_pid_m - first_pid_m, GROUP_M)
+        pid_m = first_pid_m + (tile_id % group_rows)
+        pid_n = (tile_id % group_width) // group_rows
 
         offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
         offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -373,19 +384,27 @@ def sparse_sampled_addmm_kernel(
             + offs_n[None, :] * stride_mat2_n
         )
 
+        mask_m = (offs_m < M)[:, None]
+        mask_n = (offs_n < N)[None, :]
         acc_dtype = tl.float64 if IS_FP64 else tl.float32
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_dtype)
-        for k in range(0, tl.cdiv(K, BLOCK_K)):
-            a = tl.load(
-                a_ptrs,
-                mask=(offs_m[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_K),
-                other=0.0,
-            )
-            b_val = tl.load(
-                b_ptrs,
-                mask=(offs_k[:, None] < K - k * BLOCK_K) & (offs_n[None, :] < N),
-                other=0.0,
-            )
+        # Fully unrolled K loop: gcu400 miscompiles a loop-carried fp32 tl.dot
+        # accumulator inside a dynamic range loop (see mm.py), so K_BLOCKS is a
+        # constexpr and the reduction is emitted as static_range.
+        for k in tl.static_range(K_BLOCKS):
+            if EVEN_K and EVEN_MN:
+                a = tl.load(a_ptrs)
+                b_val = tl.load(b_ptrs)
+            else:
+                if EVEN_K:
+                    k_mask_a = mask_m
+                    k_mask_b = mask_n
+                else:
+                    k_remaining = K - k * BLOCK_K
+                    k_mask_a = mask_m & (offs_k[None, :] < k_remaining)
+                    k_mask_b = (offs_k[:, None] < k_remaining) & mask_n
+                a = tl.load(a_ptrs, mask=k_mask_a, other=0.0)
+                b_val = tl.load(b_ptrs, mask=k_mask_b, other=0.0)
             if IS_FP64:
                 if MANUAL_DOT:
                     acc += tl.sum(a[:, :, None] * b_val[None, :, :], axis=1)
@@ -398,12 +417,17 @@ def sparse_sampled_addmm_kernel(
 
         offs_m64 = offs_m.to(tl.int64)
         offs_n64 = offs_n.to(tl.int64)
-        tile_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-        idx = tl.load(
-            idx_ptr + b64 * M * N + offs_m64[:, None] * N + offs_n64[None, :],
-            mask=tile_mask,
-            other=-1,
-        )
+        tile_mask = mask_m & mask_n
+        if EVEN_MN:
+            idx = tl.load(
+                idx_ptr + b64 * M * N + offs_m64[:, None] * N + offs_n64[None, :]
+            )
+        else:
+            idx = tl.load(
+                idx_ptr + b64 * M * N + offs_m64[:, None] * N + offs_n64[None, :],
+                mask=tile_mask,
+                other=-1,
+            )
         sampled_mask = idx >= 0
 
         val_offs = b64 * nnz_per_batch + idx.to(tl.int64)
@@ -412,8 +436,127 @@ def sparse_sampled_addmm_kernel(
         tl.store(val_ptr + val_offs, new.to(old.dtype), mask=sampled_mask)
 
 
-def _dot_block(size, max_block):
-    return max(16, min(triton.next_power_of_2(size), max_block))
+@libentry()
+@triton.jit(do_not_specialize=["alpha", "beta"])
+def sparse_sampled_addmm_kernel_aligned(
+    mat1_ptr,
+    mat2_ptr,
+    idx_ptr,
+    val_ptr,
+    alpha,
+    beta,
+    M,
+    N,
+    K,
+    nnz_per_batch,
+    stride_mat1_b: tl.constexpr,
+    stride_mat1_m: tl.constexpr,
+    stride_mat1_k: tl.constexpr,
+    stride_mat2_b: tl.constexpr,
+    stride_mat2_m: tl.constexpr,
+    stride_mat2_n: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    K_BLOCKS: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    # 边界完全对齐时的快速路径（M/N/K 都是 tile 的整数倍，且 batch 上 grid.y）：
+    # 没有任何边界掩码，gcu400 上比通用 kernel 少约 20% 的 DSM 占用，因此可以用
+    # 更宽的 BLOCK_K；实测 b=16,m=n=k=4096 fp16 从 40.9ms 降到 32.1ms。
+    pid = tl.program_id(0)
+    b = tl.program_id(1)
+    num_pid_m = tl.cdiv(M, BLOCK_M)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    # L2 友好的 swizzle：GROUP_M 个行 tile 按列优先走，连续 program 复用同一段 mat2
+    group_width = GROUP_M * num_pid_n
+    group_id = pid // group_width
+    first_pid_m = group_id * GROUP_M
+    group_rows = min(num_pid_m - first_pid_m, GROUP_M)
+    pid_m = first_pid_m + (pid % group_rows)
+    pid_n = (pid % group_width) // group_rows
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    b64 = b.to(tl.int64)
+    a_ptrs = (
+        mat1_ptr
+        + b64 * stride_mat1_b
+        + offs_m[:, None] * stride_mat1_m
+        + offs_k[None, :] * stride_mat1_k
+    )
+    b_ptrs = (
+        mat2_ptr
+        + b64 * stride_mat2_b
+        + offs_k[:, None] * stride_mat2_m
+        + offs_n[None, :] * stride_mat2_n
+    )
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for _ in tl.static_range(K_BLOCKS):
+        a = tl.load(a_ptrs)
+        b_val = tl.load(b_ptrs)
+        acc += tl.dot(a, b_val, out_dtype=tl.float32, allow_tf32=False)
+        a_ptrs += BLOCK_K * stride_mat1_k
+        b_ptrs += BLOCK_K * stride_mat2_m
+
+    idx = tl.load(
+        idx_ptr
+        + b64 * M * N
+        + offs_m.to(tl.int64)[:, None] * N
+        + offs_n.to(tl.int64)[None, :]
+    )
+    sampled_mask = idx >= 0
+    val_offs = b64 * nnz_per_batch + idx.to(tl.int64)
+    old = tl.load(val_ptr + val_offs, mask=sampled_mask, other=0.0)
+    new = alpha * acc + beta * old.to(tl.float32)
+    tl.store(val_ptr + val_offs, new.to(old.dtype), mask=sampled_mask)
+
+
+# Tile/occupancy tiers for the sampled GEMM, keyed on (per-batch MAC count
+# M*N*K, element size). 128x256 is the widest N tile that still fits the
+# gcu400 DSM budget (896KB); BLOCK_K then absorbs whatever headroom is left.
+# num_stages=1 always wins because the K loop is fully unrolled by
+# static_range, so double buffering only steals DSM without hiding latency.
+# Measured on b=16, m=n=k=4096 fp16: 128x256x128/s2 = 44.7ms, /s1 = 40.9ms,
+# 128x256x256/s1 = 32.1ms (aligned kernel only - the general kernel overflows
+# DSM at BLOCK_K 256 because its boundary masks cost extra buffers).
+#            BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, num_warps, num_stages
+_ALIGNED_GEMM_TIERS = {
+    2: ((512**3, (128, 256, 256, 8, 4, 1)), (0, (64, 128, 128, 4, 4, 2))),
+    4: ((512**3, (128, 256, 128, 8, 4, 1)), (0, (64, 128, 128, 4, 4, 2))),
+}
+# The general kernel carries the M/N/K boundary masks, so it needs the smaller
+# BLOCK_K to stay inside the same DSM budget.
+_GENERAL_GEMM_TIERS = (
+    (512**3, (128, 256, 64, 8, 4, 1)),
+    (0, (64, 128, 64, 4, 4, 2)),
+)
+_MANUAL_DOT_CONFIG = (16, 16, 16, 1, 4, 2)
+
+
+def _pick_gemm_config(M, N, K, element_size, manual_dot):
+    """返回 (config, aligned)；aligned 为 True 表示可走无掩码快速 kernel。"""
+    work = M * N * K
+    if manual_dot:
+        return _MANUAL_DOT_CONFIG, False
+    tiers = _ALIGNED_GEMM_TIERS.get(element_size)
+    if tiers is not None:
+        _, config = next((min_work, cfg) for min_work, cfg in tiers if work >= min_work)
+        block_m, block_n, block_k = config[0], config[1], config[2]
+        # aligned kernel 用 grid=(tiles, batch)，两维都不能超过 GCU 的 65535 上限
+        if (
+            M % block_m == 0
+            and N % block_n == 0
+            and K % block_k == 0
+            and triton.cdiv(M, block_m) * triton.cdiv(N, block_n) <= _MAX_GRID_X
+        ):
+            return config, True
+    _, config = next(
+        (min_work, cfg) for min_work, cfg in _GENERAL_GEMM_TIERS if work >= min_work
+    )
+    return config, False
 
 
 def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
@@ -513,15 +656,20 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
 
     idx_map = torch.full((B, M * N), -1, dtype=torch.int32, device=input.device)
 
-    BLOCK_M = _dot_block(M, 64)
-    BLOCK_N = _dot_block(N, 64)
-    BLOCK_K = _dot_block(K, 32)
-
     manual_dot = input.dtype == torch.float64 and runtime_device.vendor_name == "metax"
-    if manual_dot:
-        BLOCK_M = min(BLOCK_M, 16)
-        BLOCK_N = min(BLOCK_N, 16)
-        BLOCK_K = min(BLOCK_K, 16)
+    (
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        GROUP_M,
+        num_warps,
+        num_stages,
+    ), aligned = _pick_gemm_config(M, N, K, input.dtype.itemsize, manual_dot)
+    aligned = aligned and B <= _MAX_GRID_X
+
+    K_BLOCKS = triton.cdiv(K, BLOCK_K)
+    EVEN_K = K % BLOCK_K == 0
+    EVEN_MN = M % BLOCK_M == 0 and N % BLOCK_N == 0
 
     # GCU caps grid.x at 65535: the kernels stride (batch, row) / (batch,
     # tile) pairs over a capped program count, so B * M and B * tiles of any
@@ -529,8 +677,10 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
     # for the core benchmark shapes and trips OutOfResources).
     total_rows = B * M
     grid_fill = (min(total_rows, _MAX_GRID_X),)
-    total_tiles = B * triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)
+    tiles_per_matrix = triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)
+    total_tiles = B * tiles_per_matrix
     grid = (min(total_tiles, _MAX_GRID_X),)
+    grid_aligned = (tiles_per_matrix, B)
 
     logger.debug(
         "GEMS SPARSE_SAMPLED_ADDMM, [shape info]: batch=%s, M=%s, N=%s, K=%s, "
@@ -556,31 +706,64 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
             total_rows,
             BLOCK=256,
         )
-        sparse_sampled_addmm_kernel[grid](
-            mat1_f,
-            mat2_f,
-            idx_map,
-            val_f,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            nnz_per_batch,
-            total_tiles,
-            mat1_f.stride(0),
-            mat1_f.stride(1),
-            mat1_f.stride(2),
-            mat2_f.stride(0),
-            mat2_f.stride(1),
-            mat2_f.stride(2),
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            BLOCK_K=BLOCK_K,
-            IS_FP64=input.dtype == torch.float64,
-            MANUAL_DOT=manual_dot,
-            num_warps=4,
-        )
+        if aligned:
+            # grid.y 承载 batch 维，grid.x 承载 (m, n) tile；两者都已确认不超过上限
+            sparse_sampled_addmm_kernel_aligned[grid_aligned](
+                mat1_f,
+                mat2_f,
+                idx_map,
+                val_f,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+                nnz_per_batch,
+                mat1_f.stride(0),
+                mat1_f.stride(1),
+                mat1_f.stride(2),
+                mat2_f.stride(0),
+                mat2_f.stride(1),
+                mat2_f.stride(2),
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+                BLOCK_K=BLOCK_K,
+                K_BLOCKS=K_BLOCKS,
+                GROUP_M=GROUP_M,
+                num_warps=num_warps,
+                num_stages=num_stages,
+            )
+        else:
+            sparse_sampled_addmm_kernel[grid](
+                mat1_f,
+                mat2_f,
+                idx_map,
+                val_f,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+                nnz_per_batch,
+                total_tiles,
+                mat1_f.stride(0),
+                mat1_f.stride(1),
+                mat1_f.stride(2),
+                mat2_f.stride(0),
+                mat2_f.stride(1),
+                mat2_f.stride(2),
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+                BLOCK_K=BLOCK_K,
+                K_BLOCKS=K_BLOCKS,
+                EVEN_K=EVEN_K,
+                EVEN_MN=EVEN_MN,
+                GROUP_M=GROUP_M,
+                IS_FP64=input.dtype == torch.float64,
+                MANUAL_DOT=manual_dot,
+                num_warps=num_warps,
+                num_stages=num_stages,
+            )
 
     return out
 

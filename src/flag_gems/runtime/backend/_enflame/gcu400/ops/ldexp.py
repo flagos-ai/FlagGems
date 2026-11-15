@@ -55,15 +55,30 @@ _ldexp = getattr(tl_extra_shim, "ldexp", _ldexp_fallback)
 
 
 @triton.jit
-def _ldexp32(x, exponent):
-    bits = x.to(tl.int32, bitcast=True)
-    mantissa = bits & 0x7FFFFF
-    subnormal = ((bits & 0x7F800000) == 0) & (mantissa != 0)
-    exponent = tl.maximum(tl.minimum(exponent, 4096), -4096)
-    normal_result = _ldexp(x, exponent)
-    subnormal_result = _ldexp(mantissa.to(tl.float32), exponent - 149)
-    subnormal_result = tl.where(bits < 0, -subnormal_result, subnormal_result)
-    return tl.where(subnormal, subnormal_result, normal_result)
+def _pow2_scale(exponent):
+    """构造 2**exponent 的 f32 位模式，要求 -126 <= exponent <= 127（指数域不越界）。"""
+    return ((exponent + 127) << 23).to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _ldexp_pow2(x, exponent):
+    """x * 2**exponent，用三段 2 的幂乘法代替 SFU 版 ldexp。
+
+    GCU400 上 tl_extra_shim.ldexp 会展开成很重的标量/SFU 序列（实测单核带宽只有
+    139 GB/s），而「乘 2 的幂」在 IEEE 下是精确无舍入的，因此改用位模式构造缩放
+    因子再连乘。三段分别覆盖 [-126, 127]，合并可覆盖 [-378, 381]；int32 指数超出
+    该范围时结果必然上溢为 inf 或下溢为 0，因此先把指数钳到边界：
+      - 2**127 < |x| * 2**e 对任意 f32 x（含次正规数 2**-149）在 e > 381 时必然上溢
+      - |x| * 2**e 对任意 f32 x（最大 2**128）在 e < -378 时必然下溢为 0
+    缩放因子本身始终有限（<= 2**127），所以 x=0 / x=inf / NaN 的语义与直接乘法一致，
+    不会出现 0*inf=NaN。
+    """
+    exponent = tl.maximum(tl.minimum(exponent, 381), -378)
+    first = tl.maximum(tl.minimum(exponent, 127), -126)
+    rest_after_first = exponent - first
+    second = tl.maximum(tl.minimum(rest_after_first, 127), -126)
+    third = rest_after_first - second
+    return x * _pow2_scale(first) * _pow2_scale(second) * _pow2_scale(third)
 
 
 @pointwise_dynamic(
@@ -75,7 +90,7 @@ def _ldexp32(x, exponent):
 def ldexp_func(x, y):
     if y.dtype.is_int() and x.dtype.is_floating():
         exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
-        return _ldexp(x.to(tl.float32), exponent)
+        return _ldexp_pow2(x.to(tl.float32), exponent)
     return x.to(tl.float32) * tl.exp2(y.to(tl.float32))
 
 
@@ -102,7 +117,7 @@ def ldexp_integral_func(x, y, wrap_exponent: tl.constexpr):
     exponent = y.to(tl.int32)
     if not wrap_exponent:
         exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
-    return _ldexp32(x.to(tl.float32), exponent)
+    return _ldexp_pow2(x.to(tl.float32), exponent)
 
 
 @pointwise_dynamic(
@@ -288,6 +303,15 @@ def _ldexp_impl(self, other, out=None):
             return result
         out.resize_(result.shape)
         return _copy_result(out, result)
+
+    # GCU400 的 pointwise_dynamic 在两输入 stride 不一致时会对非连续操作数的尾部
+    # 索引错位（实测 (7,19)/stride(1,7) 与 (19,) 广播时，最后 3 列共 18 个元素取到
+    # 错误源元素；两个输入 stride 相同则正确），故这里把非连续操作数实体化为连续
+    # 张量。逐元素语义与结果 layout 不变，仅在非连续输入时多一次拷贝。
+    if not self.is_contiguous():
+        self = self.contiguous()
+    if not other.is_contiguous():
+        other = other.contiguous()
 
     func = ldexp_fp64_func if result_dtype == torch.float64 else ldexp_func
     integral_exponent = (

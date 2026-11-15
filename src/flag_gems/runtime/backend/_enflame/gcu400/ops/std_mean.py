@@ -51,8 +51,14 @@ def _launch_retry(launch):
 
 _BLOCK_SIZE = 4096
 _NON_INNER_BLOCK_SIZE = 64
-_GLOBAL_SINGLE_CTA_LIMIT = 32768
+# 单 CTA 直算的规模上限：中等 N（含 64k 档）用一次 kernel 取完，比「map+finish」
+# 两次下发更省固定开销；超过后仍走跨 CTA 部分和路径以避免单 CTA 带宽饱和。
+_GLOBAL_SINGLE_CTA_LIMIT = 65536
 _MAX_GLOBAL_PROGRAMS = 512
+# 大 N 时每程序分到的 tile 数变多，512 个程序会让每个 CTA 的常驻 tile 过多，
+# 反而降低有效带宽；实测 256 档在 N >= 2M 时更快，故按规模切换程序数上限。
+_MAX_GLOBAL_WIDE_PROGRAMS = 256
+_GLOBAL_WIDE_GRID_MIN_ELEMS = 1 << 21
 _MAX_STRIDED_NDIM = 8
 _ASCEND_TRITON_BEFORE_3_5 = runtime_device.vendor_name == "ascend" and Version(
     str(triton.__version__).split("+", 1)[0]
@@ -1544,7 +1550,12 @@ def _run_global(
         )
         return
 
-    num_programs = min(triton.cdiv(N, _BLOCK_SIZE), _MAX_GLOBAL_PROGRAMS)
+    max_programs = (
+        _MAX_GLOBAL_WIDE_PROGRAMS
+        if N >= _GLOBAL_WIDE_GRID_MIN_ELEMS
+        else _MAX_GLOBAL_PROGRAMS
+    )
+    num_programs = min(triton.cdiv(N, _BLOCK_SIZE), max_programs)
     if use_ascend_real_split:
         ascend_block_size = 4096
         num_programs = min(triton.cdiv(N, ascend_block_size), 40)

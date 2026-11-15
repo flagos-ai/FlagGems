@@ -12,6 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""replication_pad2d 反向（Enflame GCU400）：单 launch、无原子、行网格跨步实现。
+
+2026-11-15 修复 + 优化
+=====================
+1) **grid.x 溢出崩溃（功能缺陷）**
+   旧实现有两条路径：interior_elements ≤ 16384 时走「一行一 program 的融合 kernel」，
+   否则回退到「interior copy + 边缘 atomic add」双 kernel。回退路径的 grid 是
+   `nc_total * H * cdiv(W, INTERIOR_BLOCK)` / `cdiv(interior_elements, BLOCK)`，
+   (4,64,256,512) 需要 131072、(8,128,1024,1024) 更多，超过硬件 grid.x ≤ 65535，
+   直接 `OutOfResources: out of resource: grid.x`（tests 里 4x64x256x512 的 18 个
+   用例全挂）。新实现把「输入行」循环放进 kernel 做 grid-stride
+   （`for row in range(pid, ROWS, G)`），grid 只由行数与调参上限决定，任何 shape
+   都不会溢出；同时删掉了双 kernel 回退路径（其精度缺陷见第 2 点）。
+2) **fp16/bf16 边缘精度**
+   旧边缘 kernel 用 `tl.atomic_add` 直接在低精度输出上逐次累加，每个 pad 元素都会
+   舍入一次（用随机 grad_output 与 CPU float64 参考比对，边界 0.1% 元素差到
+   0.047）。新实现每个输入元素在寄存器里用 fp32 累加所有映射到它的输出元素，
+   最后一次 cast，且完全不需要 atomic。
+3) **ph 维度改成顺序累加（主要性能来源）**
+   `[BLOCK_PH, BLOCK_W]` 2D tile 再 `tl.sum(axis=0)` 在 GCU 上会变成跨 lane 归约，
+   是这条 kernel 的最大开销；改成 `tl.static_range(BLOCK_PH)` 顺序累加到 1D 寄存器
+   向量后，同一组用例 geomean 17.19× → 37.59×（+2.2×，见报告）。列方向按
+   `ELEM_CAP` 分块，超宽行（W > BLOCK_W）不会寄存器爆炸。
+
+映射语义（replication 反向）：输入行 (nc, ih) 承接的输出行闭区间为
+[oh_lo, oh_hi] = [ih == 0 ? 0 : PT + ih, ih == H-1 ? OH-1 : PT+ih]；列方向上左 pad
+列折叠到 iw = 0、右 pad 列折叠到 iw = W-1。每个 grad_output 元素只被读一次，
+读写流量即 OH*OW 读 + H*W 写（最优）。
+"""
+
 import logging
 
 import torch
@@ -22,250 +52,98 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# ===== Step 4 轮次脚本改写的调参常量 =====
-BASELINE_MODE = 0
-INTERIOR_BLOCK = 256
-EDGE_BLOCK = 128
-NUM_WARPS = 4
-EDGE_NUM_WARPS = 4
-FUSED_MODE = 1
-FUSED_BLOCK = 128
-FUSED_WARPS = 1
-FUSED_LIMIT = 16384
-# ========================================
+# ===== 调参常量（2026-11-15 交错 A/B 实测标定，min-of-3 轮）=====
+# grid = min(行数, SPC * GRID_MULT, 65535)：GRID_MULT=1（48 个 program）最优，
+# 2/4/8 倍分别 -2.7%/-5.8%/-11.9%。
+GRID_MULT = 1
+SPC = 48
+MAX_GRID = 65535
+# 单次 load 的元素预算：8192 与 16384/32768 等价（受 next_pow2(W) 约束），
+# 1024/2048 分别 -31%/-11%。
+ELEM_CAP = 8192
+# num_warps：1 最优，2 时 -26%。
+WARPS = 1
+# ==============================================================
 
 
 @triton.jit
-def _interior_copy_kernel(
+def replication_pad2d_backward_kernel(
     grad_output_ptr,
     grad_input_ptr,
-    OW: tl.constexpr,
-    H: tl.constexpr,
-    W: tl.constexpr,
-    PAD_LEFT: tl.constexpr,
-    PAD_TOP: tl.constexpr,
-    INTERIOR_ELEMS: tl.constexpr,
-    OH_OW_STRIDE: tl.constexpr,
-    H_W_STRIDE: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Flat interior kernel for W < BLOCK_SIZE. Each element decodes its
-    (nc, ih, iw) coordinate with constexpr stride arithmetic."""
-    pid = tl.program_id(0)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < INTERIOR_ELEMS
-
-    iw = idx % W
-    rest = idx // W
-    ih = rest % H
-    nc = rest // H
-
-    oh = PAD_TOP + ih
-    ow = PAD_LEFT + iw
-
-    out_offset = nc * OH_OW_STRIDE + oh * OW + ow
-    in_offset = nc * H_W_STRIDE + ih * W + iw
-
-    grad = tl.load(grad_output_ptr + out_offset, mask=mask, other=0.0)
-    tl.store(grad_input_ptr + in_offset, grad, mask=mask)
-
-
-@triton.jit
-def _interior_copy_kernel_row(
-    grad_output_ptr,
-    grad_input_ptr,
-    OW: tl.constexpr,
-    H: tl.constexpr,
-    W: tl.constexpr,
-    PAD_LEFT: tl.constexpr,
-    PAD_TOP: tl.constexpr,
-    OH_OW_STRIDE: tl.constexpr,
-    H_W_STRIDE: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-    CHUNKS_PER_ROW: tl.constexpr,
-):
-    """Row-based interior kernel for W >= BLOCK_SIZE. Each block covers
-    BLOCK_SIZE consecutive elements within a single row — no per-element division."""
-    pid = tl.program_id(0)
-    row_id = pid // CHUNKS_PER_ROW
-    chunk = pid % CHUNKS_PER_ROW
-
-    nc = row_id // H
-    ih = row_id % H
-
-    base_iw = chunk * BLOCK_SIZE
-    iw = base_iw + tl.arange(0, BLOCK_SIZE)
-    mask = iw < W
-
-    oh = PAD_TOP + ih
-    ow = PAD_LEFT + iw
-
-    out_base = nc * OH_OW_STRIDE + oh * OW
-    in_base = nc * H_W_STRIDE + ih * W
-
-    grad = tl.load(grad_output_ptr + out_base + ow, mask=mask, other=0.0)
-    tl.store(grad_input_ptr + in_base + iw, grad, mask=mask)
-
-
-@triton.jit
-def _edges_atomic_kernel(
-    grad_output_ptr,
-    grad_input_ptr,
+    ROWS,
+    H,
+    W,
     OH,
-    OW: tl.constexpr,
-    H: tl.constexpr,
-    W: tl.constexpr,
-    PAD_LEFT: tl.constexpr,
-    PAD_RIGHT: tl.constexpr,
-    PAD_TOP: tl.constexpr,
-    PAD_BOTTOM: tl.constexpr,
-    EDGE_ELEMS: tl.constexpr,
-    NC_TOTAL: tl.constexpr,
-    OH_OW_STRIDE: tl.constexpr,
-    H_W_STRIDE: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Process edge regions (left/right/top/bottom padding) where multiple output
-    positions may map to the same input position, requiring atomic_add."""
-    pid = tl.program_id(0)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < EDGE_ELEMS
-
-    pad_rows = PAD_TOP + PAD_BOTTOM
-    left_size = NC_TOTAL * OH * PAD_LEFT
-    right_size = NC_TOTAL * OH * PAD_RIGHT
-
-    in_left = idx < left_size
-    in_right = (idx >= left_size) & (idx < left_size + right_size)
-
-    safe_w = tl.maximum(1, W)
-    safe_oh = tl.maximum(1, OH)
-    safe_pad_l = tl.maximum(1, PAD_LEFT)
-    safe_pad_r = tl.maximum(1, PAD_RIGHT)
-    safe_pad_rows = tl.maximum(1, pad_rows)
-
-    left_idx = idx
-    left_ow = left_idx % safe_pad_l
-    left_oh = (left_idx // safe_pad_l) % safe_oh
-    left_nc = left_idx // (safe_pad_l * safe_oh)
-
-    right_idx = idx - left_size
-    right_ow = right_idx % safe_pad_r
-    right_oh = (right_idx // safe_pad_r) % safe_oh
-    right_nc = right_idx // (safe_pad_r * safe_oh)
-
-    edge_col_idx = idx - left_size - right_size
-    ecol = edge_col_idx % safe_w
-    erow = (edge_col_idx // safe_w) % safe_pad_rows
-    enc = edge_col_idx // (safe_w * safe_pad_rows)
-
-    ow = tl.where(
-        in_left, left_ow, tl.where(in_right, OW - PAD_RIGHT + right_ow, PAD_LEFT + ecol)
-    )
-
-    oh = tl.where(
-        in_left,
-        left_oh,
-        tl.where(
-            in_right,
-            right_oh,
-            tl.where(erow < PAD_TOP, erow, OH - PAD_BOTTOM + (erow - PAD_TOP)),
-        ),
-    )
-
-    nc = tl.where(in_left, left_nc, tl.where(in_right, right_nc, enc))
-
-    ih = oh - PAD_TOP
-    ih = tl.maximum(0, tl.minimum(H - 1, ih))
-    iw = ow - PAD_LEFT
-    iw = tl.maximum(0, tl.minimum(W - 1, iw))
-
-    out_offset = nc * OH_OW_STRIDE + oh * OW + ow
-    in_offset = nc * H_W_STRIDE + ih * W + iw
-
-    grad = tl.load(grad_output_ptr + out_offset, mask=mask, other=0.0)
-    tl.atomic_add(grad_input_ptr + in_offset, grad, mask=mask)
-
-
-@triton.jit
-def _pad2d_bwd_row_fused_kernel(
-    grad_output_ptr,
-    grad_input_ptr,
-    H: tl.constexpr,
-    W: tl.constexpr,
-    OH: tl.constexpr,
-    OW: tl.constexpr,
+    OW,
     PL: tl.constexpr,
     PR: tl.constexpr,
     PT: tl.constexpr,
     PB: tl.constexpr,
+    GO_ROW: tl.constexpr,
     GO_NC: tl.constexpr,
-    GO_H: tl.constexpr,
-    GO_W: tl.constexpr,
+    GI_ROW: tl.constexpr,
     GI_NC: tl.constexpr,
-    GI_H: tl.constexpr,
-    GI_W: tl.constexpr,
     BLOCK_W: tl.constexpr,
     BLOCK_PH: tl.constexpr,
     BLOCK_PAD: tl.constexpr,
+    NCHUNK: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
 ):
-    """单 launch 无原子的 replication_pad2d 反向。
-
-    一个 program 负责一条输入行 (nc, ih)，直接累加所有 clamp 映射到该行的
-    输出元素：输出行 oh 的集合是 [oh_lo, oh_hi]（顶/底 padding 行会折叠到
-    ih=0 / ih=H-1），每个 oh 行的中间列直接取值，左/右 padding 列分别折叠到
-    iw=0 / iw=W-1。角落区域因此自动被包含，不再需要 atomic_add。
-    """
     pid = tl.program_id(0)
-    nc = pid // H
-    ih = pid % H
+    G = tl.num_programs(0)
+    iw0 = tl.arange(0, BLOCK_W)
+    pw = tl.arange(0, BLOCK_PAD)
 
-    # clamp(oh - PT, 0, H-1) == ih 的输出行闭区间。
-    # H == 1 时 ih 同时为 0 与 H-1，两个 where 合并后恰好覆盖整个 OH。
-    oh_lo = tl.where(ih == 0, 0, PT + ih)
-    oh_hi = tl.where(ih == H - 1, OH - 1, PT + ih)
+    for row in range(pid, ROWS, G):
+        nc = row // H
+        ih = row - nc * H
+        # 该输入行承接的输出行闭区间（H == 1 时两个 where 合并后覆盖整个 OH）
+        oh_lo = tl.where(ih == 0, 0, PT + ih)
+        oh_hi = tl.where(ih == H - 1, OH - 1, PT + ih)
+        go_nc = grad_output_ptr + nc * GO_NC
+        gi_row = grad_input_ptr + row * GI_ROW
 
-    ph = tl.arange(0, BLOCK_PH)
-    oh = oh_lo + ph
-    oh_valid = oh <= oh_hi
-    iw = tl.arange(0, BLOCK_W)
-    iw_valid = iw < W
-
-    go_base = grad_output_ptr + nc * GO_NC
-    interior_ptrs = go_base + oh[:, None] * GO_H + (PL + iw[None, :]) * GO_W
-    interior_vals = tl.load(
-        interior_ptrs,
-        mask=oh_valid[:, None] & iw_valid[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    total = tl.sum(interior_vals, axis=0)
-
-    if PL > 0:
-        pw = tl.arange(0, BLOCK_PAD)
-        left_ptrs = go_base + oh[:, None] * GO_H + pw[None, :] * GO_W
-        left_vals = tl.load(
-            left_ptrs,
-            mask=oh_valid[:, None] & (pw[None, :] < PL),
-            other=0.0,
-        ).to(tl.float32)
-        total += tl.where(iw == 0, tl.sum(left_vals), 0.0)
-
-    if PR > 0:
-        pw = tl.arange(0, BLOCK_PAD)
-        right_ptrs = go_base + oh[:, None] * GO_H + (PL + W + pw[None, :]) * GO_W
-        right_vals = tl.load(
-            right_ptrs,
-            mask=oh_valid[:, None] & (pw[None, :] < PR),
-            other=0.0,
-        ).to(tl.float32)
-        total += tl.where(iw == W - 1, tl.sum(right_vals), 0.0)
-
-    tl.store(
-        grad_input_ptr + nc * GI_NC + ih * GI_H + iw * GI_W,
-        total.to(OUT_DTYPE),
-        mask=iw_valid,
-    )
+        for chunk in tl.static_range(NCHUNK):
+            iw = chunk * BLOCK_W + iw0
+            iwv = iw < W
+            total = tl.zeros([BLOCK_W], dtype=tl.float32)
+            # ph 维度顺序累加（避免 2D tile 的跨 lane 归约）
+            for p in tl.static_range(BLOCK_PH):
+                oh = oh_lo + p
+                if oh <= oh_hi:
+                    total += tl.load(
+                        go_nc + oh * GO_ROW + (PL + iw), mask=iwv, other=0.0
+                    ).to(tl.float32)
+            # 左右 pad 列：整行只有 iw=0 / iw=W-1 两个位置承接
+            if PL > 0:
+                if chunk == 0:
+                    left_sum = 0.0
+                    for p in tl.static_range(BLOCK_PH):
+                        oh = oh_lo + p
+                        if oh <= oh_hi:
+                            left_sum += tl.sum(
+                                tl.load(
+                                    go_nc + oh * GO_ROW + pw,
+                                    mask=pw < PL,
+                                    other=0.0,
+                                ).to(tl.float32)
+                            )
+                    total += tl.where(iw0 == 0, left_sum, 0.0)
+            if PR > 0:
+                if chunk == NCHUNK - 1:
+                    right_sum = 0.0
+                    for p in tl.static_range(BLOCK_PH):
+                        oh = oh_lo + p
+                        if oh <= oh_hi:
+                            right_sum += tl.sum(
+                                tl.load(
+                                    go_nc + oh * GO_ROW + (PL + W + pw),
+                                    mask=pw < PR,
+                                    other=0.0,
+                                ).to(tl.float32)
+                            )
+                    total += tl.where(iw == W - 1, right_sum, 0.0)
+            tl.store(gi_row + iw, total.to(OUT_DTYPE), mask=iwv)
 
 
 def _dtype_constexpr(dtype):
@@ -276,6 +154,13 @@ def _dtype_constexpr(dtype):
     if dtype == torch.float64:
         return tl.float64
     return tl.float32
+
+
+def _next_pow2(n):
+    value = 1
+    while value < n:
+        value *= 2
+    return value
 
 
 def _replication_pad2d_backward_impl(
@@ -323,6 +208,7 @@ def _replication_pad2d_backward_impl(
             f"expected shape {expected_grad_shape}"
         )
 
+    # 无 padding 时反向就是恒等拷贝
     if pad_left == 0 and pad_right == 0 and pad_top == 0 and pad_bottom == 0:
         result = grad_output_4d.contiguous().to(self.dtype)
         if is_3d:
@@ -332,144 +218,65 @@ def _replication_pad2d_backward_impl(
             return out
         return result
 
-    output_dtype = self.dtype
-    nc_total = N * C
-    interior_elements = nc_total * H * W
-    edge_elements = nc_total * OH * OW - interior_elements
-
-    oh_ow_stride = OH * OW
-    h_w_stride = H * W
-
-    BLOCK_SIZE = INTERIOR_BLOCK
-    BLOCK_SIZE_EDGES = EDGE_BLOCK
-
-    # BASELINE_MODE 下完全复现公共实现的 launch 参数（不显式传 num_warps），
-    # 用于校准「显式 num_warps」本身带来的收益。
-    if BASELINE_MODE:
-        interior_launch_opts = {}
-        edge_launch_opts = {}
-    else:
-        interior_launch_opts = {"num_warps": NUM_WARPS}
-        edge_launch_opts = {"num_warps": EDGE_NUM_WARPS}
-
-    if out is not None:
-        accum = out
-    else:
-        accum = torch.empty((N, C, H, W), device=self.device, dtype=output_dtype)
-
-    # 无原子融合路径：一次 launch 完成 interior copy 与 padding 行/列归约。
-    # 只有输入/输出张量连续时才能用编译期常量 stride，否则回退公共双 kernel 路径。
-    if (
-        FUSED_MODE == 1
-        and accum.is_contiguous()
-        and (FUSED_LIMIT == 0 or interior_elements <= FUSED_LIMIT)
-    ):
-        block_w = triton.next_power_of_2(max(W, 1))
-        block_ph = triton.next_power_of_2(max(1 + pad_top + pad_bottom, 1))
-        block_pad = triton.next_power_of_2(max(pad_left, pad_right, 1))
-        with torch_device_fn.device(self.device):
-            _pad2d_bwd_row_fused_kernel[(nc_total * H,)](
-                grad_output_4d,
-                accum,
-                H,
-                W,
-                OH,
-                OW,
-                pad_left,
-                pad_right,
-                pad_top,
-                pad_bottom,
-                oh_ow_stride,
-                OW,
-                1,
-                h_w_stride,
-                W,
-                1,
-                block_w,
-                block_ph,
-                block_pad,
-                _dtype_constexpr(output_dtype),
-                num_warps=FUSED_WARPS,
-            )
-        if is_3d:
-            result = accum.view(C, H, W)
-        else:
-            result = accum
+    rows = N * C * H
+    if rows == 0:
         if out is not None:
             return out
-        return result
+        return torch.empty((N, C, H, W), device=self.device, dtype=self.dtype)
 
+    # kernel 用常量 stride 直接写连续缓冲；out 非连续时先算到连续缓冲再拷回
+    write_back = None
+    if out is None:
+        target = torch.empty((N, C, H, W), device=self.device, dtype=self.dtype)
+    elif out.is_contiguous():
+        target = out
+    else:
+        target = torch.empty((N, C, H, W), device=self.device, dtype=self.dtype)
+        write_back = out
+
+    block_ph = _next_pow2(1 + pad_top + pad_bottom)
+    block_w = min(_next_pow2(W), max(16, ELEM_CAP // block_ph))
+    nchunk = triton.cdiv(W, block_w)
+    block_pad = _next_pow2(max(pad_left, pad_right, 2))
+
+    grid_rows = min(rows, SPC * GRID_MULT, MAX_GRID)
     with torch_device_fn.device(self.device):
-        if interior_elements > 0:
-            if W >= BLOCK_SIZE:
-                interior_chunks_per_row = triton.cdiv(W, BLOCK_SIZE)
-                interior_grid = (nc_total * H * interior_chunks_per_row,)
-                _interior_copy_kernel_row[interior_grid](
-                    grad_output_4d,
-                    accum,
-                    OW,
-                    H,
-                    W,
-                    pad_left,
-                    pad_top,
-                    oh_ow_stride,
-                    h_w_stride,
-                    BLOCK_SIZE,
-                    interior_chunks_per_row,
-                    **interior_launch_opts,
-                )
-            else:
-                interior_grid = (triton.cdiv(interior_elements, BLOCK_SIZE),)
-                _interior_copy_kernel[interior_grid](
-                    grad_output_4d,
-                    accum,
-                    OW,
-                    H,
-                    W,
-                    pad_left,
-                    pad_top,
-                    interior_elements,
-                    oh_ow_stride,
-                    h_w_stride,
-                    BLOCK_SIZE,
-                    **interior_launch_opts,
-                )
+        replication_pad2d_backward_kernel[(grid_rows,)](
+            grad_output_4d,
+            target,
+            rows,
+            H,
+            W,
+            OH,
+            OW,
+            pad_left,
+            pad_right,
+            pad_top,
+            pad_bottom,
+            OW,
+            OH * OW,
+            W,
+            H * W,
+            BLOCK_W=block_w,
+            BLOCK_PH=block_ph,
+            BLOCK_PAD=block_pad,
+            NCHUNK=nchunk,
+            OUT_DTYPE=_dtype_constexpr(self.dtype),
+            num_warps=WARPS,
+        )
 
-        if edge_elements > 0:
-            edge_grid = (triton.cdiv(edge_elements, BLOCK_SIZE_EDGES),)
-            _edges_atomic_kernel[edge_grid](
-                grad_output_4d,
-                accum,
-                OH,
-                OW,
-                H,
-                W,
-                pad_left,
-                pad_right,
-                pad_top,
-                pad_bottom,
-                edge_elements,
-                nc_total,
-                oh_ow_stride,
-                h_w_stride,
-                BLOCK_SIZE_EDGES,
-                **edge_launch_opts,
-            )
-
-    if is_3d:
-        accum = accum.view(C, H, W)
-    return accum
+    result = target.view(C, H, W) if is_3d else target
+    if write_back is not None:
+        write_back.copy_(result)
+        return write_back
+    return result
 
 
-def replication_pad2d_backward(
-    grad_output: torch.Tensor, self: torch.Tensor, padding
-) -> torch.Tensor:
-    logger.debug("GEMS REPLICATION_PAD2D_BACKWARD")
-    return _replication_pad2d_backward_impl(grad_output, self, padding, out=None)
+def replication_pad2d_backward(grad_output, self, padding):
+    logger.debug("GEMS_ENFLAME REPLICATION_PAD2D_BACKWARD")
+    return _replication_pad2d_backward_impl(grad_output, self, padding)
 
 
-def replication_pad2d_backward_grad_input(
-    grad_output: torch.Tensor, self: torch.Tensor, padding, *, grad_input: torch.Tensor
-) -> torch.Tensor:
-    logger.debug("GEMS REPLICATION_PAD2D_BACKWARD_GRAD_INPUT")
+def replication_pad2d_backward_grad_input(grad_output, self, padding, *, grad_input):
+    logger.debug("GEMS_ENFLAME REPLICATION_PAD2D_BACKWARD_GRAD_INPUT")
     return _replication_pad2d_backward_impl(grad_output, self, padding, out=grad_input)

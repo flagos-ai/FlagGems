@@ -519,7 +519,7 @@ def normed_cumsum(inp, dim=-1):
             if row_kernel_block <= 1024:
                 row_num_warps = 1
             else:
-                row_num_warps = 4
+                row_num_warps = 1
             normed_cumsum_rows_kernel[(row_grid,)](
                 inp,
                 out,

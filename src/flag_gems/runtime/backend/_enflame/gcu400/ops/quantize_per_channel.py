@@ -33,16 +33,24 @@ Three GCU facts reshape the generic implementation:
    fma Newton refinement, and the float-qparams scheme fuses the zero-point
    add with ``fma`` like the native CUDA kernel.
 
-3. **torch_gcu ships no QuantizedPrivateUse1 kernels.**  Every aten quantized
-   factory dies with ``NotImplementedError ... 'Quantizedgcu' backend`` before
-   any FlagGems code runs, and FlagGems' generic registrations for those
-   factories target ``QuantizedCUDA`` — a dead key on this build.  The integer
-   payload is therefore computed on the GCU by the Triton kernel, and the
-   quantized wrapper — pure metadata plus the integer storage, whose only
-   accessor kernels (``qscheme``/``int_repr``/``q_per_channel_*``, quantized
-   ``copy_``) exist for QuantizedCPU — is materialized on the host.  The aten
-   entry points are bridged at the bottom of this module so torch-level calls
-   with gcu tensors route here instead of into the NotImplementedError.
+3. **The quantized wrapper stays on the device.**  torch_gcu's raw
+   ``Quantizedgcu`` key is empty, so the per-channel factory is served by this
+   backend through the ``QuantizedPrivateUse1`` bridge
+   (``ops/empty_per_channel_affine_quantized.py`` + ``ops/quantized_max_pool2d.py``),
+   which redispatches the device-generic native allocator to ``QuantizedCPU``
+   with ``device=gcu``.  The resulting wrapper is a real quantized ``Tensor``
+   whose payload lives in GCU storage, so it can be addressed by the Triton
+   kernel directly and no host round trip is needed: the kernel writes the
+   integer payload *in place* through a storage alias (``_payload_view``), both
+   for the allocating path and for the ``out=`` path.
+
+   In-place qparam adoption: PyTorch keeps a per-channel quantizer's
+   ``scales``/``zero_points`` as ordinary tensors, and the accessors return
+   those tensors themselves rather than copies, so writing the new qparam
+   values into them reproduces the native ``out.copy_(result)`` semantics
+   (which adopts the source quantizer) without a metadata setter that ATen does
+   not expose.  That is what makes the ``out=`` overload overwrite a stale
+   destination quantizer instead of silently keeping it.
 
 int64 zero-points never reach the kernel: the host range check confines them
 to the target dtype's ``[q_min, q_max]``, which is int32-representable for
@@ -57,6 +65,14 @@ import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
 from flag_gems.runtime import torch_device_fn
+
+# The quantized-platform plumbing (storage-only ``set_`` redispatch on the
+# QuantizedCPU keyset) is shared with the per-tensor sibling, which solved the
+# same "adopt the source quantizer without copying" problem first.
+from flag_gems.runtime.backend._enflame.gcu400.ops.quantize_per_tensor import (
+    _QCPU_KEYSET,
+    _SET_STORAGE_OP,
+)
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -105,28 +121,49 @@ def quantize_per_channel_kernel(
     n_elements,
     stride_axis,
     shape_axis,
+    axis_mask,
     q_min: tl.constexpr,
     q_max: tl.constexpr,
     USE_FLOAT_ZERO_POINT: tl.constexpr,
+    ALIGNED_CHANNEL: tl.constexpr,
+    POW2_CHANNEL: tl.constexpr,
+    EVEN: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
 
-    x_val = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    # Tail masking is only needed when a block can run past the last element;
+    # dropping it removes a predicate from every load/store in the hot loop.
+    if EVEN:
+        x_val = tl.load(x_ptr + offsets).to(tl.float32)
+    else:
+        mask = offsets < n_elements
+        x_val = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
     # Channel index along `axis` for a contiguous (or axis-aligned) tensor:
     #   axis_coord = (flat_index // stride_axis) % shape_axis
-    # When ``stride_axis == 1`` (slicing along the trailing dim, the common
-    # case) the ``// stride_axis`` divide-by-one drops out.
-    if stride_axis == 1:
+    # The trailing-dim case (``stride_axis == 1``) drops the divide-by-one and
+    # has two cheap forms — both replace the per-element integer modulo, which
+    # dominates this kernel's issue cost:
+    #   * ALIGNED_CHANNEL: the block never spans a channel boundary, so the
+    #     modulo collapses into a per-program scalar plus ``tl.arange``.
+    #   * POW2_CHANNEL: the channel count is a power of two, so the modulo is
+    #     an AND with a runtime mask (no integer division).
+    if ALIGNED_CHANNEL:
+        axis_coord = (block_start % shape_axis) + tl.arange(0, BLOCK_SIZE)
+    elif POW2_CHANNEL:
+        axis_coord = offsets & axis_mask
+    elif stride_axis == 1:
         axis_coord = offsets % shape_axis
     else:
         axis_coord = (offsets // stride_axis) % shape_axis
 
-    scale = tl.load(scales_ptr + axis_coord, mask=mask, other=1.0).to(tl.float32)
+    if EVEN:
+        scale = tl.load(scales_ptr + axis_coord).to(tl.float32)
+    else:
+        scale = tl.load(scales_ptr + axis_coord, mask=mask, other=1.0).to(tl.float32)
 
     # RNE reciprocal: ``rcp_rn`` plus one fma Newton refinement.  GCU's ``/``
     # and ``div_rn`` both lower to the approximate path, which is off IEEE
@@ -141,9 +178,12 @@ def quantize_per_channel_kernel(
         #   q = lrintf(raw * (1.f / scale) + zero_point)
         # entirely in float32, fusing the zero-point add into one fma so the
         # product is rounded only once.
-        zero_point_f = tl.load(zero_points_ptr + axis_coord, mask=mask, other=0.0).to(
-            tl.float32
-        )
+        if EVEN:
+            zero_point_f = tl.load(zero_points_ptr + axis_coord).to(tl.float32)
+        else:
+            zero_point_f = tl.load(
+                zero_points_ptr + axis_coord, mask=mask, other=0.0
+            ).to(tl.float32)
         q = libdevice.nearbyint(libdevice.fma(x_val, inv_scale, zero_point_f))
     else:
         # per_channel_affine: the zero-point is a genuine integer, validated
@@ -151,16 +191,22 @@ def quantize_per_channel_kernel(
         # int32-representable), so it loads as int32.  Both the CPU and the
         # CUDA kernel round the scaled value *first* and then add the
         # zero-point, so the addition sits outside ``nearbyint``.
-        zero_point_i = tl.load(zero_points_ptr + axis_coord, mask=mask, other=0).to(
-            tl.int32
-        )
+        if EVEN:
+            zero_point_i = tl.load(zero_points_ptr + axis_coord).to(tl.int32)
+        else:
+            zero_point_i = tl.load(zero_points_ptr + axis_coord, mask=mask, other=0).to(
+                tl.int32
+            )
         q = libdevice.nearbyint(x_val * inv_scale) + zero_point_i.to(tl.float32)
 
     # nearbyint implements round-half-to-even (PyTorch's default rounding mode).
     q = tl.minimum(tl.maximum(q, q_min), q_max)
     q = q.to(out_ptr.dtype.element_ty)
 
-    tl.store(out_ptr + offsets, q, mask=mask)
+    if EVEN:
+        tl.store(out_ptr + offsets, q)
+    else:
+        tl.store(out_ptr + offsets, q, mask=mask)
 
 
 def _is_float_qparams(scales, zero_points):
@@ -270,38 +316,113 @@ def _check_zero_points_on_host(zero_points, q_min, q_max, use_float_zero_point):
         raise RuntimeError(f"{prefix}zero_point is above upper bound.")
 
 
-def _wrap_per_channel_quantized_host(
-    int_out, scales, zero_points, axis, use_float_zero_point
-):
-    """Materialize the per-channel quantized wrapper on the host.
+def _qparam_tensors(scales, zero_points, device, use_float_zero_point):
+    """Build the qparam tensors a native per-channel quantizer would store.
 
-    torch_gcu has no QuantizedPrivateUse1 kernels, so no aten quantized
-    accessor (``qscheme``, ``int_repr``, ``q_per_channel_*``, quantized
-    ``copy_``) can run against a gcu-stored quantized tensor.  The payload was
-    computed on the GCU; the wrapper — metadata plus the integer storage — is
-    built on the host, where the native QuantizedCPU kernels serve every
-    accessor the tests and downstream code rely on.  The transfers are plain
-    aten copies (value-level, never bit-level lane copies).
-
-    The stored qparam dtypes mirror the native quantizers: the affine scheme
-    keeps scales in float64 and zero-points in int64, the float-qparams scheme
-    keeps both in float32.
+    The affine scheme keeps scales in float64 and zero-points in int64, the
+    float-qparams scheme keeps both in float32; feeding the factory these exact
+    dtypes is what makes ``q_per_channel_scales``/``_zero_points`` observable
+    with native dtypes.
     """
-    int_out_host = int_out.cpu()
-    scales_host = scales.cpu()
-    zero_points_host = zero_points.cpu()
     if use_float_zero_point:
-        scales_q = scales_host.to(torch.float32)
-        zero_points_q = zero_points_host.to(torch.float32)
-    else:
-        scales_q = scales_host.to(torch.float64)
-        zero_points_q = zero_points_host.to(torch.int64)
-    return torch._make_per_channel_quantized_tensor(
-        int_out_host, scales_q, zero_points_q, axis
+        return (
+            scales.to(device=device, dtype=torch.float32),
+            zero_points.to(device=device, dtype=torch.float32),
+        )
+    return (
+        scales.to(device=device, dtype=torch.float64),
+        zero_points.to(device=device, dtype=torch.int64),
     )
 
 
-def _quantize_per_channel_impl(input, scales, zero_points, axis, dtype):
+def _empty_per_channel_quantized(shape, q_scales, q_zero_points, axis, dtype, device):
+    """Allocate a per-channel quantized tensor whose payload lives on ``device``.
+
+    The QuantizedPrivateUse1 bridge redispatches this device-generic factory to
+    the native allocator, so the result is a real quantized tensor over GCU
+    storage — no host shell, and therefore no downward copy of the payload.
+    """
+    return torch.ops.aten._empty_per_channel_affine_quantized(  # allow-torch-compute
+        list(shape),
+        scales=q_scales,
+        zero_points=q_zero_points,
+        axis=axis,
+        dtype=dtype,
+        layout=None,
+        device=device,
+        pin_memory=None,
+        memory_format=torch.contiguous_format,
+    )
+
+
+def _payload_view(quantized, int_dtype):
+    """Alias a quantized tensor's storage as a plain integer tensor.
+
+    The kernel addresses the payload as contiguous integers, while the wrapper
+    only exposes an opaque quantized dtype; ``set_`` on a zero-sized tensor
+    hands back a view of the very same storage, so kernel writes land inside
+    the destination (or freshly allocated) quantized tensor with zero copies.
+    """
+    return torch.empty(0, dtype=int_dtype, device=quantized.device).set_(
+        quantized.untyped_storage(),
+        quantized.storage_offset(),
+        tuple(quantized.shape),
+        quantized.stride(),
+    )
+
+
+def _launch_quantize_kernel(
+    input,
+    scales_k,
+    zero_points_k,
+    int_out,
+    axis,
+    q_min,
+    q_max,
+    use_float_zero_point,
+):
+    """Launch the element-wise quantize kernel over the flat element space."""
+    n_elements = input.numel()
+    if n_elements == 0:
+        return
+    # 4096 elements per program keeps the CTA count low enough that the block
+    # bookkeeping stops competing with the memory pipeline (1024 measured 2.4x
+    # slower at equal traffic); 8192 regressed, so 4096 is the plateau.
+    BLOCK_SIZE = 4096
+    shape_axis = input.shape[axis]
+    stride_axis = input.stride(axis)
+    # A block that starts channel-aligned and stays inside one channel row can
+    # derive the channel index from a scalar instead of a per-element modulo.
+    aligned_channel = stride_axis == 1 and shape_axis % BLOCK_SIZE == 0
+    pow2_channel = stride_axis == 1 and (shape_axis & (shape_axis - 1)) == 0
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    with torch_device_fn.device(input.device):
+        quantize_per_channel_kernel[grid](
+            input,
+            scales_k,
+            zero_points_k,
+            int_out,
+            n_elements,
+            stride_axis,
+            shape_axis,
+            shape_axis - 1,
+            q_min,
+            q_max,
+            USE_FLOAT_ZERO_POINT=use_float_zero_point,
+            ALIGNED_CHANNEL=aligned_channel,
+            POW2_CHANNEL=pow2_channel,
+            EVEN=n_elements % BLOCK_SIZE == 0,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+
+
+def _prepare_quantize_operands(input, scales, zero_points, axis, dtype):
+    """Validate the call and normalize the kernel operands.
+
+    Returns ``(input, scales_k, zero_points_k, int_dtype, q_min, q_max,
+    use_float_zero_point)`` with ``input`` made contiguous and the qparam
+    vectors converted to the fp32 / int32 domains the kernel consumes.
+    """
     use_float_zero_point = _validate_qparams(input, scales, zero_points, axis, dtype)
     int_dtype, q_min, q_max = _QRANGE[dtype]
 
@@ -310,9 +431,8 @@ def _quantize_per_channel_impl(input, scales, zero_points, axis, dtype):
     # any conversion, like ATen's ``check_zero_points_cuda``.  The vector is
     # read on its host copy: under ``use_gems`` a device-side ``min`` over an
     # int32 zero-point vector would dispatch into FlagGems' float-only
-    # ``amin`` and die, and the host copy is needed for the wrap anyway.
-    zero_points_host = zero_points.cpu()
-    _check_zero_points_on_host(zero_points_host, q_min, q_max, use_float_zero_point)
+    # ``amin`` and die.
+    _check_zero_points_on_host(zero_points.cpu(), q_min, q_max, use_float_zero_point)
 
     # Kernel operands stay in the fp32 / int32 safe domains on the device:
     # scales as fp32 (the fp32 reciprocal chain is the ATen CPU semantics),
@@ -323,41 +443,47 @@ def _quantize_per_channel_impl(input, scales, zero_points, axis, dtype):
         zero_points_k = zero_points.to(torch.float32).contiguous()
     else:
         zero_points_k = zero_points.to(torch.int32).contiguous()
-
-    shape_axis = input.shape[axis]
-    stride_axis = input.stride(axis)
-
-    int_out = torch.empty_strided(
-        input.shape,
-        input.stride(),
-        dtype=int_dtype,
-        device=input.device,
+    return (
+        input,
+        scales_k,
+        zero_points_k,
+        int_dtype,
+        q_min,
+        q_max,
+        use_float_zero_point,
     )
 
-    n_elements = input.numel()
-    if n_elements > 0:
-        # Power-of-2 block size for coalesced element-wise access.
-        BLOCK_SIZE = 1024
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
-        with torch_device_fn.device(input.device):
-            quantize_per_channel_kernel[grid](
-                input,
-                scales_k,
-                zero_points_k,
-                int_out,
-                n_elements,
-                stride_axis,
-                shape_axis,
-                q_min,
-                q_max,
-                USE_FLOAT_ZERO_POINT=use_float_zero_point,
-                BLOCK_SIZE=BLOCK_SIZE,
-            )
+def _quantize_per_channel_impl(input, scales, zero_points, axis, dtype):
+    (
+        input,
+        scales_k,
+        zero_points_k,
+        int_dtype,
+        q_min,
+        q_max,
+        use_float_zero_point,
+    ) = _prepare_quantize_operands(input, scales, zero_points, axis, dtype)
 
-    return _wrap_per_channel_quantized_host(
-        int_out, scales, zero_points_host, axis, use_float_zero_point
+    # Allocate the wrapper first and let the kernel write into its payload, so
+    # the quantization result never leaves the device.
+    q_scales, q_zero_points = _qparam_tensors(
+        scales, zero_points, input.device, use_float_zero_point
     )
+    result = _empty_per_channel_quantized(
+        input.shape, q_scales, q_zero_points, axis, dtype, input.device
+    )
+    _launch_quantize_kernel(
+        input,
+        scales_k,
+        zero_points_k,
+        _payload_view(result, int_dtype),
+        axis,
+        q_min,
+        q_max,
+        use_float_zero_point,
+    )
+    return result
 
 
 def quantize_per_channel(input, scales, zero_points, axis, dtype):
@@ -399,12 +525,57 @@ def _quantize_per_channel_out_impl(input, scales, zero_points, axis, dtype, out)
             f"tensor b {tuple(input.shape)} at non-singleton dimension 0"
         )
 
-    result = _quantize_per_channel_impl(input, scales, zero_points, axis, dtype)
-    # ``copy_`` replaces the destination's integer storage and adopts the
-    # source scale/zero-point/axis, which is what the native out= does.
-    # Both tensors are host-side quantized wrappers (see the module
-    # docstring), so the native QuantizedCPU copy kernel serves this.
-    out.copy_(result)
+    (
+        input,
+        scales_k,
+        zero_points_k,
+        int_dtype,
+        q_min,
+        q_max,
+        use_float_zero_point,
+    ) = _prepare_quantize_operands(input, scales, zero_points, axis, dtype)
+
+    payload = _payload_view(out, int_dtype)
+    if payload.is_contiguous() and payload.device == input.device:
+        # Straight into the destination storage: no intermediate buffer.
+        int_out = payload
+    else:
+        int_out = torch.empty(input.shape, dtype=int_dtype, device=input.device)
+    _launch_quantize_kernel(
+        input,
+        scales_k,
+        zero_points_k,
+        int_out,
+        axis,
+        q_min,
+        q_max,
+        use_float_zero_point,
+    )
+    if int_out is not payload:
+        payload.copy_(int_out.to(payload.device))
+
+    # Adopt the source quantizer — the half of the native ``copy_`` contract
+    # that torch_gcu's quantized copy silently drops, and the part ATen exposes
+    # no setter for.  The values are already in ``out``'s storage, so only the
+    # metadata moves: a quantized alias is built over the very same storage with
+    # the requested scales / zero-points / axis and installed through ``.data``,
+    # which keeps the caller's tensor object and layout untouched.
+    alias = _empty_per_channel_quantized(
+        out.shape,
+        *_qparam_tensors(scales, zero_points, out.device, use_float_zero_point),
+        axis,
+        dtype,
+        out.device,
+    )
+    _SET_STORAGE_OP.redispatch(
+        _QCPU_KEYSET,
+        alias,
+        out.untyped_storage(),
+        out.storage_offset(),
+        tuple(out.shape),
+        out.stride(),
+    )
+    out.data = alias
     return out
 
 
@@ -424,16 +595,16 @@ def _quantize_per_channel_out_impl(input, scales, zero_points, axis, dtype, out)
 #     Quantizedgcu -> NotImplementedError (the reference path the accuracy
 #     tests exercise).
 #   * ``torch.ops.aten._empty_per_channel_affine_quantized(..., device=gcu)``
-#     -> BackendSelect -> Quantizedgcu -> NotImplementedError (the out=
-#     helper the accuracy tests use).
+#     -> BackendSelect -> QuantizedPrivateUse1 -> served device-natively by the
+#     backend bridge, so it needs no intervention from this module.
 #   * ``torch._make_per_channel_quantized_tensor(gcu_int, ...)`` under
 #     ``use_gems`` -> the generic FlagGems impl builds a gcu tensor over the
 #     wrapper's host storage and launches a Triton kernel on it — a wild
 #     device pointer.  The bridge keeps that op on the host instead.
 #
-# The registrations are part of this op's contract on gcu: the payload is
-# computed on the device, the quantized wrapper is a host-side shell, and the
-# aten entry points route gcu-argument calls into this module.  The keys are
+# The registrations are part of this op's contract on gcu: the aten entry
+# points route gcu-argument calls into this module, and the payload is computed
+# on the device into the destination wrapper's own storage.  The keys are
 # otherwise unoccupied (FlagGems only registers ``dequantize.self`` on
 # QuantizedPrivateUse1), and the PrivateUse1 slots hold the same functions
 # ``use_gems()`` would register from ``_FULL_CONFIG``, so a later
@@ -453,40 +624,6 @@ def _install_per_channel_quantized_bridge():
         return
     bridge_lib = torch.library.Library("aten", "IMPL")
 
-    def _empty_per_channel_affine_quantized_host(
-        size,
-        *,
-        scales,
-        zero_points,
-        axis,
-        dtype=None,
-        layout=None,
-        device=None,
-        pin_memory=None,
-        memory_format=torch.contiguous_format,
-    ):
-        # A gcu device is requested but no Quantizedgcu kernels exist; the
-        # factory serves the only representable form on this build — the
-        # host-side wrapper — with the qparams moved to the host.  The CPU
-        # redispatch below never re-enters this kernel (CPU arguments
-        # dispatch on the CPU/QuantizedCPU keys).
-        logger.debug("GEMS_ENFLAME EMPTY_PER_CHANNEL_AFFINE_QUANTIZED_HOST")
-        scales_host = scales.cpu() if isinstance(scales, torch.Tensor) else scales
-        zero_points_host = (
-            zero_points.cpu() if isinstance(zero_points, torch.Tensor) else zero_points
-        )
-        return torch.ops.aten._empty_per_channel_affine_quantized(
-            size,
-            scales=scales_host,
-            zero_points=zero_points_host,
-            axis=axis,
-            dtype=dtype,
-            layout=layout,
-            device=None,
-            pin_memory=pin_memory,
-            memory_format=memory_format,
-        )
-
     def _make_per_channel_quantized_tensor_host(self, scale, zero_point, axis):
         # Host-side wrap of an integer payload: values verbatim, the aten
         # factory's own semantics.  Keeps the generic FlagGems impl — which
@@ -504,11 +641,10 @@ def _install_per_channel_quantized_bridge():
     registrations = (
         ("quantize_per_channel", quantize_per_channel, "PrivateUse1"),
         ("quantize_per_channel.out", quantize_per_channel_out, "PrivateUse1"),
-        (
-            "_empty_per_channel_affine_quantized",
-            _empty_per_channel_affine_quantized_host,
-            "QuantizedPrivateUse1",
-        ),
+        # The quantized factories are deliberately not overridden here: the
+        # QuantizedPrivateUse1 bridge (``empty_per_channel_affine_quantized.py``)
+        # already serves them device-natively, which is what the implementation
+        # above relies on for its zero-copy payload writes.
         (
             "_make_per_channel_quantized_tensor",
             _make_per_channel_quantized_tensor_host,

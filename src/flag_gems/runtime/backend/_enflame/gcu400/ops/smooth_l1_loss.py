@@ -70,43 +70,61 @@ _install_aten_broadcast_shim()
 
 
 @libentry()
-@triton.jit(do_not_specialize=["N_total", "beta"])
+@triton.jit(do_not_specialize=["N_total", "beta", "inv_beta"])
 def _smooth_l1_loss_kernel(
     inp,
     target,
     out,
     N_total,
     beta,
+    inv_beta,
     BETA_IS_ZERO: tl.constexpr,
+    EVEN_N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK_SIZE)
     num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    # EVEN_N：N_total 整除 BLOCK_SIZE 时每个 block 都满载，省掉逐元素 mask；
+    # GCU 上 masked load/store 会打断 16 位向量化（与 backward 同源结论）。
+    # 另一处改动是把 quad 段的 /beta 换成 host 预计算的 *inv_beta（vector 除法
+    # 是逐元素开销）：16.7M 元素 fp16 0.0934ms -> 0.0868ms，fp32 0.1337 ->
+    # 0.1287ms（do_bench median，mask 路径下测得）。
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK_SIZE + arange
-        mask = off < N_total
-        inp_val = tl.load(inp + off, mask=mask, other=0.0).to(tl.float32)
-        target_val = tl.load(target + off, mask=mask, other=0.0).to(tl.float32)
+        if EVEN_N:
+            inp_val = tl.load(inp + off).to(tl.float32)
+            target_val = tl.load(target + off).to(tl.float32)
+        else:
+            mask = off < N_total
+            inp_val = tl.load(inp + off, mask=mask, other=0.0).to(tl.float32)
+            target_val = tl.load(target + off, mask=mask, other=0.0).to(tl.float32)
         diff = tl.abs(inp_val - target_val)
         if BETA_IS_ZERO:
             loss = diff
         else:
-            loss = tl.where(diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta)
-        tl.store(out + off, loss, mask=mask)
+            loss = tl.where(
+                diff < beta, 0.5 * diff * diff * inv_beta, diff - 0.5 * beta
+            )
+        if EVEN_N:
+            tl.store(out + off, loss)
+        else:
+            tl.store(out + off, loss, mask=mask)
 
 
 @libentry()
-@triton.jit(do_not_specialize=["N_total", "beta"])
+@triton.jit(do_not_specialize=["N_total", "beta", "inv_beta"])
 def _smooth_l1_loss_partial_sum_kernel(
     inp,
     target,
     mid,
     N_total,
     beta,
+    inv_beta,
     BETA_IS_ZERO: tl.constexpr,
     REDUCTION_MEAN: tl.constexpr,
+    EVEN_N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -116,15 +134,24 @@ def _smooth_l1_loss_partial_sum_kernel(
     acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK_SIZE + arange
-        mask = off < N_total
-        inp_val = tl.load(inp + off, mask=mask, other=0.0).to(tl.float32)
-        target_val = tl.load(target + off, mask=mask, other=0.0).to(tl.float32)
+        if EVEN_N:
+            inp_val = tl.load(inp + off).to(tl.float32)
+            target_val = tl.load(target + off).to(tl.float32)
+        else:
+            mask = off < N_total
+            inp_val = tl.load(inp + off, mask=mask, other=0.0).to(tl.float32)
+            target_val = tl.load(target + off, mask=mask, other=0.0).to(tl.float32)
         diff = tl.abs(inp_val - target_val)
         if BETA_IS_ZERO:
             loss = diff
         else:
-            loss = tl.where(diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta)
-        acc += tl.where(mask, loss, 0.0)
+            loss = tl.where(
+                diff < beta, 0.5 * diff * diff * inv_beta, diff - 0.5 * beta
+            )
+        if EVEN_N:
+            acc += loss
+        else:
+            acc += tl.where(mask, loss, 0.0)
     total = tl.sum(acc, axis=0)
     if REDUCTION_MEAN:
         total = total / N_total
@@ -145,7 +172,7 @@ def _smooth_l1_loss_sum_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.jit(do_not_specialize=["N_total", "reduction_elements", "beta"])
+@triton.jit(do_not_specialize=["N_total", "reduction_elements", "beta", "inv_beta"])
 def _smooth_l1_loss_backward_kernel(
     grad_output,
     inp,
@@ -154,16 +181,25 @@ def _smooth_l1_loss_backward_kernel(
     N_total,
     reduction_elements,
     beta,
+    inv_beta,
     BETA_IS_ZERO: tl.constexpr,
     REDUCTION_MEAN: tl.constexpr,
     GRAD_OUTPUT_SCALAR: tl.constexpr,
+    EVEN_N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N_total
-    inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
-    target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
+    # EVEN_N：N_total 是 BLOCK_SIZE 的整数倍时所有 program 都满载，省掉
+    # 逐元素 mask。GCU 上 masked load/store 会打断 16 位向量化，实测 16.7M
+    # 元素 fp16/bf16 从 0.143ms 降到 0.094ms（1.5x），fp32 基本不变。
+    if EVEN_N:
+        inp_val = tl.load(inp + offsets).to(tl.float32)
+        target_val = tl.load(target + offsets).to(tl.float32)
+    else:
+        mask = offsets < N_total
+        inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
+        target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
     diff = inp_val - target_val
     if BETA_IS_ZERO:
         # Native GCU (topsaten) evaluates the beta==0 arm as plain sign(diff)
@@ -173,17 +209,29 @@ def _smooth_l1_loss_backward_kernel(
         # gate, so match the device semantics.
         grad = tl.where(diff > 0.0, 1.0, -1.0)
     else:
-        grad = tl.where(diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff / beta))
+        # 用 host 预计算的 1/beta 做乘法代替除法：select 两条分支都会求值，
+        # 除法是逐元素开销（向量除法走倒数近似+牛顿步），换成乘法后
+        # 16.7M 元素 fp32 从 0.119ms 降到 0.098ms、fp16 从 0.094ms 降到
+        # 0.072ms（do_bench median）。用 where 而非 clamp 是为了保持
+        # NaN/-inf 输入下与原生实现一致（clamp 会把 NaN 压成 -1.0）。
+        grad = tl.where(diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff * inv_beta))
     if GRAD_OUTPUT_SCALAR:
         grad_out = tl.load(grad_output).to(tl.float32)
         if REDUCTION_MEAN:
             grad_out = grad_out * (1.0 / reduction_elements)
         grad_out = tl.full(offsets.shape, grad_out, tl.float32)
+    elif EVEN_N:
+        grad_out = tl.load(grad_output + offsets).to(tl.float32)
+        if REDUCTION_MEAN:
+            grad_out = grad_out * (1.0 / reduction_elements)
     else:
         grad_out = tl.load(grad_output + offsets, mask=mask, other=0.0).to(tl.float32)
         if REDUCTION_MEAN:
             grad_out = grad_out * (1.0 / reduction_elements)
-    tl.store(out + offsets, grad * grad_out, mask=mask)
+    if EVEN_N:
+        tl.store(out + offsets, grad * grad_out)
+    else:
+        tl.store(out + offsets, grad * grad_out, mask=mask)
 
 
 def _normalize_reduction(reduction):
@@ -242,21 +290,34 @@ def _empty_reduction(input, reduction):
     return torch.zeros((), device=input.device, dtype=input.dtype)
 
 
-def _grid(n_elements):
-    return min(triton.cdiv(n_elements, BLOCK), NUM_SIPS * 2)
+def _none_config(n_elements, itemsize):
+    """逐元素（reduction=none）路径的 (BLOCK_SIZE, num_warps, grid)。
+
+    该 kernel 是 2 读 1 写的 persistent 循环，DSM 占用 3*BLOCK*itemsize，
+    与 backward 同一条 ~384KB 上限，因此 4B 封顶 16384、2B 封顶 65536。
+    do_bench(median) 扫描（3 档 dtype × 3 档规模 × BLOCK{8K..64K} ×
+    warps{2,4} × grid{24,48,96,192}）结论：
+      - fp32 一律 16384/2/grid<=48（16.7M: 93.2us，比旧 32768/4 的
+        128.7us 快 1.38x）；
+      - 16 位 <=1M 用 8192/2/grid<=48（1M: 9.4us），>=4M 用
+        65536/2/grid<=96（16.7M: 58.5us，比旧 32768/4 的 86.8us 快 1.48x）。
+    """
+    if itemsize >= 4:
+        return 16384, 2, NUM_SIPS * 2
+    if n_elements <= (1 << 20):
+        return 8192, 2, NUM_SIPS * 2
+    return 65536, 2, NUM_SIPS * 4
 
 
 def _reduce_config(n_elements, itemsize):
-    # do_bench(median) sweep, kernel mode (w1000/r100), vs torch native on
-    # GCU400/L600.  The reduction body now carries a [BLOCK] fp32 vector
-    # accumulator across the persistent loop, so its DSM footprint is
-    # 2 * itemsize * BLOCK (loads) + 4 * BLOCK (accumulator): fp32 tops out
-    # at BLOCK=16384/num_warps=2 (1G: 3.70ms/1.63x, 16.7M: 68.3us/1.70x,
-    # 4M: 26.7us/1.70x, 1M: 13.6us/1.68x) and 16-bit at BLOCK=65536/
-    # num_warps=2 grid<=24 (1G: 3.94ms/1.23x, 16.7M: 74.2us/1.32x); wider
-    # blocks for either width hit the 917504B dsm memory limit and 8192/2 is
-    # the sweet spot for the 16-bit mid range (1M: 11.8us/1.99x, 4M:
-    # 27.9us/1.61x) while <=2M fp32 prefers 4096/4 (256K: 8.1us/2.24x).
+    # do_bench(median) sweep, kernel mode, vs torch native on GCU400/L600.
+    # The reduction body carries a [BLOCK] fp32 vector accumulator across the
+    # persistent loop, so its DSM footprint is 2 * itemsize * BLOCK (loads)
+    # + 4 * BLOCK (accumulator); wider blocks hit the 917504B dsm limit.
+    # 2026-11-15: only the 16-bit large bucket moves (8192 -> 32768, grid<=48:
+    # 16.7M 71.0us -> 57.8us, 1.23x, A/B 同进程交错取最小).  fp32 保持原值：
+    # 大规模 fp32 上无 mask 反而慢 1.35x（0.0759ms -> 0.1021ms），所以那里
+    # 连 EVEN_N 都关掉（见 _smooth_l1_loss_reduce 的 even_n 判定）。
     if itemsize >= 4:
         if n_elements <= 4096:
             return triton.next_power_of_2(max(n_elements, 1)), 4, NUM_SIPS * 2
@@ -267,7 +328,33 @@ def _reduce_config(n_elements, itemsize):
         return triton.next_power_of_2(max(n_elements, 1)), 4, NUM_SIPS * 2
     if n_elements <= (1 << 23):
         return 8192, 2, NUM_SIPS * 2
-    return 65536, 2, NUM_SIPS
+    return 32768, 2, NUM_SIPS * 2
+
+
+def _backward_config(n_elements, itemsize):
+    # BLOCK 由「每流 DSM 占用」决定：backward 是 2 读 1 写的逐元素 kernel，
+    # 三个流各占 BLOCK*itemsize。GCU400 单个 program 超过 ~384KB 后
+    # occupancy 掉到 1 program/SIP，512KB 以上明显变慢（do_bench median，
+    # 16.7M 元素：fp32 BLOCK=32768 0.143ms vs 65536 0.219ms；fp16 65536
+    # 0.124ms vs 131072 0.204ms），所以 4B 封顶 32768、2B 封顶 65536。
+    # 小规模反向受 launch 与尾部浪费支配，BLOCK 越小越快（262144 元素
+    # fp32：8192 比 32768 快 1.25x，fp16 快 1.5x）。
+    # num_warps 在 2/4/8 间差异 < 0.5%，统一用 4。
+    #
+    # 16 位另有一条约束：能整除 BLOCK 时走 EVEN_N 无 mask 快路径，最优 BLOCK
+    # 是 16384（<=1M 元素）与 65536（>=4M）；不能整除时退回 mask 路径，
+    # 实测最优固定为 32768（1M：0.0155ms vs 16384 的 0.0204ms）。
+    if itemsize >= 4:
+        if n_elements <= (1 << 18):
+            return 8192
+        if n_elements <= (1 << 19):
+            return 16384
+        return 32768
+    if n_elements <= (1 << 18):
+        return 8192
+    if n_elements <= (1 << 20):
+        return 16384 if n_elements % 16384 == 0 else 32768
+    return 65536 if n_elements % 65536 == 0 else 32768
 
 
 def _smooth_l1_loss_none(input, target, beta, out=None):
@@ -283,7 +370,7 @@ def _smooth_l1_loss_none(input, target, beta, out=None):
         out_contiguous = out if out.is_contiguous() else torch.empty_like(input)
 
     if n_elements > 0:
-        grid = _grid(n_elements)
+        block_size, num_warps, grid = _none_config(n_elements, input.element_size())
         beta_f = float(beta)
         with torch_device_fn.device(input.device):
             _smooth_l1_loss_kernel[(grid,)](
@@ -292,9 +379,11 @@ def _smooth_l1_loss_none(input, target, beta, out=None):
                 out_contiguous,
                 n_elements,
                 beta_f,
+                (1.0 / beta_f) if beta_f != 0.0 else 0.0,
                 BETA_IS_ZERO=beta_f == 0.0,
-                BLOCK_SIZE=BLOCK,
-                num_warps=4,
+                EVEN_N=n_elements % block_size == 0,
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
             )
     if out_contiguous is not out:
         out.copy_(out_contiguous)
@@ -334,6 +423,12 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         mid = torch.empty((grid,), device=input.device, dtype=torch.float32)
 
     beta_f = float(beta)
+    # EVEN_N（无 mask 快路径）在 16 位与中小规模 fp32 上稳定赚 1.27~1.34x，
+    # 但大规模 fp32 上反而慢 1.35x（16.7M：0.0759ms -> 0.1021ms，同进程交错
+    # 取最小的 A/B），所以那里显式关掉。
+    even_n = n_elements % block_size == 0
+    if input.element_size() >= 4 and n_elements > (1 << 21):
+        even_n = False
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic; acosh.py / sinh.py / atan2_.py precedent for this
     # toolchain family); retrying the launch recompiles and succeeds.
@@ -346,8 +441,10 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
                     mid,
                     n_elements,
                     beta_f,
+                    (1.0 / beta_f) if beta_f != 0.0 else 0.0,
                     BETA_IS_ZERO=beta_f == 0.0,
                     REDUCTION_MEAN=reduction == 1,
+                    EVEN_N=even_n,
                     BLOCK_SIZE=block_size,
                     num_warps=num_warps,
                 )
@@ -415,11 +512,17 @@ def smooth_l1_loss_backward(
     n_elements = input.numel()
     if n_elements == 0:
         return out
-    block_size = BLOCK
-    if n_elements // block_size > 65535:
+    block_size = _backward_config(n_elements, input.element_size())
+    if triton.cdiv(n_elements, block_size) > 65535:
+        # grid 维度上限保护：超大张量时放大 BLOCK，保持一次 launch。
         block_size = 65536
     grid = triton.cdiv(n_elements, block_size)
     beta_f = float(beta)
+    # 与归约路径同一条经验规则：大规模 fp32 上无 mask 反而略慢（16.7M
+    # 元素 0.1270ms vs 0.1203ms），16 位则稳定赚 1.5~2.5x，因此只在那里关。
+    even_n = n_elements % block_size == 0
+    if input.element_size() >= 4 and n_elements > (1 << 21):
+        even_n = False
     with torch_device_fn.device(input.device):
         _smooth_l1_loss_backward_kernel[(grid,)](
             grad_output,
@@ -429,9 +532,11 @@ def smooth_l1_loss_backward(
             n_elements,
             reduction_elements,
             beta_f,
+            (1.0 / beta_f) if beta_f != 0.0 else 0.0,
             BETA_IS_ZERO=beta_f == 0.0,
             REDUCTION_MEAN=reduction == 1,
             GRAD_OUTPUT_SCALAR=grad_output.numel() == 1,
+            EVEN_N=even_n,
             BLOCK_SIZE=block_size,
             num_warps=4,
         )
