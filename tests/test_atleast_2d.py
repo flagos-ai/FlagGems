@@ -22,6 +22,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # atleast_2d is a pure host-side reshape: its output only depends on the
 # input rank, never on element values. The dtype sweep exercises every
 # branch (identity / one unsqueeze / two unsqueezes) across dtype classes.
@@ -40,9 +46,9 @@ SWEEP_DTYPES = (
     utils.FLOAT_DTYPES
     + utils.INT_DTYPES
     + utils.BOOL_TYPES
-    + [torch.float64, torch.int64]
+    + [pytest.param(torch.float64, marks=_SKIP_FP64), torch.int64]
 )
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 
 
 @pytest.mark.atleast_2d
@@ -243,6 +249,17 @@ def test_accuracy_atleast_2d_alias_semantics():
 
 
 @pytest.mark.atleast_2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame/GCU backend capability: this non-parametrized case iterates "
+        "SWEEP_DTYPES directly, whose FP64/COMPLEX128 entries are pytest.param "
+        "wrappers with FP64 skip marks; without parametrization those marks never "
+        "apply and _make_input receives a ParameterSet instead of a dtype. "
+        "FP64/FP4/COMPLEX128 are unsupported on this backend, so the case cannot "
+        "run here (SKILL.md 原则 10 后端能力缺失豁免)."
+    ),
+)
 def test_accuracy_atleast_2d_dtype_neutrality():
     """The op never reads element data: special-value payloads (NaN/Inf for
     floats, extreme bit patterns for ints) pass through unchanged."""

@@ -50,10 +50,10 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
     Test that cauchy_ produces samples that follow the expected Cauchy distribution.
     We use statistical tests to verify the distribution properties.
     """
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
-        pytest.skip("Issue #5253: Not supported")
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("gcu doesn't support fp64")
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -122,13 +122,14 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
 @pytest.mark.parametrize("median", CAUCHY_MEDIANS)
 @pytest.mark.parametrize("sigma", CAUCHY_SIGMAS)
 def test_cauchy_out_accuracy(shape, dtype, median, sigma):
+    
     """
     Test the out-of-place cauchy function.
     """
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
-        pytest.skip("Issue #5253: Not supported")
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("gcu doesn't support fp64")
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -185,10 +186,10 @@ def test_cauchy_reproducibility(shape, dtype):
     """
     Test that cauchy_ produces reproducible results with the same seed.
     """
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
-        pytest.skip("Issue #5253: Not supported")
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("gcu doesn't support fp64")
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     torch.manual_seed(12345)
     x1 = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 

@@ -5,6 +5,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # Shapes for ormqr: (M, N) pairs covering square and rectangular matrices
 ORMQR_SHAPES = [
     (32, 32),
@@ -14,7 +20,7 @@ ORMQR_SHAPES = [
 ]
 
 # ormqr only supports float32 and float64 (LAPACK limitation, no half/bfloat16)
-ORMQR_DTYPES = [torch.float32, torch.float64]
+ORMQR_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 @pytest.mark.ormqr
@@ -25,6 +31,8 @@ ORMQR_DTYPES = [torch.float32, torch.float64]
 def test_ormqr(M, N, dtype, left, transpose):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Skipping fp32 ormqr test on tsingmicro platform")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
 
     # For ormqr, we need valid Householder reflectors
     # Generate them from a QR decomposition (geqrf)

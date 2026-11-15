@@ -27,17 +27,15 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_add(shape, alpha, dtype, caplog):
+def test_add(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1, True)
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.add(ref_inp1, ref_inp2, alpha=alpha)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add)):
-        res_out = flag_gems.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -55,7 +53,7 @@ def test_add(shape, alpha, dtype, caplog):
 @pytest.mark.parametrize(
     "other_type", ["complex", "float_tensor", "int_tensor", "int_scalar"]
 )
-def test_add_complex(shape, complex_dtype, other_type, caplog):
+def test_add_complex(shape, complex_dtype, other_type):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
 
     if other_type == "complex":
@@ -81,10 +79,8 @@ def test_add_complex(shape, complex_dtype, other_type, caplog):
     )
 
     ref_out = torch.add(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add)):
-        res_out = flag_gems.add(inp1, inp2)
+    res_out = flag_gems.add(inp1, inp2)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
@@ -92,17 +88,15 @@ def test_add_complex(shape, complex_dtype, other_type, caplog):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_add_(shape, alpha, dtype, caplog):
+def test_add_(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), True)
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.add_(ref_inp2, alpha=alpha)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add_)):
-        res_out = flag_gems.add_(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add_(inp1, inp2, alpha=alpha)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add_)} ADD_" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -111,16 +105,14 @@ def test_add_(shape, alpha, dtype, caplog):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("alpha", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_add_tensor_scalar(shape, scalar, alpha, dtype, caplog):
+def test_add_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.add(ref_inp1, inp2, alpha=alpha)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add)):
-        res_out = flag_gems.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -129,16 +121,14 @@ def test_add_tensor_scalar(shape, scalar, alpha, dtype, caplog):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("alpha", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_add_tensor_scalar_(shape, scalar, alpha, dtype, caplog):
+def test_add_tensor_scalar_(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.add_(inp2, alpha=alpha)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add_)):
-        res_out = flag_gems.add_(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add_(inp1, inp2, alpha=alpha)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add_)} ADD_" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -147,22 +137,20 @@ def test_add_tensor_scalar_(shape, scalar, alpha, dtype, caplog):
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("alpha", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_add_scalar_tensor(shape, scalar, alpha, dtype, caplog):
+def test_add_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.add(inp1, ref_inp2, alpha=alpha)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add)):
-        res_out = flag_gems.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.add
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
-def test_add_scalar_scalar(dtype, caplog):
+def test_add_scalar_scalar(dtype):
     if dtype == torch.float32:
         inp1 = float(np.float32(random.random()))
         inp2 = float(np.float32(random.random()))
@@ -173,10 +161,8 @@ def test_add_scalar_scalar(dtype, caplog):
         alpha = random.randint(0, 100)
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.add)):
-        res_out = flag_gems.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
-    assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
     else:

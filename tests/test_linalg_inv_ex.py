@@ -21,13 +21,23 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 DEVICE = flag_gems.device
 
 # LU-based inversion requires fp32+ precision; half-precision dtypes lack
 # the dynamic range for pivoted elimination
 _FP64 = utils.fp64_is_supported
 # Only fp32 and fp64 are numerically viable for LU factorization
-_TEST_DTYPES = [torch.float32, torch.float64] if _FP64 else [torch.float32]
+_TEST_DTYPES = (
+    [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+    if _FP64
+    else [torch.float32]
+)
 
 
 def _make_invertible_matrix(shape, dtype, device):

@@ -21,12 +21,13 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 # `_dirichlet_grad` is the reparameterized-gradient of the Dirichlet
-# distribution.  The CUDA (and CPU) reference dispatch in PyTorch only
-# implements the AT_DISPATCH_FLOATING_TYPES path (float32 / float64) -- half
-# and bfloat16 are *not* supported -- so we restrict the test to those two
-# dtypes (see ATen/native/cuda/Distributions.cu).
-# Only float32/float64 are supported by the ATen CUDA dispatcher; matching that.
-DIRICHLET_GRAD_DTYPES = [torch.float32, torch.float64]
+# distribution. ATen's CUDA dispatcher only implements the
+# AT_DISPATCH_FLOATING_TYPES path (float32 / float64) -- half and bfloat16 are
+# not supported (see ATen/native/cuda/Distributions.cu). fp64 is additionally
+# gated on the device reporting support for it.
+DIRICHLET_GRAD_DTYPES = [torch.float32] + (
+    [torch.float64] if utils.fp64_is_supported else []
+)
 
 # Concentration ranges.  The kernel switches between small / large / mid /
 # rational sub-branches depending on `alpha`, `total` and the sampled `x`, so

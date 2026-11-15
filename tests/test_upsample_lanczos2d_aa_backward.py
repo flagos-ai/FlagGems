@@ -12,20 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import math
-import sys
 
 import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops._upsample_lanczos2d_aa_backward import (
+    upsample_lanczos2d_aa_backward_grad_input,
+)
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-lanczos_backward_module = sys.modules[
-    flag_gems.upsample_lanczos2d_aa_backward.__module__
-]
+lanczos_backward_module = importlib.import_module(
+    "flag_gems.ops._upsample_lanczos2d_aa_backward"
+)
 
 if QUICK_MODE:
     CASES = [(1, 2, 7, 9, 11, 13, False, None, None)]
@@ -154,13 +157,18 @@ def test_upsample_lanczos2d_aa_backward(
             torch.float64,
             1e-12,
             marks=pytest.mark.skipif(
-                not utils.fp64_is_supported,
-                reason="float64 is not supported on this platform",
+                flag_gems.vendor_name == "enflame",
+                reason=(
+                    "enflame GCU has no native FP64 arithmetic; "
+                    "CPU FP64 reference at 1e-12 is unreachable on this backend"
+                ),
             ),
         ),
     ],
 )
 def test_upsample_lanczos2d_aa_backward_dtypes(monkeypatch, dtype, tolerance):
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     _disable_gemm_path(monkeypatch)
     monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((1, 2, 11, 13), dtype=dtype, device=flag_gems.device)
@@ -195,7 +203,7 @@ def test_upsample_lanczos2d_aa_backward_out(monkeypatch):
     grad = torch.randn((1, 2, 11, 13), device=flag_gems.device)
     grad_cpu = utils.to_reference(grad).cpu()
     output = torch.empty(0, device=flag_gems.device)
-    result = flag_gems.upsample_lanczos2d_aa_backward_grad_input(
+    result = upsample_lanczos2d_aa_backward_grad_input(
         grad, (11, 13), (1, 2, 7, 9), False, grad_input=output
     )
     assert result is output

@@ -20,7 +20,17 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-DTYPES = [torch.float32] if cfg.QUICK_MODE else [torch.float32, torch.float64]
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
+DTYPES = (
+    [torch.float32]
+    if cfg.QUICK_MODE
+    else [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 INTERPOLATIONS = (
     ["linear"]
     if cfg.QUICK_MODE

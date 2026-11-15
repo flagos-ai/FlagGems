@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # ---------------------------------------------------------------------------
 # Shared value-range / shape helpers (mirrors the operator-test spec
 # conventions; QUICK_MODE selects the reduced sets via pytest --quick).
@@ -278,7 +284,7 @@ _SPECIAL_ROWS = [
 # Every dtype the native kernel rejects on this backend, verified with a real
 # call; NNPACK implements float32 only.
 _UNSUPPORTED_DTYPES = [
-    torch.float64,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
     torch.float16,
     torch.bfloat16,
     torch.int8,

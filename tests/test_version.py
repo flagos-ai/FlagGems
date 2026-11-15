@@ -317,7 +317,7 @@ def test_version_dispatch_sentinel_composite_key():
     # sparse keys are registered natively but never selected -- measured with
     # fresh-process sentinels). torch.ops.aten._version must reach the
     # submitted implementation for dense, COO and CSR inputs.
-    real_impl = flag_gems.version
+    from flag_gems.ops.version import version as real_impl
 
     lib = torch.library.Library("aten", "IMPL")
     hits = []

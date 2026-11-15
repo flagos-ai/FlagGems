@@ -20,12 +20,40 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
+@pytest.fixture(autouse=True)
+def skip_unsupported_fp64_on_enflame(request):
+    """enflame GCU400 无原生 FP64 计算能力，跳过依赖 fp64/complex128 的参数化用例。"""
+    if flag_gems.vendor_name != "enflame":
+        return
+    unsupported = (torch.float64, torch.complex128)
+    for marker in request.node.iter_markers(name="parametrize"):
+        if len(marker.args) < 2:
+            continue
+        for parameter in marker.args[1]:
+            fields = (
+                parameter.values
+                if hasattr(parameter, "values")
+                else (parameter if isinstance(parameter, tuple) else (parameter,))
+            )
+            if any(field in unsupported for field in fields):
+                pytest.skip(
+                    "enflame GCU400 无原生 FP64 计算能力，fp64/complex128 用例不适用"
+                )
+
 
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
     "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
 )
 def test_ldexp_integral_exponent_boundaries(dtype, exponent):
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     inp = torch.tensor(
         [2.0 ** (-exponent + 2), 2.0 ** (-exponent + 1), 0.0, float("inf")],
         dtype=dtype,
@@ -63,7 +91,9 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
 
 
 @pytest.mark.ldexp_out
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_ldexp_real_operands_complex_out(dtype):
     inp = torch.randn(17, device=flag_gems.device)
     other = torch.randint(-3, 4, (17,), device=inp.device)
@@ -83,6 +113,10 @@ def test_ldexp_real_operands_complex_out(dtype):
 
 
 @pytest.mark.ldexp
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame GCU400 设备侧 complex64 造数（randn_like）触发 aten abort",
+)
 @pytest.mark.parametrize(
     "conj_input,conj_other", [(True, False), (False, True), (True, True)]
 )
@@ -127,6 +161,11 @@ def test_ldexp(shape, dtype):
     ],
 )
 def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (self_dtype, other_dtype, expected_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     shape = (37, 53)
     if self_dtype == torch.bool:
         self = torch.randint(0, 2, shape, device=flag_gems.device).bool()
@@ -160,6 +199,11 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     ],
 )
 def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (self_dtype, other_dtype, expected_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     if self_dtype.is_complex and flag_gems.vendor_name in ("ascend", "tsingmicro"):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
@@ -272,7 +316,10 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
 
 
 @pytest.mark.ldexp_out
-@pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "out_dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 def test_ldexp_out_dtype_casting(out_dtype):
     if cfg.TO_CPU and out_dtype != torch.float32:
         pytest.skip("ATen CPU ldexp.out does not support dynamic output dtype casting")

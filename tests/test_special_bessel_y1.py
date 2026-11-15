@@ -10,8 +10,11 @@ from . import accuracy_utils as utils
 # so it can never match a true-fp64 reference; skip fp64 on that backend only.
 # Every other vendor keeps running float64 exactly as before.
 _SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
-    flag_gems.runtime.device.vendor_name == "kunlunxin",
-    reason="Kunlunxin XPU has no real float64 (silently downgraded to float32)",
+    flag_gems.runtime.device.vendor_name in ("kunlunxin", "enflame"),
+    reason=(
+        "Kunlunxin XPU has no real float64 (silently downgraded to float32); "
+        "enflame/GCU does not support FP64/FP4/COMPLEX128"
+    ),
 )
 _FLOAT_DTYPES = [
     torch.float32,

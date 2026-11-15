@@ -22,6 +22,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # adjoint is a pure metadata view: no element data is read or written, so
 # correctness is asserted structurally (shape/stride/alias/_is_view/is_conj)
 # against native ATen, not by numerical closeness. Shapes cover 2-D, 3-D and
@@ -34,7 +40,7 @@ if QUICK_MODE:
     COMPLEX_SHAPES = [(8, 16)]
 
 REAL_DTYPES = [torch.float16, torch.float32, torch.bfloat16, torch.int64, torch.bool]
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 
 
 def _make_input(shape, dtype, device):

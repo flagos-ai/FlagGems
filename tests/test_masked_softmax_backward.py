@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -65,7 +66,7 @@ def test_masked_softmax_backward(shape_dim, dtype):
         ref_grad_output, ref_output, ref_mask, dim
     )
 
-    res_grad_input = flag_gems._masked_softmax_backward(grad_output, output, mask, dim)
+    res_grad_input = _masked_softmax_backward(grad_output, output, mask, dim)
 
     utils.gems_assert_close(
         res_grad_input, ref_grad_input, dtype, reduce_dim=shape[dim]

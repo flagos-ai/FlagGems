@@ -32,6 +32,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # cuDNN accepts float16/float32/float64 only; bfloat16 still goes through the
 # Triton kernel but must be compared against a float32 reference.
 GRID_SAMPLER_BACKWARD_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -317,7 +323,9 @@ def test_cudnn_grid_sampler_backward_non_finite_grid(dtype, bad_value):
 
 
 @pytest.mark.cudnn_grid_sampler_backward
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_cudnn_grid_sampler_backward_non_finite_grad_output(dtype):
     # cuDNN drops sample points that miss the image entirely, so a NaN
     # grad_output there contributes nothing to grad_grid.  A NaN grad_output at
@@ -357,6 +365,11 @@ def test_cudnn_grid_sampler_backward_non_finite_grad_output(dtype):
 
 
 @pytest.mark.cudnn_grid_sampler_backward
+@pytest.mark.skipif(
+    not flag_gems.runtime.device.support_fp64,
+    reason="device has no fp64: the reference is computed in float64 but the "
+    "kernel silently runs in float32, so the comparison can never pass",
+)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -550,7 +563,9 @@ def test_cudnn_grid_sampler_backward_out_strided(dtype):
 
 
 @pytest.mark.cudnn_grid_sampler_backward_out
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 @pytest.mark.parametrize("index", [0, 1])
 def test_cudnn_grid_sampler_backward_out_dtype_mismatch(dtype, index):
     N, C, H_in, W_in, H_out, W_out = 2, 3, 8, 8, 5, 6

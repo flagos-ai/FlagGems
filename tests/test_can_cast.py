@@ -19,6 +19,13 @@ import torch
 
 import flag_gems
 from flag_gems import _FULL_CONFIG
+from . import accuracy_utils as utils
+
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
 
 # The full dtype grid native ``can_cast`` is defined over on this build: the 13
 # standard scalar types plus the four float8 spellings when present.  Probed
@@ -40,10 +47,10 @@ _DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    torch.float64,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
     torch.complex32,
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ] + [getattr(torch, n) for n in _FLOAT8_NAMES if hasattr(torch, n)]
 
 # Boundaries worth naming individually so a failure points at the category
@@ -71,6 +78,10 @@ _CATEGORY_BOUNDARIES = [
 @pytest.mark.can_cast
 @pytest.mark.parametrize("from_,to", _CATEGORY_BOUNDARIES)
 def test_can_cast_category_boundaries(from_, to):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128) for _dt in (from_, to)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     ref = torch.ops.aten.can_cast(from_, to)
     res = flag_gems.can_cast(from_, to)
     assert res == ref, f"can_cast({from_}, {to}): got {res}, expected {ref}"

@@ -326,6 +326,10 @@ class FlashmlaSparseTestKit:
 
 
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "sunrise",
     reason="Issues #3833: Precision & Compile Error.",
 )

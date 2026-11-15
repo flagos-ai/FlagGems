@@ -154,6 +154,13 @@ def test_copy_inplace_dtype_fallback():
     flag_gems.vendor_name == "kunlunxin",
     reason="KUNLUNXIN does not support float8_e8m0fnu dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame GCU (torch_gcu) has no float8_e8m0fnu support: "
+        "cannot convert ScalarType Float8_e8m0fnu to topsatenDataType_t"
+    ),
+)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -236,6 +243,13 @@ def test_copy_inplace_float8_e8m0fnu(shape):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend NPU does not support float8_e8m0fnu dtype for copy_d2d",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame GCU (torch_gcu) has no float8_e8m0fnu support: "
+        "cannot convert ScalarType Float8_e8m0fnu to topsatenDataType_t"
+    ),
 )
 def test_copy_inplace_float8_e8m0fnu_to_float32():
     """Test copy_ from float8_e8m0fnu to float32."""

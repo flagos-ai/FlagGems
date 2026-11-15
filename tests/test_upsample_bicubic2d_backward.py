@@ -36,11 +36,12 @@ DTYPES = [
     pytest.param(
         torch.float64,
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name in ("ascend", "iluvatar")
+            flag_gems.vendor_name in ("ascend", "iluvatar", "enflame")
             or (flag_gems.vendor_name == "mthreads" and not _CPU_REFERENCE),
             reason=(
                 "Ascend rejects FP64; Iluvatar FP64 arithmetic is incorrect; "
-                "MUSA FP64 kernel is tested against CPU because muDNN rejects DOUBLE"
+                "MUSA FP64 kernel is tested against CPU because muDNN rejects DOUBLE; "
+                "enflame/GCU does not support FP64/FP4/COMPLEX128"
             ),
         ),
     ),
@@ -404,8 +405,15 @@ def test_upsample_bicubic2d_backward_nonfinite_cpu_reference(
 
 @pytest.mark.upsample_bicubic2d_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("ascend", "iluvatar"),
-    reason="Ascend rejects FP64; Iluvatar native and compiled FP64 arithmetic fail nonzero CPU reference inputs",
+    flag_gems.vendor_name in ("ascend", "iluvatar", "enflame"),
+    reason=(
+        "Ascend rejects FP64; Iluvatar native and compiled FP64 arithmetic fail nonzero CPU reference inputs; "
+        "enflame/GCU does not support FP64/FP4/COMPLEX128"
+    ),
+)
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="the fp64-opmath reference requires fp64, which this device does not support",
 )
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize(

@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 if cfg.QUICK_MODE:
     DIMS_LIST = [1]
     FLOAT_DTYPES = [torch.float32]
@@ -176,7 +182,10 @@ def test__aminmax_out(shape, dtype):
 
 
 @pytest.mark.underscore_aminmax
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16],
+)
 @pytest.mark.parametrize("nan_pos", ["first", "middle", "last"])
 def test_underscore_aminmax_nan(dtype, nan_pos):
     """A single NaN forces *both* outputs to NaN, as torch._aminmax does.

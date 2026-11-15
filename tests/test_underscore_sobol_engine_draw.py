@@ -17,25 +17,22 @@ import torch
 from torch.quasirandom import SobolEngine
 
 import flag_gems
-
 from . import accuracy_utils as utils
+
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
 
 
 @pytest.mark.underscore_sobol_engine_draw
 @pytest.mark.sobol_engine_draw
 @pytest.mark.parametrize("n", [10, 100, 1000])
 @pytest.mark.parametrize("dimension", [2, 5, 10, 20])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
-    if (
-        flag_gems.vendor_name == "kunlunxin"
-        and dtype == torch.float64
-        and not utils.fp64_is_supported
-    ):
-        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
-        # torch.empty(..., dtype=torch.float64) reports float32 and the
-        # output-dtype contract of this op can never hold there.
-        pytest.skip("float64 is not supported by this device")
     # Initialize SobolEngine to get valid state
     eng = SobolEngine(dimension=dimension, scramble=False)
 

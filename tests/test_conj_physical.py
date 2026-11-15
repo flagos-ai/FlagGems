@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # torch.rand / torch.randn have no FP8 implementation, so FP8 inputs are built
 # in FP32 and cast; FP8 results are also compared bitwise because torch rejects
 # non-zero tolerances for 1-byte floats.
@@ -33,7 +39,9 @@ _SUPPORTED_CONJ_FP8_DTYPES = CONJ_FP8_DTYPES if utils.fp8_is_supported else ()
 # Same reasoning for complex: creating a complex tensor on a backend without
 # complex support can abort the process rather than raise.
 _SUPPORTED_CONJ_COMPLEX_DTYPES = (
-    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+    if utils.complex_is_supported
+    else []
 )
 
 # Dtype sweep: the low-precision dtypes first, then the float and int sweep.

@@ -41,6 +41,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # (input shape, weight shape, kernel_size, stride, padding, dilation)
 SHAPES = [
     ((1, 2, 5, 5, 5), (4, 2, 3, 3, 3), 3, 1, 0, 1),  # (a) tiny spatial
@@ -77,7 +83,12 @@ if QUICK_MODE:
 DTYPES = (
     [torch.float32]
     if QUICK_MODE
-    else [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    else [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=_SKIP_FP64),
+    ]
 )
 
 

@@ -16,27 +16,18 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# The implementation file is ``ops/_sparse_semi_structured_tile.py``, whose file
-# stem derives the pytest marker ``underscore_sparse_semi_structured_tile`` (the
-# leading underscore cannot be expressed with attribute access, hence the
-# explicit registration). Tag the main test with it as well so a marker-only
+# The implementation file is ``ops/_sparse_semi_structured_tile.py``; a marker
+# cannot start with an underscore, so the derived name is
+# ``underscore_sparse_semi_structured_tile`` (mirrors op_marker() in
+# tools/run_tests.py). Tag the main test with it as well so a marker-only
 # selection for the changed ops file is not empty; the public
 # ``sparse_semi_structured_tile`` id keeps its own marker.
-setattr(
-    pytest.mark,
-    "underscore_sparse_semi_structured_tile",
-    MarkDecorator(
-        Mark("underscore_sparse_semi_structured_tile", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
 
 # The op prunes a dense (rows, cols) tensor to 2:4 sparsity. Shapes exercise
 # the padding rules (rows rounded up to 32, cols to 64 for the forward
@@ -151,7 +142,8 @@ def _reference_mask(dense, algorithm):
     padded[:rows, :cols] = vals
     keys = torch.full((rows_r, cols_r), float("-inf"), dtype=torch.float32)
     keys[:rows, :cols] = key
-    out = torch.zeros((rows_r, cols_r), dtype=torch.float64)
+    out_type = torch.float64 if utils.fp64_is_supported else torch.float32
+    out = torch.zeros((rows_r, cols_r), dtype=out_type)
     nb, ntb = rows_r // 4, cols_r // 4
     for i in range(nb):
         for j in range(ntb):

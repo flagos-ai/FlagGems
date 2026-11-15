@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 IS_ASCEND = flag_gems.vendor_name == "ascend"
 # Nonzero_static is not supported for cuda <= 11.4
 COMPOSED_REFERENCE_VENDORS = ("ascend", "hygon", "iluvatar")
@@ -44,7 +50,7 @@ DTYPES = (
 )
 CUDA_COMPLEX_DTYPES = [  # Complex input is supported by the CUDA path.
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ]
 
 QUICK_CASES = [

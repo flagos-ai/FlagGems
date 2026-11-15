@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # aten::multilabel_margin_loss is the dispatch target the wrapper replaces, so
 # every reference goes through it rather than through the nn.functional alias.
 _ATEN_OP = torch.ops.aten.multilabel_margin_loss
@@ -825,7 +831,10 @@ def test_multilabel_margin_loss_out_of_range_target(bad_id, reduction):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "out_dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 def test_multilabel_margin_loss_out_dtype(out_dtype):
     # The native overload casts into whatever floating buffer it is handed
     # rather than requiring the input dtype (measured: fp16 and fp64 buffers

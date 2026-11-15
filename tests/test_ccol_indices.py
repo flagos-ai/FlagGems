@@ -33,6 +33,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: torch_gcu 缺 SparseCsr/PrivateUse1 后端",
+)
+
 
 def _make_csc(ccol, row, values, nrows, ncols, device, index_dtype=torch.int64):
     return torch.sparse_csc_tensor(

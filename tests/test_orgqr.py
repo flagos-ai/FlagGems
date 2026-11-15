@@ -5,13 +5,21 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 _COMPLEX_DTYPES = (
-    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+    if utils.complex_is_supported
+    else []
 )
 
 ORGQR_SHAPES = [(3, 0), (4, 3), (8, 5), (16, 8), (32, 16), (64, 32), (128, 64)]
 ORGQR_BATCH_SHAPES = [(0, 4, 3), (2, 8, 5), (2, 3, 16, 8)]
-ORGQR_DTYPES = [torch.float32, torch.float64]
+ORGQR_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 def make_reflectors(shape, dtype):

@@ -63,7 +63,9 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", [0])
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device] if vendor_name in ["mthreads", "sunrise"] else CUDA_DEVICES,
+    [flag_gems.device]
+    if vendor_name in ["mthreads", "sunrise", "enflame"]
+    else CUDA_DEVICES,
 )
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @torch.inference_mode()

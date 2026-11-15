@@ -19,6 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
 
 def _functional_reference(self, other):
     # Some supported PyTorch builds assert internally for CPU BF16 ldexp_.
@@ -45,7 +50,10 @@ def test_ldexp_(shape, dtype):
 
 
 @pytest.mark.ldexp_
-@pytest.mark.parametrize("other_dtype", [torch.int64, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "other_dtype",
+    [torch.int64, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 @pytest.mark.parametrize("self_dtype", utils.FLOAT_DTYPES)
 def test_ldexp_mixed_dtype_(self_dtype, other_dtype):
     shape = (37, 53)
@@ -257,6 +265,10 @@ def test_ldexp_rejects_expanding_self_():
 
 
 @pytest.mark.ldexp_
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="the exponent is float64; fp64 is not supported by this device",
+)
 def test_ldexp_mixed_precision_extreme_exponent_():
     self = torch.tensor(
         [2.0**-126, 2.0**-127, 0.0, float("inf")], device=flag_gems.device
@@ -287,9 +299,13 @@ def test_ldexp_int64_exponent_outside_int32_range_():
 
 
 @pytest.mark.ldexp_
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 @pytest.mark.parametrize("conjugated", [False, True])
 def test_ldexp_complex_integral_extremes_(dtype, conjugated):
+    if dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("complex128 requires fp64, which this device does not support")
     self = torch.tensor(
         [
             complex(0, 1),

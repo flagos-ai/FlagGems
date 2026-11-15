@@ -20,18 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-def _assert_equal(res_out, ref_out):
-    """Compare two hash_tensor results, which are always uint64.
-
-    Some device runtimes do not implement uint64 elementwise comparison
-    (torch_xmlir's eq/equal reject it), so reinterpret the same bits as int64.
-    The dtype view keeps the comparison bit-exact.
-    """
-    if ref_out.device != res_out.device:
-        res_out = res_out.cpu()
-    utils.gems_assert_equal(res_out.view(torch.int64), ref_out.view(torch.int64))
-
-
 @pytest.mark.hash_tensor
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -48,7 +36,7 @@ def test_hash_tensor(shape, dtype, dim, keepdim):
     ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=keepdim, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=keepdim, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.hash_tensor
@@ -67,7 +55,7 @@ def test_hash_tensor_int_dtypes(shape, dtype, dim):
     ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=False, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=False, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.hash_tensor
@@ -89,7 +77,7 @@ def test_hash_tensor_multidim(shape, dim, keepdim):
     ref_out = torch.ops.aten.hash_tensor(ref_inp, dim, keepdim=keepdim, mode=0)
     res_out = flag_gems.hash_tensor(inp, dim, keepdim=keepdim, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.hash_tensor
@@ -100,4 +88,4 @@ def test_hash_tensor_scalar():
     ref_out = torch.ops.aten.hash_tensor(ref_inp, [], keepdim=False, mode=0)
     res_out = flag_gems.hash_tensor(inp, [], keepdim=False, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out, ref_out)

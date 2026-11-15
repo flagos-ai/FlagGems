@@ -23,15 +23,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
-
-
-def _assert_close(res, ref, dtype):
-    if IS_KUNLUNXIN:
-        res, ref = res.cpu(), ref.cpu()
-    utils.gems_assert_close(res, ref, dtype)
-
-
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     DIMS_LIST = [1]
@@ -63,14 +54,12 @@ def test_accuracy_var(shape, correction, keepdim, dtype):
         return
 
     ref_inp = utils.to_reference(inp)
-    if IS_KUNLUNXIN:
-        ref_inp = ref_inp.cpu()
 
     res_out = flag_gems.var(inp, correction=correction, keepdim=keepdim)
 
     ref_out = torch.var(ref_inp, correction=correction, keepdim=keepdim)
 
-    _assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.var_dim
@@ -101,8 +90,6 @@ def test_accuracy_var_dim(shape, dim, correction, keepdim, dtype):
             return
 
     ref_inp = utils.to_reference(inp)
-    if IS_KUNLUNXIN:
-        ref_inp = ref_inp.cpu()
 
     # Direct GEMS call: the dispatcher lifts an int dim to IntList.
     dims = dim if isinstance(dim, (list, tuple)) or dim is None else [dim]
@@ -110,7 +97,7 @@ def test_accuracy_var_dim(shape, dim, correction, keepdim, dtype):
 
     ref_out = torch.var(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
-    _assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.var_correction
@@ -146,8 +133,6 @@ def test_accuracy_var_correction(shape, dim, correction, keepdim, dtype):
             return
 
     ref_inp = utils.to_reference(inp)
-    if IS_KUNLUNXIN:
-        ref_inp = ref_inp.cpu()
 
     # Direct GEMS call: the dispatcher lifts an int dim to IntList.
     dims = dim if isinstance(dim, (list, tuple)) or dim is None else [dim]
@@ -155,4 +140,4 @@ def test_accuracy_var_correction(shape, dim, correction, keepdim, dtype):
 
     ref_out = torch.var(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 
-    _assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)

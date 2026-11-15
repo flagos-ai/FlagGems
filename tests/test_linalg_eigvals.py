@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # Eigenvalue decomposition needs a square matrix. The native CUDA kernel
 # accepts float32/complex64/complex128 (float64 upcasts to complex128).
 EIGVALS_SHAPES = [(2, 2), (3, 3), (5, 5), (10, 10), (20, 20)]
@@ -70,7 +76,9 @@ def test__linalg_eigvals(shape, dtype):
 
 @pytest.mark.underscore_linalg_eigvals
 @pytest.mark.parametrize("shape", EIGVALS_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test__linalg_eigvals_complex(shape, dtype):
     """Complex input is supported natively and must stay delegate-clean."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -201,7 +209,7 @@ def test_linalg_eigvals_out_non_contiguous(dtype):
 
 
 @pytest.mark.linalg_eigvals_out
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_linalg_eigvals_out_float64(dtype):
     """float64 input returns complex128 and must stay on device."""
     inp = torch.randn((5, 5), dtype=dtype, device=flag_gems.device)

@@ -586,8 +586,11 @@ def test_fused_marlin_moe_w8a16_int8(config, dtype):
 
 
 @pytest.mark.skipif(
-    not _is_hopper(),
-    reason="MXFP4 fast path uses Hopper-only bf16/fp16 SIMD PTX (sm_90+)",
+    not _is_hopper() or flag_gems.vendor_name == "enflame",
+    reason=(
+        "MXFP4 fast path uses Hopper-only bf16/fp16 SIMD PTX (sm_90+); "
+        "enflame/GCU does not support FP4"
+    ),
 )
 @pytest.mark.parametrize("config", FULL_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])

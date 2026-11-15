@@ -20,6 +20,18 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# enflame 后端未实现 NestedTensor 的 GCU dispatch key，参考侧
+# aten::nested_to_padded_tensor / to_padded_tensor / unbind.int 在
+# NestedTensorgcu 上不可用，且与 Gems kernel 实现无关，故按后端组件能力缺失豁免。
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch_gcu has no NestedTensor GCU backend; aten reference "
+        "nested_to_padded_tensor / to_padded_tensor / unbind.int "
+        "are unavailable on the NestedTensorgcu dispatch key"
+    ),
+)
+
 
 def _make_nested(batch_size, max_length, trailing, dtype):
     # Force component 0 to the full row count so the inferred padded shape is

@@ -27,6 +27,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 DEVICE = flag_gems.device
 
 CASES = [
@@ -246,7 +252,9 @@ def test_linalg_eigvalsh_autograd_input_is_detached():
 
 @pytest.mark.linalg_eigvalsh_out
 @pytest.mark.parametrize("uplo", ["L", "U"])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_linalg_eigvalsh_out(uplo, dtype):
     """The out overload writes in place, returns ``out`` and matches ATen."""
     if dtype == torch.float64 and not utils.fp64_is_supported:

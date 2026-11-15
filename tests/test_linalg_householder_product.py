@@ -5,6 +5,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # (m, n) shapes where m >= n (required by householder_product)
 HOUSEHOLDER_SHAPES = [
     (4, 3),
@@ -22,7 +28,7 @@ HOUSEHOLDER_BATCH_SHAPES = [
 
 # PyTorch supports float32 and float64 for linalg.householder_product
 # float16/bfloat16 are not supported on CUDA
-HOUSEHOLDER_DTYPES = [torch.float32, torch.float64]
+HOUSEHOLDER_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 @pytest.mark.linalg_householder_product

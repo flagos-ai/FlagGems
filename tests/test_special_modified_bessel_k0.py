@@ -17,6 +17,7 @@ if flag_gems.runtime.device.support_fp64:
 def test_special_modified_bessel_k0(shape, dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("enflame doesn't support fp64")
+
     # K0 is only defined for x > 0, so generate positive inputs only
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
     ref_inp = utils.to_reference(inp, True)

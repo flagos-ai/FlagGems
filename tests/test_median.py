@@ -26,6 +26,12 @@ from flag_gems import median_out as gems_median_out
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     DTYPES = [torch.float32, torch.int32]
@@ -418,10 +424,14 @@ def test_median_empty_no_dim(dtype):
 
 
 @pytest.mark.median
-@pytest.mark.parametrize("dtype", [torch.float64, torch.int8, torch.uint8])
+@pytest.mark.parametrize(
+    "dtype", [pytest.param(torch.float64, marks=_SKIP_FP64), torch.int8, torch.uint8]
+)
 def test_median_extra_no_dim_dtypes(dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     inp = _make_input((9,), dtype)
     ref_inp = utils.to_reference(inp)
 
@@ -685,6 +695,7 @@ def test_median_large_width(width):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="Not supported float64")
 @pytest.mark.median
 @pytest.mark.parametrize("width", [257, 1024, 4096])
 @pytest.mark.parametrize("keepdim", KEEPDIM)
@@ -713,8 +724,10 @@ def test_median_float64_key_select(width, keepdim):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="Not supported float64")
 @pytest.mark.median
 @pytest.mark.parametrize("width", [640, 4096])
+@_SKIP_FP64
 def test_median_float64_key_select_nan_first_index(width):
     inp = torch.randn((3, width), dtype=torch.float64, device=flag_gems.device)
     expected_indices = torch.tensor([0, width // 2, width - 1], device=flag_gems.device)

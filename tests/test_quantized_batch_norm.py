@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # quantized_batch_norm operates on a 4D (NCHW) quantized tensor and produces a
 # quantized tensor with caller-supplied output_scale / output_zero_point. The
 # reference aten kernel is only available on the CPU quantized backend, so the
@@ -312,7 +318,10 @@ def test_quantized_batch_norm_bad_size(bad_size, param):
 
 @pytest.mark.quantized_batch_norm
 @pytest.mark.parametrize("param", ["weight", "bias", "mean", "var"])
-@pytest.mark.parametrize("bad_dtype", [torch.float64, torch.int32, torch.uint8])
+@pytest.mark.parametrize(
+    "bad_dtype",
+    [pytest.param(torch.float64, marks=_SKIP_FP64), torch.int32, torch.uint8],
+)
 def test_quantized_batch_norm_bad_dtype(bad_dtype, param):
     shape = (2, 3, 4, 4)
     C = shape[1]

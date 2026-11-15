@@ -11,6 +11,7 @@ pytestmark = pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.parametrize("metadata_placement", ["host", "device", "mixed"])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="Aten gcu backend not supported")
 def test_nested_view_from_buffer_copy(dtype, metadata_placement):
     buffer_size = 100000
     buffer = torch.randn(buffer_size, dtype=dtype, device=flag_gems.device)
@@ -58,6 +59,10 @@ def test_nested_view_from_buffer_copy(dtype, metadata_placement):
         utils.gems_assert_close(res_t, ref_t_matched, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
 @pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_nested_view_from_buffer_copy_oversized_tail(dtype):

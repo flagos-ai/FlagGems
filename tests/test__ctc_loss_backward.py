@@ -21,10 +21,15 @@ from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close
 from .conftest import QUICK_MODE
 
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
+
+
 # CPU does not implement CTC loss for Half, so the reference comparison is
-# limited to the float types it supports. float64 is only exercised when the
-# device actually supports it (Kunlunxin XPU downgrades fp64 to fp32).
-BACKWARD_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+# limited to the float types it supports.
+BACKWARD_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 def _make_case(T, N, S, C, dtype):

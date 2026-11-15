@@ -6,6 +6,11 @@ import torch
 
 import flag_gems
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU400: GCU不支持4bit",
+)
+
 
 def _reference(x, weights, scales, bias, group):
     """Independent CPU quantization and integer dot, with FP32 scale arithmetic."""
@@ -71,6 +76,10 @@ def _case(m, n, k, group, dtype, bias, noncontiguous=False):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("bias", [False, True])
@@ -92,6 +101,10 @@ def test_dyn_quant_matmul_4bit_channelwise(m, n, k, dtype, bias):
     _case(m, n, k, k, dtype, bias)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize(
     "m,n,k,group",
@@ -109,12 +122,20 @@ def test_dyn_quant_matmul_4bit_groupwise(m, n, k, group, bias):
     _case(m, n, k, group, torch.float32, bias)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_dyn_quant_matmul_4bit_noncontiguous(dtype):
     _case(7, 31, 66, 66, dtype, True, True)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_dyn_quant_matmul_4bit_rounding_and_nibbles(dtype):
@@ -210,6 +231,10 @@ def test_dyn_quant_matmul_4bit_invalid(fault, match):
         flag_gems._dyn_quant_matmul_4bit(x, p, block, k, n)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="gcu dose not support work",
+)
 @pytest.mark.dyn_quant_matmul_4bit
 def test_dyn_quant_matmul_4bit_compile():
     x = torch.randn((7, 64), device=flag_gems.device)
