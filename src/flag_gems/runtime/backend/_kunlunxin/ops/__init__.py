@@ -1000,6 +1000,7 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
+from .view_as_real_copy import view_as_real_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
 from .weight_norm import _weight_norm
