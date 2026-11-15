@@ -657,9 +657,7 @@ LARGE_COMPLEX = {
 }
 
 # ``complex128`` carries double components, so it follows fp64 availability.
-COMPLEX_DTYPES = [torch.complex64] + (
-    [torch.complex128] if fp64_is_supported else []
-)
+COMPLEX_DTYPES = [torch.complex64] + ([torch.complex128] if fp64_is_supported else [])
 
 # The subset whose complex kernel routes through the modulus.
 MODULUS_OPS = ["abs", "log", "log1p", "log2", "log10", "sqrt", "rsqrt"]

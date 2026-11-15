@@ -215,9 +215,11 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize(
     "dtype",
-    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
-    if utils.complex_is_supported
-    else [],
+    (
+        [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+        if utils.complex_is_supported
+        else []
+    ),
 )
 def test_masked_select_backward_conjugated_grad(dtype):
     inp = torch.randn(73, dtype=dtype, device=flag_gems.device)

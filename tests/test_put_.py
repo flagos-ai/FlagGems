@@ -355,7 +355,7 @@ def test_put__bool_accumulate_is_logical_or():
 @pytest.mark.parametrize("rank", [1, 2, 5, 6, 7, 8, 9])
 @pytest.mark.parametrize("contiguous", [True, False])
 def test_put__high_rank(rank, contiguous):
-    if flag_gems.vendor_name == 'enflame' & rank == 9:
+    if flag_gems.vendor_name == "enflame" & rank == 9:
         pytest.skip("enflame not support rank 9 yet")
     utils.init_seed(0)
     shape = tuple(range(2, 2 + rank))
@@ -447,7 +447,7 @@ def test_put__index_out_of_range(bad):
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
     )
     # CUDA reports a device-side assert/trap; ROCm surfaces the s_trap as an
-    # HSA hardware exception; Enflame GCU aborts with a SIP assert. 
+    # HSA hardware exception; Enflame GCU aborts with a SIP assert.
     device_failure = (
         "device-side assert" in proc.stderr
         or "trap" in proc.stderr.lower()

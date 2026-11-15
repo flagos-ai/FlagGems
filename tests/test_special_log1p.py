@@ -65,6 +65,7 @@ def test_special_log1p_nan_inf():
     res_out = flag_gems.special_log1p(inp)
     utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
 
+
 @pytest.mark.skipif(
     not utils.fp64_is_supported,
     reason="device reports no fp64 support (support_fp64=False): an fp64 tensor "

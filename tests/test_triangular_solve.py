@@ -22,8 +22,8 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import flag_gems
 
-from .accuracy_utils import to_reference
 from . import accuracy_utils as utils
+from .accuracy_utils import to_reference
 
 _SKIP_FP64 = pytest.mark.skipif(
     not utils.fp64_is_supported,

@@ -32,16 +32,9 @@ import triton
 from triton import language as tl
 
 import flag_gems
-from flag_gems.runtime import device, torch_device_fn
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.code_cache import config_cache_dir
-from flag_gems.utils.libentry import (
-    LibTuner,
-    LibTunerRunMode,
-    libcache,
-    major_version,
-    minor_version,
-)
+from flag_gems.utils.libentry import LibTuner, LibTunerRunMode, libcache
 
 libentry_mod = importlib.import_module("flag_gems.utils.libentry")
 cost_model_mod = importlib.import_module("flag_gems.flagtune.inference.cost_model")
@@ -59,6 +52,7 @@ def libcache_db_path() -> Path:
     prefix = "sqlite:///"
     assert libcache.db_url.startswith(prefix), libcache.db_url
     return Path(libcache.db_url[len(prefix) :])
+
 
 @pytest.fixture(autouse=True)
 def isolate_cost_model_state(monkeypatch):
@@ -2434,12 +2428,6 @@ def test_libcache_concurrent_write_on_signal():
         )
         while True:
             time.sleep(0.1)
-
-    cache_file_name = (
-        f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
-        if device.vendor_name == "nvidia"
-        else f"TunedConfig_{device.vendor_name}_triton_{major_version}_{minor_version}.db"
-    )
 
     cache_path = libcache_db_path()
     if cache_path.exists():

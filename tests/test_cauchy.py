@@ -122,7 +122,6 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
 @pytest.mark.parametrize("median", CAUCHY_MEDIANS)
 @pytest.mark.parametrize("sigma", CAUCHY_SIGMAS)
 def test_cauchy_out_accuracy(shape, dtype, median, sigma):
-    
     """
     Test the out-of-place cauchy function.
     """

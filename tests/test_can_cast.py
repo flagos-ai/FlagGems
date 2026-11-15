@@ -19,6 +19,7 @@ import torch
 
 import flag_gems
 from flag_gems import _FULL_CONFIG
+
 from . import accuracy_utils as utils
 
 _SKIP_FP64 = pytest.mark.skipif(

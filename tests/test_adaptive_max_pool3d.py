@@ -137,8 +137,11 @@ ALL_CONFIGS = UNIQUE_CONFIGS
 def test_accuracy_adaptive_max_pool3d_forward(shape, output_size, desc, dtype):
     """Forward correctness with return_indices=True — all curated configs."""
     gather_bytes = (
-        shape[0] * shape[1]
-        * output_size[0] * output_size[1] * output_size[2]
+        shape[0]
+        * shape[1]
+        * output_size[0]
+        * output_size[1]
+        * output_size[2]
         * torch.empty((), dtype=dtype).element_size()
     )
     if flag_gems.vendor_name == "enflame" and gather_bytes > (16 << 20):

@@ -5,6 +5,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason="enflame does not support fp64",
@@ -20,6 +21,7 @@ def test_special_round(shape, dtype):
     res_out = flag_gems.special_round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
@@ -38,6 +40,7 @@ def test_special_round_out(shape, dtype):
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(out, ref_out)
+
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
@@ -86,6 +89,7 @@ def test_special_round_midpoints():
     )
     utils.gems_assert_equal(res_out, utils.to_reference(expected_tensor))
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason="enflame does not support fp64",
@@ -104,6 +108,7 @@ def test_special_round_decimals(decimals):
     res_out = flag_gems.special_round(inp, decimals=decimals)
 
     utils.gems_assert_equal(res_out, ref_out)
+
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",

@@ -48,9 +48,7 @@ def _fp8_available():
     vendor keeps the original SM89+ CUDA check unchanged.
     """
     if flag_gems.vendor_name == "enflame":
-        return flag_gems.runtime.device.support_fp8 and hasattr(
-            torch, "float8_e4m3fn"
-        )
+        return flag_gems.runtime.device.support_fp8 and hasattr(torch, "float8_e4m3fn")
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
     if not hasattr(torch, "float8_e4m3fn"):

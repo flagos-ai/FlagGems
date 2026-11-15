@@ -22,7 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-
 # The implementation file is ``ops/_sparse_mm_reduce_impl.py``; a marker cannot
 # start with an underscore, so the derived name is
 # ``underscore_sparse_mm_reduce_impl`` (mirrors op_marker() in
@@ -138,6 +137,7 @@ def test_sparse_mm_reduce_impl(M, N, K, layout, sparsity, dtype):
         atol = 1e-2 if dtype in _LOW_PREC_DTYPES else 1e-4
         utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
+
 @pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 @pytest.mark.parametrize("M, N, K", MNK)
@@ -158,6 +158,7 @@ def test_sparse_mm_reduce_impl_selector(M, N, K, reduce, dtype):
     atol = 1e-2 if dtype in _LOW_PREC_DTYPES else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
+
 @pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -175,6 +176,7 @@ def test_sparse_mm_reduce_impl_dense_noncontiguous(dtype):
 
     atol = 1e-2 if dtype in _LOW_PREC_DTYPES else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
 
 @pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl

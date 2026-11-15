@@ -463,9 +463,7 @@ def test_put_invalid_dtypes():
     # on devices that actually support it.
     if utils.fp64_is_supported:
         with pytest.raises(RuntimeError):
-            flag_gems.put(
-                inp, index, gen_source(1, torch.float64, flag_gems.device)
-            )
+            flag_gems.put(inp, index, gen_source(1, torch.float64, flag_gems.device))
     # index and source must have the same number of elements
     with pytest.raises(IndexError):
         flag_gems.put(

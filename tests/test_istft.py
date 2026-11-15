@@ -155,24 +155,7 @@ def test_istft_1d_signal(dtype):
 # by test_istft_roundtrip for all three dtypes, and the fp64 path here already
 # pins the exact-arithmetic behavior this test targets.
 @pytest.mark.parametrize(
-<<<<<<< HEAD
-    "dtype",
-    [
-        torch.float32,
-        pytest.param(
-            torch.float64,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "enflame",
-                reason=(
-                    "enflame GCU400 无原生 FP64 计算能力，"
-                    "fp64 Triton kernel 编译失败（Pipeline run failed）"
-                ),
-            ),
-        ),
-    ],
-=======
     "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
->>>>>>> 4e45a370d (skip fp64 cases)
 )
 def test_istft_variants(dtype):
     signal_len = 2048

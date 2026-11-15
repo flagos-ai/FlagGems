@@ -435,7 +435,10 @@ def test_tril_inplace_expanded_view(diagonal, dtype):
 
 
 @pytest.mark.tril_
-@pytest.mark.skipif(vendor_name == "enflame", reason="Aten gcu backend implementationissues can lead to mismatched results")
+@pytest.mark.skipif(
+    vendor_name == "enflame",
+    reason="Aten gcu backend implementationissues can lead to mismatched results",
+)
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
 @pytest.mark.skipif(

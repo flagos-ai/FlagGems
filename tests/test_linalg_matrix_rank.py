@@ -622,9 +622,7 @@ def test_accuracy_linalg_matrix_rank_hermitian_dense_low_rank(dtype):
     n, rank = 300, 250
     # CPU generator + CPU draw, then move: a CPU generator on a device-side
     # randn raises on backends that validate the generator device.
-    basis = torch.randn(n, rank, dtype=dtype, generator=generator).to(
-        flag_gems.device
-    )
+    basis = torch.randn(n, rank, dtype=dtype, generator=generator).to(flag_gems.device)
     weights = torch.linspace(2.0, 1.0, rank, dtype=dtype, device=flag_gems.device)
     matrix = basis @ torch.diag(weights) @ basis.mT
     expected = torch.tensor(rank, dtype=torch.int64, device=matrix.device)

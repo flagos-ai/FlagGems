@@ -20,8 +20,8 @@ from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
 from . import accuracy_utils as utils
+from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
 
 _SKIP_FP64 = pytest.mark.skipif(
     not utils.fp64_is_supported,
