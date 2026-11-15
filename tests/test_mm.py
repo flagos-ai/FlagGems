@@ -23,7 +23,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-from .gemm_utils import GEMM_DTYPES, accuracy_cases, accuracy_shapes
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
 MNK_SHAPES = accuracy_shapes("mm", QUICK_MODE)
 
@@ -54,8 +54,9 @@ def _mm_atol_base():
 
 # Issue #2833: fails at (1, 1, 2)
 @pytest.mark.mm
-@pytest.mark.parametrize("M, N, K, b_column_major", accuracy_cases("mm", QUICK_MODE))
-@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+@pytest.mark.parametrize(
+    "dtype, M, N, K, b_column_major", accuracy_dtype_cases("mm", QUICK_MODE)
+)
 def test_mm(M, N, K, dtype, b_column_major):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:

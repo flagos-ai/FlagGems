@@ -22,7 +22,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
-from .gemm_utils import GEMM_DTYPES, accuracy_cases, accuracy_shapes
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
 BMNK_SHAPES = accuracy_shapes("bmm", cfg.QUICK_MODE)
 MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
@@ -30,9 +30,8 @@ MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
 
 @pytest.mark.bmm
 @pytest.mark.parametrize(
-    "batch, M, N, K, b_column_major", accuracy_cases("bmm", cfg.QUICK_MODE)
+    "dtype, batch, M, N, K, b_column_major", accuracy_dtype_cases("bmm", cfg.QUICK_MODE)
 )
-@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_bmm(batch, M, N, K, b_column_major, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)

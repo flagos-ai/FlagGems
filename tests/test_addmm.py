@@ -20,7 +20,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-from .gemm_utils import GEMM_DTYPES, accuracy_cases, accuracy_shapes
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
@@ -65,10 +65,11 @@ _addmm_beta_zero_only = pytest.mark.skipif(
 
 
 @pytest.mark.addmm
-@pytest.mark.parametrize("M, N, K, b_column_major", accuracy_cases("addmm", QUICK_MODE))
-@pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", GEMM_DTYPES)
-def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
+@pytest.mark.parametrize(
+    "dtype, scalar, M, N, K, b_column_major",
+    accuracy_dtype_cases("addmm", QUICK_MODE, scalars=utils.SCALARS),
+)
+def test_addmm(M, N, K, scalar, dtype, b_column_major):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()

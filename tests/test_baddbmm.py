@@ -19,7 +19,7 @@ import flag_gems
 
 from .accuracy_utils import SCALARS, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
-from .gemm_utils import GEMM_DTYPES, accuracy_cases, accuracy_shapes
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
 BMNK_SHAPES = accuracy_shapes("baddbmm", QUICK_MODE)
 MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
@@ -39,11 +39,10 @@ FP8_MNK_SHAPES = [
 
 @pytest.mark.baddbmm
 @pytest.mark.parametrize(
-    "batch, M, N, K, b_column_major", accuracy_cases("baddbmm", QUICK_MODE)
+    "dtype, scalar, batch, M, N, K, b_column_major",
+    accuracy_dtype_cases("baddbmm", QUICK_MODE, scalars=SCALARS),
 )
-@pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", GEMM_DTYPES)
-def test_baddbmm(monkeypatch, batch, M, N, K, scalar, dtype, b_column_major):
+def test_baddbmm(batch, M, N, K, scalar, dtype, b_column_major):
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = (
         torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device).transpose(1, 2)
@@ -109,16 +108,51 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
     res_out = flag_gems.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
+    _assert_baddbmm_gradients(
+        res_out,
+        ref_out,
+        (bias, mat1, mat2),
+        (ref_bias, ref_mat1, ref_mat2),
+        bias_reduce_dim=K,
+    )
+
+
+@pytest.mark.baddbmm
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+@pytest.mark.parametrize("use_aten", [False, True], ids=["direct", "aten"])
+def test_baddbmm_backward_broadcast(dtype, use_aten):
+    batch, M, N, K = 2, 4, 16, 128
+    alpha, beta = 0.25, 0.5
+    inputs = tuple(
+        torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+        for shape in ((N,), (batch, M, K), (batch, K, N))
+    )
+    ref_inputs = tuple(to_reference(x, True) for x in inputs)
+    ref_out = torch.baddbmm(*ref_inputs, alpha=alpha, beta=beta)
+    if use_aten:
+        with flag_gems.use_gems(include=["baddbmm"]):
+            res_out = torch.baddbmm(*inputs, alpha=alpha, beta=beta)
+    else:
+        res_out = flag_gems.baddbmm(*inputs, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    _assert_baddbmm_gradients(
+        res_out, ref_out, inputs, ref_inputs, bias_reduce_dim=batch * M
+    )
+
+
+def _assert_baddbmm_gradients(res_out, ref_out, inputs, ref_inputs, bias_reduce_dim):
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
-
+    _, M, N = res_out.shape
     ref_in_bias, ref_in_grad1, ref_in_grad2 = torch.autograd.grad(
-        ref_out, (ref_bias, ref_mat1, ref_mat2), ref_grad
+        ref_out, ref_inputs, ref_grad
     )
     res_in_bias, res_in_grad1, res_in_grad2 = torch.autograd.grad(
-        res_out, (bias, mat1, mat2), out_grad
+        res_out, inputs, out_grad
     )
 
-    gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=K)
+    dtype = res_out.dtype
+    gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=bias_reduce_dim)
     gems_assert_close(res_in_grad1, ref_in_grad1, dtype, reduce_dim=N)
     gems_assert_close(res_in_grad2, ref_in_grad2, dtype, reduce_dim=M)

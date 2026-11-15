@@ -19,12 +19,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
-from .gemm_utils import GEMM_DTYPES, accuracy_cases
+from .gemm_utils import accuracy_dtype_cases
 
 
 @pytest.mark.mv
-@pytest.mark.parametrize("N, K, column_major", accuracy_cases("mv", cfg.QUICK_MODE))
-@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+@pytest.mark.parametrize(
+    "dtype, N, K, column_major", accuracy_dtype_cases("mv", cfg.QUICK_MODE)
+)
 def test_mv(N, K, dtype, column_major):
     matrix = (
         torch.randn((K, N), dtype=dtype, device=flag_gems.device).t()
