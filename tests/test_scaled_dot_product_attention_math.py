@@ -10,6 +10,10 @@ device = flag_gems.device
 # Use the aten op for the PyTorch reference path to avoid depending on the
 # private torch._... alias across PyTorch versions.
 sdpa_math = torch.ops.aten._scaled_dot_product_attention_math
+generic_math = (
+    flag_gems._scaled_dot_product_attention_math.__module__
+    == "flag_gems.ops._scaled_dot_product_attention_math"
+)
 
 
 # Cases cover: (1) equal q/kv seq lens with and without causal masking, (2)
@@ -82,3 +86,162 @@ def test_scaled_dot_product_attention_math(
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
     utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.parametrize(
+    "heads,key_heads,value_heads,q_len,kv_len,head_dim,use_mask,is_causal",
+    [
+        (4, 2, 2, 8, 8, 16, False, False),
+        (8, 1, 1, 1, 65, 16, False, False),
+        pytest.param(
+            8,
+            2,
+            4,
+            33,
+            65,
+            24,
+            False,
+            False,
+            marks=pytest.mark.skipif(
+                not generic_math,
+                reason="Independent K/V groups test the generic kernel",
+            ),
+        ),
+        (8, 2, 2, 7, 11, 16, True, False),
+        (8, 2, 2, 7, 11, 16, False, True),
+        (4, 4, 4, 8, 8, 16, False, False),
+    ],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_scaled_dot_product_attention_math_gqa(
+    heads,
+    key_heads,
+    value_heads,
+    q_len,
+    kv_len,
+    head_dim,
+    use_mask,
+    is_causal,
+    dtype,
+    caplog,
+):
+    utils.init_seed(1234567890)
+    q = torch.randn(2, heads, q_len, head_dim, dtype=dtype, device=device)
+    k = torch.randn(2, key_heads, kv_len, head_dim, dtype=dtype, device=device)
+    v = torch.randn(2, value_heads, kv_len, head_dim, dtype=dtype, device=device)
+    attn_mask = None
+    if use_mask:
+        attn_mask = torch.randn(2, heads, q_len, kv_len, dtype=dtype, device=device)
+        attn_mask[0, 0, 0, :] = -float("inf")
+
+    ref_out, ref_weights = sdpa_math(
+        utils.to_reference(q),
+        utils.to_reference(k),
+        utils.to_reference(v),
+        attn_mask=utils.to_reference(attn_mask),
+        is_causal=is_causal,
+        scale=0.25,
+        enable_gqa=True,
+    )
+    gems_op = flag_gems._scaled_dot_product_attention_math
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        res_out, res_weights = gems_op(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            is_causal=is_causal,
+            scale=0.25,
+            enable_gqa=True,
+        )
+
+    assert (
+        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
+        in caplog.text
+    )
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+def test_scaled_dot_product_attention_math_positional_dropout_mask_gqa(caplog):
+    utils.init_seed(1234567890)
+    q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
+    k = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
+    v = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
+    dropout_mask = torch.zeros(2, 4, 8, 8, dtype=torch.bool, device=device)
+
+    ref_out, ref_weights = sdpa_math(
+        q.cpu(),
+        k.cpu(),
+        v.cpu(),
+        None,
+        0.0,
+        False,
+        dropout_mask.cpu(),
+        scale=0.25,
+        enable_gqa=True,
+    )
+    gems_op = flag_gems._scaled_dot_product_attention_math
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        res_out, res_weights = gems_op(
+            q, k, v, None, 0.0, False, dropout_mask, scale=0.25, enable_gqa=True
+        )
+
+    assert (
+        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
+        in caplog.text
+    )
+    utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, q.dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+def test_scaled_dot_product_attention_math_broadcast_heads(caplog):
+    utils.init_seed(1234567890)
+    q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
+    k = torch.randn(2, 1, 8, 16, dtype=q.dtype, device=device)
+    v = torch.randn(2, 1, 8, 16, dtype=q.dtype, device=device)
+    ref_out, ref_weights = sdpa_math(q.cpu(), k.cpu(), v.cpu(), enable_gqa=False)
+    gems_op = flag_gems._scaled_dot_product_attention_math
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        res_out, res_weights = gems_op(q, k, v, enable_gqa=False)
+    assert (
+        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
+        in caplog.text
+    )
+
+    utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, q.dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.skipif(not generic_math, reason="Legacy positional scale is a generic API")
+def test_scaled_dot_product_attention_math_legacy_positional_scale(caplog):
+    utils.init_seed(1234567890)
+    q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
+    k = torch.randn_like(q)
+    v = torch.randn_like(q)
+    ref_out, ref_weights = sdpa_math(q.cpu(), k.cpu(), v.cpu(), scale=0.5)
+    gems_op = flag_gems._scaled_dot_product_attention_math
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        res_out, res_weights = gems_op(q, k, v, None, 0.0, False, 0.5)
+    assert (
+        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
+        in caplog.text
+    )
+
+    utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
+    utils.gems_assert_close(res_weights, ref_weights, q.dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.skipif(not generic_math, reason="Checks generic GQA error handling")
+@pytest.mark.parametrize("key_heads,value_heads", [(4, 2), (2, 4)])
+def test_scaled_dot_product_attention_math_invalid_gqa(key_heads, value_heads):
+    q = torch.randn(2, 6, 8, 16, dtype=torch.float16, device=device)
+    k = torch.randn(2, key_heads, 8, 16, dtype=q.dtype, device=device)
+    v = torch.randn(2, value_heads, 8, 16, dtype=q.dtype, device=device)
+    with pytest.raises(RuntimeError, match="query heads must be divisible"):
+        flag_gems._scaled_dot_product_attention_math(q, k, v, enable_gqa=True)
