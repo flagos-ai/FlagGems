@@ -66,8 +66,12 @@ else:
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("tsingmicro", "enflame"),
-    reason="Issue #4131 on tsingmicro; Aten gcu backend not supported on enflame",
+    flag_gems.vendor_name in ("tsingmicro"),
+    reason="Issue #4131 on tsingmicro",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name in ("enflame"),
+    reason="Aten gcu backend not supported on enflame",
 )
 def test_conv3d(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias
@@ -120,8 +124,12 @@ def test_conv3d(
 @pytest.mark.parametrize("dilation", DILATIONS)
 @pytest.mark.parametrize("bias", BIASES)
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("tsingmicro", "enflame"),
-    reason="Issue #4131 on tsingmicro; Aten gcu backend not supported on enflame",
+    flag_gems.vendor_name in ("tsingmicro"),
+    reason="Issue #4131 on tsingmicro",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name in ("enflame"),
+    reason="Aten gcu backend not supported on enflame",
 )
 def test_conv3d_padding(
     monkeypatch, shape, kernel, stride, padding, groups, dtype, dilation, bias

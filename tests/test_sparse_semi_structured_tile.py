@@ -16,18 +16,27 @@
 
 import pytest
 import torch
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# The implementation file is ``ops/_sparse_semi_structured_tile.py``; a marker
-# cannot start with an underscore, so the derived name is
-# ``underscore_sparse_semi_structured_tile`` (mirrors op_marker() in
-# tools/run_tests.py). Tag the main test with it as well so a marker-only
+# The implementation file is ``ops/_sparse_semi_structured_tile.py``, whose file
+# stem derives the pytest marker ``underscore_sparse_semi_structured_tile`` (the
+# leading underscore cannot be expressed with attribute access, hence the
+# explicit registration). Tag the main test with it as well so a marker-only
 # selection for the changed ops file is not empty; the public
 # ``sparse_semi_structured_tile`` id keeps its own marker.
+setattr(
+    pytest.mark,
+    "underscore_sparse_semi_structured_tile",
+    MarkDecorator(
+        Mark("underscore_sparse_semi_structured_tile", (), {}, _ispytest=True),
+        _ispytest=True,
+    ),
+)
 
 # The op prunes a dense (rows, cols) tensor to 2:4 sparsity. Shapes exercise
 # the padding rules (rows rounded up to 32, cols to 64 for the forward

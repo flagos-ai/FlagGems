@@ -10,13 +10,10 @@ from . import accuracy_utils as utils
 # tight atol for both fp32 and fp64 outputs. Devices without float64 support
 # fall back to a float32 evaluation, whose accuracy is limited by float32
 # precision: |He_n(x)| reaches ~1e6 at n=10, so those backends keep a wide atol.
-# iluvatar declares no fp64 but still runs the fp64 case through the CPU
-# reference below, so it is the one exception to the capability check.
 if flag_gems.vendor_name == "iluvatar" or utils.fp64_is_supported:
     FLOAT_DTYPES = [torch.float32, torch.float64]
 else:
     FLOAT_DTYPES = [torch.float32]
-
 if flag_gems.vendor_name == "iluvatar":
     # The iluvatar kernel evaluates in float32 intermediates.
     ATOL = {torch.float32: 2.0, torch.float64: 0.5}

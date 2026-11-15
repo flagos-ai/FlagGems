@@ -6,11 +6,6 @@ import torch
 
 import flag_gems
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="GCU400: GCU不支持4bit",
-)
-
 
 def _reference(x, weights, scales, bias, group):
     """Independent CPU quantization and integer dot, with FP32 scale arithmetic."""

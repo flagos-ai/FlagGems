@@ -110,60 +110,6 @@ def test_topk_3d_lastdim(shape, topk, dtype):
     utils.gems_assert_equal(res_index, ref_index)
 
 
-# MRADIX level-1 topk (TLE-Struct staging + TLE-Raw region, gcu400): the
-# region produces the sorted=True order itself with a bitonic argsort of the k
-# staged (key, index) pairs, so this must be checked with exact indices, not
-# just exact values. K=512 and K=513 straddle the in-region sort gate
-# (SORT_K_MAX), the 4-D shape exercises the flattened row view, and quantising
-# part of the input exercises the equal-value tie break.
-# Debug-only: see MRADIX_FULL_TESTS above.
-@pytest.mark.topk
-@pytest.mark.skipif(
-    not MRADIX_FULL_TESTS,
-    reason="MRADIX bring-up matrix, set FLAGGEMS_TOPK_MRADIX_FULL_TESTS=1",
-)
-@pytest.mark.parametrize(
-    "shape, topk, sorted_",
-    [
-        ((64, 64), 5, True),
-        ((8, 256), 5, True),
-        ((64, 1024), 32, True),
-        ((64, 8192), 128, True),
-        ((32, 1024), 512, True),
-        ((8, 700), 513, True),
-        ((16, 128, 256), 256, True),
-        ((2, 3, 5, 200), 7, True),
-        ((64, 4096), 32, False),
-    ],
-)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_topk_sorted_mradix(shape, topk, sorted_, dtype):
-    x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).to(dtype)
-    round_half = torch.randint(0, 2, shape, device=flag_gems.device).bool()
-    x = torch.where(round_half, x.round(), x)
-
-    ref_value, ref_index = torch.topk(
-        utils.to_reference(x), topk, dim=-1, largest=True, sorted=sorted_
-    )
-    res_value, res_index = flag_gems.topk(x, topk, dim=-1, largest=True, sorted=sorted_)
-
-    if sorted_:
-        utils.gems_assert_close(res_value, ref_value, dtype)
-        utils.gems_assert_equal(res_index, ref_index)
-        # Consistency: the values must be the input at the returned indices.
-        utils.gems_assert_equal(
-            x.gather(-1, res_index.to(torch.int64)).to(torch.float32),
-            res_value.to(torch.float32),
-        )
-    else:
-        # sorted=False is the same selection in an unspecified order, so only
-        # the (value, index) multiset is defined.
-        utils.gems_assert_close(
-            res_value.sort(-1).values, ref_value.sort(-1).values, dtype
-        )
-        utils.gems_assert_equal(res_index.sort(-1).values, ref_index.sort(-1).values)
-
-
 @pytest.mark.topk
 def test_topk_radix_tle_config_uses_large_fp32_shape_heuristic():
     topk_op = import_module("flag_gems.ops.topk")

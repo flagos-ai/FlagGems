@@ -26,17 +26,9 @@ import torch
 # import torch  # noqa: F401
 import yaml
 
-# enflame locally
-flag_gems_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
-sys.path.append(flag_gems_DIR)
-
-
-import flag_gems  # noqa: E402
-from flag_gems.cli_override import (  # noqa: E402
-    add_override_arguments,
-    apply_overrides_from_args,
-)
-from flag_gems.testing.reference import validate_ref_as_candidate_options  # noqa: E402
+import flag_gems
+from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 BUILTIN_MARKS = {
     "filterwarnings",

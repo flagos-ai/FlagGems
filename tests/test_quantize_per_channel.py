@@ -686,10 +686,6 @@ def test_quantize_per_channel_rejects_out_of_range_zero_point(qtype, zp, dtype):
     flag_gems.vendor_name == "enflame",
     reason="gcu dose not support work",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="GCU400: Quantizedgcu backend unavailable; fp64 device tensors unsupported",
-)
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_zero_point_error_matches_native():
     """The host check reproduces ATen's message and below-before-above order."""

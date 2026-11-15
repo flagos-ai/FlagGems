@@ -26,27 +26,6 @@ _SKIP_FP64 = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(autouse=True)
-def skip_unsupported_fp64_on_enflame(request):
-    """enflame GCU400 无原生 FP64 计算能力，跳过依赖 fp64/complex128 的参数化用例。"""
-    if flag_gems.vendor_name != "enflame":
-        return
-    unsupported = (torch.float64, torch.complex128)
-    for marker in request.node.iter_markers(name="parametrize"):
-        if len(marker.args) < 2:
-            continue
-        for parameter in marker.args[1]:
-            fields = (
-                parameter.values
-                if hasattr(parameter, "values")
-                else (parameter if isinstance(parameter, tuple) else (parameter,))
-            )
-            if any(field in unsupported for field in fields):
-                pytest.skip(
-                    "enflame GCU400 无原生 FP64 计算能力，fp64/complex128 用例不适用"
-                )
-
-
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
     "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]

@@ -160,10 +160,7 @@ def test_log_sigmoid_backward_out_contiguous_buffer(dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_log_sigmoid_backward_via_autograd(dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.bfloat16:
-        pytest.skip(
-            "enflame GCU400 的 bfloat16 log_sigmoid_forward autograd 参考链"
-            "未构建 grad_fn（torch.autograd.graph 报错），属后端能力缺失"
-        )
+        pytest.skip("enflame dose not support yet")
     res_inp = torch.randn(
         (4, 7), dtype=dtype, device=flag_gems.device, requires_grad=True
     )

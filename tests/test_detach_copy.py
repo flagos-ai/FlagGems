@@ -22,12 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
-
 SHAPES = [(16,), (1024,), (2, 3, 4), (16, 128, 64, 60)]
 if QUICK_MODE:
     SHAPES = [(2, 3)]

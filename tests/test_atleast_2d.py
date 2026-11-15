@@ -251,14 +251,7 @@ def test_accuracy_atleast_2d_alias_semantics():
 @pytest.mark.atleast_2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason=(
-        "enflame/GCU backend capability: this non-parametrized case iterates "
-        "SWEEP_DTYPES directly, whose FP64/COMPLEX128 entries are pytest.param "
-        "wrappers with FP64 skip marks; without parametrization those marks never "
-        "apply and _make_input receives a ParameterSet instead of a dtype. "
-        "FP64/FP4/COMPLEX128 are unsupported on this backend, so the case cannot "
-        "run here (SKILL.md 原则 10 后端能力缺失豁免)."
-    ),
+    reason=("enflame/GCU backend capability"),
 )
 def test_accuracy_atleast_2d_dtype_neutrality():
     """The op never reads element data: special-value payloads (NaN/Inf for

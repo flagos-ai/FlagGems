@@ -26,7 +26,7 @@ CHOLESKY_INVERSE_BATCH_SHAPES = [
 # float64 request is silently downgraded to float32, so it can never match a
 # true-fp64 reference; skip fp64 on that backend only. Every other vendor keeps
 # running float64 exactly as before.
-_SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
+_SKIP_FP64_ON_VENDORS = pytest.mark.skipif(
     flag_gems.runtime.device.vendor_name in ("kunlunxin", "enflame"),
     reason=(
         "Kunlunxin XPU has no real float64 (silently downgraded to float32); "
@@ -35,7 +35,7 @@ _SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
 )
 CHOLESKY_INVERSE_DTYPES = [
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64_ON_KUNLUNXIN),
+    pytest.param(torch.float64, marks=_SKIP_FP64_ON_VENDORS),
 ]
 
 

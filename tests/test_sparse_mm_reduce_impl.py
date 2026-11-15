@@ -16,18 +16,26 @@
 
 import pytest
 import torch
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# The implementation file is ``ops/_sparse_mm_reduce_impl.py``; a marker cannot
-# start with an underscore, so the derived name is
-# ``underscore_sparse_mm_reduce_impl`` (mirrors op_marker() in
-# tools/run_tests.py). Tag every test in this file with it so a marker-only
-# selection for the changed ops file runs the whole suite; the public
-# ``sparse_mm_reduce_impl`` id keeps its own marker.
+# The implementation file is ``ops/_sparse_mm_reduce_impl.py``, whose file stem
+# derives the pytest marker ``underscore_sparse_mm_reduce_impl`` (the leading
+# underscore cannot be expressed with attribute access, hence the explicit
+# registration). Tag the main test with it as well so a marker-only selection
+# for the changed ops file is not empty; the public ``sparse_mm_reduce_impl``
+# id keeps its own marker.
+setattr(
+    pytest.mark,
+    "underscore_sparse_mm_reduce_impl",
+    MarkDecorator(
+        Mark("underscore_sparse_mm_reduce_impl", (), {}, _ispytest=True), _ispytest=True
+    ),
+)
 
 # Shapes are hand-picked rather than taken from a shared constant: the sparse
 # path needs (a) tiny sizes to exercise launch-bound and single-element cases,
@@ -138,7 +146,6 @@ def test_sparse_mm_reduce_impl(M, N, K, layout, sparsity, dtype):
         utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
-@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 @pytest.mark.parametrize("M, N, K", MNK)
 @pytest.mark.parametrize("reduce", REDUCES)
@@ -159,7 +166,6 @@ def test_sparse_mm_reduce_impl_selector(M, N, K, reduce, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
-@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_sparse_mm_reduce_impl_dense_noncontiguous(dtype):
@@ -178,7 +184,6 @@ def test_sparse_mm_reduce_impl_dense_noncontiguous(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
-@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 def test_sparse_mm_reduce_impl_rejects_strided_self():
     device = flag_gems.device
@@ -188,7 +193,6 @@ def test_sparse_mm_reduce_impl_rejects_strided_self():
         flag_gems._sparse_mm_reduce_impl(dense, mat2, "sum")
 
 
-@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 def test_sparse_mm_reduce_impl_rejects_shape_mismatch():
     device = flag_gems.device
@@ -198,7 +202,6 @@ def test_sparse_mm_reduce_impl_rejects_shape_mismatch():
         flag_gems._sparse_mm_reduce_impl(sparse, mat2, "sum")
 
 
-@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 def test_sparse_mm_reduce_impl_rejects_unknown_reduce():
     device = flag_gems.device
@@ -208,7 +211,6 @@ def test_sparse_mm_reduce_impl_rejects_unknown_reduce():
         flag_gems._sparse_mm_reduce_impl(sparse, mat2, "argmax")
 
 
-@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.sparse_mm_reduce_impl
 def test_sparse_mm_reduce_impl_rejects_prod():
     device = flag_gems.device

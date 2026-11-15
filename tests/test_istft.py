@@ -188,10 +188,7 @@ def test_istft_1d_signal(dtype):
             torch.float64,
             marks=pytest.mark.skipif(
                 flag_gems.vendor_name == "enflame",
-                reason=(
-                    "enflame GCU400 无原生 FP64 计算能力，"
-                    "fp64 Triton kernel 编译失败（Pipeline run failed）"
-                ),
+                reason="enflame dose not support fp64",
             ),
         ),
     ],
