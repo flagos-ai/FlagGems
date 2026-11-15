@@ -1523,6 +1523,7 @@ class SharedMMConfig:
     warps: tuple = (2, 2)
     group_m: int = 8
     address_mode: str = "direct"
+    num_stages: int = 5
 
     def __post_init__(self):
         if len(self.tile) != 3 or any(x < 8 or x & (x - 1) for x in self.tile):
@@ -1540,6 +1541,8 @@ class SharedMMConfig:
             raise ValueError("traversal group must be positive")
         if self.address_mode not in ("direct", "fold", "scalar"):
             raise ValueError("unknown buffer-address strategy")
+        if type(self.num_stages) is not int or self.num_stages < 2:
+            raise ValueError("Shared MM requires at least two pipeline stages")
 
     def supports(self, a, b, c, *, async_load=True):
         """Check vector alignment, storage disjointness and address bounds."""
@@ -1621,7 +1624,7 @@ def _shared_compile_parameters(config, transposed_b):
     options = {
         **_SHARED_HCU_OPTIONS,
         "num_warps": prod(config.warps),
-        "num_stages": 5,
+        "num_stages": config.num_stages,
         "mmac_warps_m": config.warps[0],
         "GROUP_M": config.group_m,
         "BLOCK_M": config.tile[0],
@@ -1712,6 +1715,24 @@ def shared_mm_configs():
         SharedMMConfig((256, 256, 16), warps=(4, 2)),
         SharedMMConfig((128, 256, 16), address_mode="scalar"),
         SharedMMConfig((64, 64, 64), group_m=1),
+    )
+
+
+_SHARED_TWO_CTA_CONFIGS = (
+    SharedMMConfig((128, 128, 32), num_stages=2),
+    SharedMMConfig((64, 128, 32), num_stages=4),
+)
+
+
+def _shared_two_cta_candidates(m, n, compute_units):
+    # These schedules fit two CTA LDS allocations per CU. Give them a
+    # chance when a one-CTA schedule would need a second wave.
+    return tuple(
+        config
+        for config in _SHARED_TWO_CTA_CONFIGS
+        if compute_units
+        < triton.cdiv(m, config.tile[0]) * triton.cdiv(n, config.tile[1])
+        <= 2 * compute_units
     )
 
 
@@ -2369,7 +2390,7 @@ def _shared_supported():
     )
 
 
-def mm_family_candidates(a, b, c, *, splitk_pool=False, allow_cooperative_nn=False):
+def mm_family_candidates(a, b, c, *, splitk_pool=False, expanded=False):
     if a.ndim != 2 or b.ndim != 2 or c.ndim != 2 or a.device.type != "cuda":
         return ()
     with torch_device_fn.device(a.device):
@@ -2380,6 +2401,9 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False, allow_cooperative_nn=Fal
     shared_configs = shared_mm_configs() if _shared_supported() else ()
     if shared_configs and not _shared_address_supported():
         shared_configs = tuple(c for c in shared_configs if c.address_mode == "direct")
+    if expanded and shared_configs and not splitk_pool:
+        compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
+        shared_configs += _shared_two_cta_candidates(*c.shape, compute_units)
     if splitk_pool:
         m, n = c.shape
         compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
@@ -2403,7 +2427,7 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False, allow_cooperative_nn=Fal
     shared = tuple(config for config in shared_configs if config.supports(a, b, c))
     if splitk_pool:
         return local + shared + grouped_mv_candidates(a, b, compute_units)
-    cooperative = _cooperative_mm_candidates(a, b, c, allow_nn=allow_cooperative_nn)
+    cooperative = _cooperative_mm_candidates(a, b, c, allow_nn=expanded)
     short_k = short_k_mm_candidates(a, b, c)
     return shared + cooperative + local + short_k
 
@@ -2425,11 +2449,11 @@ def clear_mm_family_choices():
 
 
 def _measure_mm_family(
-    a, b, c, ordinary, ordinary_with_output, splitk_pool, allow_cooperative_nn,
+    a, b, c, ordinary, ordinary_with_output, splitk_pool, expanded,
 ):
     candidates = mm_family_candidates(
         a, b, c, splitk_pool=splitk_pool,
-        allow_cooperative_nn=allow_cooperative_nn,
+        expanded=expanded,
     )
     if not candidates:
         return None
@@ -2509,7 +2533,7 @@ def _measure_mm_family(
 
 def try_mm_family(
     a, b, c, ordinary, *, tuning_key, ordinary_with_output=None, splitk_pool=False,
-    allow_cooperative_nn=False,
+    expanded=False,
 ):
     """Compare real candidates with the existing Default/Expanded TL tuner.
 
@@ -2551,7 +2575,7 @@ def try_mm_family(
         tuning_key,
         storage,
         splitk_pool,
-        allow_cooperative_nn,
+        expanded,
         ordinary_with_output is not None,
     )
     with torch_device_fn.device(a.device):
@@ -2559,7 +2583,7 @@ def try_mm_family(
         if choice is None:
             choice = _mm_family_choices.get_or_measure(
                 key, _measure_mm_family, a, b, c, ordinary, ordinary_with_output,
-                splitk_pool, allow_cooperative_nn,
+                splitk_pool, expanded,
             )
         if choice is None:
             return False
@@ -2648,7 +2672,7 @@ def _dispatch_hygon_mm(a, b, c):
     if not try_mm_family(
         a, b, c, lambda: _launch_ordinary_mm(a, b, c), tuning_key=tuning_key,
         ordinary_with_output=lambda output: _launch_ordinary_mm(a, b, output),
-        allow_cooperative_nn=tuner._flagtune_mode == runtime.TuningMode.EXPANDED,
+        expanded=tuner._flagtune_mode == runtime.TuningMode.EXPANDED,
     ):
         _launch_ordinary_mm(a, b, c)
 

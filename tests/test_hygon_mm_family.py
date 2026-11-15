@@ -343,6 +343,21 @@ def test_cooperative_shortlist_uses_layout_and_tile_coverage(
     assert tuple(config.group_m for config in configs) == expected
 
 
+@pytest.mark.parametrize(
+    "m,n,compute_units,expected",
+    [
+        (129, 5120, 80, (4,)),
+        (129, 5128, 80, (2, 4)),
+        (129, 6912, 80, (2,)),
+        (257, 7168, 80, ()),
+        (129, 6912, 128, (4,)),
+    ],
+)
+def test_shared_two_cta_shortlist_uses_tile_grid(router, m, n, compute_units, expected):
+    configs = router._shared_two_cta_candidates(m, n, compute_units)
+    assert tuple(config.num_stages for config in configs) == expected
+
+
 @pytest.mark.parametrize("layout", ["nn", "nt"])
 @pytest.mark.parametrize("group_m", [0, 4])
 @pytest.mark.parametrize(
