@@ -25,9 +25,11 @@ import math
 import os
 import time
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
 
+import torch
 import triton
 
 from flag_gems import runtime
@@ -211,12 +213,30 @@ def ensure_proposer(identity: Any):
     return _FLAGTUNE_PROPOSER_POOL[cache_key], _FLAGTUNE_VARIANT_INFO_POOL[cache_key]
 
 
+@lru_cache(maxsize=256)
+def _tensor_identity_key(vendor_name, op_id, variant, metadata):
+    # Cache immutable metadata only, never tensors or model/failure state.
+    platform = f"{vendor_name}:" + ",".join(str(device) for device, _ in metadata)
+    dtype_key = ",".join(str(dtype) for _, dtype in metadata)
+    return platform, op_id, variant, dtype_key
+
+
 def identity_cache_key(
     tuner: Any, arguments: Dict[str, Any], vendor_name: str
 ) -> Tuple[str, str, str, str]:
     """Build the pre-load identity cache key without model-source access."""
     op_id = str(getattr(tuner, "_flagtune_op_id", "<unknown>"))
     variant = str(getattr(tuner, "_flagtune_variant", "<unknown>"))
+    metadata = []
+    for name in getattr(tuner, "arg_names", ()):
+        value = arguments.get(name)
+        if type(value) is torch.Tensor:
+            metadata.append((value.device, value.dtype))
+        elif type(value) not in (int, float, bool, str, type(None)):
+            break
+    else:
+        return _tensor_identity_key(vendor_name, op_id, variant, tuple(metadata))
+    # Preserve duck typing for descriptors, tensor subclasses and custom values.
     tensors = []
     for name in getattr(tuner, "arg_names", ()):
         value = arguments.get(name)
