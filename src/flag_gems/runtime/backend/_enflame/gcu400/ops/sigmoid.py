@@ -103,7 +103,8 @@ def _choose_block(N_total, itemsize):
 
 
 def sigmoid(self):
-    logger.debug("GEMS_ENFLAME SIGMOID")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("GEMS_ENFLAME SIGMOID")
     inp = self.contiguous()
     N_total = inp.numel()
     out = torch.empty_like(inp)
@@ -145,7 +146,8 @@ def _choose_block_backward(N_total, itemsize):
 
 
 def sigmoid_backward(grad_output, output):
-    logger.debug("GEMS_ENFLAME SIGMOID_BACKWARD")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("GEMS_ENFLAME SIGMOID_BACKWARD")
     # 浮点类型用手写 flat kernel（fp32 codegen 路径在 (64,64) 上 31.9us vs flat
     # 3.7us——pointwise_dynamic Python 开销主导；fp64 / 整数、混合 dtype/device
     # 保留 codegen）。
@@ -181,9 +183,16 @@ def sigmoid_backward(grad_output, output):
 
 
 def sigmoid_(A):
-    logger.debug("GEMS_ENFLAME SIGMOID_")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("GEMS_ENFLAME SIGMOID_")
     inp = A.contiguous()
     N_total = inp.numel()
+    # 空张量没有可启动的 CTA，直接返回，避免 0-CTA grid
+    if N_total == 0:
+        return A
+    # kernel 按线性偏移写连续缓冲区；非连续输入的 contiguous 副本与原张量
+    # 布局不同，必须写临时缓冲区再按原 stride 拷回，才能保持原地语义
+    output = A if inp.data_ptr() == A.data_ptr() else torch.empty_like(inp)
 
     BLOCK = _choose_block(N_total, inp.element_size())
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
@@ -194,10 +203,12 @@ def sigmoid_(A):
     with torch_device_fn.device(inp.device):
         sigmoid_flat_kernel[(grid_size,)](
             inp,
-            A,
+            output,
             N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
+    if output is not A:
+        A.copy_(output)
 
     return A

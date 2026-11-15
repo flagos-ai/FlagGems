@@ -45,7 +45,7 @@ MAX_GRID = 48
 GLOBAL_TILE_ELEMS = 65536
 
 # 行归约单个 tile 的字节预算：sum 只有一趟读，tile 敢开到 256 KiB。
-INNER_TILE_BYTES = 262144
+INNER_TILE_BYTES = 131072
 
 # 非行归约（K > 1）单个 tile 的字节预算。
 NON_INNER_TILE_BYTES = 131072

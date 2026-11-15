@@ -225,8 +225,8 @@ def _orgqr_impl(input, tau, out):
     # measured: 8 x 128 tile, num_warps=1) and give the grid more parallelism.
     # The doubling guard keeps grid.y within the 255-program hardware limit
     # for very tall outputs (n > 2040), matching the old BLOCK_N=32 envelope.
-    block_n = 8
-    while triton.cdiv(n, block_n) > 255:
+    block_n = 4
+    while triton.cdiv(n, block_n) > 512:
         block_n *= 2
     col_major_in = input_work.stride(1) == 1
     with torch_device_fn.device(input.device):

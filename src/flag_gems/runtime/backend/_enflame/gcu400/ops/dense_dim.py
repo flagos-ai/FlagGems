@@ -44,9 +44,10 @@ def dense_dim(self: torch.Tensor) -> int:
     """
     logger.debug("GEMS DENSE_DIM")
     if self.layout == torch.strided:
-        return len(self.shape)
+        return self.dim()
     if self.layout == torch.sparse_coo:
-        return len(self.shape) - self._indices().shape[0]
+        indices = self._indices()
+        return self.dim() - indices.shape[0]
     return 0
 
 

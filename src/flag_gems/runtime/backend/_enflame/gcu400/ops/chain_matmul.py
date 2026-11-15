@@ -49,6 +49,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 
@@ -1017,3 +1019,107 @@ def chain_matmul_out(matrices, *args, out):
     """aten::chain_matmul.out — same product, written into the caller's buffer."""
     logger.debug("GEMS CHAIN_MATMUL_OUT")
     return run(matrices, *args, out=out)
+
+
+# ---------------------------------------------------------------------------
+# aten::chain_matmul dispatch guard (torch_gcu P21 defect workaround)
+#
+# torch_gcu's native mm hard-aborts the whole process for non-floating-point
+# dtypes (topsop op_aten_mm_gcu400.h:43 TOPSATEN_STATUS_BAD_PARAM ->
+# gcu_utils.cpp "Check failed: 0" SIGABRT) instead of raising, while
+# aten::chain_matmul is a CompositeImplicitAutograd math kernel that
+# decomposes into mm without any dtype validation of its own (the CPU math
+# kernel happily accepts integer addmm). Every caller of
+# torch.ops.aten.chain_matmul with int/bool GCU tensors therefore kills the
+# process; the accuracy suite hits that in
+# tests/test_chain_matmul.py::test_chain_matmul_rejects_int_dtype, whose
+# default --ref device leg runs the aten reference on GCU tensors.
+#
+# Route the aten::chain_matmul default overload for this backend's dispatch
+# key through a thin guard instead: reject the abort class (non-floating
+# dtypes) with a proper RuntimeError (CUDA parity - the CUDA math kernel's
+# mm raises there), and delegate every well-formed input to the native math
+# kernel captured at import time (bmm / linalg_multi_dot capture+call_boxed
+# pattern), so the native reference leg of the accuracy tests and the
+# benchmark's torch_op base leg keep their exact semantics and values. The
+# .out overload needs no guard: its resize_output check already raises a
+# proper RuntimeError for mismatched out dtypes, and mixed dtypes along the
+# chain are rejected by the math kernel before any mm runs (verified
+# 2026-11-13). If the capture is unavailable (older torch), well-formed
+# inputs fall back to this module's run() rather than aborting.
+#
+# enable()/use_gems() parity: the registrar's later registration of this op
+# for the same key is absorbed as a duplicate warning (op_registrar.for_each,
+# resize_as_sparse_ / log_sigmoid_forward pattern). The guard detects that
+# regime via the registrar's key list and routes well-formed inputs to
+# run(), giving enabled callers the FlagGems kernels - exactly what the
+# absorbed registration would have installed.
+# ---------------------------------------------------------------------------
+_CHAIN_MATMUL_GUARD_FLAG = "_flag_gems_gcu400_chain_matmul_aten_guard_registered"
+_CHAIN_MATMUL_GUARD_LIBRARY = None
+
+_CAN_CAPTURE_NATIVE_CHAIN_MATMUL = hasattr(torch.library, "get_kernel")
+_NATIVE_CHAIN_MATMUL = None
+if _CAN_CAPTURE_NATIVE_CHAIN_MATMUL:
+    try:
+        _NATIVE_CHAIN_MATMUL = torch.library.get_kernel(
+            torch.ops.aten.chain_matmul.default, runtime.device.dispatch_key
+        )
+    except Exception:  # noqa: B902
+        _NATIVE_CHAIN_MATMUL = None
+
+_CHAIN_MATMUL_DEVICE_KEYSET = torch._C.DispatchKeySet(
+    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+)
+
+
+def _flaggems_owns_chain_matmul():
+    """Whether enable()/use_gems() has (attempted to) register this op."""
+    try:
+        import flag_gems
+    except Exception:  # noqa: B902
+        return False
+    registrar = getattr(flag_gems, "current_work_registrar", None)
+    if registrar is None:
+        return False
+    try:
+        # all_keys is appended before lib.impl raises on the duplicate, so the
+        # absorbed registration still lists the op (register_impl order).
+        return "chain_matmul" in registrar.all_keys
+    except Exception:  # noqa: B902
+        return False
+
+
+def _guarded_chain_matmul(matrices, *args, out=None):
+    mats = matrices if isinstance(matrices, (list, tuple)) else [matrices, *args]
+    for a in mats:
+        if isinstance(a, torch.Tensor) and not a.dtype.is_floating_point:
+            raise RuntimeError("chain_matmul(): unsupported dtype")
+    if _NATIVE_CHAIN_MATMUL is not None and not _flaggems_owns_chain_matmul():
+        return _NATIVE_CHAIN_MATMUL.call_boxed(_CHAIN_MATMUL_DEVICE_KEYSET, list(mats))
+    return run(matrices, *args, out=out)
+
+
+def _install_chain_matmul_aten_guard():
+    global _CHAIN_MATMUL_GUARD_LIBRARY
+    if getattr(torch, _CHAIN_MATMUL_GUARD_FLAG, False):
+        return
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        library.impl(
+            "chain_matmul",
+            _guarded_chain_matmul,
+            runtime.device.dispatch_key,
+        )
+    except RuntimeError as error:
+        logger.warning(
+            "chain_matmul %s-key guard registration skipped: %s",
+            runtime.device.dispatch_key,
+            error,
+        )
+        return
+    _CHAIN_MATMUL_GUARD_LIBRARY = library
+    setattr(torch, _CHAIN_MATMUL_GUARD_FLAG, True)
+
+
+_install_chain_matmul_aten_guard()

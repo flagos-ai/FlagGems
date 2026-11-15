@@ -75,7 +75,7 @@ def clamp_func(x, mini, maxi):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
+    return tl.maximum(x.to(tl.float32), mini)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -85,9 +85,8 @@ def clamp_func_max(x, maxi):
 
 
 def clamp_min(A, mini):
-    logger.debug("GEMS CLAMP_MIN")
     if mini is None:
-        raise ValueError("Mini must not be None")
+        raise ValueError("Mini must not be None")  # noqa: E501
     return clamp_func_min(A, mini)
 
 

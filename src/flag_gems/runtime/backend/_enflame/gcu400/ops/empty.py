@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # 16x128x64x1280 requires 163840 blocks and fails with OutOfResources). Grow
 # BLOCK instead of the grid, mirroring _foreach_zero in this backend.
 _MAX_GRID_X = 65535
-_BASE_BLOCK = 1024
+_BASE_BLOCK = 8192
 
 
 @triton.jit

@@ -28,7 +28,7 @@ _GRID_SIZE = 48
 # lanes, so a tile costs ~3 x 32 KiB of on-chip memory plus the payload).
 _ROW_BLOCK_CAP = 8192
 _STRIDED_BLOCK = 8192
-_GATHER_BLOCK = 4096
+_GATHER_BLOCK = 512
 _MAX_RANK = 8
 # Offsets are int32 lanes; keep headroom for the tile arithmetic.
 _OFFSET_LIMIT = 2**31 - 1 - _ROW_BLOCK_CAP

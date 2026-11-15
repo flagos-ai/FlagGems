@@ -199,7 +199,7 @@ def elu_backward(
 ):
     logger.debug("GEMS_ENFLAME ELU_BACKWARD")
     grad = grad_output.contiguous()
-    sor = self_or_result.contiguous()
+    sor = (grad_output if self_or_result is None else self_or_result).contiguous()
     out_dtype = torch.result_type(grad, sor)
     out = torch.empty_like(grad, dtype=out_dtype)
     _launch_elu_backward(

@@ -65,37 +65,47 @@ def _i32_words(t):
 
 
 def logical_and(A, B):
+    # 全局默认 64 位开关恒开后，int64 窄存储兼容分支已无触发条件，收敛为单条 kernel 调用。
     logger.debug("GEMS_ENFLAME LOGICAL_AND")
-    if _fake_i64(A) or _fake_i64(B):
-        A = _i32_words(A) if _fake_i64(A) else A
-        B = _i32_words(B) if _fake_i64(B) else B
     return logical_and_func(A, B)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
-@triton.jit()
-def logical_and_func_(x, y):
-    return tl.where((x != 0) & (y != 0), 1, 0)
+@triton.jit(do_not_specialize=["N"])
+def _logical_and_inplace_kernel(A, B, N, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    element_offsets = tl.arange(0, BLOCK)
+    for tile_index in tl.range(pid, (N + BLOCK - 1) // BLOCK, num_programs):
+        offset = tile_index * BLOCK + element_offsets
+        mask = offset < N
+        lhs = tl.load(A + offset, mask=mask, other=0)
+        rhs = tl.load(B + offset, mask=mask, other=0)
+        result = tl.where((lhs != 0) & (rhs != 0), 1, 0)
+        tl.store(A + offset, result, mask=mask)
 
 
 def logical_and_(A, B):
+    from flag_gems.runtime import torch_device_fn
+
     logger.debug("GEMS_ENFLAME LOGICAL_AND_")
-    if _fake_i64(A) or _fake_i64(B):
-        B = _i32_words(B) if _fake_i64(B) else B
-        if _fake_i64(A):
-            if A.storage_offset() == 0 and A.is_contiguous():
-                # int32 alias over A's own storage: the 0/1 result words
-                # land exactly where the value-level view reads element i.
-                A32 = _i32_words(A)
-                logical_and_func(A32, B, out0=A32)
-                return A
-            # Strided/offset fake-int64 destination: stage through a fresh
-            # bool buffer and let the layout-aware ATen copy write back.
-            A.copy_(logical_and_func(_i32_words(A), B))
-            return A
-        # Non-int64 destination with a fake-int64 operand: the store lane
-        # follows the destination dtype, so writing directly is safe.
-        logical_and_func(A, B, out0=A)
+    if A.numel() == 0:
         return A
-    logical_and_func_(A, B, out0=A)
+    # 广播到 A 的形状后展开成连续张量，保证 kernel 内可用一维扁平偏移。
+    expanded_other = B.expand_as(A)
+    if not expanded_other.is_contiguous():
+        expanded_other = expanded_other.contiguous()
+    target = A if A.is_contiguous() else A.contiguous()
+    num_elements = target.numel()
+    block_size = 8192
+    grid_size = min(48, triton.cdiv(num_elements, block_size))
+    with torch_device_fn.device(target.device):
+        _logical_and_inplace_kernel[(grid_size,)](
+            target,
+            expanded_other,
+            num_elements,
+            BLOCK=block_size,
+            num_warps=4,
+        )
+    if target is not A:
+        A.copy_(target)
     return A

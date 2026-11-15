@@ -118,6 +118,18 @@ def uniform_kernel_gcu400(
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     logger.debug("GEMS_ENFLAME UNIFORM_")
+    # aten::uniform_ 拒绝反转区间；原地版本此前缺少同一校验。
+    if from_ > to:
+        raise RuntimeError(
+            "uniform_ expects to return a [from, to) range, but found "
+            f"from={from_:g} > to={to:g}"
+        )
+    # kernel 按扁平连续下标写回；非连续视图先写连续副本再按原布局拷回。
+    if not self.is_contiguous():
+        contiguous_out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+        uniform_(contiguous_out, from_, to, generator=generator)
+        self.copy_(contiguous_out)
+        return self
     N = volume(self.shape)
     dtype = self.dtype
 

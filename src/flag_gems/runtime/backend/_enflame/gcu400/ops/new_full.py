@@ -35,7 +35,7 @@ _FLAT_UNSAFE_DTYPES = (
     torch.complex64,
     torch.complex128,
 )
-_FLAT_MAX_GRID = 48
+_FLAT_MAX_GRID = 24
 _FLAT_MIN_BLOCK = 2048
 
 
@@ -62,6 +62,45 @@ def new_full_flat_kernel(
         else:
             mask = offsets < n_elements
             tl.store(out_ptr + offsets, val, mask=mask)
+
+
+@libentry()
+@triton.jit
+def new_full_int64_words_kernel(
+    words_ptr,
+    n_words,
+    low_word,
+    high_word,
+    BLOCK: tl.constexpr,
+    EXACT: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    n_tiles = tl.cdiv(n_words, BLOCK)
+    for tile in range(pid, n_tiles, num_ctas):
+        offsets = tile * BLOCK + tl.arange(0, BLOCK)
+        is_high_word = (offsets % 2) == 1
+        low_values = tl.full([BLOCK], low_word, words_ptr.dtype.element_ty)
+        val = tl.where(is_high_word, high_word, low_values)
+        if EXACT:
+            tl.store(words_ptr + offsets, val)
+        else:
+            tl.store(words_ptr + offsets, val, mask=offsets < n_words)
+
+
+def _launch_new_full_int64_words(words, n_words, low_word, high_word):
+    block = _new_full_flat_block(n_words, 4)
+    grid = (min(_FLAT_MAX_GRID, -(-n_words // block)),)
+    with torch_device_fn.device(words.device):
+        new_full_int64_words_kernel[grid](
+            words,
+            n_words,
+            low_word,
+            high_word,
+            BLOCK=block,
+            EXACT=(n_words % block == 0),
+            num_warps=2,
+        )
 
 
 def _new_full_flat_block(n_units, unit_itemsize):
@@ -107,17 +146,14 @@ def _launch_new_full_flat(store_target, n_units, value, unit_itemsize):
 def _new_full_flat(out, fill_value):
     n_elements = out.numel()
     if out.dtype == torch.int64:
-        # Triton int64 element stores corrupt every other element on this
-        # backend. The aten layer stores int64 values as one int32 word per
-        # element (the trailing half of the allocation stays unread garbage),
-        # so mirror that layout: write the first numel words of an int32 view.
         value = int(fill_value)
         if not (-0x80000000 <= value <= 0x7FFFFFFF):
-            # Out of the representable range of the packed word; keep the
-            # generic-kernel behaviour for such values.
             return full_func_scalar(out, fill_value, out0=out)
         words = out.reshape(-1).view(torch.int32)
-        _launch_new_full_flat(words, n_elements, value, 4)
+        # 每个 int64 元素占 2 个 int32 word，必须写满整个视图
+        n_words = 2 * n_elements
+        high_word = 0 if value >= 0 else -1
+        _launch_new_full_int64_words(words, n_words, value, high_word)
         return out
     store_target = out
     value = fill_value

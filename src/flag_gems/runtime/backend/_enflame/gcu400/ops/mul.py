@@ -606,6 +606,36 @@ def _pick_block(n_elements, element_size, scalar_path=False):
     return 32768
 
 
+_HUGE_STREAM_ELEMENTS = 1 << 25
+
+
+def _pick_tensor_tensor_launch(n_elements, element_size):
+    """(BLOCK_SIZE, num_warps) for the tensor-by-tensor contiguous kernel.
+
+    Probe sweep on GCU400 (do_bench warmup=1000ms rep=100ms median, 3-stream
+    flat copy roofline ~2.95TB/s): num_warps must be scaled with the stream
+    size. nw4 collapses on huge streams (1G fp16 BLOCK 32768: nw4 3161us vs
+    nw1 2181us, +45%) while nw1 gives back ~1.5% on mid streams, so mid
+    streams (<32M elements) run nw2 and huge streams run nw1. Mid streams
+    peak at BLOCK 65536 for 2-byte types (BLOCK 8192 left ~5% on the table
+    at 16M fp16: 42.9 vs 40.9us) and BLOCK 32768 for 4-byte types. Huge
+    streams are saturated by the same blocks. 8-byte types keep the 384KB
+    on-chip tile budget of the validated 4-byte config. Tiny inputs stay on
+    BLOCK 1024 at the launch floor (~3.3us, all configs within noise).
+    """
+    if n_elements <= 4096:
+        return 1024, 4
+    if element_size >= 8:
+        block = 16384
+    elif element_size <= 2:
+        block = 65536
+    else:
+        block = 32768
+    if n_elements >= _HUGE_STREAM_ELEMENTS:
+        return block, 1
+    return block, 2
+
+
 def _grid_for(n_elements):
     """Fixed reference block for the grid size so the kernel GRID_SIZE
     argument always matches grid dim 0, independent of which BLOCK_SIZE the
@@ -662,17 +692,19 @@ def _fast_contiguous_mul(a, b, out):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = (_grid_for(n_elements),)
+    block_size, num_warps = _pick_tensor_tensor_launch(n_elements, a.element_size())
+    tiles = (n_elements + block_size - 1) // block_size
+    grid = (_GRID_SIZE if tiles > _GRID_SIZE else tiles,)
     with torch_device_fn.device(output.device):
         mul_contig_kernel[grid](
             a,
             b,
             output,
             n_elements,
-            BLOCK_SIZE=_pick_block(n_elements, a.element_size()),
+            BLOCK_SIZE=block_size,
             IS_BOOL=dtype is torch.bool,
             GRID_SIZE=grid[0],
-            num_warps=4,
+            num_warps=num_warps,
             num_stages=4,
         )
     return output

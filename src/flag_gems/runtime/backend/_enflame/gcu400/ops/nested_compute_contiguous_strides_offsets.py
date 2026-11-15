@@ -37,6 +37,9 @@ import torch
 logger = logging.getLogger(__name__)
 
 # ATen 标量类型名，用于 dtype 报错信息。
+_DEBUG_TAG = "GEMS _NESTED_COMPUTE_CONTIGUOUS_STRIDES_OFFSETS"
+
+
 _ATEN_TYPE_NAMES = {
     torch.bool: "Bool",
     torch.uint8: "Byte",
@@ -94,7 +97,7 @@ def nested_compute_contiguous_strides_offsets(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """从 nested sizes 计算连续 strides 与 storage offsets（CPU 元数据）。"""
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("GEMS _NESTED_COMPUTE_CONTIGUOUS_STRIDES_OFFSETS")
+        logger.debug(_DEBUG_TAG)
 
     sizes = nested_size
 

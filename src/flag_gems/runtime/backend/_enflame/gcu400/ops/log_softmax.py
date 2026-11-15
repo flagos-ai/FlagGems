@@ -212,8 +212,15 @@ def log_softmax(self, dim, half_to_float=False):
     if N == 1:
         return torch.zeros_like(inp, dtype=dtype)
 
-    out = torch.empty_like(inp, dtype=dtype)
     K = inp.numel() // M // N
+    if K > 1:
+        # The tuned kernel reduces one k-plane per program; for K > 1 the
+        # public non-inner kernel is both faster and accurate in 16-bit
+        # (the tuned path lost ~7% of the row sum in fp16/bf16 at N=40999).
+        from flag_gems.ops.log_softmax import log_softmax as _public
+
+        return _public(self, dim, half_to_float)
+    out = torch.empty_like(inp, dtype=dtype)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),

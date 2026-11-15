@@ -640,7 +640,7 @@ def _copy_int(dst_int, src_int):
     ``copy_`` instead of being redispatched to ATen the way a quantized
     ``Tensor.copy_`` is.
     """
-    from flag_gems.ops.copy import copy_
+    from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 
     copy_(dst_int, src_int)
     return dst_int

@@ -344,7 +344,7 @@ def triton_sparse_mla_fwd_interface(
         sm_scale = DT**-0.5
     # GCU400 DSM budget: cap BH so that q_blk/acc [BH, DP=512] tiles stay
     # small (DSM peak must fit dsmSize=1308672B). More chunks via NH.
-    BH = max(8, min(32, triton.next_power_of_2(G)))
+    BH = max(8, min(16, triton.next_power_of_2(G)))
     NH = triton.cdiv(G, BH)
     BK = 32
     output = torch.zeros((B, SQ, H, D), device=q.device, dtype=q.dtype)

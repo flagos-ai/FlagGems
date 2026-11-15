@@ -108,7 +108,7 @@ def _launch(a_c, b_c, out_c):
             BLOCK_SIZE=block_size,
             GRID_SIZE=min(_GRID_SIZE, num_tile),
             NUM_STAGES=4,
-            num_warps=4,
+            num_warps=2,
         )
 
 

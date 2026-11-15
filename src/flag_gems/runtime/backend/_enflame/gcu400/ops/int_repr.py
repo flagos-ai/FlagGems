@@ -187,6 +187,25 @@ def _linear_alias(tensor, dtype, shift):
     return alias
 
 
+def _plain_int_alias(tensor, dtype):
+    """Plain (non-quantized) integer alias of ``tensor``'s storage.
+
+    ``_int_view`` keeps the quantized flag when ``Tensor.view(dtype)``
+    succeeds, which is harmless for a Triton kernel (it only reads the data
+    pointer) but routes a subsequent ATen copy through the quantized dispatch
+    keys.  Building the alias with ``set_`` on an empty plain tensor drops the
+    flag, so the copy runs on the ordinary integer kernels.
+    """
+    alias = torch.empty(0, dtype=dtype, device=tensor.device)
+    alias.set_(
+        tensor.untyped_storage(),
+        tensor.storage_offset(),
+        tensor.size(),
+        tensor.stride(),
+    )
+    return alias
+
+
 def _is_storage_dense(numel, shape, stride):
     """True when the strides enumerate one dense span of ``numel`` elements.
 
@@ -210,7 +229,13 @@ def _is_storage_dense(numel, shape, stride):
 
 
 def _padded(n, seq, fill):
-    return (fill,) * (n - len(seq)) + tuple(int(v) for v in seq)
+    """Right-pad ``seq`` to exactly ``n`` slots.
+
+    A longer sequence must never grow the result: the caller splats it into a
+    fixed-arity kernel signature, so one extra entry silently becomes the next
+    parameter (it used to land on ``BLOCK`` and abort the launch).
+    """
+    return (fill,) * max(n - len(seq), 0) + tuple(int(v) for v in seq[-n:])
 
 
 def int_repr(self, out=None):
@@ -294,6 +319,16 @@ def int_repr(self, out=None):
                     rest - bulk,
                     BLOCK=_BLOCK,
                 )
+        return out
+
+    if len(shape) > _MAX_RANK:
+        # The strided kernel decomposes a fixed number of dimensions, so a
+        # taller input would spill its extra sizes/strides into the kernel's
+        # trailing positional arguments and fail before launching.  ATen's
+        # integer copy is rank-agnostic and handles every non-dense layout
+        # (stepped slices, zero-stride expand, mismatched out strides), so
+        # hand the whole copy over to it on plain integer aliases.
+        _plain_int_alias(out, out_dtype).copy_(_plain_int_alias(self, out_dtype))
         return out
 
     sizes = _padded(_MAX_RANK, shape, 1)

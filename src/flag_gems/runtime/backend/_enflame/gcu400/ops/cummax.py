@@ -14,12 +14,14 @@
 
 import logging
 import math
+import os
 from typing import List, Tuple, Union
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
@@ -299,7 +301,7 @@ def add_base_max_abc_kernel(
 
 def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 512
     if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
@@ -425,6 +427,86 @@ def scan_part_max_abc_loop_kernel(
                 tl.store(out_indices + offset, final_idx, mask=mask)
 
 
+@triton.jit
+def _max_i64_key(a, b):
+    return tl.maximum(a, b)
+
+
+@libentry()
+@triton.jit()
+def scan_part_max_abc_loop_key_kernel(
+    inp,
+    out,
+    out_indices,
+    A,
+    B,
+    C,
+    loop_num,
+    BLOCK: tl.constexpr,
+    FLOAT_INPUT: tl.constexpr,
+):
+    # GCU400: tl.associative_scan with a tuple combine lowers to a ~140ns/element
+    # scalar chain, ~25x slower than the same-width single-value int64 scan.
+    # Encode (value, index) into one signed int64 key so the scan runs on the
+    # fast single-value path:  key = (code_biased << 32) | position, where
+    # code_biased orders exactly like the input values (floats via a monotone
+    # bit mapping with NaN pinned above +inf; -0.0 normalized to +0.0 so ties
+    # break to the later index like torch.cummax). Larger keys win, so equal
+    # values resolve to the later position automatically.
+    num_a = tl.num_programs(0)
+    num_c = tl.num_programs(1)
+
+    t_idx = tl.arange(0, BLOCK)
+    min_value = get_dtype_min(inp.type.element_ty)
+
+    # Grid-stride over the (A, C) planes: GCU caps grid.x at 65535 and grid.y
+    # at 255, so a single launch may only cover a subset of them.
+    for a_idx in tl.range(tl.program_id(0), A, num_a):
+        for c_idx in tl.range(tl.program_id(1), C, num_c):
+            ac_offset = a_idx.to(tl.int64) * B * C + c_idx
+
+            carry = tl.full([], -(1 << 63), dtype=tl.int64)
+
+            for l_idx in tl.range(loop_num):
+                b_idx = l_idx * BLOCK + t_idx
+                mask = b_idx < B
+                offset = ac_offset + b_idx * C
+
+                inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+                if tl.constexpr(FLOAT_INPUT):
+                    vals = inp_vals.to(tl.float32)
+                    # torch.cummax treats -0.0 == +0.0 with later-index
+                    # tie-break; give both zeros the same ordering code.
+                    vals = tl.where(vals == 0, 0.0, vals)
+                    bits = vals.to(tl.int32, bitcast=True).to(tl.int64)
+                    code = tl.where(
+                        vals != vals,
+                        2147483647,
+                        tl.where(bits >= 0, bits, (~bits) - 2147483648),
+                    )
+                else:
+                    code = inp_vals.to(tl.int32).to(tl.int64)
+                # Masked lanes keep the minimum code and index 0 so they lose
+                # every tie against real data (protects the chunk carry).
+                pos = tl.where(mask, b_idx, 0).to(tl.int64)
+                key = (code << 32) | pos
+
+                r = tl.associative_scan(key, 0, _max_i64_key)
+                r = tl.maximum(r, carry)
+                carry = tl.max(r, axis=0)
+
+                rk = (r >> 32).to(tl.int32)
+                rb = (r & 0xFFFFFFFF).to(tl.int32)
+                if tl.constexpr(FLOAT_INPUT):
+                    u_bits = tl.where(rk < 0, (~rk) ^ (-2147483648), rk)
+                    fv = u_bits.to(tl.float32, bitcast=True)
+                else:
+                    fv = rk
+
+                tl.store(out + offset, fv.to(out.type.element_ty), mask=mask)
+                tl.store(out_indices + offset, rb, mask=mask)
+
+
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
     BLOCK_SIZE = 4096
     if B <= 4096:
@@ -435,17 +517,34 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
     # remaining planes, so clamping the launch is always safe.
     grid = (min(A, 65535), min(C, 255))
     with torch_device_fn.device(inp.device):
-        scan_part_max_abc_loop_kernel[grid](
-            inp,
-            out,
-            out_indices,
-            A,
-            B,
-            C,
-            loop_num,
-            BLOCK_SIZE,
-            num_warps=1,
-        )
+        if inp.dtype in (torch.int64, torch.uint64, torch.float64):
+            # 64-bit inputs cannot be packed into the int64 key; keep the
+            # original tuple-scan kernel for them.
+            scan_part_max_abc_loop_kernel[grid](
+                inp,
+                out,
+                out_indices,
+                A,
+                B,
+                C,
+                loop_num,
+                BLOCK_SIZE,
+                num_warps=1,
+            )
+        else:
+            float_input = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
+            scan_part_max_abc_loop_key_kernel[grid](
+                inp,
+                out,
+                out_indices,
+                A,
+                B,
+                C,
+                loop_num,
+                BLOCK_SIZE,
+                float_input,
+                num_warps=1,
+            )
 
 
 def cummax(
@@ -482,3 +581,68 @@ def cummax(
     else:
         scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
     return out, out_indices.to(torch.int32).to(torch.int64)
+
+
+# ---------------------------------------------------------------------------
+# aten::cummax dispatch guard (torch_gcu P21 defect workaround)
+#
+# torch_gcu's native cummax follows the IEEE maximum() semantics and returns
+# the non-NaN operand, so a NaN anywhere in the scanned prefix is silently
+# dropped instead of propagating like the CPU/CUDA reference semantics
+# (compiler_problems P21, flaggems_cummax_aten_nan_drop.md). The accuracy
+# tests' default reference leg runs torch.cummax on the GCU tensor, so the
+# broken native result poisons the comparison. Route the aten::cummax
+# dispatch for this backend's key to this (NaN-propagating) implementation,
+# mirroring the kthvalue / resize_as_sparse_ in-repo guards: idempotent via a
+# torch-attached flag, double-name import safe, and the registrar's later
+# use_gems()/enable() registration of the same op is absorbed as a warning by
+# op_registrar.for_each (same kernel either way).
+#
+# Dormant under the Long->Int replacement regime (env off): this kernel's
+# index packing needs the true int64 layout, and native cummax at least keeps
+# running there (garbage indices, but no int64-load abort), so the guard only
+# installs when the int64 layout is active (same _gcu_int64_indices gate the
+# kthvalue guard uses).
+# ---------------------------------------------------------------------------
+_CUMMAX_GUARD_FLAG = "_flag_gems_gcu400_cummax_aten_guard_registered"
+_CUMMAX_GUARD_LIBRARY = None
+
+
+def _gcu_int64_indices():
+    # torch_gcu reads an int64 tensor with a true 8-byte element stride only
+    # when TORCH_GCU_ENABLE_INT64_AND_UINT64 selects the int64 layout. Accepted
+    # values mirror torch_gcu's parse (see the kthvalue guard's copy): "1",
+    # "true", and nonzero numerics enable int64; unset / "0" / "false" keep
+    # the Long->Int replacement.
+    val = os.environ.get("TORCH_GCU_ENABLE_INT64_AND_UINT64")
+    if val is None:
+        return False
+    if val == "true":
+        return True
+    try:
+        return int(val) != 0
+    except ValueError:
+        return False
+
+
+def _install_native_cummax_guard():
+    global _CUMMAX_GUARD_LIBRARY
+    if not _gcu_int64_indices():
+        return
+    if getattr(torch, _CUMMAX_GUARD_FLAG, False):
+        return
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        library.impl("cummax", cummax, runtime.device.dispatch_key)
+    except RuntimeError as error:
+        logger.warning(
+            "cummax %s-key registration skipped: %s",
+            runtime.device.dispatch_key,
+            error,
+        )
+        return
+    _CUMMAX_GUARD_LIBRARY = library
+    setattr(torch, _CUMMAX_GUARD_FLAG, True)
+
+
+_install_native_cummax_guard()

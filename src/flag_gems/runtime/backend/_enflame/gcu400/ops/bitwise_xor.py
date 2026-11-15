@@ -111,20 +111,54 @@ def bitwise_xor_func_scalar(x, y):
     return x ^ y
 
 
-def _choose_block(n_total, itemsize):
-    # do_bench(median, warmup=1000ms/rep=100ms) sweep on GCU400 (L600):
-    # num_warps=2 beats 4 on every bucket; tiny shapes want the exact pow2
-    # tile, mid shapes peak at 65536 lanes, and only >2^28-element 1/2-byte
-    # streams gain from 131072 (num_stages and a 2-block unroll both lose).
+# 2026-11-13 kernel-mode sweep follow-up: the flat ladders split per kernel.
+# Official-bench A/B (75-case core, kernel-mode median) after a 19-variant
+# probe sweep: only the int32 buckets move.  Tensor mid (<= 2^24 elements)
+# takes 32768/nw4 (-8..-9% on the core mid shapes and the +/-10% shape
+# context swings disappear; 32768/nw4 loses 5-8% above 2^24, so the wide
+# nw2 tiles stay there).  Scalar mid takes 8192/nw4 (the (bool,int) mixed
+# arm keeps the 1-byte nw2 ladder); above 2^24 the 1R1W stream prefers nw4
+# on the same wide tile (probe: ties at 2^25/2^26/2^28, -1.1% at 2^27,
+# -2.9% at 2^30), and >2^28 2-byte streams keep 131072 lanes but move to
+# nw4 (-1.7..-3.6% same-context, -6.7..-10.8% on the bench).  The int16
+# mid probes favored nw4 tiles in isolation, but the official-bench A/B
+# regressed 8-28% there, so int16 (and 1-byte lanes) keep the historical
+# ladder everywhere except the >2^28 scalar nw4 flip.
+_MID_STREAM_MAX = 1 << 24
+
+
+def _tensor_block_nw(n_total, itemsize):
     if n_total <= 8192:
-        return max(triton.next_power_of_2(n_total), 2)
+        return max(triton.next_power_of_2(n_total), 2), 2
     if n_total <= 65536:
-        return 8192
+        return 8192, 2
     if n_total <= 524288:
-        return 32768
+        return 32768, 2
+    if n_total <= _MID_STREAM_MAX:
+        if itemsize == 4:
+            return 32768, 4
+        return 65536, 2
     if n_total > (1 << 28) and itemsize <= 2:
-        return 131072
-    return 65536
+        return 131072, 2
+    return 65536, 2
+
+
+def _scalar_block_nw(n_total, itemsize):
+    if n_total <= 8192:
+        return max(triton.next_power_of_2(n_total), 2), 2
+    if n_total <= 65536:
+        return 8192, 2
+    if n_total <= 524288:
+        return 32768, 2
+    if n_total <= _MID_STREAM_MAX:
+        if itemsize == 4:
+            return 8192, 4
+        return 65536, 2
+    if itemsize == 4:
+        return 65536, 4
+    if n_total > (1 << 28):
+        return (131072, 4) if itemsize == 2 else (131072, 2)
+    return 65536, 2
 
 
 def _lane_view(t):
@@ -133,14 +167,14 @@ def _lane_view(t):
     return t.view(torch.int8) if t.dtype == torch.bool else t
 
 
-def _launch_flat(kern, grid, args, block):
+def _launch_flat(kern, grid, args, block, num_warps=2):
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic host-level flake on shared nodes); retrying the
     # launch recompiles and succeeds (rad2deg / atan2_ / sinh precedents).
     for attempt in range(3):
         try:
             with torch_device_fn.device(args[0].device):
-                kern[grid](*args, num_warps=2, BLOCK=block)
+                kern[grid](*args, num_warps=num_warps, BLOCK=block)
             return
         except Exception as exc:
             if attempt == 2:
@@ -162,11 +196,18 @@ def _fast_tensor(t):
     )
 
 
-def _flat_config(n_total, itemsize):
-    block = _choose_block(n_total, itemsize)
+def _tensor_config(n_total, itemsize):
+    block, num_warps = _tensor_block_nw(n_total, itemsize)
     if triton.cdiv(n_total, block) * block > _INT32_MAX:
         return None
-    return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),)
+    return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),), num_warps
+
+
+def _scalar_config(n_total, itemsize):
+    block, num_warps = _scalar_block_nw(n_total, itemsize)
+    if triton.cdiv(n_total, block) * block > _INT32_MAX:
+        return None
+    return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),), num_warps
 
 
 def _scalar_lane_value(dtype, scalar):
@@ -205,19 +246,21 @@ def _xor_scalar_impl(tensor, scalar, out=None):
     n_total = tensor.numel()
     if n_total == 0:
         return out
-    config = _flat_config(n_total, tensor.element_size())
+    config = _scalar_config(n_total, tensor.element_size())
     if config is None:
         return None
-    block, grid = config
+    block, grid, num_warps = config
     x_lanes = _lane_view(tensor)
     if mixed:
         # (bool, int) promotes to int64; store one int32 word per element into
-        # the fake-int64 output (its value channel is a 4-byte slot).
+        # the fake-int64 output (its value channel is a 4-byte slot).  The bool
+        # input rides the 1-byte lane ladder, i.e. its historical nw2 config.
         _launch_flat(
             bitwise_xor_bool_int_flat_kernel,
             grid,
             (x_lanes, out, int(scalar), n_total),
             block,
+            num_warps,
         )
     else:
         _launch_flat(
@@ -230,6 +273,7 @@ def _xor_scalar_impl(tensor, scalar, out=None):
                 n_total,
             ),
             block,
+            num_warps,
         )
     return out
 
@@ -247,14 +291,15 @@ def bitwise_xor_tensor(A, B):
         n_total = out.numel()
         if n_total == 0:
             return out
-        config = _flat_config(n_total, A.element_size())
+        config = _tensor_config(n_total, A.element_size())
         if config is not None:
-            block, grid = config
+            block, grid, num_warps = config
             _launch_flat(
                 bitwise_xor_flat_kernel,
                 grid,
                 (_lane_view(A), _lane_view(B), _lane_view(out), n_total),
                 block,
+                num_warps,
             )
             return out
     return bitwise_xor_func(A, B)
@@ -273,14 +318,15 @@ def bitwise_xor_tensor_(A, B):
         n_total = A.numel()
         if n_total == 0:
             return A
-        config = _flat_config(n_total, A.element_size())
+        config = _tensor_config(n_total, A.element_size())
         if config is not None:
-            block, grid = config
+            block, grid, num_warps = config
             _launch_flat(
                 bitwise_xor_flat_kernel,
                 grid,
                 (_lane_view(A), _lane_view(B), _lane_view(A), n_total),
                 block,
+                num_warps,
             )
             return A
     return bitwise_xor_func(A, B, out0=A)

@@ -276,6 +276,7 @@ def _attn_nomax_step(
     BLOCK_N: tl.constexpr,
     MASKED: tl.constexpr,
     DEFER_SUM: tl.constexpr,
+    PV_F32: tl.constexpr,
 ):
     offs_n = tl.arange(0, BLOCK_N)
     pos = start_n + offs_n
@@ -299,11 +300,21 @@ def _attn_nomax_step(
     value = tl.load(
         v_base + pos[:, None] * stride_v_seqlen + offs_d[None, :] * stride_v_headsize
     )
-    # ATen's reference evaluates P @ V in fp32.  Rounding P to bf16 was a
-    # source of 1-ulp output mismatches; fp16 already has enough mantissa bits,
-    # so keep its cheaper input-dtype dot.
-    if value.dtype == tl.bfloat16:
+    if PV_F32:
+        # HEAD_DIM < 128 (dispatched: 64).  The 16-bit tl.dot whose N axis is
+        # only 64 wide compiles to ~13.7 TFLOPS on GCU400 while the same-shape
+        # fp32 dot reaches ~35 TFLOPS (measured, B4 H8 S1024 D64), so the
+        # fp32 upcast dot is the fast form there for BOTH fp16 and bf16.
         acc = tl.dot(p, value.to(tl.float32), acc, allow_tf32=False)
+    elif value.dtype == tl.bfloat16:
+        # bf16 inputs at HEAD_DIM == 128.  Rounding P to bf16 keeps only 7
+        # mantissa bits and fails the sdpa reference tolerance (measured:
+        # 0.34% of elements over atol 1e-4 + rtol 0.016), while the fp32
+        # upcast dot is 3x slower (38 vs 117 TFLOPS) and crosses the DSM
+        # concurrency line.  Run the PV dot in fp16 instead: p in [0, 1]
+        # always fits fp16, and bf16 -> fp16 is exact inside fp16's dynamic
+        # range (|v| > 65504 saturates, same as any fp16 kernel).
+        acc = tl.dot(p.to(tl.float16), value.to(tl.float16), acc, allow_tf32=False)
     else:
         acc = tl.dot(p.to(value.dtype), value, acc, allow_tf32=False)
     return acc, p_sum, l_i
@@ -338,6 +349,7 @@ def _attn_nomax_rowblock(
     DEFER_SUM: tl.constexpr,
     CAUSAL: tl.constexpr,
     LSE_BASE_E: tl.constexpr,
+    PV_F32: tl.constexpr,
 ):
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_d = tl.arange(0, HEAD_DIM)
@@ -358,11 +370,16 @@ def _attn_nomax_rowblock(
     p_sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
     if CAUSAL:
-        # Off-band: everything strictly above the diagonal block is unmasked.
-        # Requires BLOCK_M % BLOCK_N == 0 so the split points are block aligned.
-        # The `start_m > 0` guard matters: for row block 0 this range is empty,
-        # and a 0-trip version of the loop miscompiles on GCU400 (sporadic
-        # NaN/garbage in the first block's accumulator, ~1 element per row).
+        # The host always dispatches this kernel with BLOCK_M == BLOCK_N,
+        # so the diagonal band is exactly one BLOCK_N tile.  Keeping the band
+        # step out of a second pipelined loop avoids duplicating the loop's
+        # K/V staging: the stock off-band + on-band two-loop form allocated a
+        # second staging set, pushed the causal variant to 528KB DSM (> the
+        # 448KB per-program concurrency line) and halved the parallelism.
+        tl.static_assert(BLOCK_M == BLOCK_N)
+        # The `start_m > 0` guard matters: for row block 0 the off-band range
+        # is empty, and a 0-trip version of the loop miscompiles on GCU400
+        # (sporadic NaN/garbage in the first block's accumulator).
         if start_m > 0:
             for start_n in tl.range(0, start_m * BLOCK_M, BLOCK_N):
                 acc, p_sum, l_i = _attn_nomax_step(
@@ -383,28 +400,28 @@ def _attn_nomax_rowblock(
                     BLOCK_N,
                     MASKED=False,
                     DEFER_SUM=DEFER_SUM,
+                    PV_F32=PV_F32,
                 )
-        # On-band: only the BLOCK_M/BLOCK_N blocks touching the diagonal.
-        for start_n in tl.range(start_m * BLOCK_M, (start_m + 1) * BLOCK_M, BLOCK_N):
-            acc, p_sum, l_i = _attn_nomax_step(
-                acc,
-                p_sum,
-                l_i,
-                query,
-                k_base,
-                v_base,
-                offs_m,
-                offs_d,
-                start_n,
-                sm_scale,
-                stride_k_seqlen,
-                stride_k_headsize,
-                stride_v_seqlen,
-                stride_v_headsize,
-                BLOCK_N,
-                MASKED=True,
-                DEFER_SUM=DEFER_SUM,
-            )
+        acc, p_sum, l_i = _attn_nomax_step(
+            acc,
+            p_sum,
+            l_i,
+            query,
+            k_base,
+            v_base,
+            offs_m,
+            offs_d,
+            start_m * BLOCK_M,
+            sm_scale,
+            stride_k_seqlen,
+            stride_k_headsize,
+            stride_v_seqlen,
+            stride_v_headsize,
+            BLOCK_N,
+            MASKED=True,
+            DEFER_SUM=DEFER_SUM,
+            PV_F32=PV_F32,
+        )
     else:
         for start_n in tl.range(0, KV_CTX, BLOCK_N):
             acc, p_sum, l_i = _attn_nomax_step(
@@ -425,6 +442,7 @@ def _attn_nomax_rowblock(
                 BLOCK_N,
                 MASKED=False,
                 DEFER_SUM=DEFER_SUM,
+                PV_F32=PV_F32,
             )
 
     if DEFER_SUM:
@@ -478,6 +496,7 @@ def _attn_fwd_nomax(
     DEFER_SUM: tl.constexpr,
     CAUSAL: tl.constexpr,
     LSE_BASE_E: tl.constexpr,
+    PV_F32: tl.constexpr,
 ):
     # Fast path for the mask-free, evenly divisible case (causal or not).
     #
@@ -531,6 +550,7 @@ def _attn_fwd_nomax(
         DEFER_SUM=DEFER_SUM,
         CAUSAL=CAUSAL,
         LSE_BASE_E=LSE_BASE_E,
+        PV_F32=PV_F32,
     )
 
 
@@ -1393,18 +1413,26 @@ def scaled_dot_product_attention_forward(
         and q_head_num == kv_head_num
     ):
         block_m, block_n, num_warps = _nomax_launch_config(q_ctx, kv_ctx)
-        # The causal split runs [0, start_m*BLOCK_M) then the diagonal blocks,
-        # so the split point has to be block aligned.
+        # The causal split walks [0, start_m*BLOCK_M) in the loop and then one
+        # unrolled diagonal band tile, so causal requires the square tile.
         if (
             q_ctx % block_m == 0
             and kv_ctx % block_n == 0
-            and (not causal_fast or block_m % block_n == 0)
+            and (not causal_fast or block_m == block_n)
         ):
-            # Deferring the row sum always wins on GCU400: the reduction is a
-            # shuffle tree, and paying it per KV step costs more than carrying
-            # an extra [BLOCK_M, BLOCK_N] fp32 accumulator (measured on all
-            # three core shapes, 4-16 KV steps).
-            defer_sum = True
+            # Deferring the row sum wins on GCU400 in every measured shape
+            # except causal bf16 at HEAD_DIM=128: there the extra
+            # [BLOCK_M, BLOCK_N] fp32 p_sum accumulator pushes the compiled
+            # kernel over the 448KB DSM concurrency line (462KB -> 24-way);
+            # dropping it restores 48-way and the per-step row-sum tree is
+            # amortized over half the KV steps (35.9ms vs 65.9ms at
+            # B4 H32 S8192 D128 bf16 causal).
+            defer_sum = not (
+                causal_fast and HEAD_DIM_K == 128 and value.dtype == torch.bfloat16
+            )
+            # 16-bit PV dot with a 64-wide N axis is ~2.5x slower than the
+            # fp32 upcast dot on GCU400, so HEAD_DIM 64 keeps the fp32 dot.
+            pv_f32 = HEAD_DIM_K != 128
             M = torch.empty(
                 (query.shape[0], query.shape[1], query.shape[2]),
                 device=query.device,
@@ -1443,6 +1471,7 @@ def scaled_dot_product_attention_forward(
                 DEFER_SUM=defer_sum,
                 CAUSAL=causal_fast,
                 LSE_BASE_E=False,
+                PV_F32=pv_f32,
                 num_warps=num_warps,
                 num_stages=2,
             )
@@ -1828,9 +1857,14 @@ def flash_attention_forward(
                 device=query.device,
                 dtype=torch.float32,
             )
-            # DEFER_SUM always wins on GCU400 (see scaled_dot_product_
-            # attention_forward); the row-sum reduction costs more than
-            # carrying an extra [BLOCK_M, BLOCK_N] fp32 accumulator.
+            # DEFER_SUM wins on GCU400 in every non-causal shape measured (the
+            # causal bf16 exception lives in scaled_dot_product_attention_
+            # forward, which is the only causal caller of this kernel).  The
+            # PV dot policy is shared with that path: fp32 upcast dot at
+            # HEAD_DIM 64 (16-bit N=64 dot is 2.5x slower), 16-bit dot at 128
+            # (bf16 operands converted to fp16; see _attn_nomax_step).
+            defer_sum = True
+            pv_f32 = HEAD_DIM_K != 128
             _attn_fwd_nomax[(seq_len // block_m, batch * num_heads)](
                 q_bh,
                 k_bh,
@@ -1860,9 +1894,10 @@ def flash_attention_forward(
                 HEAD_DIM=HEAD_DIM_K,
                 BLOCK_M=block_m,
                 BLOCK_N=block_n,
-                DEFER_SUM=True,
+                DEFER_SUM=defer_sum,
                 CAUSAL=False,
                 LSE_BASE_E=True,
+                PV_F32=pv_f32,
                 num_warps=num_warps,
                 num_stages=2,
             )

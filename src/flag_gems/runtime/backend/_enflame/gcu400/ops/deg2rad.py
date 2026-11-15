@@ -60,8 +60,8 @@ def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
     # best geometric mean (1.08x vs torch); BLOCK=1024 starves the fixed
     # grid of memory-level parallelism (0.51x).
     block_size = 32768
-    num_warps = 4
-    num_stages = 4
+    num_warps = 2
+    num_stages = 2
     num_tile = triton.cdiv(n_elements, block_size)
     grid = (min(_GRID_SIZE, num_tile), 1, 1)
     with torch_device_fn.device(out_contig.device.index):

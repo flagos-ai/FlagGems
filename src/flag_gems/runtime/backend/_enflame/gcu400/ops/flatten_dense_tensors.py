@@ -457,15 +457,20 @@ def _flatten_contig_kernel(
     pid = tl.program_id(0)
     coff = meta + (N + 1)
     ptrs = meta + 2 * (N + 1)
-    # binary search: first idx in [1, N] with chunk-prefix[idx] > pid
-    lo = tl.full([1], 1, tl.int32)
-    hi = tl.full([1], N, tl.int32)
+    # binary search: first idx in [1, N] with chunk-prefix[idx] > pid.
+    # The loop variables are scalars: a ``tl.full([1], ...)`` cursor makes every
+    # probe a 1-wide load, and gcu400 then cannot legalize the surrounding
+    # elementwise fusion region ("failed to legalize operation
+    # 'triton_gcu.elementwise_fusion_region'", measured on every metadata
+    # launch).
+    lo = 1
+    hi = N
     for _ in tl.static_range(LOG2N):
         mid = (lo + hi) >> 1
-        cm = tl.load(coff + mid)
-        advance = cm <= pid
-        lo = tl.where(advance, mid + 1, lo)
-        hi = tl.where(advance, hi, mid)
+        if tl.load(coff + mid) <= pid:
+            lo = mid + 1
+        else:
+            hi = mid
     t = lo - 1
     k = pid - tl.load(coff + t)
     off_t = tl.load(meta + t)
@@ -496,14 +501,14 @@ def _flatten_general_kernel(
     pid = tl.program_id(0)
     coff = meta + (N + 1)
     ptrs = meta + 2 * (N + 1)
-    lo = tl.full([1], 1, tl.int32)
-    hi = tl.full([1], N, tl.int32)
+    lo = 1
+    hi = N
     for _ in tl.static_range(LOG2N):
         mid = (lo + hi) >> 1
-        cm = tl.load(coff + mid)
-        advance = cm <= pid
-        lo = tl.where(advance, mid + 1, lo)
-        hi = tl.where(advance, hi, mid)
+        if tl.load(coff + mid) <= pid:
+            lo = mid + 1
+        else:
+            hi = mid
     t = lo - 1
     k = pid - tl.load(coff + t)
     off_t = tl.load(meta + t)

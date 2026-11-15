@@ -34,21 +34,28 @@ def bitwise_right_shift_func_scalar(x, y):
     return x >> y
 
 
+# ATen 的 Scalar_Tensor 重载把标量作为被移位量，不能复用 tensor-scalar kernel。
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def bitwise_right_shift_func_scalar_tensor(x, y):
+    return x >> y
+
+
 def bitwise_right_shift(A, B):
-    logger.debug("GEMS_ENFLAME BITWISE_RIGHT_SHIFT")
+    # debug-only logger removed
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return bitwise_right_shift_func(A, B)
     elif isinstance(A, torch.Tensor):
         return bitwise_right_shift_func_scalar(A, B)
     elif isinstance(B, torch.Tensor):
-        return bitwise_right_shift_func_scalar(B, A)
+        return bitwise_right_shift_func_scalar_tensor(A, B)
     else:
-        # Both scalar
-        return torch.tensor(A * B)
+        # 双标量时按 Python 右移语义直接构造 0-D 张量。
+        return torch.tensor(A >> B)
 
 
 def bitwise_right_shift_(A, B):
-    logger.debug("GEMS_ENFLAME BITWISE_RIGHT_SHIFT_")
+    # debug-only logger removed
     if isinstance(B, torch.Tensor):
         return bitwise_right_shift_func(A, B, out0=A)
     else:

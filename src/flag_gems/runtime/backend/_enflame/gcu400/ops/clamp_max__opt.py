@@ -54,7 +54,7 @@ def clamp_max_(A, max_value):
     else:
         BLOCK, nw = 32768, 4
     grid = (triton.cdiv(n, BLOCK),)
-    if grid[0] > 65535:
+    if grid[0] > 1:
         BLOCK = 65536
         grid = (triton.cdiv(n, BLOCK),)
     _clamp_max_kernel[grid](

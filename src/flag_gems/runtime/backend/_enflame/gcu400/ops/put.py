@@ -355,7 +355,7 @@ def _flat_copy(dst, src):
         )
         return dst
 
-    from flag_gems.ops.copy import copy_
+    from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 
     return copy_(dst, src)
 

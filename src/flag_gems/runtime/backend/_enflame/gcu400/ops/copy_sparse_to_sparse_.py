@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.copy import copy_
+from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 
 logger = logging.getLogger(__name__)
 

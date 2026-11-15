@@ -28,7 +28,7 @@ def t_(inp: torch.Tensor) -> torch.Tensor:
     swaps the two dimensions (and their strides) in place, so the result is a
     transposed view over the original storage.
     """
-    logger.debug("GEMS T_")
+    # debug-only logger removed
     dim = inp.dim()
     if dim < 2:
         # 0D scalar / 1D tensor - no-op, same as torch.Tensor.t_

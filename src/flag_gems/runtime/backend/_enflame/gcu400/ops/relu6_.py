@@ -18,10 +18,17 @@ import torch
 import triton
 import triton.language as tl
 
+# Absolute import (not `..utils.pointwise_dynamic`): the generic
+# `flag_gems.utils.pointwise_dynamic` codegen path (`_collect_jit_deps`) drops
+# `node.level` when collecting this module's top-level imports, so a relative
+# import here would be re-emitted as a bare `from utils...` in the generated
+# code_cache file and fail with ModuleNotFoundError on first use of
+# `relu6_forward_generic` (numel/flat-offset beyond the int32-safe domain).
+from flag_gems.runtime.backend._enflame.gcu400.utils.pointwise_dynamic import (
+    pointwise_dynamic,
+)
 from flag_gems.utils import pointwise_dynamic as _generic_pointwise_dynamic
 from flag_gems.utils.libentry import libentry
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 

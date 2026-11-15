@@ -66,7 +66,7 @@ def range(start, end, *, dtype=None, layout=None, device=None, pin_memory=None):
         size = 0
 
     # BLOCK_SIZE=128 balances occupancy and grid launch overhead for typical 1-D ranges
-    BLOCK_SIZE = 128
+    BLOCK_SIZE = 2048
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if pin_memory is None:

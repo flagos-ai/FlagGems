@@ -1040,7 +1040,7 @@ def _adopt_quantizer(out, scale, zero_point):
 
 def _copy_int(dst_int, src_int):
     """Copy integers device-side, honouring both sides' strides."""
-    from flag_gems.ops.copy import copy_
+    from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 
     copy_(dst_int, src_int)
     return dst_int

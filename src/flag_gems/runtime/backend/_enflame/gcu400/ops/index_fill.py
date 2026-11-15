@@ -29,7 +29,21 @@ logger = logging.getLogger(__name__)
 # materialize-and-fill path in _index_fill_high_rank_fallback.
 _MAX_RANK = 8
 _BLOCK_SIZE = 512
-_COPY_BLOCK_SIZE = 1024
+
+# GCU tuning: flat-copy block (the 1024-wide original reaches only ~80 GB/s on
+# gcu400; 16K-32K-wide blocks stream at ~1.6 TB/s), and the row-parallel /
+# last-dim fill kernels that replace the [BLOCK_M, BLOCK_N] tile scatter for
+# contiguous tensors (the tile form compiles to per-lane scattered stores and
+# plateaus at ~6-8 GB/s regardless of size).
+_COPY_BLOCK_MIN = 1024
+_COPY_BLOCK_MAX = 32768
+_DSM_BUDGET_BYTES = 448 * 1024
+_ROWPAR_BLOCK_N_MAX = 2048
+_ROWPAR_BLOCK_M_MIN = 4
+_ROWPAR_BLOCK_M_MAX = 16
+_ROWPAR_TARGET_PROGRAMS = 512
+_LASTDIM_INDEX_MIN = 128
+_LASTDIM_INDEX_CAP = 4096
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -165,6 +179,82 @@ def index_fill_copy_kernel(out, inp, N, BLOCK_SIZE: tl.constexpr):
     tl.store(out + offsets, tl.load(inp + offsets, mask=mask), mask=mask)
 
 
+@libentry()
+@triton.jit
+def index_fill_rowpar_kernel(
+    out,
+    index,
+    value,
+    row_tasks,
+    index_len,
+    dim_size,
+    inner_size,
+    VALUE_IS_TENSOR: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # GCU row-parallel path for contiguous tensors with inner_size > 1: each
+    # program covers BLOCK_M (outer, index) row-tasks. The index entries are
+    # loaded as pipelined scalars and every row is stored as an affine
+    # BLOCK_N vector at a scalar row base, which vectorizes on GCU; the 2-D
+    # [BLOCK_M, BLOCK_N] tile form with per-lane offsets does not (it
+    # degrades to per-lane scattered stores, ~6 GB/s flat).
+    pid_m = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask_n = offs_n < inner_size
+    if VALUE_IS_TENSOR:
+        fill_value = tl.load(value)
+    else:
+        fill_value = value
+    for i in tl.static_range(BLOCK_M):
+        task = (pid_m * BLOCK_M + i).to(tl.int64)
+        inb = task < row_tasks
+        outer = task // index_len
+        ipos = task % index_len
+        raw_index = tl.load(index + ipos, mask=inb, other=0).to(tl.int64)
+        valid_index = (raw_index >= -dim_size) & (raw_index < dim_size) & inb
+        normalized = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+        base = (outer * dim_size + normalized) * inner_size
+        tl.store(out + base + offs_n, fill_value, mask=mask_n & valid_index)
+
+
+@libentry()
+@triton.jit
+def index_fill_lastdim_kernel(
+    out,
+    index,
+    value,
+    outer_size,
+    index_len,
+    dim_size,
+    VALUE_IS_TENSOR: tl.constexpr,
+    BLOCK_I: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+):
+    # GCU last-dim path for contiguous tensors (inner_size == 1,
+    # outer_size > 1, _LASTDIM_INDEX_MIN <= index_len <=
+    # _LASTDIM_INDEX_CAP): the index vector is loaded once per program and
+    # scatter-stored for BLOCK_R consecutive rows, instead of re-gathering
+    # `m % index_len` per output element.
+    pid = tl.program_id(axis=0)
+    lanes = tl.arange(0, BLOCK_I)
+    imask = lanes < index_len
+    raw_index = tl.load(index + lanes, mask=imask, other=0).to(tl.int64)
+    valid_index = (raw_index >= -dim_size) & (raw_index < dim_size) & imask
+    normalized = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+    if VALUE_IS_TENSOR:
+        fill_value = tl.load(value)
+    else:
+        fill_value = value
+    for r in tl.static_range(BLOCK_R):
+        row = (pid * BLOCK_R + r).to(tl.int64)
+        row_mask = row < outer_size
+        tl.store(
+            out + row * dim_size + normalized, fill_value, mask=valid_index & row_mask
+        )
+
+
 def _index_fill_contiguous_launch(out, dim, index, value, value_is_tensor, fill_numel):
     dim_size = out.size(dim)
     inner_size = 1
@@ -203,6 +293,58 @@ def _index_fill_contiguous_launch(out, dim, index, value, value_is_tensor, fill_
     )
 
 
+def _index_fill_rowpar_launch(
+    out, index, value, value_is_tensor, dim_size, inner_size, outer_size, index_len
+):
+    # Pick BLOCK_M so the launch keeps ~_ROWPAR_TARGET_PROGRAMS programs in
+    # flight: too few programs serialize the scalar-index chain, too many
+    # re-pay per-program fixed costs (measured on gcu400: bm=16/bn=2048 for
+    # 4096 row-tasks beats bm=8 by ~20% and bm=32 by ~25%).
+    block_n = min(_ROWPAR_BLOCK_N_MAX, triton.next_power_of_2(max(1, inner_size)))
+    grid_n = triton.cdiv(inner_size, block_n)
+    row_tasks = outer_size * index_len
+    target_m = max(1, _ROWPAR_TARGET_PROGRAMS // grid_n)
+    block_m = triton.next_power_of_2(max(1, row_tasks // target_m))
+    block_m = min(max(block_m, _ROWPAR_BLOCK_M_MIN), _ROWPAR_BLOCK_M_MAX)
+    grid = (triton.cdiv(row_tasks, block_m), grid_n)
+    index_fill_rowpar_kernel[grid](
+        out,
+        index,
+        value,
+        row_tasks,
+        index_len,
+        dim_size,
+        inner_size,
+        VALUE_IS_TENSOR=value_is_tensor,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=4,
+    )
+
+
+def _index_fill_lastdim_launch(
+    out, index, value, value_is_tensor, outer_size, index_len, dim_size
+):
+    # Measured on gcu400: uniform br=8/nw=2 is within ~7% of the per-shape
+    # optimum across index_len 128..4096. Small index_len (< 128) keeps the
+    # generic contiguous kernel: the 16-wide store form regresses ~2.7x
+    # there (measured 30us vs 11us at (4096, 256) with index_len 16).
+    block_i = triton.next_power_of_2(max(1, index_len))
+    grid = (triton.cdiv(outer_size, 8),)
+    index_fill_lastdim_kernel[grid](
+        out,
+        index,
+        value,
+        outer_size,
+        index_len,
+        dim_size,
+        VALUE_IS_TENSOR=value_is_tensor,
+        BLOCK_I=block_i,
+        BLOCK_R=8,
+        num_warps=2,
+    )
+
+
 def _index_fill_high_rank_fallback(out, dim, index, value, value_is_tensor, fill_numel):
     # Rare path: strided tensors whose rank exceeds the number of shape/stride
     # slots of the generic kernel. Materialize a contiguous copy, fill it with
@@ -227,8 +369,40 @@ def _index_fill_impl(out, dim, index, value, value_is_tensor):
     fill_numel = out.numel() // dim_size * index.numel()
     with torch_device_fn.device(out.device):
         if out.is_contiguous():
-            # The 2-D kernel is rank-independent: inner_size is computed on the
-            # host, so contiguous tensors of any rank take this path.
+            # The GCU-specific kernels are rank-independent: inner/outer
+            # sizes are computed on the host, so contiguous tensors of any
+            # rank take these paths.
+            if out.device.type == "gcu":
+                inner_size = 1
+                for i in range(dim + 1, out.ndim):
+                    inner_size *= out.shape[i]
+                outer_size = out.numel() // (dim_size * inner_size)
+                if inner_size > 1:
+                    _index_fill_rowpar_launch(
+                        out,
+                        index,
+                        value,
+                        value_is_tensor,
+                        dim_size,
+                        inner_size,
+                        outer_size,
+                        index.numel(),
+                    )
+                    return out
+                if (
+                    outer_size > 1
+                    and _LASTDIM_INDEX_MIN <= index.numel() <= _LASTDIM_INDEX_CAP
+                ):
+                    _index_fill_lastdim_launch(
+                        out,
+                        index,
+                        value,
+                        value_is_tensor,
+                        outer_size,
+                        index.numel(),
+                        dim_size,
+                    )
+                    return out
             _index_fill_contiguous_launch(
                 out, dim, index, value, value_is_tensor, fill_numel
             )
@@ -301,6 +475,19 @@ def _prepare_tensor_value(inp, value):
     return True, value
 
 
+def _index_fill_copy_launch(out, inp):
+    # Adaptive flat-copy block: gcu400 needs 8K-32K-wide blocks to stream near
+    # peak (1024-wide blocks plateau at ~80 GB/s); the block is additionally
+    # capped so the load+store staging stays within half the DSM budget,
+    # which keeps dual program/SP residency for wide dtypes.
+    n = out.numel()
+    dsm_cap = _DSM_BUDGET_BYTES // (2 * out.element_size())
+    block = triton.next_power_of_2(max(_COPY_BLOCK_MIN, n // 48))
+    block = min(block, _COPY_BLOCK_MAX, dsm_cap)
+    grid = (triton.cdiv(n, block),)
+    index_fill_copy_kernel[grid](out, inp, n, BLOCK_SIZE=block, num_warps=4)
+
+
 def index_fill(inp, dim, index, value):
     # Entry for both `index_fill.int_Scalar` and `index_fill.int_Tensor`: the
     # dispatcher routes by value type, so a 0-dimensional tensor value arrives
@@ -319,10 +506,7 @@ def index_fill(inp, dim, index, value):
         # fill the selected positions. Any rank works here.
         out = torch.empty_like(inp)
         with torch_device_fn.device(inp.device):
-            grid = (triton.cdiv(out.numel(), _COPY_BLOCK_SIZE),)
-            index_fill_copy_kernel[grid](
-                out, inp, out.numel(), BLOCK_SIZE=_COPY_BLOCK_SIZE
-            )
+            _index_fill_copy_launch(out, inp)
         return _index_fill_impl(out, dim, index, value, value_is_tensor)
     out = _native_clone(inp)
     return _index_fill_impl(out, dim, index, value, value_is_tensor)

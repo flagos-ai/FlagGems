@@ -82,6 +82,7 @@ def _select_addmm_out_config(M, N, K, dtype):
     block_m = 128 if M >= 1024 else block_m
     # out 变体统一 256 列块；该档位实测 fp16 加速比与 fp16 gems 延迟均为最优
     block_n = 256 if N > 64 else block_n
+    num_stages = 2
     return block_m, block_n, block_k, num_warps, num_stages
 
 

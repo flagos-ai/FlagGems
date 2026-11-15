@@ -292,8 +292,8 @@ def softmax_backward_kernel_non_inner(
             )
 
 
-def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_ENFLAME SOFTMAX_VJP")
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS_ENFLAME SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -304,10 +304,16 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=input_dtype)
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    if grad_input.dtype != input_dtype:
+        raise RuntimeError(
+            f"_softmax_backward_data.out: expected grad_input dtype {input_dtype}, "
+            f"got {grad_input.dtype}"
+        )
     K = output.numel() // M // N
 
-    with torch_device_fn.device(in_grad.device):
+    with torch_device_fn.device(grad_input.device):
         if K > 1:
             BLOCK_K = min(triton.next_power_of_2(K), 1024)
             BLOCK_N = max(1, min(64, 32768 // BLOCK_K))
@@ -316,19 +322,19 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             softmax_backward_kernel_non_inner[grid](
                 output,
                 grad_output,
-                in_grad,
+                grad_input,
                 M,
                 N,
                 K,
                 BLOCK_N=BLOCK_N,
                 BLOCK_K=BLOCK_K,
-                num_warps=1,
+                num_warps=4,
             )
         elif M == 1 and N > 2048:
             BLOCK_N = 4096
             num_programs = min(GRID_DIM_X, triton.cdiv(N, BLOCK_N))
             partial = torch.empty(
-                num_programs, dtype=torch.float32, device=in_grad.device
+                num_programs, dtype=torch.float32, device=grad_input.device
             )
             softmax_backward_scale_kernel[(num_programs,)](
                 output,
@@ -342,7 +348,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             softmax_backward_grad_kernel[(num_programs,)](
                 output,
                 grad_output,
-                in_grad,
+                grad_input,
                 partial,
                 N,
                 num_programs,
@@ -359,7 +365,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
             softmax_backward_kernel_inner[grid](
                 output,
                 grad_output,
-                in_grad,
+                grad_input,
                 M,
                 N,
                 BLOCK_M=BLOCK_M,
@@ -367,7 +373,16 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 ONE_TILE=ONE_TILE,
                 num_warps=1,
             )
-    return in_grad
+    return grad_input
+
+
+def softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_ENFLAME SOFTMAX_VJP")
+
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    return softmax_backward_out(
+        grad_output, output, dim, input_dtype, grad_input=in_grad
+    )
 
 
 # ------------------------  forward  -------------------------------
@@ -648,6 +663,62 @@ def softmax_forward_block_output_kernel(
 
 
 @libentry()
+@triton.jit(do_not_specialize=["M", "N", "K"])
+def softmax_forward_kernel_non_inner(
+    out_ptr,
+    in_ptr,
+    M,
+    N,
+    K,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """非内层归约维（K > 1）：grid 跨步遍历 K，program 内在线归约整条 N 维。
+
+    grid.y 受 GCU 硬件上限（255）限制，因此 K 方向只用 GRID_DIM_X 个
+    program，每个 program 在 kernel 内按 `num_k_programs * BLOCK_K` 跨步，
+    与 `softmax_backward_kernel_non_inner` 一致。
+    """
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    num_k_programs = tl.num_programs(1)
+
+    for k_start in tl.range(pid_k * BLOCK_K, K, num_k_programs * BLOCK_K):
+        k_offsets = k_start + tl.arange(0, BLOCK_K)
+        k_mask = k_offsets < K
+        acc_max = tl.full([BLOCK_K], float("-inf"), tl.float32)
+        acc_sum = tl.zeros([BLOCK_K], tl.float32)
+        for n_start in tl.range(0, N, BLOCK_N):
+            n_offsets = n_start + tl.arange(0, BLOCK_N)
+            mask = (n_offsets[:, None] < N) & k_mask[None, :]
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
+            inp = tl.load(in_ptr + offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            m_new = tl.maximum(acc_max, tl.max(inp, 0))
+            # 整列都是 -inf 时保持原值，避免 -inf - (-inf) 产生 NaN。
+            all_neg_inf = m_new == float("-inf")
+            shifted = tl.sum(tl.exp2((inp - m_new[None, :]) * LOG2E), 0)
+            acc_sum = tl.where(
+                all_neg_inf,
+                acc_sum,
+                acc_sum * tl.exp2((acc_max - m_new) * LOG2E) + shifted,
+            )
+            acc_max = m_new
+
+        for n_start in tl.range(0, N, BLOCK_N):
+            n_offsets = n_start + tl.arange(0, BLOCK_N)
+            mask = (n_offsets[:, None] < N) & k_mask[None, :]
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
+            inp = tl.load(in_ptr + offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            exp_val = tl.exp2((inp - acc_max[None, :]) * LOG2E)
+            out = exp_val * (1.0 / acc_sum)[None, :]
+            tl.store(out_ptr + offsets, out.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+@libentry()
 @triton.jit(do_not_specialize=["numel"])
 def softmax_single_kernel(out_ptr, in_ptr, numel, BLOCK: tl.constexpr):
     """归约维长度为 1：结果恒为 1；元素为 -inf 时按 0/0 语义给 NaN（同 aten）。"""
@@ -657,13 +728,6 @@ def softmax_single_kernel(out_ptr, in_ptr, numel, BLOCK: tl.constexpr):
     inp = tl.load(in_ptr + offs, mask=mask, other=0.0).to(tl.float32)
     out = tl.where(inp == float("-inf"), float("nan"), 1.0)
     tl.store(out_ptr + offs, out.to(out_ptr.dtype.element_ty), mask=mask)
-
-
-def _common_softmax_out(source, dim, half_to_float, out):
-    """内层归约维（K > 1）暂沿用公共实现，避免与公共 kernel 重复维护。"""
-    from flag_gems.ops.softmax import softmax_out as common_softmax_out
-
-    return common_softmax_out(source, dim, half_to_float, out=out)
 
 
 def softmax_out(self, dim, half_to_float=False, *, out):
@@ -704,7 +768,22 @@ def softmax_out(self, dim, half_to_float=False, *, out):
         return out
 
     if K > 1:
-        return _common_softmax_out(source, dim, half_to_float, out=out)
+        BLOCK_K = min(triton.next_power_of_2(K), 1024)
+        BLOCK_N = max(1, min(64, 32768 // BLOCK_K))
+        num_k_programs = min(GRID_DIM_X, triton.cdiv(K, BLOCK_K))
+        grid = (M, num_k_programs)
+        with torch_device_fn.device(source.device):
+            softmax_forward_kernel_non_inner[grid](
+                out,
+                source,
+                M,
+                N,
+                K,
+                BLOCK_N=BLOCK_N,
+                BLOCK_K=BLOCK_K,
+                num_warps=4,
+            )
+        return out
 
     with torch_device_fn.device(source.device):
         element_size = source.element_size()

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 def vstack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME VSTACK")
+    # 常量日志已关闭（v7 等价改写）
 
     n = len(tensors)
     if n == 0:

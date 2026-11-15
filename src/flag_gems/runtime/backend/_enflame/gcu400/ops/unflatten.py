@@ -39,7 +39,7 @@ def unflatten(A: torch.Tensor, dim: int, sizes: List[int]) -> torch.Tensor:
 
     # Handle negative dim
     if dim < 0:
-        dim = dim + A.ndim
+        dim += A.dim()
 
     # Validate that product of sizes matches the dimension size
     dim_size = A.size(dim)

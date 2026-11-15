@@ -81,7 +81,7 @@ def _launch(log_probs, beam_scores, out, same_shape):
             BLOCK_B=BLOCK_B,
             BLOCK_V=BLOCK_V,
             SAME_SHAPE=same_shape,
-            num_warps=2,
+            num_warps=1,
         )
     return out
 

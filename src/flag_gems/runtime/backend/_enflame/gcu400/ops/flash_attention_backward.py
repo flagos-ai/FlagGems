@@ -15,6 +15,7 @@
 import contextlib
 import logging
 import math
+import sys
 from typing import Optional, Tuple
 
 import torch
@@ -90,6 +91,11 @@ _DQ_CONFIGS = [
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4, num_stages=3),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=4, num_stages=3),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=8, num_stages=3),
+    # GCU400 (L600): the 2-warp (64, 128) tile beats every 4/8-warp config for
+    # this kernel across S 1024-8192, D 64/128, causal and non-causal
+    # (dq kernel alone -34%..-50%, verified against a CPU fp32 reference).
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=2, num_stages=2),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=2, num_stages=3),
 ]
 
 _DKV_CONFIGS = [
@@ -102,6 +108,11 @@ _DKV_CONFIGS = [
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4, num_stages=3),
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=8, num_stages=3),
     triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=8, num_stages=3),
+    # GCU400 (L600): the 1-warp (128, 64) tile is the best dkv config for
+    # non-causal shapes (-14%..-26%) and for causal D<=64; verified against a
+    # CPU fp32 reference. Wider tiles (64, 256) exceed the 917504-byte DSM
+    # hard limit on this kernel body and are rejected at compile time.
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_warps=1, num_stages=2),
 ]
 
 
@@ -110,7 +121,18 @@ _DKV_CONFIGS = [
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
+    # IS_CAUSAL must be part of the key too: the causal and non-causal optima
+    # diverge once the low-warp configs below are in the pool (the 1-warp
+    # (128, 64) dkv tile wins non-causal by ~15% but loses on causal, so a
+    # non-causal-tuned winner reused by the causal pass regresses ~10-12%).
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "DO_BIAS_GRAD",
+        "IS_CAUSAL",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -320,8 +342,9 @@ def _flash_attn_bwd_dq_fused(
     configs=_DKV_CONFIGS,
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
-    # device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS"],
+    # device limit once recompiled with one. IS_CAUSAL joins the key for the
+    # same divergence reason as the dq kernel above.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "IS_CAUSAL"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -549,10 +572,16 @@ def _flash_attn_bwd_dkv(
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
-    # shared-memory footprint, and a config tuned without an attention bias
-    # can exceed the device limit once recompiled with one.
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
+    # Same key policy as the dense dq kernel above (footprint + causal
+    # divergence).
+    key=[
+        "max_seqlen_q",
+        "max_seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "DO_BIAS_GRAD",
+        "IS_CAUSAL",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -762,10 +791,9 @@ def _flash_attn_bwd_varlen_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
-    # footprint, and a config tuned without an attention bias can exceed the
-    # device limit once recompiled with one.
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS"],
+    # Same key policy as the dense dkv kernel above (footprint + causal
+    # divergence).
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "IS_CAUSAL"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
@@ -1733,3 +1761,37 @@ def _force_math_sdp_backend_for_gcu():
 
 
 _force_math_sdp_backend_for_gcu()
+
+
+# ---------------------------------------------------------------------------
+# flag_gems.ops 入口回绑（同 slow_conv_dilated2d / upsample_bilinear2d_backward
+# 制式）
+#
+# `flag_gems.ops.*` 的 Python 属性在包导入期即绑定为通用（公版）实现——本
+# 文件的 aten device-key 注册只接管 `torch.ops.aten.*` 调用链，benchmark 的
+# gems 腿（`flag_gems.ops.flash_attention_backward` 直调）与精度测试的 result
+# 腿因此仍落在公版 kernel 上。本副本与公版 kernel 逐字节同源，仅 autotune
+# 配置表按 GCU400 (L600) 实测扩展，把上述入口幂等绑回本副本，使两条调用链
+# 共享同一组（已扩展的）autotuner；对公版语义零改变。
+# ---------------------------------------------------------------------------
+def _rebind_generic_entry_points():
+    for entry_point in (
+        "flash_attention_backward",
+        "scaled_dot_product_flash_attention_backward",
+        "scaled_dot_product_cudnn_attention_backward",
+        "efficient_attention_backward",
+    ):
+        impl = globals()[entry_point]
+        generic_module = sys.modules.get("flag_gems.ops.flash_attention_backward")
+        if generic_module is not None and generic_module is not sys.modules.get(
+            __name__
+        ):
+            setattr(generic_module, entry_point, impl)
+        generic_package = sys.modules.get("flag_gems.ops")
+        if generic_package is not None and generic_package is not sys.modules.get(
+            __name__
+        ):
+            setattr(generic_package, entry_point, impl)
+
+
+_rebind_generic_entry_points()

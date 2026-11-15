@@ -553,6 +553,7 @@ def _compute_svd_cond(A, batch_size, m, n, p_mode):
             BLOCK_N=BLOCK_N_J,
             MAX_ITER=max_iter,
             p_mode=p_mode,
+            num_warps=1,
         )
         return out
 
@@ -583,10 +584,12 @@ def _compute_svd_cond(A, batch_size, m, n, p_mode):
     # Jacobi eigenvalue decomposition
     # More iterations needed for convergence on larger/ill-conditioned matrices
     eigvals = torch.empty(batch_size, gram_n, dtype=torch.float32, device=device)
-    # GCU backend miscompiles this kernel for BLOCK_N >= 64 with num_warps > 1
-    # (silently wrong eigenvalues, see compiler problem record); num_warps=1 is
-    # correct at every width, so gate it by vector width.
-    jacobi_kwargs = {"num_warps": 1} if BLOCK_N_J >= 64 else {}
+    # GCU backend miscompiles this kernel with num_warps > 1 (silently wrong
+    # eigenvalues, see compiler problem record). Re-measured 2026-11-13: the
+    # corruption starts at BLOCK_N = 8 with any nw >= 2 (3-11% eigval error) and
+    # is intermittent even at BLOCK_N = 4 (the fused kernel hit a 44% cond error
+    # at GN = 3); only num_warps = 1 is correct at every width (2..128) and
+    # seed, so pin it unconditionally instead of gating by vector width.
     _jacobi_eigenvalues_kernel[(batch_size,)](
         G,
         eigvals,
@@ -598,7 +601,7 @@ def _compute_svd_cond(A, batch_size, m, n, p_mode):
         N=gram_n,
         BLOCK_N=BLOCK_N_J,
         MAX_ITER=max_iter,
-        **jacobi_kwargs,
+        num_warps=1,
     )
 
     # Compute condition number from eigenvalues
@@ -717,7 +720,7 @@ def _compute_nuc_cond(A, batch_size, n):
         N=n,
         BLOCK_N=BLOCK_N_A,
         MAX_ITER=max_iter,
-        **({"num_warps": 1} if BLOCK_N_A >= 64 else {}),
+        num_warps=1,
     )
 
     # Compute inverse on CPU to avoid FlagGems Triton LU kernel dispatch
@@ -755,7 +758,7 @@ def _compute_nuc_cond(A, batch_size, n):
         N=n,
         BLOCK_N=BLOCK_N_A,
         MAX_ITER=max_iter,
-        **({"num_warps": 1} if BLOCK_N_A >= 64 else {}),
+        num_warps=1,
     )
 
     # Compute nuc cond = sum(svdvals(A)) * sum(svdvals(inv(A)))

@@ -26,7 +26,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
+NUM_SIPS = 48
 
 
 @libentry()
@@ -167,10 +167,14 @@ def silu_(A):
     with torch_device_fn.device(inp.device):
         silu_flat_kernel[(grid_size,)](
             inp,
-            A,
+            inp,
             N_total,
             BLOCK=BLOCK,
             num_warps=nw,
         )
+    # 非连续输入时 contiguous() 会生成副本，须把结果按 A 的 stride 拷回，
+    # 否则按 flat 偏移写 A 会落到错误的存储位置。
+    if inp is not A:
+        A.copy_(inp)
 
     return A

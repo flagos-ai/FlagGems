@@ -232,6 +232,21 @@ def max(inp):
     return out
 
 
+# gcu400 miscompiles a reduction whose lane vector reaches 512 B: the reduce
+# silently covers only part of the axis (the value becomes the max over a
+# subset and the index matches that wrong value).  Measured on
+# max_kernel_inner_1d, (4096, 256) dim=1: BLOCK_N=128 with fp32 and
+# BLOCK_N=256 with fp16/bf16 are wrong for ~94% of the rows, while 64 fp32
+# lanes and 128 fp16 lanes are exact.  Cap the reduction width at 256 B.
+_MAX_REDUCTION_BYTES = 256
+
+
+def _reduction_cap(inp):
+    # NB: the module-level ``max`` op shadows the builtin, so no max() here.
+    cap = _MAX_REDUCTION_BYTES // inp.element_size()
+    return cap if cap > 16 else 16
+
+
 def max_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_ENFLAME MAX_DIM")
 
@@ -259,7 +274,7 @@ def max_dim(inp, dim=None, keepdim=False):
     out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
 
     if K == 1:
-        BLOCK_N = min(triton.next_power_of_2(N), 4096)
+        BLOCK_N = min(triton.next_power_of_2(N), _reduction_cap(inp))
         grid_m = min(M, 48)
         num_stages = 3 if M > grid_m else 1
         with torch_device_fn.device(inp.device):
@@ -295,7 +310,7 @@ def max_dim(inp, dim=None, keepdim=False):
         BLOCK_K = min(
             triton.next_power_of_2(K), min(512 // _acc_bpes.get(inp.dtype, 8), 128)
         )
-        BLOCK_N = min(triton.next_power_of_2(N), 256)
+        BLOCK_N = min(triton.next_power_of_2(N), _reduction_cap(inp))
 
         num_k_tiles = triton.cdiv(K, BLOCK_K)
         total_work = M * num_k_tiles
@@ -313,7 +328,11 @@ def max_dim(inp, dim=None, keepdim=False):
                 BLOCK_K=BLOCK_K,
                 BLOCK_N=BLOCK_N,
                 num_stages=1,
-                num_warps=1,
+                # num_warps=1 miscompiles the second grid-stride iteration
+                # (total_work > 48): the last work items return the max over a
+                # subset (measured on (200, 2560, 3) dim=0 fp32: k = 6144..7678
+                # wrong, max err 2.0).  4 warps is exact.
+                num_warps=4,
             )
 
     return MaxOut(values=out_value, indices=out_index.to(torch.int64))

@@ -31,7 +31,7 @@ _FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
 
 # 4096 int32 (16 KB) per program; the grid is capped so the loop is a
 # grid-stride one instead of one CTA per tile.
-_FLAT_COPY_BLOCK = 4096
+_FLAT_COPY_BLOCK = 8192
 _FLAT_COPY_GRID = 48
 # Offsets are int32, so the last masked tile must still fit in an int32.
 _FLAT_COPY_MAX_ELEMS = 2**31 - 1 - _FLAT_COPY_BLOCK
@@ -230,7 +230,6 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS_ENFLAME COPY")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )
@@ -294,8 +293,6 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         return torch.ops.aten.copy_.default.redispatch(
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
-
-    logger.debug("GEMS_ENFLAME COPY_")
 
     try:
         broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)

@@ -19,6 +19,9 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+_AS_STRIDED = torch.Tensor.as_strided
+_STORAGE_OFFSET = torch.Tensor.storage_offset
+
 
 def alias(self: torch.Tensor) -> torch.Tensor:
     r"""Return a tensor that shares the same storage as the input.
@@ -32,6 +35,7 @@ def alias(self: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A new tensor view sharing storage with ``self``.
     """
-    logger.debug("GEMS ALIAS")
     # as_strided with same shape/strides/offset creates an alias view
-    return self.as_strided(self.shape, self.stride(), self.storage_offset())
+    shape = self.shape
+    stride = self.stride()
+    return _AS_STRIDED(self, shape, stride, _STORAGE_OFFSET(self))

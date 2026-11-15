@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 _MAX_GRID = 65535
 _MIN_PROGRAMS = 256
 _TARGET_ITERS = 16
-_BLOCK = 4096
+_BLOCK = 32768
 _WARPS = 4
 
 

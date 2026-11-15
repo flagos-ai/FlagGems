@@ -20,11 +20,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.copy import copy_
 from flag_gems.ops.neg import neg
 from flag_gems.ops.sum import sum as gems_sum
 from flag_gems.ops.zeros_like import zeros_like
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 from flag_gems.utils import libentry, pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)

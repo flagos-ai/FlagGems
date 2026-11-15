@@ -60,7 +60,7 @@ def bitwise_and_flat_kernel(x_ptr, y_ptr, out_ptr, N_total, BLOCK: tl.constexpr)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
     num_blocks = (N_total + BLOCK - 1) // BLOCK
-    for block_id in tl.range(pid, num_blocks, num_pids):
+    for block_id in tl.range(pid, num_blocks, num_pids, num_stages=2):
         off = block_id * BLOCK + arange
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask)
@@ -75,7 +75,7 @@ def bitwise_and_scalar_flat_kernel(x_ptr, out_ptr, y, N_total, BLOCK: tl.constex
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
     num_blocks = (N_total + BLOCK - 1) // BLOCK
-    for block_id in tl.range(pid, num_blocks, num_pids):
+    for block_id in tl.range(pid, num_blocks, num_pids, num_stages=2):
         off = block_id * BLOCK + arange
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask)
@@ -90,7 +90,7 @@ def bitwise_and_bool_int_flat_kernel(x_ptr, out_ptr, y, N_total, BLOCK: tl.const
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
     num_blocks = (N_total + BLOCK - 1) // BLOCK
-    for block_id in tl.range(pid, num_blocks, num_pids):
+    for block_id in tl.range(pid, num_blocks, num_pids, num_stages=2):
         off = block_id * BLOCK + arange
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask)
@@ -139,7 +139,7 @@ def _launch_flat(kern, grid, args, block):
     for attempt in range(3):
         try:
             with torch_device_fn.device(args[0].device):
-                kern[grid](*args, num_warps=2, BLOCK=block)
+                kern[grid](*args, num_warps=8, BLOCK=block)
             return
         except Exception as exc:
             if attempt == 2:

@@ -27,7 +27,12 @@ def ior_tensor(self, other):
     ``__ior__.Tensor`` and ``bitwise_or_.Tensor`` are the same operation's two
     entry points in ATen (verified numerically and by schema).  The relative
     import is mandatory: an absolute ``flag_gems.ops.bitwise_or`` import would
-    bind back to the generic pointwise implementation (ilshift precedent).
+    bind back to the generic pointwise implementation whose CTA count is
+    locked at min(12, num_tiles) (ilshift precedent).  The log prefix stays
+    ``GEMS`` because the arch package is imported under its short top-level
+    name (``gcu400.ops...``), so tests/accuracy_utils.gems_log_prefix derives
+    "GEMS" for this module (P23: a committed ``GEMS_ENFLAME`` prefix flips the
+    caplog gate red under the short-name import mechanism).
     """
-    logger.debug("GEMS_ENFLAME IOR_TENSOR")
+    logger.debug("GEMS IOR_TENSOR")
     return bitwise_or_tensor_(self, other)

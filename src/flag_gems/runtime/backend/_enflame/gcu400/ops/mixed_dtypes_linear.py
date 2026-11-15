@@ -135,7 +135,18 @@ def _mixed_dtypes_linear_kernel(
 
 
 def mixed_dtypes_linear(input, weight, scale, bias=None, activation=None):
-    logger.debug("GEMS _MIXED_DTYPES_LINEAR")
+    # 常量日志已关闭（fix4 等价改写）
+
+    # kernel 的 stride 按连续布局硬编码（stride_xm=K / stride_wn=ncols）；
+    # 非连续视图先物化为连续副本，避免按错误地址读取 input / weight / scale。
+    if not input.is_contiguous():
+        input = input.contiguous()
+    if not weight.is_contiguous():
+        weight = weight.contiguous()
+    if not scale.is_contiguous():
+        scale = scale.contiguous()
+    if bias is not None and not bias.is_contiguous():
+        bias = bias.contiguous()
 
     assert input.dtype in (
         torch.float16,

@@ -118,7 +118,7 @@ def randint(
     BLOCK_SIZE = _RANDINT_BLOCK_SIZE
     UNROLL = _RANDINT_UNROLL
     MAX_GRID_X = _RANDINT_MAX_GRID_X
-    grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), MAX_GRID_X),)
+    grid = (min(triton.cdiv(N, BLOCK_SIZE * UNROLL), MAX_GRID_X),)
     increment = triton.cdiv(N, UNROLL)
     use_u32 = isinstance(high, int) and 0 < high < _RANDINT_U32_HIGH_LIMIT
 

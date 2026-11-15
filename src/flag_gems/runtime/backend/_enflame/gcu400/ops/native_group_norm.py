@@ -14,12 +14,12 @@
 
 import logging
 
-from flag_gems.ops.groupnorm import group_norm
+from .groupnorm import group_norm
 
 logger = logging.getLogger(__name__)
 
 
 def native_group_norm(input, weight, bias, N, C, HxW, group, eps):
     """Run native group normalization through the existing implementation."""
-    logger.debug("GEMS_ENFLAME NATIVE_GROUP_NORM")
+    logger.debug("GEMS NATIVE_GROUP_NORM")
     return group_norm(input, weight, bias, N, C, HxW, group, eps)

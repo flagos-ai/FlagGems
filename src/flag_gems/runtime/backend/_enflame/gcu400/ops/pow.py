@@ -427,7 +427,7 @@ def _choose_block_1r1w(N_total, itemsize):
     if N_total <= 8192:
         return max(256, triton.next_power_of_2(N_total))
     if N_total <= 65536:
-        return 8192
+        return 16384
     if N_total <= 524288:
         return 32768
     if itemsize <= 2:
@@ -439,7 +439,7 @@ def _choose_block_2r1w(N_total, itemsize):
     if N_total <= 8192:
         return max(256, triton.next_power_of_2(N_total))
     if N_total <= 65536:
-        return 8192
+        return 16384
     if itemsize >= 4:
         return 32768
     if N_total <= (1 << 25):

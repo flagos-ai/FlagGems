@@ -50,7 +50,7 @@ def square_(A):
     if n < (1 << 24):
         BLOCK, num_warps = 16384, 2
     else:
-        BLOCK, num_warps = 32768, 4
+        BLOCK, num_warps = 65536, 4
     grid = (triton.cdiv(n, BLOCK),)
     if grid[0] > 65535:
         BLOCK = 65536

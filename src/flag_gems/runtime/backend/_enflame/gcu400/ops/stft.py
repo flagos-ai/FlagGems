@@ -36,7 +36,7 @@ from flag_gems.utils.fft_intf import fft_frames
 # records reachable from dispatch-recording tests.
 logger = logging.getLogger("flag_gems.stft")
 
-_FRAME_BYTES = 32 * 1024 * 1024
+_FRAME_BYTES = 16 * 1024 * 1024
 _WARNED = set()
 _NV_TWIDDLE_LIMIT = 32
 _NV_TWIDDLE_CACHE = OrderedDict()

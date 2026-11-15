@@ -86,7 +86,7 @@ def view_copy(x: torch.Tensor, size) -> torch.Tensor:
     if not out.is_contiguous():
         out = out.contiguous()
 
-    block_size = 32768
+    block_size = 16384
     num_tile = triton.cdiv(n_elements, block_size)
     grid = (min(_GRID_SIZE, num_tile), 1, 1)
     with torch_device_fn.device(x.device.index):

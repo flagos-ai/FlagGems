@@ -32,9 +32,16 @@ device. The strided path therefore carries its shape/stride sidecars in the
 int32 safe domain (every realistic tensor fits) and the kernel upcasts the
 loaded scalars to int64 explicitly before the offset arithmetic; only shape
 or stride values at or beyond 2**31 fall back to the int64 sidecars.
+
+The gather loop is also unrolled to the input's real rank rather than the
+``_MAXD`` floor shared with the common implementation. A fixed ``MAXD``
+silently drops every dimension beyond it, so any non-contiguous input of rank
+greater than ``MAXD`` wrote the leading slices on top of each other (measured
+on GCU400: rank 9 lost 768 of 1536 elements, rank 10 lost 2304 of 3072).
 """
 
 import logging
+import os
 
 import torch
 import triton
@@ -48,9 +55,26 @@ _QDTYPE = {
     torch.int32: torch.qint32,
 }
 
+# Lower bound for the gather loop unroll. Ranks up to this are handled by a
+# fixed unroll so the common low-rank case compiles to the same code as the
+# common implementation; taller ranks unroll to their real rank.
 _MAXD = 8
 
 _INT32_MAX = (1 << 31) - 1
+
+_INT64_ENV = "TORCH_GCU_ENABLE_INT64_AND_UINT64"
+
+
+def _int64_device_storage_is_trustworthy():
+    """Whether device int64 tensors hold real int64 data on this backend.
+
+    Without ``TORCH_GCU_ENABLE_INT64_AND_UINT64`` torch_gcu materialises
+    device int64 tensors as packed int32 under int64 metadata.  A size-1
+    sidecar happens to read back correctly because the padding upper half is
+    zero, but a longer one reads interleaved garbage — so the fallback branch
+    below cannot be used at all in that regime.
+    """
+    return os.environ.get(_INT64_ENV, "0").strip().lower() not in ("", "0", "false")
 
 
 @triton.jit
@@ -77,6 +101,9 @@ def _gather_1d_kernel(
     # destination: decompose each flat index into per-dim coordinates and gather
     # through the input strides. The loop always runs MAXD steps and masks out
     # the dimensions the input does not have, so ndim stays a runtime value.
+    # MAXD must be at least ndim: every step handles one dimension, so a
+    # smaller MAXD silently ignores the leading coordinates and gathers the
+    # wrong element.
     # The shape/stride sidecars may arrive as int32 (the torch_gcu int64-safe
     # domain, see the module docstring) or int64; the loaded scalars are
     # upcast explicitly so the offset arithmetic is always 64-bit regardless
@@ -119,13 +146,29 @@ def _index_sidecars(self):
     so the sidecars default to true int32 tensors — regime-independent on
     this backend. Only values at or beyond 2**31 (a strided dimension of
     2 GiB+ payload) fall back to int64 sidecars, which need the env on
-    torch_gcu; the kernel upcasts either width explicitly.
+    torch_gcu; the kernel upcasts either width explicitly. That fallback
+    raises when the env is missing rather than corrupting the result.
     """
     shape = tuple(int(v) for v in self.shape)
     stride = tuple(int(v) for v in self.stride())
     if max(shape + stride, default=0) <= _INT32_MAX:
         dtype = torch.int32
     else:
+        # A dimension spans 2**31 elements or more, so the sidecars cannot be
+        # narrowed to int32.  The int64 sidecars are only sound when the
+        # backend actually stores int64; otherwise the kernel reads packed
+        # int32 garbage and either writes wrong data or aborts the device.
+        # Fail loudly instead.
+        if not _int64_device_storage_is_trustworthy():
+            raise RuntimeError(
+                "make_per_tensor_quantized_tensor: a strided input needs "
+                "int64 shape/stride sidecars (max shape/stride "
+                f"{max(shape + stride)} exceeds the int32 range), but "
+                f"{_INT64_ENV} is not set. Without it torch_gcu stores "
+                "device int64 tensors as packed int32, the gather kernel "
+                "would read corrupt strides and either write wrong data or "
+                f"abort the device. Set {_INT64_ENV}=1 to run this case."
+            )
         dtype = torch.int64
     shape_t = torch.tensor(shape, device=self.device, dtype=dtype)
     stride_t = torch.tensor(stride, device=self.device, dtype=dtype)
@@ -179,7 +222,9 @@ def _make_per_tensor_quantized_tensor(
             stride_t,
             self.dim(),
             BLOCK=block,
-            MAXD=_MAXD,
+            # Unroll to the real rank: a fixed _MAXD drops any dimension past
+            # it, collapsing the leading slices of rank > _MAXD inputs.
+            MAXD=max(self.dim(), _MAXD),
             num_warps=8,
         )
     return out
@@ -226,7 +271,9 @@ def _make_per_tensor_quantized_tensor_out(
             stride_t,
             self.dim(),
             BLOCK=block,
-            MAXD=_MAXD,
+            # Unroll to the real rank: a fixed _MAXD drops any dimension past
+            # it, collapsing the leading slices of rank > _MAXD inputs.
+            MAXD=max(self.dim(), _MAXD),
             num_warps=8,
         )
     return out

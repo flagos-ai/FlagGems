@@ -448,7 +448,7 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
                 pad_top,
                 BLOCK=8192,
                 FPAD=FPAD,
-                num_warps=4,
+                num_warps=8,
             )
         else:
             # rows per group: wide rows are bandwidth-bound (small groups),

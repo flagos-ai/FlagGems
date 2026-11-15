@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # fp32/int64 下 128K tile 超 896KB 会被 OutOfResources 捕获跳过，64K 档兜底；
 # 32x16 兜底极短行。
 _GCU400_DIFF_CONFIGS = [
-    triton.Config({"BLOCK_M": 32, "BLOCK_DIFF": 16}, num_warps=4),
+    triton.Config({"BLOCK_M": 32, "BLOCK_DIFF": 16}, num_warps=2),
     triton.Config({"BLOCK_M": 128, "BLOCK_DIFF": 256}, num_warps=4),
     triton.Config({"BLOCK_M": 256, "BLOCK_DIFF": 256}, num_warps=4),
     triton.Config({"BLOCK_M": 512, "BLOCK_DIFF": 256}, num_warps=4),

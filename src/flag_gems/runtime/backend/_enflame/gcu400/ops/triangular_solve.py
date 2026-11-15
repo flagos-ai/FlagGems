@@ -34,6 +34,9 @@ _warned = False
 # uses one warp.
 _PANEL_NUM_WARPS = 1
 
+# gcu400 hardware grid limits (CUDA allows more than this on both axes).
+_MAX_GRID_X = 65535
+
 # Orders above 128 normally take the inverse-panel path.  On gcu400 that path
 # hangs: _inverse_solve_kernel spins on `tl.atomic_add(state + prior, 0,
 # sem="acquire")` in a cross-CTA wait that never observes the prior panel's
@@ -94,6 +97,15 @@ def _copy_matrix(dst, src):
     # Inputs have already been broadcast and checked by the legacy wrapper.
     # A dedicated copy avoids repeating generic dtype/broadcast dispatch for
     # each of the two outputs, and never redispatches to an ATen copy kernel.
+    #
+    # gcu400's masked 2-D tile store only lands correctly when the destination
+    # is innermost-contiguous; with a column-major destination (the BLAS output
+    # layout used here, stride[-1] == rows) lanes are dropped (measured: n=4 ->
+    # 12/16 wrong, n=33 -> 31 wrong).  Flip both operands when that makes the
+    # store contiguous -- the strided load is exact.
+    if dst.stride(-1) != 1 and dst.stride(-2) == 1:
+        dst = dst.transpose(-2, -1)
+        src = src.transpose(-2, -1)
     rows, cols = src.shape[-2:]
     block = 32
     grid = (
@@ -865,6 +877,30 @@ def _solve_dense(A, B, *, upper, unitriangular, out=None, coefficient, original)
     n, k = B.shape[-2:]
     batch = tuple(B.shape[:-2])
     batches = math.prod(batch)
+    if batches * k > _MAX_GRID_X:
+        # The panel solver runs one program per RHS column and gcu400 caps
+        # grid.x at 65535 programs, so wide systems are solved in column
+        # chunks (each chunk's flat grid stays inside the limit) and the
+        # pieces are assembled into one BLAS-layout result.
+        result = (
+            torch.empty((*batch, k, n), dtype=B.dtype, device=B.device).mT
+            if out is None
+            else out
+        )
+        step = max(1, _MAX_GRID_X // max(batches, 1))
+        for start in range(0, k, step):
+            end = min(start + step, k)
+            piece = _solve_dense(
+                A,
+                B[..., start:end],
+                upper=False,
+                unitriangular=unitriangular,
+                out=None,
+                coefficient=coefficient,
+                original=original,
+            )
+            _copy_matrix(result[..., start:end], piece)
+        return result
     result = (
         torch.empty((*batch, k, n), dtype=B.dtype, device=B.device).mT
         if out is None

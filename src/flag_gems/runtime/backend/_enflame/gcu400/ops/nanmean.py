@@ -20,9 +20,9 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.copy import copy_
 from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_
 from flag_gems.utils import dim_compress, libentry, pointwise_dynamic
 from flag_gems.utils import triton_lang_extension as ext
 

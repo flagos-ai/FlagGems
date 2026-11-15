@@ -43,7 +43,7 @@ def arctan_kernel(x_ptr, out_ptr, N, BLOCK: tl.constexpr):
 
 
 def _choose_block(N, is_fp32):
-    if N <= 1024:
+    if N <= 2:
         return 1024
     if N <= 32768:
         return triton.next_power_of_2(N)

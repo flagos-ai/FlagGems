@@ -61,7 +61,7 @@ def indices_copy_impl(self, out=None):
             numel = sdim * nnz
             # Flat path: BLOCK = 1024 with 8 warps keeps the int64 stream at
             # 128-bit accesses (tuned in the KernelGen acceptance run).
-            BLOCK = 2048
+            BLOCK = 512
             grid = (triton.cdiv(numel, BLOCK),)
             indices_copy_flat[grid](idx, out, numel, BLOCK=BLOCK, num_warps=8)
         else:

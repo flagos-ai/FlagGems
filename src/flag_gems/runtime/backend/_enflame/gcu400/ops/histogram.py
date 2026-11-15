@@ -24,16 +24,30 @@ and the host also violates the host-isolation rule. This copy replaces the
 whole pipeline with Triton kernels:
 
 * ``histogram_bins_tensor_kernel``: grid-stride pass computing per-program
-  partial histograms via onehot + ``tl.sum(axis=0)`` (deterministic,
-  atomic-free per knowledge/coding_rules; ``tl.histogram`` itself is
-  untrusted on this backend - see the "`n` triple-untrustworthy" row in
-  knowledge/compiler_traps). Bin assignment is the CPU bucketize
-  semantics: count the edges ``<= v``, drop out-of-range/NaN, clamp the
-  last edge into the last bin. Invalid lanes are remapped to a padding bin
-  ``NBINS - 1`` that the reduce stage masks away. The same kernel serves
-  ``bin_ct`` (uniform bins) and ``bins_tensor`` (non-uniform bins).
+  partial **column sums** of the edge-compare step function via onehot-free
+  ``tl.sum(axis=0)`` (deterministic, atomic-free per knowledge/coding_rules;
+  ``tl.histogram`` itself is untrusted on this backend - see the "`n` triple-
+  untrustworthy" row in knowledge/compiler_traps). Bin assignment is the CPU
+  bucketize semantics: count the edges ``<= v``, drop out-of-range/NaN, clamp
+  the last edge into the last bin. Instead of materializing the bucketize
+  index per element (edge-count axis-1 reduction plus an equality onehot -
+  4-5 [BLOCK, NBINS] tile passes), the kernel exploits that for monotonically
+  increasing edges the bucket onehot is the column difference of the step
+  function ``ge[v, k] = (e_k <= v)``: ``onehot[v, j] = ge[v, j] - ge[v, j+1]``.
+  The kernel therefore only accumulates the per-program column sums
+  ``colsum[j] = sum_v ge[v, j]`` (2 [BLOCK, NBINS] tile passes: the compare
+  and the axis-0 sum) and the reduce stage takes the difference
+  ``hist[j] = colsum[j] - colsum[j+1]``. Out-of-range values contribute +1 to
+  every column (or 0 for v < e_first / NaN) and cancel in the difference
+  exactly. The v == last-edge clamp contributes +1 to bin ``nbins - 1``; the
+  kernel folds it as ``-count(v == e_last)`` into column ``nbins`` of the
+  partials, which is only ever consumed by ``hist[nbins - 1]``
+  (``colsum[nbins] - count``), so no spare column, extra buffer, or scalar
+  store (a known compile failure on this backend) is needed. The same kernel
+  serves ``bin_ct`` (uniform bins) and ``bins_tensor`` (non-uniform bins).
 * ``histogram_reduce_kernel``: single program sums the per-program partials
-  and applies the optional density normalization (0/0 -> NaN matches CPU).
+  and applies the column difference plus the optional density normalization
+  (0/0 -> NaN matches CPU).
 * The CPU reference bucketizes fp32 inputs against ``at::linspace`` values
   in the tensor dtype, so ``bin_ct`` builds its uniform edges with the host
   CPU ``torch.linspace`` (a device-side linspace differs by ~1 ulp) and
@@ -46,17 +60,23 @@ whole pipeline with Triton kernels:
   buffers, and the host casts the results. The fp64 assignment uses
   PAIR_EDGES: the reference's f64 linspace edges are split on the host into
   f32 hi/lo pairs, and an f32-exact v satisfies ``v >= hi + lo`` exactly
-  when ``(v > hi) | ((v == hi) & (lo <= 0))`` - pure comparisons, immune
-  to the mul-sub residual miscompile family (P14) that a double-single
-  arithmetic chain hit. The returned fp64 bin_edges keep the original CPU
-  linspace values (moved to the device).
+  when ``(v > hi) | ((v == hi) & (lo <= 0))``. Since ``nextafter(hi)`` is
+  the immediate f32 lattice successor of ``hi`` (and the midpoint
+  ``hi + ulp/2`` is never representable), that predicate folds into a single
+  effective edge ``eff = hi`` (lo <= 0) / ``nextafter(hi)`` (lo > 0) so the
+  kernel needs one plain f32 compare per lane - pure comparisons, immune to
+  the mul-sub residual miscompile family (P14) that a double-single
+  arithmetic chain hit. The clamp flag reuses the raw lo part of the last
+  edge, and the returned fp64 bin_edges keep the original CPU linspace
+  values (moved to the device).
 * range=None reuses the FlagGems Triton ``aminmax`` op (composition) and
   resolves left/right on the host with one ``.item()`` sync (host
   isolation: no aten compute; the hi/lo split is done in numpy). The
   degenerate min==max widening happens on the host, before the edges are
   built.
-* Bins are capped at 2047 (padded NBINS <= 2048) so the onehot tile stays
-  within the DSM budget proven by the histogramdd onehot path.
+* Bins are capped at 2047 (padded NBINS <= 2048) so the ge/colsum tile
+  stays within the DSM budget (NBINS=2048 at 32-element blocks already
+  saturates the lane budget).
 """
 
 import logging
@@ -74,12 +94,17 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 MAX_BINS = 2047  # NBINS = next_pow2(bins + 1) <= 2048
-# [BLOCK, NBINS] tile budget. The bin_ct kernel keeps one 2D onehot tile live
-# (64K lanes proved to fit DSM); the bins_tensor kernel keeps two (the edge
-# count compare plus the onehot), so it needs the halved budget (its first
-# 64K-lane attempt required 1.2MB DSM vs the 896KB hardware limit).
+# [BLOCK, NBINS] tile budget for the ge/colsum tile (one compare tile plus
+# the axis-0 sum live in the loop). The double budget keeps two f32-weighted
+# tiles live (ge * w for the weighted path); empirically on gcu400
+# (NBINS=128): non-weight BLOCK=512 compiles but BLOCK=1024 requires
+# 1.53MB DSM vs the 896KB hardware limit (OutOfResources), and the weighted
+# path at BLOCK=512 already requires 1.08MB - so the weighted path must stay
+# at the halved budget. The paired sweep (interleaved, DVFS-immune) showed
+# BLOCK=256 stable and BLOCK=512 unstable across runs on shared cards, so
+# the effective per-NBINS block choice stays 32768 lanes.
 ONEHOT_MAX_LANES = 65536
-ONEHOT_MAX_LANES_DOUBLE_TILE = 32768
+ONEHOT_MAX_LANES_DOUBLE_TILE = 8192
 
 
 def _pick_block(nbins_padded, has_weight, max_lanes=ONEHOT_MAX_LANES):
@@ -109,59 +134,68 @@ def histogram_bins_tensor_kernel(
     # out-of-range/NaN, clamp the last edge into the last bin. PAIR_EDGES
     # serves fp64 bin_ct: device fp64 storage is f32-representable on gcu400
     # (torch_gcu degrades it), so v is exact in f32 while the reference's
-    # f64 linspace edges need one extra f32 term. For an f32-exact value v and
-    # a hi/lo edge pair, v >= edge is EXACTLY
-    #   (v > hi) | ((v == hi) & (lo <= 0))
-    # because |edge - hi| <= ulp(hi)/2. Only comparisons take part - no
-    # multiply/subtract chains, which this backend's fusion pass miscompiles
-    # (P14: sign-flipped residual in sum-tree tails).
+    # f64 linspace edges need one extra f32 term. The host folds the hi/lo
+    # pair compare (v > hi) | ((v == hi) & (lo <= 0)) into a single effective
+    # edge (see _edges_device_tensor), so both paths are one f32 compare per
+    # lane - no multiply/subtract chains, which this backend's fusion pass
+    # miscompiles (P14: sign-flipped residual in sum-tree tails).
+    #
+    # Histogram via column differences of the step function: for monotone
+    # edges, onehot[v, j] (v in bin j) = ge[v, j] - ge[v, j+1] with
+    # ge[v, k] = (e_k <= v). So the per-program partial stores the column sums
+    # colsum[j] = sum_v ge[v, j]; the reduce stage differences adjacent
+    # columns. Out-of-range-high v adds +1 to every column and cancels; v <
+    # e_first / NaN adds 0 everywhere. The v == e_last clamp (CPU assigns it
+    # to the last bin) contributes -count(v == e_last) to column nbins,
+    # which only hist[nbins-1] = colsum[nbins-1] - colsum[nbins] consumes.
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
 
     arange = tl.arange(0, BLOCK)
     bin_ids = tl.arange(0, NBINS)
     # Real edges at k in [0, nbins]; padded lanes get +inf so they never
-    # satisfy `v >= edge` and stay out of the count.
+    # satisfy `v >= edge` and stay out of every column sum. For PAIR_EDGES
+    # (fp64 bin_ct) edges_ptr carries the host-folded effective edge
+    # eff = hi (lo <= 0) / nextafter(hi) (lo > 0): for an f32-exact v,
+    # v >= hi + lo is exactly v >= eff, so one f32 compare per lane suffices.
     edges_all = tl.load(edges_ptr + bin_ids, mask=bin_ids <= nbins, other=float("inf"))
-    if PAIR_EDGES:
-        edges_lo_all = tl.load(edges_lo_ptr + bin_ids, mask=bin_ids <= nbins, other=0.0)
-    e_first = tl.load(edges_ptr)
+    # Scalar last edge for the clamp correction. For PAIR_EDGES the f64
+    # edge is f32-representable exactly when lo == 0, and only then can an
+    # f32 v equal it (the clamp case); then the effective last edge equals
+    # the true one.
     e_last = tl.load(edges_ptr + nbins)
     if PAIR_EDGES:
-        e_first_lo = tl.load(edges_lo_ptr)
         e_last_lo = tl.load(edges_lo_ptr + nbins)
+        is_last_edge_exact = e_last_lo == 0.0
     if HAS_WEIGHT:
         local = tl.zeros((NBINS,), dtype=tl.float32)
+        eq_last_acc = tl.zeros((BLOCK,), dtype=tl.float32)
     else:
         local = tl.zeros((NBINS,), dtype=tl.int32)
+        eq_last_acc = tl.zeros((BLOCK,), dtype=tl.int32)
     num_blocks = (n_elements + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
         mask = off < n_elements
         v = tl.load(input_ptr + off, mask=mask, other=float("nan")).to(tl.float32)
-        # cnt = number of edges <= v; for in-range values cnt in [1, nbins+1],
-        # so cnt-1 is the left-closed bin index and v == last edge clamps to
-        # the last bin. NaN fails both range checks and is dropped.
+        ge = v[:, None] >= edges_all[None, :]
         if PAIR_EDGES:
-            ge = (v[:, None] > edges_all[None, :]) | (
-                (v[:, None] == edges_all[None, :]) & (edges_lo_all[None, :] <= 0.0)
-            )
-            cnt = tl.sum(ge.to(tl.int32), axis=1)
-            valid = (
-                mask
-                & ((v > e_first) | ((v == e_first) & (e_first_lo <= 0.0)))
-                & ((e_last > v) | ((e_last == v) & (e_last_lo >= 0.0)))
-            )
+            # v == f64 last edge exactly: only possible when the edge is
+            # f32-representable (lo == 0) and v equals it.
+            is_last = (v == e_last) & is_last_edge_exact
         else:
-            cnt = tl.sum((v[:, None] >= edges_all[None, :]).to(tl.int32), axis=1)
-            valid = mask & (v >= e_first) & (v <= e_last)
-        idx = tl.where(valid, tl.minimum(cnt - 1, nbins - 1), NBINS - 1)
-        onehot = idx[:, None] == bin_ids[None, :]
+            is_last = v == e_last
         if HAS_WEIGHT:
             w = tl.load(weight_ptr + off, mask=mask, other=0.0).to(tl.float32)
-            local += tl.sum(onehot.to(tl.float32) * w[:, None], axis=0)
+            local += tl.sum(ge.to(tl.float32) * w[:, None], axis=0)
+            eq_last_acc += tl.where(is_last & mask, w, 0.0)
         else:
-            local += tl.sum(onehot.to(tl.int32), axis=0)
+            local += tl.sum(ge.to(tl.int32), axis=0)
+            eq_last_acc += (is_last & mask).to(tl.int32)
+    # Fold the clamp correction into column nbins (only hist[nbins-1]
+    # consumes that column): colsum'[nbins] = colsum[nbins] - count.
+    eq_total = tl.sum(eq_last_acc, axis=0)
+    local = local - tl.where(bin_ids == nbins, eq_total, 0)
     tl.store(partials_ptr + pid * NBINS + bin_ids, local)
 
 
@@ -177,14 +211,25 @@ def histogram_reduce_kernel(
     NBINS: tl.constexpr,
     GRID_PAD: tl.constexpr,
 ):
+    # partials hold per-program column sums of the step function (with the
+    # clamp correction folded into column `bins`); the histogram is the
+    # difference of adjacent columns, summed over programs.
     g = tl.arange(0, GRID_PAD)
     b = tl.arange(0, NBINS)
+    load_mask = g[:, None] < n_progs
     part = tl.load(
         partials_ptr + g[:, None] * NBINS + b[None, :],
-        mask=(g[:, None] < n_progs) & (b[None, :] < NBINS),
+        mask=load_mask,
         other=0,
     )
-    hist = tl.sum(part, axis=0)
+    part_next = tl.load(
+        partials_ptr + g[:, None] * NBINS + (b[None, :] + 1),
+        mask=load_mask & (b[None, :] + 1 < NBINS),
+        other=0,
+    )
+    colsum = tl.sum(part, axis=0)
+    colsum_next = tl.sum(part_next, axis=0)
+    hist = colsum - colsum_next
     bm = b < bins
     if DENSITY:
         histf = hist.to(tl.float32)
@@ -236,15 +281,27 @@ def _edges_device_tensor(min_val, max_val, bins, device, fp64):
         # The hi/lo split is done in numpy so the host stays free of aten
         # compute. For fp64 the returned bin_edges keep the original CPU
         # linspace values (moved to the device) while the kernel consumes the
-        # f32 hi/lo pair (see the PAIR_EDGES note in the kernel).
+        # effective-edge form below.
         if fp64:
             edges_cpu = torch.linspace(min_val, max_val, bins + 1, dtype=torch.float64)
             pair_np = edges_cpu.numpy()
             hi = pair_np.astype(np.float32)
             lo = (pair_np - hi.astype(np.float64)).astype(np.float32)
-            pair = torch.from_numpy(np.stack([hi, lo]).copy()).to(device)
+            # Effective single-compare edges: for an f32-exact value v and a
+            # hi/lo edge pair, v >= hi + lo is EXACTLY
+            #   (v > hi) | ((v == hi) & (lo <= 0))
+            # and since nextafter(hi) is v's immediate lattice successor,
+            # that equals  v >= eff  with
+            #   eff = hi            if lo <= 0  (edge in (hi - ulp/2, hi])
+            #   eff = nextafter(hi) if lo >  0  (edge in (hi, hi + ulp/2])
+            # (the midpoint hi + ulp/2 is never f32-representable), so the
+            # pair compare collapses to one f32 compare per lane.
+            eff = np.where(lo > 0, np.nextafter(hi, np.float32(np.inf)), hi).astype(
+                np.float32
+            )
+            quad = torch.from_numpy(np.stack([eff, lo, hi]).copy()).to(device)
             edges_out = edges_cpu.to(device)
-            cached = (pair, edges_out)
+            cached = (quad, edges_out)
         else:
             cached = (
                 torch.linspace(min_val, max_val, bins + 1, dtype=torch.float32).to(
@@ -341,14 +398,17 @@ def histogram_bin_ct(self, bins=100, *, range=None, weight=None, density=False):
     acc_dtype = torch.float32 if has_weight else torch.int32
     partials = torch.empty((grid, nbins_padded), dtype=acc_dtype, device=self.device)
     if fp64:
-        # pair layout: row 0 = f32 hi parts, row 1 = f32 lo parts.
-        edges_hi = edges_buf[0]
+        # quad layout: row 0 = effective f32 edges, row 1 = f32 lo parts
+        # (only the last one is consumed, as the clamp flag), row 2 = f32 hi
+        # parts (density widths in the reduce stage).
+        edges_eff = edges_buf[0]
         edges_lo = edges_buf[1]
+        edges_hi = edges_buf[2]
         with torch_device_fn.device(self.device):
             histogram_bins_tensor_kernel[(grid,)](
                 kernel_input,
                 kernel_weight,
-                edges_hi,
+                edges_eff,
                 edges_lo,
                 partials,
                 n_elements,
@@ -445,7 +505,7 @@ def histogram_bins_tensor(self, bins, *, weight=None, density=False):
             PAIR_EDGES=False,
             NBINS=nbins_padded,
             BLOCK=block,
-            num_warps=4,
+            num_warps=1,
         )
 
     hist = _histogram_launch_reduce(

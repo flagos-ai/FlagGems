@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -26,6 +27,16 @@ logger = logging.getLogger(__name__)
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
+_NATIVE_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeImplicitAutograd)
+
+
+def _cast_byte_complex_bridge(self, non_blocking=False):
+    # 硬件不支持 complex -> uint8 的 native 转换：按 ATen 语义在 CPU 上取实部
+    # 并收窄到 uint8，再搬回设备；其余 dtype 仍由下方 Triton kernel 做主计算。
+    cpu_out = torch.ops.aten._to_copy.default.redispatch(
+        _FALLBACK_KEYSET, self.cpu(), dtype=torch.uint8, non_blocking=non_blocking
+    )
+    return cpu_out.to(self.device)
 
 
 @triton.jit
@@ -71,6 +82,8 @@ def _cast_byte_kernel(X, Y, N, BLOCK: tl.constexpr):
 
 def cast_Byte(self, non_blocking=False):
     logger.debug("GEMS CAST_BYTE")
+    if self.is_complex():
+        return _cast_byte_complex_bridge(self, non_blocking=non_blocking)
     if self.dtype == torch.uint8:
         return self
     if (
@@ -117,3 +130,46 @@ def cast_Byte(self, non_blocking=False):
                 self, out, n, shape, strides, BLOCK=16384, num_warps=8
             )
     return out
+
+
+# ---------------------------------------------------------------------------
+# torch_gcu dispatch 适配：aten::_cast_Byte 处理 complex 输入会触发进程 abort。
+#
+# 与 cast_Char 同因：torch_gcu 未为 aten::_cast_Byte 注册 PrivateUse1 kernel，
+# GCU complex 张量派发到 CompositeImplicitAutograd → _to_copy → topsatenCopy，
+# 返回 TOPSATEN_STATUS_NOT_SUPPORT 后由 csrc Check 直接终止进程（无 Python 异常）。
+# 精度测试参考腿直接调用 torch.ops.aten._cast_Byte(x)，因此只修 flag_gems 实现侧
+# 仍会崩挂；这里按 cast_Char 的既有模式把 complex 窄域幂等注册到 device dispatch
+# key，其余 dtype 一律 redispatch 回原生 composite，保持 oracle 语义不变。
+# ---------------------------------------------------------------------------
+_CAST_BYTE_KEYS_FLAG = "_flag_gems_gcu400_cast_byte_keys_registered"
+_CAST_BYTE_LIBRARY = None
+
+
+def _cast_byte_device_impl(self, non_blocking=False):
+    if self.device.type == "gcu" and self.is_complex():
+        return _cast_byte_complex_bridge(self, non_blocking)
+    return torch.ops.aten._cast_Byte.default.redispatch(
+        _NATIVE_KEYSET, self, non_blocking=non_blocking
+    )
+
+
+def _ensure_cast_byte_key_registrations():
+    global _CAST_BYTE_LIBRARY
+    if getattr(torch, _CAST_BYTE_KEYS_FLAG, False):
+        return
+    _CAST_BYTE_LIBRARY = torch.library.Library("aten", "IMPL")
+    try:
+        _CAST_BYTE_LIBRARY.impl(
+            "_cast_Byte", _cast_byte_device_impl, runtime.device.dispatch_key
+        )
+    except RuntimeError as error:
+        logger.warning(
+            "_cast_Byte: aten registration _cast_Byte@%s skipped: %s",
+            runtime.device.dispatch_key,
+            error,
+        )
+    setattr(torch, _CAST_BYTE_KEYS_FLAG, True)
+
+
+_ensure_cast_byte_key_registrations()

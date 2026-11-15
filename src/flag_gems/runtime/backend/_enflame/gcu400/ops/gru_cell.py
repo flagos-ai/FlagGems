@@ -289,7 +289,7 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
 
     block_b = _block(batch, 16)
     block_h = _block(hidden_size, 32)
-    block_k = _block(max(input_size, hidden_size), 64)
+    block_k = _block(max(input_size, hidden_size), 128)
 
     _gru_cell_kernel[(triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))](
         input,

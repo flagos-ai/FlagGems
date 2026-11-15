@@ -28,4 +28,4 @@ def _reshape_alias(self: torch.Tensor, size, stride):
     ``aten::_reshape_alias``.
     """
     logger.debug("GEMS _RESHAPE_ALIAS")
-    return self.as_strided(size, stride, self.storage_offset())
+    return torch.Tensor.as_strided(self, size, stride, self.storage_offset())

@@ -68,7 +68,7 @@ _ROWTILE_MIN_ROW = 64
 # Widest column tile the row-tiled kernel builds (in elements).
 _MAX_COL_TILE = 8192
 # CTA count for the row-tiled kernel's grid-stride loop.
-_ROW_TILE_GRID = 192
+_ROW_TILE_GRID = 48
 _INT32_LIMIT = 2**31 - 1
 
 

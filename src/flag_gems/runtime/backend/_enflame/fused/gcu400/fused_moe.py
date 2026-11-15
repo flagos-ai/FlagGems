@@ -2340,6 +2340,54 @@ def inplace_fused_experts(
     )
 
 
+# GCU400 的 MoE Triton kernel 用 32 位索引计算 expert 权重偏移。
+# 当 expert_stride * num_experts 超过 int32 上限（例如 E=256、w1.stride(0)=29360128、
+# expert_id=200 时偏移约 5.9e9）时，后端会把指针偏移截断，kernel 读到无效地址
+# 并产出 NaN。按 expert 分块运行同一 Triton GEMM 即可让每次 launch 的偏移保持在 32 位内。
+_MOE_INT32_INDEX_LIMIT = 2**31 - 1
+
+
+def _safe_experts_per_launch(
+    w1: torch.Tensor, w2: torch.Tensor, num_experts: int
+) -> int:
+    """计算单次 GEMM launch 可安全寻址的 expert 数；等于 num_experts 表示无需分块。"""
+    expert_stride = max(w1.stride(0), w2.stride(0))
+    safe_experts = max(1, _MOE_INT32_INDEX_LIMIT // expert_stride)
+    return min(num_experts, safe_experts)
+
+
+def _outplace_fused_experts_chunked(
+    hidden_states: torch.Tensor,
+    w1: torch.Tensor,
+    w2: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    experts_per_launch: int,
+    kernel_kwargs: dict,
+) -> torch.Tensor:
+    """逐 expert 块运行 Triton GEMM，再把各块部分输出相加得到完整 outplace 结果。"""
+    num_experts = w1.size(0)
+    partial_outputs = []
+    for expert_start in range(0, num_experts, experts_per_launch):
+        expert_end = min(num_experts, expert_start + experts_per_launch)
+        belongs_to_chunk = (topk_ids >= expert_start) & (topk_ids < expert_end)
+        # 块外 expert 的路由权重置零，其 GEMM 结果对最终输出没有贡献。
+        chunk_topk_ids = torch.where(belongs_to_chunk, topk_ids - expert_start, 0)
+        chunk_topk_weights = torch.where(belongs_to_chunk, topk_weights, 0)
+        partial_outputs.append(
+            fused_experts_impl(
+                hidden_states,
+                w1[expert_start:expert_end],
+                w2[expert_start:expert_end],
+                chunk_topk_weights,
+                chunk_topk_ids,
+                inplace=False,
+                **kernel_kwargs,
+            )
+        )
+    return torch.stack(partial_outputs).sum(dim=0)
+
+
 def outplace_fused_experts(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
@@ -2367,13 +2415,7 @@ def outplace_fused_experts(
 
     Same semantics as ``fused_experts_impl(..., inplace=False)``.
     """
-    return fused_experts_impl(
-        hidden_states,
-        w1,
-        w2,
-        topk_weights,
-        topk_ids,
-        inplace=False,
+    kernel_kwargs = dict(
         activation=activation,
         apply_router_weight_on_input=apply_router_weight_on_input,
         use_fp8_w8a8=use_fp8_w8a8,
@@ -2389,4 +2431,58 @@ def outplace_fused_experts(
         block_shape=block_shape,
         w1_bias=w1_bias,
         w2_bias=w2_bias,
+    )
+
+    num_experts = w1.size(0)
+    experts_per_launch = _safe_experts_per_launch(w1, w2, num_experts)
+    # 分块只用于未量化、无 bias、无 expert_map 的普通半精度路径：
+    # 这些场景的权重切片与路由掩码可以直接按 expert 维对齐，其余场景保持原路径。
+    can_chunk_experts = (
+        experts_per_launch < num_experts
+        and not apply_router_weight_on_input
+        and not any(
+            (
+                use_fp8_w8a8,
+                use_int8_w8a8,
+                use_int8_w8a16,
+                use_int4_w4a16,
+                per_channel_quant,
+            )
+        )
+        and all(
+            arg is None
+            for arg in (
+                w1_scale,
+                w2_scale,
+                a1_scale,
+                a2_scale,
+                w1_bias,
+                w2_bias,
+                block_shape,
+            )
+        )
+        and global_num_experts in (-1, num_experts)
+    )
+    if can_chunk_experts:
+        chunk_kwargs = dict(kernel_kwargs)
+        # 每块的专家数由该块 w1.size(0) 推断，避免沿用全局 expert 数造成对齐错误。
+        chunk_kwargs["global_num_experts"] = -1
+        return _outplace_fused_experts_chunked(
+            hidden_states,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            experts_per_launch,
+            chunk_kwargs,
+        )
+
+    return fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        inplace=False,
+        **kernel_kwargs,
     )

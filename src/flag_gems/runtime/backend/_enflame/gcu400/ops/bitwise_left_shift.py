@@ -44,7 +44,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-FLAT_SIPS = 48
+FLAT_SIPS = 24
 # int32 超过该规模后 codegen 的 bptr/DMA 路径更快（实测 256M/1G：1.047x/1.055x
 # vs flat32768w2 1.038x/1.045x），回退；int16 各规模 flat 均占优，不设阈值。
 FLAT_INT32_MAX_NUMEL = 128 * 1024 * 1024

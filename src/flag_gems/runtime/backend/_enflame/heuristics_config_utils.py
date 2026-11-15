@@ -87,6 +87,19 @@ def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
+def mm_heur_k_blocks(args):
+    """Unrolled K-loop trip count.
+
+    gcu400 miscompiles a loop-carried fp32 ``tl.dot`` accumulator inside a
+    dynamic ``range`` loop (the tile matmul path used from BLOCK_M/BLOCK_N >=
+    64): with 2+ K iterations only part of the partial sums survive (measured:
+    K=1024 BLOCK_K=128 -> max |err| ~110 vs fp64 on a 256x256x1024 fp32 mm,
+    correct with ``tl.static_range``).  The trip count is derived from the
+    tuned BLOCK_K here so the kernel can unroll it.
+    """
+    return triton.cdiv(args["K"], args["BLOCK_K"] * args["SPLIT_K"])
+
+
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -413,6 +426,7 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+        "K_BLOCKS": mm_heur_k_blocks,
     },
     "rand": {
         "BLOCK": rand_heur_block,

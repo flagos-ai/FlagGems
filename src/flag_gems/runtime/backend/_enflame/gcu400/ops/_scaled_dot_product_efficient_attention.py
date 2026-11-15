@@ -126,10 +126,10 @@ def _eff_attn_fwd(
     BLOCK_N: tl.constexpr,
     CAUSAL: tl.constexpr,
 ):
-    # No-max flash forward for 16-bit inputs on small shapes; see
-    # `_eff_attn_step` for the two fp32-accuracy fixes versus the shared
-    # `_attn_fwd_nomax` (which keeps serving fp32 inputs, where its
-    # casts are exact).
+    # No-max flash forward for small shapes (all fast dtypes, causal
+    # included); see `_eff_attn_step` for the two fp32-accuracy fixes
+    # versus the shared `_attn_fwd_nomax` (which keeps serving fp32
+    # inputs, where its casts are exact).
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
     batch_id = off_hz // q_head_num
@@ -412,23 +412,20 @@ def _scaled_dot_product_efficient_attention(
                 and kv_ctx % block_n == 0
                 and (not is_causal or block_m % block_n == 0)
             )
-            # Dispatch: small divisible shapes (q_ctx <= 128, causal only
-            # for fp32) take `_eff_attn_fwd`, which fixes the shared
-            # no-max kernel's two 16-bit accuracy leaks (Q pre-scale cast
-            # and the p down-cast before the PV dot) and hoists the V load
-            # next to the K load to cut the per-program serial latency.
+            # Dispatch: small divisible shapes (q_ctx <= 128) take
+            # `_eff_attn_fwd`, whose exact fp32 pipeline (post-dot scale,
+            # fp32 p and V through the PV dot) tracks the native sdpa
+            # reference inside the 2e-3 tolerance. Causal 16-bit used to
+            # fall back to the generic path because the native causal PV
+            # stage itself then drifted ~2.5e-3 from the fp64 truth, and
+            # only the generic kernel's matching rounding tracked it;
+            # that premise is stale (2026-11-13: the native reference
+            # sits ~1e-5 from fp64 truth while the generic path's 16-bit
+            # rounding — Q pre-scale cast + p down-cast — drifts ~2.5e-3,
+            # failing the accuracy gate on ~1/3 of random trials).
             # fp32 keeps the shared kernel for wider sequences (its casts
-            # are exact there); 16-bit *causal* shapes fall back to the
-            # generic path because the accuracy tests compare against the
-            # native sdpa output, whose own causal PV stage drifts ~2.5e-3
-            # from the fp64 truth at cancelling outputs, and only the
-            # generic kernel's matching rounding tracks it inside
-            # tolerance.
-            use_eff = (
-                divisible
-                and q_ctx <= 128
-                and (not is_causal or query.dtype == torch.float32)
-            )
+            # are exact there).
+            use_eff = divisible and q_ctx <= 128
             use_shared = divisible and not use_eff and query.dtype == torch.float32
             if use_eff or use_shared:
                 o = torch.empty_like(query, dtype=value.dtype)

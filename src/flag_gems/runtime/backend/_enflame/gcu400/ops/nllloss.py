@@ -183,8 +183,38 @@ from flag_gems.ops.nllloss import (  # noqa: E402
 from flag_gems.runtime import torch_device_fn  # noqa: E402
 from flag_gems.utils import libentry  # noqa: E402
 
-_GCU400_BWD_BLOCK = 32
-_GCU400_BWD_WARPS = 1
+_GCU400_BWD_BLOCK = 512
+_GCU400_BWD_WARPS = 4
+
+
+@libentry()
+@triton.jit(do_not_specialize=["ignore_index"])
+def _nll_loss_finalize_gcu400_kernel(
+    partial_loss_ptr,
+    partial_weight_ptr,
+    out_ptr,
+    total_weight_ptr,
+    num_blocks,
+    REDUCTION: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Stage-2 finalize for the 1-D/2-D fp16/bf16 path: sums the stage-1
+    # partials, applies the mean divide, and stores both the loss scalar and
+    # the total_weight scalar already in OUT_DTYPE.  This removes the host-side
+    # `.to(dtype)` cast kernel (an extra aten dispatch + launch) that the common
+    # implementation pays on every fp16/bf16 mean/sum forward.
+    offsets = tl.arange(0, BLOCK)
+    mask = offsets < num_blocks
+    loss = tl.sum(tl.load(partial_loss_ptr + offsets, mask=mask, other=0.0))
+    if REDUCTION == 2:
+        result = loss
+        total_w = tl.zeros((), dtype=tl.float32)
+    else:
+        total_w = tl.sum(tl.load(partial_weight_ptr + offsets, mask=mask, other=0.0))
+        result = loss / total_w
+    tl.store(out_ptr, result.to(OUT_DTYPE))
+    tl.store(total_weight_ptr, total_w.to(OUT_DTYPE))
 
 
 @libentry()
@@ -240,7 +270,8 @@ def nll_loss_backward(
     grad_output = grad_output.contiguous()
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()
-    grad_input = torch.zeros_like(self).contiguous()
+
+    grad_input = torch.zeros_like(self)
     grid = (triton.cdiv(N, _GCU400_BWD_BLOCK),)
     with torch_device_fn.device(self.device):
         _nll_loss_backward_gcu400_kernel[grid](
@@ -260,12 +291,67 @@ def nll_loss_backward(
     return grad_input
 
 
+def _forward_3stage_1d(self, target, weight, reduction_val, ignore_index_val):
+    # fp16/bf16 mean/sum path: atomic-free three-stage kernels (reuse the 2-D
+    # reduce kernel with H=W=1) + a gcu400 finalize that writes both the loss
+    # scalar and total_weight already in out_dtype, removing the aten cast
+    # kernel that the common implementation launches on every call.
+    N = 1 if self.ndim == 1 else self.shape[0]
+    C = self.shape[-1]
+    total = N
+    has_weight = weight is not None
+    out_dtype = self.dtype
+    BLOCK, num_warps = _launch_config(total)
+    grid = (triton.cdiv(total, BLOCK),)
+    num_blocks = grid[0]
+    partials = torch.empty((2, num_blocks), dtype=torch.float32, device=self.device)
+    partial_loss, partial_weight = partials[0], partials[1]
+    with torch_device_fn.device(self.device):
+        _common._nll_loss2d_reduce_kernel[grid](
+            self,
+            target,
+            weight,
+            partial_loss,
+            partial_weight,
+            N,
+            C,
+            1,
+            1,
+            total,
+            HAS_WEIGHT=has_weight,
+            REDUCTION=reduction_val,
+            IGNORE_INDEX=ignore_index_val,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+            num_stages=_NUM_STAGES,
+        )
+        out = torch.empty((), dtype=out_dtype, device=self.device)
+        total_weight_out = torch.empty((), dtype=out_dtype, device=self.device)
+        _nll_loss_finalize_gcu400_kernel[(1,)](
+            partial_loss,
+            partial_weight,
+            out,
+            total_weight_out,
+            num_blocks,
+            REDUCTION=reduction_val,
+            OUT_DTYPE=_common._TORCH_TO_TL[out_dtype],
+            BLOCK=triton.next_power_of_2(num_blocks),
+        )
+    return out, total_weight_out
+
+
 class NllLossForwardFunctionGCU400(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index):
-        output, total_weight = _common_forward_raw(
-            inp, target, weight, reduction, ignore_index
-        )
+        red = _as_int(reduction)
+        if inp.dtype in (torch.float16, torch.bfloat16) and red in (1, 2):
+            output, total_weight = _forward_3stage_1d(
+                inp, target, weight, red, _as_int(ignore_index)
+            )
+        else:
+            output, total_weight = _common_forward_raw(
+                inp, target, weight, red, _as_int(ignore_index)
+            )
         ctx.save_for_backward(inp, target, total_weight)
         ctx.weight = weight
         ctx.reduction = reduction
@@ -288,6 +374,9 @@ class NllLossForwardFunctionGCU400(torch.autograd.Function):
 
 
 def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
+    # V1 (skip autograd.Function wrapper) rolled back: the Autograd-key
+    # override swallows grad-mode recording, so without apply() the
+    # aten::nll_loss output loses requires_grad entirely (verified).
     logger.debug("GEMS_ENFLAME NLL_LOSS_FWD")
     return NllLossForwardFunctionGCU400.apply(
         self, target, weight, reduction, ignore_index

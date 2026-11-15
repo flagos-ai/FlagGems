@@ -59,7 +59,7 @@ def bitwise_or_scalar_(A, B):
         return _orig(A, B)
     dt = A.dtype
     if dt == torch.bool:
-        if n <= (1 << 20):
+        if n <= (1 << 22):
             return _orig(A, B)
         block, sips, nw = 16384, 48, 4
     elif dt == torch.int16:

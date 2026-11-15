@@ -56,7 +56,7 @@ def _run_neg(inp, out, N_total):
         BLOCK = 65536
 
     NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 2)
+    grid_size = min(NUM_BLOCKS, NUM_SIPS)
 
     with torch_device_fn.device(inp.device):
         neg_flat_kernel[(grid_size,)](
@@ -78,6 +78,12 @@ def neg(A):
 
 def neg_(A):
     logger.debug("GEMS_ENFLAME NEG_")
-    inp = A.contiguous()
-    _run_neg(inp, A, inp.numel())
+    if A.is_contiguous():
+        # 连续张量可直接在自身 storage 上原地取负。
+        _run_neg(A, A, A.numel())
+    else:
+        # 非连续张量不能按扁平连续下标写回：先在连续副本上用同一 Triton
+        # kernel 计算，再按原布局拷回，保持 inplace 的 storage 别名语义。
+        contiguous_result = neg(A)
+        A.copy_(contiguous_result)
     return A

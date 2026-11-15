@@ -47,7 +47,6 @@ def _dimV(self: torch.Tensor) -> int:
       the 'CUDA'/'SparseCsrCUDA' backend"). Mirror that contract here instead
       of guessing a formula.
     """
-    logger.debug("GEMS _DIMV")
     if self.layout == torch.sparse_coo:
         return self.dim() - self._indices().shape[0]
     raise NotImplementedError(

@@ -359,8 +359,8 @@ _FLAT_BLOCK_INT = 4096
 _FLAT_BLOCK_FLOAT = 2048
 # 48 CTAs measured fastest for every dtype and shape tried; larger grids lost
 # 10-25%.  Kept under the 65535 grid.x limit by the grid-stride loop.
-_FLAT_GRID = 48
-_FLAT_NUM_WARPS = 4
+_FLAT_GRID = 1
+_FLAT_NUM_WARPS = 2
 
 
 @libentry()

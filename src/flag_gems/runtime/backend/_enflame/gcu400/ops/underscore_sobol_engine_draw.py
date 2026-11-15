@@ -105,7 +105,7 @@ def _select_sobol_config(n, dimension):
     取 4 让 grid.y 覆盖更多 SIP；样本块继续放大会受 dsm 内存限制，16 维度块、
     8 warps 以及更小的样本块都会明显劣化。
     """
-    return 32, 4, 4
+    return 128, 4, 4
 
 
 def underscore_sobol_engine_draw(

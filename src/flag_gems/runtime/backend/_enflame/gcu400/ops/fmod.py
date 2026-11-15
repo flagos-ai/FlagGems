@@ -67,7 +67,7 @@ def fmod_kernel(X, Y, Out, N, Y_AY, Y_INV, HAS_Y: tl.constexpr, BLOCK: tl.conste
 
 
 def _choose_block(N, is_fp32):
-    if N <= 1024:
+    if N <= 1:
         return 1024
     if N <= 8192:
         return 2048
@@ -75,7 +75,7 @@ def _choose_block(N, is_fp32):
         return 4096
     if N <= 134217728:
         return 32768
-    return 32768 if is_fp32 else 65536
+    return 32768
 
 
 def _launch(inp, other, out, has_y):

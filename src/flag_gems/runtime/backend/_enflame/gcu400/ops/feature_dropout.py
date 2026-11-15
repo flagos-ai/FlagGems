@@ -172,7 +172,7 @@ def feature_dropout(input, p, train=True):
     # only pays off when every one of the 96 programs still gets >= 2 tiles;
     # smaller inputs regress ~20% (fewer programs in flight), so they stay on
     # the generic 16384/48 point (fp32/fp64 also peak there).
-    wide_threshold = 2 * (2 * _MAX_GRID) * (2 * _BLOCK)
+    wide_threshold = (2 * _MAX_GRID) * (2 * _BLOCK)
     if x.element_size() == 2 and numel >= wide_threshold:
         block = 2 * _BLOCK
         grid_cap = 2 * _MAX_GRID

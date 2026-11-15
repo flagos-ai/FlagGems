@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 # DTE hardware register bitwidth limit: each tile dimension must fit in 24 bits.
 DTE_DIM_MAX = (1 << 24) - 1
 # 归约 kernel 的 program 上限，按 GCU400 SIP 数调优。
-MEAN_GRID_CAP = 12
+MEAN_GRID_CAP = 24
 # libtuner 二维 tile 面积范围，控制编译配置数量与寄存器压力。
 MEAN_TILE_MIN = 2048
-MEAN_TILE_MAX = 512 * 1024
+MEAN_TILE_MAX = 128 * 1024
 
 
 @libentry()
@@ -43,7 +43,7 @@ def mean_kernel_1(inp, mid, M, BLOCK_SIZE: tl.constexpr, num_stages: tl.constexp
         offset = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         inp_ptrs = inp + offset
         mask = offset < M
-        inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
+        inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
         sum_val = tl.sum(inp_val, axis=0)
         mid_ptr = mid + tile_id
         tl.store(mid_ptr, sum_val)
@@ -103,7 +103,11 @@ def mean(inp, *, dtype=None):
     num_stages = 1
     if mid_size > 4 * 24:
         num_stages = 3
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    # Cross-block partial sums accumulate in fp32 for 16-bit inputs: an fp16
+    # partial sum overflows to inf once the running sum passes 65504
+    # (measured: 96000 fp16 values around 3.0 -> torch.mean returns inf).
+    acc_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
+    mid = torch.empty((mid_size,), dtype=acc_dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):

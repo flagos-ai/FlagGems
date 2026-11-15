@@ -102,7 +102,7 @@ def indices(self: torch.Tensor) -> torch.Tensor:
     report the same ``(sparse_dim, nnz)`` shape the native reader does.
     """
     logger.debug("GEMS INDICES")
-    if not isinstance(self, torch.Tensor):
+    if type(self) is not torch.Tensor:
         raise TypeError(f"indices: input must be a Tensor, got {type(self).__name__}")
     if self.layout != torch.sparse_coo:
         layout_name = _NON_COO_LAYOUT_NAMES.get(self.layout)

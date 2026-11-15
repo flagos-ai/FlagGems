@@ -59,6 +59,7 @@ def mm_kernel(
     GROUP_M: tl.constexpr,
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
+    K_BLOCKS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     pid_z = tl.program_id(1)
@@ -77,7 +78,9 @@ def mm_kernel(
     A = A + (rm[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rn[None, :] * stride_bn)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
+    # Unroll the K loop: gcu400 miscompiles a loop-carried fp32 tl.dot
+    # accumulator inside a dynamic range loop (see mm_heur_k_blocks).
+    for k in tl.static_range(K_BLOCKS):
         if EVEN_K:
             mask_a = (rm < M)[:, None]
             mask_b = (rn < N)[None, :]

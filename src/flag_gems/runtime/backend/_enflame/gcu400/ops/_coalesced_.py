@@ -28,21 +28,12 @@ logger = logging.getLogger(__name__)
 
 
 def _coalesced_(self: torch.Tensor, coalesced: bool) -> torch.Tensor:
-    """Set the ``coalesced`` flag of a sparse COO tensor in place.
-
-    ``aten::_coalesced_`` is a metadata-only mutation: it flips the tensor's
-    ``is_coalesced`` bit and returns ``self`` without modifying the indices or
-    values data. The flag is toggled below the autograd dispatch key so the
-    native backend performs the in-place metadata mutation instead of
-    re-entering this override (which would recurse).
-
-    This op has no per-element computation, so no Triton kernel is needed.
-    """
     if self.layout != _SPARSE_COO_LAYOUT:
         raise RuntimeError(_ERROR_MESSAGE)
-    # Construct the guard per call: ``_AutoDispatchBelowAutograd`` activates
-    # the exclusion in ``__init__`` (RAII), so a module-level instance disables
-    # autograd process-wide from import onward and breaks every backward test.
+    # Construct the guard per call: ``_AutoDispatchBelowAutograd`` activates the
+    # Autograd-key exclusion in __init__ (RAII), so a module-level instance
+    # would disable autograd process-wide from import onward and break every
+    # backward test (regression of 890f0b7cd, re-fixed).
     with _DISPATCH_BELOW_AUTOGRAD():
         _NATIVE_COALESCED(self, coalesced)
     return self

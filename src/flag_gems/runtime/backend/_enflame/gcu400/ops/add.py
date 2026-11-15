@@ -26,7 +26,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
+NUM_SIPS = 16
 
 # ---------------------------------------------------------------------------
 # torch.randn complex-on-gcu shim (torch_gcu P21 defect workaround)

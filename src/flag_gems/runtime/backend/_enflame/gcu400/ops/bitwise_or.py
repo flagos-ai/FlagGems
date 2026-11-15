@@ -41,6 +41,14 @@ _FAST_DTYPES = (torch.bool, torch.uint8, torch.int8, torch.int16, torch.int32)
 # same dtype, int32-safe flat offsets).  Everything exotic (broadcasting,
 # strided inputs, mixed tensor dtypes, out-of-int32-range sizes, int64
 # tensors) falls back to the generated kernels.
+#
+# The scalar variants (bitwise_or_scalar{,_tensor} / the __ior__.Scalar dunder
+# entry via ior_scalar) ride the same flat machinery (bitwise_xor twin): the
+# scalar rides as a kernel argument (no 0-dim device tensor, no stride-0
+# broadcast materialization per tile).  The (bool tensor, int scalar) mix
+# promotes to int64 and stays on the generated pointwise path: int64 storage
+# is a real 8-byte lane under TORCH_GCU_ENABLE_INT64_AND_UINT64=1, so the
+# historical int32-slot single-word store reads back garbage there.
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
 def bitwise_or_flat_kernel(x_ptr, y_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
@@ -54,6 +62,20 @@ def bitwise_or_flat_kernel(x_ptr, y_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
         x = tl.load(x_ptr + off, mask=mask)
         y = tl.load(y_ptr + off, mask=mask)
         tl.store(out_ptr + off, x | y, mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N_total", "y"])
+def bitwise_or_scalar_flat_kernel(x_ptr, out_ptr, y, N_total, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        mask = off < N_total
+        x = tl.load(x_ptr + off, mask=mask)
+        tl.store(out_ptr + off, x | y.to(x_ptr.dtype.element_ty), mask=mask)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -120,6 +142,64 @@ def _flat_config(n_total, itemsize):
     return block, (min(triton.cdiv(n_total, block), NUM_SIPS * 2),)
 
 
+def _scalar_lane_value(dtype, scalar):
+    # Bitwise OR commutes with truncation: the low L bits of (x | s) are
+    # (low L bits of x) | (low L bits of s), so wrap the scalar into the lane
+    # dtype's range on the host (two's complement for signed lanes) exactly
+    # like the bitwise_xor / bitwise_and precedents.
+    if dtype == torch.bool:
+        return 1 if scalar else 0
+    bits = torch.iinfo(dtype).bits
+    value = int(scalar) & ((1 << bits) - 1)
+    if value >= (1 << (bits - 1)) and dtype.is_signed:
+        value -= 1 << bits
+    return value
+
+
+def _is_python_scalar(v):
+    return isinstance(v, bool) or isinstance(v, int)
+
+
+def _or_scalar_impl(tensor, scalar, out=None):
+    # Shared by bitwise_or_scalar / bitwise_or_scalar_tensor (OR commutes)
+    # and by the in-place variant (out=tensor).  Returns None when the input
+    # pair is not eligible for the flat path.
+    if not _fast_tensor(tensor) or not _is_python_scalar(scalar):
+        return None
+    if tensor.dtype == torch.bool and not isinstance(scalar, bool):
+        # (bool, int) promotes to int64.  The bitwise_xor twin's int32-slot
+        # single-word store assumed the fake-int64 4-byte value channel; with
+        # TORCH_GCU_ENABLE_INT64_AND_UINT64=1 (global since 2026-11-11) int64
+        # storage is a real 8-byte lane, so a flat int32 store reads back
+        # garbage (verified: values like 2^32 / uninit high words).  The
+        # generated pointwise path computes the promoted int64 result
+        # correctly under the same env, so mixed pairs stay on it.
+        return None
+    if out is None:
+        out = torch.empty_like(tensor)
+    elif out.dtype != tensor.dtype:
+        return None
+    n_total = tensor.numel()
+    if n_total == 0:
+        return out
+    config = _flat_config(n_total, tensor.element_size())
+    if config is None:
+        return None
+    block, grid = config
+    _launch_flat(
+        bitwise_or_scalar_flat_kernel,
+        grid,
+        (
+            _lane_view(tensor),
+            _lane_view(out),
+            _scalar_lane_value(tensor.dtype, scalar),
+            n_total,
+        ),
+        block,
+    )
+    return out
+
+
 def bitwise_or_tensor(A, B):
     logger.debug("GEMS_ENFLAME BITWISE_OR")
     if (
@@ -180,14 +260,32 @@ def bitwise_or_func_scalar(x, y):
 
 def bitwise_or_scalar(A, B):
     logger.debug("GEMS_ENFLAME BITWISE_OR_SCALAR")
+    out = _or_scalar_impl(A, B)
+    if out is not None:
+        return out
     return bitwise_or_func_scalar(A, B)
 
 
 def bitwise_or_scalar_(A, B):
     logger.debug("GEMS_ENFLAME BITWISE_OR_SCALAR_")
+    if isinstance(A, torch.Tensor) and _is_python_scalar(B):
+        if A.dtype == torch.bool and not isinstance(B, bool):
+            # torch raises for the (bool, int) in-place promotion; the generic
+            # pointwise path silently truncates instead, so keep aten parity.
+            raise RuntimeError(
+                "result type Long can't be cast to the desired output type Bool"
+            )
+        out = _or_scalar_impl(A, B, out=A)
+        if out is not None:
+            return A
     return bitwise_or_func_scalar(A, B, out0=A)
 
 
 def bitwise_or_scalar_tensor(A, B):
     logger.debug("GEMS_ENFLAME BITWISE_OR_SCALAR_TENSOR")
+    # OR commutes, so (scalar, tensor) reuses the (tensor, scalar) path.
+    if _is_python_scalar(A):
+        out = _or_scalar_impl(B, A)
+        if out is not None:
+            return out
     return bitwise_or_func_scalar(B, A)

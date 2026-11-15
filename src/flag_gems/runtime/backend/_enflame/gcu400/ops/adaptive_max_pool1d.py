@@ -162,6 +162,12 @@ def adaptive_max_pool1d(
             f"adaptive_max_pool1d not implemented for '{input.dtype}'"
         )
     input = input.contiguous()
+    # gcu400 has no fp64 datapath and the kernel's fp64 element type crashes
+    # make_gcuir; the device already stores double tensors as float, so pool
+    # the fp32 view and hand the result back in the requested dtype.
+    result_dtype = input.dtype
+    if input.dtype == torch.float64:
+        input = input.to(torch.float32)
 
     out_len = _parse_output_size(output_size)
     if out_len < 0:
@@ -205,6 +211,8 @@ def adaptive_max_pool1d(
         WIDE=wide,
         num_warps=_NUM_WARPS,
     )
+    if result_dtype != output.dtype:
+        output = output.to(result_dtype)
     if unbatched:
         output = output.squeeze(0)
         indices = indices.squeeze(0)

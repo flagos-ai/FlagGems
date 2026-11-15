@@ -56,7 +56,7 @@ def square_out(A, *, out=None):
     if n < (1 << 24):
         BLOCK, nw = 16384, 2
     else:
-        BLOCK, nw = 32768, 4
+        BLOCK, nw = 65536, 4
     grid = (triton.cdiv(n, BLOCK),)
     if grid[0] > 65535:
         BLOCK = 65536

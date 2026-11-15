@@ -196,8 +196,15 @@ def conv2d_forward_kernel(
             output_c_offset < out_per_group_c
         )[None, :]
 
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
+        # GCU400: the fp16/bf16 load path lets masked-out lanes reach the dot
+        # (measured: a 1x1 kernel with padding=1 returns `in_c - 1` on the
+        # border instead of 0; fp32 is exact, and `other=0.0` / clamping the
+        # pointer does not help because the lanes are re-read inside the dot).
+        # Zero them explicitly right before the dot, which is operand-level and
+        # therefore not something the load lowering can drop.
+        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
+        input_block = tl.where(input_mask, input_block, 0.0)
 
         accum += tl.dot(input_block, weight_block, input_precision=_DOT_PRECISION)
     bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
@@ -697,7 +704,9 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert stride == 1, "Doesn't support any stride values other than 1 \
+            assert (
+                stride == 1
+            ), "Doesn't support any stride values other than 1 \
                 in padding = 'same' mode, received stride value {stride}"
             ih = input.shape[-2]
             iw = input.shape[-1]

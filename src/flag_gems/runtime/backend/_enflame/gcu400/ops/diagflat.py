@@ -25,13 +25,27 @@ and every other element is exactly zero.
 
 All numerical work happens in triton kernels:
 
-  fill    one vector store of zeros over a same-itemsize integer view of the
-          freshly allocated contiguous output buffer (dtype generic).
-  scatter copies the ``n`` flattened input elements onto the offset-k diagonal
-          with a single strided store at address ``i * (m + 1) + base``.  The
-          source is read through the flattened input's *element stride* so a
-          zero-copy strided view (e.g. ``x[..., ::2]``) is handled correctly.
-  gather  the reverse mapping, used by the autograd backward pass.
+  fill     persistent two-phase zero fill plus diagonal scatter, one launch
+           for every real-dtype input (GCU400: a flat one-chunk-per-program
+           fill of N programs costs ceil(N / 48) waves at ~2.5us per wave
+           almost independently of the stored bytes, so 24 persistent
+           programs -- one per SIP -- loop over contiguous BLOCK-sized
+           chunk runs instead; 24 also beats 48 and any non-multiple of 24
+           such as 32).  Phase one zeroes the program's whole contiguous
+           run through a same-itemsize integer view of the freshly
+           allocated contiguous output (dtype generic); ONE
+           ``tl.debug_barrier`` then orders the run's zero stores before
+           the diagonal stores; phase two writes the run's diagonal cells
+           with a single SPAN-wide masked scatter at address
+           ``i * (m + 1) + base`` (int64 index math, overflow-safe for any
+           count below the int32 fallback line).  The source is read
+           through the flattened input's *element stride* so a zero-copy
+           strided view (e.g. ``x[..., ::2]``) is handled correctly.
+  scatter  copies the ``n`` flattened input elements onto the offset-k
+           diagonal with a single strided store at address
+           ``i * (m + 1) + base``.  Used only by the complex /
+           very-large fallback paths.
+  gather   the reverse mapping, used by the autograd backward pass.
 """
 
 import logging
@@ -44,24 +58,18 @@ logger = logging.getLogger(__name__)
 
 _BLOCK_FILL = 4096
 _BLOCK_SCATTER = 512
-_BLOCK_DIAG = 32
 _INT32_MAX = 2147483647
 
-# Single-launch 2-D tile kernel, used only for small outputs.
-#
-# Measured crossover: fusing the diagonal into the fill tile beats the
-# two-kernel path by 0.10-0.22 speedup for m <= ~1027 (it saves a launch and the
-# host gap) but loses 0.20-0.35 for m >= ~2050, where the extra L1 traffic of the
-# masked gather and the where-select lands on an already saturated L1TEX store
-# path.  So the fused form is gated on the output element count.
-#
-# Tiles are clamped to ``min(pid * extent, m - extent)`` so every store is
-# unmasked, affine and exactly ``extent`` wide (and therefore vectorises to
-# 128-bit).  Clamped tiles overlap their neighbours, which is safe because the
-# value at a cell is a pure function of the cell.
-_FUSE_BR = 32
-_FUSE_BC = 128
-_FUSE_MAX_ELEMS = 1 << 21
+# GCU400 persistent fill geometry (measured 2026-11-13, Libra L600):
+# a flat one-chunk-per-program fill of N programs costs ceil(N / 48) waves
+# at ~2.5us per wave almost independently of the stored bytes (m=4096 fp16
+# 16.8M-element fill: 213us at 4096 programs vs 14.2us at 24-48 persistent
+# programs).  24 persistent programs (one per SIP) measure equal-or-better
+# than 48 across the board and clearly beat non-SIP-multiples (32 is 10-15%
+# worse at m>=2048).  Each chunk store keeps a <=128KB tile inside the
+# 448KB-per-program DSM line, so the grid stays hardware-resident.
+_FILL_PROGS = 24
+_FILL_TILE_BYTES = 131072
 
 _COMPLEX_REAL = {
     torch.complex64: torch.float32,
@@ -113,92 +121,58 @@ def _diagflat_fill_diag_kernel(
     base,
     sstride,
     ndiag,
+    chunks,
+    cpb,
     BLOCK: tl.constexpr,
-    WIDE: tl.constexpr,
-    MAX_DIAG: tl.constexpr,
+    SPAN: tl.constexpr,
 ):
-    """Zero fill plus diagonal write in a single launch.
+    """Persistent two-phase zero fill plus diagonal write in a single launch.
 
-    Each program zeroes its own ``[base, base + BLOCK)`` span of the raw output
-    buffer exactly as the pure fill does, and then writes the at most
-    ``MAX_DIAG`` diagonal elements that land inside that same span.  Diagonal
-    element ``i`` lives at flat address ``i * (m + 1) + base_off`` and belongs
-    to exactly one span, so no *cross-block* ordering is needed.  Within a
-    block the two stores do overlap: the diagonal addresses are a subset of the
-    span this same program just zeroed, and the lane that zeroes a given
-    address is not the lane that writes its value.  The barrier below orders
-    the two, without which the zero can land after the value and leave a
+    Program ``pid`` owns the contiguous chunk run ``[pid * cpb, pid * cpb +
+    cpb)`` (clamped to ``chunks``).  Phase one zeroes each chunk exactly as
+    the pure fill does; phase two writes the diagonal cells that land inside
+    the same run.  Diagonal element ``i`` lives at flat address
+    ``i * (m + 1) + base_off`` and belongs to exactly one run, so no
+    *cross-program* ordering is needed.  Within a program the two store
+    sets overlap: the diagonal addresses are a subset of the span the same
+    program just zeroed, and the lanes that zero a given address are not
+    the lanes that write its value.  The single barrier between the phases
+    orders them, without which a zero can land after a value and leave a
     nondeterministic handful of diagonal cells at 0.
-    The number of diagonal elements inside a span is
-    ``ceil(BLOCK / (m + 1)) + 1``, which the caller keeps inside ``MAX_DIAG``.
+
+    Phase two walks the run's diagonal indices directly (``i0 .. i0 +
+    SPAN - 1``, int64 address math so no interior overflow is possible for
+    any ``count`` below the host's int32 fallback line), so one masked
+    load/store pair per program covers all of its diagonal cells.
     """
     pid = tl.program_id(0)
-    if WIDE:
-        b = pid.to(tl.int64) * BLOCK
-    else:
-        b = pid * BLOCK
-    offs = b + tl.arange(0, BLOCK)
+    start = pid * cpb
+    end = tl.minimum(start + cpb, chunks)
     zero = tl.zeros([BLOCK], dtype=fill_ptr.dtype.element_ty)
-    if b + BLOCK <= count:
-        tl.store(fill_ptr + offs, zero)
-    else:
-        tl.store(fill_ptr + offs, zero, mask=offs < count)
+    for c in range(start, end):
+        b = c * BLOCK
+        offs = b + tl.arange(0, BLOCK)
+        if b + BLOCK <= count:
+            tl.store(fill_ptr + offs, zero)
+        else:
+            tl.store(fill_ptr + offs, zero, mask=offs < count)
     tl.debug_barrier()
 
+    lo = tl.minimum(start, end) * BLOCK
+    hi = end * BLOCK
     stride = m + 1
-    head = b - base
+    head = lo.to(tl.int64) - base
     i0 = tl.where(head <= 0, 0, (head + stride - 1) // stride)
-    j = tl.arange(0, MAX_DIAG)
+    j = tl.arange(0, SPAN).to(tl.int64)
     idx = i0 + j
-    if WIDE:
-        addr = idx.to(tl.int64) * stride + base
-    else:
-        addr = idx * stride + base
-    valid = (idx < ndiag) & (addr < b + BLOCK)
+    addr = idx * stride + base
+    valid = (idx < ndiag) & (addr < hi)
     val = tl.load(
         src_ptr + idx * sstride,
         mask=valid,
-        other=tl.zeros([MAX_DIAG], dtype=src_ptr.dtype.element_ty),
+        other=tl.zeros([SPAN], dtype=src_ptr.dtype.element_ty),
     )
     tl.store(out_ptr + addr, val, mask=valid)
-
-
-@triton.jit
-def _diagflat_tile_kernel(
-    src_ptr,
-    dst_ptr,
-    m,
-    offset,
-    sstride,
-    BR: tl.constexpr,
-    BC: tl.constexpr,
-):
-    """Fused diagonal-aware fill: ``dst`` is a contiguous (m, m) matrix and
-
-        dst[r, c] = src[min(r, c) * sstride] if c - r == offset else 0
-
-    Every program owns one clamped BR x BC tile.  The clamped origin
-    ``tl.minimum(pid * BR, m - BR)`` makes the store address affine and exactly
-    tile-sized, so it compiles to wide vector stores with no masking; overlapping
-    neighbours are harmless because the stored value is a pure function of the
-    cell, so every writer of an overlapping cell stores the same value.
-    ``sstride`` is the flattened input's element stride (1 for the contiguous
-    real dtypes this path accepts).
-    """
-    pr = tl.program_id(0)
-    pc = tl.program_id(1)
-    rows = tl.minimum(pr * BR, m - BR) + tl.arange(0, BR)[:, None]
-    cols = tl.minimum(pc * BC, m - BC) + tl.arange(0, BC)[None, :]
-
-    diag = (cols - rows) == offset
-    idx = tl.minimum(rows, cols) * sstride
-    val = tl.load(
-        src_ptr + idx,
-        mask=diag,
-        other=tl.zeros([BR, BC], dtype=src_ptr.dtype.element_ty),
-    )
-    zeros = tl.zeros([BR, BC], dtype=dst_ptr.dtype.element_ty)
-    tl.store(dst_ptr + (rows * m + cols), tl.where(diag, val, zeros))
 
 
 @triton.jit
@@ -248,22 +222,30 @@ def _zero_fill(out):
 
 
 def _fill_with_diagonal(out, src, n, m, base, sstride):
-    """Single-launch fill + diagonal write for the real-dtype large-output path.
+    """Single-launch persistent fill + diagonal write for real dtypes.
 
-    Returns False when the per-span diagonal count would exceed ``MAX_DIAG``
-    (only for very small ``m``), in which case the caller falls back to the
-    separate scatter launch.
+    The chunk width starts near ``count / 24`` so the 24 persistent programs
+    each own roughly one chunk, rounded up to a power of two and capped so
+    one chunk tile stays within ``_FILL_TILE_BYTES`` (keeping the grid
+    hardware-resident under the 448KB DSM line).  Returns False only when
+    the flat int32 address range would overflow, in which case the caller
+    falls back to the separate zero-fill and scatter launches.
     """
-    stride = m + 1
-    if (m + 1 + _BLOCK_FILL) // stride + 1 > _BLOCK_DIAG:
-        return False
-    if out.numel() > _INT32_MAX - 2 * _BLOCK_FILL:
+    itemsize = out.element_size()
+    block = min(
+        max(16, _FILL_TILE_BYTES // itemsize),
+        triton.next_power_of_2(max(16, out.numel() // _FILL_PROGS)),
+    )
+    if out.numel() > _INT32_MAX - 2 * block:
         return False
 
-    buf = out.view(_fill_view(out.element_size()))
+    buf = out.view(_fill_view(itemsize))
     count = buf.numel()
-    grid = (triton.cdiv(count, _BLOCK_FILL),)
-    _diagflat_fill_diag_kernel[grid](
+    chunks = triton.cdiv(count, block)
+    nprog = min(_FILL_PROGS, chunks)
+    cpb = triton.cdiv(chunks, nprog)
+    span = max(16, triton.next_power_of_2(cpb * block // (m + 1) + 2))
+    _diagflat_fill_diag_kernel[(nprog,)](
         buf,
         out,
         src,
@@ -272,9 +254,10 @@ def _fill_with_diagonal(out, src, n, m, base, sstride):
         base,
         sstride,
         n,
-        BLOCK=_BLOCK_FILL,
-        WIDE=False,
-        MAX_DIAG=_BLOCK_DIAG,
+        chunks,
+        cpb,
+        BLOCK=block,
+        SPAN=span,
         num_warps=4,
     )
     return True
@@ -295,39 +278,6 @@ def _diagonal_params(out, k):
     return base, 0, None
 
 
-def _fused_tile(self, out, k, real_dtype):
-    """Single-launch path; returns False when the tiled kernel cannot be used.
-
-    Only small outputs take this path (see the ``_FUSE_MAX_ELEMS`` comment).
-    The clamped origin needs ``BR <= m`` and ``BC <= m``, so for small ``m`` the
-    tile side shrinks to the largest power of two that still fits.
-    """
-    m = out.shape[0]
-    if real_dtype is not None:
-        return False
-    if k < 0 or k >= m:
-        return False
-    if m * m > _FUSE_MAX_ELEMS:
-        return False
-    if not self.is_contiguous():
-        return False
-    br = _FUSE_BR if m >= _FUSE_BR else (1 << (m.bit_length() - 1))
-    bc = _FUSE_BC if m >= _FUSE_BC else (1 << (m.bit_length() - 1))
-    src = self.reshape(-1)
-    grid = (triton.cdiv(m, br), triton.cdiv(m, bc))
-    _diagflat_tile_kernel[grid](
-        src,
-        out,
-        m,
-        k,
-        src.stride(0),
-        BR=br,
-        BC=bc,
-        num_warps=4,
-    )
-    return True
-
-
 def _forward(self, k):
     n = self.numel()
     m = n + (k if k >= 0 else -k)
@@ -336,9 +286,6 @@ def _forward(self, k):
         return out
 
     base, jmul, real_dtype = _diagonal_params(out, k)
-
-    if _fused_tile(self, out, k, real_dtype):
-        return out
 
     if real_dtype is None and n > 0:
         flat = self.reshape(-1)

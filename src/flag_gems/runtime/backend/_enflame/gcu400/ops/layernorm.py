@@ -335,10 +335,6 @@ def layer_norm_persistent_kernel_multiline(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("layer_norm_loop"),
-    key=["M", "N"],
-)
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_loop_kernel(
     in_ptr,
@@ -351,86 +347,114 @@ def layer_norm_loop_kernel(
     N,
     eps,
     TILE_N: tl.constexpr,
+    UNROLL: tl.constexpr,
 ):
-    # Map the program id to the row of X and Y it should compute.
+    # Few-rows / very-wide-rows form (one CTA per row, N > 16384 or fp32
+    # N > 8192). The upstream Welford body carries a loop-serial dependency
+    # (new_m from m, plus a vector division per step) that pinned the
+    # (20, 6, 65536) core shape at ~80/97us (fp16/fp32); this body computes
+    # the statistics in a single pass with shifted sum/sum-sq vector
+    # accumulators (no per-step division, no serial chain) and applies the
+    # affine transform as out = x * (w*rstd) + (b - mean*w*rstd).
+    # Measured on GCU400: 79.9 -> 43.4us (fp16), 97.1 -> 69.4us (fp32).
+    # The coarse center c (first-tile mean) keeps sum(x-c)^2 free of the
+    # E[x^2] - E[x]^2 cancellation for large-mean inputs; the masked tail
+    # must zero the shifted lanes explicitly (other=0 - c would pollute).
     pid = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
     if pid >= M:
         return
 
-    # Compute mean
-    m = tl.zeros((TILE_N,), dtype=tl.float32)  # mean
-    s = tl.zeros((TILE_N,), dtype=tl.float32)  # sum((x - m)^2)
-    cnt = tl.zeros((TILE_N,), dtype=tl.int32)
-    num_steps = tl.cdiv(N, TILE_N)
-    for step in range(0, num_steps - 1, 1):
-        start_n = step * TILE_N
-        n_offsets = start_n + tl.arange(0, TILE_N)
-        x = tl.load(in_ptr + pid * N + n_offsets).to(tl.float32)
-        new_m = m + (x - m) / (step + 1)
-        new_s = s + (x - new_m) * (x - m)
-        cnt += 1
-        m = new_m
-        s = new_s
+    base = pid.to(tl.int64) * N
+    cols0 = tl.arange(0, TILE_N)
+    mask0 = cols0 < N
+    x0 = tl.load(in_ptr + base + cols0, mask=mask0, other=0.0).to(tl.float32)
+    cnt0 = tl.minimum(TILE_N, N)
+    c = tl.sum(x0, axis=0) / cnt0
 
-    # the last step
-    for step in range(num_steps - 1, num_steps, 1):
-        start_n = step * TILE_N
-        n_offsets = start_n + tl.arange(0, TILE_N)
-        mask = n_offsets < N
-        x = tl.load(in_ptr + pid * N + n_offsets, mask=mask).to(tl.float32)
-        new_m = tl.where(mask, m + (x - m) / (step + 1), m)
-        new_s = tl.where(mask, s + (x - new_m) * (x - m), s)
-        cnt += mask.to(tl.int32)
-        m = new_m
-        s = new_s
+    num_full = N // TILE_N
+    num_groups = num_full // UNROLL
+    acc1 = tl.zeros((TILE_N,), dtype=tl.float32)
+    acc2 = tl.zeros((TILE_N,), dtype=tl.float32)
+    # Hot loop: full chunks only, no masks, no branches; UNROLL chunks in
+    # flight via static_range (runtime `if` inside this loop breaks the
+    # load pipeline on this backend: 71.9 -> 104.9us when present).
+    for g in range(0, num_groups):
+        for u in tl.static_range(UNROLL):
+            cols = (g * UNROLL + u) * TILE_N + cols0
+            x = tl.load(in_ptr + base + cols).to(tl.float32) - c
+            acc1 += x
+            acc2 += x * x
+    # Peeled remainder chunks (UNROLL does not divide num_full).
+    for step in range(num_groups * UNROLL, num_full):
+        cols = step * TILE_N + cols0
+        x = tl.load(in_ptr + base + cols).to(tl.float32) - c
+        acc1 += x
+        acc2 += x * x
+    s1 = tl.sum(acc1, axis=0)
+    s2 = tl.sum(acc2, axis=0)
+    tail_start = num_full * TILE_N
+    if tail_start < N:
+        cols = tail_start + cols0
+        mask = cols < N
+        x = tl.load(in_ptr + base + cols, mask=mask, other=0.0).to(tl.float32)
+        x = tl.where(mask, x - c, 0.0)
+        s1 += tl.sum(x, axis=0)
+        s2 += tl.sum(x * x, axis=0)
 
-    final_m = tl.sum(m * cnt) / N
-    var = tl.sum(s + cnt * (m - final_m) * (m - final_m)) / N
+    dmean = s1 / N
+    mean = dmean + c
+    var = s2 / N - dmean * dmean
     rstd = tl.math.rsqrt(var + eps)
-    m = final_m
-    # Write mean / rstd
-    tl.store(out_mean_ptr + pid, m)
+    tl.store(out_mean_ptr + pid, mean)
     tl.store(out_rstd_ptr + pid, rstd)
 
-    # reverse the order of the second sweep
-    # Normalize and apply linear transformation
+    # Apply pass, reverse order: the statistics pass ends at the row tail,
+    # so starting from prev_multiple keeps the first applied chunks L2-hot.
     prev_multiple = prev_multiple_of(N, TILE_N)
     # the first step, masking is needed
     for start_n in range(0, TILE_N, TILE_N):
-        n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        mask = n_offsets < N
+        cols = (prev_multiple - start_n) + tl.arange(0, TILE_N)
+        mask = cols < N
         x = tl.load(
-            in_ptr + pid * N + n_offsets,
+            in_ptr + base + cols,
             mask=mask,
             other=0.0,
             eviction_policy="evict_first",
         ).to(tl.float32)
         if weight_ptr is None:
-            w = 1
+            if bias_ptr is None:
+                out = (x - mean) * rstd
+            else:
+                b = tl.load(bias_ptr + cols, mask=mask)
+                out = (x - mean) * rstd + b
         else:
-            w = tl.load(weight_ptr + n_offsets, mask=mask)
-        if bias_ptr is None:
-            b = 0
-        else:
-            b = tl.load(bias_ptr + n_offsets, mask=mask)
-        out = w * (x - m) * rstd + b
-        tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
+            w = tl.load(weight_ptr + cols, mask=mask)
+            rw = w.to(tl.float32) * rstd
+            if bias_ptr is None:
+                out = x * rw - mean * rw
+            else:
+                b = tl.load(bias_ptr + cols, mask=mask)
+                out = x * rw + (b.to(tl.float32) - mean * rw)
+        tl.store(out_ptr + base + cols, out, mask=mask)
 
     for start_n in range(TILE_N, N, TILE_N):
-        n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
-        x = tl.load(in_ptr + pid * N + n_offsets, eviction_policy="evict_first").to(
-            tl.float32
-        )
+        cols = (prev_multiple - start_n) + tl.arange(0, TILE_N)
+        x = tl.load(in_ptr + base + cols, eviction_policy="evict_first").to(tl.float32)
         if weight_ptr is None:
-            w = 1
+            if bias_ptr is None:
+                out = (x - mean) * rstd
+            else:
+                b = tl.load(bias_ptr + cols)
+                out = (x - mean) * rstd + b
         else:
-            w = tl.load(weight_ptr + n_offsets)
-        if bias_ptr is None:
-            b = 0
-        else:
-            b = tl.load(bias_ptr + n_offsets)
-        out = w * (x - m) * rstd + b
-        tl.store(out_ptr + pid * N + n_offsets, out)
+            w = tl.load(weight_ptr + cols)
+            rw = w.to(tl.float32) * rstd
+            if bias_ptr is None:
+                out = x * rw - mean * rw
+            else:
+                b = tl.load(bias_ptr + cols)
+                out = x * rw + (b.to(tl.float32) - mean * rw)
+        tl.store(out_ptr + base + cols, out)
 
 
 @libentry()
@@ -618,9 +642,56 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                     eps,
                     TILE_N,
                 )
+        elif N <= 16384:
+            # Single-tile band: one [TILE_N] row tile is register/DSM
+            # resident, so the persistent kernel normalizes in a single load
+            # pass. Measured vs the previous loop-kernel routing:
+            # (16, 6144) fp16 6.37 -> 5.21us, (16, 11264) fp16 7.81 -> 6.33us.
+            # fp32 above 8192 keeps the loop form with a 4096-wide tile (see
+            # the interleaved A/B note in the branch below).
+            if N <= 8192 or input.dtype != torch.float32:
+                TILE_N = triton.next_power_of_2(N)
+                grid_x = min(M, MAX_GRID_X)
+                grid_y = triton.cdiv(M, MAX_GRID_X)
+                layer_norm_persistent_kernel[(grid_x, grid_y, 1)](
+                    input,
+                    y,
+                    weight,
+                    bias,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    eps,
+                    TILE_N,
+                )
+            else:
+                # fp32 above 8192: the 16384-wide fp32 tile and the 8192-wide
+                # v3 tile both lose to a 4096-wide loop here (interleaved A/B
+                # on (16, 11264) fp32: 7.94 welford / 8.04 t4096 / 8.13
+                # persistent / 8.63 t8192 us); t4096 keeps v3 within noise.
+                grid_x = min(M, MAX_GRID_X)
+                grid_y = triton.cdiv(M, MAX_GRID_X)
+                layer_norm_loop_kernel[(grid_x, grid_y, 1)](
+                    input,
+                    y,
+                    weight,
+                    bias,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    eps,
+                    TILE_N=4096,
+                    UNROLL=2,
+                    num_warps=4,
+                )
         else:
             grid_x = min(M, MAX_GRID_X)
             grid_y = triton.cdiv(M, MAX_GRID_X)
+            two_byte = input.dtype in (torch.float16, torch.bfloat16)
+            TILE_N = 16384 if two_byte else 8192
+            UNROLL = 4 if N // TILE_N >= 16 else 2
             layer_norm_loop_kernel[(grid_x, grid_y, 1)](
                 input,
                 y,
@@ -631,6 +702,9 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 M,
                 N,
                 eps,
+                TILE_N=TILE_N,
+                UNROLL=UNROLL,
+                num_warps=4,
             )
     return y, mean, rstd
 
