@@ -521,9 +521,8 @@ def _broadcast_shape_metadata(a_shape, b_shape):
 def _broadcast_shape(a_t, b_t):
     try:
         return _broadcast_shape_metadata(tuple(a_t.shape), tuple(b_t.shape))
-    except ValueError:
-        # Keep PyTorch's diagnostic for incompatible input shapes.
-        return tuple(torch.broadcast_shapes(tuple(a_t.shape), tuple(b_t.shape)))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 @lru_cache(maxsize=256)
