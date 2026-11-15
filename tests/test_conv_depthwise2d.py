@@ -47,9 +47,6 @@ SHAPE_DEPTHWISE = [
 @pytest.mark.parametrize("dilation", [[1, 1]])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("bias", [True, False])
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="Aten gcu backend not supported"
-)
 def test_conv_depthwise2d(
     shape_input, shape_weight, kernel, stride, padding, dilation, dtype, bias
 ):

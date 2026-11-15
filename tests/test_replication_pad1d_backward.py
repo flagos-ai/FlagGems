@@ -82,6 +82,8 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
     promoting, and its output takes the *input's* options, so silently following
     grad_output would hand back a differently-typed gradient.
     """
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     inp = torch.randn(2, 3, 8, dtype=torch.float64, device=flag_gems.device)
     padded = torch.ops.aten.replication_pad1d(inp, (1, 1))
     bad_grad = torch.ones_like(padded, dtype=torch.float32)
@@ -95,6 +97,12 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
 )
 def test_replication_pad1d_backward_grad_input_takes_input_options(dtype):
     """grad_input has the input's dtype and device, matching at::empty_like(self)."""
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("float64 is not supported by this device")
     inp = torch.randn(2, 3, 8, dtype=dtype, device=flag_gems.device)
     padded = torch.ops.aten.replication_pad1d(inp, (2, 1))
     grad = torch.ones_like(padded)

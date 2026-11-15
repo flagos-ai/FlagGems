@@ -16,7 +16,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.histogram import histogram_bin_ct, histogram_bins_tensor
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -48,7 +47,7 @@ def test_accuracy_histogram_bin_ct(shape, bins, dtype):
     ref_inp = inp.cpu()
     ref_hist, ref_edges = torch.histogram(ref_inp, bins=bins)
     # Direct dispatch, NO use_gems()
-    res_hist, res_edges = histogram_bin_ct(inp, bins=bins)
+    res_hist, res_edges = flag_gems.histogram_bin_ct(inp, bins=bins)
     gems_assert_close(res_hist.cpu(), ref_hist, dtype)
     gems_assert_close(res_edges.cpu(), ref_edges, dtype)
 
@@ -62,7 +61,7 @@ def test_accuracy_histogram_bin_ct_with_range(shape, bins, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = inp.cpu()
     ref_hist, ref_edges = torch.histogram(ref_inp, bins=bins, range=(0.0, 10.0))
-    res_hist, res_edges = histogram_bin_ct(inp, bins=bins, range=(0.0, 10.0))
+    res_hist, res_edges = flag_gems.histogram_bin_ct(inp, bins=bins, range=(0.0, 10.0))
     gems_assert_close(res_hist.cpu(), ref_hist, dtype)
     gems_assert_close(res_edges.cpu(), ref_edges, dtype)
 
@@ -77,7 +76,7 @@ def test_accuracy_histogram_bin_ct_with_weight(shape, dtype):
     ref_inp = inp.cpu()
     ref_weight = weight.cpu()
     ref_hist, ref_edges = torch.histogram(ref_inp, bins=15, weight=ref_weight)
-    res_hist, res_edges = histogram_bin_ct(inp, bins=15, weight=weight)
+    res_hist, res_edges = flag_gems.histogram_bin_ct(inp, bins=15, weight=weight)
     gems_assert_close(res_hist.cpu(), ref_hist, dtype, reduce_dim=15)
     gems_assert_close(res_edges.cpu(), ref_edges, dtype)
 
@@ -90,7 +89,7 @@ def test_accuracy_histogram_bin_ct_with_density(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = inp.cpu()
     ref_hist, ref_edges = torch.histogram(ref_inp, bins=25, density=True)
-    res_hist, res_edges = histogram_bin_ct(inp, bins=25, density=True)
+    res_hist, res_edges = flag_gems.histogram_bin_ct(inp, bins=25, density=True)
     gems_assert_close(res_hist.cpu(), ref_hist, dtype, reduce_dim=25)
     gems_assert_close(res_edges.cpu(), ref_edges, dtype)
 
@@ -105,7 +104,7 @@ def test_accuracy_histogram_bins_tensor(shape, dtype):
     ref_inp = inp.cpu()
     ref_edges = edges.cpu()
     ref_hist, ref_bin_edges = torch.histogram(ref_inp, ref_edges)
-    res_hist, res_bin_edges = histogram_bins_tensor(inp, edges)
+    res_hist, res_bin_edges = flag_gems.histogram_bins_tensor(inp, edges)
     gems_assert_close(res_hist.cpu(), ref_hist, dtype, reduce_dim=10)
     gems_assert_close(res_bin_edges.cpu(), ref_bin_edges, dtype)
 
@@ -121,6 +120,6 @@ def test_accuracy_histogram_bins_tensor_nonuniform(shape, dtype):
     ref_inp = inp.cpu()
     ref_edges = edges.cpu()
     ref_hist, ref_bin_edges = torch.histogram(ref_inp, ref_edges)
-    res_hist, res_bin_edges = histogram_bins_tensor(inp, edges)
+    res_hist, res_bin_edges = flag_gems.histogram_bins_tensor(inp, edges)
     gems_assert_close(res_hist.cpu(), ref_hist, dtype, reduce_dim=3)
     gems_assert_close(res_bin_edges.cpu(), ref_bin_edges, dtype)

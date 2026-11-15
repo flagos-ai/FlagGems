@@ -23,8 +23,7 @@ from . import conftest as cfg
 device = flag_gems.device
 
 
-# enflame 历史 skip（aten ref(sort) error）已在全局 64 位开关 + 单 kernel
-# 实现下失效：恢复该后端的全量精度覆盖，不删除 case、不放宽任何断言。
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="aten ref(sort) error")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)

@@ -11,9 +11,6 @@ pytestmark = pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.parametrize("metadata_placement", ["host", "device", "mixed"])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="Aten gcu backend not supported"
-)
 def test_nested_view_from_buffer_copy(dtype, metadata_placement):
     buffer_size = 100000
     buffer = torch.randn(buffer_size, dtype=dtype, device=flag_gems.device)

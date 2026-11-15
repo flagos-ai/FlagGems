@@ -34,6 +34,8 @@ _SKIP_FP64 = pytest.mark.skipif(
 def test_histogramdd_basic(shape, bins, dtype):
     if len(bins) != shape[1]:
         pytest.skip("bins length must match D dimension")
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -61,6 +63,9 @@ def test_histogramdd_basic(shape, bins, dtype):
     "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 )
 def test_histogramdd_with_range(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+
     D = shape[1]
     bins = [5] * D
     # Define explicit range per dimension
@@ -90,6 +95,9 @@ def test_histogramdd_with_range(shape, dtype):
     "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 )
 def test_histogramdd_density(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+
     D = shape[1]
     bins = [4] * D
 

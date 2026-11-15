@@ -210,7 +210,7 @@ def test_unpack_seq_3d_edge_cases(dtype):
 
 @pytest.mark.unpack_seq_triton
 @pytest.mark.skipif(
-    not (CUDA_AVAILABLE or flag_gems.vendor_name == "enflame"),
+    not CUDA_AVAILABLE,
     reason="requires NVIDIA Hopper architecture for FP8",
 )
 def test_pack_unpack_fp8_roundtrip():

@@ -260,7 +260,7 @@ def test_put_index_out_of_range(numel, bad_offset, negative, accumulate):
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
     )
     # CUDA reports a device-side assert/trap; ROCm surfaces the s_trap as an
-    # HSA hardware exception; Enflame GCU aborts with a SIP assert.
+    # HSA hardware exception.
     assert (
         "device-side assert" in proc.stderr
         or "trap" in proc.stderr.lower()

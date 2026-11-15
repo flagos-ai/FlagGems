@@ -13,10 +13,6 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("num_bags", [3, 8, 16])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="Aten gcu backend not supported",
-)
 def test_embedding_bag_dense_backward(num_bags, embedding_dim, dtype):
     """Test _embedding_bag_dense_backward accuracy."""
     torch.manual_seed(42)
@@ -96,10 +92,6 @@ def test_embedding_bag_dense_backward(num_bags, embedding_dim, dtype):
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="Aten gcu backend not supported",
-)
 def test_embedding_bag_dense_backward_with_weights(num_bags, embedding_dim, dtype):
     """Test _embedding_bag_dense_backward accuracy with per_sample_weights."""
     torch.manual_seed(42)
@@ -180,10 +172,6 @@ def test_embedding_bag_dense_backward_with_weights(num_bags, embedding_dim, dtyp
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="Aten gcu backend not supported",
-)
 def test_embedding_bag_dense_backward_mode_sum(num_bags, embedding_dim, dtype):
     """Test _embedding_bag_dense_backward accuracy with mode=1 (sum)."""
     torch.manual_seed(42)

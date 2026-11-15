@@ -34,6 +34,15 @@ _SKIP_FP64 = pytest.mark.skipif(
     "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 )
 def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float64
+        and not utils.fp64_is_supported
+    ):
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # torch.empty(..., dtype=torch.float64) reports float32 and the
+        # output-dtype contract of this op can never hold there.
+        pytest.skip("float64 is not supported by this device")
     # Initialize SobolEngine to get valid state
     eng = SobolEngine(dimension=dimension, scramble=False)
 

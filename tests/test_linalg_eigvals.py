@@ -76,9 +76,7 @@ def test__linalg_eigvals(shape, dtype):
 
 @pytest.mark.underscore_linalg_eigvals
 @pytest.mark.parametrize("shape", EIGVALS_SHAPES)
-@pytest.mark.parametrize(
-    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
-)
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test__linalg_eigvals_complex(shape, dtype):
     """Complex input is supported natively and must stay delegate-clean."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -209,7 +207,7 @@ def test_linalg_eigvals_out_non_contiguous(dtype):
 
 
 @pytest.mark.linalg_eigvals_out
-@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
+@pytest.mark.parametrize("dtype", [torch.float64])
 def test_linalg_eigvals_out_float64(dtype):
     """float64 input returns complex128 and must stay on device."""
     inp = torch.randn((5, 5), dtype=dtype, device=flag_gems.device)

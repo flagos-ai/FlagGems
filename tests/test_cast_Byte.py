@@ -139,8 +139,11 @@ def test_cast_Byte_requires_grad(requires_grad):
 
 
 @pytest.mark.cast_Byte
-@pytest.mark.parametrize(
-    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="XPyTorch _cast_Byte does not support complex->uint8 (native and "
+    "_to_copy both raise NOT IMPLEMENTED); no device reference exists",
 )
 def test_cast_Byte_complex(dtype):
     x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()

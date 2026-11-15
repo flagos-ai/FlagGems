@@ -36,8 +36,6 @@ _SKIP_FP64 = pytest.mark.skipif(
 def test_polar(shape, dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
-    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
-        pytest.skip("Not supported float64")
     abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
     angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
         8 * math.pi

@@ -42,12 +42,12 @@ def test_special_round_out(shape, dtype):
     utils.gems_assert_equal(out, ref_out)
 
 
+# Round-half-to-even midpoint tests: verify that ties round to the nearest
+# even integer (banker's rounding), matching torch.round behavior.
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason="enflame does not support fp64",
 )
-# Round-half-to-even midpoint tests: verify that ties round to the nearest
-# even integer (banker's rounding), matching torch.round behavior.
 @pytest.mark.special_round
 def test_special_round_midpoints():
     # Test values: inputs and expected outputs for round-half-to-even

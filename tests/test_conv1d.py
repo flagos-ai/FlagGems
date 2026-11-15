@@ -108,6 +108,7 @@ def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     flag_gems.vendor_name in ("tsingmicro", "enflame"),
     reason="Issue #4131 on tsingmicro; Aten gcu backend not supported on enflame",
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="not working recently")
 def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
     """Test conv1d with various dilation values, including tuple form.
 

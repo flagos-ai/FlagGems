@@ -447,23 +447,12 @@ def test_put__index_out_of_range(bad):
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
     )
     # CUDA reports a device-side assert/trap; ROCm surfaces the s_trap as an
-    # HSA hardware exception; Enflame GCU aborts with a SIP assert.
-    device_failure = (
+    # HSA hardware exception.
+    assert (
         "device-side assert" in proc.stderr
         or "trap" in proc.stderr.lower()
         or "HSA_STATUS_ERROR_EXCEPTION" in proc.stderr
-        or "sip assert" in proc.stderr.lower()
-    )
-    # The GCU torch fork's ATen indexing layer instead validates the range on the host
-    # and raises `IndexError: out of range: tried to access index ...`, which
-    # rejects the write just as reliably (it never reaches the device).
-    host_range_error = (
-        flag_gems.vendor_name == "enflame"
-        and "IndexError: out of range: tried to access index" in proc.stderr
-    )
-    assert device_failure or host_range_error, (
-        "expected a device-side failure, got: " + proc.stderr[-300:]
-    )
+    ), ("expected a device-side failure, got: " + proc.stderr[-300:])
 
 
 @pytest.mark.put_
