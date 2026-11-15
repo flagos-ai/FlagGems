@@ -364,10 +364,6 @@ def _empty_per_channel_quantized(shape, scales, zero_points, axis, dtype):
     )
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
-)
 @pytest.mark.quantize_per_channel_out
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("axis", [0, 1])
