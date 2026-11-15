@@ -313,7 +313,8 @@ def test_family_does_not_reuse_choice_for_different_output_shape(router, monkeyp
     [
         (4096, 2048, 192, "nn", True, 0, (4,)),
         (3072, 2048, 192, "nn", True, 0, (4,)),
-        (2816, 2048, 192, "nn", True, 0, ()),
+        (2560, 2048, 192, "nn", True, 0, (4,)),
+        (2304, 2048, 192, "nn", True, 0, ()),
         (16384, 376, 192, "nn", True, 0, ()),
         (16384, 392, 192, "nn", True, 0, (4,)),
         (4097, 2049, 192, "nn", True, 0, ()),

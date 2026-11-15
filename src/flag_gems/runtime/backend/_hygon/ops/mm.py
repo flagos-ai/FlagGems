@@ -1907,8 +1907,8 @@ def _cooperative_mm_candidates(a, b, c, *, allow_nn):
         return tuple(config for config in configs if config.supports(a, b, c))
     if not allow_nn or b.stride() != (n, 1):
         return ()
-    # One CTA uses the full LDS allocation. Keep tiles with at least 75%
-    # useful output and enough CTAs to use at least 75% of the first CU wave.
+    # One CTA uses the full LDS allocation. Require at least 75% useful
+    # output, but let partial first waves compete with Shared and ordinary MM.
     tile = 256
     tiles = triton.cdiv(m, tile) * triton.cdiv(n, tile)
     if min(m, n) < tile or 4 * m * n < 3 * tiles * tile**2:
@@ -1917,7 +1917,7 @@ def _cooperative_mm_candidates(a, b, c, *, allow_nn):
     if not config.supports(a, b, c):
         return ()
     compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
-    return (config,) if 4 * tiles >= 3 * compute_units else ()
+    return (config,) if 8 * tiles >= 5 * compute_units else ()
 
 
 # CTA-local Split-K configurations and launch shared with MV.
