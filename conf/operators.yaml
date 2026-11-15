@@ -696,16 +696,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: act_quant_triton
-  description: This is a fused operator.
-  for:
-  - None
-  labels:
-  - fused
-  kind:
-  - Quantization
-  stages:
-  - beta: '5.3'
 - id: adaptive_avg_pool1d
   description: 'Applies a one-dimensional adaptive average pooling over an input signal,
 
@@ -936,20 +926,6 @@ tensor into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - Math
-  stages:
-  - alpha: '5.4'
-- id: add_rms_norm
-  description: 'Add two inputs element-wise and apply Root Mean Square Layer Normalization.
-
-    '
-  for:
-  - add_rms_norm
-  labels:
-  - aten
-  - KernelGen
-  - Normalization
-  kind:
-  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: addbmm
@@ -1601,38 +1577,6 @@ tensor into the caller-supplied `out` buffer.
   - Reduction
   kind:
   - Math
-  stages:
-  - stable: '2.0'
-- id: apply_repetition_penalties
-  description: 'Modifies logit tensors in place to penalize tokens that have already
-    appeared in the generated sequence.
-
-    '
-  for:
-  - _C.apply_repetition_penalties_
-  labels:
-  - fused
-  - vLLM
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '5.0'
-- id: apply_rotary_pos_emb
-  description: 'A method to incorporate positional information into the Transformer
-    architecture.
-
-    Rotary Positional Embedding (RoPE) applies position-dependent rotation to the
-    query (Q)
-
-    and key (K) vectors before computing the attention score.
-
-    '
-  for:
-  - apply_rotary_pos_emb
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
   stages:
   - stable: '2.0'
 - id: arange
@@ -2490,29 +2434,6 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: beam_search_score
-  description: Computes beam search scores by adding cumulative log probabilities
-    with new token scores.
-  for:
-  - beam_search_score
-  labels:
-  - KernelGen
-  - fused
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: beam_search_score_
-  description: In-place version of beam search score computation.
-  for:
-  - beam_search_score_
-  labels:
-  - KernelGen
-  - fused
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: bernoulli
   description: 'Draws binary random numbers (0 or 1) from a Bernoulli distribution
     with per-element probabilities.
@@ -2539,23 +2460,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - beta: '5.3'
-- id: bf16_paged_mqa_logits
-  description: 'Compute multi-head weighted ReLU attention logits on paged BF16
-
-    KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
-
-    with zero-constexpr dispatch for decode-phase inference.
-
-    '
-  for:
-  - bf16_paged_mqa_logits
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
 - id: bilinear
   description: 'Applies a bilinear transformation to the incoming data: y = x1^T A
     x2 + b.
@@ -2631,18 +2535,6 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: bincount
-  description: Count the frequency of each value in an array of non-negative integers.
-  for:
-  - bincount
-  labels:
-  - aten
-  - pointwise
-  - KernelGen
-  kind:
-  - Reduction
-  stages:
-  - stable: '5.0'
 - id: binomial
   description: 'Draws samples from a binomial distribution with the number of trials
 
@@ -3004,18 +2896,6 @@ tensor into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
-- id: bucket_sort_topk
-  description: A wrapper of the TLE version and the Triton version bucket-sort topk
-    operation.
-  for:
-  - None
-  labels:
-  - fused
-  - DSA
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: bucketize
   description: Returns the indices of the buckets to which each input value belongs.
   for:
@@ -3465,21 +3345,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: chunk_gated_delta_rule_fwd
-  description: 'The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear
-    Attention (FLA).
-
-    '
-  for:
-  - chunk_gated_delta_rule_fwd
-  labels:
-  - fused
-  - FLA
-  kind:
-  - Attention
-  stages:
-  - alpha: '5.0'
-  - beta: '5.3'
 - id: clamp
   description: Clamps all elements in `input` into the range `[min, max]`.
   for:
@@ -3725,42 +3590,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: combine_topk_swa_indices
-  description: 'Combines compressed top-k sparse attention indices with sliding-window
-    attention indices
-
-    for DeepSeekV4 attention.
-
-    '
-  for:
-  - vllm.v1.attention.ops.deepseek_v4_ops.combine_topk_swa_indices
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: compute_global_topk_indices_and_lens
-  description: 'Converts local top-k sparse attention indices to global KV-cache indices
-    and computes
-
-    valid top-k lengths for DeepSeekV4 attention.
-
-    '
-  for:
-  - vllm.v1.attention.ops.deepseek_v4_ops.compute_global_topk_indices_and_lens
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: compute_linear_combination
   description: 'Computes a batched linear combination: given `coefficients` of shape
 
@@ -3809,20 +3638,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
-- id: concat_and_cache_mla
-  description: 'Writes the latent and RoPE value into KV cache for Multi-head Latent
-    Attention forward case.
-
-    '
-  for:
-  - _C_cache_ops.concat_and_cache_mla
-  labels:
-  - fused
-  - MLA
-  kind:
-  - Attention
-  stages:
-  - beta: '3.0'
 - id: concatenate
   description: An alias of `cat()`.
   for:
@@ -4566,17 +4381,6 @@ tensor into the caller-supplied `out` buffer.
   - Reduction
   stages:
   - alpha: '5.4'
-- id: cp_gather_indexer_k_quant_cache
-  description: This is a fused operator that gathers FP8 K cache values and scales.
-  for:
-  - None
-  labels:
-  - fused
-  - vLLM
-  kind:
-  - Quantization
-  stages:
-  - beta: '5.3'
 - id: cross
   description: Computes the cross product of two 3-dimensional vectors along a dimension of size 3.
   for:
@@ -4603,18 +4407,6 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
   cpp: '5.5'
-- id: cross_entropy_loss
-  description: Computes the cross entropy loss between input logits and target.
-  for:
-  - CrossEntropyLoss
-  labels:
-  - fused
-  - Reduction
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
-  - removed: '3.0'
 - id: cross_out
   description: A variant of `cross` that allows the output to be assigned to `out`.
   for:
@@ -5159,16 +4951,6 @@ tensor into the caller-supplied `out` buffer.
   - Reduction
   stages:
   - alpha: '5.4'
-- id: cutlass_scaled_mm
-  for:
-  - cutlass_scaled_mm_sm_90
-  labels:
-  - fused
-  - vLLM
-  kind:
-  - LinearAlg
-  stages:
-  - beta: '5.0'
 - id: deg2rad
   description: Converts angles from degrees to radians.
   for:
@@ -5229,22 +5011,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: dequantize_and_gather_k_cache
-  description: 'Dequantizes FP8 K-cache entries and gathers them into a BF16 tensor
-    for DeepSeekV4 attention.
-
-    '
-  for:
-  - vllm.v1.attention.ops.deepseek_v4_ops.dequantize_and_gather_k_cache
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: det
   description: 'Computes the determinant of a square matrix via LU decomposition with
     partial pivoting. Equivalent to linalg.det.
@@ -5271,24 +5037,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: dgeglu
-  description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
-    function.
-
-    This is for the backward case.
-
-    '
-  for:
-  - dgeglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.0'
-  - stable: '5.0'
 - id: diag
   description: "- If `input` is a vector (1-D tensor), then returns a 2-D square tensor\n\
     \  with the elements of `input` as the diagonal.\n- If `input` is a matrix (2-D\
@@ -5489,24 +5237,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
-- id: dispatch_fused_moe_kernel
-  description: 'Accelerates neural network training by combining token routing (dispatch/all-to-all
-    communication),
-
-    expert computation (GEMM), and result aggregation into a single GPU kernel.
-
-    '
-  for:
-  - dispatch_fused_moe_kernel
-  labels:
-  - fused
-  - Activation
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - beta: '5.0'
-  - stable: '5.3'
 - id: dist
   description: 'Computes the p-norm distance between two tensors.
 
@@ -5638,23 +5368,6 @@ tensor into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - stable: '3.0'
-- id: dreglu
-  description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
-    of
-
-    the sigmoid function for gating. This is the backward case.
-
-    '
-  for:
-  - dreglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.3'
 - id: dropout
   description: An internal IR for implementing `torch.nn.functional.dropout`.
   for:
@@ -5692,23 +5405,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: dswiglu
-  description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
-    function.
-
-    This is for the backward case.
-
-    '
-  for:
-  - dswiglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.0'
-  - beta: '5.3'
 - id: dyn_quant_matmul_4bit
   description: Dynamic per-row INT8 activation and signed INT4 weight matrix multiplication.
   for:
@@ -6791,6 +6487,9 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.4'
 - id: flash_attention_forward
+  description: Computes scaled dot-product attention using FlashAttention.
+  for:
+  - _flash_attention_forward
   labels:
   - aten
   - NoCPU
@@ -6829,30 +6528,6 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: flash_mla
-  description: A variant of Multi-head Latent Attention (MLA).
-  for:
-  - triton_mla._forward_decode
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '3.0'
-- id: flash_mla_sparse_fwd
-  description: Part of the FlashMLA.
-  for:
-  - vllm.v1.attention.backends.mla.flashmla_sparse
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.3'
 - id: flatten
   description: Flatten a contiguous range of dimensions into a single dimension (view
     operation).
@@ -8887,63 +8562,6 @@ tensor into the caller-supplied `out` buffer.
   - PointWise
   stages:
   - alpha: '5.4'
-- id: fp8_fp4_mega_moe
-  description: 'Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
-
-    staged FP8 activations, packed FP4 expert weights, scales, and top-k
-
-    routing tensors, then computes the two-layer SwiGLU MoE output.
-
-    '
-  for:
-  - flag_gems.fused.fp8_fp4_mega_moe
-  - vllm.third_party.deep_gemm.fp8_fp4_mega_moe
-  labels:
-  - fused
-  - vLLM
-  - Triton
-  kind:
-  - MoE
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: fp8_fp4_mqa_logits
-  description: 'Compute weighted MQA logits with FP8 quantized Q and K tensors.
-
-    Uses head-batched tiled dot products with K reuse for high throughput
-
-    on DeepSeek V4 sparse attention indexer workloads.
-
-    '
-  for:
-  - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
-  labels:
-  - fused
-  - vLLM
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.1'
-- id: fp8_fp4_paged_mqa_logits
-  description: 'Compute paged multi-query attention logits from FP8 queries against
-
-    FP8/FP4 paged KV cache with per-token scaling. Used in DeepSeek-V4
-
-    decode-phase inference with adaptive tile sizing.
-
-    '
-  for:
-  - vllm.utils.deep_gemm.fp8_fp4_paged_mqa_logits
-  labels:
-  - fused
-  - vLLM
-  - DeepSeekV4
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: fp8_mqa_logits
   description: 'For each token in the given E4M3 tensor, iterate all tokens from two
     other given tensors,
@@ -9203,146 +8821,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: fused_add_rms_norm
-  for:
-  - add_rms_norm
-  labels:
-  - fused
-  - Normalization
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
-  cpp: '4.0'
-- id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
-  description: 'Horizontally-fused DeepseekV4-MLA BF16 variant.
-
-    per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + bf16 paged
-
-    cache insert for KV, all in one kernel launch. No FP8 quantization.
-
-    '
-  for:
-  - fused_deepseek_v4_qnorm_rope_kv_rope_insert
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
-  description: 'Horizontally-fused DeepseekV4-MLA.
-
-    per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + UE8M0 FP8
-
-    quant + paged cache insert for KV, all in one kernel launch.
-
-    '
-  for:
-  - torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
-  labels:
-  - fused
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: fused_experts_impl
-  description: An implementation of fused MoE.
-  for:
-  - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: fused_indexer_q_rope_quant
-  description: 'Applies RoPE to sparse indexer Q, quantizes it to FP8 or MXFP4, and
-    folds
-
-    indexer weights for DeepSeekV4 attention.
-
-    '
-  for:
-  - vllm.v1.attention.ops.deepseek_v4_ops.fused_indexer_q_rope_quant
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
-- id: fused_inv_rope_fp8_quant
-  description: 'Fused inverse RoPE and FP8 group quantization for DeepSeekV4 attention
-    output. Applies GPT-J inverse rotary embedding to the rope part of every head
-    and quantizes the grouped head output to FP8 with per-group scales, optionally
-    packed as UE8M0 exponents.
-
-    '
-  for:
-  - fused_inv_rope_fp8_quant
-  name:
-  - fused_inv_rope_fp8_quant
-  source:
-  - vllm
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.5'
-- id: fused_marlin_moe_w4a16_int4
-  description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
-    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
-    vLLM's fused_marlin_moe call signature.
-  for:
-  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
-- id: fused_marlin_moe_w4a16_mxfp4
-  description: Fused MoE with MXFP4 (E2M1) W4A16 weights packed two codes per byte
-    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation,
-    aligned with vLLM's fused_marlin_moe call signature.
-  for:
-  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
-- id: fused_marlin_moe_w8a16_int8
-  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16
-    fused-dequant GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe
-    call signature.
-  for:
-  - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
@@ -9373,37 +8851,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
-- id: fused_q_kv_rmsnorm
-  description: 'Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4
-    attention.
-
-    '
-  for:
-  - vllm.v1.attention.ops.deepseek_v4_ops.fused_q_kv_rmsnorm
-  labels:
-  - fused
-  - Attention
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: fused_recurrent_gated_delta_rule_fwd
-  description: 'The forward case for `fused_recurrent_gated_delta_rule` used in Flash
-    Linear Attention (FLA).
-
-    '
-  for:
-  - fused_recurrent_gated_delta_rule_fwd
-  labels:
-  - fused
-  - FLA
-  kind:
-  - Attention
-  stages:
-  - alpha: '5.0'
-  - beta: '5.3'
 - id: fused_rms_norm
   description: Fused RMS normalization returning the normalized output and inverse
     RMS.
@@ -9607,20 +9054,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
-- id: geglu
-  description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
-    function.
-  for:
-  - geglu
-  labels:
-  - fused
-  - Activation
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.3'
 - id: gelu
   description: 'Apply Cumulative Distribution Function for Gaussian Distribution function
     element-wise.
@@ -9649,18 +9082,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '2.2'
-- id: gelu_and_mul
-  description: An activation function for GeGLU.
-  for:
-  - GeluAndMul
-  labels:
-  - fused
-  - pointwise
-  - Activation
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
 - id: gelu_backward
   description: The backward version of `gelu()`.
   for:
@@ -10043,23 +9464,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
-- id: grouped_topk
-  description: 'A specialized routing mechanism used in Mixture-of-Experts (MoE) models
-    (like DeepSeek-V3/R1)
-
-    to select top-k experts by first grouping them, rather than selecting globally.
-
-    '
-  for:
-  - _moe_C.grouped_topk
-  labels:
-  - fused
-  - NoCPU
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - stable: '5.0'
 - id: gru
   description: Gated recurrent unit (GRU). At each time step, computes a new hidden
     state from the input and the previous hidden state using a reset gate and an update
@@ -10512,40 +9916,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Reduction
   stages:
   - alpha: '5.4'
-- id: hc_head_fused_kernel
-  description: 'The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
-
-    This fused implementation computes RMS-normalized hidden states and applies
-
-    per-head weighted mixing to produce the output activations.
-
-    '
-  for:
-  - mhc_head_fused_kernel
-  labels:
-  - fused
-  - vLLM
-  - DSA
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.2'
-  - stable: '5.3'
-- id: hc_split_sinkhorn_forward
-  description: 'Computes a differentiable approximation of the Wasserstein distance
-    (Optimal Transport)
-
-    between two probability distributions or point clouds.
-
-    '
-  for:
-  - None
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: heaviside
   description: 'The heaviside step function. Computes 0 where input < 0, 1 where input
     > 0,
@@ -11169,18 +10539,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: indexer_k_quant_and_cache
-  description: This is a fused operator that quantizes K tensors and writes them into
-    the FP8 KV cache.
-  for:
-  - None
-  labels:
-  - fused
-  - vLLM
-  kind:
-  - Quantization
-  stages:
-  - beta: '5.3'
 - id: indices
   description: Returns the coordinate (indices) tensor of a coalesced sparse COO tensor
     as a zero-copy alias of the internal indices storage, shaped (sparse_dim, nnz).
@@ -11246,34 +10604,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5.0'
-- id: inplace_fused_experts
-  description: This operator writes output directly to `hidden_states`.
-  for:
-  - inplace_fused_experts
-  labels:
-  - fused
-  - Activation
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - beta: '5.0'
-  - stable: '5.3'
-- id: instance_norm
-  description: 'Apply Instance Normalization independently for each channel in every
-    data sample within a batch.
-
-    '
-  for:
-  - instance_norm
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.2'
-  - removed: '3.0'
-  - beta: '5.3'
 - id: int_mm
   description: Performs matrix multiplication of two two-dimensional int8 tensors
     and returns a contiguous int32 tensor.
@@ -12979,6 +12309,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - aten
   - KernelGen
   - IR
+  kind:
+  - Tensor
   stages:
   - alpha: '5.4'
 - id: log
@@ -13925,27 +13257,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
-- id: matmul_bias_activation
-  description: Fused matrix multiplication with bias addition and ReLU activation.
-  for:
-  - matmul_bias_activation
-  labels:
-  - KernelGen
-  kind:
-  - BLAS
-  stages:
-  - alpha: '5.4'
-- id: matmuladd
-  description: Computes matrix multiplication followed by bias addition.
-  for:
-  - matmuladd
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: matrix_exp
   description: Computes the matrix exponential of one or more square matrices via
     scaling-and-squaring with a degree-18 Taylor polynomial, evaluated entirely with
@@ -14260,49 +13571,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
-- id: mhc_bwd
-  description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
-
-    This is the Triton implmentation for Sinkhorn implicit CG differentiation.
-
-    It computes the gradient of the Sinkhorn normalization using implicit differentiation
-    via the conjugate gradient method.
-
-    '
-  for:
-  - mhc_bwd
-  labels:
-  - fused
-  - vLLM
-  - DSA
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: mhc_post
-  description: Triton implementation of mHC Post operator (optimized v3).
-  for:
-  - mhc_post
-  labels:
-  - fused
-  - vLLM
-  - DSA
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: mhc_pre
-  description: Triton implementation of mHC Pre operator (optimized v2).
-  for:
-  - vllm.model_executor.layers.mhc.mhc_pre
-  labels:
-  - fused
-  - vLLM
-  - DSA
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: min
   description: Returns the minimum value of all elements in the `input` tensor.
   for:
@@ -14545,57 +13813,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - beta: '5.3'
-- id: moe_align_block_size_triton
-  description: 'Aligns the token distribution across experts to be compatible with
-    block size
-
-    for matrix multiplication.
-
-    '
-  for:
-  - _moe_C.align_block_size
-  labels:
-  - fused
-  - Reduction
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - beta: '4.0'
-  - stable: '4.2'
-- id: moe_load_balance_loss
-  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss
-    L_ib = N_e * sum_i f_i P_i, where f_i is expert i''s Top-K assignment
-    frequency and P_i its mean routing probability. Both statistics are computed
-    in fp32 from the router logits; an optional attention_mask excludes zero
-    entries from both statistics and the denominator. Returns a float32 scalar.
-    '
-  for:
-  - None
-  labels:
-  - fused
-  - Reduction
-  - MoE
-  kind:
-  - MoE
-  stages:
-  - beta: '5.5'
-- id: moe_sum
-  description: 'An implementation of Mixture of Experts (MoE) with sum-based aggregation
-
-    instead of the more common weighted average.
-
-    '
-  for:
-  - _moe_C.moe_sum
-  labels:
-  - fused
-  - Reduction
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - stable: '4.2'
 - id: moveaxis
   description: 'Returns a view of the original tensor with the axes in `source` moved
     to the positions in `destination`.
@@ -16307,36 +15524,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.4'
-- id: outer
-  description: 'Computes outer product of self and the input vector.
-
-    If the self tensor is a vector of size `n` and the input tensor is a vector of
-    size `m`,
-
-    the `out` tensor (if specified) must be a matrix of size `n * m`.
-
-    '
-  for:
-  - outer.Tensor
-  labels:
-  - fused
-  kind:
-  - BLAS
-  stages:
-  - stable: '2.0'
-- id: outplace_fused_experts
-  description: This operator allocates and returns a new output tensor.
-  for:
-  - outplace_fused_experts
-  labels:
-  - fused
-  - Activation
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - beta: '5.0'
-  - stable: '5.3'
 - id: pack_padded_sequence
   description: |
     Packs a padded batch of variable length sequences into a PackedSequence
@@ -16350,18 +15537,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
-- id: pack_seq_triton
-  description: Pack variable-length token sequences into a padded batched tensor.
-  for:
-  - pack_seq_triton
-  labels:
-  - fused
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: pad
   description: This pads a tenor using the specified mode.
   for:
@@ -16692,16 +15867,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: post_layer_norm_residual
-  description: Fuses LayerNorm followed by a residual addition.
-  for:
-  - None
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
 - id: pow_scalar
   description: 'Takes the power of each element in `input` with `exponent` and returns
     a tensor with the result.
@@ -17379,21 +16544,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.1'
-- id: reglu
-  description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
-    of the sigmoid function for gating.
-
-    '
-  for:
-  - reglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.3'
 - id: relu
   description: Apply the RELU (Rectified Linear Unit) activation function element-wise.
   for:
@@ -17726,30 +16876,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: reshape_and_cache
-  description: Store the key/value token states into the pre-allcated kv_cache buffers
-    of paged attention.
-  for:
-  - reshape_and_cache
-  labels:
-  - fused
-  - vLLM
-  kind:
-  - Attention
-  stages:
-  - stable: '3.0'
-- id: reshape_and_cache_flash
-  description: Store the key/value token states into the pre-allcated kv_cache buffers
-    of paged attention.
-  for:
-  - reshape_and_cache_flash
-  labels:
-  - fused
-  kind:
-  - Attention
-  stages:
-  - stable: '3.0'
-  cpp: '4.0'
 - id: reshape_from_tensor
   description: |
     Reshape using a tensor of dimensions, preserving views when possible and copying otherwise.
@@ -18303,33 +17429,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.3'
-- id: rwkv_ka_fusion
-  description: 'Merges, aligns, and enhances features from different data sources
-    or spatial directions
-
-    using the efficient, linear-time RWKV framework.
-
-    '
-  for:
-  - rwkv_ka_fusion
-  labels:
-  - fused
-  kind:
-  - RWKV
-  stages:
-  - stable: '4.1'
-  cpp: '4.0'
-- id: rwkv_mm_sparsity
-  description: Optimized, lossless sparse matrix multiplication in RWKV-7 models.
-  for:
-  - rwkv_mm_sparsity
-  labels:
-  - fused
-  kind:
-  - RWKV
-  stages:
-  - stable: '4.1'
-  cpp: '4.0'
 - id: safe_softmax
   description: 'Apply a softmax function. Note this version may not be functional.
 
@@ -19212,54 +18311,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '2.2'
-- id: silu_and_mul
-  description: A custom operator in vLLM as activation function for SwiGLU.
-  for:
-  - silu_and_mul
-  labels:
-  - fused
-  - pointwise
-  - vLLM
-  kind:
-  - Activation
-  stages:
-  - stable: '2.0'
-- id: silu_and_mul_out
-  description: A variant of `silu_and_mul` with an extra `out` argument.
-  for:
-  - silu_and_mul.out
-  labels:
-  - fused
-  - pointwise
-  - vLLM
-  kind:
-  - Activation
-  stages:
-  - stable: '2.0'
-- id: silu_and_mul_with_clamp
-  description: A custom operator in vLLM as activation function for SwiGLU.
-  for:
-  - silu_and_mul_with_clamp
-  labels:
-  - fused
-  - pointwise
-  - vLLM
-  kind:
-  - Activation
-  stages:
-  - stable: '5.3'
-- id: silu_and_mul_with_clamp_out
-  description: A variant of `silu_and_mul_with_clamp` with an extra `out` argument.
-  for:
-  - silu_and_mul_with_clamp.out
-  labels:
-  - fused
-  - pointwise
-  - vLLM
-  kind:
-  - Activation
-  stages:
-  - stable: '5.3'
 - id: silu_backward
   description: A variant of `silu()` for backward case.
   for:
@@ -19353,23 +18404,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
-- id: skip_layer_norm
-  description: 'An optimized operation used in Transformer models to improve performance
-
-    by combining residual connection (skip connection) addition and Layer Normalization
-
-    (LayerNorm) into a single kernel.
-
-    '
-  for:
-  - skip_layer_norm
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -19824,17 +18858,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '3.0'
-- id: sparse_attn_triton
-  description: Sparse attention with attention-sink.
-  for:
-  - None
-  labels:
-  - fused
-  - NoCPU
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: sparse_broadcast_to
   description: 'Broadcasts a sparse COO tensor to the target shape, replicating stored
     entries across newly prepended sparse dimensions and broadcast (size-1) dimensions.
@@ -20109,22 +19132,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: sparse_mla_fwd_interface
-  description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
-    DeepSeek v3/v3.2.
-
-    It is currently not exposed as a standalone operator for use.
-
-    '
-  for:
-  - sparse_mla_fwd
-  labels:
-  - fused
-  kind:
-  - DSA
-  stages:
-  - beta: '5.0'
-  - stable: '5.3'
 - id: sparse_mm
   description: |
     Computes the sparse-times-dense product of a 2-D CSR tensor (M, K) and a
@@ -21696,22 +20703,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.2'
-- id: stage_deepseek_v4_mega_moe_inputs
-  description: 'Stages DeepSeekV4 Mega-MoE inputs by quantizing hidden states to FP8
-
-    with UE8M0 scales and copying top-k indices and weights to output buffers.
-
-    '
-  for:
-  - stage_deepseek_v4_mega_moe_inputs
-  labels:
-  - fused
-  - DeepSeekV4
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
 - id: standard_gamma
   description: Triton kernel implementation for _standard_gamma.
   for:
@@ -22025,18 +21016,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
-- id: swiglu
-  description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
-    function.
-  for:
-  - swiglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '5.0'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
@@ -22476,39 +21455,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: top_k_per_row_decode
-  description: 'Triton top-K per row for DeepSeek V4 decode-phase token selection.
-
-    Radix-select based approach with three dispatch tiers for different vocab sizes.
-
-    '
-  for:
-  - None
-  labels:
-  - fused
-  - vLLM
-  - DeepSeekV4
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
-- id: top_k_per_row_prefill
-  description: 'Triton top-K per row for DeepSeek V4 sparse attention prefill phase.
-
-    Replaces vLLM persistent_topk CUDA kernel with in-place masking + adaptive topk
-    selection.
-
-    '
-  for:
-  - None
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: topk
   description: 'Returns the `k` largest elements of the given `input` tensor along
     a given dimension.
@@ -22528,38 +21474,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
   cpp: '4.0'
-- id: topk_softmax
-  description: 'Selects the k most likely next-token candicates, sets all others to
-    zero,
-
-    and renormalize the prbabilities of these top candidates.
-
-    '
-  for:
-  - _moe_C.topk_softmax
-  labels:
-  - fused
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - stable: '4.0'
-- id: topk_softplus_sqrt
-  description: 'Fused softplus + sqrt + top-k selection and optional renormalization
-
-    for MoE gating in models like DeepSeek-V3/V4.
-
-    '
-  for:
-  - topk_softplus_sqrt
-  labels:
-  - fused
-  - KernelGen
-  - vLLM
-  kind:
-  - MoE
-  stages:
-  - beta: '5.3'
 - id: topk_w8a16
   description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
@@ -22788,18 +21702,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: triton_lighting_indexer_k_tiled_interface
-  description: Part of FP8 MQA framework. It is currently not exposed as an operator
-    for use.
-  for:
-  - None
-  labels:
-  - fused
-  - DSA
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.3'
 - id: triu
   description: 'Returns the upper triangular part of a matrix (2-D tensor) or batch
     of matrices `input`,
@@ -23092,19 +21994,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: unpack_seq_triton
-  description: Unpack a packed sequence tensor back to its original variable-length
-    form.
-  for:
-  - unpack_seq_triton
-  labels:
-  - fused
-  - vLLM
-  - DeepSeekV4
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: unsafe_index
   description: 'Indexes `input` along each dimension with the given indices, matching
 
@@ -23976,23 +22865,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
-- id: weight_norm
-  description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
-    (g)
-
-    from its direction (v). It is a hook that compute the actual weight before
-
-    each forward pass.
-
-    '
-  for:
-  - weight_norm
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '3.0'
 - id: weight_norm_differentiable_backward
   description: 'Computes the differentiable gradients for the magnitude and direction
 

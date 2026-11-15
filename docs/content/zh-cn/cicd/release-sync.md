@@ -59,9 +59,8 @@ dev、rc 等预发布标签不会匹配该规则）。
 ## `hugo-site.yaml` — build and publish documentation
 
 **Trigger:** `push` to `gh-pages`; `workflow_run` after `coverage`
-completes; also `workflow_call` (invoked by `unittest.yaml`'s `build-doc`
-job when a merged PR carries the `documentation` label) and manual
-`workflow_dispatch`.
+completes; also manual `workflow_dispatch`. It declares `workflow_call`, but
+no workflow in this repository calls it.
 
 Builds the Hugo site from `docs/` and publishes it to GitHub Pages.
 `concurrency` is set to serialize deployments (`cancel-in-progress: false`)
@@ -70,9 +69,8 @@ so publishes don't race each other.
 ## `hugo-site.yaml` — 构建并发布文档站点
 
 **触发条件：** 推送到 `gh-pages` 分支；`coverage` 工作流执行完成后触发
-（`workflow_run`）；此外也可通过 `workflow_call` 被调用（当一个带有
-`documentation` 标签的 PR 被合并时，由 `unittest.yaml` 中的 `build-doc`
-作业触发），以及手动触发（`workflow_dispatch`）。
+（`workflow_run`）；此外支持手动触发（`workflow_dispatch`）。它声明了
+`workflow_call`，但本仓库中没有任何工作流调用它。
 
 从 `docs/` 目录构建 Hugo 站点并发布到 GitHub Pages。`concurrency`
 配置为串行化部署（`cancel-in-progress: false`），避免多次发布相互抢占、
@@ -81,7 +79,8 @@ so publishes don't race each other.
 <!--
 ## `sync-docs.yaml` — rebase docs branch onto master
 
-**Trigger:** `workflow_call` only (invoked by `unittest.yaml`).
+**Trigger:** `workflow_call` only (invoked by the `build-doc` job in
+`unittest.yaml` when a merged PR carries the `documentation` label).
 
 Rebases the `gh-pages` branch onto the latest `master` and force-pushes,
 keeping documentation content in sync with code changes without waiting
@@ -89,7 +88,8 @@ for a full site rebuild.
 -->
 ## `sync-docs.yaml` — 将文档分支 rebase 到 master
 
-**触发条件：** 仅支持 `workflow_call`（由 `unittest.yaml` 调用）。
+**触发条件：** 仅支持 `workflow_call`（带有 `documentation` 标签的 PR 合并后，由
+`unittest.yaml` 中的 `build-doc` 作业调用）。
 
 将 `gh-pages` 分支 rebase 到最新的 `master` 分支并强制推送，使文档内容
 与代码变更保持同步，而不必等待完整的站点重新构建。
@@ -118,8 +118,8 @@ project stays available on domestic Git hosting mirrors.
 ## `build-deb.yml` and `build-rpm.yml` — distribution packages
 
 **Trigger:** `pull_request` against `master` that touches
-`packaging/debian/**` (or `packaging/rpm/**`) or
-`packaging/verify-installed-package.py`; also manual `workflow_dispatch`.
+`packaging/debian/**` (or `packaging/rpm/**`),
+`packaging/verify-installed-package.py`, or the workflow file itself; also manual `workflow_dispatch`.
 
 These workflows only verify that the packaging definition still builds and
 installs; they are not a release path. Packages published to the FlagOS
@@ -128,8 +128,9 @@ ref, so no tag triggers a build here. The `pull_request` path filter is
 deliberate: a source-only PR has no consumer for a `.deb` or `.rpm`, so
 those changes are covered by the repository's own tests instead.
 
-Each workflow builds its package in a `manylinux_2_28_x86_64` container,
-then smoke-tests the result by installing it into a clean `ubuntu:22.04`
+Each workflow builds its package with Docker Buildx
+(`packaging/debian/build-helpers/build-flaggems.sh` on `ubuntu:22.04`, or
+`packaging/rpm/build-flag-gems-rpm.sh` on Fedora 43), then smoke-tests the result by installing it into a clean `ubuntu:22.04`
 (`.deb`) or `fedora:43` (`.rpm`) image and running
 `packaging/verify-installed-package.py`. That step exists because a package
 can install cleanly and still be broken: a bare `Depends:`/`Requires:` can
@@ -151,7 +152,7 @@ owns everything you start by hand.
 ## `build-deb.yml` 与 `build-rpm.yml` —— 发行版安装包
 
 **触发条件：** 针对 `master` 且改动了 `packaging/debian/**`
-（或 `packaging/rpm/**`）、`packaging/verify-installed-package.py` 的
+（或 `packaging/rpm/**`）、`packaging/verify-installed-package.py`，或工作流文件本身的
 `pull_request`；此外支持手动触发（`workflow_dispatch`）。
 
 这两个工作流只验证打包定义仍能构建并安装，不是发布路径：发布到 FlagOS
@@ -159,7 +160,9 @@ owns everything you start by hand.
 因此这里不再由标签触发构建。`pull_request` 的路径过滤是有意为之：纯粹的
 源码 PR 没有 `.deb` 或 `.rpm` 的使用方，这类改动由仓库自身的测试覆盖即可。
 
-两个工作流均在 `manylinux_2_28_x86_64` 容器内构建安装包，随后把产物安装到
+两个工作流均通过 Docker Buildx 构建安装包（`.deb` 使用
+`packaging/debian/build-helpers/build-flaggems.sh`，基于 `ubuntu:22.04`；`.rpm` 使用
+`packaging/rpm/build-flag-gems-rpm.sh`，基于 Fedora 43），随后把产物安装到
 干净的 `ubuntu:22.04`（`.deb`）或 `fedora:43`（`.rpm`）镜像中运行
 `packaging/verify-installed-package.py` 做冒烟测试。这一步很有必要，因为
 安装成功并不代表可用：未加版本约束的 `Depends:`/`Requires:` 可能解析到发行版
