@@ -51,10 +51,12 @@ def accuracy_dtype_cases(op, quick, *, scalars=None):
 
     fp32_cases = _FP32_CASES[op]
     if flag_gems.vendor_name == "thead":
-        # Limit coverage to cases verified with the PPU cold-cache compiler.
-        if op in ("mm", "addmm"):
-            return params
-        if op == "baddbmm":
+        # Use small FP32 cases with verified cold-cache compilation on PPU.
+        if op == "mm":
+            fp32_cases = ((1, 1, 32, False),)
+        elif op == "addmm":
+            fp32_cases = ((3, 5, 32, False),)
+        elif op == "baddbmm":
             fp32_cases = fp32_cases[:1]
     issue = _TSINGMICRO_FP32_ISSUES.get(op)
     marks = (
