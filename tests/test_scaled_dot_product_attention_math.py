@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 import torch
 
@@ -289,3 +291,37 @@ def test_scaled_dot_product_attention_math_invalid_gqa(key_heads, value_heads):
     v = torch.randn(2, value_heads, 8, 16, dtype=q.dtype, device=device)
     with pytest.raises(RuntimeError, match="query heads must be divisible"):
         flag_gems._scaled_dot_product_attention_math(q, k, v, enable_gqa=True)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.skipif(device != "cuda", reason="Forces the CUDA SDPA math backend")
+def test_flaggems_sdpa_math_dispatch_gqa(caplog, monkeypatch):
+    # Earlier record=True enable tests leave the FlagGems parent logger isolated.
+    monkeypatch.setattr(logging.getLogger("flag_gems"), "propagate", False)
+    utils.init_seed(1234567890)
+    q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
+    k = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
+    v = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
+    ref_out, _ = sdpa_math(q.cpu(), k.cpu(), v.cpu(), enable_gqa=True)
+    gems_op = flag_gems._scaled_dot_product_attention_math
+    op_logger = logging.getLogger(utils.gems_log_logger(gems_op))
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    lib = torch.library.Library("aten", "IMPL")
+    op_logger.addHandler(caplog.handler)
+    try:
+        flag_gems.only_enable(lib=lib, include=["_scaled_dot_product_attention_math"])
+        with caplog.at_level("DEBUG", logger=op_logger.name):
+            with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
+                res_out = torch.nn.functional.scaled_dot_product_attention(
+                    q, k, v, enable_gqa=True
+                )
+    finally:
+        op_logger.removeHandler(caplog.handler)
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    assert (
+        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
+        in caplog.text
+    )
+    utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)

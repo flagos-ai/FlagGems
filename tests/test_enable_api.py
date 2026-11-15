@@ -20,8 +20,6 @@ import torch
 
 import flag_gems
 
-from . import accuracy_utils as utils
-
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "sunrise",
     reason="Issues #3832: logger get '_sunrise.ops.xx', test need 'flag_gems.ops.xx'.",
@@ -220,36 +218,3 @@ def test_only_enable_default(tmp_path, monkeypatch, caplog):
     assert found_ops.issubset(
         set(include_ops)
     ), f"Found unexpected ops via default include: {found_ops - set(include_ops)}"
-
-
-@pytest.mark.scaled_dot_product_attention_math
-@pytest.mark.skipif(
-    flag_gems.device != "cuda", reason="Forces the CUDA SDPA math backend"
-)
-def test_flaggems_sdpa_math_dispatch_gqa(caplog):
-    utils.init_seed(1234567890)
-    q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=flag_gems.device)
-    k = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=flag_gems.device)
-    v = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=flag_gems.device)
-    ref_out, _ = torch.ops.aten._scaled_dot_product_attention_math(
-        q.cpu(), k.cpu(), v.cpu(), enable_gqa=True
-    )
-    gems_op = flag_gems._scaled_dot_product_attention_math
-    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
-    lib = torch.library.Library("aten", "IMPL")
-    try:
-        flag_gems.only_enable(lib=lib, include=["_scaled_dot_product_attention_math"])
-        with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
-            with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
-                res_out = torch.nn.functional.scaled_dot_product_attention(
-                    q, k, v, enable_gqa=True
-                )
-    finally:
-        lib._destroy()
-        flag_gems.current_work_registrar = previous_registrar
-
-    assert (
-        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
-    )
-    utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
