@@ -1,6 +1,8 @@
 # Copyright 2026 FlagOS Contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from importlib.util import find_spec
+
 import torch
 import triton
 import triton.language as tl
@@ -9,6 +11,127 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from .bmm_w8a8 import MAX_INT32_REDUCTION
+
+try:
+    from triton.experimental import gluon
+    from triton.experimental.gluon import language as gl
+    from triton.experimental.gluon.language import BlockedLayout, SliceLayout
+    from triton.experimental.gluon.language.amd import _layouts as amd_layouts
+    from triton.experimental.gluon.language.amd.cdna3 import buffer_load
+except ImportError:
+    _HAS_GEMV = False
+else:
+    # Some builds expose the Gluon API but lack the layout class used by HCU
+    # layout inference. The vendor compiler supports this kernel without it.
+    _HAS_GEMV = hasattr(amd_layouts, "HCUMFMALayout")
+    if not _HAS_GEMV:
+        try:
+            _HAS_GEMV = find_spec("triton.backends.amd.compiler_hcu") is not None
+        except ModuleNotFoundError:
+            pass
+
+    @gluon.jit
+    def _dot_packed_int8(a, b, acc):
+        return gl.inline_asm_elementwise(
+            "v_dot4_i32_i8 $0, $1, $2, $3",
+            "=v,v,v,v",
+            [b, a, acc],
+            dtype=gl.int32,
+            is_pure=True,
+            pack=1,
+        )
+
+    @gluon.jit
+    def _store_gemv_row(
+        A,
+        As,
+        C,
+        row,
+        k,
+        cols,
+        b0,
+        b1,
+        b2,
+        scale_b,
+        N: gl.constexpr,
+        layout: gl.constexpr,
+    ):
+        off = row * 1536 + k
+        acc = gl.full((2, 2, 256), 0, gl.int32, layout)
+        acc = _dot_packed_int8(buffer_load(A, off), b0, acc)
+        acc = _dot_packed_int8(buffer_load(A, off + 256), b1, acc)
+        acc = _dot_packed_int8(buffer_load(A, off + 512), b2, acc)
+        value = gl.sum(gl.sum(acc, 2), 0).to(gl.float32) * gl.load(As + row) * scale_b
+        gl.store(C + row * N + cols, value)
+
+    @gluon.jit
+    def _grouped_mm_w8a8_gemv(
+        A, As, B, Bs, C, RowIndices, Rows, M: gl.constexpr, N: gl.constexpr
+    ):
+        row = gl.program_id(1)
+        expert = gl.load(RowIndices + row)
+        previous = gl.load(RowIndices + row - 1, row > 0, other=-1)
+        if (row % 2 == 1) & (expert == previous):
+            return
+        next_expert = gl.load(RowIndices + row + 1, row + 1 < M, other=-1)
+        has_second = (row % 2 == 0) & (expert == next_expert)
+        # Pair two-row experts that start on an odd packed row.
+        if (row % 2 == 0) & (expert == previous) & (expert != next_expert):
+            second_previous = gl.load(RowIndices + row - 2, row >= 2, other=-1)
+            if expert != second_previous:
+                return
+        if (row % 2 == 1) & (expert != previous) & (expert == next_expert):
+            second_next = gl.load(RowIndices + row + 2, row + 2 < M, other=-1)
+            has_second = expert != second_next
+
+        # Each wave covers half of K for two output columns.
+        K_WORDS: gl.constexpr = 6144 // 4
+        BLOCK_WORDS: gl.constexpr = 1024 // 4
+        layout: gl.constexpr = BlockedLayout(
+            [1, 1, 4], [1, 1, 64], [2, 1, 1], [2, 0, 1]
+        )
+        col_layout: gl.constexpr = SliceLayout(0, SliceLayout(2, layout))
+        part = gl.arange(0, 2, layout=SliceLayout(1, SliceLayout(2, layout)))
+        cols = gl.program_id(0) * 2 + gl.arange(0, 2, layout=col_layout)
+        words = gl.arange(0, BLOCK_WORDS, layout=SliceLayout(0, SliceLayout(1, layout)))
+        k = part[:, None, None] * (K_WORDS // 2) + words[None, None, :]
+        a = A.to(gl.pointer_type(gl.int32))
+        b = B.to(gl.pointer_type(gl.int32))
+        w = (expert * N + cols[None, :, None]) * K_WORDS + k
+        scale_a = gl.load(As + row)
+        scale_b = gl.load(Bs + expert * N + cols)
+        b0 = buffer_load(b, w)
+        b1 = buffer_load(b, w + BLOCK_WORDS)
+        b2 = buffer_load(b, w + 2 * BLOCK_WORDS)
+        # Keep a single row accumulator live for pairs in longer expert runs.
+        if has_second and gl.load(Rows + expert) > 2:
+            _store_gemv_row(a, As, C, row, k, cols, b0, b1, b2, scale_b, N, layout)
+            _store_gemv_row(a, As, C, row + 1, k, cols, b0, b1, b2, scale_b, N, layout)
+            return
+
+        acc = gl.full((2, 2, BLOCK_WORDS), 0, gl.int32, layout)
+        acc2 = gl.full((2, 2, BLOCK_WORDS), 0, gl.int32, layout)
+        for block in gl.static_range(3):
+            if block == 0:
+                weights = b0
+            elif block == 1:
+                weights = b1
+            else:
+                weights = b2
+            position = k + block * BLOCK_WORDS
+            acc = _dot_packed_int8(
+                buffer_load(a, row * K_WORDS + position), weights, acc
+            )
+            if has_second:
+                acc2 = _dot_packed_int8(
+                    buffer_load(a, (row + 1) * K_WORDS + position), weights, acc2
+                )
+        value = gl.sum(gl.sum(acc, 2), 0).to(gl.float32) * scale_a * scale_b
+        gl.store(C + row * N + cols, value)
+        if has_second:
+            scale_a2 = gl.load(As + row + 1)
+            value2 = gl.sum(gl.sum(acc2, 2), 0).to(gl.float32) * scale_a2 * scale_b
+            gl.store(C + (row + 1) * N + cols, value2)
 
 
 @libentry()
@@ -290,6 +413,29 @@ def grouped_mm_w8a8(
         bn = 64
         bk = 128 if (n, k) == (512, 6144) else 64
     with torch_device_fn.device(A.device):
+        if (
+            split_k > 1
+            and _HAS_GEMV
+            and A.data_ptr() % 16 == 0
+            and B.data_ptr() % 16 == 0
+            and B.numel() < 2**31
+            and triton.runtime.driver.active.get_current_target().arch == "gfx936"
+        ):
+            _grouped_mm_w8a8_gemv[(n // 2, m)](
+                A,
+                As,
+                B,
+                Bs,
+                C,
+                m_indices,
+                m_rows,
+                m,
+                n,
+                num_warps=2,
+                num_stages=1,
+                enable_fp_fusion=False,
+            )
+            return
         if direct and k == 256:
             _grouped_mm_w8a8_direct_k256[(m * triton.cdiv(n, 64),)](
                 A,
