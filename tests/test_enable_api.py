@@ -235,12 +235,18 @@ def test_flaggems_sdpa_math_dispatch_gqa(caplog):
         q.cpu(), k.cpu(), v.cpu(), enable_gqa=True
     )
     gems_op = flag_gems._scaled_dot_product_attention_math
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
-        with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
-            with flag_gems.use_gems():
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["_scaled_dot_product_attention_math"])
+        with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+            with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
                 res_out = torch.nn.functional.scaled_dot_product_attention(
                     q, k, v, enable_gqa=True
                 )
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
 
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"

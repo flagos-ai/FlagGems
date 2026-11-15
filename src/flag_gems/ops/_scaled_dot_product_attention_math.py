@@ -212,13 +212,19 @@ def _scaled_dot_product_attention_math(
     key_heads, value_heads = key.shape[1], value.shape[1]
 
     if enable_gqa:
-        if heads % key_heads != 0 or heads % value_heads != 0:
+        if (
+            key_heads == 0
+            or value_heads == 0
+            or heads % key_heads != 0
+            or heads % value_heads != 0
+        ):
             raise RuntimeError("query heads must be divisible by key and value heads")
     elif key_heads not in (1, heads) or value_heads not in (1, heads):
         raise RuntimeError("key and value heads must match or broadcast to query heads")
 
-    key_group_size = heads // key_heads
-    value_group_size = heads // value_heads
+    # No programs run for zero query heads, so group sizes are unused then.
+    key_group_size = heads // key_heads if heads else 1
+    value_group_size = heads // value_heads if heads else 1
 
     if scale is None:
         scale = 1.0 / math.sqrt(head_dim)

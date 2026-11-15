@@ -237,6 +237,50 @@ def test_scaled_dot_product_attention_math_legacy_positional_scale(caplog):
 
 
 @pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.skipif(not generic_math, reason="Checks the generic kernel's empty heads")
+@pytest.mark.parametrize("key_heads,value_heads", [(0, 0), (0, 1), (1, 0)])
+def test_scaled_dot_product_attention_math_empty_heads(key_heads, value_heads, caplog):
+    q = torch.empty(2, 0, 8, 16, dtype=torch.float16, device=device)
+    k = torch.empty(2, key_heads, 8, 16, dtype=q.dtype, device=device)
+    v = torch.empty(2, value_heads, 8, 16, dtype=q.dtype, device=device)
+    ref_out, ref_weights = sdpa_math(q.cpu(), k.cpu(), v.cpu())
+    gems_op = flag_gems._scaled_dot_product_attention_math
+
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+        res_out, res_weights = gems_op(q, k, v)
+
+    assert (
+        f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
+        in caplog.text
+    )
+    assert res_out.shape == ref_out.shape and res_out.dtype == ref_out.dtype
+    assert (
+        res_weights.shape == ref_weights.shape
+        and res_weights.dtype == ref_weights.dtype
+    )
+    assert res_out.numel() == 0 and res_weights.numel() == 0
+
+    # PyTorch 2.11 can crash for zero K/V heads with enable_gqa=True.
+    with pytest.raises(RuntimeError, match="query heads must be divisible"):
+        gems_op(q, k, v, enable_gqa=True)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.skipif(not generic_math, reason="Checks the generic kernel's empty heads")
+@pytest.mark.parametrize("key_heads,value_heads", [(2, 1), (1, 2)])
+def test_scaled_dot_product_attention_math_empty_heads_invalid_broadcast(
+    key_heads, value_heads
+):
+    q = torch.empty(2, 0, 8, 16, dtype=torch.float16, device=device)
+    k = torch.empty(2, key_heads, 8, 16, dtype=q.dtype, device=device)
+    v = torch.empty(2, value_heads, 8, 16, dtype=q.dtype, device=device)
+    with pytest.raises(RuntimeError):
+        sdpa_math(q.cpu(), k.cpu(), v.cpu())
+    with pytest.raises(RuntimeError, match="key and value heads must match"):
+        flag_gems._scaled_dot_product_attention_math(q, k, v)
+
+
+@pytest.mark.scaled_dot_product_attention_math
 @pytest.mark.skipif(not generic_math, reason="Checks generic GQA error handling")
 @pytest.mark.parametrize("key_heads,value_heads", [(4, 2), (2, 4)])
 def test_scaled_dot_product_attention_math_invalid_gqa(key_heads, value_heads):
