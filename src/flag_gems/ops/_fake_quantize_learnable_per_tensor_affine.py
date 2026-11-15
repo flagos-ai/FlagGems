@@ -19,6 +19,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.libdevice as libdevice
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,9 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
     # aten rounds the zero point to nearest-even, then clamps it.
     zpf = (zpf + 12582912.0) - 12582912.0
     zpf = tl.minimum(tl.maximum(zpf, qmin_val), qmax_val)
+    # aten computes x * (1.0f / scale) with a correctly-rounded reciprocal;
+    # the plain Triton '/' is approximate and flips values near a .5 tie.
+    inv = tl.math.div_rn(1.0, s)
 
     offs = tl.arange(0, BLOCK)
     n_full = n_elements // BLOCK
@@ -97,8 +101,7 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
     for tile in range(pid, n_full, PERSIST):
         offsets = tile * BLOCK + offs
         x = tl.load(x_ptr + offsets).to(tl.float32)
-        q = tl.fdiv(x, s, ieee_rounding=False)
-        q = (q + 12582912.0) - 12582912.0  # rint, ties-to-even
+        q = libdevice.nearbyint(x * inv)  # rint, ties-to-even; no FMA rewrite
         q = q + zpf
         q = tl.minimum(tl.maximum(q, qmin_val), qmax_val)
         y = (q - zpf) * s
@@ -108,8 +111,7 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
         offsets = n_full * BLOCK + offs
         mask = offsets < n_elements
         x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        q = tl.fdiv(x, s, ieee_rounding=False)
-        q = (q + 12582912.0) - 12582912.0
+        q = libdevice.nearbyint(x * inv)
         q = q + zpf
         q = tl.minimum(tl.maximum(q, qmin_val), qmax_val)
         y = (q - zpf) * s
