@@ -43,16 +43,17 @@ _TSINGMICRO_FP32_ISSUES = {"mm": 2834, "addmm": 3794, "bmm": 2799, "baddbmm": 37
 def accuracy_dtype_cases(op, quick, *, scalars=None):
     """Combine the catalog's low-precision matrix with targeted FP32 accuracy cases."""
     scalar_args = [()] if scalars is None else [(scalar,) for scalar in scalars]
+    params = []
     for case in accuracy_cases(op, quick):
         for args in scalar_args:
-            yield pytest.param(torch.float16, *args, *case)
-            yield pytest.param(torch.bfloat16, *args, *case, marks=_BF16_SKIP)
+            params.append(pytest.param(torch.float16, *args, *case))
+            params.append(pytest.param(torch.bfloat16, *args, *case, marks=_BF16_SKIP))
 
     fp32_cases = _FP32_CASES[op]
     if flag_gems.vendor_name == "thead":
         # Limit coverage to cases verified with the PPU cold-cache compiler.
         if op in ("mm", "addmm"):
-            return
+            return params
         if op == "baddbmm":
             fp32_cases = fp32_cases[:1]
     issue = _TSINGMICRO_FP32_ISSUES.get(op)
@@ -65,9 +66,10 @@ def accuracy_dtype_cases(op, quick, *, scalars=None):
         transposed = case[-1]
         args = () if scalars is None else ((-0.5 if transposed else 0.75),)
         layout = "transposed" if transposed else "contiguous"
-        yield pytest.param(
-            torch.float32, *args, *case, id=f"fp32-{layout}", marks=marks
+        params.append(
+            pytest.param(torch.float32, *args, *case, id=f"fp32-{layout}", marks=marks)
         )
+    return params
 
 
 __all__ = ["GEMM_DTYPES", "accuracy_cases", "accuracy_dtype_cases", "accuracy_shapes"]
