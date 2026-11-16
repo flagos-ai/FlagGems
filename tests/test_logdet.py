@@ -44,8 +44,10 @@ def _reference_logdet(inp):
         # determinants and distinguishes negative from singular matrices.
         import numpy as np
 
-        sign, logabsdet = np.linalg.slogdet(inp.numpy())
-        return torch.from_numpy(np.asarray(np.where(sign < 0, np.nan, logabsdet)))
+        matrix = inp.numpy()
+        sign, logabsdet = np.linalg.slogdet(matrix)
+        reference = np.asarray(np.where(sign < 0, np.nan, logabsdet), dtype=matrix.dtype)
+        return torch.from_numpy(reference)
     return torch.logdet(inp)
 
 
@@ -62,6 +64,7 @@ def test_logdet_positive_definite(shape, dtype):
     reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     _assert_logdet_close(result, reference, dtype, shape[-1])
 
@@ -75,6 +78,7 @@ def test_logdet_batch(shape, dtype):
     reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     _assert_logdet_close(result, reference, dtype, shape[-1])
 
@@ -93,6 +97,7 @@ def test_logdet_fp64_large_batch_4x4():
     reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     _assert_logdet_close(result, reference, torch.float64, 4)
 
@@ -106,6 +111,7 @@ def test_logdet_fp64_large_batch_4x4_nonfinite():
     reference = _reference_logdet(utils.to_reference(inp))
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     utils.gems_assert_equal(result, reference)
 
@@ -126,6 +132,7 @@ def test_logdet_fp64_large_batch_4x4_stable_lu(case):
     inp = inp.repeat(4096, 1, 1)
     reference = _reference_logdet(utils.to_reference(inp))
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
     utils.gems_assert_close(result, reference, torch.float64, equal_nan=True)
 
 
@@ -139,6 +146,7 @@ def test_logdet_fp64_large_batch_4x4_pathological():
     reference = _reference_logdet(utils.to_reference(inp))
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     utils.gems_assert_close(
         result, reference, torch.float64, equal_nan=True, reduce_dim=4
@@ -158,6 +166,7 @@ def test_logdet_negative_and_singular(dtype):
     reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     utils.gems_assert_equal(result, reference, equal_nan=True)
 
@@ -172,6 +181,7 @@ def test_logdet_tiny_nonzero_pivots(dtype):
     reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     _assert_logdet_close(result, reference, dtype, 3)
     assert torch.isfinite(result)
@@ -187,6 +197,7 @@ def test_logdet_noncontiguous_and_exported_api(dtype):
     reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
+    assert result.device == inp.device
 
     _assert_logdet_close(result, reference, dtype, 7)
 
@@ -200,6 +211,7 @@ def test_logdet_empty(dtype):
         reference = _reference_logdet(ref_inp)
 
         result = flag_gems.logdet(inp)
+        assert result.device == inp.device
 
         utils.gems_assert_equal(result, reference)
 
