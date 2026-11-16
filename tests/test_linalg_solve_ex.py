@@ -51,8 +51,9 @@ def _reference_solve_ex(matrix, rhs):
     return torch.linalg.solve_ex(matrix, rhs)
 
 
-def _assert_outputs(actual, expected, dtype):
+def _assert_outputs(actual, expected, dtype, device):
     result, info = actual
+    assert result.device == info.device == device
     expected_result, expected_info = expected
     utils.gems_assert_close(result, expected_result, dtype)
     utils.gems_assert_equal(info, expected_info)
@@ -75,8 +76,7 @@ def test_linalg_solve_ex(batch_shape, n, nrhs, dtype):
 
     actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
-    _assert_outputs(actual, expected, dtype)
-    assert actual[0].device == actual[1].device == matrix.device
+    _assert_outputs(actual, expected, dtype, matrix.device)
     utils.gems_assert_equal(matrix, utils.to_reference(matrix_before))
     utils.gems_assert_equal(rhs, utils.to_reference(rhs_before))
     assert actual[0] is not matrix
@@ -102,7 +102,7 @@ def test_linalg_solve_ex_broadcast(dtype):
     actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
     expected_result, expected_info = expected
-    _assert_outputs(actual, (expected_result, expected_info.expand(2, 3)), dtype)
+    _assert_outputs(actual, (expected_result, expected_info.expand(2, 3)), dtype, matrix.device)
     assert actual[0].shape == (2, 3, 4, 2)
     assert actual[1].shape == (2, 3)
 
@@ -117,7 +117,7 @@ def test_linalg_solve_ex_empty_batch():
 
     actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
-    _assert_outputs(actual, expected, torch.float32)
+    _assert_outputs(actual, expected, torch.float32, matrix.device)
 
 
 @pytest.mark.linalg_solve_ex
@@ -145,8 +145,11 @@ def test_linalg_solve_ex_autograd_matches_reference():
         )
 
     result, info = flag_gems.linalg_solve_ex(matrix, rhs)
+    assert result.device == info.device == matrix.device
     actual_grads = torch.autograd.grad(result.square().sum(), (matrix, rhs))
 
+    assert actual_grads[0].device == matrix.device
+    assert actual_grads[1].device == rhs.device
     assert result.requires_grad
     assert not info.requires_grad
     utils.gems_assert_equal(info, expected_info)
@@ -215,8 +218,7 @@ def test_linalg_solve_ex_square_rhs(shape, dtype):
     ref_out, ref_info = _reference_solve_ex(ref_A, ref_B)
     res_out, res_info = flag_gems.linalg_solve_ex(A, B)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
-    assert torch.equal(res_info, ref_info.to(res_info.device))
+    _assert_outputs((res_out, res_info), (ref_out, ref_info), dtype, A.device)
 
 
 @pytest.mark.linalg_solve_ex
@@ -233,5 +235,4 @@ def test_linalg_solve_ex_batched(batch_shape, n, k, dtype):
     ref_out, ref_info = _reference_solve_ex(ref_A, ref_B)
     res_out, res_info = flag_gems.linalg_solve_ex(A, B)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
-    assert torch.equal(res_info, ref_info.to(res_info.device))
+    _assert_outputs((res_out, res_info), (ref_out, ref_info), dtype, A.device)
