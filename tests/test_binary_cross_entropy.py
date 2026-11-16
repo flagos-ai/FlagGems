@@ -105,6 +105,10 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
             "Kunlunxin native binary-cross-entropy reference rejects empty input"
         )
     inp, target, weight = _inputs(shape, dtype, weighted)
+    if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean":
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
+        if ref_weight is not None:
+            ref_weight = ref_weight.cpu()
     reference = torch.nn.functional.binary_cross_entropy(
         utils.to_reference(inp, True),
         utils.to_reference(target, True),
@@ -121,6 +125,9 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
 
     assert result is out
     assert out.data_ptr() == pointer
+    if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean":
+        assert out.device == inp.device
+        reference = reference.to(out.device if not utils.TO_CPU else "cpu")
     _assert_loss(out, reference, dtype, reduction, inp.numel())
 
 

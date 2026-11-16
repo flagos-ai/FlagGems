@@ -38,6 +38,10 @@ def _make_inputs(shape, dtype, weighted):
 
 def _reference(inp, target, weight, reduction):
     names = {0: "none", 1: "mean", 2: "sum"}
+    if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == 1:
+        return torch.nn.functional.binary_cross_entropy(
+            inp.cpu(), target.cpu(), None if weight is None else weight.cpu(), reduction="mean"
+        ).to(inp.device if not utils.TO_CPU else "cpu")
     return torch.nn.functional.binary_cross_entropy(
         utils.to_reference(inp, True),
         utils.to_reference(target, True),
