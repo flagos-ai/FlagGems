@@ -108,10 +108,6 @@ class GeneralOpRegistrar:
 
     @staticmethod
     def _extra_dispatch_keys(item):
-        if len(item) == 2:
-            extra = getattr(item[1], "_flag_gems_extra_dispatch", ())
-            if extra:
-                return extra
         return tuple(item[3]) if len(item) > 3 else ()
 
     def _normalized_config(self, item):
