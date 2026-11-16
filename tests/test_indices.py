@@ -454,3 +454,38 @@ def test_indices_rejects_non_tensor():
 def test_indices_requires_operand():
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.indices()
+
+
+@pytest.mark.indices
+@pytest.mark.parametrize(
+    "sparse_shape,dense_shape,nnz",
+    [
+        ((16,), (), 8),
+        ((2, 2), (), 4),
+        ((4, 4), (), 8),
+        ((16, 16), (), 64),
+        ((5, 7, 9), (), 32),
+        ((2, 2), (3, 4), 2),
+        ((4, 4), (), 0),
+    ],
+)
+def test_indices_master_coalesced_shapes(sparse_shape, dense_shape, nnz):
+    inp, src = _make_coo(sparse_shape, dense_shape, nnz, torch.float32, _VALUE_RANGE)
+    expected = torch.ops.aten.indices(tu.to_reference(inp))
+    actual = flag_gems.indices(inp)
+
+    _assert_indices_result(actual, expected, inp, src)
+
+
+@pytest.mark.indices
+def test_indices_master_rejects_sparse_csc():
+    device = flag_gems.device
+    inp = torch.sparse_csc_tensor(
+        torch.tensor([0, 1, 2], device=device),
+        torch.tensor([0, 1], device=device),
+        torch.ones(2, device=device),
+        (2, 2),
+    )
+
+    with pytest.raises((RuntimeError, ValueError, TypeError)):
+        flag_gems.indices(inp)

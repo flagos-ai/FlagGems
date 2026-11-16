@@ -52,6 +52,15 @@ _INDICES_SHAPES = [
 ]
 
 
+_MASTER_SHAPES = [
+    ((4, 4), (), 8),
+    ((32, 32), (), 1024),
+    ((64, 64), (), 4096),
+    ((128, 128), (), 16384),
+    ((256, 256), (), 65536),
+]
+
+
 # Every dtype group consts defines, plus float64 and FP8 where the device
 # exposes them.  The accessor never reads the values, but each storage dtype
 # still has to build a legal sparse operand.
@@ -137,7 +146,10 @@ def _make_coords(sparse_shape, nnz, device):
 
 
 def _case_fn(shape, dtype):
-    del dtype
+    if len(shape) == 4 and shape[-1] == "master":
+        if dtype != torch.float32:
+            return
+        shape = shape[:3]
     sparse_shape, dense_shape, nnz = _normalize_shape(shape)
     yield base.BenchmarkCasePlan(
         shape={"input": list(sparse_shape + dense_shape)},
@@ -182,6 +194,9 @@ class IndicesBenchmark(OperatorBenchmark):
                 _normalize_shape(shape) for shape in list(self.shapes) + _INDICES_SHAPES
             )
         )
+        self.shapes.extend(
+            (*shape, "master") for shape in _MASTER_SHAPES if shape not in self.shapes
+        )
 
 
 @pytest.mark.indices
@@ -191,7 +206,6 @@ def test_indices():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.indices,
-        gems_op=getattr(flag_gems, "indices", None),
         dtypes=_DTYPES,
     )
     bench.run()
