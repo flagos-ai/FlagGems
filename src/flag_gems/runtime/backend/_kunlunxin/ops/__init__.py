@@ -606,6 +606,7 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_lu_solve import linalg_lu_solve
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_polar import linalg_polar, linalg_polar_out
@@ -1591,6 +1592,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_lu_solve",
     "linalg_matrix_norm",
     "linalg_matrix_norm_out",
     "linalg_multi_dot",
