@@ -110,7 +110,11 @@ _CUSTOM_ROWS = [
     ("bsr", (8, 1024, 1024, 8), 8192, (8, 8), 1),
 ]
 
-_BENCH_CASES = _SHARED_ROWS + _CUSTOM_ROWS
+# Keep the extents and stored counts from master while providing valid
+# coalesced inputs for the public values accessor.
+_MASTER_COO_ROWS = [("coo", (n,), (), n) for n in (16, 1024, 65536, 1048576)]
+_MASTER_DTYPES = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES
+_BENCH_CASES = _SHARED_ROWS + _CUSTOM_ROWS + _MASTER_COO_ROWS
 
 
 def _compressed_plan(layout, size, nbatch, blocks):
@@ -148,7 +152,8 @@ def _stored_shape(row):
 
 def _case_fn(row, dtype):
     """One plan per sparse row (``row`` is the descriptor itself)."""
-    del dtype
+    if row in _MASTER_COO_ROWS and dtype not in _MASTER_DTYPES:
+        return
     if row[0] == "coo":
         _, sparse_shape, dense_shape, nnz = row
         yield base.BenchmarkCasePlan(

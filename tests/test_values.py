@@ -563,6 +563,30 @@ def test_values(case, dtype, value_range):
 
 
 @pytest.mark.values
+@pytest.mark.parametrize(
+    "indices,size,stored_shape",
+    [
+        ([[0, 1, 1], [1, 0, 1]], (2, 3), (3,)),
+        ([[0, 1]], (2, 2), (2, 2)),
+        ([[], []], (2, 3), (0,)),
+    ],
+    ids=["plain", "hybrid", "zero-nnz"],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_values_master_coalesced_coo(indices, size, stored_shape, dtype):
+    values = _make_values(dtype, stored_shape, ["-1", "1"])
+    ref_values = _to_reference(values)
+    index = torch.tensor(indices, dtype=torch.int64, device=values.device)
+    inp = torch.sparse_coo_tensor(index, values, size, is_coalesced=True)
+    ref_inp = torch.sparse_coo_tensor(
+        index.to(ref_values.device), ref_values, size, is_coalesced=True
+    )
+    reference = torch.ops.aten.values.default(ref_inp)
+    result = flag_gems.values(inp)
+    _assert_values_view(result, reference, inp, ref_inp)
+
+
+@pytest.mark.values
 @pytest.mark.parametrize("case,dtype", _COO_ROWS)
 def test_values_coo(case, dtype):
     values = _make_values(dtype, _case_values_shape("coo", case), ["-1", "1"])
