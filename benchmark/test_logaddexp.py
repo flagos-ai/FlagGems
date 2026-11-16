@@ -52,3 +52,20 @@ def test_logaddexp_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.logaddexp_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_logaddexp_backward():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="logaddexp",
+        torch_op=torch.logaddexp,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # The backward is exposed through the autograd.Function wrapper, so the
+    # candidate callable is the public FlagGems entry rather than torch.*.
+    bench.set_gems(flag_gems.logaddexp)
+    bench.run()
