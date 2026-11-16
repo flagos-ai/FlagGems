@@ -188,7 +188,3 @@ def lt_scalar_(A, B):
     if not _reached_through_dispatch():
         increment_version(A)
     return A
-
-
-
-
