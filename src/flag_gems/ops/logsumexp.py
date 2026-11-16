@@ -25,16 +25,36 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# Block sizes for the fused first-order backward kernel. The backward pass is
-# purely elementwise, so the tile only balances coalescing on the innermost
-# ``K`` axis against the number of launched programs.
-_MAX_BACKWARD_BLOCK_K = 128
-_MAX_BACKWARD_BLOCK_N = 32
-_MAX_BACKWARD_TILE = 2048
+# Tile sizes for the fused first-order backward. The backward pass is a pure
+# elementwise pass, so the tile only trades coalescing on the innermost ``K``
+# axis against the number of launched programs. The splits below come from the
+# KernelGen sweep over the five default shapes in FP16/FP32/BF16: narrow
+# contiguous rows do best with an exact-fit ``BLOCK_N`` and four warps, while
+# the wide rows (N > 1024) and the strided (K > 1) cases benefit from a swept
+# larger tile, so only those two use ``@triton.autotune``.
 _MAX_BACKWARD_INNER_BLOCK = 1024
 _MIN_BACKWARD_INNER_BLOCK = 64
-_GENERIC_MAX_NDIM = 8
+_STRIDED_LOOP_MIN_ROWS = 512
+_STRIDED_LOOP_MAX_BLOCK_K = 256
+_MAX_REDUCED_DIMS = 8
 _GENERIC_BLOCK = 1024
+
+_WIDE_INNER_CONFIGS = [
+    triton.Config({"BLOCK_N": 1024}, num_warps=4),
+    triton.Config({"BLOCK_N": 2048}, num_warps=4),
+    triton.Config({"BLOCK_N": 2048}, num_warps=8),
+    triton.Config({"BLOCK_N": 4096}, num_warps=8),
+]
+
+_NON_INNER_CONFIGS = [
+    triton.Config({"BLOCK_N": 16, "BLOCK_K": 128}, num_warps=4),
+    triton.Config({"BLOCK_N": 32, "BLOCK_K": 128}, num_warps=4),
+    triton.Config({"BLOCK_N": 16, "BLOCK_K": 256}, num_warps=4),
+    triton.Config({"BLOCK_N": 8, "BLOCK_K": 256}, num_warps=4),
+    triton.Config({"BLOCK_N": 32, "BLOCK_K": 256}, num_warps=8),
+    triton.Config({"BLOCK_N": 8, "BLOCK_K": 512}, num_warps=4),
+    triton.Config({"BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8),
+]
 
 
 @libentry()
@@ -153,9 +173,10 @@ def logsumexp_kernel_inner(
         tl.store(output_ptrs, out)
 
 
-# The backward kernels take fixed constexpr block sizes and need neither
-# autotuning nor heuristics, so they are launched through plain ``triton.jit``:
-# LibEntry would add its per-launch key computation (~14us) to every backward.
+# The backward kernels take explicit block sizes and need no heuristics, so
+# they are launched through plain ``triton.jit``: LibEntry would add its
+# per-launch key computation (~14us) to every backward, which is the same order
+# as the kernel itself for the small shapes.
 @triton.jit
 def logsumexp_backward_kernel_inner(
     grad_out_ptr,
@@ -184,6 +205,30 @@ def logsumexp_backward_kernel_inner(
     tl.store(grad_in_ptr + row + offsets, grad_in, mask=mask)
 
 
+@triton.autotune(configs=_WIDE_INNER_CONFIGS, key=["N"])
+@triton.jit
+def logsumexp_backward_kernel_inner_wide(
+    grad_out_ptr,
+    input_ptr,
+    out_ptr,
+    grad_in_ptr,
+    N,
+    BLOCK_N: tl.constexpr,
+):
+    """Same expression for wide contiguous rows, with a swept tile."""
+    pid_m = ext.program_id(0)
+    pid_n = ext.program_id(1)
+    offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offsets < N
+    out = tl.load(out_ptr + pid_m)
+    grad_out = tl.load(grad_out_ptr + pid_m)
+    row = pid_m.to(tl.int64) * N
+    inp = tl.load(input_ptr + row + offsets, mask=mask, other=0.0)
+    grad_in = grad_out * tl.exp((inp - out).to(tl.float32)).to(grad_out.dtype)
+    tl.store(grad_in_ptr + row + offsets, grad_in, mask=mask)
+
+
+@triton.autotune(configs=_NON_INNER_CONFIGS, key=["N", "K"])
 @triton.jit
 def logsumexp_backward_kernel_non_inner(
     grad_out_ptr,
@@ -197,9 +242,8 @@ def logsumexp_backward_kernel_non_inner(
 ):
     """Backward pass for a non-innermost reduction (``K > 1``).
 
-    Each program owns a ``BLOCK_N x BLOCK_K`` tile. ``out`` and ``grad_out``
-    are read once per tile and broadcast over the reduced axis, so the kernel
-    streams the input exactly once.
+    Each program owns a ``BLOCK_N x BLOCK_K`` tile; the broadcast values are
+    loaded once per tile, so ``input`` is streamed exactly once.
     """
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
@@ -220,7 +264,45 @@ def logsumexp_backward_kernel_non_inner(
 
 
 @triton.jit
-def logsumexp_backward_kernel_generic(
+def logsumexp_backward_kernel_strided_loop(
+    grad_out_ptr,
+    input_ptr,
+    out_ptr,
+    grad_in_ptr,
+    N,
+    K,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Strided reduction axis, one program per (row, k-block) with a loop.
+
+    The broadcast slice for this row and k-block stays in registers for the
+    whole reduced axis, so it is read once per program instead of once per tile
+    and the launch drops from ``M * cdiv(K, BLOCK_K) * cdiv(N, BLOCK_N)``
+    programs to ``M * cdiv(K, BLOCK_K)``. Used only when that still leaves the
+    device well populated.
+    """
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offsets = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    k_mask = k_offsets < K
+    out_offset = pid_m.to(tl.int64) * K + k_offsets
+    out = tl.load(out_ptr + out_offset, mask=k_mask, other=0.0)
+    grad_out = tl.load(grad_out_ptr + out_offset, mask=k_mask, other=0.0)
+    row_base = pid_m.to(tl.int64) * N * K
+    for n0 in range(0, N, BLOCK_N):
+        n_offsets = n0 + tl.arange(0, BLOCK_N)
+        mask = (n_offsets[:, None] < N) & k_mask[None, :]
+        offsets = row_base + n_offsets[:, None] * K + k_offsets[None, :]
+        inp = tl.load(input_ptr + offsets, mask=mask, other=0.0)
+        grad_in = grad_out[None, :] * tl.exp((inp - out[None, :]).to(tl.float32)).to(
+            grad_out.dtype
+        )
+        tl.store(grad_in_ptr + offsets, grad_in, mask=mask)
+
+
+@triton.jit
+def logsumexp_backward_kernel_multi_axis(
     grad_out_ptr,
     input_ptr,
     out_ptr,
@@ -231,11 +313,11 @@ def logsumexp_backward_kernel_generic(
     NDIM: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Backward pass for an arbitrary set of reduced axes.
+    """Backward pass for several reduced axes at once.
 
-    The keepdim ``out``/``grad_out`` layout is described by ``sizes_ptr``
-    (input sizes) and ``out_strides_ptr`` (contiguous strides of the keepdim
-    output, zero on reduced axes), so every input element can map itself to its
+    The keepdim ``out``/``grad_out`` layout is described by ``sizes_ptr`` (input
+    sizes) and ``out_strides_ptr`` (contiguous strides of the keepdim output,
+    zero on the reduced axes), so every input element maps itself to its
     broadcast source without any host-side index tensor.
     """
     pid = ext.program_id(0)
@@ -340,7 +422,7 @@ def _broadcast_keepdim(grad_out, out, dims, keepdim):
 
     ``out`` is stored in keepdim form. A non-keepdim ``grad_out`` is missing
     exactly the reduced axes, so they are inserted back before the elementwise
-    backward launch.
+    backward launch; the result shares storage with the incoming gradient.
     """
     if not keepdim:
         for reduced in sorted(dims):
@@ -361,21 +443,44 @@ def _backward_block(grad_out, inp, out, dim):
 
     with torch_device_fn.device(inp.device):
         if K > 1:
-            block_k = min(_MAX_BACKWARD_BLOCK_K, triton.next_power_of_2(K))
-            block_n = max(
-                1,
-                min(_MAX_BACKWARD_BLOCK_N, _MAX_BACKWARD_TILE // block_k),
-            )
-            grid = (M, triton.cdiv(K, block_k), triton.cdiv(N, block_n))
-            logsumexp_backward_kernel_non_inner[grid](
+            if M >= _STRIDED_LOOP_MIN_ROWS:
+                # Enough rows to fill the device with one program per
+                # (row, k-block): loop the reduced axis instead of tiling it.
+                block_k = min(_STRIDED_LOOP_MAX_BLOCK_K, triton.next_power_of_2(K))
+                grid = (M, triton.cdiv(K, block_k))
+                logsumexp_backward_kernel_strided_loop[grid](
+                    grad_out,
+                    inp,
+                    out,
+                    grad_in,
+                    N,
+                    K,
+                    BLOCK_N=8,
+                    BLOCK_K=block_k,
+                    num_warps=4,
+                )
+            else:
+                grid = lambda meta: (
+                    M,
+                    triton.cdiv(K, meta["BLOCK_K"]),
+                    triton.cdiv(N, meta["BLOCK_N"]),
+                )
+                logsumexp_backward_kernel_non_inner[grid](
+                    grad_out,
+                    inp,
+                    out,
+                    grad_in,
+                    N,
+                    K,
+                )
+        elif N > _MAX_BACKWARD_INNER_BLOCK:
+            grid = lambda meta: (M, triton.cdiv(N, meta["BLOCK_N"]))
+            logsumexp_backward_kernel_inner_wide[grid](
                 grad_out,
                 inp,
                 out,
                 grad_in,
                 N,
-                K,
-                BLOCK_N=block_n,
-                BLOCK_K=block_k,
             )
         else:
             block_n = min(
@@ -390,11 +495,12 @@ def _backward_block(grad_out, inp, out, dim):
                 grad_in,
                 N,
                 BLOCK_N=block_n,
+                num_warps=4,
             )
     return grad_in
 
 
-def _backward_generic(grad_out, inp, out, dims):
+def _backward_multi_axis(grad_out, inp, out, dims):
     """Gradient for an interleaved set of reduced axes.
 
     Both ``out`` and ``grad_out`` are keepdim-shaped here; the kernel maps each
@@ -405,10 +511,10 @@ def _backward_generic(grad_out, inp, out, dims):
     if inp.numel() == 0:
         return grad_in
     ndim = inp.ndim
-    if ndim > _GENERIC_MAX_NDIM:
+    if ndim > _MAX_REDUCED_DIMS:
         raise NotImplementedError(
             "logsumexp backward supports at most "
-            f"{_GENERIC_MAX_NDIM} dimensions for multi-axis reductions"
+            f"{_MAX_REDUCED_DIMS} dimensions for multi-axis reductions"
         )
     out_strides = list(out.stride())
     for reduced in dims:
@@ -418,7 +524,7 @@ def _backward_generic(grad_out, inp, out, dims):
     n_elements = inp.numel()
     grid = (triton.cdiv(n_elements, _GENERIC_BLOCK),)
     with torch_device_fn.device(inp.device):
-        logsumexp_backward_kernel_generic[grid](
+        logsumexp_backward_kernel_multi_axis[grid](
             grad_out,
             inp,
             out,
@@ -466,7 +572,7 @@ class _LogSumExp(torch.autograd.Function):
         if len(ctx.dims) == 1:
             grad_in = _backward_block(grad_out, contiguous, out, ctx.dims[0])
         else:
-            grad_in = _backward_generic(grad_out, contiguous, out, ctx.dims)
+            grad_in = _backward_multi_axis(grad_out, contiguous, out, ctx.dims)
         return grad_in, None, None
 
 
