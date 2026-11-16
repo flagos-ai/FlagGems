@@ -714,6 +714,7 @@ from .ne import ne, ne_, ne_scalar, ne_scalar_
 from .neg import neg, neg_
 from .negative import negative
 from .negative_ import negative_
+from .nested_tensor_from_mask import _nested_tensor_from_mask
 from .new_full import new_full
 from .new_ones import new_ones
 from .nextafter import nextafter, nextafter_
@@ -1168,6 +1169,7 @@ __all__ = [
     "_native_batch_norm_legit_no_stats_out",
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
+    "_nested_tensor_from_mask",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_circular",
