@@ -109,7 +109,7 @@ def _comparison_values(result, reference):
     assert result.shape == reference.shape
     assert result.layout == reference.layout
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else device)
-    if result.is_complex() and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+    if result.is_complex() and flag_gems.vendor_name in ("ascend", "kunlunxin", "mthreads"):
         result, reference = _observe(result), _observe(reference)
     return result, reference
 
@@ -296,6 +296,8 @@ def _make_pd_input(fixture, dtype, shape, value_range):
     n = shape[-1]
     m = tu.make_input(dtype, shape, value_range)
     device = _construction_device(dtype)
+    if flag_gems.vendor_name == "mthreads" and dtype.is_complex:
+        device = "cpu"
     if flag_gems.vendor_name == "kunlunxin" and m.numel() == 0:
         device = "cpu"
     m = m.to(device)
