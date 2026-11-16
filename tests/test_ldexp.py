@@ -65,6 +65,10 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
 @pytest.mark.ldexp_out
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_ldexp_real_operands_complex_out(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (True):
+        pytest.skip(
+            "Kunlunxin native complex out values or requested complex128 dtype are unsupported"
+        )
     inp = torch.randn(17, device=flag_gems.device)
     other = torch.randint(-3, 4, (17,), device=inp.device)
     reference_input = utils.to_reference(inp)
@@ -274,6 +278,12 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
 @pytest.mark.ldexp_out
 @pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
 def test_ldexp_out_dtype_casting(out_dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (
+        out_dtype in (torch.float16, torch.float64)
+    ):
+        pytest.skip(
+            "Kunlunxin native FP32-to-Half out is unsupported; requested Double out narrows to Float"
+        )
     if cfg.TO_CPU and out_dtype != torch.float32:
         pytest.skip("ATen CPU ldexp.out does not support dynamic output dtype casting")
     self = torch.randn((17,), dtype=torch.float32, device=flag_gems.device)
