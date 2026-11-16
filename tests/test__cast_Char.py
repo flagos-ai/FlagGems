@@ -599,3 +599,160 @@ def test__cast_Char_requires_operand():
     # error types are accepted here.
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Char()
+
+
+def _require_master_dtype(dtype):
+    if dtype is torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("FP64 is not supported on this backend")
+    if dtype is torch.bfloat16 and not utils.bf16_is_supported:
+        pytest.skip("BF16 is not supported on this backend")
+    if flag_gems.vendor_name == "mthreads" and dtype.is_complex:
+        pytest.skip("MUSA cannot construct this complex input dtype")
+
+
+def _master_cast_reference(inp, non_blocking=False):
+    return torch.ops.aten._cast_Char(_reference(inp), non_blocking)
+
+
+def _assert_master_cast_close(inp, actual, expected, *, rtol, atol):
+    _check_cast_abi(actual, expected, inp)
+    if actual.device != expected.device:
+        actual = actual.cpu()
+    torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol)
+
+
+_MASTER_DTYPES = [
+    torch.bool,
+    torch.uint8,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    torch.float16,
+    torch.bfloat16,
+    torch.float32,
+    torch.float64,
+]
+
+
+def _make_master_input(shape, dtype):
+    _require_master_dtype(dtype)
+    torch.manual_seed(0)
+    return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
+
+
+@pytest.mark.underscore_cast_Char
+@pytest.mark.parametrize(
+    "shape", [(), (0,), (2, 0, 3), (1,), (1023,), (1025,), (129, 257)]
+)
+@pytest.mark.parametrize("dtype", _MASTER_DTYPES)
+@pytest.mark.parametrize("non_blocking", [False, True])
+def test__cast_Char_master(shape, dtype, non_blocking):
+    x = _make_master_input(shape, dtype)
+    expected = _master_cast_reference(x, non_blocking)
+    actual = flag_gems._cast_Char(x, non_blocking)
+    _assert_master_cast_close(x, actual, expected, rtol=0, atol=0)
+    assert actual.stride() == expected.stride()
+    assert not actual.requires_grad
+    if dtype == torch.int8:
+        assert actual is x
+    elif x.numel():
+        assert actual.data_ptr() != x.data_ptr()
+
+
+@pytest.mark.underscore_cast_Char
+@pytest.mark.parametrize("dtype", _MASTER_DTYPES)
+@pytest.mark.parametrize(
+    "layout", ["transpose", "slice", "expand", "channels_last", "permuted_slice"]
+)
+def test__cast_Char_master_strided(dtype, layout):
+    x = _make_master_input((4, 5, 6, 7), dtype)
+    if layout == "transpose":
+        x = x.transpose(0, 3)
+    elif layout == "slice":
+        x = x[1:, :, ::2, 1::2]
+    elif layout == "expand":
+        x = x[:1].expand(9, -1, -1, -1)
+    elif layout == "permuted_slice":
+        x = x.transpose(0, 3)[::2, :, 1::2, :]
+    else:
+        x = x.contiguous(memory_format=torch.channels_last)
+    expected = _master_cast_reference(x)
+    actual = flag_gems._cast_Char(x)
+    _assert_master_cast_close(x, actual, expected, rtol=0, atol=0)
+    assert actual.stride() == expected.stride()
+
+
+@pytest.mark.underscore_cast_Char
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+def test__cast_Char_master_fractional(dtype):
+    _require_master_dtype(dtype)
+    x = torch.tensor(
+        [
+            -257.75,
+            -256.5,
+            -129.5,
+            -128.75,
+            -1.9,
+            -0.5,
+            0,
+            0.5,
+            1.9,
+            127.5,
+            128.5,
+            255.5,
+            256.5,
+            257.75,
+            2**31,
+            2**32 + 256,
+            1e20,
+            -1e20,
+            float("inf"),
+            -float("inf"),
+            float("nan"),
+        ],
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    expected = _master_cast_reference(x)
+    _assert_master_cast_close(x, flag_gems._cast_Char(x), expected, rtol=0, atol=0)
+
+
+@pytest.mark.underscore_cast_Char
+@pytest.mark.parametrize("requires_grad", [False, True])
+def test__cast_Char_master_requires_grad(requires_grad):
+    torch.manual_seed(0)
+    x = torch.randn(1025, device=flag_gems.device, requires_grad=requires_grad)
+    expected = _master_cast_reference(x, True)
+    actual = flag_gems._cast_Char(x, True)
+    _assert_master_cast_close(x, actual, expected, rtol=0, atol=0)
+    assert not actual.requires_grad
+
+
+@pytest.mark.underscore_cast_Char
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test__cast_Char_master_complex(dtype):
+    _require_master_dtype(dtype)
+    torch.manual_seed(0)
+    x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()
+    expected = _master_cast_reference(x)
+    actual = flag_gems._cast_Char(x)
+    _assert_master_cast_close(x, actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.underscore_cast_Char
+def test__cast_Char_master_integer_limits():
+    x = torch.tensor(
+        [-(2**63), -(2**31) - 1, 2**31, 2**63 - 1], device=flag_gems.device
+    )
+    expected = _master_cast_reference(x)
+    _assert_master_cast_close(x, flag_gems._cast_Char(x), expected, rtol=0, atol=0)
+
+
+@pytest.mark.underscore_cast_Char
+def test__cast_Char_master_negative_view():
+    x = torch._neg_view(torch.arange(17, device=flag_gems.device, dtype=torch.float32))
+    expected = _master_cast_reference(x)
+    _assert_master_cast_close(x, flag_gems._cast_Char(x), expected, rtol=0, atol=0)
