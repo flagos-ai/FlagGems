@@ -23,6 +23,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .sum import sum_dim
+
 logger = logging.getLogger(__name__)
 
 # Ascend NPU coreDim (the launch grid) cannot exceed UINT16_MAX. Ops whose grid
@@ -275,6 +277,6 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
             ROW_BLOCK_SIZE,
             COL_BLOCK_SIZE,
         )
-        dw = torch.sum(partial_buffer, dim=0).to(x.dtype).reshape(-1)
+        dw = sum_dim(partial_buffer, dim=[0], dtype=x.dtype)
 
     return dx, dw

@@ -47,6 +47,23 @@ def test_sum(shape, dtype):
 
 
 @pytest.mark.sum
+@pytest.mark.sum_dim
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize("dim", [None, ()])
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_sum_dim_full_reduction_fp16_partial_overflow(dim, keepdim):
+    # Each first-stage partial exceeds FP16's range, but the final sum is zero.
+    inp_cpu = torch.full((1024, 1024), 128.0, dtype=torch.float16)
+    inp_cpu[512:] = -128.0
+    expected = torch.sum(inp_cpu.float(), dim=dim, keepdim=keepdim).to(inp_cpu.dtype)
+    inp = inp_cpu.to(flag_gems.device)
+
+    result = flag_gems.sum_dim(inp, dim=dim, keepdim=keepdim)
+
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.sum
 @pytest.mark.sum_out
 @pytest.mark.parametrize("use_out", [False, True])
 def test_sum_large_ascend_reduction_tile(use_out):

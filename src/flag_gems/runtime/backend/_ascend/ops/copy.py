@@ -211,7 +211,11 @@ def _check_broadcastable(dst: torch.Tensor, src: torch.Tensor) -> None:
     if src.shape == dst.shape:
         return
     try:
-        broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
+        broadcast_shape = (
+            torch.broadcast_shapes(  # allow-torch-compute: shape metadata only
+                dst.shape, src.shape
+            )
+        )
     except RuntimeError as exc:
         raise RuntimeError(str(exc)) from exc
     if torch.Size(broadcast_shape) != dst.shape:

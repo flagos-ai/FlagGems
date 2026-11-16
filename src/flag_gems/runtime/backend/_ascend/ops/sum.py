@@ -117,7 +117,10 @@ def sum(inp, *, dtype=None):
     block_mid = _reduction_mid_block_size(mid_size)
     grid_size = _reduction_grid_size(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    # Keep partial sums in FP32 so low-precision outputs do not round or
+    # overflow before the second stage can combine cancelling partial sums.
+    mid_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    mid = torch.empty((mid_size,), dtype=mid_dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
@@ -275,7 +278,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             dtype = torch.int64
 
     if dim is None:
-        result = torch.sum(inp, dtype=dtype)
+        result = sum(inp, dtype=dtype)
         if keepdim:
             result = result.reshape([1] * inp.ndim)
         return result
@@ -285,7 +288,9 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             return sum(inp, dtype=dtype)
         else:
             dim_num = inp.ndim
-            return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
+            return torch.reshape(  # allow-torch-compute: scalar-to-singleton view only
+                sum(inp, dtype=dtype), [1] * dim_num
+            )
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]

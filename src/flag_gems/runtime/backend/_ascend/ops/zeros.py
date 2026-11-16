@@ -82,7 +82,9 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 def zero_(x: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS_ASCEND ZERO_")
     N = x.numel()
-    dense = x.is_contiguous() or torch.ops.aten.is_non_overlapping_and_dense(x)
+    dense = x.is_contiguous() or torch.ops.aten.is_non_overlapping_and_dense(  # allow-torch-compute: layout metadata
+        x
+    )
     shape = () if N == 0 or dense else tuple(x.shape)
     strides = () if N == 0 or dense else tuple(x.stride())
     grid_fn = lambda meta: _zeros_grid(N, meta["BLOCK_SIZE"])
