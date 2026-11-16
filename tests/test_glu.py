@@ -51,3 +51,27 @@ def test_glu_backward(shape, dtype):
             res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
 
         utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.iluvatar
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 128),
+        (4, 256),
+        (1, 1024),
+        (8, 65),  # 非对齐
+    ],
+)
+def test_glu_fused_iluvatar_triton(shape):
+    import torch
+    from accuracy_utils import check_close
+
+    from flag_gems.ops.mm_glu_ops import triton_glu_fused
+    from flag_gems.runtime import torch_device_fn
+
+    with torch_device_fn.device("iluvatar"):
+        x = torch.randn(*shape, dtype=torch.bfloat16)
+        ref = torch.nn.functional.glu(x, dim=-1)
+        out = triton_glu_fused(x)
+        check_close(out, ref)

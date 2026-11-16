@@ -333,12 +333,12 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 # import triton kernels for flagtree backend dispatch
-from ...triton_src import addmm as triton_addmm
-from ...triton_src import bmm as triton_bmm
-from ...triton_src import conv2d as triton_conv2d
-from ...triton_src import glu as triton_glu
-from ...triton_src import mm as triton_mm
-from ..runtime import get_compiler_backend
+# from flag_gems.triton_src import addmm as triton_addmm
+# from flag_gems.triton_src import bmm as triton_bmm
+# from flag_gems.triton_src import conv2d as triton_conv2d
+# from flag_gems.triton_src import glu as triton_glu
+# from flag_gems.triton_src import mm as triton_mm
+# from flag_gems.runtime import get_compiler_backend
 
 __all__ = [
     "_assert_async",

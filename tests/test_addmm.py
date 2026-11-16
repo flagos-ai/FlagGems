@@ -93,3 +93,69 @@ def test_addmm_out(M, N, K, scalar, dtype):
         torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+# 在文件末尾追加
+import pytest
+
+from flag_gems.runtime import torch_device_fn
+
+
+@pytest.mark.parametrize("M,N,K", [(65, 128, 32), (64, 128, 32)])
+def test_addmm_iluvatar_1d_bias(M, N, K):
+    import torch
+
+    from flag_gems.ops.mm_glu_ops import triton_addmm
+
+    with torch_device_fn.device("iluvatar"):
+        bias = torch.randn(N, dtype=torch.bfloat16)
+        m1 = torch.randn(M, K, dtype=torch.bfloat16)
+        m2 = torch.randn(K, N, dtype=torch.bfloat16)
+        ref = torch.addmm(bias, m1, m2, beta=0.5, alpha=2.0)
+        out = triton_addmm(bias, m1, m2, beta=0.5, alpha=2.0)
+        from accuracy_utils import check_close
+
+        check_close(out, ref)
+
+
+@pytest.mark.iluvatar
+@pytest.mark.parametrize(
+    "M, N, K, beta, alpha",
+    [
+        (64, 128, 32, 1.0, 1.0),
+        (65, 128, 33, 0.5, 2.0),
+        (128, 256, 64, 1.0, 0.8),
+    ],
+)
+def test_addmm_iluvatar_triton_1d_bias(M, N, K, beta, alpha):
+    import torch
+    from accuracy_utils import check_close
+
+    from flag_gems.ops.mm_glu_ops import triton_addmm
+    from flag_gems.runtime import torch_device_fn
+
+    with torch_device_fn.device("iluvatar"):
+        bias = torch.randn(N, dtype=torch.bfloat16)
+        m1 = torch.randn(M, K, dtype=torch.bfloat16)
+        m2 = torch.randn(K, N, dtype=torch.bfloat16)
+        ref = torch.addmm(bias, m1, m2, beta=beta, alpha=alpha)
+        out = triton_addmm(bias, m1, m2, beta=beta, alpha=alpha)
+        check_close(out, ref)
+
+
+@pytest.mark.iluvatar
+@pytest.mark.parametrize("M, N, K", [(64, 128, 32), (65, 128, 33)])
+def test_addmm_iluvatar_triton_2d_bias(M, N, K):
+    import torch
+    from accuracy_utils import check_close
+
+    from flag_gems.ops.mm_glu_ops import triton_addmm
+    from flag_gems.runtime import torch_device_fn
+
+    with torch_device_fn.device("iluvatar"):
+        bias = torch.randn(M, N, dtype=torch.bfloat16)
+        m1 = torch.randn(M, K, dtype=torch.bfloat16)
+        m2 = torch.randn(K, N, dtype=torch.bfloat16)
+        ref = torch.addmm(bias, m1, m2)
+        out = triton_addmm(bias, m1, m2)
+        check_close(out, ref)

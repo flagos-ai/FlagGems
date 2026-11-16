@@ -113,3 +113,27 @@ def test_bmm_out(M, N, K, dtype):
         torch.bmm(mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.iluvatar
+@pytest.mark.parametrize(
+    "B, M, N, K",
+    [
+        (2, 64, 64, 64),
+        (2, 65, 53, 37),
+        (4, 128, 128, 64),
+    ],
+)
+def test_bmm_iluvatar_triton(B, M, N, K):
+    import torch
+    from accuracy_utils import check_close
+
+    from flag_gems.ops.mm_glu_ops import triton_bmm
+    from flag_gems.runtime import torch_device_fn
+
+    with torch_device_fn.device("iluvatar"):
+        a = torch.randn(B, M, K, dtype=torch.bfloat16)
+        b = torch.randn(B, K, N, dtype=torch.bfloat16)
+        ref = torch.bmm(a, b)
+        out = triton_bmm(a, b)
+        check_close(out, ref)
