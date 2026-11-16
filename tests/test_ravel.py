@@ -71,6 +71,20 @@ def _apply_layout(inp, layout):
     raise ValueError(f"unknown layout {layout!r}")
 
 
+def _assert_ravel_complex_values(actual, reference, source, dtype):
+    # KLX complex eq is unsupported in the default device comparison helper.
+    # Keep original-device metadata checks before moving only observations.
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        assert actual.device == source.device
+        assert actual.dtype == reference.dtype == dtype
+        assert actual.shape == reference.shape
+        actual = actual.detach().cpu()
+        reference = reference.detach().cpu()
+        assert actual.dtype == reference.dtype == dtype
+        assert actual.shape == reference.shape
+    utils.gems_assert_close(actual, reference, dtype)
+
+
 @pytest.mark.ravel
 @pytest.mark.parametrize("shape", RAVEL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -162,7 +176,7 @@ def test_ravel_complex(dtype):
     res_out = flag_gems.ravel(inp)
     ref_out = torch.ravel(ref_inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_ravel_complex_values(res_out, ref_out, inp, dtype)
 
 
 @pytest.mark.ravel
@@ -180,7 +194,7 @@ def test_ravel_lazy_conj_bit_kept_on_view_path():
     ref_values = torch.ravel(utils.to_reference(conj_inp))
 
     assert res_out.is_conj() == ref_out.is_conj()
-    utils.gems_assert_close(res_out, ref_values, torch.complex64)
+    _assert_ravel_complex_values(res_out, ref_values, conj_inp, torch.complex64)
 
 
 @pytest.mark.ravel
