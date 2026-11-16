@@ -572,7 +572,9 @@ def test_values(case, dtype, value_range):
     ],
     ids=["plain", "hybrid", "zero-nnz"],
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", [dtype for dtype in utils.FLOAT_DTYPES if dtype in _COO_DTYPES]
+)
 def test_values_master_coalesced_coo(indices, size, stored_shape, dtype):
     values = _make_values(dtype, stored_shape, ["-1", "1"])
     ref_values = _to_reference(values)
