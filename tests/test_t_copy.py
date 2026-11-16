@@ -29,11 +29,7 @@ else:
 T_COPY_DTYPES = (
     utils.FLOAT_DTYPES
     + utils.SMALL_INT_DTYPES
-    + [
-        getattr(torch, name)
-        for name in ("float8_e4m3fn", "float8_e5m2")
-        if hasattr(torch, name)
-    ]
+    + utils.FP8_DTYPES
 )
 
 
@@ -41,13 +37,6 @@ def _make_t_copy_input(shape, dtype):
     # randn only supports float dtypes, so build in fp32 and cast down.
     x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     return x.to(dtype)
-
-
-FLOAT8_DTYPES = [
-    getattr(torch, name)
-    for name in ("float8_e4m3fn", "float8_e5m2")
-    if hasattr(torch, name)
-]
 
 
 @pytest.mark.t_copy
@@ -60,7 +49,7 @@ def test_accuracy_t_copy(shape, dtype):
 
     act_out = flag_gems.t_copy(x)
 
-    if dtype in FLOAT8_DTYPES:
+    if dtype in utils.FP8_DTYPES:
         # Bitwise copy op: fp8 tensors must match exactly.
         utils.gems_assert_equal(act_out, ref_out)
     else:
@@ -80,7 +69,7 @@ def test_accuracy_t_copy_out(shape, dtype):
 
     act_out = flag_gems.t_copy_out(x, act_out_buf)
 
-    if dtype in FLOAT8_DTYPES:
+    if dtype in utils.FP8_DTYPES:
         # Bitwise copy op: fp8 tensors must match exactly.
         utils.gems_assert_equal(act_out, ref_out)
     else:

@@ -33,19 +33,12 @@ def test_special_erfc_small_int(shape, dtype):
     utils.gems_assert_close(act_out, ref_out, torch.float32, equal_nan=True)
 
 
-FLOAT8_DTYPES = [
-    getattr(torch, name)
-    for name in ("float8_e4m3fn", "float8_e5m2")
-    if hasattr(torch, name)
-]
-
-
 @pytest.mark.special_erfc
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" or not FLOAT8_DTYPES,
+    flag_gems.device != "cuda" or not utils.FP8_DTYPES,
     reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
 )
-@pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FP8_DTYPES)
 def test_special_erfc_float8(dtype):
     """ATen erfc is not implemented for float8; verify the uint8 byte pattern."""
     x = torch.randn(32, 17, dtype=torch.float32, device=flag_gems.device).to(dtype)

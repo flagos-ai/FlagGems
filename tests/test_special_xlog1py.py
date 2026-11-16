@@ -41,19 +41,12 @@ def test_special_xlog1py_small_int(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
 
-FLOAT8_DTYPES = [
-    getattr(torch, name)
-    for name in ("float8_e4m3fn", "float8_e5m2")
-    if hasattr(torch, name)
-]
-
-
 @pytest.mark.special_xlog1py
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" or not FLOAT8_DTYPES,
+    flag_gems.device != "cuda" or not utils.FP8_DTYPES,
     reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
 )
-@pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FP8_DTYPES)
 def test_special_xlog1py_float8(dtype):
     """ATen xlog1py is not implemented for float8; verify the uint8 byte pattern."""
     # Seed so the bitwise byte-pattern comparison is deterministic; the fp8
