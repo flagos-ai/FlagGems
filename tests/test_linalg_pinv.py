@@ -104,3 +104,26 @@ def test_linalg_pinv_large_batched(shape, dtype):
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out(shape, dtype):
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    out = torch.empty((n, m), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.linalg_pinv_out(A, out=out)
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+def test_linalg_pinv_rejects_complex():
+    # Construct on CPU: some backends (e.g. GCU) cannot materialize complex
+    # tensors on the device, while the dtype contract is device independent.
+    A = torch.randn(4, 4, dtype=torch.complex64)
+    with pytest.raises(RuntimeError, match="complex"):
+        flag_gems.linalg_pinv(A)

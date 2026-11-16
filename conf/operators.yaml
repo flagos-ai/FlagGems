@@ -12040,6 +12040,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
   for:
   - linalg_pinv
+  - linalg_pinv.atol_rtol_float
+  - linalg_pinv.atol_rtol_float_out
+  - linalg_pinv.atol_rtol_tensor
+  - linalg_pinv.atol_rtol_tensor_out
   labels:
   - aten
   - KernelGen
