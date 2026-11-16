@@ -63,7 +63,7 @@ def _assert_result_equal(result, reference, *, device=None):
         or reference.is_conj()
     ):
         result, reference = _cpu_values(result), _cpu_values(reference)
-    elif flag_gems.vendor_name == "ascend" and result.is_complex():
+    elif flag_gems.vendor_name in ("ascend", "mthreads") and result.is_complex():
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
@@ -588,6 +588,16 @@ def test_new_zeros_host_pinned_output(dtype):
 def test_new_zeros_rejects_pinned_device_output(dtype):
     inp = tu.make_input(dtype, _SMALL_SOURCE, _SOURCE_RANGE)
 
+    if flag_gems.vendor_name == "mthreads":
+        kwargs = {"device": inp.device, "pin_memory": True}
+        expected = torch.ops.aten.new_zeros(inp, _TARGET_SIZE, **kwargs)
+        actual = flag_gems.new_zeros(inp, _TARGET_SIZE, **kwargs)
+
+        assert actual.device == expected.device == inp.device
+        assert actual.is_pinned() == expected.is_pinned()
+        _assert_result_equal(actual, tu.to_reference(expected))
+        return
+
     error = (
         (RuntimeError, ValueError)
         if flag_gems.vendor_name == "kunlunxin"
@@ -660,3 +670,33 @@ def test_new_zeros_special_value_source(dtype, scenario):
     # NaN/Inf source contents must not leak into the freshly zeroed output
     _assert_result_equal(res_out, ref_out)
     _assert_result_equal(inp, ref_inp)
+
+
+_MASTER_SIZES = [(), (0,), (1,), (256,), (1024, 1024), (16, 7, 57), (16, 128, 64, 60)]
+_MASTER_DTYPES = list(dict.fromkeys(
+    utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+    + _BF16_DTYPES + _FP64_DTYPES + _INT64_DTYPES
+))
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("size", tu.selected_cases(_MASTER_SIZES, quick=[]))
+@pytest.mark.parametrize("dtype", _MASTER_DTYPES)
+def test_new_zeros_master_size_and_dtype(size, dtype):
+    inp = torch.empty(1, dtype=dtype, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), list(size))
+    actual = flag_gems.new_zeros(inp, list(size))
+
+    _assert_result_equal(actual, expected)
+    assert actual.dtype == inp.dtype and actual.device == inp.device
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("size", tu.selected_cases(_MASTER_SIZES, quick=[]))
+def test_new_zeros_master_inherits_metadata(size):
+    inp = torch.empty((2, 3), dtype=torch.float32, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), list(size))
+    actual = flag_gems.new_zeros(inp, list(size))
+
+    _assert_result_equal(actual, expected)
+    assert actual.layout == inp.layout

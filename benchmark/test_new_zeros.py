@@ -41,6 +41,10 @@ NEW_ZEROS_CASES = [
     ((64, 512, 512), (1024, 1024), None),
     ((1024, 1024), (1024, 1024), _EXPLICIT_DTYPE),
     ((1024, 1024), (1024, 1024), _EXPLICIT_LAYOUT),
+    ((1,), (256,), None),
+    ((1,), (1024, 1024), None),
+    ((1,), (20, 320, 15), None),
+    ((1,), (16, 128, 64, 60), None),
 ]
 
 # bf16 is not allocated on every backend; the gate is static so listing and
@@ -121,7 +125,6 @@ def test_new_zeros():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.new_zeros,
-        gems_op=getattr(flag_gems, "new_zeros", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()
