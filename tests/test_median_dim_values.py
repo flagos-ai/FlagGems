@@ -34,7 +34,20 @@ def _unique_input(shape, dim, dtype):
 def _selected_along_dim(inp, dim, indices, keepdim):
     """Elements that ``indices`` actually points at."""
     idx = indices if keepdim else indices.unsqueeze(dim)
-    picked = torch.gather(inp, dim, idx)
+    if flag_gems.vendor_name == "kunlunxin" and inp.dtype == torch.int16:
+        # KLX int16 gather is unavailable; this is only a post-candidate
+        # selected-value observation, not a replacement median operation.
+        assert indices.device == inp.device
+        assert indices.dtype == torch.int64
+        host_inp, host_idx = inp.detach().cpu(), idx.detach().cpu()
+        assert host_inp.dtype == inp.dtype and host_inp.shape == inp.shape
+        assert host_idx.dtype == idx.dtype and host_idx.shape == idx.shape
+        host_picked = torch.gather(host_inp, dim, host_idx)
+        picked = host_picked.to(inp.device)
+        assert picked.dtype == inp.dtype and picked.shape == idx.shape
+        assert picked.device == inp.device
+    else:
+        picked = torch.gather(inp, dim, idx)
     return picked if keepdim else picked.squeeze(dim)
 
 
