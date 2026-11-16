@@ -496,3 +496,75 @@ def test_index_noncontiguous_graph(dtype, layout):
         )
         utils.gems_assert_equal(actual.cpu(), expected)
         utils.gems_assert_equal(raw.cpu(), updated)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("payload_dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("mask_dtype", [torch.bool, torch.uint8])
+@pytest.mark.parametrize("pattern", ["none", "all", "strided", "multiblock"])
+def test_index_mask_coordinate_order(payload_dtype, mask_dtype, pattern):
+    shape = (65, 129, 2) if pattern == "multiblock" else (3, 5, 4)
+    cpu = torch.arange(np.prod(shape), dtype=torch.int64).reshape(shape)
+    if payload_dtype == torch.int64:
+        cpu = cpu + 2**54
+    cpu = cpu.to(payload_dtype)
+    mask_cpu = (torch.arange(shape[0] * shape[1]).reshape(shape[:2]) % 3 == 0).to(
+        mask_dtype
+    )
+    if pattern == "none":
+        mask_cpu.zero_()
+    elif pattern == "all":
+        mask_cpu.fill_(1)
+    inp = cpu.to(flag_gems.device)
+    if pattern == "strided":
+        storage = torch.empty((shape[1], shape[0]), dtype=mask_dtype, device=inp.device)
+        mask = storage.t()
+        mask.copy_(mask_cpu)
+    else:
+        mask = mask_cpu.to(inp.device)
+    actual = flag_gems.index(inp, [mask])
+    expected = torch.ops.aten.index.Tensor(cpu, [mask_cpu])
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(inp.cpu(), cpu)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("mode", ["scalar", "nonleading", "nonadjacent", "broadcast"])
+def test_index_tensor_metadata_forms(dtype, mode):
+    cpu = torch.arange(120, dtype=torch.int64).reshape(4, 5, 6)
+    if dtype == torch.int64:
+        cpu = cpu + 2**54
+    cpu = cpu.to(dtype)
+    if mode == "scalar":
+        indices = [torch.tensor(-1), None, torch.tensor(-1)]
+    elif mode == "nonleading":
+        indices = [None, torch.tensor([0, -1])]
+    elif mode == "nonadjacent":
+        indices = [torch.tensor([0, -1]), None, torch.tensor([-1, 0])]
+    else:
+        indices = [torch.tensor([[0], [-1]]), torch.tensor([[0, 2, -1]])]
+    device_indices = [
+        item.to(flag_gems.device) if item is not None else None for item in indices
+    ]
+    actual = flag_gems.index(cpu.to(flag_gems.device), device_indices)
+    utils.gems_assert_equal(actual.cpu(), torch.ops.aten.index.Tensor(cpu, indices))
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend data-dependent graph output boundary",
+)
+def test_index_boolean_capture_rejected():
+    inp = torch.arange(12, dtype=torch.float32, device=flag_gems.device).reshape(3, 4)
+    mask = torch.tensor([True, False, True], device=inp.device)
+    scratch = torch.empty_like(inp)
+    graph = torch.npu.NPUGraph()
+    with pytest.raises(RuntimeError, match="data-dependent output shape"):
+        with torch.npu.graph(graph):
+            scratch.copy_(inp)
+            flag_gems.index(inp, [mask])
+    utils.gems_assert_equal(
+        inp.cpu(), torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    )
