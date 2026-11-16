@@ -463,7 +463,12 @@ def test_gradient_tensorarray(dtype):
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)
 
     # non-uniform coordinates
-    xs_nu = torch.cumsum(torch.rand(shape[dim], dtype=dtype, device=DEVICE) + 0.5, 0)
+    intervals = torch.rand(shape[dim], dtype=dtype, device=DEVICE) + 0.5
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float64:
+        # muDNN does not implement the FP64 scan used to build this fixture.
+        xs_nu = intervals.cpu().cumsum(0).to(intervals.device)
+    else:
+        xs_nu = intervals.cumsum(0)
     xs_nu = xs_nu - xs_nu[0]
     ref_out = torch.ops.aten.gradient.tensorarray(
         ref_inp, spacing=[utils.to_reference(xs_nu)], dim=[dim], edge_order=1
