@@ -938,3 +938,54 @@ def test_crow_indices_copy_master_repeated_dispatch():
         assert torch.ops.aten._nnz(inp) == 5
         _assert_copy_semantics(actual, expected, inp, reference, inp.device)
     _assert_input_unchanged(inp, input_state)
+
+
+@pytest.mark.crow_indices_copy
+@pytest.mark.parametrize(
+    "size,nnz",
+    [((0, 3, 4), 0), ((0, 4), 0), ((3, 4), 2)],
+    ids=["empty-batch", "single-offset", "fresh-copy"],
+)
+def test_crow_indices_copy_master_boundaries(size, nnz):
+    if nnz:
+        inp = _make_input("csr", size, nnz, None, torch.float32)
+    else:
+        device = flag_gems.device
+        batch = size[:-2]
+        inp = torch.sparse_csr_tensor(
+            torch.zeros((*batch, size[-2] + 1), dtype=torch.int64, device=device),
+            torch.empty((*batch, 0), dtype=torch.int64, device=device),
+            torch.empty((*batch, 0), dtype=torch.float32, device=device),
+            size,
+        )
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.crow_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.crow_indices_copy(inp)
+
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+    if nnz:
+        actual[0] = -123
+    _assert_input_unchanged(inp, input_state)
+
+
+@pytest.mark.crow_indices_copy
+def test_crow_indices_copy_master_noncontiguous_indices():
+    storage = torch.tensor([0, -1, 1, -1, 1, -1, 2, -1], device=flag_gems.device)
+    crow = storage[::2]
+    inp = torch.sparse_csr_tensor(
+        crow,
+        torch.tensor([1, 2], device=crow.device),
+        torch.ones(2, device=crow.device),
+        (3, 4),
+    )
+    assert not inp.crow_indices().is_contiguous()
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.crow_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.crow_indices_copy(inp)
+
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+    _assert_input_unchanged(inp, input_state)
