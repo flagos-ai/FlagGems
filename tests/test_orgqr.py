@@ -68,7 +68,26 @@ def _reference_reflector(value):
     return utils.to_reference(value)
 
 
+def _musa_orgqr_cpu_reference(input, tau):
+    # Apply the packed Householder reflectors to the first n identity columns.
+    # This PyTorch build does not provide CPU LAPACK.
+    m, n = input.shape[-2:]
+    q = torch.eye(m, n, dtype=input.dtype, device=input.device)
+    q = q.expand(*input.shape[:-2], m, n).clone()
+    for idx in range(tau.shape[-1] - 1, -1, -1):
+        tail = input[..., idx + 1 :, idx]
+        v = torch.cat((torch.ones_like(input[..., idx : idx + 1, idx]), tail), dim=-1)
+        block = q[..., idx:, :]
+        projection = (v.conj().unsqueeze(-1) * block).sum(dim=-2)
+        q[..., idx:, :] = block - (
+            (tau[..., idx, None] * v).unsqueeze(-1) * projection.unsqueeze(-2)
+        )
+    return q
+
+
 def _reference_orgqr(input, tau):
+    if flag_gems.vendor_name == "mthreads" and input.device.type == "cpu":
+        return _musa_orgqr_cpu_reference(input, tau)
     if input.device.type != "cpu":
         if (
             flag_gems.vendor_name == "thead"
