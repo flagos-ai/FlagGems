@@ -41,19 +41,15 @@ device = device.name
 _INT32_SAFE = 1 << 31
 
 
-@triton.jit
-def _minimum_values(X, Y):
-    if X.dtype == tl.bfloat16:
-        X = X.to(tl.float32)
-        Y = Y.to(tl.float32)
-    # aten::minimum propagates NaN: a NaN operand wins over the other side.
-    return tl.minimum(X, Y, propagate_nan=tl.PropagateNan.ALL)
-
-
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 0, "DEFAULT")])
 @triton.jit
 def minimum_kernel(X, Y):
-    return _minimum_values(X, Y)
+    if X.dtype == tl.bfloat16:
+        X = X.to(tl.float32)
+        Y = Y.to(tl.float32)
+    if X.dtype.is_floating() or Y.dtype.is_floating():
+        return tl.minimum(X, Y, propagate_nan=tl.PropagateNan.ALL)
+    return tl.minimum(X, Y)
 
 
 @pointwise_dynamic(
@@ -299,3 +295,6 @@ def minimum(X, Y):
     if torch.is_grad_enabled() and (X.requires_grad or Y.requires_grad):
         return _Minimum.apply(X, Y)
     return minimum_kernel(X, Y)
+
+
+minimum._flag_gems_autograd_impl = torch.library.fallthrough_kernel
