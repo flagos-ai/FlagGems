@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import pytest
 import torch
 
@@ -25,6 +27,8 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_gelu_and_mul(shape, approximate, dtype):
+    if flag_gems.vendor_name == "enflame":
+        os.environ["ENFLAME_PT_GELU_ERF_ENABLE"] = "true"
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp1 = utils.to_reference(inp1, True)
@@ -47,3 +51,5 @@ def test_gelu_and_mul(shape, approximate, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
     utils.gems_assert_close(res_inp2_grad, ref_inp2_grad, dtype)
+    if flag_gems.vendor_name == "enflame":
+        os.environ["ENFLAME_PT_GELU_ERF_ENABLE"] = "false"
