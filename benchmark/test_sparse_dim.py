@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
 
@@ -32,6 +30,8 @@ from . import base, consts
 #   ("dense", shape)
 #   ("coo", sparse_shape, dense_shape, nnz)
 #   ("csr", shape, rows, cols, nnz)
+_MASTER_STRIDED_SHAPES = ((16,), (1024,), (65536,), (1048576,))
+
 _BENCH_CASES = [
     ("dense", (1024, 1024)),
     ("dense", (4096, 4096)),
@@ -42,12 +42,16 @@ _BENCH_CASES = [
     ("coo", (256, 256, 256), (16,), 1048576),
     ("csr", (1024, 1024), 1024, 1024, 4096),
     ("csr", (64, 512, 512), 512, 512, 8192),
+    *(("dense", shape) for shape in _MASTER_STRIDED_SHAPES),
 ]
 
 
 def _case_fn(case, dtype):
-    del dtype
     kind = case[0]
+    if dtype not in consts.FLOAT_DTYPES and not (
+        kind == "dense" and case[1] in _MASTER_STRIDED_SHAPES
+    ):
+        return
     if kind == "dense":
         shape = case[1]
         yield base.BenchmarkCasePlan(
@@ -75,7 +79,8 @@ def _build_inputs_fn(plan, dtype, device):
     case = plan.builder_args
     kind = case[0]
     if kind == "dense":
-        inp = torch.randn(case[1], dtype=dtype, device=device)
+        factory = torch.empty if case[1] in _MASTER_STRIDED_SHAPES else torch.randn
+        inp = factory(case[1], dtype=dtype, device=device)
         return inp, {}
     if kind == "coo":
         _, sparse_shape, dense_shape, nnz = case
@@ -126,7 +131,6 @@ def test_sparse_dim():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sparse_dim,
-        gems_op=getattr(flag_gems, "sparse_dim", None),
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
