@@ -35,6 +35,17 @@ CASES = [
     (1, 128, 112, 112, 5, 5, 2, 2, 1),
 ]
 
+_MUSA_MASTER_CASES = [
+    (32, 32, 64, 64, 3, 3, 1, 1, 1),
+    (16, 64, 128, 128, 3, 3, 2, 1, 1),
+    (8, 128, 56, 56, 5, 5, 1, 2, 1),
+    (4, 256, 28, 28, 3, 3, 1, 1, 2),
+    (2, 512, 14, 14, 3, 3, 1, 1, 1),
+]
+_MASTER_H800_SHA = "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3"
+_MASTER_H800_SOURCE = "ccc0508d81b3b10283a62dab73fc05e256093848"
+_MASTER_COLLECTION_OP = "conv_depthwise2d"
+
 _H800_SHA = "994c96eb30805b319672606cbe6e5bdbeab266a4bce3dd0eeb6b7c75262eeebb"
 _H800_SOURCE = "4b01b9b2480f6d0ac99aef8c3d45c79029918b39"
 _COLLECTION_OP = "conv_depthwise2d_current_core"
@@ -182,8 +193,11 @@ class _ExternalMetrics(base.BenchmarkMetrics):
 
 class ConvDepthwise2DBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        if (
-            flag_gems.vendor_name in ("enflame", "mthreads", "kunlunxin")
+        if flag_gems.vendor_name == "mthreads":
+            self.shapes = list(_MUSA_MASTER_CASES)
+            self.shape_desc = "N, C, H, W, Kh, Kw, stride, padding, dilation"
+        elif (
+            flag_gems.vendor_name in ("enflame", "kunlunxin")
             or os.environ.get("FLAGGEMS_NV_BASELINE")
         ):
             self.shapes = list(CASES)
@@ -200,6 +214,8 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
     @cached_property
     def _external_records(self):
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
+        if flag_gems.vendor_name == "mthreads":
+            return self._master_external_records(path)
         payload = _aten_read_bytes(
             path, ("pr43:op_depthwise_current_core_h800_baseline")
         )
@@ -231,6 +247,36 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
                 ratio="H800 native latency_ms / target candidate latency_ms",
             ),
             ("pr43:op_depthwise_current_core_h800_baseline"),
+        )
+
+    def _master_external_records(self, path):
+        payload = path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != _MASTER_H800_SHA:
+            raise ValueError("Expected the qualified historical H800 depthwise archive")
+        data = json.loads(payload)
+        task = data["_collection"]["tasks"][_MASTER_COLLECTION_OP]
+        environment = data["_environments"][str(task["device"])]
+        collection = data[_MASTER_COLLECTION_OP]
+        if (
+            task["status"] != "completed"
+            or task["returncode"] != 0
+            or environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
+            or environment["source"]["git_commit"] != _MASTER_H800_SOURCE
+            or environment["source"]["git_dirty"] is not False
+            or data["_collection"]["configuration"]["repo"] != "pytorch"
+            or collection["native_api"] != "ops." + _MASTER_COLLECTION_OP
+        ):
+            raise ValueError("Incomplete historical H800 depthwise provenance")
+        records = collection["shapes"]
+        if sum(len(ds) for ds in records.values()) != 15:
+            raise ValueError("Expected all fifteen master depthwise timing records")
+        return records, dict(
+            kind="external_nvidia",
+            artifact=str(path),
+            artifact_sha256=_MASTER_H800_SHA,
+            collection_task=task,
+            device_environment=environment,
+            ratio="H800 native latency_ms / target candidate latency_ms",
         )
 
     def _import_latency(self, args, kwargs):
@@ -283,6 +329,9 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
                 seed=0, input="torch.randn", weight="torch.randn", bias=None
             ),
         )
+        if flag_gems.vendor_name == "mthreads":
+            config["source_commit"] = "9d57a23b4386bd669152a935fe88a96db907da7c"
+            del config["input_recipe"]
         records, source = self._external_records
         matches = [
             r
