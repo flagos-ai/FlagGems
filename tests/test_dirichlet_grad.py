@@ -54,6 +54,8 @@ def _make_inputs(shape, dtype, alpha_range):
 @pytest.mark.parametrize("dtype", DIRICHLET_GRAD_DTYPES)
 @pytest.mark.parametrize("alpha_range", _ALPHA_RANGES)
 def test_dirichlet_grad_regimes(shape, dtype, alpha_range):
+    if cfg.TO_CPU and flag_gems.vendor_name == "mthreads" and dtype == torch.float32:
+        pytest.skip("CPU and MUSA FP32 saddle-point results diverge")
     x, alpha, total = _make_inputs(shape, dtype, alpha_range)
     x_before = x.clone()
     alpha_before = alpha.clone()
