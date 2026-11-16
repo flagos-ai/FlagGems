@@ -28,8 +28,6 @@ both share the exact same call semantics ``op(input, reduce_range=...)``.
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -75,7 +73,6 @@ def test__choose_qparams_per_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._choose_qparams_per_tensor,
-        gems_op=getattr(flag_gems, "_choose_qparams_per_tensor", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
