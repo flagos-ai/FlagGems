@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.logaddexp2 import logaddexp2_backward
 
 from . import accuracy_utils as utils
 
@@ -264,7 +265,7 @@ def test_logaddexp2_backward_registered_autograd_key(dtype):
     res_x = x.detach().requires_grad_(True)
     res_y = y.detach().requires_grad_(True)
     with flag_gems.use_gems(include=["logaddexp2"]):
-        res_out = torch.logaddexp2(res_x, res_y)
+        res_out = flag_gems.logaddexp2(res_x, res_y)
     _require_gems_autograd(res_out)
     res_grad_x, res_grad_y = torch.autograd.grad(res_out, (res_x, res_y), out_grad)
 
@@ -287,7 +288,7 @@ def test_logaddexp2_backward_functional(dtype):
     )
 
     ref_grad_x, ref_grad_y = _native_grads(x, y, out_grad)
-    res_grad_x, res_grad_y = flag_gems.logaddexp2_backward(out_grad, x, y)
+    res_grad_x, res_grad_y = logaddexp2_backward(out_grad, x, y)
 
     assert res_grad_x.shape == x_shape and res_grad_y.shape == y_shape
     utils.gems_assert_close(res_grad_x, ref_grad_x, dtype)
@@ -309,7 +310,7 @@ def test_logaddexp2_backward_empty_and_scalar(dtype):
     empty_x = torch.empty(0, dtype=dtype, device=flag_gems.device)
     empty_y = torch.empty(0, dtype=dtype, device=flag_gems.device)
     empty_grad = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    res = flag_gems.logaddexp2_backward(empty_grad, empty_x, empty_y)
+    res = logaddexp2_backward(empty_grad, empty_x, empty_y)
     assert res[0].numel() == 0 and res[1].numel() == 0
 
 

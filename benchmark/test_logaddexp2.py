@@ -68,4 +68,5 @@ def test_logaddexp2_backward():
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
+    bench.set_gems(flag_gems.logaddexp2)
     bench.run()
