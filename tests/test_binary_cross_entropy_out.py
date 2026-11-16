@@ -92,10 +92,10 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
         _assert_close(out.cpu(), expected, dtype, reduction, inp.numel())
     else:
         _assert_close(out, expected, dtype, reduction, inp.numel())
-    utils.gems_assert_equal(inp, inp_before)
-    utils.gems_assert_equal(target, target_before)
+    utils.gems_assert_equal(inp, utils.to_reference(inp_before))
+    utils.gems_assert_equal(target, utils.to_reference(target_before))
     if weight is not None:
-        utils.gems_assert_equal(weight, weight_before)
+        utils.gems_assert_equal(weight, utils.to_reference(weight_before))
 
 
 @pytest.mark.binary_cross_entropy_out
@@ -116,8 +116,8 @@ def test_binary_cross_entropy_out_preserves_noncontiguous_storage():
     assert out.stride() == stride
     assert out.storage_offset() == storage_offset
     utils.gems_assert_close(out, expected, torch.float32)
-    utils.gems_assert_equal(backing[:, :2], backing_before[:, :2])
-    utils.gems_assert_equal(backing[:, 6:], backing_before[:, 6:])
+    utils.gems_assert_equal(backing[:, :2], utils.to_reference(backing_before[:, :2]))
+    utils.gems_assert_equal(backing[:, 6:], utils.to_reference(backing_before[:, 6:]))
 
 
 @pytest.mark.binary_cross_entropy_out
