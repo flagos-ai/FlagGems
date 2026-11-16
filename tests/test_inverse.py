@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # torch.inverse rejects the low precision dtypes, so only fp32/fp64 are covered.
 INVERSE_DTYPES = [torch.float32]
@@ -61,6 +62,22 @@ def _make_well_conditioned(shape, dtype, device):
     return eye + 0.05 * torch.randn(shape, dtype=dtype, device=device)
 
 
+def ref_inverse(a):
+    # Kunlunxin eager inverse (XDNN math_inverse) only accepts matrices up to
+    # n*n*elem_size <= 8192 (n <= ~45 in fp32) and the platform has no fp64, so
+    # the reference is computed wide on CPU there.  Other backends keep the
+    # to_reference() upcast behaviour (device, or CPU under --ref cpu).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.inverse(utils.to_reference(a, upcast=True)).to(a.dtype)
+    a_cpu = (
+        a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
+    )
+    ref = torch.inverse(a_cpu)
+    if not TO_CPU:
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 @pytest.mark.inverse
 @pytest.mark.parametrize("shape", INVERSE_SHAPES)
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
@@ -69,7 +86,7 @@ def test_inverse(shape, dtype):
     # so the comparison measures our error, not the reference's.
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
     res_out = flag_gems.inverse(A)
-    ref_out = utils.ref_inverse(A)
+    ref_out = ref_inverse(A)
 
     assert res_out.shape == A.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -81,7 +98,7 @@ def test_inverse(shape, dtype):
 def test_inverse_batch(shape, dtype):
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
     res_out = flag_gems.inverse(A)
-    ref_out = utils.ref_inverse(A)
+    ref_out = ref_inverse(A)
 
     assert res_out.shape == A.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -95,7 +112,7 @@ def test_inverse_requires_pivoting(matrix, dtype):
     # partial pivoting step rather than just the elimination arithmetic.
     A = torch.tensor(matrix, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.inverse(A)
-    ref_out = utils.ref_inverse(A)
+    ref_out = ref_inverse(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
 
@@ -128,7 +145,7 @@ def test_inverse_noncontiguous(dtype):
     A_t = A.t()
 
     res_out = flag_gems.inverse(A_t)
-    ref_out = utils.ref_inverse(A_t)
+    ref_out = ref_inverse(A_t)
 
     assert res_out.shape == A_t.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
