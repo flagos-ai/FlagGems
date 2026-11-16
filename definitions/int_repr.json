@@ -2,7 +2,7 @@
   "api_version": "v6.0",
   "name": "int_repr",
   "requires_triton_kernel": true,
-  "description": "ATen schema: aten::int_repr(Tensor self) -> Tensor. Returns the raw integer codes of an affine-quantized tensor as a fresh plain integer tensor on the input device (quint8 to uint8, qint8 to int8, qint32 to int32). The output shape matches the input, and the output does not alias the quantized storage. The int_repr_out Definition covers the independent out overload.",
+  "description": "ATen schema: aten::int_repr(Tensor self) -> Tensor. Semantics: int_repr returns the raw integer codes stored by an affine-quantized tensor (quint8 -> uint8, qint8 -> int8, qint32 -> int32) with the same shape as the input; the scale/zero-point metadata does not enter the result, so comparisons are exact (rtol=0, atol=0) and no autograd history is carried. Per-tensor quantization is covered unconditionally; per-channel (torch.per_channel_affine) coverage exists only where the backend declares float64 and int64 support, so it is capability-gated. Rank-0 and zero-sized quantized inputs are valid, and transpose / offset slice / strided slice / zero-stride expand / channels_last views read exactly like a compact clone. Non-quantized dtypes are asserted to fail with RuntimeError only on the CUDA/NVIDIA snapshot (the negative rows are built when vendor_name is \"nvidia\"); a non-tensor argument fails with RuntimeError/TypeError. Broadcasting and backward do not apply to this operator. The independent buffer overload is described by int_repr_out.",
   "parameters": [
     {
       "name": "self",

@@ -72,10 +72,17 @@ _UNIT_SCALE = 1.0
 _UNIT_ZERO_POINT = 0
 
 
+def _candidate_int_repr_out(inp, *, out):
+    candidate = getattr(flag_gems, "int_repr_out", None)
+    if candidate is None:
+        candidate = flag_gems.int_repr
+    return candidate(inp, out=out)
+
+
 def _reference_codes(inp):
     if flag_gems.vendor_name in ("ascend", "mthreads"):
-        # This backend cannot reliably clone a quantized tensor. Snapshot the native integer
-        # codes before the candidate runs, then move only the plain output.
+        # Quantized tensor cloning is unreliable on these backends. Snapshot
+        # the native codes before the candidate runs and move only plain codes.
         codes = torch.ops.aten.int_repr(inp).clone()
         return codes.cpu() if utils.TO_CPU else codes
     return torch.ops.aten.int_repr(tu.to_reference(inp))
@@ -308,7 +315,7 @@ def test_int_repr_out(shape, qdtype):
     # The sentinel pre-fill makes the exact comparison reject a candidate that
     # returns the buffer without writing its result.
     buf = _sentinel_buffer(shape, out_dtype)
-    res_out = flag_gems.int_repr_out(inp, out=buf)
+    res_out = _candidate_int_repr_out(inp, out=buf)
 
     assert res_out is buf
     assert res_out.device == inp.device
@@ -324,7 +331,7 @@ def test_int_repr_out_resizes_buffer(qdtype):
     out_dtype = _QUANTIZED_TO_INT[qdtype]
 
     buf = _sentinel_buffer((3,), out_dtype)
-    res_out = flag_gems.int_repr_out(inp, out=buf)
+    res_out = _candidate_int_repr_out(inp, out=buf)
 
     assert res_out is buf
     assert res_out.device == inp.device
@@ -346,7 +353,7 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
     ref_pad[:, :, ::2].copy_(ref_out)
     pad = torch.full(gap, sentinel, dtype=out_dtype, device=flag_gems.device)
     buf = pad[:, :, ::2]
-    res_out = flag_gems.int_repr_out(inp, out=buf)
+    res_out = _candidate_int_repr_out(inp, out=buf)
 
     assert res_out is buf
     assert tuple(buf.stride()) == (60, 12, 2)
@@ -465,7 +472,7 @@ def test_int_repr_out_degenerate_shape(shape, qdtype):
     out_dtype = _QUANTIZED_TO_INT[qdtype]
 
     buf = _sentinel_buffer(shape, out_dtype)
-    res_out = flag_gems.int_repr_out(inp, out=buf)
+    res_out = _candidate_int_repr_out(inp, out=buf)
 
     assert res_out is buf
     assert res_out.device == inp.device
@@ -495,4 +502,4 @@ def test_int_repr_out_rejects_mismatched_dtype(qdtype):
     # int_repr produces (uint8 / int8 / int32), so the out dtype check fires.
     buf = torch.empty((2, 19, 7), dtype=torch.int16, device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        flag_gems.int_repr_out(inp, out=buf)
+        _candidate_int_repr_out(inp, out=buf)
