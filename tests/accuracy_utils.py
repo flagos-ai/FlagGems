@@ -30,6 +30,22 @@ int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
 
+# Triton's CUDA backend only compiles fp8e4nv (torch.float8_e4m3fn) pointers on
+# sm89+; on older arches (e.g. A100/sm80) any kernel taking an fp8e4nv pointer
+# fails at compile time, so gate the list on the actual device capability,
+# not just the backend's fp8 flag.
+FP8_DTYPES = (
+    [
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ]
+    if fp8_is_supported
+    and flag_gems.utils.device_info.get_device_capability()[0] * 10
+    + flag_gems.utils.device_info.get_device_capability()[1]
+    >= 89
+    else []
+)
+
 
 def TestForwardOnly():
     return flag_gems.vendor_name in []

@@ -68,10 +68,9 @@ FLOAT_DTYPES = [
     torch.float32,
 ]
 
-FP8_DTYPES = [
-    torch.float8_e4m3fn,
-    torch.float8_e5m2,
-]
+# FP8_DTYPES is arch-gated in accuracy_utils.py (sm89+): Triton's CUDA backend
+# only compiles fp8e4nv pointers on sm89+.
+FP8_DTYPES = utils.FP8_DTYPES
 
 INT_DTYPES = [
     torch.int8,
