@@ -121,7 +121,7 @@ def _repeat_values(inp, *sizes):
 
 
 def _assert_values_equal(actual, expected, *, equal_nan=False):
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and actual.dtype in (
+    if flag_gems.vendor_name in ("ascend", "kunlunxin", "mthreads") and actual.dtype in (
         torch.float8_e4m3fn,
         torch.float8_e5m2,
     ):
