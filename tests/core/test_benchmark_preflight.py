@@ -351,3 +351,199 @@ def test_benchmark_cannot_claim_an_unused_override(monkeypatch, runner):
     monkeypatch.setattr(bench, "get_latency", lambda *args, **kwargs: 1.0)
     with pytest.raises(pytest.fail.Exception, match="did not invoke"):
         bench._measure_input((1,), case_id="case-0")
+
+
+# ---------------------------------------------------------------------------
+# --kernel-check tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def kc_runner(monkeypatch, runner):
+    """Extend the preflight runner with kernel_check mode active."""
+    bench, config, events = runner
+    config.kernel_check = True
+    config.preflight_only = False
+    config.kernel_check_records = []
+    # torch_op is set to `fail` by the runner fixture; replace it with a no-op
+    # so _benchmark_callable can build its lambda without raising.
+    bench.torch_op = lambda *a, **k: None
+    return bench, config, events
+
+
+def test_kernel_check_case_invokes_kernel_passes(monkeypatch, kc_runner):
+    from torch.autograd import DeviceType
+
+    bench, config, _ = kc_runner
+    device_events = [
+        SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0),
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=3.0),
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(device_events))
+    executed = bench._run_kernel_check_cases(case_ids=["case-0"])
+    assert executed == ["case-0"]
+    assert len(config.kernel_check_records) == 1
+    rec = config.kernel_check_records[0]
+    assert rec["invoked_kernel"] is True
+    assert rec["status"] == "passed"
+    assert "case-0" in config.executed_case_ids
+
+
+def test_kernel_check_case_no_kernel_records_false(monkeypatch, kc_runner):
+    from torch.autograd import DeviceType
+
+    bench, config, _ = kc_runner
+    cpu_only = [SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0)]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(cpu_only))
+    executed = bench._run_kernel_check_cases(case_ids=["case-0"])
+    assert executed == ["case-0"]
+    rec = config.kernel_check_records[0]
+    assert rec["invoked_kernel"] is False
+    assert rec["status"] == "passed"
+
+
+def test_kernel_check_all_cases_run_by_default(monkeypatch, kc_runner):
+    from torch.autograd import DeviceType
+
+    bench, config, _ = kc_runner
+    device_events = [
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=1.0)
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(device_events))
+    executed = bench._run_kernel_check_cases()
+    assert executed == ["case-0", "case-1", "case-2"]
+    assert len(config.kernel_check_records) == 3
+    assert all(r["invoked_kernel"] for r in config.kernel_check_records)
+
+
+def test_kernel_check_failure_records_error(monkeypatch, kc_runner):
+    bench, config, _ = kc_runner
+
+    class BrokenProfiler:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def key_averages(self):
+            raise RuntimeError("profiler exploded")
+
+    monkeypatch.setattr(base.torch.profiler, "profile", lambda: BrokenProfiler())
+    with pytest.raises(RuntimeError, match="profiler exploded"):
+        bench._run_kernel_check_cases(case_ids=["case-0"])
+    assert config.kernel_check_records[0]["status"] == "failed"
+    assert "profiler exploded" in config.kernel_check_records[0]["error"]
+    assert not config.executed_case_ids
+
+
+def test_kernel_check_rejects_legacy_benchmark(monkeypatch, kc_runner):
+    bench, _, _ = kc_runner
+    monkeypatch.setattr(bench, "supports_cases", lambda: False)
+    with pytest.raises(ValueError, match="does not support"):
+        bench._run_kernel_check_cases()
+
+
+def test_kernel_check_rejects_empty_case_plan(monkeypatch, kc_runner):
+    bench, _, _ = kc_runner
+    monkeypatch.setattr(bench, "_collect_cases", lambda: [])
+    with pytest.raises(ValueError, match="no kernel-check cases"):
+        bench._run_kernel_check_cases()
+
+
+def test_kernel_check_session_passes_if_any_kernel(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [
+        {"invoked_kernel": False},
+        {"invoked_kernel": True},
+        {"invoked_kernel": False},
+    ]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.OK
+
+
+def test_kernel_check_session_fails_if_no_kernel(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [
+        {"invoked_kernel": False},
+        {"invoked_kernel": False},
+    ]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+
+def test_kernel_check_session_fails_if_no_records(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = []
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+
+def test_kernel_check_does_not_downgrade_interrupt(runner):
+    bench, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [{"invoked_kernel": False}]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.INTERRUPTED,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == pytest.ExitCode.INTERRUPTED
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        ["--preflight-only"],
+        ["--profile-only", "--case-id", "x"],
+        ["--reference-only"],
+        ["--list-cases"],
+        ["--query"],
+    ],
+)
+def test_kernel_check_rejects_conflicting_cli_modes(monkeypatch, other):
+    from _pytest.config.argparsing import Parser
+
+    parser = Parser()
+    conftest.pytest_addoption(parser)
+    options = parser.parse(["--kernel-check", *other])
+    cfg = SimpleNamespace(
+        option=options,
+        addinivalue_line=lambda *args: None,
+        getini=lambda key: [],
+        getoption=lambda key: getattr(options, key.lstrip("-").replace("-", "_")),
+        hook=SimpleNamespace(pytest_flaggems_profile_scope=None),
+    )
+    with pytest.raises(pytest.UsageError, match="--kernel-check"):
+        conftest.pytest_configure(cfg)

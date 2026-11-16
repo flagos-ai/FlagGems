@@ -843,6 +843,58 @@ class Benchmark:
                 "device kernel; latency_base would not reflect real execution"
             )
 
+    def _run_kernel_check_cases(self, case_ids=None):
+        """Check that the baseline invokes at least one device kernel.
+
+        Runs the torch baseline once per selected case under torch.profiler and
+        records whether a non-CPU device event with recorded device time was
+        observed.  The session passes as long as at least one case across the
+        whole benchmark run launched a kernel (checked in pytest_sessionfinish).
+        """
+        from torch.autograd import DeviceType
+
+        if not self.supports_cases():
+            raise ValueError(
+                f"Operator '{self.op_name}' does not support --kernel-check yet."
+            )
+        cases = self._collect_cases()
+        if not cases:
+            raise ValueError(f"Operator '{self.op_name}' has no kernel-check cases.")
+        Config.available_case_ids.update(case.case_id for case in cases)
+        selected = None if case_ids is None else set(case_ids)
+        executed = []
+        for case in cases:
+            if selected is not None and case.case_id not in selected:
+                continue
+            record = {
+                "operator": self.op_name,
+                "nodeid": Config.current_nodeid,
+                "case_id": case.case_id,
+                "invoked_kernel": False,
+                "status": "failed",
+            }
+            Config.kernel_check_records.append(record)
+            try:
+                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                with torch.profiler.profile() as prof:
+                    fn()
+                    torch_device_fn.synchronize()
+                record["invoked_kernel"] = any(
+                    event.device_type != DeviceType.CPU
+                    and event.self_device_time_total > 0
+                    for event in prof.key_averages()
+                )
+            except Exception as exc:
+                record["error"] = str(exc)
+                raise
+            finally:
+                del args, kwargs
+            record["status"] = "passed"
+            Config.executed_case_ids.add(case.case_id)
+            executed.append(case.case_id)
+        return executed
+
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
         try:
@@ -945,6 +997,9 @@ class Benchmark:
 
         if getattr(Config, "preflight_only", False):
             return self._run_preflight_cases(selected_case_ids)
+
+        if getattr(Config, "kernel_check", False):
+            return self._run_kernel_check_cases(selected_case_ids)
 
         if getattr(Config, "profile_only", False):
             return self._run_profile_cases(selected_case_ids or [])

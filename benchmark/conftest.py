@@ -134,6 +134,8 @@ class BenchConfig:
         self.skip_native = False
         self.native_baseline_skip_reason = None
         self.base_data = None
+        self.kernel_check = False
+        self.kernel_check_records = []
 
 
 def _get_native_baseline_skip_reason(marker, current_vendor):
@@ -269,6 +271,16 @@ def pytest_addoption(parser):
         action="store_true",
         help="Run each selected candidate case once and synchronize; no timing or correctness comparison.",
     )
+    parser.addoption(
+        "--kernel-check",
+        action="store_true",
+        default=False,
+        help=(
+            "Check that the baseline invokes at least one device kernel per benchmark "
+            "test file. Runs each case's baseline once under torch.profiler and fails "
+            "the session if no case in the whole run launched a kernel."
+        ),
+    )
     parser.addoption("--profile-warmup", type=int, default=10)
     parser.addoption("--profile-iterations", type=int, default=1)
 
@@ -400,6 +412,7 @@ def pytest_configure(config):
     Config.case_ids = config.getoption("--case-id")
     Config.profile_only = config.getoption("--profile-only")
     Config.preflight_only = config.getoption("--preflight-only")
+    Config.kernel_check = config.getoption("--kernel-check")
     Config.profile_warmup = config.getoption("--profile-warmup")
     Config.profile_iterations = config.getoption("--profile-iterations")
     if Config.preflight_only and (
@@ -407,6 +420,17 @@ def pytest_configure(config):
     ):
         raise pytest.UsageError(
             "--preflight-only cannot be combined with --profile-only, --list-cases or --query."
+        )
+    if Config.kernel_check and (
+        Config.preflight_only
+        or Config.profile_only
+        or Config.list_cases
+        or Config.query
+        or Config.reference_only
+    ):
+        raise pytest.UsageError(
+            "--kernel-check cannot be combined with --preflight-only, "
+            "--profile-only, --reference-only, --list-cases or --query."
         )
     if Config.preflight_only and config.getoption("--parallel"):
         raise pytest.UsageError("--preflight-only does not support --parallel.")
@@ -692,6 +716,18 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                     indent=2,
                 )
         return
+    if Config.kernel_check:
+        if Config.record_json:
+            with open(REPORT_FILE, "w") as f:
+                json.dump(
+                    {
+                        "schema_version": "flaggems.kernel-check/v1",
+                        "records": Config.kernel_check_records,
+                    },
+                    f,
+                    indent=2,
+                )
+        return
     if Config.list_cases:
         with open(REPORT_FILE, "w") as f:
             json.dump(
@@ -757,6 +793,12 @@ def pytest_sessionfinish(session, exitstatus):
             record["status"] != "passed" for record in Config.preflight_records
         )
         if incomplete and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if Config is not None and Config.kernel_check:
+        any_kernel = any(
+            record.get("invoked_kernel") for record in Config.kernel_check_records
+        )
+        if not any_kernel and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is None or Config.case_ids is None:
         return
