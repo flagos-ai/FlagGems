@@ -92,7 +92,8 @@ def _reference_inv(inp, *, out=None):
     # The MUSA PyTorch distribution builds CPU ATen without LAPACK.
     import numpy as np
 
-    inverse = torch.from_numpy(np.linalg.inv(inp.detach().resolve_conj().resolve_neg().numpy()))
+    values = inp.detach().resolve_conj().resolve_neg().numpy()
+    inverse = torch.from_numpy(np.linalg.inv(values))
     if out is None:
         return inverse
     return out.copy_(inverse)
@@ -470,6 +471,7 @@ def test_linalg_inv_master_cases(case):
     inputs = _inputs(case)
     ref = _reference_inv(tu.to_reference(inputs, upcast=True))
     res = flag_gems.linalg_inv(inputs)
+    assert res.device == inputs.device
     utils.gems_assert_close(res, ref.to(dtype), dtype, reduce_dim=case[1] * case[1])
 
 
@@ -502,6 +504,7 @@ def test_linalg_inv_master_noncontiguous():
     assert not view.is_contiguous()
     ref = _reference_inv(tu.to_reference(view, upcast=True))
     res = flag_gems.linalg_inv(view)
+    assert res.device == view.device
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=25)
 
 
@@ -525,6 +528,7 @@ def test_linalg_inv_master_row_swap_pivoting():
     inp = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32, device=flag_gems.device)
     ref = _reference_inv(tu.to_reference(inp, upcast=True))
     res = flag_gems.linalg_inv(inp)
+    assert res.device == inp.device
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=2)
 
 
@@ -547,6 +551,7 @@ def test_linalg_inv_master_binds_single_argument():
     inp = _well_conditioned(4)
     ref = _reference_inv(tu.to_reference(inp, upcast=True))
     res = flag_gems.linalg_inv(A=inp)
+    assert res.device == inp.device
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=16)
 
 
@@ -589,6 +594,7 @@ def test_linalg_inv_master_fp64_preserved():
         pytest.skip("float64 is not supported by this device")
     inp = _well_conditioned(4, dtype=torch.float64)
     res = flag_gems.linalg_inv(inp)
+    assert res.device == inp.device
     assert res.dtype == torch.float64
     ref = _reference_inv(tu.to_reference(inp, upcast=True))
     utils.gems_assert_close(res, ref, torch.float64, reduce_dim=16)
