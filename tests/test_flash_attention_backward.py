@@ -62,7 +62,7 @@ def _device_attn_forward(
     col = torch.arange(s_kv, device=q.device).unsqueeze(0)
     keep = torch.ones(s_q, s_kv, dtype=torch.bool, device=q.device)
     if is_causal:
-        keep = keep & (col <= row)
+        keep = keep & (col <= row + (s_kv - s_q))
     wl = -1 if window_size_left is None else window_size_left
     wr = -1 if window_size_right is None else window_size_right
     if wl is not None and wl >= 0:
@@ -418,15 +418,29 @@ def test_flash_attention_backward(
     wl = -1 if window_size_left is None else window_size_left
     wr = -1 if window_size_right is None else window_size_right
 
-    out, lse, philox_seed, philox_offset = flash_attn_forward_native(
-        Q,
-        K,
-        V,
-        is_causal=is_causal,
-        softmax_scale=scale,
-        window_size_left=wl,
-        window_size_right=wr,
-    )
+    if IS_KUNLUNXIN:
+        out_bhsd, lse = _device_attn_forward(
+            Q.permute(0, 2, 1, 3).contiguous(),
+            K.permute(0, 2, 1, 3).contiguous(),
+            V.permute(0, 2, 1, 3).contiguous(),
+            is_causal=is_causal,
+            scale=scale,
+            window_size_left=wl,
+            window_size_right=wr,
+        )
+        out = out_bhsd.permute(0, 2, 1, 3).contiguous().to(dtype)
+        philox_seed = torch.zeros((), dtype=torch.int64, device=Q.device)
+        philox_offset = torch.zeros((), dtype=torch.int64, device=Q.device)
+    else:
+        out, lse, philox_seed, philox_offset = flash_attn_forward_native(
+            Q,
+            K,
+            V,
+            is_causal=is_causal,
+            softmax_scale=scale,
+            window_size_left=wl,
+            window_size_right=wr,
+        )
 
     extra_bwd = {}
     if window_size_left is not None:
