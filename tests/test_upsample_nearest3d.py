@@ -40,7 +40,6 @@ def test_upsample_nearest3d(dtype, shape, scale):
     output_size = [int(input.shape[i + 2] * scale[i]) for i in range(3)]
 
     ref_out = torch._C._nn.upsample_nearest3d(ref_i, output_size=output_size).to(dtype)
-    with flag_gems.use_gems():
-        res_out = torch._C._nn.upsample_nearest3d(input, output_size=output_size)
+    res_out = flag_gems.upsample_nearest3d(input, output_size=output_size)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

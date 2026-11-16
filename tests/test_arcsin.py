@@ -28,8 +28,7 @@ def test_arcsin(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arcsin(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arcsin(inp)
+    res_out = flag_gems.arcsin(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
 
@@ -42,8 +41,7 @@ def test_arcsin_(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.arcsin(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arcsin_(inp)
+    res_out = flag_gems.arcsin_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
     utils.gems_assert_close(inp, ref_out, dtype, True)
@@ -58,11 +56,21 @@ def test_arcsin_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp)
     torch.arcsin(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.arcsin(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.arcsin(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+
+@pytest.mark.arcsin_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_arcsin_out_integer_rejects(shape, dtype):
+    # ATen raises for an integer/bool out buffer (the float result cannot be
+    # cast into it); FlagGems mirrors that instead of silently truncating.
+    inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.arcsin_out(inp, out=torch.empty_like(inp))
 
 
 @pytest.mark.arcsin
@@ -76,8 +84,7 @@ def test_arcsin_boundaries_and_out_of_domain(dtype):
     ref_values = utils.to_reference(values)
 
     ref_out = torch.arcsin(ref_values)
-    with flag_gems.use_gems():
-        res_out = torch.arcsin(values)
+    res_out = flag_gems.arcsin(values)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
     assert torch.isnan(res_out[-2:]).all()
@@ -92,9 +99,8 @@ def test_arcsin_empty_and_scalar(dtype):
     ref_empty = utils.to_reference(empty)
     ref_scalar = utils.to_reference(scalar)
 
-    with flag_gems.use_gems():
-        res_empty = torch.arcsin(empty)
-        res_scalar = torch.arcsin(scalar)
+    res_empty = flag_gems.arcsin(empty)
+    res_scalar = flag_gems.arcsin(scalar)
 
     utils.gems_assert_close(res_empty, torch.arcsin(ref_empty), dtype, True)
     utils.gems_assert_close(res_scalar, torch.arcsin(ref_scalar), dtype, True)

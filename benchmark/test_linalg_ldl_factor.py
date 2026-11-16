@@ -15,7 +15,11 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+
+fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
 # LDL Factorization benchmark
@@ -54,6 +58,6 @@ def test_linalg_ldl_factor():
         op_name="linalg_ldl_factor",
         torch_op=torch.linalg.ldl_factor,
         # torch.linalg.ldl_factor on CUDA supports float32/float64 for this path.
-        dtypes=[torch.float32, torch.float64],
+        dtypes=[torch.float32] + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()

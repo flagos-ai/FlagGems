@@ -111,7 +111,77 @@ class GeneralOpRegistrar:
         return tuple(item[3]) if len(item) > 3 else ()
 
     def _normalized_config(self, item):
-        return item[0], item[1], self._extra_dispatch_keys(item)
+        key, fn = item[0], item[1]
+        return (
+            key,
+            self._resolve_live_override(key, fn),
+            self._extra_dispatch_keys(item),
+        )
+
+    def _resolve_live_override(self, key, fn):
+        # Config entries capture a function reference at import time. If that
+        # op has since been overridden on the flag_gems module (e.g. via
+        # DynamicOpOverride), prefer the live attribute so registration picks
+        # up the override instead of the stale reference.
+        #
+        # The dispatch key alone is ambiguous for naming purposes: several
+        # overloads of one op (e.g. "_softmax" and "_softmax.out") share a
+        # dispatch-key prefix but are bound to distinct functions (softmax
+        # vs. softmax_out). To avoid colliding those onto the same module
+        # attribute, look the key up in the authoritative _FULL_CONFIG to
+        # find its originally-bound function, and resolve by *that*
+        # function's own __name__.
+        import sys
+
+        module = sys.modules.get("flag_gems")
+        if module is None:
+            return fn
+
+        has_full_config = self._module_has_full_config(module)
+        original_func = self._original_func_for_key(module, key)
+
+        if original_func is None and has_full_config:
+            # _FULL_CONFIG is the authoritative source of registrable ops. If
+            # it exists on the module but doesn't contain this key, the key
+            # was never a real registration to begin with -- registering (or
+            # overriding) it is not permitted.
+            raise ValueError(
+                f"Key '{key}' was not found in flag_gems._FULL_CONFIG; "
+                "refusing to register/override an op that doesn't exist."
+            )
+
+        func_name = getattr(original_func, "__name__", None) if original_func else None
+
+        if not func_name or func_name == "<lambda>":
+            # No _FULL_CONFIG on the module at all (e.g. a synthetic config
+            # passed directly, as in unit tests), so there's nothing
+            # authoritative to check the key against. Fall back to deriving
+            # a name from the key itself; this is only reached when there is
+            # no _FULL_CONFIG to disambiguate against in the first place, so
+            # the overload-collision risk above doesn't apply here.
+            original_func = fn
+            func_name = key.split(".", 1)[0]
+            if func_name.startswith("_") and not func_name.startswith("__"):
+                func_name = func_name[1:]
+
+        current = getattr(module, func_name, None)
+        if current is not None and current is not original_func:
+            return current
+        return fn
+
+    @staticmethod
+    def _module_has_full_config(module):
+        return getattr(module, "_FULL_CONFIG", None) is not None
+
+    def _original_func_for_key(self, module, key):
+        key_to_func = getattr(self, "_full_config_key_to_func", None)
+        if key_to_func is None:
+            key_to_func = {}
+            for entry in getattr(module, "_FULL_CONFIG", None) or ():
+                if len(entry) >= 2:
+                    key_to_func.setdefault(entry[0], entry[1])
+            self._full_config_key_to_func = key_to_func
+        return key_to_func.get(key)
 
     def config_filter(self):
         self.config = [
@@ -125,10 +195,48 @@ class GeneralOpRegistrar:
     def get_vendor_unused_op(self):
         return backend.get_unused_ops(self.device.vendor_name)
 
+    def _resolve_dispatch_impls(self, fn, extra_dispatch_keys):
+        """Resolve legacy dispatch keys and per-key implementation pairs.
+
+        A plain dispatch key keeps the existing behavior and reuses ``fn``.
+        A ``(dispatch_key, impl)`` pair selects a dedicated implementation for
+        that key.  A pair targeting the current device key replaces the
+        default device implementation instead of registering it twice.
+        """
+        device_fn = fn
+        device_overridden = False
+        dispatch_impls = []
+
+        for dispatch_spec in extra_dispatch_keys:
+            if isinstance(dispatch_spec, tuple):
+                if len(dispatch_spec) != 2:
+                    raise ValueError(
+                        "Dispatch implementation must be a "
+                        "(dispatch_key, implementation) pair."
+                    )
+                dispatch_key, dispatch_fn = dispatch_spec
+            else:
+                dispatch_key, dispatch_fn = dispatch_spec, fn
+
+            if dispatch_key == self.reg_key:
+                if device_overridden:
+                    raise ValueError(
+                        f"Duplicate device implementation for {self.reg_key}."
+                    )
+                device_fn = dispatch_fn
+                device_overridden = True
+            else:
+                dispatch_impls.append((dispatch_key, dispatch_fn))
+
+        return device_fn, dispatch_impls
+
     def register_impl(self, key, fn, extra_dispatch_keys=()):
         if self.lib is None:
             raise ValueError("Library instance is not provided.")
         device_key = self.reg_key
+        device_fn, dispatch_impls = self._resolve_dispatch_impls(
+            fn, extra_dispatch_keys
+        )
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
         if self.device.vendor == common.vendors.CAMBRICON:
@@ -141,15 +249,15 @@ class GeneralOpRegistrar:
             except Exception:
                 pass
             try:
-                self.lib.impl(key, fn, device_key, allow_override=True)
+                self.lib.impl(key, device_fn, device_key, allow_override=True)
             except TypeError:
                 # Older torch versions don't support allow_override
-                self.lib.impl(key, fn, device_key)
+                self.lib.impl(key, device_fn, device_key)
         else:
-            self.lib.impl(key, fn, device_key)
+            self.lib.impl(key, device_fn, device_key)
 
-        for dispatch_key in extra_dispatch_keys:
-            self.lib.impl(key, fn, dispatch_key)
+        for dispatch_key, dispatch_fn in dispatch_impls:
+            self.lib.impl(key, dispatch_fn, dispatch_key)
 
     def for_each(self):
         for key, func, extra_dispatch_keys in self.config:

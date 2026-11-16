@@ -26,8 +26,7 @@ from . import accuracy_utils as utils
 def test_randn_like(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.randn_like(x)
+    res_out = flag_gems.randn_like(x)
 
     ref_out = utils.to_reference(res_out)
     mean = torch.mean(ref_out)

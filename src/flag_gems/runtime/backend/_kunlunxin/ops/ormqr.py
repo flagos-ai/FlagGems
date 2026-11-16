@@ -1,40 +1,3 @@
-# Kunlunxin(XPU) backend override for ormqr.
-#
-# Why a vendor file at all: the generic implementation is not compilable on the
-# XPU/FlagTree backend. Empirically (probes on P800, 2026-08-20):
-#   1. tl.sum(..., axis=0) on 2D tiles -> hard compile error
-#      ("axis must not be 0 for 2D+ shapes").
-#   2. tl.trans / transposed (N,M)-tile loads -> ClusterLayoutAttr rank assert.
-#   3. Any masked 2D load feeding tl.dot -> TritonXPUVectorize crash.
-#   4. tl.dot with fp64 unsupported; scalar loads inside runtime loops are
-#      silently mis-compiled (every row loads the first value).
-#   5. 1D vectors wider than 64 lanes derived from strided pointer arithmetic
-#      silently return wrong values; more than one static `tl.reduce` chunk per
-#      iteration, or static unrolls beyond 64 lanes, hit backend pass crashes
-#      ("Failed to legalize tt.reduce" / TritonXPUMemoryCache).
-#
-# Design (probe-verified exact on P800): every reflector application uses 1D
-# vectors of width 64, a runtime row loop and a SINGLE static reduce per kernel
-# launch:
-#   - BR == 64 spans      : fused kernel (w per row + reflect in one pass).
-#   - wider spans         : per 64-lane chunk: one w-partial launch + one
-#                           update launch. w partials go to a fp32 scratch
-#                           whose rows are 64-aligned (2*WCOL wide: a hi/lo
-#                           double-double pair per chunk) so the update kernel
-#                           reads exact fp64 w values with one reduce per group.
-# All dot/update arithmetic accumulates in fp64 in-register (tl.sum on fp64 is
-# exact on this backend); only the final store casts to the storage dtype
-# (platform downgrades fp64 tensor allocations, so intermediates live in fp32
-# memory).
-# Both reflector sides share the same canonical trailing-columns form:
-#   - right mode: C @ (I - tau v v^T)
-#   - left  mode: (I - tau v v^T) @ C  ==  C^T @ (I - tau v v^T) applied by the
-#     same kernels on the transpose of a row-padded C.
-# v[0] == 1 is implicit in the packed reflector format; the storage diagonal
-# (which holds the reflector norm otherwise) is overwritten with 1.0 on a
-# private copy of the input. All out-of-range accesses are zero-padded
-# host-side. The Householder application order (left/right x transpose index
-# orders) is unchanged from the generic wrapper.
 import logging
 
 import torch
@@ -43,37 +6,12 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
 
-# Max safe 1D vector width on the XPU backend (probe-verified).
 _XPU_VEC = 64
 
-# ---------------------------------------------------------------------------
-# Fast "sweep" path (2026-08-30, XPU 7).
-#
-# Both reflector sides are row-independent once the work matrix is laid out
-# along the reflector direction:
-#   right mode: C <- C H(i) ... : every ROW of C evolves on its own,
-#               reflector direction = N.
-#   left  mode: C <- H(i) ... C : every COLUMN of C evolves on its own,
-#               reflector direction = M  (H is symmetric, so no transposed
-#               reduction is ever needed - the data dependency is
-#               single-direction in both modes).
-# So one program can own one work row, keep it in registers for the WHOLE
-# reflector sequence and reduce with a 1D -> scalar tl.sum. On TritonXPU a
-# runtime-bound loop may only contain a *1D* reduction (2D axis=0/axis=1
-# chains and loop-carried 2D tiles all fail to lower), which is exactly what
-# this shape gives. Total launches: 4, independent of k.
-#
-# Probe-verified compile envelope of _ormqr_sweep_kernel (XPU 7, 2026-08-30) -
-# NOT monotonic in the tile width, so only verified widths are whitelisted
-# (same envelope as _kunlunxin/ops/linalg_householder_product.py):
-#   fp32 accumulator: 64 OK, 128 OK, 256 FAIL, 512 FAIL, 1024 OK, 2048 OK,
-#                     4096 FAIL   ('uni_sram' <- TritonXPUUnrollControl)
-#   fp64 accumulator: 64 OK, 128 OK, >=256 FAIL ("'arith.mulf' op requires the
-#                     same type for all operands and results")
-# Reflector directions longer than the widest whitelisted width fall back to
-# the per-reflector kernels below.
 _SWEEP_WIDTHS = (64, 128, 1024, 2048)
 _SWEEP_ACC64_MAX = 128
 
@@ -231,6 +169,273 @@ def _ormqr_out_kernel(
     tl.store(OUT_ptr + f, tl.load(X_ptr + xoff))
 
 
+_SWEEP_FAST_MP = 128
+
+
+def _ormqr_pick_cc(nwork):
+    """Work rows per sweep program, by nwork (sibling-validated table).
+
+    Shared C/A/tau loads amortise over CC independent reductions, but the
+    squeezed trailing CC-1 programs and the extra register pressure make the
+    sweet spot grow only slowly with nwork; CC = 16 measured *worse* again on
+    the sibling op, so only CC in {1, 2, 4, 8} exist.
+    """
+    if nwork <= 5:
+        return 1
+    if nwork <= 16:
+        return 2
+    if nwork <= 32:
+        return 4
+    return 8
+
+
+@libentry()
+@triton.jit
+def _ormqr_sweep_fused_kernel(
+    C_ptr,
+    A_ptr,
+    T_ptr,
+    X_ptr,
+    K,
+    LENGTH,
+    NWORK,
+    s_cb,
+    s_cm,
+    s_cn,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    XS: tl.constexpr,
+    LEFT: tl.constexpr,
+    REV: tl.constexpr,
+    MP: tl.constexpr,
+):
+    """Apply the whole reflector sequence to ONE work row, kept in registers.
+
+    The work row is a row of C (right mode) or a column of C fetched as a row
+    (left mode); the reflector vector v_i is rebuilt from the packed geqrf
+    input (v_i[i] = 1 implicit, v_i[r] = A[r, i] for r > i, 0 for r < i) and
+    tau_i is loaded as a scalar, so no staging buffer is needed.  Grid:
+    (batch, NWORK); every store is unmasked and 64-aligned by construction
+    (the X rows are MP wide and the padding lanes are written).
+    """
+    b = tl.program_id(0)
+    w = tl.program_id(1)
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, LENGTH - 1)
+    if LEFT:
+        x = tl.load(C_ptr + b * s_cb + rc * s_cm + w * s_cn)
+    else:
+        x = tl.load(C_ptr + b * s_cb + w * s_cm + rc * s_cn)
+    x = tl.where(r < LENGTH, x, 0.0)
+    for t in range(0, K):
+        if REV:
+            i = K - 1 - t
+        else:
+            i = t
+        av = tl.load(A_ptr + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(T_ptr + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < LENGTH, v, 0.0)
+        x = x - tl.sum(x * v) * (v * tau)
+    tl.store(X_ptr + b * (NWORK * XS) + w * XS + r, x)
+
+
+@libentry()
+@triton.jit
+def _ormqr_sweep_fused_cc2_kernel(
+    C_ptr,
+    A_ptr,
+    T_ptr,
+    X_ptr,
+    K,
+    LENGTH,
+    NWORK,
+    s_cb,
+    s_cm,
+    s_cn,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    XS: tl.constexpr,
+    LEFT: tl.constexpr,
+    REV: tl.constexpr,
+    MP: tl.constexpr,
+):
+    b = tl.program_id(0)
+    w0 = tl.program_id(1) * 2
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, LENGTH - 1)
+    if LEFT:
+        x0 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 0) * s_cn)
+        x1 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 1) * s_cn)
+    else:
+        x0 = tl.load(C_ptr + b * s_cb + (w0 + 0) * s_cm + rc * s_cn)
+        x1 = tl.load(C_ptr + b * s_cb + (w0 + 1) * s_cm + rc * s_cn)
+    x0 = tl.where(r < LENGTH, x0, 0.0)
+    x1 = tl.where(r < LENGTH, x1, 0.0)
+    for t in range(0, K):
+        if REV:
+            i = K - 1 - t
+        else:
+            i = t
+        av = tl.load(A_ptr + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(T_ptr + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < LENGTH, v, 0.0)
+        u = v * tau
+        x0 = x0 - tl.sum(x0 * v) * u
+        x1 = x1 - tl.sum(x1 * v) * u
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 0) * XS + r, x0)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 1) * XS + r, x1)
+
+
+@libentry()
+@triton.jit
+def _ormqr_sweep_fused_cc4_kernel(
+    C_ptr,
+    A_ptr,
+    T_ptr,
+    X_ptr,
+    K,
+    LENGTH,
+    NWORK,
+    s_cb,
+    s_cm,
+    s_cn,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    XS: tl.constexpr,
+    LEFT: tl.constexpr,
+    REV: tl.constexpr,
+    MP: tl.constexpr,
+):
+    b = tl.program_id(0)
+    w0 = tl.program_id(1) * 4
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, LENGTH - 1)
+    if LEFT:
+        x0 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 0) * s_cn)
+        x1 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 1) * s_cn)
+        x2 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 2) * s_cn)
+        x3 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 3) * s_cn)
+    else:
+        x0 = tl.load(C_ptr + b * s_cb + (w0 + 0) * s_cm + rc * s_cn)
+        x1 = tl.load(C_ptr + b * s_cb + (w0 + 1) * s_cm + rc * s_cn)
+        x2 = tl.load(C_ptr + b * s_cb + (w0 + 2) * s_cm + rc * s_cn)
+        x3 = tl.load(C_ptr + b * s_cb + (w0 + 3) * s_cm + rc * s_cn)
+    x0 = tl.where(r < LENGTH, x0, 0.0)
+    x1 = tl.where(r < LENGTH, x1, 0.0)
+    x2 = tl.where(r < LENGTH, x2, 0.0)
+    x3 = tl.where(r < LENGTH, x3, 0.0)
+    for t in range(0, K):
+        if REV:
+            i = K - 1 - t
+        else:
+            i = t
+        av = tl.load(A_ptr + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(T_ptr + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < LENGTH, v, 0.0)
+        u = v * tau
+        x0 = x0 - tl.sum(x0 * v) * u
+        x1 = x1 - tl.sum(x1 * v) * u
+        x2 = x2 - tl.sum(x2 * v) * u
+        x3 = x3 - tl.sum(x3 * v) * u
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 0) * XS + r, x0)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 1) * XS + r, x1)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 2) * XS + r, x2)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 3) * XS + r, x3)
+
+
+@libentry()
+@triton.jit
+def _ormqr_sweep_fused_cc8_kernel(
+    C_ptr,
+    A_ptr,
+    T_ptr,
+    X_ptr,
+    K,
+    LENGTH,
+    NWORK,
+    s_cb,
+    s_cm,
+    s_cn,
+    a_bs,
+    a_rs,
+    a_cs,
+    t_bs,
+    t_cs,
+    XS: tl.constexpr,
+    LEFT: tl.constexpr,
+    REV: tl.constexpr,
+    MP: tl.constexpr,
+):
+    b = tl.program_id(0)
+    w0 = tl.program_id(1) * 8
+    r = tl.arange(0, MP)
+    rc = tl.minimum(r, LENGTH - 1)
+    if LEFT:
+        x0 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 0) * s_cn)
+        x1 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 1) * s_cn)
+        x2 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 2) * s_cn)
+        x3 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 3) * s_cn)
+        x4 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 4) * s_cn)
+        x5 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 5) * s_cn)
+        x6 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 6) * s_cn)
+        x7 = tl.load(C_ptr + b * s_cb + rc * s_cm + (w0 + 7) * s_cn)
+    else:
+        x0 = tl.load(C_ptr + b * s_cb + (w0 + 0) * s_cm + rc * s_cn)
+        x1 = tl.load(C_ptr + b * s_cb + (w0 + 1) * s_cm + rc * s_cn)
+        x2 = tl.load(C_ptr + b * s_cb + (w0 + 2) * s_cm + rc * s_cn)
+        x3 = tl.load(C_ptr + b * s_cb + (w0 + 3) * s_cm + rc * s_cn)
+        x4 = tl.load(C_ptr + b * s_cb + (w0 + 4) * s_cm + rc * s_cn)
+        x5 = tl.load(C_ptr + b * s_cb + (w0 + 5) * s_cm + rc * s_cn)
+        x6 = tl.load(C_ptr + b * s_cb + (w0 + 6) * s_cm + rc * s_cn)
+        x7 = tl.load(C_ptr + b * s_cb + (w0 + 7) * s_cm + rc * s_cn)
+    x0 = tl.where(r < LENGTH, x0, 0.0)
+    x1 = tl.where(r < LENGTH, x1, 0.0)
+    x2 = tl.where(r < LENGTH, x2, 0.0)
+    x3 = tl.where(r < LENGTH, x3, 0.0)
+    x4 = tl.where(r < LENGTH, x4, 0.0)
+    x5 = tl.where(r < LENGTH, x5, 0.0)
+    x6 = tl.where(r < LENGTH, x6, 0.0)
+    x7 = tl.where(r < LENGTH, x7, 0.0)
+    for t in range(0, K):
+        if REV:
+            i = K - 1 - t
+        else:
+            i = t
+        av = tl.load(A_ptr + b * a_bs + rc * a_rs + i * a_cs)
+        tau = tl.load(T_ptr + b * t_bs + i * t_cs)
+        v = tl.where(r > i, av, tl.where(r == i, 1.0, 0.0))
+        v = tl.where(r < LENGTH, v, 0.0)
+        u = v * tau
+        x0 = x0 - tl.sum(x0 * v) * u
+        x1 = x1 - tl.sum(x1 * v) * u
+        x2 = x2 - tl.sum(x2 * v) * u
+        x3 = x3 - tl.sum(x3 * v) * u
+        x4 = x4 - tl.sum(x4 * v) * u
+        x5 = x5 - tl.sum(x5 * v) * u
+        x6 = x6 - tl.sum(x6 * v) * u
+        x7 = x7 - tl.sum(x7 * v) * u
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 0) * XS + r, x0)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 1) * XS + r, x1)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 2) * XS + r, x2)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 3) * XS + r, x3)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 4) * XS + r, x4)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 5) * XS + r, x5)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 6) * XS + r, x6)
+    tl.store(X_ptr + b * (NWORK * XS) + (w0 + 7) * XS + r, x7)
+
+
 def _sweep_width(length):
     """Smallest probe-verified sweep width that covers `length` (or None)."""
     for w in _SWEEP_WIDTHS:
@@ -285,8 +490,50 @@ def _ormqr_sweep(input, tau, other, left, transpose):
     rows = N if left else M
     in_rows = input.shape[-2]
     dev = other.device
-    # every element of V / U / X / OUT is written by the kernels below, so the
-    # buffers are deliberately uninitialised (no gems `zeros` launch).
+    rev = (not transpose) if left else transpose
+    total = B * M * N
+    if length <= _SWEEP_FAST_MP:
+        cc = _ormqr_pick_cc(rows)
+        X = torch.empty(B * rows * _SWEEP_FAST_MP, dtype=torch.float32, device=dev)
+        grid = (B, triton.cdiv(rows, cc))
+        args = (
+            other,
+            input,
+            tau,
+            X,
+            k,
+            length,
+            rows,
+            s_cb,
+            other.stride(-2),
+            other.stride(-1),
+            s_ib,
+            input.stride(-2),
+            input.stride(-1),
+            s_tb,
+            tau.stride(-1),
+        )
+        ckw = dict(XS=_SWEEP_FAST_MP, LEFT=bool(left), REV=rev, MP=_SWEEP_FAST_MP)
+        if cc == 1:
+            _ormqr_sweep_fused_kernel[grid](*args, **ckw)
+        elif cc == 2:
+            _ormqr_sweep_fused_cc2_kernel[grid](*args, **ckw)
+        elif cc == 4:
+            _ormqr_sweep_fused_cc4_kernel[grid](*args, **ckw)
+        else:
+            _ormqr_sweep_fused_cc8_kernel[grid](*args, **ckw)
+        npad = ((total + 63) // 64) * 64
+        OUT = torch.empty(npad, dtype=torch.float32, device=dev)
+        _ormqr_out_kernel[(npad // 64,)](
+            OUT,
+            X,
+            M=M,
+            N=N,
+            TOTAL=total,
+            LEFT=bool(left),
+            LP=_SWEEP_FAST_MP,
+        )
+        return OUT[:total].view(*other.shape)
     V = torch.empty(B * k * LP, dtype=torch.float32, device=dev)
     U = torch.empty(B * k * LP, dtype=torch.float32, device=dev)
     X = torch.empty(B * rows * LP, dtype=torch.float32, device=dev)
@@ -316,8 +563,6 @@ def _ormqr_sweep(input, tau, other, left, transpose):
         LEFT=left,
         LP=LP,
     )
-    # reflector order, identical to the per-reflector path below
-    rev = (not transpose) if left else transpose
     _ormqr_sweep_kernel[(B, rows)](
         X,
         V,
@@ -328,7 +573,6 @@ def _ormqr_sweep(input, tau, other, left, transpose):
         REV=rev,
         ACC64=LP <= _SWEEP_ACC64_MAX,
     )
-    total = B * M * N
     npad = ((total + 63) // 64) * 64
     OUT = torch.empty(npad, dtype=torch.float32, device=dev)
     _ormqr_out_kernel[(npad // 64,)](
@@ -423,7 +667,7 @@ def _kunlunxin_w_one_kernel(
             tl.float64
         )
         w = tl.sum(crow64 * v64, axis=0, keep_dims=True)
-        wc = tl.sum(w, axis=0)  # fp64 scalar
+        wc = tl.sum(w, axis=0)
         wh = wc.to(tl.float32)
         wl = (wc - wh.to(tl.float64)).to(tl.float32)
         base = bid * s_wb + m * (WCOL * 2)
@@ -622,9 +866,6 @@ def ormqr(input, tau, other, left=True, transpose=False):
     two_d = C.dim() == 2
 
     if left:
-        # (I - tau v v^T) @ C == C^T @ (I - tau v v^T): run the canonical
-        # kernels on the transpose of a row-padded C. Reflector i covers
-        # rows [i, M) of C, so the reflector vector has length M.
         BR = _pad_len(int(M), _XPU_VEC)
         Nchunk = BR // _XPU_VEC
         V_pad_rows = M + 2 * BR
@@ -635,13 +876,15 @@ def ormqr(input, tau, other, left=True, transpose=False):
             dtype=input.dtype,
             device=input.device,
         )
-        torch.ops.aten._copy_from(
-            input_flat, V_work[:, : input_flat.shape[-2], :], False
-        )
+        V_slice = V_work[:, : input_flat.shape[-2], :]
+        if not tle_copy(input_flat, V_slice):
+            torch.ops.aten._copy_from(input_flat, V_slice, False)
         V_work = _set_diag(V_work, k)
         C_pad = torch.zeros(B, M + 2 * BR, N, dtype=C.dtype, device=C.device)
-        torch.ops.aten._copy_from(C_flat, C_pad[:, :M, :], False)
-        C_t = C_pad.transpose(1, 2)  # (B, N, M + 2*BR)
+        C_slice = C_pad[:, :M, :]
+        if not tle_copy(C_flat, C_slice):
+            torch.ops.aten._copy_from(C_flat, C_slice, False)
+        C_t = C_pad.transpose(1, 2)
         s_cb, s_cm, s_cn = C_t.stride(0), C_t.stride(1), C_t.stride(2)
         s_vb, s_vm, s_vk = V_work.stride(0), V_work.stride(1), V_work.stride(2)
         s_tb = tau_flat.stride(0)
@@ -670,12 +913,13 @@ def ormqr(input, tau, other, left=True, transpose=False):
         res = C_pad[:, :M, :]
         return res.squeeze(0) if two_d else res
     else:
-        # C @ (I - tau v v^T): reflector i covers trailing columns [i, N).
         BR = _pad_len(int(N), _XPU_VEC)
         Nchunk = BR // _XPU_VEC
         N_pad = N + 2 * BR
         C_pad = torch.zeros(B, M, N_pad, dtype=C.dtype, device=C.device)
-        torch.ops.aten._copy_from(C_flat, C_pad[:, :, :N], False)
+        C_slice2 = C_pad[:, :, :N]
+        if not tle_copy(C_flat, C_slice2):
+            torch.ops.aten._copy_from(C_flat, C_slice2, False)
         V_rows = input_flat.shape[-2]
         V_pad_rows = N + 2 * BR
         V_work = torch.zeros(
@@ -685,7 +929,9 @@ def ormqr(input, tau, other, left=True, transpose=False):
             dtype=input.dtype,
             device=input.device,
         )
-        torch.ops.aten._copy_from(input_flat, V_work[:, :V_rows, :], False)
+        V_slice2 = V_work[:, :V_rows, :]
+        if not tle_copy(input_flat, V_slice2):
+            torch.ops.aten._copy_from(input_flat, V_slice2, False)
         V_work = _set_diag(V_work, k)
         s_cb, s_cm, s_cn = C_pad.stride(0), C_pad.stride(1), C_pad.stride(2)
         s_vb, s_vm, s_vk = V_work.stride(0), V_work.stride(1), V_work.stride(2)

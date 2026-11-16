@@ -159,7 +159,9 @@ def conv_double_backward_weight_kernel(
                     output_c_offset < out_c
                 )[None, :]
 
-                curr_out_grad = tl.load(curr_out_grad_pointer, mask=out_grad_mask)
+                curr_out_grad = tl.load(
+                    curr_out_grad_pointer, mask=out_grad_mask, other=0.0
+                )
 
                 input_height_offset = (
                     weight_height_point_value * dilation_height
@@ -187,7 +189,7 @@ def conv_double_backward_weight_kernel(
                     & (input_width_offset < input_width)[:, None]
                 )
 
-                curr_input = tl.load(curr_input_pointer, mask=input_mask)
+                curr_input = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
                 accum += tl.dot(curr_input, curr_out_grad, allow_tf32=False)
 
     weight_mask = (

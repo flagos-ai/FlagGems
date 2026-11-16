@@ -87,7 +87,7 @@ class SparseAttentionBenchmark(base.Benchmark):
 @pytest.mark.sparse_attn_triton
 def test_sparse_attn_triton():
     bench = SparseAttentionBenchmark(
-        op_name="sparse_attention",
+        op_name="sparse_attn_triton",
         torch_op=torch_sparse_attention,
         dtypes=[torch.bfloat16],
     )

@@ -96,27 +96,32 @@ def _thnn_fused_lstm_cell_kernel(
         # Sum gates
         g = ig + hg
 
-        # Store to workspace (needed for backward)
-        tl.store(
-            ws_ptr + gate_offset + offsets,
-            g.to(workspace_ptr.dtype.element_ty),
-            mask=mask,
-        )
-
         # Apply activation based on gate type and store
         # gate_idx: 0=input, 1=forget, 2=cell, 3=output
         if gate_idx == 0:
             # Input gate - sigmoid
             i_gate = tl.sigmoid(g)
+            activated_gate = i_gate
         elif gate_idx == 1:
             # Forget gate - sigmoid
             f_gate = tl.sigmoid(g)
+            activated_gate = f_gate
         elif gate_idx == 2:
             # Cell gate - tanh
             g_gate = tl_extra_shim.tanh(g)
+            activated_gate = g_gate
         else:  # gate_idx == 3
             # Output gate - sigmoid
             o_gate = tl.sigmoid(g)
+            activated_gate = o_gate
+
+        # The backward operator consumes activated gates, matching ATen's
+        # workspace contract.
+        tl.store(
+            ws_ptr + gate_offset + offsets,
+            activated_gate.to(workspace_ptr.dtype.element_ty),
+            mask=mask,
+        )
 
     # Compute cy = f * cx + i * g
     cy_acc = f_gate * cx_vals + i_gate * g_gate

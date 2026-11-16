@@ -1,16 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 import builtins
 import logging
 import math
@@ -25,35 +12,26 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# 64 cores * 128 = 8192: on this XPU `tl.sum` is only complete for blocks
-# <= 8192 without `buffer_size_limit` (HARNESS_SUMMARY 2.5), so 8192 doubles as
-# the SRAM sweet spot and the reduction correctness ceiling.
 MAX_BLOCK = 8192
 
-# Launch-bound corner (same thresholds as rms_norm / fused_add_rms_norm):
-# per-row launch costs ~0.6-0.9us, so tiny-N + huge-M needs a 2D row tile.
 MULTIROW_N = 256
 MULTIROW_M = 4096
-TILE_BUDGET = 8192  # rows * cols per 2D tile; keeps the tile in SRAM
-FLAT_BLOCK = 4096  # N == 1: elements per flat program
+TILE_BUDGET = 8192
+FLAT_BLOCK = 4096
 
 
 @libentry()
 @triton.jit
 def add_rms_norm_kernel(
-    Y,  # output
-    X1,  # input 1 (contiguous [M, N])
-    X2,  # input 2 (contiguous [M, N])
-    W,  # weight (contiguous [N])
-    N: tl.constexpr,  # number of columns (normalized dim)
+    Y,
+    X1,
+    X2,
+    W,
+    N: tl.constexpr,
     eps: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    NEED_MASK: tl.constexpr,  # whether N is not a multiple of BLOCK_SIZE
+    NEED_MASK: tl.constexpr,
 ):
-    # Per-row kernel: one program per row. N is constexpr and the columns span
-    # exactly [0, N) with no power-of-2 padding, so the row is one stride-1
-    # contiguous block -> XPU OffsetAnalysis emits block DMA (runtime N or a
-    # padded TILE_N would force discrete access, ~2x slower).
     pid = ext.program_id(0)
     Y += pid * N
     X1 += pid * N
@@ -61,11 +39,6 @@ def add_rms_norm_kernel(
 
     cols = tl.arange(0, BLOCK_SIZE)
     if NEED_MASK:
-        # NOTE (kunlunxin/XPU): when N is a multiple of BLOCK_SIZE every
-        # `cols < N` mask is trivially all-true, but the masked tl.load/tl.store
-        # still forces the slow XPU masked-memory path (up to ~2.4x slower on
-        # fp16/bf16, byte-identical output). Take the unmasked fast path
-        # whenever it is provably safe.
         mask = cols < N
         x1 = tl.load(X1 + cols, mask, other=0.0).to(tl.float32)
         x2 = tl.load(X2 + cols, mask, other=0.0).to(tl.float32)
@@ -89,19 +62,15 @@ def add_rms_norm_kernel(
 @libentry()
 @triton.jit
 def add_rms_norm_tile_kernel(
-    Y,  # output
-    X1,  # input 1 (contiguous [M, N])
-    X2,  # input 2 (contiguous [M, N])
-    W,  # weight (contiguous [N])
-    N: tl.constexpr,  # number of columns (normalized dim)
+    Y,
+    X1,
+    X2,
+    W,
+    N: tl.constexpr,
     eps: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    NEED_MASK: tl.constexpr,  # whether N is not a multiple of BLOCK_SIZE
+    NEED_MASK: tl.constexpr,
 ):
-    # Per-row looped kernel for N > 8192: the reduction is accumulated in a
-    # fixed BLOCK_SIZE (<= 8192, tl.sum-safe) fp32 buffer in a first pass, then
-    # the output is produced in a second pass. The tile kernel is used for
-    # large normalized dims exactly like rms_norm_kerne_tile.
     pid = ext.program_id(0)
     Y += pid * N
     X1 += pid * N
@@ -142,13 +111,13 @@ def add_rms_norm_tile_kernel(
 @libentry()
 @triton.jit
 def add_rms_norm_tile2d_kernel(
-    Y,  # output
-    X1,  # input 1 (contiguous [M, N])
-    X2,  # input 2 (contiguous [M, N])
-    W,  # weight (contiguous [N])
+    Y,
+    X1,
+    X2,
+    W,
     eps: tl.constexpr,
-    TILE_M: tl.constexpr,  # rows per program (M % TILE_M == 0 guaranteed)
-    N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+    TILE_M: tl.constexpr,
+    N: tl.constexpr,
 ):
     pid = ext.program_id(0)
 
@@ -172,14 +141,14 @@ def add_rms_norm_tile2d_kernel(
 @libentry()
 @triton.jit
 def add_rms_norm_multirow_kernel(
-    Y,  # output
-    X1,  # input 1 (contiguous [M, N])
-    X2,  # input 2 (contiguous [M, N])
-    W,  # weight (contiguous [N])
-    M,  # number of rows (runtime; masked)
+    Y,
+    X1,
+    X2,
+    W,
+    M,
     eps: tl.constexpr,
     TILE_M: tl.constexpr,
-    N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+    N: tl.constexpr,
 ):
     pid = ext.program_id(0)
 
@@ -204,11 +173,11 @@ def add_rms_norm_multirow_kernel(
 @libentry()
 @triton.jit
 def add_rms_norm_flat_kernel(
-    Y,  # output
-    X1,  # input 1 (contiguous [M, N]), N == 1
-    X2,  # input 2 (contiguous [M, N]), N == 1
-    W,  # weight (single element)
-    xnumel,  # number of elements (== M * N == M)
+    Y,
+    X1,
+    X2,
+    W,
+    xnumel,
     eps,
     BLOCK: tl.constexpr,
 ):
@@ -238,7 +207,7 @@ def _pick_tile_m(M, N):
                 return cand
         return None
     tm = 16
-    while tm * N > 65536:  # keep the [TILE_M, N] fp32 tile within SRAM
+    while tm * N > 65536:
         tm //= 2
     while tm >= 2:
         if M % tm == 0:
@@ -292,13 +261,9 @@ def add_rms_norm(x1, x2, normalized_shape, weight, eps=1e-5):
         else:
             TILE_M = _pick_tile_m(M, N)
             if TILE_M is not None:
-                # Unmasked 2D tile: strictly faster than any masked per-row /
-                # masked multirow variant (see _pick_tile_m / rms_norm body).
                 grid = (M // TILE_M,)
                 add_rms_norm_tile2d_kernel[grid](y, x1, x2, weight, eps, TILE_M, N)
             elif N <= MULTIROW_N and M >= MULTIROW_M:
-                # Small N + many rows with M not divisible by any TILE_M
-                # candidate: batched masked multi-row fallback.
                 TILE_M = builtins.max(1, TILE_BUDGET // N)
                 grid = (triton.cdiv(M, TILE_M),)
                 add_rms_norm_multirow_kernel[grid](y, x1, x2, weight, M, eps, TILE_M, N)

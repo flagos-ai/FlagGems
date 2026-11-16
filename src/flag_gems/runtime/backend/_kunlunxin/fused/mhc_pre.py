@@ -24,10 +24,10 @@ from flag_gems.fused.mhc.mhc_pre import mhc_pre as _general_mhc_pre
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_HC = (2, 4)
-# exact-tile sizes: hidden sizes {1280,2560,4096} all satisfy
-# 4*H % 1024 == 0 and 2*H % 512 == 0.
 _PART_BLOCK = {2: 512, 4: 1024}
 _ROW_BLOCK_MAX = 8192
+_MIX_BLOCK = 64
+_SQR_BLOCK_MAX = 4096
 
 _FN_BF16_CACHE: weakref.WeakKeyDictionary[torch.Tensor, tuple[int, torch.Tensor]] = (
     weakref.WeakKeyDictionary()
@@ -50,165 +50,192 @@ def _get_fn_bf16_cached(fn: torch.Tensor) -> torch.Tensor:
 
 # ─────────────────────────────── kernels ───────────────────────────────
 @triton.jit
-def _sqrsum_partials_kernel(
+def _sqrsum_kernel(
     residual_ptr,  # (N, HC, H) bf16, contiguous
-    part_ptr,  # (N, T) f32, T = HC*H // B
-    H: tl.constexpr,
-    HC: tl.constexpr,
-    B: tl.constexpr,
+    sqrsum_ptr,  # (N,) f32
+    TOTAL: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    """Exact unmasked per-token tile squares (grid (N, cdiv(HC*H, B)))."""
-    pid_n = tl.program_id(0)
-    pid_t = tl.program_id(1)
-    offs = pid_t * B + tl.arange(0, B)
-    v = tl.load(residual_ptr + pid_n * HC * H + offs).to(tl.float32)
-    tl.store(part_ptr + pid_n * (HC * H // B) + pid_t, tl.sum(v * v))
+    """Per-token sum of squares over (HC, H), one program per token.
+
+    The internal loop over BLOCK-wide tiles keeps each program reading a long
+    contiguous run (high HBM throughput), and BLOCK always divides TOTAL so no
+    masking is needed.
+    """
+    pid = tl.program_id(0)
+    base = pid * TOTAL
+    acc = tl.zeros([BLOCK], dtype=tl.float32)
+    for off in tl.static_range(0, TOTAL, BLOCK):
+        v = tl.load(residual_ptr + base + off + tl.arange(0, BLOCK)).to(tl.float32)
+        acc += v * v
+    tl.store(sqrsum_ptr + pid, tl.sum(acc))
 
 
 @triton.jit
 def _mix_kernel_hc4(
-    part_ptr,  # (N, 16) f32
-    gemm_out_ptr,  # (N, 24) f32
+    sqrsum_ptr,  # (N,) f32
+    gemm_out_ptr,  # (24, N) f32
     hc_scale_ptr,  # (3,) f32
     hc_base_ptr,  # (24,) f32
-    post_mix_ptr,  # (N, 4) f32
-    comb_mix_ptr,  # (N, 16) f32
-    pre_mix_ptr,  # (N, 4) f32
-    T: tl.constexpr,
+    post_mix_ptr,  # (4, N) f32
+    comb_mix_ptr,  # (16, N) f32
+    pre_mix_ptr,  # (4, N) f32
+    N,
     H: tl.constexpr,
+    BN: tl.constexpr,
     rms_eps: tl.constexpr,
     hc_pre_eps: tl.constexpr,
     hc_sinkhorn_eps: tl.constexpr,
     hc_post_mult_value: tl.constexpr,
     sinkhorn_repeat: tl.constexpr,
 ):
-    """Per-token mixes + Sinkhorn (HC=4), all in registers."""
+    """Per-token mixes + Sinkhorn (HC=4), vectorised over BN tokens.
+
+    All buffers are transposed so the token dimension N is contiguous, which
+    keeps every load/store coalesced along N (the strided-row layout of
+    (N, C) would otherwise turn each [BN] access into a stride-C gather).
+    """
     pid = tl.program_id(0)
-    sq = 0.0
-    for i in tl.static_range(T):
-        sq += tl.load(part_ptr + pid * T + i)
+    offs = pid * BN + tl.arange(0, BN)
+    mask = offs < N
+
+    sq = tl.load(sqrsum_ptr + offs, mask=mask, other=0.0)
     rms_inv = tl.rsqrt(sq / (4 * H) + rms_eps)
 
     scale_0 = tl.load(hc_scale_ptr + 0)
     scale_1 = tl.load(hc_scale_ptr + 1)
     scale_2 = tl.load(hc_scale_ptr + 2)
-    go = pid * 24
 
     pre_0 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 0) * rms_inv * scale_0
+            tl.load(gemm_out_ptr + 0 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_0
             + tl.load(hc_base_ptr + 0)
         )
         + hc_pre_eps
     )
     pre_1 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 1) * rms_inv * scale_0
+            tl.load(gemm_out_ptr + 1 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_0
             + tl.load(hc_base_ptr + 1)
         )
         + hc_pre_eps
     )
     pre_2 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 2) * rms_inv * scale_0
+            tl.load(gemm_out_ptr + 2 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_0
             + tl.load(hc_base_ptr + 2)
         )
         + hc_pre_eps
     )
     pre_3 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 3) * rms_inv * scale_0
+            tl.load(gemm_out_ptr + 3 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_0
             + tl.load(hc_base_ptr + 3)
         )
         + hc_pre_eps
     )
-    tl.store(pre_mix_ptr + pid * 4 + 0, pre_0)
-    tl.store(pre_mix_ptr + pid * 4 + 1, pre_1)
-    tl.store(pre_mix_ptr + pid * 4 + 2, pre_2)
-    tl.store(pre_mix_ptr + pid * 4 + 3, pre_3)
+    tl.store(pre_mix_ptr + 0 * N + offs, pre_0, mask=mask)
+    tl.store(pre_mix_ptr + 1 * N + offs, pre_1, mask=mask)
+    tl.store(pre_mix_ptr + 2 * N + offs, pre_2, mask=mask)
+    tl.store(pre_mix_ptr + 3 * N + offs, pre_3, mask=mask)
 
     post_0 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 4) * rms_inv * scale_1
+            tl.load(gemm_out_ptr + 4 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_1
             + tl.load(hc_base_ptr + 4)
         )
         * hc_post_mult_value
     )
-    tl.store(post_mix_ptr + pid * 4 + 0, post_0)
+    tl.store(post_mix_ptr + 0 * N + offs, post_0, mask=mask)
     post_1 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 5) * rms_inv * scale_1
+            tl.load(gemm_out_ptr + 5 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_1
             + tl.load(hc_base_ptr + 5)
         )
         * hc_post_mult_value
     )
-    tl.store(post_mix_ptr + pid * 4 + 1, post_1)
+    tl.store(post_mix_ptr + 1 * N + offs, post_1, mask=mask)
     post_2 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 6) * rms_inv * scale_1
+            tl.load(gemm_out_ptr + 6 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_1
             + tl.load(hc_base_ptr + 6)
         )
         * hc_post_mult_value
     )
-    tl.store(post_mix_ptr + pid * 4 + 2, post_2)
+    tl.store(post_mix_ptr + 2 * N + offs, post_2, mask=mask)
     post_3 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 7) * rms_inv * scale_1
+            tl.load(gemm_out_ptr + 7 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_1
             + tl.load(hc_base_ptr + 7)
         )
         * hc_post_mult_value
     )
-    tl.store(post_mix_ptr + pid * 4 + 3, post_3)
+    tl.store(post_mix_ptr + 3 * N + offs, post_3, mask=mask)
 
-    cb = 8
-    cm_00 = tl.load(gemm_out_ptr + go + cb + 0) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 0
-    )
-    cm_01 = tl.load(gemm_out_ptr + go + cb + 1) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 1
-    )
-    cm_02 = tl.load(gemm_out_ptr + go + cb + 2) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 2
-    )
-    cm_03 = tl.load(gemm_out_ptr + go + cb + 3) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 3
-    )
-    cm_10 = tl.load(gemm_out_ptr + go + cb + 4) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 4
-    )
-    cm_11 = tl.load(gemm_out_ptr + go + cb + 5) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 5
-    )
-    cm_12 = tl.load(gemm_out_ptr + go + cb + 6) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 6
-    )
-    cm_13 = tl.load(gemm_out_ptr + go + cb + 7) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 7
-    )
-    cm_20 = tl.load(gemm_out_ptr + go + cb + 8) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 8
-    )
-    cm_21 = tl.load(gemm_out_ptr + go + cb + 9) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 9
-    )
-    cm_22 = tl.load(gemm_out_ptr + go + cb + 10) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 10
-    )
-    cm_23 = tl.load(gemm_out_ptr + go + cb + 11) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 11
-    )
-    cm_30 = tl.load(gemm_out_ptr + go + cb + 12) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 12
-    )
-    cm_31 = tl.load(gemm_out_ptr + go + cb + 13) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 13
-    )
-    cm_32 = tl.load(gemm_out_ptr + go + cb + 14) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 14
-    )
-    cm_33 = tl.load(gemm_out_ptr + go + cb + 15) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + cb + 15
-    )
+    cm_00 = tl.load(
+        gemm_out_ptr + 8 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 8)
+    cm_01 = tl.load(
+        gemm_out_ptr + 9 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 9)
+    cm_02 = tl.load(
+        gemm_out_ptr + 10 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 10)
+    cm_03 = tl.load(
+        gemm_out_ptr + 11 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 11)
+    cm_10 = tl.load(
+        gemm_out_ptr + 12 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 12)
+    cm_11 = tl.load(
+        gemm_out_ptr + 13 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 13)
+    cm_12 = tl.load(
+        gemm_out_ptr + 14 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 14)
+    cm_13 = tl.load(
+        gemm_out_ptr + 15 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 15)
+    cm_20 = tl.load(
+        gemm_out_ptr + 16 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 16)
+    cm_21 = tl.load(
+        gemm_out_ptr + 17 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 17)
+    cm_22 = tl.load(
+        gemm_out_ptr + 18 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 18)
+    cm_23 = tl.load(
+        gemm_out_ptr + 19 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 19)
+    cm_30 = tl.load(
+        gemm_out_ptr + 20 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 20)
+    cm_31 = tl.load(
+        gemm_out_ptr + 21 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 21)
+    cm_32 = tl.load(
+        gemm_out_ptr + 22 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 22)
+    cm_33 = tl.load(
+        gemm_out_ptr + 23 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 23)
 
     # row softmax + eps
     rm = tl.maximum(tl.maximum(cm_00, cm_01), tl.maximum(cm_02, cm_03))
@@ -336,101 +363,108 @@ def _mix_kernel_hc4(
         cm_32 *= inv_cs2
         cm_33 *= inv_cs3
 
-    cmb = pid * 16
-    tl.store(comb_mix_ptr + cmb + 0, cm_00)
-    tl.store(comb_mix_ptr + cmb + 1, cm_01)
-    tl.store(comb_mix_ptr + cmb + 2, cm_02)
-    tl.store(comb_mix_ptr + cmb + 3, cm_03)
-    tl.store(comb_mix_ptr + cmb + 4, cm_10)
-    tl.store(comb_mix_ptr + cmb + 5, cm_11)
-    tl.store(comb_mix_ptr + cmb + 6, cm_12)
-    tl.store(comb_mix_ptr + cmb + 7, cm_13)
-    tl.store(comb_mix_ptr + cmb + 8, cm_20)
-    tl.store(comb_mix_ptr + cmb + 9, cm_21)
-    tl.store(comb_mix_ptr + cmb + 10, cm_22)
-    tl.store(comb_mix_ptr + cmb + 11, cm_23)
-    tl.store(comb_mix_ptr + cmb + 12, cm_30)
-    tl.store(comb_mix_ptr + cmb + 13, cm_31)
-    tl.store(comb_mix_ptr + cmb + 14, cm_32)
-    tl.store(comb_mix_ptr + cmb + 15, cm_33)
+    tl.store(comb_mix_ptr + 0 * N + offs, cm_00, mask=mask)
+    tl.store(comb_mix_ptr + 1 * N + offs, cm_01, mask=mask)
+    tl.store(comb_mix_ptr + 2 * N + offs, cm_02, mask=mask)
+    tl.store(comb_mix_ptr + 3 * N + offs, cm_03, mask=mask)
+    tl.store(comb_mix_ptr + 4 * N + offs, cm_10, mask=mask)
+    tl.store(comb_mix_ptr + 5 * N + offs, cm_11, mask=mask)
+    tl.store(comb_mix_ptr + 6 * N + offs, cm_12, mask=mask)
+    tl.store(comb_mix_ptr + 7 * N + offs, cm_13, mask=mask)
+    tl.store(comb_mix_ptr + 8 * N + offs, cm_20, mask=mask)
+    tl.store(comb_mix_ptr + 9 * N + offs, cm_21, mask=mask)
+    tl.store(comb_mix_ptr + 10 * N + offs, cm_22, mask=mask)
+    tl.store(comb_mix_ptr + 11 * N + offs, cm_23, mask=mask)
+    tl.store(comb_mix_ptr + 12 * N + offs, cm_30, mask=mask)
+    tl.store(comb_mix_ptr + 13 * N + offs, cm_31, mask=mask)
+    tl.store(comb_mix_ptr + 14 * N + offs, cm_32, mask=mask)
+    tl.store(comb_mix_ptr + 15 * N + offs, cm_33, mask=mask)
 
 
 @triton.jit
 def _mix_kernel_hc2(
-    part_ptr,  # (N, T) f32
-    gemm_out_ptr,  # (N, 8) f32
+    sqrsum_ptr,  # (N,) f32
+    gemm_out_ptr,  # (8, N) f32
     hc_scale_ptr,
     hc_base_ptr,
-    post_mix_ptr,
-    comb_mix_ptr,
-    pre_mix_ptr,
-    T: tl.constexpr,
+    post_mix_ptr,  # (2, N) f32
+    comb_mix_ptr,  # (4, N) f32
+    pre_mix_ptr,  # (2, N) f32
+    N,
     H: tl.constexpr,
+    BN: tl.constexpr,
     rms_eps: tl.constexpr,
     hc_pre_eps: tl.constexpr,
     hc_sinkhorn_eps: tl.constexpr,
     hc_post_mult_value: tl.constexpr,
     sinkhorn_repeat: tl.constexpr,
 ):
-    """Per-token mixes + 2x2 Sinkhorn (register-resident)."""
+    """Per-token mixes + 2x2 Sinkhorn, vectorised over BN tokens."""
     pid = tl.program_id(0)
-    sq = 0.0
-    for i in tl.static_range(T):
-        sq += tl.load(part_ptr + pid * T + i)
+    offs = pid * BN + tl.arange(0, BN)
+    mask = offs < N
+
+    sq = tl.load(sqrsum_ptr + offs, mask=mask, other=0.0)
     rms_inv = tl.rsqrt(sq / (2 * H) + rms_eps)
 
     scale_0 = tl.load(hc_scale_ptr + 0)
     scale_1 = tl.load(hc_scale_ptr + 1)
     scale_2 = tl.load(hc_scale_ptr + 2)
 
-    go = pid * 8
-
     pre_0 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 0) * rms_inv * scale_0
+            tl.load(gemm_out_ptr + 0 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_0
             + tl.load(hc_base_ptr + 0)
         )
         + hc_pre_eps
     )
     pre_1 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 1) * rms_inv * scale_0
+            tl.load(gemm_out_ptr + 1 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_0
             + tl.load(hc_base_ptr + 1)
         )
         + hc_pre_eps
     )
-    tl.store(pre_mix_ptr + pid * 2 + 0, pre_0)
-    tl.store(pre_mix_ptr + pid * 2 + 1, pre_1)
+    tl.store(pre_mix_ptr + 0 * N + offs, pre_0, mask=mask)
+    tl.store(pre_mix_ptr + 1 * N + offs, pre_1, mask=mask)
 
     post_0 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 2) * rms_inv * scale_1
+            tl.load(gemm_out_ptr + 2 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_1
             + tl.load(hc_base_ptr + 2)
         )
         * hc_post_mult_value
     )
-    tl.store(post_mix_ptr + pid * 2 + 0, post_0)
+    tl.store(post_mix_ptr + 0 * N + offs, post_0, mask=mask)
     post_1 = (
         tl.sigmoid(
-            tl.load(gemm_out_ptr + go + 3) * rms_inv * scale_1
+            tl.load(gemm_out_ptr + 3 * N + offs, mask=mask, other=0.0)
+            * rms_inv
+            * scale_1
             + tl.load(hc_base_ptr + 3)
         )
         * hc_post_mult_value
     )
-    tl.store(post_mix_ptr + pid * 2 + 1, post_1)
+    tl.store(post_mix_ptr + 1 * N + offs, post_1, mask=mask)
 
-    cm_00 = tl.load(gemm_out_ptr + go + 4) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + 4
-    )
-    cm_01 = tl.load(gemm_out_ptr + go + 5) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + 5
-    )
-    cm_10 = tl.load(gemm_out_ptr + go + 6) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + 6
-    )
-    cm_11 = tl.load(gemm_out_ptr + go + 7) * rms_inv * scale_2 + tl.load(
-        hc_base_ptr + 7
-    )
+    cm_00 = tl.load(
+        gemm_out_ptr + 4 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 4)
+    cm_01 = tl.load(
+        gemm_out_ptr + 5 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 5)
+    cm_10 = tl.load(
+        gemm_out_ptr + 6 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 6)
+    cm_11 = tl.load(
+        gemm_out_ptr + 7 * N + offs, mask=mask, other=0.0
+    ) * rms_inv * scale_2 + tl.load(hc_base_ptr + 7)
 
     rm = tl.maximum(cm_00, cm_01)
     e_00 = tl.exp(cm_00 - rm)
@@ -472,11 +506,10 @@ def _mix_kernel_hc2(
         cm_01 *= inv_cs1
         cm_11 *= inv_cs1
 
-    cmb = pid * 4
-    tl.store(comb_mix_ptr + cmb + 0, cm_00)
-    tl.store(comb_mix_ptr + cmb + 1, cm_01)
-    tl.store(comb_mix_ptr + cmb + 2, cm_10)
-    tl.store(comb_mix_ptr + cmb + 3, cm_11)
+    tl.store(comb_mix_ptr + 0 * N + offs, cm_00, mask=mask)
+    tl.store(comb_mix_ptr + 1 * N + offs, cm_01, mask=mask)
+    tl.store(comb_mix_ptr + 2 * N + offs, cm_10, mask=mask)
+    tl.store(comb_mix_ptr + 3 * N + offs, cm_11, mask=mask)
 
 
 @triton.jit
@@ -487,21 +520,35 @@ def _weighted_row_kernel(
     H: tl.constexpr,
     HC: tl.constexpr,
     B: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
-    """Whole-row elementwise weighted sum (grid (N,)); masked lanes safe here
-    (elementwise only, no reductions) - mask only guards the tail store."""
+    """Whole-row elementwise weighted sum (grid (N,)).
+
+    EVEN selects the no-mask fast path when B == H (power-of-two hidden size),
+    which reads at ~3x the bandwidth of the masked path. For non-power-of-two
+    H the masked path is unavoidable: a smaller unmasked block (the largest
+    power-of-two divisor of H) collapses to <30 GB/s on this backend, so the
+    masked B=next_pow2(H) form wins despite the masked-memory overhead.
+    """
     pid = tl.program_id(0)
     offs = tl.arange(0, B)
-    m = offs < H
     base = pid * HC * H
     acc = tl.zeros([B], dtype=tl.float32)
     for k in tl.static_range(HC):
         pk = tl.load(pre_mix_ptr + pid * HC + k)
-        r = tl.load(residual_ptr + base + k * H + offs, mask=m, other=0.0).to(
-            tl.float32
-        )
+        if EVEN:
+            r = tl.load(residual_ptr + base + k * H + offs).to(tl.float32)
+        else:
+            m = offs < H
+            r = tl.load(residual_ptr + base + k * H + offs, mask=m, other=0.0).to(
+                tl.float32
+            )
         acc += pk * r
-    tl.store(layer_input_ptr + pid * H + offs, acc.to(tl.bfloat16), mask=m)
+    if EVEN:
+        tl.store(layer_input_ptr + pid * H + offs, acc.to(tl.bfloat16))
+    else:
+        m = offs < H
+        tl.store(layer_input_ptr + pid * H + offs, acc.to(tl.bfloat16), mask=m)
 
 
 # ─────────────────────────────── dispatch ───────────────────────────────
@@ -561,55 +608,68 @@ def mhc_pre(
     fn_bf16 = _get_fn_bf16_cached(fn)
     from flag_gems.runtime.backend._kunlunxin.ops.mm import mm as _gems_mm
 
-    gemm_out = _gems_mm(x_flat, fn_bf16.t()).float()
+    gemm_out = _gems_mm(x_flat, fn_bf16.t()).float()  # (N, hc_mult3)
+    # Transpose to (hc_mult3, N) so the mix kernel reads each of the hc_mult3
+    # columns as a contiguous [BN] slice along N (coalesced). Small buffer.
+    gemm_out_t = gemm_out.t().contiguous()
 
     # ── Step 2: fused sqrsum + norm + mix + sinkhorn + weighted sum ──
-    T = (hc_mult * hidden_size) // _PART_BLOCK[hc_mult]
-    part = torch.empty(num_tokens, T, dtype=torch.float32, device=device)
-    pre_mix = torch.empty(num_tokens, hc_mult, dtype=torch.float32, device=device)
-    post_mix = torch.empty(num_tokens, hc_mult, dtype=torch.float32, device=device)
-    comb_mix = torch.empty(
-        num_tokens, hc_mult * hc_mult, dtype=torch.float32, device=device
+    total = hc_mult * hidden_size
+    sqrsum = torch.empty(num_tokens, dtype=torch.float32, device=device)
+    pre_t = torch.empty(hc_mult, num_tokens, dtype=torch.float32, device=device)
+    post_t = torch.empty(hc_mult, num_tokens, dtype=torch.float32, device=device)
+    comb_t = torch.empty(
+        hc_mult * hc_mult, num_tokens, dtype=torch.float32, device=device
     )
     layer_input = torch.empty(
         num_tokens, hidden_size, dtype=torch.bfloat16, device=device
     )
 
-    grid_tiles = (num_tokens, T)
-    _sqrsum_partials_kernel[grid_tiles](
+    sqr_block = min(_SQR_BLOCK_MAX, total & -total)
+    _sqrsum_kernel[(num_tokens,)](
         residual_flat,
-        part,
-        H=hidden_size,
-        HC=hc_mult,
-        B=_PART_BLOCK[hc_mult],
+        sqrsum,
+        TOTAL=total,
+        BLOCK=sqr_block,
         num_warps=4,
         num_stages=1,
     )
+    mix_block = _MIX_BLOCK
+    mix_grid = (triton.cdiv(num_tokens, mix_block),)
     mix_kwargs = dict(
-        part_ptr=part,
-        T=T,
+        sqrsum_ptr=sqrsum,
+        N=num_tokens,
         H=hidden_size,
+        BN=mix_block,
         rms_eps=rms_eps,
         hc_pre_eps=hc_pre_eps,
         hc_sinkhorn_eps=hc_sinkhorn_eps,
         hc_post_mult_value=hc_post_mult_value,
         sinkhorn_repeat=sinkhorn_repeat,
-        num_warps=4,
+        num_warps=2,
         num_stages=1,
     )
     mix_common = dict(
-        gemm_out_ptr=gemm_out,
+        gemm_out_ptr=gemm_out_t,
         hc_scale_ptr=hc_scale,
         hc_base_ptr=hc_base,
-        post_mix_ptr=post_mix,
-        comb_mix_ptr=comb_mix,
-        pre_mix_ptr=pre_mix,
+        post_mix_ptr=post_t,
+        comb_mix_ptr=comb_t,
+        pre_mix_ptr=pre_t,
     )
     if hc_mult == 4:
-        _mix_kernel_hc4[(num_tokens,)](**mix_common, **mix_kwargs)
+        _mix_kernel_hc4[mix_grid](**mix_common, **mix_kwargs)
     else:
-        _mix_kernel_hc2[(num_tokens,)](**mix_common, **mix_kwargs)
-    row_block = min(triton.next_power_of_2(hidden_size), 8192)
+        _mix_kernel_hc2[mix_grid](**mix_common, **mix_kwargs)
+
+    # Transpose the small (hc_mult, N) / (hc_mult^2, N) outputs back to the
+    # (N, ...) layout expected downstream (memory-only copies).
+    pre_mix = pre_t.t().contiguous()
+    post_mix = post_t.t().contiguous()
+    comb_mix = comb_t.t().contiguous()
+
+    row_block = min(_ROW_BLOCK_MAX, triton.next_power_of_2(hidden_size))
+    row_even = hidden_size == row_block
     _weighted_row_kernel[(num_tokens,)](
         residual_flat,
         pre_mix,
@@ -617,6 +677,7 @@ def mhc_pre(
         H=hidden_size,
         HC=hc_mult,
         B=row_block,
+        EVEN=row_even,
         num_warps=8,
         num_stages=1,
     )

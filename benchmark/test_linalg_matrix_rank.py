@@ -192,7 +192,7 @@ def _composed_matrix_rank(matrix, atol=None, rtol=None, hermitian=False):
     return (svals > tol).sum(dim=-1)
 
 
-@pytest.mark.linalg_matrix_rank_atol_rtol_float
+@pytest.mark.linalg_matrix_rank
 def test_linalg_matrix_rank():
     def matrix_rank_input_fn(shape, cur_dtype, device):
         matrix = torch.randn(shape, dtype=cur_dtype, device=device)
@@ -208,7 +208,7 @@ def test_linalg_matrix_rank():
     bench.run()
 
 
-@pytest.mark.linalg_matrix_rank_atol_rtol_float
+@pytest.mark.linalg_matrix_rank_hermitian
 def test_linalg_matrix_rank_hermitian():
     def matrix_rank_hermitian_input_fn(shape, cur_dtype, device):
         matrix = torch.randn(shape, dtype=cur_dtype, device=device)

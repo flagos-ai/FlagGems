@@ -198,9 +198,6 @@ def test_upsample_lanczos2d_aa_vec_requires_one_size(output_size, scale_factors)
 )
 def test_upsample_lanczos2d_aa_dispatch():
     input = torch.randn((1, 2, 7, 9), device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_lanczos2d_aa(
-            input, (11, 13), False, None, None
-        )
+    result = flag_gems._upsample_lanczos2d_aa(input, (11, 13), False, None, None)
     reference = _reference(utils.to_reference(input), (11, 13))
     _assert_close(result, reference, torch.float32)

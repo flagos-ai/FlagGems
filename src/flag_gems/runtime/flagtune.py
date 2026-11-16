@@ -24,6 +24,22 @@ FLAGTUNE_INCLUDE_ENV = "FLAGTUNE_INCLUDE"
 
 _flagtune_op_registry = {}
 _include_ops = None
+_registry_revision = 0
+
+
+def _flagtune_state_key():
+    """Track inputs to mode selection without parsing them on each launch."""
+    get = os.environ.get
+    use_flagtune = get(USE_FLAGTUNE_ENV)
+    if use_flagtune is not None and use_flagtune.strip() == "0":
+        return (use_flagtune,)
+    return (
+        _registry_revision,
+        _include_ops,
+        use_flagtune,
+        get(USE_FLAGTUNE_COST_MODEL_ENV),
+        get(FLAGTUNE_INCLUDE_ENV),
+    )
 
 
 class TuningMode(str, Enum):
@@ -74,6 +90,7 @@ def register_flagtune_op(
     replace=False,
 ):
     """Register an operator name that can be selected by flag_gems.flagtune."""
+    global _registry_revision
     name = _normalize_op_name(op_name)
     spec = FlagTuneOpSpec(
         name=name,
@@ -88,6 +105,7 @@ def register_flagtune_op(
         raise ValueError(f"FlagTune op {name!r} is already registered")
 
     _flagtune_op_registry[name] = spec
+    _registry_revision += 1
     return spec
 
 
@@ -148,21 +166,6 @@ def _optional_binary_environment(name):
 def _use_flagtune_setting_from_env():
     """Return whether FlagTune is explicitly disabled or enabled."""
     return _optional_binary_environment(USE_FLAGTUNE_ENV)
-
-
-def _expanded_from_env():
-    """Return whether the legacy switch explicitly enables FlagTune."""
-    return _use_flagtune_setting_from_env() is True
-
-
-def flagtune_expanded_enabled():
-    """Return whether global expanded search is enabled.
-
-    This intentionally excludes per-operator include-list selection. It keeps
-    decorators that recognize only ``USE_FLAGTUNE=1`` on their exact global
-    enable semantics.
-    """
-    return _expanded_from_env()
 
 
 def flagtune(include=None):
@@ -235,16 +238,26 @@ def flagtune_enabled(op_name):
     )
 
 
-def __getattr__(name):
-    if name == "SUPPORTED_FLAGTUNE_OPS":
-        return get_supported_flagtune_ops()
-    if name == "DEFAULT_FLAGTUNE_INCLUDE":
-        return get_default_flagtune_include()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 register_flagtune_op("mm", default=False, description="matrix multiplication")
+register_flagtune_op(
+    "mm_w8a8_fp8", default=False, description="FP8 W8A8 matrix multiplication"
+)
 register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
+register_flagtune_op(
+    "mv_row",
+    default=False,
+    description="matrix-vector multiplication over a row-major matrix",
+)
+register_flagtune_op(
+    "mv_column",
+    default=False,
+    description="matrix-vector multiplication over a column-major matrix",
+)
+register_flagtune_op(
+    "mv_reduce",
+    default=False,
+    description="split-K partial reduction for matrix-vector multiplication",
+)
 register_flagtune_op(
     "addmm",
     default=False,
@@ -301,17 +314,13 @@ register_flagtune_op(
     description="W8A8 block FP8 batched matrix multiplication",
 )
 
-# DEFAULT_FLAGTUNE_INCLUDE and SUPPORTED_FLAGTUNE_OPS are provided by __getattr__.
-__all__ = [  # noqa: F822
-    "DEFAULT_FLAGTUNE_INCLUDE",
+__all__ = [
     "FLAGTUNE_INCLUDE_ENV",
     "FlagTuneOpSpec",
-    "SUPPORTED_FLAGTUNE_OPS",
     "TuningMode",
     "USE_FLAGTUNE_COST_MODEL_ENV",
     "USE_FLAGTUNE_ENV",
     "flagtune",
-    "flagtune_expanded_enabled",
     "flagtune_enabled",
     "get_default_flagtune_include",
     "get_flagtune_include",

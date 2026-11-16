@@ -49,8 +49,12 @@ def test_mse_loss(shape, dtype, reduction):
     ref_target = utils.to_reference(target, True)
 
     ref_out = torch.nn.functional.mse_loss(ref_inp, ref_target, reduction=reduction)
-    with flag_gems.use_gems():
+    if reduction == "none":
         res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
+    else:
+        res_out = flag_gems.mse_loss(
+            inp, target, reduction={"mean": 1, "sum": 2}[reduction]
+        )
 
     utils.gems_assert_close(
         res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim]

@@ -21,6 +21,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 if QUICK_MODE:
     MNK_SHAPES = [
         (1, 1, 32),
@@ -52,6 +54,10 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "metax",
 )
 _ADDMM_BETA_ZERO_VENDORS = ("nvidia", "hygon", "thead", "metax")
+
+if IS_KUNLUNXIN:
+    _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)
+    _ADDMM_BETA_ZERO_VENDORS += ("kunlunxin",)
 
 # Extend this set as vendor implementations gain equivalent layout and bias support.
 _addmm_layout_bias_only = pytest.mark.skipif(
@@ -121,6 +127,7 @@ def test_addmm_beta_zero_ignores_bias(dtype):
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm_vector_bias
 @pytest.mark.addmm
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
@@ -167,6 +174,7 @@ def test_addmm_scalar_bias(dtype, b_column_major):
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm_vector_bias
 @pytest.mark.addmm
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -247,6 +255,7 @@ def test_addmm_out_beta_zero_ignores_bias(dtype):
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm_out_vector_bias
 @pytest.mark.addmm_out
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)

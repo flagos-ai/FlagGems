@@ -37,6 +37,7 @@ class IndexCopyBenchmark(base.GenericBenchmark):
         self.shapes = [
             shape for shape in self.shapes if math.prod(shape) <= self.MAX_ELEMENTS
         ]
+        self.shapes += [(1, 2), (4096, 256), (200, 40999, 3)]
 
     def set_more_shapes(self):
         return [(1, 2), (4096, 256), (200, 40999, 3)]

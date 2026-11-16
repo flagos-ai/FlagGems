@@ -27,6 +27,9 @@ def input_fn(shape, cur_dtype, device):
 
 
 @pytest.mark.geometric_
+@pytest.mark.skip_native(
+    vendors=["ascend"], reason="torch-npu geometric_ falls back to CPU"
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -41,6 +44,9 @@ def test_geometric_inplace():
 
 
 @pytest.mark.geometric
+@pytest.mark.skip_native(
+    vendors=["ascend"], reason="torch-npu geometric falls back to CPU"
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

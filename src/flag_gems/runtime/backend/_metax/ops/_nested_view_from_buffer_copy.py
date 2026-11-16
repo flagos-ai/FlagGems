@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 def _nested_view_from_buffer_copy(

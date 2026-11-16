@@ -273,7 +273,7 @@ def _check_padding(padding, d_in, h_in, w_in):
 
 def reflection_pad3d_backward(grad_output, self, padding):
     """Compute gradient of reflection_pad3d forward pass."""
-    logger.debug("GEMS REFLECTION_PAD3D_BACKWARD")
+    logger.debug("GEMS_HYGON REFLECTION_PAD3D_BACKWARD")
 
     if self.dim() != 5:
         raise ValueError("input must be a 5D tensor")

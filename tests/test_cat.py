@@ -81,8 +81,7 @@ def test_cat(shape, dim, dtype):
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.cat(ref_inp, dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.cat(inp, dim)
+    res_out = flag_gems.cat(inp, dim)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -107,8 +106,7 @@ def test_cat_empty_tensor(shape, dim, dtype):
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.cat(ref_inp, dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.cat(inp, dim)
+    res_out = flag_gems.cat(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -129,7 +127,6 @@ def test_cat_out_matches_reference(dtype):
     torch.ops.aten.cat.out([ref_a, ref_b], dim, out=ref_out)
 
     out = torch.empty((10, 5), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten.cat.out([a, b], dim, out=out)
+    flag_gems.cat_out([a, b], dim, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)

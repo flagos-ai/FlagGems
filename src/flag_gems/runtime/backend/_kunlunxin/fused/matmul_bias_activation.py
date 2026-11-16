@@ -14,13 +14,27 @@
 
 # Kunlunxin(XPU) backend override for the fused matmul+bias+ReLU operator.
 #
-# The generic `flag_gems.fused.matmul_bias_activation` kernel (BLOCK_K=32,
-# 1D bias broadcast `bias[None, :]`) fails to lower on XPU inside
-# `ConvertTritonSDNNToLLVM` (compile error, all shapes/dtypes fail).
-# This override reuses the structure proven in `_kunlunxin/ops/addmm.py`:
-#   256/128 tiles + GROUP_M swizzle, dtype-dependent BLOCK_SIZE_K (fp16 -> 256,
-#   bf16/fp32 -> 128), masked K-loop loads with other=0.0, fp32 accumulation,
-#   epilogue bias load as a full 2D tile + ReLU.
+# Ports the GEMM recipe proven on `_kunlunxin/ops/matmuladd.py` (2026-09-05):
+#   1. bias is materialized to a contiguous (M, N) 2D tensor first -- a 1D
+#      bias that broadcasts along M (stride_im == 0) runs the epilogue load
+#      ~1.2-1.4x slower on this backend.
+#   2. dtype/shape-adaptive tile: small square (M,N<=512) keeps 128-tile
+#      warps=4; large fp16/fp32 use a wide-N tile (BM=256, BN=512); large
+#      bf16 keeps the square 256-tile (BN=512 regresses bf16, and bf16
+#      BN=512 + w16 is a 369ms catastrophic compile on 2048^3).
+#   3. fp32 wide-N MUST run at num_warps=16 (the same tile at warps=8 is a
+#      1254ms mis-compile on 4096^3 -- a sharp cliff, never route fp32
+#      wide-N to w=8).
+#   4. BK: fp16=256, bf16/fp32=128 (same rule as addmm/matmuladd).
+#
+# The activation (ReLU) is the difference vs matmuladd. Fusing `tl.maximum`
+# directly on the fp32 accumulator tile only compiles for the small 128-tile
+# and the bf16 square 256-tile; on the fp16/fp32 wide-N (256x512) tiles it
+# aborts the XPU compiler ("out of resource: uni_sram" / "operand #1 does
+# not dominate this use"). So:
+#   * small shapes + large bf16: ReLU fused in the epilogue (1 launch).
+#   * large fp16/fp32: ReLU applied by a dedicated flat pointwise pass
+#     (~0.08ms @4096^2 fp16) after the GEMM stores raw acc+bias.
 
 import logging
 
@@ -34,44 +48,51 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-
-def heur_block_m(args):
-    M = args["M"]
-    if M <= 512:
-        return 128
-    return 256
+# dtype codes handed to the kernel (plain int runtime args, so _tile_config
+# can branch on the input dtype the same way matmuladd does).
+_FP16, _BF16, _FP32 = 0, 1, 2
 
 
-def heur_block_n(args):
-    N = args["N"]
+def _dtype_code(dtype):
+    return {torch.float16: _FP16, torch.bfloat16: _BF16, torch.float32: _FP32}[dtype]
+
+
+def _tile_config(M, N, dtype):
+    """(BLOCK_M, BLOCK_N, BLOCK_K, num_warps) for the rules above."""
+    code = _dtype_code(dtype)
+    bm = 128 if M <= 512 else 256
     if N <= 512:
-        return 128
-    return 256
-
-
-def heur_block_k(args):
-    # The wrapper passes BLOCK_K_CHOICE (fp16 -> 256, else 128).
-    if args.get("BLOCK_K_CHOICE", 128) == 256:
-        return 256
-    return 128
-
-
-def heur_warps(args):
-    if args["M"] <= 512 and args["N"] <= 512:
-        return 4
-    return 8
+        bn = 128
+    else:
+        bn = 256 if code == _BF16 else 512
+    bk = 256 if code == _FP16 else 128
+    if M <= 512 and N <= 512:
+        warps = 4
+    else:
+        warps = 16 if code == _FP32 else 8
+    return bm, bn, bk, warps
 
 
 @libentry()
-@triton.heuristics(
-    {
-        "BLOCK_SIZE_M": heur_block_m,
-        "BLOCK_SIZE_N": heur_block_n,
-        "BLOCK_SIZE_K": heur_block_k,
-        "num_warps": heur_warps,
-    }
+@triton.jit(
+    # Keep the GEMM runtime dims / strides out of the launcher's constant
+    # specialization: a runtime scalar equal to 1 gets folded into a constant
+    # and dropped from the launcher argument sequence, which collapses the
+    # positional layout the XPU handlers decode (upstream #6415).
+    do_not_specialize=[
+        "M",
+        "N",
+        "K",
+        "stride_am",
+        "stride_ak",
+        "stride_bk",
+        "stride_bn",
+        "stride_im",
+        "stride_in",
+        "stride_cm",
+        "stride_cn",
+    ]
 )
-@triton.jit
 def matmul_bias_activation_kernel(
     a_ptr,
     b_ptr,
@@ -92,12 +113,21 @@ def matmul_bias_activation_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
-    BLOCK_K_CHOICE,
+    DTYPE_CODE,
+    FUSE_RELU: tl.constexpr,
+    ALIGNED: tl.constexpr,
 ):
+    # Same GEMM structure as the kunlunxin addmm/matmuladd kernel: 1-D grid
+    # with GROUP_M swizzle, masked K loop, fp32 accumulator.
+    if ALIGNED:
+        # do_not_specialize took the divisibility hints away; give them back
+        # when the host verified M/N/K are multiples of 16 (mask elision).
+        tl.assume(M % 16 == 0)
+        tl.assume(N % 16 == 0)
+        tl.assume(K % 16 == 0)
     pid = ext.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
     grid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    # re-order program ID for better L2 reuse along the N dimension
     width = GROUP_M * grid_n
     group_id = pid // width
     group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
@@ -134,11 +164,11 @@ def matmul_bias_activation_kernel(
     bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
     accumulator = accumulator + bias
-    # NOTE: a ReLU (or any compare/abs/select) fused directly on the
-    # fp32 tile right after tl.dot crashes the XPU compiler inside
-    # `ConvertTritonSDNNToLLVM` (isolated with the same kernel body: add/mul
-    # epilogue compiles, maximum/where/abs/minimum all fail). The ReLU is
-    # therefore applied by a dedicated pointwise kernel afterwards.
+    # ReLU fused in the epilogue where the compiler allows it (small 128-tile
+    # and bf16 square 256-tile). For the fp16/fp32 wide-N tiles FUSE_RELU is
+    # False and a separate pointwise pass applies ReLU afterwards.
+    if FUSE_RELU:
+        accumulator = tl.maximum(accumulator, 0.0)
     # Let tl.store convert to the output pointer dtype.
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
@@ -150,10 +180,8 @@ def relu_kernel(
     BLOCK_SIZE: tl.constexpr,
     NEED_MASK: tl.constexpr,
 ):
-    # Flat 1D pass over a contiguous tensor. The previous 2D-tile
-    # (BLOCK 128x128 masked) version ran at ~2.5 GB/s on XPU (13.5ms on
-    # 4096^2 fp16); a flat strided-1 pass with NEED_MASK specialization is
-    # ~175x faster (~0.08ms, same as the vendor pointwise relu).
+    # Flat 1D pass over a contiguous tensor. This is ~175x faster than a
+    # masked 2D-tile pass on XPU (~0.08ms on 4096^2 fp16).
     pid = tl.program_id(0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     if NEED_MASK:
@@ -167,14 +195,30 @@ def relu_kernel(
         tl.store(x_ptr + offs, x)
 
 
+def _fuse_relu(M, N, dtype):
+    # Fused epilogue only where verified to compile: small square 128-tile
+    # (all dtypes) and large bf16 square 256-tile. fp16/fp32 wide-N tiles
+    # abort the XPU compiler -> separate ReLU pass.
+    if M <= 512 and N <= 512:
+        return True
+    if dtype == torch.bfloat16:
+        return True
+    return False
+
+
 def matmul_bias_activation(input, weight, bias):
     """
     Fused matmul + bias + ReLU activation.
 
+    Vendor kernel reusing the matmuladd GEMM structure (see header comment):
+    materialized 2D bias, dtype/shape-adaptive tile, ReLU fused in the
+    epilogue for small/bf16 configs and applied by a dedicated pointwise pass
+    for the fp16/fp32 wide-N configs (compiler constraint).
+
     Args:
         input: Input tensor of shape (M, K)
         weight: Weight matrix of shape (K, N)
-        bias: Bias vector of shape (N,) or (1, N)
+        bias: Bias vector of shape (N,) or (1, N) or (M, N)
 
     Returns:
         Output tensor of shape (M, N) with ReLU activation applied
@@ -189,16 +233,13 @@ def matmul_bias_activation(input, weight, bias):
 
     input = input.contiguous()
     weight = weight.contiguous()
-    if bias.dim() > 1:
-        bias = bias.reshape(-1)
     out = torch.empty((M, N), device=input.device, dtype=input.dtype)
-    bias = bias.broadcast_to(out.shape)
+    bias = bias.broadcast_to((M, N)).contiguous()
 
-    block_k_choice = 256 if input.dtype == torch.float16 else 128
+    fuse_relu = _fuse_relu(M, N, input.dtype)
+    bm, bn, bk, warps = _tile_config(M, N, input.dtype)
+    grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn),)
     with torch_device_fn.device(input.device):
-        grid = lambda META: (
-            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-        )
         matmul_bias_activation_kernel[grid](
             input,
             weight,
@@ -215,14 +256,21 @@ def matmul_bias_activation(input, weight, bias):
             bias.stride(1),
             out.stride(0),
             out.stride(1),
+            BLOCK_SIZE_M=bm,
+            BLOCK_SIZE_N=bn,
+            BLOCK_SIZE_K=bk,
             GROUP_M=8,
-            BLOCK_K_CHOICE=block_k_choice,
+            DTYPE_CODE=_dtype_code(input.dtype),
+            FUSE_RELU=fuse_relu,
+            ALIGNED=(M % 16 == 0 and N % 16 == 0 and K % 16 == 0),
+            num_warps=warps,
             num_stages=3,
         )
-        numel = M * N
-        relu_block = 16384
-        need_mask = numel % relu_block != 0
-        relu_kernel[(triton.cdiv(numel, relu_block),)](
-            out, numel, BLOCK_SIZE=relu_block, NEED_MASK=need_mask
-        )
+        if not fuse_relu:
+            numel = M * N
+            relu_block = 16384
+            need_mask = numel % relu_block != 0
+            relu_kernel[(triton.cdiv(numel, relu_block),)](
+                out, numel, BLOCK_SIZE=relu_block, NEED_MASK=need_mask
+            )
     return out

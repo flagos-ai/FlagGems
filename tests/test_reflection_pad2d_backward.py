@@ -73,8 +73,7 @@ def test_reflection_pad2d_backward(shape, padding, dtype):
     )
 
     # FlagGems backward
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.reflection_pad2d_backward(grad_output, inp, padding)
+    res_out = flag_gems.reflection_pad2d_backward(grad_output, inp, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -99,7 +98,6 @@ def test_reflection_pad2d_backward_3d(dtype):
         ref_grad_output, ref_inp, padding
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.reflection_pad2d_backward(grad_output, inp, padding)
+    res_out = flag_gems.reflection_pad2d_backward(grad_output, inp, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

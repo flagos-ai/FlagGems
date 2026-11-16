@@ -43,6 +43,53 @@ def bmm_heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
+def rrelu_with_noise_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    elif args["N"] <= 4096:
+        return 1024
+    else:
+        # Large tiles pipeline GM<->UB transfers best; 8192 overflows the
+        # 192 KB UB for the fp32 eval kernel (in+out tiles with buffering).
+        return 4096
+
+
+def rrelu_with_noise_eval_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    elif args["N"] <= 4096:
+        return 1024
+    elif args["N"] < (1 << 20):
+        return 4096
+    else:
+        # 8192-element tiles pipeline GM<->UB transfers best for every dtype
+        # (in+out tiles still fit the 192 KB UB for fp32).
+        return 8192
+
+
+def rrelu_with_noise_eval_heur_unroll(args):
+    # Tiles per program; every program pays a fixed setup cost on this
+    # backend, so larger inputs benefit from fewer, fatter programs. Fewer
+    # buckets also means fewer kernel variants: benchmark sweeps and real
+    # workloads with mixed shapes then reuse one compiled binary per bucket
+    # instead of paying a fresh compile for every size class.
+    if args["N"] <= 4096:
+        return 1
+    elif args["N"] < (1 << 20):
+        return 2
+    else:
+        return 8
+
+
+def rrelu_with_noise_heur_num_warps(args):
+    # Keep the small-input tiers aligned with the BLOCK tiers so nearby sizes
+    # compile to the same kernel variant (see eval_heur_unroll's comment).
+    if args["N"] <= 512:
+        return 4
+    else:
+        return 16
+
+
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -317,6 +364,15 @@ HEURISTICS_CONFIGS = {
     "randn": {
         "BLOCK": randn_heur_block,
         "num_warps": randn_heur_num_warps,
+    },
+    "rrelu_with_noise_train": {
+        "BLOCK": rrelu_with_noise_heur_block,
+        "num_warps": rrelu_with_noise_heur_num_warps,
+    },
+    "rrelu_with_noise_eval": {
+        "BLOCK": rrelu_with_noise_eval_heur_block,
+        "num_warps": rrelu_with_noise_heur_num_warps,
+        "UNROLL": rrelu_with_noise_eval_heur_unroll,
     },
     "softmax_non_inner": {
         "TILE_K": softmax_heur_tile_k,

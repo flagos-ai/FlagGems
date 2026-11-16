@@ -47,7 +47,11 @@ def safe_fast_log_f32(x):
     p = p * t + 2.8330324636e-01
     p = p * t - 4.8915625549e-01
     p = p * t + 9.9901031459e-01
-    p = p * t + 2.2125781657e-05
+    # No constant term: the fit used to carry +2.2125781657e-05, so p(0) != 0 and
+    # ln(1) was off by that offset (which also made y slightly negative for u
+    # just below 1). Multiplying the whole polynomial by `t` restores p(0) == 0.
+    # See Issue #7040.
+    p = p * t
     return p + exponent.to(tl.float32) * 0.6931471805599453
 
 
@@ -82,8 +86,14 @@ def transform_exponential_f32_precise(u, inv_lambd, eps_minus):
 
 @triton.jit
 def transform_exponential_f32_fast(u, inv_lambd, eps_minus):
-    log = tl.where(u >= 1.0 - 1e-4, eps_minus, safe_fast_log_f32(u))
-    # log = tl.log(tl.maximum(u, 1e-38))
+    # The guard may only special-case the u == 1 endpoint, like the precise
+    # variant. It used to be `u >= 1.0 - 1e-4`, which pinned the whole
+    # 1e-4-probability band next to 1 to `y == 0.5 * eps` (5.96e-8 for float32).
+    # That single atom carried ~100x the true probability mass below 1e-5 and
+    # broke exponential-race / Gumbel-max sampling. The wide band existed to
+    # hide the polynomial's non-zero constant term, which is now removed in
+    # `safe_fast_log_f32`. See Issue #7040.
+    log = tl.where(u >= 1.0 + eps_minus, eps_minus, safe_fast_log_f32(u))
     return -inv_lambd * log
 
 

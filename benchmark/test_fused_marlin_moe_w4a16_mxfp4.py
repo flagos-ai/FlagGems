@@ -263,7 +263,7 @@ def _gems_call_mxfp4(
     )
 
 
-@pytest.mark.fused_marlin_moe
+@pytest.mark.fused_marlin_moe_w4a16_mxfp4
 @pytest.mark.skipif(
     not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
 )

@@ -16,8 +16,7 @@ def test_special_ndtr(shape, dtype):
         ref_out = torch.ops.aten.special_ndtr(ref_x.float()).to(dtype)
     else:
         ref_out = torch.ops.aten.special_ndtr(ref_x)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.special_ndtr(x)
+    act_out = flag_gems.special_ndtr(x)
     # ndtr uses a polynomial approximation which introduces numerical differences
     # from the reference implementation; tolerances are set per-dtype to account for
     # the limited precision of fp16 and bf16.

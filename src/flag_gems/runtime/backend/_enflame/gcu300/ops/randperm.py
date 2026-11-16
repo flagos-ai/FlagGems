@@ -112,10 +112,10 @@ def radix_type_convert(k):
     tl.static_assert(k.dtype != tl.int64, "int64 is not supported")
     ik = k.to(tl.int32)
     if tl.constexpr(k.dtype == tl.int8):
-        mask = (ik >> 7) & 0x1
+        mask = ((ik >> 7) & 0x1) != 0
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
-        mask = (ik >> 15) & 0x1
+        mask = ((ik >> 15) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
         # XOR with sign bit flips it: clears if set, sets if not

@@ -28,8 +28,7 @@ def test_hardsigmoid_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.hardsigmoid_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardsigmoid_(inp)
+    res_out = flag_gems.hardsigmoid_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -44,8 +43,7 @@ def test_hardsigmoid__non_contiguous(dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.hardsigmoid_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardsigmoid_(inp)
+    res_out = flag_gems.hardsigmoid_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -70,8 +68,7 @@ def test_hardsigmoid__special_values(dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.hardsigmoid_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardsigmoid_(inp)
+    res_out = flag_gems.hardsigmoid_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -84,8 +81,7 @@ def test_hardsigmoid(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.hardsigmoid(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.hardsigmoid(res_inp)
+    res_out = flag_gems.hardsigmoid(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -101,8 +97,7 @@ def test_hardsigmoid_out(shape, dtype):
     torch.ops.aten.hardsigmoid.out(ref_inp, out=ref_out)
 
     out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardsigmoid.out(inp, out=out)
+    res_out = flag_gems.hardsigmoid_out(inp, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)

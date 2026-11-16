@@ -332,6 +332,29 @@ def get_moe_wna16_block_config(
         return {"BLOCK_SIZE_N": block_size_n, "BLOCK_SIZE_K": block_size_k}
 
 
+_MOE_SMEM_LIMIT = None
+
+
+def _moe_smem_limit():
+    # The usable shared-memory (LDS) budget for a MoE gemm config. Query the
+    # active device instead of hardcoding ~200KB (NVIDIA-sized), which OOMs on
+    # small-LDS GPUs like gfx1100/RDNA (64KB).
+    global _MOE_SMEM_LIMIT
+    if _MOE_SMEM_LIMIT is None:
+        try:
+            import torch
+
+            di = torch.cuda.current_device()
+            _MOE_SMEM_LIMIT = int(
+                triton.runtime.driver.active.utils.get_device_properties(di)[
+                    "max_shared_mem"
+                ]
+            )
+        except Exception:
+            _MOE_SMEM_LIMIT = 200_000
+    return _MOE_SMEM_LIMIT
+
+
 def get_default_config(
     M: int,
     E: int,
@@ -438,7 +461,7 @@ def get_default_config(
             num_stages = 4
 
         smem_per_stage = (block_m * block_k + block_k * block_n) * 2
-        while num_stages > 2 and smem_per_stage * num_stages > 200_000:
+        while num_stages > 1 and smem_per_stage * num_stages > _moe_smem_limit():
             num_stages -= 1
 
         config = {
@@ -490,7 +513,7 @@ def get_default_config(
         num_stages = 3
 
         smem_per_stage = (block_m * block_k + block_k * block_n) * 2
-        while num_stages > 2 and smem_per_stage * num_stages > 200_000:
+        while num_stages > 1 and smem_per_stage * num_stages > _moe_smem_limit():
             num_stages -= 1
 
         config = {
@@ -511,10 +534,15 @@ def _get_config_dtype_str(
     use_int8_w8a16: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
+    use_int8_w8a8: bool = False,
 ) -> str | None:
     """Return dtype string for kernel config lookup."""
     if use_fp8_w8a8:
         return "fp8_w8a8"
+    elif use_int8_w8a8:
+        # Floating input activations are quantized inside fused_experts_impl.
+        # Do not select plain-half GEMM paths, which do not apply INT8 scales.
+        return "int8_w8a8"
     elif use_fp8_w8a16:
         return "fp8_w8a16"
     elif use_int8_w8a16:
@@ -1845,7 +1873,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS FUSED MOE")
+    logger.debug("GEMS FUSED_MOE")
     assert (
         activation == "silu"
     ), f"Only 'silu' activation is supported, got {activation}"
@@ -1890,6 +1918,7 @@ def fused_experts_impl(
 
     config_dtype = _get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=use_int8_w8a8,
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a16=use_int4_w4a16,
         ocp_mx_scheme=ocp_mx_scheme,
@@ -2136,6 +2165,10 @@ def fused_experts_impl(
             not is_embedded_config
             and direct_sum_supported
             and tokens_in_chunk >= MOE_DIRECT_SUM_MIN_TOKENS
+            # Multiple experts would atomically accumulate into the output
+            # dtype in an unspecified order. Keep the fixed-order FP32
+            # moe_sum reduction for top-k > 1, including large prefills.
+            and top_k_num == 1
             and expert_map is None
             and not apply_router_weight_on_input
         )

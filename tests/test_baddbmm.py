@@ -88,8 +88,7 @@ def test_baddbmm_out(M, N, K, scalar, dtype):
     alpha = beta = scalar
 
     torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
-    with flag_gems.use_gems():
-        torch.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
+    flag_gems.baddbmm_out(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
 
     gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 

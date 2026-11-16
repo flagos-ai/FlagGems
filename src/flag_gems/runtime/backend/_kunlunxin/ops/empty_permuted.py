@@ -16,7 +16,7 @@ import logging
 
 import torch
 
-logger = logging.getLogger("flag_gems.ops.empty_permuted")
+logger = logging.getLogger(__name__)
 
 
 def _strides_from_physical_layout(size, physical_layout):
@@ -44,7 +44,7 @@ def empty_permuted(
     pin_memory=None,
 ):
     """Returns an uninitialized tensor whose memory follows `physical_layout`."""
-    logger.debug("GEMS EMPTY_PERMUTED")
+    logger.debug("GEMS_KUNLUNXIN EMPTY_PERMUTED")
     shape = tuple(size)
     physical_layout = list(physical_layout)
     if len(physical_layout) != len(shape):

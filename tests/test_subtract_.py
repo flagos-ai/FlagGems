@@ -32,8 +32,7 @@ def test_subtract(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.subtract(ref_inp1, ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.subtract(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.subtract(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -49,8 +48,7 @@ def test_subtract_(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.subtract_(ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = inp1.subtract_(inp2, alpha=alpha)
+    res_out = flag_gems.subtract_(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp1, dtype)

@@ -41,7 +41,7 @@ def clamp_func_max_tensor(x, maxi):
 
 
 def clamp_tensor(A, mini=None, maxi=None):
-    logger.debug("GEMS CLAMP TENSOR")
+    logger.debug("GEMS CLAMP_TENSOR")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -53,7 +53,7 @@ def clamp_tensor(A, mini=None, maxi=None):
 
 
 def clamp_tensor_(A, mini=None, maxi=None):
-    logger.debug("GEMS CLAMP_ TENSOR")
+    logger.debug("GEMS CLAMP__TENSOR")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -85,14 +85,14 @@ def clamp_func_max(x, maxi):
 
 
 def clamp_min(A, mini):
-    logger.debug("GEMS CLAMP MIN")
+    logger.debug("GEMS CLAMP_MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_func_min(A, mini)
 
 
 def clamp_min_(A, mini):
-    logger.debug("GEMS CLAMP_ MIN")
+    logger.debug("GEMS CLAMP__MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_func_min(A, mini, out0=A)

@@ -29,8 +29,7 @@ def test_hardshrink(shape, dtype, lambd):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.hardshrink(ref_inp, lambd)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardshrink(inp, lambd)
+    res_out = flag_gems.hardshrink(inp, lambd)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -45,8 +44,7 @@ def test_hardshrink_out(shape, dtype, lambd):
 
     ref_out = torch.empty_like(ref_inp)
     torch.ops.aten.hardshrink.out(ref_inp, lambd, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.ops.aten.hardshrink.out(inp, lambd, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.hardshrink_out(inp, lambd, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

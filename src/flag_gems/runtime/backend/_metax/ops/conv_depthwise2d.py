@@ -1,216 +1,379 @@
-import logging
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.conv2d import conv2d, conv2d_output_size
-from flag_gems.utils import libentry
+# Bounded search over per-thread output elements (BLOCK / threads) so each
+# thread can keep several independent tap-load streams in flight.  The kernel
+# body, masks and fp32 accumulation order are identical for every config.
+_CONFIGS = [
+    triton.Config({"BLOCK": 64}, num_warps=1, num_stages=1),
+    triton.Config({"BLOCK": 128}, num_warps=1, num_stages=1),
+    triton.Config({"BLOCK": 256}, num_warps=1, num_stages=1),
+    triton.Config({"BLOCK": 256}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 512}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 1024}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 2048}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 4096}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 2048}, num_warps=8, num_stages=1),
+    triton.Config({"BLOCK": 4096}, num_warps=8, num_stages=1),
+    triton.Config({"BLOCK": 8192}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 8192}, num_warps=8, num_stages=1),
+]
 
-logger = logging.getLogger(__name__)
+_AUTOTUNE_KEY = [
+    "C_OUT",
+    "outHW",
+    "H",
+    "W",
+    "outW",
+    "KH",
+    "KW",
+    "SH",
+    "SW",
+    "PH",
+    "PW",
+    "DH",
+    "DW",
+    "MULT",
+    "HAS_BIAS",
+]
+
+# Narrow blocks for the flat variant: when a whole output plane fits in one
+# block, the only way to use the machine is to pack many planes per block.
+_CONFIGS_FLAT = [
+    triton.Config({"BLOCK": 64}, num_warps=1, num_stages=1),
+    triton.Config({"BLOCK": 128}, num_warps=1, num_stages=1),
+    triton.Config({"BLOCK": 256}, num_warps=1, num_stages=1),
+    triton.Config({"BLOCK": 128}, num_warps=2, num_stages=1),
+    triton.Config({"BLOCK": 256}, num_warps=4, num_stages=1),
+    triton.Config({"BLOCK": 1024}, num_warps=4, num_stages=1),
+]
 
 
-@libentry()
+@triton.autotune(configs=_CONFIGS, key=_AUTOTUNE_KEY)
 @triton.jit
-def conv_depthwise2d_forward_kernel(
-    input_pointer,
-    weight_pointer,
-    output_pointer,
-    bias_pointer,
-    in_n: tl.constexpr,
-    input_height: tl.constexpr,
-    input_width: tl.constexpr,
-    out_c: tl.constexpr,
-    out_height: tl.constexpr,
-    out_width: tl.constexpr,
-    input_n_stride: tl.constexpr,
-    input_c_stride: tl.constexpr,
-    input_height_stride: tl.constexpr,
-    input_width_stride: tl.constexpr,
-    weight_n_stride: tl.constexpr,
-    weight_height_stride: tl.constexpr,
-    weight_width_stride: tl.constexpr,
-    output_n_stride: tl.constexpr,
-    output_c_stride: tl.constexpr,
-    output_height_stride: tl.constexpr,
-    output_width_stride: tl.constexpr,
-    channel_multiplier: tl.constexpr,
-    weight_height: tl.constexpr,
-    weight_width: tl.constexpr,
-    stride_height: tl.constexpr,
-    stride_width: tl.constexpr,
-    padding_height: tl.constexpr,
-    padding_width: tl.constexpr,
-    dilation_height: tl.constexpr,
-    dilation_width: tl.constexpr,
+def _conv_depthwise2d_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    o_ptr,
+    C_OUT,
+    outHW,
+    H,
+    W,
+    outW,
+    sn,
+    sc,
+    sh,
+    sw,
+    on,
+    oc,
+    oh_s,
+    ow_s,
+    wc,
+    wk,
+    wl,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    DH: tl.constexpr,
+    DW: tl.constexpr,
+    MULT: tl.constexpr,
     HAS_BIAS: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_OC: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_oc = tl.program_id(1)
+    blocks_per_plane = tl.cdiv(outHW, BLOCK)
+    pid = tl.program_id(0)
+    sb = pid % blocks_per_plane
+    nc = pid // blocks_per_plane
+    n = nc // C_OUT
+    co = nc % C_OUT
+    ci = co // MULT
 
-    m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    oc_offsets = pid_oc * BLOCK_OC + tl.arange(0, BLOCK_OC)
+    offs = sb * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < outHW
+    oh = offs // outW
+    ow = offs - oh * outW
 
-    n_oh_offsets = m_offsets // out_width
-    n_offsets = n_oh_offsets // out_height
-    oh_offsets = n_oh_offsets % out_height
-    ow_offsets = m_offsets % out_width
-    input_c_offsets = oc_offsets // channel_multiplier
+    ih0 = oh * SH - PH
+    iw0 = ow * SW - PW
 
-    accum = tl.zeros((BLOCK_M, BLOCK_OC), dtype=tl.float32)
-    for kh in range(weight_height):
-        ih_offsets = oh_offsets * stride_height + kh * dilation_height - padding_height
-        valid_h = (0 <= ih_offsets) & (ih_offsets < input_height)
-        for kw in range(weight_width):
-            iw_offsets = ow_offsets * stride_width + kw * dilation_width - padding_width
-            valid_w = (0 <= iw_offsets) & (iw_offsets < input_width)
-            input_ptrs = (
-                input_pointer
-                + (n_offsets[:, None] * input_n_stride)
-                + (input_c_offsets[None, :] * input_c_stride)
-                + (ih_offsets[:, None] * input_height_stride)
-                + (iw_offsets[:, None] * input_width_stride)
-            )
-            weight_ptrs = (
-                weight_pointer
-                + oc_offsets[None, :] * weight_n_stride
-                + kh * weight_height_stride
-                + kw * weight_width_stride
-            )
-            mask = (
-                (m_offsets < in_n * out_height * out_width)[:, None]
-                & (oc_offsets < out_c)[None, :]
-                & valid_h[:, None]
-                & valid_w[:, None]
-            )
-            input_block = tl.load(input_ptrs, mask=mask, other=0.0)
-            weight_block = tl.load(
-                weight_ptrs, mask=(oc_offsets < out_c)[None, :], other=0.0
-            )
-            accum += input_block * weight_block
+    x_base = x_ptr + n.to(tl.int64) * sn + ci.to(tl.int64) * sc
+
+    acc = tl.zeros([BLOCK], dtype=tl.float32)
+    for kh in tl.static_range(KH):
+        ih = ih0 + kh * DH
+        mh = mask & (ih >= 0) & (ih < H)
+        for kw in tl.static_range(KW):
+            iw = iw0 + kw * DW
+            m = mh & (iw >= 0) & (iw < W)
+            xv = tl.load(x_base + ih * sh + iw * sw, mask=m, other=0.0)
+            wv = tl.load(w_ptr + co * wc + kh * wk + kw * wl)
+            acc += xv.to(tl.float32) * wv.to(tl.float32)
 
     if HAS_BIAS:
-        bias = tl.load(bias_pointer + oc_offsets, mask=oc_offsets < out_c, other=0.0)
-        accum += bias[None, :]
+        acc += tl.load(b_ptr + co).to(tl.float32)
 
-    output_ptrs = (
-        output_pointer
-        + (n_offsets[:, None] * output_n_stride)
-        + (oc_offsets[None, :] * output_c_stride)
-        + (oh_offsets[:, None] * output_height_stride)
-        + (ow_offsets[:, None] * output_width_stride)
-    )
-    output_mask = (m_offsets < in_n * out_height * out_width)[:, None] & (
-        oc_offsets < out_c
-    )[None, :]
-    tl.store(output_ptrs, accum, mask=output_mask)
+    o_base = o_ptr + n.to(tl.int64) * on + co.to(tl.int64) * oc
+    tl.store(o_base + oh * oh_s + ow * ow_s, acc.to(o_ptr.dtype.element_ty), mask=mask)
 
 
-def _heuristic_block_config(spatial, out_c, kernel_hw):
-    """Heuristic to select BLOCK_M, BLOCK_OC, num_warps based on input shape."""
-    # BLOCK_OC: for small out_c, process more channels per block to improve occupancy.
-    # For large out_c, keep BLOCK_OC small to maintain grid parallelism.
-    if out_c <= 64:
-        block_oc = 8
-    elif out_c <= 256:
-        block_oc = 4
-    else:
-        block_oc = 1
+@triton.autotune(configs=_CONFIGS_FLAT, key=_AUTOTUNE_KEY + ["total"])
+@triton.jit
+def _conv_depthwise2d_flat(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    o_ptr,
+    C_OUT,
+    outHW,
+    total,
+    H,
+    W,
+    outW,
+    sn,
+    sc,
+    sh,
+    sw,
+    wc,
+    wk,
+    wl,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    DH: tl.constexpr,
+    DW: tl.constexpr,
+    MULT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    plane = offs // outHW
+    sp = offs - plane * outHW
+    n = plane // C_OUT
+    co = plane % C_OUT
+    ci = co // MULT
 
-    # BLOCK_M: always use maximum for best thread utilization
-    block_m = 256
-    num_warps = 4
-    return block_m, block_oc, num_warps
+    oh = sp // outW
+    ow = sp - oh * outW
+    ih0 = oh * SH - PH
+    iw0 = ow * SW - PW
+
+    x_base = x_ptr + n.to(tl.int64) * sn + ci.to(tl.int64) * sc
+
+    acc = tl.zeros([BLOCK], dtype=tl.float32)
+    for kh in tl.static_range(KH):
+        ih = ih0 + kh * DH
+        mh = mask & (ih >= 0) & (ih < H)
+        for kw in tl.static_range(KW):
+            iw = iw0 + kw * DW
+            m = mh & (iw >= 0) & (iw < W)
+            xv = tl.load(x_base + ih * sh + iw * sw, mask=m, other=0.0)
+            wv = tl.load(w_ptr + co * wc + kh * wk + kw * wl)
+            acc += xv.to(tl.float32) * wv.to(tl.float32)
+
+    if HAS_BIAS:
+        acc += tl.load(b_ptr + co).to(tl.float32)
+
+    tl.store(o_ptr + offs, acc.to(o_ptr.dtype.element_ty), mask=mask)
 
 
-def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):
-    logger.debug("GEMS METAX DEPTHWISE")
-    assert (
-        input.ndim == 4
-    ), "Invalid input tensor must be 4D, recevied shape {input.shape}"
-    assert (
-        weight.shape[0] % input.shape[1] == 0
-    ), "Output channels must be multiple of input, recevied output {weught.shape[0], input {input.shape[0]}}"
-    assert (
-        weight.shape[1] == 1
-    ), "input channels of per goups must be 1, recevied {weight.shape[1]}"
-    groups = input.shape[1]
-    if weight.shape[2] * weight.shape[3] <= 4:
-        return conv2d(input, weight, bias, stride, padding, dilation, groups)
+def _to_pair(v):
+    if isinstance(v, int):
+        return (int(v), int(v))
+    seq = list(v)
+    if len(seq) == 1:
+        return (int(seq[0]), int(seq[0]))
+    if len(seq) != 2:
+        raise RuntimeError(
+            "Expected 2 elements in the parameter list, but got {}".format(len(seq))
+        )
+    return (int(seq[0]), int(seq[1]))
 
-    if isinstance(stride, (list, tuple)):
-        stride_height, stride_width = stride
-    else:
-        stride_height = stride_width = stride
 
-    if isinstance(padding, (list, tuple)):
-        padding_height, padding_width = padding
-    else:
-        padding_height = padding_width = padding
+def _to_kernel_size(v):
+    # kernel_size must have two entries and must agree with the weight spatial
+    # size; the actual kernel shape is taken from weight.shape[2:].
+    if isinstance(v, int):
+        return (int(v), int(v))
+    seq = list(v)
+    if len(seq) != 2:
+        raise RuntimeError(
+            "Expected kernel_size.size() == 2 to be true, but got false.  "
+            "(Could this error message be improved?  If so, please report an "
+            "enhancement request to PyTorch.)"
+        )
+    return (int(seq[0]), int(seq[1]))
 
-    if isinstance(dilation, (list, tuple)):
-        dilation_height, dilation_width = dilation
-    else:
-        dilation_height = dilation_width = dilation
 
-    in_n, in_c, input_height, input_width = input.shape
-    out_c, _, weight_height, weight_width = weight.shape
-    channel_multiplier = out_c // in_c
-    out_height = conv2d_output_size(
-        input_height, weight_height, stride_height, padding_height, dilation_height
-    )
-    out_width = conv2d_output_size(
-        input_width, weight_width, stride_width, padding_width, dilation_width
-    )
-    spatial = in_n * out_height * out_width
+def _conv_depthwise2d(self, weight, kernel_size, bias, stride, padding, dilation):
+    x = self
+    if x.numel() == 0 or x.dim() != 4:
+        raise RuntimeError(
+            "Expected input.numel() > 0 && input.dim() == 4 to be true, but got false.  "
+            "(Could this error message be improved?  If so, please report an "
+            "enhancement request to PyTorch.)"
+        )
+    if weight.dim() != 4:
+        raise RuntimeError("Expected 4D weight (got {}D weight)".format(weight.dim()))
 
-    output = torch.empty(
-        (in_n, out_c, out_height, out_width), device=input.device, dtype=input.dtype
-    )
+    ksize = _to_kernel_size(kernel_size)
+    if ksize[0] != weight.shape[2] or ksize[1] != weight.shape[3]:
+        raise RuntimeError(
+            "Expected kernel size {} to match weight spatial size {}".format(
+                ksize, (weight.shape[2], weight.shape[3])
+            )
+        )
+    if weight.shape[1] != 1:
+        raise RuntimeError(
+            "Expected weight to have 1 input channel per group, got {}".format(
+                weight.shape[1]
+            )
+        )
 
-    kernel_hw = weight_height * weight_width
-    block_m, block_oc, num_warps = _heuristic_block_config(spatial, out_c, kernel_hw)
+    stride_hw = _to_pair(stride)
+    pad_hw = _to_pair(padding)
+    dil_hw = _to_pair(dilation)
 
-    grid = lambda META: (
-        triton.cdiv(spatial, META["BLOCK_M"]),
-        triton.cdiv(out_c, META["BLOCK_OC"]),
-    )
-    bias_pointer = (
-        bias
-        if bias is not None
-        else torch.empty(0, device=input.device, dtype=input.dtype)
-    )
+    N, C_in, H, W = x.shape
+    C_out = weight.shape[0]
+    KH = weight.shape[2]
+    KW = weight.shape[3]
+    if KH <= 0 or KW <= 0:
+        raise RuntimeError(
+            "Expected kernel size to be positive, got {}".format((KH, KW))
+        )
+    SH, SW = stride_hw
+    PH, PW = pad_hw
+    DH, DW = dil_hw
 
-    conv_depthwise2d_forward_kernel[grid](
-        input,
+    if C_in == 0 or C_out == 0:
+        raise RuntimeError("Expected non-zero channels")
+    if C_out % C_in != 0:
+        raise RuntimeError(
+            "Expected out_channels {} to be a multiple of in_channels {}".format(
+                C_out, C_in
+            )
+        )
+    MULT = C_out // C_in
+
+    outH = (H + 2 * PH - DH * (KH - 1) - 1) // SH + 1
+    outW = (W + 2 * PW - DW * (KW - 1) - 1) // SW + 1
+    if outH <= 0 or outW <= 0:
+        raise RuntimeError(
+            "Calculated output size: ({}x{}x{}x{}). Output size is too small".format(
+                N, C_out, outH, outW
+            )
+        )
+
+    if bias is not None and bias.numel() != C_out:
+        raise RuntimeError(
+            "Expected bias to have {} elements, got {}".format(C_out, bias.numel())
+        )
+
+    out = torch.empty((N, C_out, outH, outW), device=x.device, dtype=x.dtype)
+    if out.numel() == 0:
+        return out
+
+    outHW = outH * outW
+    n_planes = N * C_out
+
+    sn, sc, sh, sw = x.stride()
+    on, oc, oh_s, ow_s = out.stride()
+    wc, _, wk, wl = weight.stride()
+
+    b_ptr = bias if bias is not None else x
+    total = n_planes * outHW
+    # A plane that fits in the narrowest block leaves most lanes of a per-plane
+    # block idle; packing whole planes across the grid is worth it only when it
+    # reduces the block count by at least 2x.
+    if n_planes * triton.cdiv(outHW, 64) >= 2 * triton.cdiv(total, 64):
+        flat_grid = lambda meta: (triton.cdiv(total, meta["BLOCK"]),)
+        _conv_depthwise2d_flat[flat_grid](
+            x,
+            weight,
+            b_ptr,
+            out,
+            C_out,
+            outHW,
+            total,
+            H,
+            W,
+            outW,
+            sn,
+            sc,
+            sh,
+            sw,
+            wc,
+            wk,
+            wl,
+            KH=KH,
+            KW=KW,
+            SH=SH,
+            SW=SW,
+            PH=PH,
+            PW=PW,
+            DH=DH,
+            DW=DW,
+            MULT=MULT,
+            HAS_BIAS=bias is not None,
+        )
+        return out
+
+    def grid(meta):
+        return (n_planes * triton.cdiv(outHW, meta["BLOCK"]),)
+
+    _conv_depthwise2d_kernel[grid](
+        x,
         weight,
-        output,
-        bias_pointer,
-        in_n,
-        input_height,
-        input_width,
-        out_c,
-        out_height,
-        out_width,
-        *input.stride(),
-        weight.stride(0),
-        weight.stride(2),
-        weight.stride(3),
-        *output.stride(),
-        channel_multiplier,
-        weight_height,
-        weight_width,
-        stride_height,
-        stride_width,
-        padding_height,
-        padding_width,
-        dilation_height,
-        dilation_width,
-        HAS_BIAS=(bias is not None),
-        BLOCK_M=block_m,
-        BLOCK_OC=block_oc,
-        num_warps=num_warps,
+        bias if bias is not None else x,
+        out,
+        C_out,
+        outHW,
+        H,
+        W,
+        outW,
+        sn,
+        sc,
+        sh,
+        sw,
+        on,
+        oc,
+        oh_s,
+        ow_s,
+        wc,
+        wk,
+        wl,
+        KH=KH,
+        KW=KW,
+        SH=SH,
+        SW=SW,
+        PH=PH,
+        PW=PW,
+        DH=DH,
+        DW=DW,
+        MULT=MULT,
+        HAS_BIAS=bias is not None,
     )
-    return output
+    return out

@@ -30,23 +30,21 @@ def test_multiply(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.multiply(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.multiply(inp1, inp2)
+    res_out = flag_gems.multiply(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.multiply
+@pytest.mark.multiply_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_multiply_tensor_scalar(shape, scalar, dtype):
+def test_multiply_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.multiply(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.multiply(inp1, inp2)
+    res_out = flag_gems.multiply(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

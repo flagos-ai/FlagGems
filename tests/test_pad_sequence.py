@@ -5,11 +5,15 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+PAD_SEQUENCE_DTYPE = [] + utils.FLOAT_DTYPES
+if flag_gems.runtime.device.support_fp64:
+    PAD_SEQUENCE_DTYPE += [torch.float64]
+
 
 @pytest.mark.pad_sequence
 @pytest.mark.parametrize(
     "dtype",
-    [torch.float32, torch.float64, torch.bfloat16, torch.float16],
+    PAD_SEQUENCE_DTYPE,
 )
 @pytest.mark.parametrize("batch_first", [False, True])
 @pytest.mark.parametrize(
@@ -90,9 +94,7 @@ def _check_pad_sequence_boundary(sequences, batch_first, padding_value):
 
 
 @pytest.mark.pad_sequence
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float64, torch.bfloat16, torch.float16]
-)
+@pytest.mark.parametrize("dtype", PAD_SEQUENCE_DTYPE)
 @pytest.mark.parametrize("batch_first", [False, True])
 @pytest.mark.parametrize(
     "max_length, tail",
@@ -116,9 +118,7 @@ def test_pad_sequence_high_rank_boundary(max_length, tail, batch_first, dtype):
 
 
 @pytest.mark.pad_sequence
-@pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.float64, torch.bfloat16, torch.float16]
-)
+@pytest.mark.parametrize("dtype", PAD_SEQUENCE_DTYPE)
 @pytest.mark.parametrize("batch_first", [False, True])
 @pytest.mark.parametrize(
     "seq_shapes",

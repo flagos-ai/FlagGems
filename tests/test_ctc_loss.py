@@ -382,6 +382,7 @@ def test_ctc_loss_registered_intlist_forward():
 
 
 @pytest.mark.ctc_loss
+@pytest.mark.ctc_loss_backward
 def test_ctc_loss_registered_intlist_backward():
     utils.init_seed(100)
     t_steps, batch, classes, max_target = (8, 2, 6, 3)
@@ -420,6 +421,7 @@ def test_ctc_loss_registered_intlist_backward():
 
 
 @pytest.mark.ctc_loss
+@pytest.mark.ctc_loss_backward
 def test_ctc_loss_registered_tensor_backward():
     utils.init_seed(101)
     t_steps, batch, classes, max_target = (9, 2, 6, 3)

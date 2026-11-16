@@ -18,9 +18,14 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+# On AMD, bool tiles lower to wide i1 vectors whose compile time explodes (the
+# 8x512 rows tile never finishes); uint8 has identical bytes, so use it instead.
+_BOOL_AS_UINT8 = runtime.device.vendor_name == "amd"
 
 
 @triton.jit
@@ -719,6 +724,10 @@ def _launch_tril_strided_out(
 
 
 def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
+    if _BOOL_AS_UINT8 and input.dtype == torch.bool:
+        _launch_tril(input.view(torch.uint8), out.view(torch.uint8), diagonal)
+        return out
+
     M, N = input.shape[-2:]
     if input.numel() == 0:
         return out

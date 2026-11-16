@@ -59,6 +59,14 @@ def sigmoid_backward_kernel(dy, y):
     return dy_f32 * (1.0 - y_f32) * y_f32
 
 
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+@triton.jit
+def sigmoid_backward_kernel_16b(dy, y):
+    y_f32 = y.to(tl.float32)
+    dy_f32 = dy.to(tl.float32)
+    return dy_f32 * (y_f32 - y_f32 * y_f32)
+
+
 # sigmoid_backward fast path (contiguous fp16/fp32/bf16, small/medium
 # tensors): a flat 1D kernel that skips the pointwise_dynamic wrapper
 # machinery. With the gradients computed through torch.autograd.grad (as the
@@ -147,6 +155,23 @@ def sigmoid_backward(grad_output, output):
         and output.numel() <= _FAST_MAX_NUMEL
     ):
         return _sigmoid_backward_fast(grad_output, output)
+    if (
+        output.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and output.dtype == grad_output.dtype
+        and output.is_contiguous()
+        and grad_output.is_contiguous()
+        and output.dim() > 0
+        and output.shape == grad_output.shape
+    ):
+        out = torch.empty_strided(
+            output.shape, output.stride(), dtype=output.dtype, device=output.device
+        )
+        kernel = (
+            sigmoid_backward_kernel_16b
+            if output.dtype in (torch.float16, torch.bfloat16)
+            else sigmoid_backward_kernel
+        )
+        return kernel(grad_output, output, out0=out)
     grad_input = sigmoid_backward_kernel(grad_output, output)
     return grad_input
 

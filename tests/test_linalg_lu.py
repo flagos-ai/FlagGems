@@ -239,8 +239,7 @@ def test_linalg_lu(shape, dtype, pivot):
     else:
         ref_P, ref_L, ref_U = _run_torch_ops_path(ref_inp, pivot=pivot)
         ref_out = LinalgLUResult(ref_P, ref_L, ref_U)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu(inp, pivot=pivot)
+    res_out = flag_gems.linalg_lu(inp, pivot=pivot)
 
     batch_shape = inp.shape[:-2]
     m, n = inp.shape[-2], inp.shape[-1]
@@ -319,8 +318,7 @@ def test_linalg_lu_out(shape, dtype, pivot):
     res_L_out = torch.empty((*batch_shape, m, k), dtype=dtype, device=inp.device)
     res_U_out = torch.empty((*batch_shape, k, n), dtype=dtype, device=inp.device)
     out = (res_P_out, res_L_out, res_U_out)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.lu(inp, pivot=pivot, out=out)
+    res_out = flag_gems.linalg_lu_out(inp, pivot=pivot, out=out)
 
     # Verify outputs are the same objects (in-place write)
     assert res_out.P is res_P_out

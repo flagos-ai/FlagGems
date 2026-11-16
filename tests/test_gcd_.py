@@ -35,7 +35,6 @@ def test_gcd_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.gcd_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.gcd_(inp2)
+    res_out = flag_gems.gcd_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

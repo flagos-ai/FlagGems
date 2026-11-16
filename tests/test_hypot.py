@@ -30,8 +30,7 @@ def test_hypot(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.hypot(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.hypot(inp1, inp2)
+    res_out = flag_gems.hypot(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -49,7 +48,6 @@ def test_hypot_out(shape, dtype):
     ref_out = torch.ops.aten.hypot.out(ref_inp1, ref_inp2, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hypot.out(inp1, inp2, out=res_out_buf)
+    res_out = flag_gems.hypot_out(inp1, inp2, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

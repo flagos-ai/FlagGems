@@ -29,8 +29,7 @@ def test_softshrink(shape, dtype, lambd):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softshrink(ref_inp, lambd=lambd)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.softshrink(inp, lambd)
+    res_out = flag_gems.softshrink(inp, lambd)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,7 +45,6 @@ def test_softshrink_out(shape, dtype):
     ref_out = torch.ops.aten.softshrink.out(ref_inp, 0.5, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.softshrink.out(inp, 0.5, out=res_out_buf)
+    res_out = flag_gems.softshrink_out(inp, 0.5, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

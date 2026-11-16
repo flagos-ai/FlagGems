@@ -57,8 +57,7 @@ def test_diagonal_copy(shape, dtype, offset, dims):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, offset, dim1, dim2)
+    res_out = flag_gems.diagonal_copy(inp, offset, dim1, dim2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -85,8 +84,7 @@ def test_diagonal_copy_int(shape, dtype, offset, dims):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, offset, dim1, dim2)
+    res_out = flag_gems.diagonal_copy(inp, offset, dim1, dim2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -100,8 +98,7 @@ def test_diagonal_copy_empty():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, 0, 1, 2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, 0, 1, 2)
+    res_out = flag_gems.diagonal_copy(inp, 0, 1, 2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -115,7 +112,6 @@ def test_diagonal_copy_single_element():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, 0, 1, 2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal_copy(inp, 0, 1, 2)
+    res_out = flag_gems.diagonal_copy(inp, 0, 1, 2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

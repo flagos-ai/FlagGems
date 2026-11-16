@@ -48,7 +48,7 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
             return []
 
         shapes = super().set_more_shapes()
-        return [
+        return [(1, 262145), (1, 524287)] + [
             shape
             for shape in shapes
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
@@ -95,7 +95,7 @@ def gather_scatter_gbps(bench_fn_args, latency):
 def test_scatter_reduce(reduce, include_self):
     """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
     bench = TensorSelectBenchmark(
-        op_name="scatter_reduce.two",
+        op_name="scatter_reduce_two",
         torch_op=torch.ops.aten.scatter_reduce.two,
         input_fn=scatter_reduce_input_fn_factory(reduce, include_self),
         get_gbps=gather_scatter_gbps,
@@ -104,13 +104,14 @@ def test_scatter_reduce(reduce, include_self):
     bench.run()
 
 
+@pytest.mark.scatter_reduce_
 @pytest.mark.scatter_reduce_two_
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
 def test_scatter_reduce_(reduce, include_self):
     """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
     bench = TensorSelectBenchmark(
-        op_name="scatter_reduce_.two",
+        op_name="scatter_reduce_two_",
         torch_op=torch.ops.aten.scatter_reduce_.two,
         input_fn=scatter_reduce_input_fn_factory(reduce, include_self, is_inplace=True),
         get_gbps=gather_scatter_gbps,
@@ -126,7 +127,7 @@ def test_scatter_reduce_(reduce, include_self):
 def test_scatter_reduce_out(reduce, include_self):
     """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""
     bench = TensorSelectBenchmark(
-        op_name="scatter_reduce.two_out",
+        op_name="scatter_reduce_two_out",
         torch_op=torch.ops.aten.scatter_reduce.two_out,
         input_fn=scatter_reduce_input_fn_factory(reduce, include_self, use_out=True),
         get_gbps=gather_scatter_gbps,

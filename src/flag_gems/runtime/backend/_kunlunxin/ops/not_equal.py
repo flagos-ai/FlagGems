@@ -55,7 +55,6 @@ def not_equal(A, B):
     return res
 
 
-# ---------------------------------------------------------------------------
 _NOT_EQUAL_TENSOR_TILE_SMALL = 2048
 _NOT_EQUAL_TENSOR_SMALL_MAX = 16384
 _NOT_EQUAL_TENSOR_TILE_MID = 8192
@@ -98,9 +97,6 @@ def _not_equal_tensor_fast(A, B, numel, TILE):
                 isCloseMemoryAsync=False,
             )
         else:
-            # non-multiple of the bucket (e.g. (1024,1) with TILE=2048): a
-            # single block with a real tail mask. The mask covers genuine
-            # elements only.
             not_equal_tensor_fast_kernel[(triton.cdiv(numel, TILE),)](
                 A,
                 B,
@@ -130,15 +126,6 @@ def not_equal_func_scalar(x, y):
 
 def not_equal_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN NOT_EQUAL_SCALAR")
-    # not_equal.Scalar is an exact alias of ne.Scalar (`torch.not_equal` ==
-    # `torch.ne`; same ATen semantics: a != b element-wise, NaN-aware). The
-    # generic scalar-compare path (not_equal_func_scalar) materializes
-    # `arith.cmpf -> i1 -> bool store` per lane, which the XPU backend lowers
-    # to the same i1 slow path that doomed the closed ne_scalar (baseline
-    # 2026-08-14, XPU 7: 17.6ms vs 1.09ms on [10000,65536]). Take the closed
-    # ne_scalar fast path below (same two-stage saturating recipe,
-    # `harness/solution/performance/not_equal_scalar_perf.md`) whenever
-    # applicable; generic path otherwise, behavior unchanged.
     numel = A.numel()
     dtype = A.dtype
     if (
@@ -146,38 +133,46 @@ def not_equal_scalar(A, B):
         and dtype in (torch.float16, torch.float32, torch.bfloat16)
         and numel >= _NOT_EQUAL_SCALAR_MASKED_MIN
     ):
-        # Only build the wrapped scalar (a `torch.tensor(...).item()`
-        # roundtrip, ~3us host) for candidate sizes; the small-shape generic
-        # path below must stay free of host overhead (measured 0.49-0.82x
-        # regression on (64,64)/(10000,1)/(100,1,100) when it ran every call).
         s = float(B)
-        wrapped = torch.tensor(s, dtype=dtype).item()
+        wrapped = float(torch.tensor(s, dtype=dtype).item())
         if math.isfinite(wrapped):
-            if (
-                numel % _NOT_EQUAL_SCALAR_FAST_TILE == 0
-                and numel >= _NOT_EQUAL_SCALAR_FAST_TILE * _NOT_EQUAL_SCALAR_MIN_GRID
-            ):
-                # exact-multiple flat tiles (grid >= MIN_GRID): no mask, no
-                # i1 -- a saturating fp32 store + vendor bool conversion.
+            tile = (
+                _NOT_EQUAL_SCALAR_TILE_F32
+                if dtype == torch.float32
+                else _NOT_EQUAL_SCALAR_TILE_HALF
+            )
+            # fp16 has a native vector compare; bf16 does not, but a bf16 value
+            # within the fp16 range widens to fp16 losslessly (7-bit mantissa is
+            # a subset of fp16's 10-bit), so route it through the fp16 compare
+            # too. Only safe when the scalar itself is fp16-finite: otherwise the
+            # scalar would round to +/-inf and collide with overflowing inputs.
+            use_half = dtype == torch.float16 or (
+                dtype == torch.bfloat16 and abs(wrapped) <= _FP16_MAX
+            )
+            if numel % tile == 0 and numel >= tile * _NOT_EQUAL_SCALAR_MIN_GRID:
                 return _not_equal_scalar_fast(
-                    A, float(wrapped), (numel // _NOT_EQUAL_SCALAR_FAST_TILE,)
+                    A, wrapped, tile, (numel // tile,), use_half
                 )
-            if numel % _NOT_EQUAL_SCALAR_FAST_TILE != 0:
-                # non-multiple mid sizes (e.g. 2.56M, [10000,256]): flat
-                # tiles with a real tail mask. The mask is genuine (tail
-                # elements), so the masked-memory path is the only penalty.
-                return _not_equal_scalar_fast_masked(A, float(wrapped), numel)
-    # Like ne_scalar / gt_scalar, the scalar path must NOT set
-    # TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST: for tensor-vs-scalar the
-    # fusion env vars make the compiler emit an fp16 compare that trips
-    # `arith.cmpf same-type` and overflows uni_sram -> compile failure.
+            return _not_equal_scalar_fast_masked(A, wrapped, tile, numel, use_half)
+    if dtype in (torch.float16, torch.float32, torch.bfloat16):
+        B = float(torch.tensor(float(B), dtype=dtype).item())
     res = not_equal_func_scalar(A, B)
     return res
 
 
-_NOT_EQUAL_SCALAR_FAST_TILE = 131072
-_NOT_EQUAL_SCALAR_MIN_GRID = 128
+# Direct scalar compare vectorizes on XPU with TRITONXPU_COMPARE_FUSION=1 (same
+# path not_equal's tensor-tensor kernel rides), giving ~2-4x over the old
+# branchless-arithmetic kernel. TRITONXPU_FP16_FAST must stay *off*: with it on,
+# the fp16 compare trips a TritonXPUDtypeConvert compile failure. Wide tiles win
+# (the transfer bandwidth scales with the per-program contiguous run), so f16/
+# bf16 use 128K and f32 64K -- the crossover measured on KL3 at 4096x4096.
+# fp16 uses a native vector compare against a tl.full constant (0.92); f32 uses
+# a plain compare (0.82); bf16 widens to fp16 to reach that fast path (0.87).
+_NOT_EQUAL_SCALAR_TILE_F32 = 65536
+_NOT_EQUAL_SCALAR_TILE_HALF = 131072
+_NOT_EQUAL_SCALAR_MIN_GRID = 8
 _NOT_EQUAL_SCALAR_MASKED_MIN = 1 << 20
+_FP16_MAX = 65504.0
 
 
 @triton.jit
@@ -185,57 +180,103 @@ def not_equal_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + tid).to(tl.float32)
-    d = tl.abs(x - scalar)
-    t = tl.minimum(1.0, d * 1.0e30 * 1.0e15)
-    tl.store(out_ptr + tid, t)
-
-
-def _not_equal_scalar_fast(A, scalar, grid):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    not_equal_scalar_fast_kernel[grid](
-        out32,
-        A,
-        scalar,
-        TILE=_NOT_EQUAL_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    # ``torch.ops.aten._copy_from`` is an explicit ATen fallback (forbidden);
-    # ``to(torch.bool)`` lowers to the same vendor fp32->bool conversion
-    # (measured 0.048ms vs 0.049ms on 16M elements, XPU 4).
-    return out32.to(torch.bool)
+    tl.store(out_ptr + tid, x != scalar)
 
 
 @triton.jit
 def not_equal_scalar_fast_masked_kernel(
-    out_ptr, y_ptr, scalar, numel, TILE: tl.constexpr
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr
 ):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
-    y = tl.load(y_ptr + tid, mask=mask).to(tl.float32)
-    d = tl.abs(y - scalar)
-    t = tl.minimum(1.0, d * 1.0e30 * 1.0e15)
-    tl.store(out_ptr + tid, t, mask=mask)
+    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
+    tl.store(out_ptr + tid, x != scalar, mask=mask)
 
 
-def _not_equal_scalar_fast_masked(A, scalar, numel):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    grid = (math.ceil(numel / _NOT_EQUAL_SCALAR_FAST_TILE),)
-    not_equal_scalar_fast_masked_kernel[grid](
-        out32,
-        A,
-        scalar,
-        numel,
-        TILE=_NOT_EQUAL_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
+@triton.jit
+def not_equal_scalar_half_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid).to(tl.float16)
+    yv = tl.full([TILE], scalar, tl.float16)
+    tl.store(out_ptr + tid, x != yv)
+
+
+@triton.jit
+def not_equal_scalar_half_masked_kernel(
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    mask = tid < numel
+    x = tl.load(x_ptr + tid, mask=mask).to(tl.float16)
+    yv = tl.full([TILE], scalar, tl.float16)
+    tl.store(out_ptr + tid, x != yv, mask=mask)
+
+
+def _set_compare_env():
+    prev = (
+        os.environ.get("TRITONXPU_COMPARE_FUSION"),
+        os.environ.get("TRITONXPU_FP16_FAST"),
     )
-    # ``torch.ops.aten._copy_from`` is an explicit ATen fallback (forbidden);
-    # ``to(torch.bool)`` lowers to the same vendor fp32->bool conversion
-    # (measured 0.048ms vs 0.049ms on 16M elements, XPU 4).
-    return out32.to(torch.bool)
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    # Must be off: fp16 direct compare crashes TritonXPUDtypeConvert with it on.
+    os.environ["TRITONXPU_FP16_FAST"] = "0"
+    return prev
+
+
+def _restore_compare_env(prev):
+    for key, val in zip(("TRITONXPU_COMPARE_FUSION", "TRITONXPU_FP16_FAST"), prev):
+        if val is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = val
+
+
+def _not_equal_scalar_fast(A, scalar, tile, grid, use_half):
+    out = torch.empty_like(A, dtype=torch.bool)
+    kernel = not_equal_scalar_half_kernel if use_half else not_equal_scalar_fast_kernel
+    prev = _set_compare_env()
+    try:
+        kernel[grid](
+            out.view(torch.uint8),
+            A,
+            scalar,
+            TILE=tile,
+            **_NOT_EQUAL_FAST_LAUNCH_OPTS,
+        )
+    finally:
+        _restore_compare_env(prev)
+    return out
+
+
+def _not_equal_scalar_fast_masked(A, scalar, tile, numel, use_half):
+    out = torch.empty_like(A, dtype=torch.bool)
+    grid = (math.ceil(numel / tile),)
+    kernel = (
+        not_equal_scalar_half_masked_kernel
+        if use_half
+        else not_equal_scalar_fast_masked_kernel
+    )
+    prev = _set_compare_env()
+    try:
+        kernel[grid](
+            out.view(torch.uint8),
+            A,
+            scalar,
+            numel,
+            TILE=tile,
+            **_NOT_EQUAL_FAST_LAUNCH_OPTS,
+        )
+    finally:
+        _restore_compare_env(prev)
+    return out
+
+
+_NOT_EQUAL_FAST_LAUNCH_OPTS = dict(
+    num_warps=4,
+    buffer_size_limit=8192,
+    unroll_num=16,
+    isCloseMemoryAsync=False,
+)

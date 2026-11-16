@@ -13,6 +13,8 @@
 # change (both are -x), zero correctness risk.
 import logging
 
+import torch
+
 from .neg import neg_func
 
 logger = logging.getLogger(__name__)
@@ -20,4 +22,6 @@ logger = logging.getLogger(__name__)
 
 def negative(A):
     logger.debug("GEMS_KUNLUNXIN NEGATIVE")
+    if A.is_floating_point():
+        return neg_func(A, out0=torch.empty_like(A))
     return neg_func(A)

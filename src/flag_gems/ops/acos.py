@@ -31,6 +31,6 @@ def acos_kernel(x):
 
 
 def acos(x):
-    logger.debug("GEMS ACOS FORWARD")
+    logger.debug("GEMS ACOS_FORWARD")
     y = acos_kernel(x)
     return y

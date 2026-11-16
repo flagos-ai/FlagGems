@@ -28,8 +28,7 @@ def test_relu(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.relu(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.relu(res_inp)
+    res_out = flag_gems.relu(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +41,6 @@ def test_relu_(shape, dtype):
     ref_inp = utils.to_reference(res_inp.clone(), True)
 
     ref_out = torch.relu_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.relu_(res_inp)
+    res_out = flag_gems.relu_(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

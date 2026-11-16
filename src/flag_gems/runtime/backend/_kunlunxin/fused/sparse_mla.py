@@ -292,7 +292,7 @@ def _spmla_pv(
 def triton_sparse_mla_fwd_interface(
     q, kv, indices, sm_scale=None, return_p_sum: bool = False, d_v=512
 ):
-    logger.debug("GEMS SPARSE_MLA_FWD_INTERFACE (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN SPARSE_MLA_FWD_INTERFACE")
     assert return_p_sum is False, "This kernel file is for fwd only"
     assert q.is_contiguous() and kv.is_contiguous() and indices.is_contiguous()
     B, SQ, H, DT = q.shape

@@ -28,6 +28,5 @@ def test_functional_sym_constrain_range(shape, dtype):
     dep_token = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_dep = utils.to_reference(dep_token)
     ref_out = torch.ops.aten._functional_sym_constrain_range(5, 1, 10, ref_dep)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._functional_sym_constrain_range(5, 1, 10, dep_token)
+    res_out = flag_gems._functional_sym_constrain_range(5, 1, 10, dep_token)
     utils.gems_assert_close(res_out, ref_out, dtype)

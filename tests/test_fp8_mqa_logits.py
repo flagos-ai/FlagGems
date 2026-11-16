@@ -19,6 +19,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import conftest as cfg
 from .accuracy_utils import gems_assert_close
 
@@ -34,6 +35,14 @@ try:
     VLLM_AVAILABLE = True
 except ImportError:
     VLLM_AVAILABLE = False
+
+
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
 
 
 def is_hopper_available() -> bool:
@@ -107,15 +116,14 @@ def test_fp8_mqa_logits(clean_logits: bool):
         q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
     )
 
-    with flag_gems.use_gems():
-        res_out = fp8_mqa_logits(
-            q=q,
-            kv=(k_fp8, k_scales),
-            weights=weights,
-            cu_seqlen_ks=cu_seqlen_ks,
-            cu_seqlen_ke=cu_seqlen_ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_mqa_logits(
+        q=q,
+        kv=(k_fp8, k_scales),
+        weights=weights,
+        cu_seqlen_ks=cu_seqlen_ks,
+        cu_seqlen_ke=cu_seqlen_ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1
@@ -157,15 +165,14 @@ def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
         q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
     )
 
-    with flag_gems.use_gems():
-        res_out = fp8_mqa_logits(
-            q=q,
-            kv=(k_fp8, k_scales),
-            weights=weights,
-            cu_seqlen_ks=cu_seqlen_ks,
-            cu_seqlen_ke=cu_seqlen_ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_mqa_logits(
+        q=q,
+        kv=(k_fp8, k_scales),
+        weights=weights,
+        cu_seqlen_ks=cu_seqlen_ks,
+        cu_seqlen_ke=cu_seqlen_ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1

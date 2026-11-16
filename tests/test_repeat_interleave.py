@@ -50,8 +50,7 @@ def test_repeat_interleave_self_int(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
-    with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(inp, repeats, dim)
+    res_out = flag_gems.repeat_interleave_self_int(inp, repeats, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -70,8 +69,7 @@ def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
-    with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(inp, repeats, dim)
+    res_out = flag_gems.repeat_interleave_self_int(inp, repeats, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -88,8 +86,7 @@ def test_repeat_interleave_tensor(shape, dtype):
     ref_repeats = utils.to_reference(repeats)
     ref_out = torch.repeat_interleave(ref_repeats)
 
-    with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(repeats)
+    res_out = flag_gems.repeat_interleave_tensor(repeats)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -109,7 +106,6 @@ def test_repeat_interleave_self_tensor(shape, dim, dtype):
     ref_repeats = utils.to_reference(repeats)
 
     ref_out = torch.repeat_interleave(ref_inp, ref_repeats, dim)
-    with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(inp, repeats, dim)
+    res_out = flag_gems.repeat_interleave_self_tensor(inp, repeats, dim)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -45,14 +46,16 @@ def _jagged_to_padded_dense_forward_kernel(
     ROWS_PER_PROG: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """Write the real (non-padding) elements of a padded dense output.
+    """Write a complete padded dense output in one pass.
 
     Grid: ``(cdiv(batch_size, ROWS_PER_PROG),)``.  Program ``pid`` owns rows
     ``[pid*ROWS_PER_PROG, (pid+1)*ROWS_PER_PROG)``.  For each row ``r`` with
     ``seq_len`` and ``seq_start`` loaded from ``offsets``:
-      ``output[r, c] = values[seq_start + c]`` for ``c < seq_len``.
-    Elements with ``c >= seq_len`` (and OOB rows) are never stored; the output
-    tensor is pre-filled with ``padding_value`` by the caller.
+      ``output[r, c] = values[seq_start + c]`` for ``c < seq_len``, and
+      ``output[r, c] = padding_value`` for ``c >= seq_len``.
+    Every column of every row is stored (masked by the column-tail comparison
+    ``c < max_length``), so the caller only needs an uninitialized buffer and
+    the separate pre-fill pass is avoided.
     """
     pid = ext.program_id(0)
     row0 = pid * ROWS_PER_PROG
@@ -64,16 +67,18 @@ def _jagged_to_padded_dense_forward_kernel(
             seq_len = tl.load(offsets + row + 1) - seq_start
             for j in tl.range(0, max_length, BLOCK_N):
                 col = j + tl.arange(0, BLOCK_N)
-                # Clamp so a masked load that is lowered as unmasked (XPU
-                # tail-block limitation) cannot read past the allocation.
+                # Unmasked load with clamped address: the XPU masked-load
+                # `other` operand is not honored for masked-off lanes (they
+                # come back 0), so select the padding value explicitly.
                 src = tl.minimum(seq_start + col, total_length - 1)
-                val = tl.load(values + src, mask=col < seq_len, other=padding_value)
-                # Store only the real region: padded lanes are never written
-                # (they already hold padding_value from the pre-fill).
+                val = tl.load(values + src)
+                val = tl.where(col < seq_len, val, padding_value)
+                # Store the whole row: padded lanes get padding_value, real
+                # lanes get the data.
                 tl.store(
                     output + row * max_length + col,
                     val,
-                    mask=col < seq_len,
+                    mask=col < max_length,
                 )
 
 
@@ -100,23 +105,31 @@ def _jagged_to_padded_dense_forward(values, offsets, max_lengths, padding_value=
     max_length = int(max_lengths[0])
 
     if batch_size <= 0 or max_length <= 0:
-        return _general_ops.empty(
+        return torch.empty(
             (max(batch_size, 0), max(max_length, 0)),
             dtype=values.dtype,
             device=values.device,
         )
 
-    output = _general_ops.full(
+    # Single pass: the kernel writes every column (data + padding), so only an
+    # uninitialized buffer is needed here.  Plain torch.empty (allocation only)
+    # is used instead of flag_gems.ops.empty, which routes through a meta
+    # device roundtrip that is very slow on this backend.
+    output = torch.empty(
         (batch_size, max_length),
-        padding_value,
         dtype=values.dtype,
         device=values.device,
     )
 
     total_length = int(values.numel())
     if total_length == 0:
-        # Every row is empty: output is already all padding_value.
-        return output
+        # Every row is empty: no kernel can run, fill with padding_value.
+        return _general_ops.full(
+            (batch_size, max_length),
+            padding_value,
+            dtype=values.dtype,
+            device=values.device,
+        )
 
     rows_per_prog = min(_ROWS_PER_PROG, batch_size)
     block_n = min(triton.next_power_of_2(max_length), _BLOCK_N_CAP)

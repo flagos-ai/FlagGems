@@ -22,6 +22,15 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+
+# Without an explicit CodeGenConfig, pointwise_dynamic specializes the kernel
+# per input shape on XPU -> per-shape recompile -> IR explosion, and the default
+# tiny tile no-unroll codegen underutilizes the XPU badly (baseline ~0.019-0.83x
+# torch, with 16M-element shapes running at ~42ms vs ~0.79ms native).
+# kunlunAutoGrid=True + prefer_1d_tile + bounded tile makes the kernel
+# shape-independent so it compiles ONCE and covers large tensors. Mirrors
+# acos/asin/logaddexp2. isCloseVectorization stays False (vec OPEN) as this is
+# a log/sqrt transcendental kernel.
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -29,7 +38,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=True,
+    isCloseVectorization=False,
     kunlunAutoGrid=True,
     unroll_num=8,
 )
@@ -37,22 +46,19 @@ config_ = CodeGenConfig(
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
-def acosh_func(x):
-    # acosh(x) = log(x + sqrt(x*x - 1))
-    # Domain: [1, inf), returns NaN for x < 1 (except x=1 returns 0)
-    x32 = x.to(tl.float32)
-    # Using the formula: acosh(x) = log(x + sqrt(x*x - 1))
-    sqrt_term = tl.sqrt(x32 * x32 - 1.0)
-    result = tl.log(x32 + sqrt_term)
-    return result.to(x.dtype)
+def acosh_kernel(x):
+    # acosh(x) = log(x + sqrt(x*x - 1)); domain [1, inf), NaN for x < 1.
+    x_f32 = x.to(tl.float32)
+    sqrt_term = tl.sqrt(x_f32 * x_f32 - 1.0)
+    return tl.log(x_f32 + sqrt_term)
 
 
 def acosh(A):
     logger.debug("GEMS_KUNLUNXIN ACOSH")
-    return acosh_func(A)
+    return acosh_kernel(A)
 
 
 def acosh_(A):
     logger.debug("GEMS_KUNLUNXIN ACOSH_")
-    acosh_func(A, out0=A)
+    acosh_kernel(A, out0=A)
     return A

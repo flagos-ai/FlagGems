@@ -34,10 +34,9 @@ def test_accuracy_fake_quantize_per_tensor_affine(
         utils.to_reference(input), scale, zero_point, quant_min, quant_max
     )
 
-    with flag_gems.use_gems():
-        result = torch.fake_quantize_per_tensor_affine(
-            input, scale, zero_point, quant_min, quant_max
-        )
+    result = flag_gems.fake_quantize_per_tensor_affine(
+        input, scale, zero_point, quant_min, quant_max
+    )
 
     utils.gems_assert_equal(result, ref)
 
@@ -55,10 +54,7 @@ def test_accuracy_fake_quantize_per_tensor_affine_tensor_qparams():
         255,
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.fake_quantize_per_tensor_affine.tensor_qparams(
-            input, scale, zero_point, 0, 255
-        )
+    result = flag_gems.fake_quantize_per_tensor_affine(input, scale, zero_point, 0, 255)
 
     utils.gems_assert_equal(result, ref)
 
@@ -74,8 +70,7 @@ def test_accuracy_fake_quantize_per_tensor_affine_half_to_even():
         utils.to_reference(input), 1.0, 0, -128, 127
     )
 
-    with flag_gems.use_gems():
-        result = torch.fake_quantize_per_tensor_affine(input, 1.0, 0, -128, 127)
+    result = flag_gems.fake_quantize_per_tensor_affine(input, 1.0, 0, -128, 127)
 
     utils.gems_assert_equal(result, ref)
 
@@ -87,8 +82,7 @@ def test_accuracy_fake_quantize_per_tensor_affine_noncontiguous():
         utils.to_reference(input), 0.1, 0, 0, 255
     )
 
-    with flag_gems.use_gems():
-        result = torch.fake_quantize_per_tensor_affine(input, 0.1, 0, 0, 255)
+    result = flag_gems.fake_quantize_per_tensor_affine(input, 0.1, 0, 0, 255)
 
     utils.gems_assert_equal(result, ref)
 
@@ -97,8 +91,7 @@ def test_accuracy_fake_quantize_per_tensor_affine_noncontiguous():
 def test_accuracy_fake_quantize_per_tensor_affine_empty():
     input = torch.empty((2, 0, 3), device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.fake_quantize_per_tensor_affine(input, 0.1, 0, 0, 255)
+    result = flag_gems.fake_quantize_per_tensor_affine(input, 0.1, 0, 0, 255)
 
     assert result.shape == input.shape
     assert result.dtype == input.dtype
@@ -111,7 +104,7 @@ def test_fake_quantize_per_tensor_affine_invalid_qparams(
 ):
     input = torch.ones(2, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.fake_quantize_per_tensor_affine(
+    with pytest.raises(RuntimeError):
+        flag_gems.fake_quantize_per_tensor_affine(
             input, 0.1, zero_point, quant_min, quant_max
         )

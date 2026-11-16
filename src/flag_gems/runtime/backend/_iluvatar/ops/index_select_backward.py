@@ -46,7 +46,7 @@ def index_select_backward(grad, self_sizes, dim, index):
 
     Same approach as the Hygon backend (PR #231).
     """
-    logger.debug("GEMS ILUVATAR INDEX_SELECT_BACKWARD")
+    logger.debug("GEMS_ILUVATAR INDEX_SELECT_BACKWARD")
 
     if index.ndim == 0:
         index = index.unsqueeze(0)

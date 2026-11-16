@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
+
 import pytest
 import torch
 
@@ -27,6 +29,13 @@ try:
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
+
+if HAS_VLLM_FUSED_MOE:
+    VLLM_SUPPORTS_INPLACE = (
+        "inplace" in inspect.signature(vllm_fused_experts_impl).parameters
+    )
+else:
+    VLLM_SUPPORTS_INPLACE = False
 
 
 class InplaceFusedExpertsBenchmark(base.Benchmark):
@@ -91,8 +100,37 @@ class InplaceFusedExpertsBenchmark(base.Benchmark):
         yield (hidden_states, w1, w2, topk_weights, topk_ids)
 
 
+def _unfused_moe_experts_device_baseline(hidden_states, w1, w2, topk_weights, topk_ids):
+    num_experts = w1.shape[0]
+    top_k = topk_ids.shape[1]
+    out = torch.zeros_like(hidden_states)
+    flat_expert = topk_ids.reshape(-1)
+    counts = torch.bincount(flat_expert, minlength=num_experts)
+    bounds = (torch.cumsum(counts, 0) - counts).tolist()
+    ends = torch.cumsum(counts, 0).tolist()
+    order = torch.argsort(flat_expert, stable=True)
+    for ei in range(num_experts):
+        lo, hi = bounds[ei], ends[ei]
+        if hi <= lo:
+            continue
+        sel = order[lo:hi]
+        tok = torch.div(sel, top_k, rounding_mode="floor")
+        kth = sel - tok * top_k
+        x = hidden_states.index_select(0, tok)
+        a = x @ w1[ei].t()
+        inter = a.shape[-1] // 2
+        act = torch.nn.functional.silu(a[:, :inter]) * a[:, inter:]
+        y = act @ w2[ei].t()
+        w = topk_weights[tok, kth].to(hidden_states.dtype).unsqueeze(1)
+        out.index_add_(0, tok, y * w)
+    hidden_states.copy_(out)
+    return hidden_states
+
+
 def _vllm_inplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     """Wrapper to call vllm fused_experts_impl in-place."""
+    if not VLLM_SUPPORTS_INPLACE:
+        pytest.skip("installed vLLM fused_experts_impl does not accept inplace")
     vllm_fused_experts_impl(
         hidden_states,
         w1,
@@ -118,14 +156,21 @@ def _gems_inplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, top
 
 
 @pytest.mark.inplace_fused_experts
-@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM not installed")
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MOE and flag_gems.vendor_name != "kunlunxin",
+    reason="vLLM not installed",
+)
 def test_inplace_fused_experts_gems_vs_vllm():
     """
-    Benchmark FlagGems inplace_fused_experts vs vLLM inplace fused_experts_impl (bf16/fp16).
+    Benchmark FlagGems inplace_fused_experts vs vLLM (torch ref on kunlunxin).
     """
+    if flag_gems.vendor_name == "kunlunxin":
+        torch_op = _unfused_moe_experts_device_baseline
+    else:
+        torch_op = _vllm_inplace_fused_experts_wrapper
     bench = InplaceFusedExpertsBenchmark(
         op_name="inplace_fused_experts",
-        torch_op=_vllm_inplace_fused_experts_wrapper,
+        torch_op=torch_op,
         dtypes=[torch.bfloat16, torch.float16],
     )
     bench.set_gems(_gems_inplace_fused_experts_wrapper)

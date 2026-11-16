@@ -14,7 +14,7 @@ def flatten_input_fn(shape, dtype, device):
 def test_flatten():
     bench = base.GenericBenchmark(
         input_fn=flatten_input_fn,
-        op_name="flatten.using_ints",
+        op_name="flatten",
         torch_op=torch.flatten,
         dtypes=[torch.float16, torch.float32, torch.bfloat16],
     )

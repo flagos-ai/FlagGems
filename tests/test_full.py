@@ -33,8 +33,7 @@ def test_full(shape, dtype, fill_value):
     # without dtype
     ref_out = torch.full(shape, fill_value, device="cpu" if cfg.TO_CPU else device)
 
-    with flag_gems.use_gems():
-        res_out = torch.full(shape, fill_value, device=flag_gems.device)
+    res_out = flag_gems.full(shape, fill_value, device=flag_gems.device)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -43,7 +42,6 @@ def test_full(shape, dtype, fill_value):
         shape, fill_value, dtype=dtype, device="cpu" if cfg.TO_CPU else device
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.full(shape, fill_value, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.full(shape, fill_value, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(res_out, ref_out)

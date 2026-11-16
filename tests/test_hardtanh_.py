@@ -30,8 +30,7 @@ def test_hardtanh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.hardtanh_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh_(inp)
+    res_out = flag_gems.hardtanh_(inp)
 
     assert res_out is inp
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -47,8 +46,7 @@ def test_hardtanh__explicit(shape, dtype, min_max):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.hardtanh_(ref_inp, min_val, max_val)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh_(inp, min_val, max_val)
+    res_out = flag_gems.hardtanh_(inp, min_val, max_val)
 
     assert res_out is inp
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -74,8 +72,7 @@ def test_hardtanh__special_values(dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.hardtanh_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh_(inp)
+    res_out = flag_gems.hardtanh_(inp)
 
     assert res_out is inp
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

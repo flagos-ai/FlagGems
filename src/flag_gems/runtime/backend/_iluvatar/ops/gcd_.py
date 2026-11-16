@@ -153,7 +153,7 @@ def gcd_(self, other):
     hardware a single integer ``%`` is cheaper than the batched
     ``ctz`` + bitwise-ops chain.
     """
-    logger.debug("GEMS ILUVATAR GCD_")
+    logger.debug("GEMS_ILUVATAR GCD_")
 
     if self.dtype != other.dtype or self.shape != other.shape:
         # Promotion / broadcast: compute out-of-place, then copy back.

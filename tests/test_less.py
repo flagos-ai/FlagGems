@@ -32,12 +32,12 @@ def test_less(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.less(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.less(inp1, inp2)
+    res_out = flag_gems.lt(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.less
 @pytest.mark.less_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -47,7 +47,6 @@ def test_less_scalar(shape, dtype, scalar):
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.less(ref_inp1, scalar)
-    with flag_gems.use_gems():
-        res_out = torch.less(inp1, scalar)
+    res_out = flag_gems.lt_scalar(inp1, scalar)
 
     utils.gems_assert_equal(res_out, ref_out)

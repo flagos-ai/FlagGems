@@ -252,7 +252,7 @@ def grouped_topk(
     bias: torch.Tensor,
     scoring_func: int = 0,
 ):
-    logger.debug("GEMS GROUPED TOPK")
+    logger.debug("GEMS GROUPED_TOPK")
     if scores.ndim != 2:
         raise ValueError("scores must be a 2D Tensor")
     num_tokens, num_experts = scores.shape

@@ -298,6 +298,26 @@ def vdot_heur_block_size(args):
         return 1024
 
 
+def mha_varlen_prefill_heur_block_m(args):
+    return 128
+
+
+def mha_varlen_decode_heur_block_m(args):
+    return 32
+
+
+def mha_varlen_heur_block_n(args):
+    return 32
+
+
+def mha_varlen_heur_num_warps(args):
+    return 4
+
+
+def mha_varlen_heur_num_stages(args):
+    return 3
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -337,6 +357,18 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+    },
+    "mha_varlen_prefill": {
+        "BLOCK_M": mha_varlen_prefill_heur_block_m,
+        "BLOCK_N": mha_varlen_heur_block_n,
+        "num_warps": mha_varlen_heur_num_warps,
+        "num_stages": mha_varlen_heur_num_stages,
+    },
+    "mha_varlen_decode": {
+        "BLOCK_M": mha_varlen_decode_heur_block_m,
+        "BLOCK_N": mha_varlen_heur_block_n,
+        "num_warps": mha_varlen_heur_num_warps,
+        "num_stages": mha_varlen_heur_num_stages,
     },
     "rand": {
         "BLOCK": rand_heur_block,
