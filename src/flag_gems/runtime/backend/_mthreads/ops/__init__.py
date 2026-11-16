@@ -28,6 +28,16 @@ from ._fake_quantize_learnable_per_tensor_affine import (
 from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
     _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
+from ._foreach_abs_ import _foreach_abs_
+from ._foreach_acos_ import _foreach_acos_
+from ._foreach_add__List import _foreach_add__List
+from ._foreach_add__Scalar import _foreach_add__Scalar
+from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_add_Scalar import _foreach_add_Scalar
+from ._foreach_add_ScalarList import _foreach_add_ScalarList
+from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
+from ._foreach_addcdiv__ScalarList import _foreach_addcdiv__ScalarList
+from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -72,15 +82,7 @@ from .cudnn_convolution import cudnn_convolution
 from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
-from .div import (
-    div_mode,
-    div_mode_,
-    floor_divide,
-    floor_divide_,
-    true_divide,
-    true_divide_,
-    true_divide_out,
-)
+from .div import div_mode, div_mode_, floor_divide, floor_divide_, true_divide_out
 from .dropout import dropout, dropout_backward
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
@@ -203,6 +205,8 @@ from .square_ import square_
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .true_divide import true_divide
+from .true_divide_ import true_divide_
 from .trunc import trunc, trunc_
 from .uniform import uniform
 from .unique import _unique2
@@ -231,6 +235,16 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+    "_foreach_abs_",
+    "_foreach_acos_",
+    "_foreach_add__List",
+    "_foreach_add__Scalar",
+    "_foreach_add__ScalarList",
+    "_foreach_add_Scalar",
+    "_foreach_add_ScalarList",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__ScalarList",
+    "_foreach_addcdiv__Tensor",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
