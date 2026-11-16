@@ -170,14 +170,16 @@ def test_fake_quantize_tensor_qparams_rounding(dtype, zero_point, scale, enabled
     ref = torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
         inp_cpu, scale_cpu, zero_cpu, enabled_cpu, QUANT_MIN, QUANT_MAX
     )
+    device_input = inp_cpu.to(flag_gems.device)
     actual = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
-        inp_cpu.to(flag_gems.device),
+        device_input,
         scale_cpu.to(flag_gems.device),
         zero_cpu.to(flag_gems.device),
         enabled_cpu.to(flag_gems.device),
         QUANT_MIN,
         QUANT_MAX,
     )
+    assert actual[0].device == actual[1].device == device_input.device
     torch.testing.assert_close(actual[0].cpu(), ref[0], rtol=0, atol=0)
     torch.testing.assert_close(actual[1].cpu(), ref[1], rtol=0, atol=0)
 
@@ -206,14 +208,16 @@ def test_fake_quantize_tensor_qparams_extreme_values(dtype, enabled):
     expected = torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
         inp, scale, zero, flag, QUANT_MIN, QUANT_MAX
     )
+    device_input = inp.to(flag_gems.device)
     actual = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
-        inp.to(flag_gems.device),
+        device_input,
         scale.to(flag_gems.device),
         zero.to(flag_gems.device),
         flag.to(flag_gems.device),
         QUANT_MIN,
         QUANT_MAX,
     )
+    assert actual[0].device == actual[1].device == device_input.device
     torch.testing.assert_close(
         actual[0].cpu(), expected[0], rtol=0, atol=0, equal_nan=True
     )
