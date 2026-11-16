@@ -110,31 +110,62 @@ def _logaddexp2_backward_kernel(
     n_elements,
     NEED_SELF: tl.constexpr,
     NEED_OTHER: tl.constexpr,
+    EVEN: tl.constexpr,
+    I64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0).to(tl.int64)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
-    mask = offsets < n_elements
+    pid = tl.program_id(0)
+    if I64:
+        offsets = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    else:
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+
     # The generated ATen backward materializes ``other - self``, ``pow(2, .)``
     # and ``1 + .`` as separate tensors, so each is rounded to the element
     # dtype; repeating that order keeps this kernel bit-identical to native.
-    x = tl.load(self_ptr + offsets, mask=mask, other=0.0)
-    y = tl.load(other_ptr + offsets, mask=mask, other=0.0)
+    if EVEN:
+        x = tl.load(self_ptr + offsets)
+        y = tl.load(other_ptr + offsets)
+    else:
+        mask = offsets < n_elements
+        x = tl.load(self_ptr + offsets, mask=mask, other=0.0)
+        y = tl.load(other_ptr + offsets, mask=mask, other=0.0)
+
     if NEED_SELF:
-        grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+        if EVEN:
+            grad = tl.load(grad_ptr + offsets)
+        else:
+            grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
         delta = (x.to(tl.float32) - y.to(tl.float32)).to(x.dtype).to(tl.float32)
         pow_delta = tl.exp2(-delta).to(x.dtype).to(tl.float32)
         denom = (1.0 + pow_delta).to(x.dtype).to(tl.float32)
-        tl.store(grad_self_ptr + offsets, grad.to(tl.float32) / denom, mask=mask)
+        grad_input = grad.to(tl.float32) / denom
+        if EVEN:
+            tl.store(grad_self_ptr + offsets, grad_input)
+        else:
+            tl.store(grad_self_ptr + offsets, grad_input, mask=mask)
+
     if NEED_OTHER:
-        grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+        if EVEN:
+            grad = tl.load(grad_ptr + offsets)
+        else:
+            grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
         delta = (x.to(tl.float32) - y.to(tl.float32)).to(y.dtype).to(tl.float32)
         pow_delta = tl.exp2(delta).to(y.dtype).to(tl.float32)
         denom = (1.0 + pow_delta).to(y.dtype).to(tl.float32)
-        tl.store(grad_other_ptr + offsets, grad.to(tl.float32) / denom, mask=mask)
+        grad_input = grad.to(tl.float32) / denom
+        if EVEN:
+            tl.store(grad_other_ptr + offsets, grad_input)
+        else:
+            tl.store(grad_other_ptr + offsets, grad_input, mask=mask)
 
 
 _BACKWARD_BLOCK = 1024
+# Above this element count a CTA carries 8 warps: the very large shapes have
+# enough resident CTAs that the extra warps hide DRAM latency, while smaller
+# shapes prefer the shorter 4-warp CTA.
+_BACKWARD_WIDE_WARP_ELEMENTS = 33554432
+_BACKWARD_INT32_MAX = 2**31 - 1
 _BACKWARD_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 
@@ -166,8 +197,10 @@ def _launch_backward_fast_path(grad_output, self, other, need_self, need_other):
             n_elements,
             NEED_SELF=need_self,
             NEED_OTHER=need_other,
+            EVEN=n_elements % _BACKWARD_BLOCK == 0,
+            I64=n_elements > _BACKWARD_INT32_MAX,
             BLOCK_SIZE=_BACKWARD_BLOCK,
-            num_warps=4,
+            num_warps=8 if n_elements > _BACKWARD_WIDE_WARP_ELEMENTS else 4,
         )
     return grad_self, grad_other
 
