@@ -56,3 +56,21 @@ def test_i0_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.i0_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_i0_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="i0",
+        torch_op=torch.i0,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # Use the FlagGems autograd wrapper as the candidate so the timed backward
+    # is our i0_backward kernel; aten::i0's native backward is not replaced by
+    # the FlagGems registration.
+    bench.set_gems(flag_gems.i0)
+    bench.run()
