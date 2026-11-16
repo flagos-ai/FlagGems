@@ -30,22 +30,35 @@ class MaxUnpool3dBenchmark(base.Benchmark):
             ]  # kernel_size, stride, padding, output_size(D,H,W)
 
 
+def max_unpool3d_ref(input, indices, kernel_size, stride, padding, output_size):
+    return torch.nn.functional.max_unpool3d(
+        input,
+        indices,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        output_size=output_size,
+    )
+
+
 @pytest.mark.max_unpool3d
 def test_max_unpool3d():
-    def max_unpool3d_ref(input, indices, kernel_size, stride, padding, output_size):
-        return torch.nn.functional.max_unpool3d(
-            input,
-            indices,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            output_size=output_size,
-        )
-
     bench = MaxUnpool3dBenchmark(
         op_name="max_unpool3d",
         torch_op=max_unpool3d_ref,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.max_unpool3d)
+    bench.run()
+
+
+@pytest.mark.max_unpool3d_backward
+def test_max_unpool3d_backward():
+    bench = MaxUnpool3dBenchmark(
+        op_name="max_unpool3d",
+        torch_op=max_unpool3d_ref,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.set_gems(flag_gems.max_unpool3d)
     bench.run()
