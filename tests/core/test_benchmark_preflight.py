@@ -403,7 +403,7 @@ def test_kernel_check_case_no_kernel_records_false(monkeypatch, kc_runner):
 
 
 def test_kernel_check_view_op_skips_profiling(monkeypatch, kc_runner):
-    """BASELINE_USES_KERNEL=False benchmarks record invoked_kernel=None."""
+    """BASELINE_USES_KERNEL=False benchmarks return immediately with one None record."""
 
     def exploding_profile():
         raise AssertionError("profiler must not be called for view ops")
@@ -412,10 +412,13 @@ def test_kernel_check_view_op_skips_profiling(monkeypatch, kc_runner):
     bench.BASELINE_USES_KERNEL = False
     monkeypatch.setattr(base.torch.profiler, "profile", exploding_profile)
     executed = bench._run_kernel_check_cases(case_ids=["case-0"])
-    assert executed == ["case-0"]
+    # Early return: no cases iterated, one synthetic record appended
+    assert executed == []
+    assert len(config.kernel_check_records) == 1
     rec = config.kernel_check_records[0]
     assert rec["invoked_kernel"] is None
     assert rec["status"] == "passed"
+    assert rec["case_id"] is None
 
 
 def test_kernel_check_all_cases_run_by_default(monkeypatch, kc_runner):

@@ -853,12 +853,24 @@ class Benchmark:
         whole benchmark run launched a kernel (checked in pytest_sessionfinish).
 
         Benchmarks that set BASELINE_USES_KERNEL = False (e.g. zero-copy view
-        ops like expand) are skipped: each case is recorded with
-        invoked_kernel=None to signal "not applicable" rather than False.
-        The session-level check ignores None entries so a run consisting
-        entirely of view ops does not fail.
+        ops like expand) are skipped entirely: a single synthetic record with
+        invoked_kernel=None is appended to signal "not applicable" and the
+        method returns immediately.  The session-level check ignores None
+        entries so a run consisting entirely of view ops does not fail.
         """
         from torch.autograd import DeviceType
+
+        if not self.BASELINE_USES_KERNEL:
+            Config.kernel_check_records.append(
+                {
+                    "operator": self.op_name,
+                    "nodeid": Config.current_nodeid,
+                    "case_id": None,
+                    "invoked_kernel": None,
+                    "status": "passed",
+                }
+            )
+            return []
 
         if not self.supports_cases():
             raise ValueError(
@@ -882,18 +894,17 @@ class Benchmark:
             }
             Config.kernel_check_records.append(record)
             try:
-                if self.BASELINE_USES_KERNEL:
-                    args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
-                    fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
-                    with torch.profiler.profile() as prof:
-                        fn()
-                        torch_device_fn.synchronize()
-                    record["invoked_kernel"] = any(
-                        event.device_type != DeviceType.CPU
-                        and event.self_device_time_total > 0
-                        for event in prof.key_averages()
-                    )
-                    del args, kwargs
+                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                with torch.profiler.profile() as prof:
+                    fn()
+                    torch_device_fn.synchronize()
+                record["invoked_kernel"] = any(
+                    event.device_type != DeviceType.CPU
+                    and event.self_device_time_total > 0
+                    for event in prof.key_averages()
+                )
+                del args, kwargs
             except Exception as exc:
                 record["error"] = str(exc)
                 raise
