@@ -1635,7 +1635,21 @@ _FULL_CONFIG = (
     ("log1p", log1p),
     ("log1p.out", log1p_out),
     ("log1p_", log1p_),
-    ("log2", log2),
+    # log2 has no dedicated aten::log2_backward schema: ATen derives its
+    # gradient from a formula in derivatives.yaml. Registering only the device
+    # key would keep that native AutogradCUDA kernel, so the wrapper's
+    # autograd.Function would never own the backward (it runs below the
+    # autograd dispatch key and cannot create a node there). The fallthrough
+    # hands the differentiable path to ``log2`` itself, whose
+    # ``_Log2Function.apply`` supplies the Triton backward
+    # (cf. the ``clone`` entry). The forward-only and in-place paths are
+    # unchanged; ``log2_`` keeps the native in-place autograd formula.
+    (
+        "log2",
+        log2,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("log2_", log2_),
     ("log_", log_),
     ("log_normal", log_normal),
