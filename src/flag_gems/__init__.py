@@ -1646,7 +1646,17 @@ _FULL_CONFIG = (
     ("log_sigmoid_forward", log_sigmoid_forward),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
-    ("logaddexp2", logaddexp2),
+    # logaddexp2 has no standalone ``aten::logaddexp2_backward`` schema: ATen
+    # generates the backward from derivatives.yaml. The extra Autograd entry
+    # keeps that generated dispatch slot for FlagGems-dispatched calls while
+    # routing it through the Triton gradient kernel; the device entry stays for
+    # calls made with grad mode disabled.
+    (
+        "logaddexp2",
+        logaddexp2,
+        None,
+        (("Autograd" + backend_info.dispatch_key, logaddexp2),),
+    ),
     ("logaddexp2.out", logaddexp2_out),
     ("logcumsumexp", logcumsumexp),
     ("logcumsumexp.out", logcumsumexp_out),
