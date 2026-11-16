@@ -1705,7 +1705,12 @@ _FULL_CONFIG = (
     ),
     ("max_pool3d_with_indices", max_pool3d_with_indices),
     ("max_pool3d_with_indices_backward", max_pool3d_with_indices_backward),
-    ("max_unpool2d", max_unpool2d),
+    (
+        "max_unpool2d",
+        max_unpool2d,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("max_unpool3d", max_unpool3d),
     ("maximum", maximum),
     ("mean", mean),

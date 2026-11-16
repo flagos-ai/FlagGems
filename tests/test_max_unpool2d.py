@@ -115,3 +115,248 @@ def test_max_unpool2d_non_contiguous(dtype):
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# ---------------------------------------------------------------------------
+# Backward: grad wrt the differentiable pooled input.
+#
+# The aten autograd derivative of max_unpool2d is a pure gather over the
+# flattened unpooled plane (ATen ``max_pool_double_backward``), so every
+# valid index combination must match exactly; duplicate (conflicting) indices
+# only make the *forward* scatter non-deterministic, never the gradient.
+# ---------------------------------------------------------------------------
+
+
+def _pool_indices(shape, pool_cfg, dtype):
+    kernel_size, stride, padding = pool_cfg
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    pool = torch.nn.MaxPool2d(
+        kernel_size, stride=stride, padding=padding, return_indices=True
+    )
+    pooled, indices = pool(inp.contiguous())
+    output_size = [inp.shape[-2], inp.shape[-1]]
+    return inp, pooled, indices, output_size
+
+
+@pytest.mark.max_unpool2d_backward
+@pytest.mark.parametrize("shape", MAX_UNPOOL2D_SHAPES)
+@pytest.mark.parametrize("pool_cfg", POOL_CONFIGS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_unpool2d_backward(shape, pool_cfg, dtype):
+    H, W = shape[2], shape[3]
+    kernel_size, stride, padding = pool_cfg
+    out_h = (H + 2 * padding - kernel_size) // stride + 1
+    out_w = (W + 2 * padding - kernel_size) // stride + 1
+    if out_h <= 0 or out_w <= 0:
+        pytest.skip(
+            f"Output size ({out_h},{out_w}) too small for shape {shape} + cfg {pool_cfg}"
+        )
+
+    _, pooled, indices, output_size = _pool_indices(shape, pool_cfg, dtype)
+    indices = indices.to(torch.int64)
+
+    ref_pooled = utils.to_reference(pooled, True).detach().requires_grad_(True)
+    ref_indices = utils.to_reference(indices)
+    res_pooled = pooled.detach().clone().requires_grad_(True)
+
+    ref_out = torch.ops.aten.max_unpool2d(ref_pooled, ref_indices, output_size)
+    res_out = flag_gems.max_unpool2d(res_pooled, indices, output_size)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+
+    (res_pooled_grad,) = torch.autograd.grad(res_out, res_pooled, out_grad)
+    (ref_pooled_grad,) = torch.autograd.grad(ref_out, ref_pooled, ref_grad)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_pooled_grad, ref_pooled_grad, dtype)
+
+
+@pytest.mark.max_unpool2d_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_unpool2d_backward_public_entry(dtype):
+    """The standalone backward entry exposes the same contract as autograd."""
+    shape, pool_cfg = (2, 3, 7, 9), (3, 2, 0)
+    _, pooled, indices, output_size = _pool_indices(shape, pool_cfg, dtype)
+    indices = indices.to(torch.int64)
+
+    out_grad = torch.randn(
+        (shape[0], shape[1], shape[2], shape[3]),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    res_grad = flag_gems.max_unpool2d_backward(out_grad, pooled, indices, output_size)
+
+    ref_pooled = utils.to_reference(pooled, True).detach().requires_grad_(True)
+    ref_out = torch.ops.aten.max_unpool2d(
+        ref_pooled, utils.to_reference(indices), output_size
+    )
+    (ref_grad,) = torch.autograd.grad(
+        ref_out, ref_pooled, utils.to_reference(out_grad, True)
+    )
+
+    assert res_grad.shape == pooled.shape
+    assert res_grad.dtype == pooled.dtype
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.max_unpool2d_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_unpool2d_backward_unbatched(dtype):
+    """The 3D (C, H, W) form must keep the same gradient contract."""
+    inp = torch.randn(4, 6, 10, dtype=dtype, device=flag_gems.device)
+    pool = torch.nn.MaxPool2d(2, stride=2, return_indices=True)
+    pooled, indices = pool(inp)
+    indices = indices.to(torch.int64).contiguous()
+    output_size = [6, 10]
+    assert pooled.dim() == 3 and indices.dim() == 3
+
+    ref_pooled = utils.to_reference(pooled, True).detach().requires_grad_(True)
+    ref_out = torch.ops.aten.max_unpool2d(
+        ref_pooled, utils.to_reference(indices), output_size
+    )
+    res_pooled = pooled.detach().clone().requires_grad_(True)
+    res_out = flag_gems.max_unpool2d(res_pooled, indices, output_size)
+
+    out_grad = torch.randn_like(res_out)
+    (res_grad,) = torch.autograd.grad(res_out, res_pooled, out_grad)
+    (ref_grad,) = torch.autograd.grad(
+        ref_out, ref_pooled, utils.to_reference(out_grad, True)
+    )
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.max_unpool2d_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_unpool2d_backward_non_contiguous_grad_output(dtype):
+    """Gradients must gather correctly from a non-contiguous incoming grad."""
+    shape, pool_cfg = (2, 3, 8, 10), (2, 2, 0)
+    _, pooled, indices, output_size = _pool_indices(shape, pool_cfg, dtype)
+    indices = indices.to(torch.int64)
+
+    res_pooled = pooled.detach().clone().requires_grad_(True)
+    res_out = flag_gems.max_unpool2d(res_pooled, indices, output_size)
+
+    base_grad = torch.randn(
+        (shape[0], shape[1], shape[3], shape[2]), dtype=dtype, device=flag_gems.device
+    )
+    out_grad = base_grad.permute(0, 1, 3, 2)
+    assert not out_grad.is_contiguous()
+
+    (res_grad,) = torch.autograd.grad(res_out, res_pooled, out_grad)
+
+    ref_pooled = utils.to_reference(pooled, True).detach().requires_grad_(True)
+    ref_out = torch.ops.aten.max_unpool2d(
+        ref_pooled, utils.to_reference(indices), output_size
+    )
+    ref_grad_in = utils.to_reference(out_grad.contiguous(), True)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_pooled, ref_grad_in)
+
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.max_unpool2d_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_unpool2d_backward_conflicting_indices(dtype):
+    """Duplicate indices must read the same source, not accumulate.
+
+    The forward scatter is non-deterministic for conflicting indices, so only
+    the gradient is compared: it has to stay a gather.
+    """
+    kernel_size, stride, padding = 2, 2, 0
+    inp = torch.randn((1, 2, 6, 6), dtype=dtype, device=flag_gems.device)
+    pool = torch.nn.MaxPool2d(
+        kernel_size, stride=stride, padding=padding, return_indices=True
+    )
+    pooled, indices = pool(inp.contiguous())
+    indices = indices.to(torch.int64)
+    # Force every window of the plane to the same source position.
+    indices_flat = indices.reshape(indices.shape[0], indices.shape[1], -1)
+    indices_flat.zero_()
+    output_size = [inp.shape[-2], inp.shape[-1]]
+
+    res_pooled = pooled.detach().clone().requires_grad_(True)
+    res_out = flag_gems.max_unpool2d(res_pooled, indices, output_size)
+    out_grad = torch.randn_like(res_out)
+    (res_grad,) = torch.autograd.grad(res_out, res_pooled, out_grad)
+
+    ref_pooled = utils.to_reference(pooled, True).detach().requires_grad_(True)
+    ref_out = torch.ops.aten.max_unpool2d(
+        ref_pooled, utils.to_reference(indices), output_size
+    )
+    (ref_grad,) = torch.autograd.grad(
+        ref_out, ref_pooled, utils.to_reference(out_grad, True)
+    )
+
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.max_unpool2d_backward
+def test_max_unpool2d_backward_dispatch(monkeypatch):
+    """The aten entry point must route graph construction through FlagGems."""
+    import sys
+
+    module = sys.modules["flag_gems.ops.max_unpool2d"]
+
+    shape, pool_cfg = (2, 3, 8, 8), (2, 2, 0)
+    _, pooled, indices, output_size = _pool_indices(shape, pool_cfg, torch.float32)
+    indices = indices.to(torch.int64)
+    pooled = pooled.detach().clone().requires_grad_(True)
+
+    calls = {"forward": 0, "backward": 0}
+    real_forward = flag_gems.max_unpool2d
+    real_backward_impl = module._max_unpool2d_backward_impl
+
+    def spy_forward(*args, **kwargs):
+        calls["forward"] += 1
+        return real_forward(*args, **kwargs)
+
+    def spy_backward(*args, **kwargs):
+        calls["backward"] += 1
+        return real_backward_impl(*args, **kwargs)
+
+    mapping = dict(flag_gems.FULL_CONFIG_BY_FUNC)
+    mapping["max_unpool2d"] = [
+        (
+            "max_unpool2d",
+            spy_forward,
+            None,
+            ((flag_gems.AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+        )
+    ]
+    monkeypatch.setattr(module, "_max_unpool2d_backward_impl", spy_backward)
+
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(flag_gems, "FULL_CONFIG_BY_FUNC", mapping)
+            flag_gems.only_enable(lib=lib, include=["max_unpool2d"])
+            out = torch.ops.aten.max_unpool2d(pooled, indices, output_size)
+            assert calls["forward"] == 1, "aten dispatch did not reach FlagGems"
+            assert "MaxUnpool2dFunction" in type(out.grad_fn).__name__
+            out_grad = torch.randn_like(out)
+            (grad,) = torch.autograd.grad(out, pooled, out_grad)
+
+            # The public functional entry must hit the same tracked forward.
+            # torch>=2.8 spells the third positional argument kernel_size and
+            # derives output_size from it, so pass both explicitly.
+            out_f = torch.nn.functional.max_unpool2d(
+                pooled, indices, kernel_size=2, output_size=output_size
+            )
+            assert calls["forward"] == 2, "F.max_unpool2d bypassed FlagGems"
+            assert "MaxUnpool2dFunction" in type(out_f.grad_fn).__name__
+            (grad_f,) = torch.autograd.grad(out_f, pooled, out_grad)
+    finally:
+        lib._destroy()
+
+    assert calls["backward"] == 2, "FlagGems backward kernel was not executed"
+    expected = flag_gems.max_unpool2d_backward(
+        out_grad, pooled.detach(), indices, output_size
+    )
+    # Both tensors live on the device under test; the gradient is a pure gather,
+    # so it must match bit-exactly in every reference mode.
+    torch.testing.assert_close(grad, expected, rtol=0, atol=0)
+    torch.testing.assert_close(grad_f, expected, rtol=0, atol=0)

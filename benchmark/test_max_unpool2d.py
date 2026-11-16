@@ -61,3 +61,25 @@ def test_max_unpool2d():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.max_unpool2d_backward
+def test_max_unpool2d_backward():
+    """Time the autograd backward of max_unpool2d (``MaxUnpool2dFunction``).
+
+    ``is_backward`` makes the harness build the graph once and time
+    ``torch.autograd.grad`` against one fixed ``grad_output``; the same core
+    shapes/dtypes as the forward baseline are used, so the reported latency is
+    the gather kernel for the pooled-input gradient.
+    """
+
+    def torch_max_unpool2d(pooled, indices, output_size):
+        return torch.ops.aten.max_unpool2d(pooled, indices, output_size)
+
+    bench = MaxUnpool2dBenchmark(
+        op_name="max_unpool2d",
+        torch_op=torch_max_unpool2d,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
