@@ -247,7 +247,6 @@ def test_values():
     bench = ValuesBenchmark(
         op_name="values",
         torch_op=torch.ops.aten.values,
-        gems_op=getattr(flag_gems, "values", None),
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=_BENCH_DTYPES,

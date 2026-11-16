@@ -132,8 +132,9 @@ def _assert_equal(actual, expected):
     assert actual.layout == expected.layout == torch.strided
     assert actual.device == _device(flag_gems.device)
     assert expected.device == (torch.device("cpu") if utils.TO_CPU else actual.device)
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and (
-        actual.dtype in _FP8_DTYPES or actual.dtype.is_complex
+    vendor = flag_gems.vendor_name
+    if (actual.dtype.is_complex and vendor in ("ascend", "kunlunxin", "mthreads")) or (
+        actual.dtype in _FP8_DTYPES and vendor in ("ascend", "kunlunxin")
     ):
         actual = _copy_to(actual, "cpu")
         expected = _copy_to(expected, "cpu")
