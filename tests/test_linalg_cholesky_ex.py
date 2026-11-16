@@ -60,8 +60,78 @@ def _reference_input(inp):
     return tu.to_reference(inp)
 
 
+def _numpy_cholesky_ex(inp, upper):
+    import numpy as np
+
+    n = inp.shape[-1]
+    status = np.zeros(tuple(inp.shape[:-2]), dtype=np.int32)
+    if not inp.numel():
+        return torch.empty_like(inp), torch.from_numpy(status)
+
+    matrix = inp.detach().resolve_conj().resolve_neg().numpy()
+    if upper:
+        matrix = matrix.swapaxes(-1, -2).conj()
+    try:
+        factor = np.linalg.cholesky(matrix)
+    except np.linalg.LinAlgError:
+        # NumPy reports a failed factorization without the pivot index. For
+        # those lanes find the first leading minor that cannot be factored.
+        factor = np.zeros(matrix.shape, dtype=matrix.dtype)
+        for index in np.ndindex(status.shape):
+            lane = matrix[index]
+            try:
+                factor[index] = np.linalg.cholesky(lane)
+                continue
+            except np.linalg.LinAlgError:
+                pass
+            lower, upper_bound = 0, n
+            while lower + 1 < upper_bound:
+                pivot = (lower + upper_bound) // 2
+                try:
+                    np.linalg.cholesky(lane[:pivot, :pivot])
+                except np.linalg.LinAlgError:
+                    upper_bound = pivot
+                else:
+                    lower = pivot
+            status[index] = upper_bound
+
+    if upper:
+        factor = factor.swapaxes(-1, -2).conj()
+    return torch.from_numpy(np.ascontiguousarray(factor)), torch.from_numpy(status)
+
+
+def _differentiable_cpu_factor(inp, upper):
+    # For the small Hermitian positive-definite backward fixture. Symmetrizing
+    # the input gives the Hermitian adjoint at the original input.
+    remainder = (inp + inp.mH) * 0.5
+    columns = []
+    for i in range(inp.shape[-1]):
+        pivot = remainder[..., 0, 0].real.sqrt()
+        tail = remainder[..., 1:, 0] / pivot.unsqueeze(-1)
+        current = torch.cat((pivot.unsqueeze(-1).to(inp.dtype), tail), dim=-1)
+        zeros = inp.new_zeros((*inp.shape[:-2], i))
+        columns.append(torch.cat((zeros, current), dim=-1))
+        remainder = remainder[..., 1:, 1:] - tail.unsqueeze(-1) * tail.conj().unsqueeze(-2)
+    factor = torch.stack(columns, dim=-1)
+    return factor.mH if upper else factor
+
+
 def _reference_cholesky(inp, *, upper=False, check_errors=False, L=None, info=None):
     op = torch.ops.aten.linalg_cholesky_ex
+    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+        if inp.requires_grad:
+            factor = _differentiable_cpu_factor(inp, upper)
+            status = torch.zeros(inp.shape[:-2], dtype=torch.int32, device=inp.device)
+        else:
+            factor, status = _numpy_cholesky_ex(inp, upper)
+        if check_errors and (status != 0).any():
+            raise torch.linalg.LinAlgError("linalg_cholesky_ex: matrix is not positive-definite")
+        if L is None:
+            return factor, status
+        L.resize_(factor.shape).copy_(factor)
+        info.resize_(status.shape).copy_(status)
+        return L, info
+
     use_cpu = (
         flag_gems.vendor_name == "thead"
         and inp.device.type != "cpu"
