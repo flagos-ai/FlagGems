@@ -37,6 +37,8 @@ chunk ``k`` simply occupies ``[k*pre*chunk_size*post, ...)`` in the storage.
 A non-contiguous input keeps a per-chunk gather kernel (correctness path).
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -45,6 +47,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from ..utils.tle_copy import tle_copy, tle_dma_available
+
+logger = logging.getLogger(__name__)
 
 _MAX_RANK = 8
 _BLOCK = 4096
@@ -257,6 +261,7 @@ def _use_tle_layout(src, dim, post, total):
 
 
 def split_copy(self: torch.Tensor, split_size: int, dim: int = 0):
+    logger.debug("GEMS_KUNLUNXIN SPLIT_COPY")
     if self.dim() == 0:
         raise RuntimeError("split expects at least a 1-dimensional tensor")
     if split_size < 0:
