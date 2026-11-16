@@ -20,13 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-def _musa_large_batch_geqrf(inp):
-    # The native solver can stall on these two many-matrix stress inputs.
-    return inp.shape in ((16, 128, 64, 60), (16, 7, 57, 32, 29))
+def _musa_geqrf_needs_cpu(inp):
+    # The native solver rejects empty matrices and can stall on large batches.
+    return inp.numel() == 0 or inp.shape in ((16, 128, 64, 60), (16, 7, 57, 32, 29))
 
 
 def _reference_geqrf(inp, *, a=None, tau=None):
-    if flag_gems.vendor_name == "mthreads" and _musa_large_batch_geqrf(inp):
+    if flag_gems.vendor_name == "mthreads" and _musa_geqrf_needs_cpu(inp):
         inp = inp.cpu()
     if flag_gems.vendor_name != "mthreads" or inp.device.type != "cpu":
         if a is None:
@@ -598,8 +598,12 @@ def test_geqrf_well_conditioned(shape, dtype):
     # R (= triu(a)) must match the reference R: for a full-rank well-
     # conditioned A the QR factor R is unique (positive/negative diagonal
     # convention may differ per column, so align signs first).
+    compared_a = utils.to_cpu(res_a, ref_a)
+    if flag_gems.vendor_name == "mthreads":
+        # muDNN does not support the float64 sign-alignment operations.
+        compared_a, ref_a = compared_a.cpu(), ref_a.cpu()
     ref_R = torch.triu(ref_a.to(torch.float64))
-    res_R = torch.triu(utils.to_cpu(res_a, ref_a).to(torch.float64))
+    res_R = torch.triu(compared_a.to(torch.float64))
     k = min(shape[-2], shape[-1])
     sgn = torch.sign(res_R.diagonal(dim1=-2, dim2=-1))
     sgn = torch.where(sgn == 0, torch.ones_like(sgn), sgn)
