@@ -1171,7 +1171,12 @@ from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.lu_solve import lu_solve, lu_solve_out
-from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
+from flag_gems.ops.lu_unpack import (
+    _lu_unpack_autograd,
+    lu_unpack,
+    lu_unpack_backward,
+    lu_unpack_out,
+)
 from flag_gems.ops.make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from flag_gems.ops.make_per_channel_quantized_tensor import (
     _make_per_channel_quantized_tensor,
@@ -2918,6 +2923,7 @@ __all__ = [
     "lu_solve",
     "lu_solve_out",
     "lu_unpack",
+    "lu_unpack_backward",
     "lu_unpack_out",
     "margin_ranking_loss",
     "masked_fill",
