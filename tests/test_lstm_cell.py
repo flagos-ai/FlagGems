@@ -264,7 +264,7 @@ def test_accuracy_lstm_cell_complex_rejected():
 @pytest.mark.lstm_cell
 @pytest.mark.skipif(TO_CPU, reason="autograd is only exercised on the device")
 def test_accuracy_lstm_cell_autograd_graph():
-    """The forward is not differentiable, so it must not claim to be."""
+    """Check the autograd contract for a grad-enabled input."""
     batch, input_size, hidden_size = 4, 8, 8
     input, hx, w_ih, w_hh, b_ih, b_hh = _inputs(
         batch, input_size, hidden_size, torch.float32
@@ -273,8 +273,15 @@ def test_accuracy_lstm_cell_autograd_graph():
 
     hy, cy = flag_gems.lstm_cell(input, hx, w_ih, w_hh, b_ih, b_hh)
 
-    assert not hy.requires_grad
-    assert not cy.requires_grad
+    if flag_gems.vendor_name == "mthreads":
+        # MUSA ATen implements a differentiable cell. Preserve the original
+        # kernelgen-dev contract on this backend, including both outputs.
+        ref_hy, ref_cy = torch.ops.aten.lstm_cell.default(input, hx, w_ih, w_hh, b_ih, b_hh)
+        assert hy.requires_grad == ref_hy.requires_grad
+        assert cy.requires_grad == ref_cy.requires_grad
+    else:
+        assert not hy.requires_grad
+        assert not cy.requires_grad
 
 
 @pytest.mark.lstm_cell
