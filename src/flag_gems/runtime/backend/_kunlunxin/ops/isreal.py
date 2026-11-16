@@ -85,7 +85,9 @@ def isreal_complex64_kernel(in_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
 
 
 @triton.jit
-def isreal_complex64_masked_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def isreal_complex64_masked_kernel(
+    in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -99,7 +101,9 @@ def isreal_complex64_masked_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.c
 # imaginary component is loaded with a stride-2 fp64 load and tested bitwise.
 # ---------------------------------------------------------------------------
 @triton.jit
-def isreal_complex128_kernel(in_real_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def isreal_complex128_kernel(
+    in_real_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -138,7 +142,9 @@ def _fill_true(out: torch.Tensor, n: int) -> None:
             isreal_true_pack_kernel[grid](out32, BLOCK_SIZE=block, num_warps=4)
         else:
             grid = (triton.cdiv(n32, block),)
-            isreal_true_pack_masked_kernel[grid](out32, n32, BLOCK_SIZE=block, num_warps=4)
+            isreal_true_pack_masked_kernel[grid](
+                out32, n32, BLOCK_SIZE=block, num_warps=4
+            )
     else:
         block = 1024
         grid = (triton.cdiv(n, block),)
@@ -152,7 +158,9 @@ def _isreal_complex64(packed: torch.Tensor, out: torch.Tensor, n: int) -> None:
         isreal_complex64_kernel[grid](packed, out, BLOCK_SIZE=block, num_warps=8)
     else:
         grid = (triton.cdiv(n, block),)
-        isreal_complex64_masked_kernel[grid](packed, out, n, BLOCK_SIZE=block, num_warps=8)
+        isreal_complex64_masked_kernel[grid](
+            packed, out, n, BLOCK_SIZE=block, num_warps=8
+        )
 
 
 def isreal(input: torch.Tensor) -> torch.Tensor:
