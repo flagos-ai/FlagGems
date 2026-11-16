@@ -489,7 +489,7 @@ def main():
     parser.add_argument(
         "--files",
         nargs="+",
-        help="Specific files to process (default: auto-discover all __init__.py + operators.yaml)",
+        help="Specific files to process (default: all __init__.py files and both operator inventories)",
     )
 
     args = parser.parse_args()
@@ -506,14 +506,16 @@ def main():
     else:
         # Auto-discover all __init__.py files + operators.yaml
         files_to_check = discover_init_files()
-        files_to_check.append(Path("conf/operators.yaml"))
+        files_to_check.extend(
+            [Path("conf/operators.yaml"), Path("conf/deprecated_operators.yaml")]
+        )
 
     print(f"Processing {len(files_to_check)} file(s)...\n")
 
     all_sorted = True
 
     for file_path in files_to_check:
-        if file_path.name == "operators.yaml":
+        if file_path.name in ("operators.yaml", "deprecated_operators.yaml"):
             sorted_ok = sort_operators_yaml(
                 file_path, fix=args.fix, dry_run=args.dry_run
             )
