@@ -34,6 +34,13 @@ def _prod(dims):
     return out
 
 
+def _tensorinv_reference(inp, ind):
+    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+        # MUSA's PyTorch build lacks CPU LAPACK. Keep the same shape split.
+        return torch.from_numpy(np.linalg.tensorinv(inp.detach().numpy(), ind=ind))
+    return torch.linalg.tensorinv(inp, ind=ind)
+
+
 def _tensorinv_out_reference(inp, ind):
     # This MUSA image omits CPU LAPACK; NumPy still provides a CPU inverse.
     if (
@@ -89,11 +96,12 @@ def test_linalg_tensorinv_ind2(shape, dtype):
     # Compute reference in float32 (since PyTorch's tensorinv doesn't support float16)
     if dtype == torch.float16:
         ref_A_fp32 = ref_A.to(torch.float32)
-        ref_out = torch.linalg.tensorinv(ref_A_fp32, ind=ind).to(torch.float16)
+        ref_out = _tensorinv_reference(ref_A_fp32, ind=ind).to(torch.float16)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -125,11 +133,12 @@ def test_linalg_tensorinv_ind1(shape, dtype):
     # Compute reference in float32 (since PyTorch's tensorinv doesn't support float16)
     if dtype == torch.float16:
         ref_A_fp32 = ref_A.to(torch.float32)
-        ref_out = torch.linalg.tensorinv(ref_A_fp32, ind=ind).to(torch.float16)
+        ref_out = _tensorinv_reference(ref_A_fp32, ind=ind).to(torch.float16)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -158,9 +167,10 @@ def test_linalg_tensorinv_non_spd(shape, dtype):
     A = A.reshape(shape)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+    ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     # Looser tolerance: general randn matrices can be moderately conditioned.
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
@@ -179,11 +189,12 @@ def test_linalg_tensorinv_zero_diagonal_pivot(dtype):
     ref_A = utils.to_reference(A)
     if dtype == torch.float16:
         ref_A_fp32 = ref_A.to(torch.float32)
-        ref_out = torch.linalg.tensorinv(ref_A_fp32, ind=ind).to(torch.float16)
+        ref_out = _tensorinv_reference(ref_A_fp32, ind=ind).to(torch.float16)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     assert not torch.isnan(res_out).any(), "tensorinv produced NaN on permutation"
     assert not torch.isinf(res_out).any(), "tensorinv produced Inf on permutation"
@@ -203,9 +214,10 @@ def test_linalg_tensorinv_blocked_path():
     ind = 1
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+    ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
 
@@ -226,9 +238,10 @@ def test_linalg_tensorinv_ind3(dtype):
     A = A.reshape(shape)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+    ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     assert tuple(res_out.shape) == shape[ind:] + shape[:ind]
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
@@ -249,9 +262,10 @@ def test_linalg_tensorinv_ind1_higher_dim(dtype):
     A = A.reshape(shape)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+    ref_out = _tensorinv_reference(ref_A, ind=ind)
 
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     assert tuple(res_out.shape) == shape[ind:] + shape[:ind]
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
@@ -415,8 +429,9 @@ def test_linalg_tensorinv_non_contiguous(shape, dtype):
 
     # Contiguous inputs must remain correct too.
     for A_view in (A_stride, A_dense, base.reshape(shape)):
-        ref_out = torch.linalg.tensorinv(utils.to_reference(A_view), ind=ind)
+        ref_out = _tensorinv_reference(utils.to_reference(A_view), ind=ind)
         res_out = flag_gems.linalg_tensorinv(A_view, ind=ind)
+        assert res_out.device == A_view.device
 
         utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
 
@@ -436,8 +451,9 @@ def test_linalg_tensorinv_non_spd_blocked_path():
     A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) * 2.0
     ind = 1
 
-    ref_out = torch.linalg.tensorinv(utils.to_reference(A), ind=ind)
+    ref_out = _tensorinv_reference(utils.to_reference(A), ind=ind)
     res_out = flag_gems.linalg_tensorinv(A, ind=ind)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
 
