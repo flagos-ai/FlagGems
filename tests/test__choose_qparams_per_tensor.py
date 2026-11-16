@@ -204,6 +204,9 @@ def test__choose_qparams_per_tensor_rejects_nan():
 def test__choose_qparams_per_tensor_rejects_empty():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
+    if flag_gems.vendor_name == "mthreads":
+        # The device native path accepts an empty input; CPU enforces the reduction contract.
+        ref_inp = ref_inp.cpu()
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._choose_qparams_per_tensor(ref_inp, False)
