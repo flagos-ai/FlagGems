@@ -407,11 +407,10 @@ def grouped_gemm_w8a8(
             bk, split_k = 256, 12
         else:
             bk = 512 if k % 512 == 0 else 128
+    elif (n, k) == (512, 6144):
+        bm, bn, bk = 128, 128, 128
     else:
-        # Larger M tiles reuse each weight tile across more gate/up rows.
-        bm = 128 if (n, k) == (512, 6144) else 64
-        bn = 64
-        bk = 128 if (n, k) == (512, 6144) else 64
+        bm, bn, bk = 64, 64, 64
     with torch_device_fn.device(A.device):
         if (
             split_k > 1
