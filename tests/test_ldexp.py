@@ -21,10 +21,24 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .accuracy_utils import _SKIP_FP64
 
+# Kunlunxin silently materialises a float64/complex128 device tensor as
+# float32/complex64 (``support_fp64 == False``), so the fp64 cases below can
+# never construct their own reference.  Gate them on that backend only; other
+# vendors keep their previous behaviour.
+_skip_if_kunlunxin_no_fp64 = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin"
+    and not flag_gems.runtime.device.support_fp64,
+    reason="Kunlunxin does not support FP64",
+)
+
 
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
-    "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
+    "dtype,exponent",
+    [
+        (torch.float32, 128),
+        pytest.param(torch.float64, 1024, marks=_skip_if_kunlunxin_no_fp64),
+    ],
 )
 def test_ldexp_integral_exponent_boundaries(dtype, exponent):
     if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
@@ -132,7 +146,12 @@ def test_ldexp(shape, dtype):
         (torch.float16, torch.int64, torch.float16),
         (torch.bfloat16, torch.int32, torch.bfloat16),
         (torch.float16, torch.float32, torch.float32),
-        (torch.float32, torch.float64, torch.float64),
+        pytest.param(
+            torch.float32,
+            torch.float64,
+            torch.float64,
+            marks=_skip_if_kunlunxin_no_fp64,
+        ),
     ],
 )
 def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
