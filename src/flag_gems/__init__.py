@@ -28,7 +28,6 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
-from flag_gems.ops.lu_unpack import _lu_unpack_autograd
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -1674,7 +1673,7 @@ _FULL_CONFIG = (
     ("lt_.Tensor", lt_),
     ("lu_solve", lu_solve),
     ("lu_solve.out", lu_solve_out),
-    ("lu_unpack", lu_unpack, None, ((AUTOGRAD_DISPATCH_KEY, _lu_unpack_autograd),)),
+    ("lu_unpack", lu_unpack),
     ("lu_unpack.out", lu_unpack_out),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
