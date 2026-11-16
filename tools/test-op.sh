@@ -29,7 +29,8 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   # add options to generate summary report
   EXTRA_OPTS="--md-report"
   EXTRA_OPTS+=" --md-report-verbose=1"
-  EXTRA_OPTS+=" --md-report-output=${PR_ID}-summary.md"
+  # --md-report-output is set per-batch (see run_batch); the final file is
+  # assembled by concatenating all per-batch reports at the end.
   SUFFIX=""
   COLLECT_COVERAGE="yes"
 else
@@ -162,14 +163,74 @@ fi
 # Clear existing coverage data if any
 coverage erase
 
-FAILURES=()
-for item in "${TEST_CASES[@]}"; do
-  echo "Running unit tests for ${item}"
-  if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
-    if $FAIL_FAST; then exit 1; fi
-    FAILURES+=("${item}")
+# Run a batch of test files inside a single pytest process. Batching amortizes
+# the per-process startup cost of importing flag_gems (hundreds of submodules,
+# ~125s on the CI runner) across many files, cutting process startups from
+# ~N to ~N/BATCH_SIZE. A shell-level timeout guards against tests that hang
+# (e.g. an op that never returns), since pytest-timeout is not a dependency; a
+# timed-out batch loses its own coverage data but leaves other batches intact.
+#
+#   run_batch <label> <report_file|-> <pytest_flags> <file1> <file2> ...
+#
+# Pass "-" as report_file to omit --md-report-output (e.g. per-PR runs where
+# --md-report is not in flags at all).
+#
+# Per-batch report files are collected in BATCH_REPORTS and concatenated into
+# ${PR_ID}-summary.md at the end of the daily run.
+BATCH_REPORTS=()
+run_batch() {
+  local label="$1"; shift
+  local report_file="$1"; shift
+  local flags="$1"; shift
+  local timeout_s="${TEST_BATCH_TIMEOUT:-1800}"
+  local extra_flags=""
+  if [[ "$report_file" != "-" ]]; then
+    extra_flags="--md-report-output=${report_file}"
+    BATCH_REPORTS+=("${report_file}")
   fi
-done
+  echo "Running ${label} for batch of $# files:"
+  printf '  %s\n' "$@"
+  timeout "$timeout_s" coverage run -m pytest -s $flags $extra_flags "$@"
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+    if [[ $rc -eq 124 ]]; then
+      echo "::error::${label} batch timed out after ${timeout_s}s"
+      FAILURES+=("${label} batch (timeout, $# files): $*")
+    else
+      FAILURES+=("${label} batch ($# files): $*")
+    fi
+  fi
+}
+
+FAILURES=()
+_BATCH_IDX=0
+if [[ "${CHANGED_FILES}" == "__ALL__" && ${#TEST_CASES[@]} -gt 0 ]]; then
+  # Full-range daily run: batch files so each pytest process covers many files.
+  BATCH_SIZE="${TEST_BATCH_SIZE:-20}"
+  batch=()
+  for item in "${TEST_CASES[@]}"; do
+    batch+=("$item")
+    if [[ ${#batch[@]} -ge $BATCH_SIZE ]]; then
+      run_batch "unit tests" "${PR_ID}-summary-batch${_BATCH_IDX}.md" "${EXTRA_OPTS}" "${batch[@]}"
+      (( _BATCH_IDX++ )) || true
+      batch=()
+    fi
+  done
+  if [[ ${#batch[@]} -gt 0 ]]; then
+    run_batch "unit tests" "${PR_ID}-summary-batch${_BATCH_IDX}.md" "${EXTRA_OPTS}" "${batch[@]}"
+    (( _BATCH_IDX++ )) || true
+  fi
+else
+  # Per-PR run: a handful of changed files, run individually for precise
+  # failure attribution and -x fail-fast.
+  for item in "${TEST_CASES[@]}"; do
+    echo "Running unit tests for ${item}"
+    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+      if $FAIL_FAST; then exit 1; fi
+      FAILURES+=("${item}")
+    fi
+  done
+fi
 
 # Run marker-selected tests for changed operator implementations that have no
 # test file of their own. Markers follow the #6359 convention, so this reaches
@@ -215,14 +276,19 @@ if [[ ${#OPS_MARKERS[@]} -gt 0 ]]; then
   fi
 fi
 
-# Run quick-cpu test if necessary
-for item in "${TEST_CASES_CPU[@]}"; do
-  echo "Running quick-cpu mode unit tests for ${item}"
-  if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
-    if $FAIL_FAST; then exit 1; fi
-    FAILURES+=("${item} (quick-cpu)")
-  fi
-done
+# Run quick-cpu test if necessary.
+# Skipped for full-range daily runs (CHANGED_FILES == __ALL__) because the GPU
+# accuracy run already covers all files; running them again on CPU reference
+# doubles the runtime for negligible extra signal in that context.
+if [[ "${CHANGED_FILES}" != "__ALL__" ]]; then
+  for item in "${TEST_CASES_CPU[@]}"; do
+    echo "Running quick-cpu mode unit tests for ${item}"
+    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item} --ref=cpu --quick; then
+      if $FAIL_FAST; then exit 1; fi
+      FAILURES+=("${item} (quick-cpu)")
+    fi
+  done
+fi
 
 # Run benchmark test if necessary
 for item in "${PERF_TEST_CASES[@]}"; do
@@ -243,6 +309,13 @@ if [ -n "$COLLECT_COVERAGE" ]; then
   mkdir coverage
   mv htmlcov coverage/
   echo "${PR_ID}${SUFFIX::7}" > coverage/COVERAGE_ID
+  # Concatenate per-batch md-report files into the single summary the
+  # downstream step expects. Each file starts with a markdown header so the
+  # combined file is still valid; we just append them in order.
+  if [[ ${#BATCH_REPORTS[@]} -gt 0 ]]; then
+    cat "${BATCH_REPORTS[@]}" > "${PR_ID}-summary.md"
+    rm -f "${BATCH_REPORTS[@]}"
+  fi
   mv ${PR_ID}-summary.md coverage/ut-summary.md
 fi
 
