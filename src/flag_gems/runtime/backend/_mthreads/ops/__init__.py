@@ -29,6 +29,7 @@ from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
     _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
 )
 from ._foreach_abs_ import _foreach_abs_
+from ._foreach_acos_ import _foreach_acos_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -73,15 +74,7 @@ from .cudnn_convolution import cudnn_convolution
 from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
-from .div import (
-    div_mode,
-    div_mode_,
-    floor_divide,
-    floor_divide_,
-    true_divide,
-    true_divide_,
-    true_divide_out,
-)
+from .div import div_mode, div_mode_, floor_divide, floor_divide_, true_divide_out
 from .dropout import dropout, dropout_backward
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
@@ -234,6 +227,7 @@ __all__ = [
     "_fake_quantize_learnable_per_tensor_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_foreach_abs_",
+    "_foreach_acos_",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
