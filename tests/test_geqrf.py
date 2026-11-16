@@ -20,12 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-def _musa_large_complex_geqrf(inp):
-    return inp.is_complex() and inp.shape == (16, 7, 57, 32, 29)
+def _musa_large_batch_geqrf(inp):
+    # The native solver can stall on these two many-matrix stress inputs.
+    return inp.shape in ((16, 128, 64, 60), (16, 7, 57, 32, 29))
 
 
 def _reference_geqrf(inp, *, a=None, tau=None):
-    if flag_gems.vendor_name == "mthreads" and _musa_large_complex_geqrf(inp):
+    if flag_gems.vendor_name == "mthreads" and _musa_large_batch_geqrf(inp):
         inp = inp.cpu()
     if flag_gems.vendor_name != "mthreads" or inp.device.type != "cpu":
         if a is None:
