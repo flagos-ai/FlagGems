@@ -163,21 +163,19 @@ class _Log2Function(torch.autograd.Function):
 
 def log2(A):
     logger.debug("GEMS LOG2")
-    if not isinstance(A, torch.Tensor) or not A.requires_grad:
-        return log2_func(A)
-    if not torch.is_grad_enabled():
-        return log2_func(A)
-    if A.is_complex():
-        # Triton has no complex element type, so no backward kernel exists for
-        # complex inputs.  Fail loudly instead of returning a tensor without a
-        # grad_fn (a silent drop of the native complex gradient).
-        raise NotImplementedError(
-            "log2 autograd is not implemented for complex tensors"
-        )
-    return _Log2Function.apply(A)
+    if isinstance(A, torch.Tensor) and A.requires_grad and torch.is_grad_enabled():
+        if A.is_complex():
+            raise NotImplementedError(
+                "log2 autograd is not implemented for complex tensors"
+            )
+        return _Log2Function.apply(A)
+    return log2_func(A)
 
 
 def log2_(A):
     logger.debug("GEMS LOG2_")
     log2_func(A, out0=A)
     return A
+
+
+log2._flag_gems_autograd_impl = torch.library.fallthrough_kernel
