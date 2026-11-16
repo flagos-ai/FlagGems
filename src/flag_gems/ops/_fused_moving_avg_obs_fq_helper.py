@@ -165,16 +165,12 @@ def _fused_kernel(
             tl.store(mask_ptr + base + idx, tl.full((BLOCK,), 1, tl.uint8), mask=m)
 
 
-_BLOCK = 16384  # per-lane DMA width for the group/element kernels:
-# measured on the per-channel cases (2048x16384 / 4096x16384), 1024/4warps
-# = 256 per lane -> 29.5/58.8 ms, 4096 -> 15.8/31.2, 8192 -> 7.6/14.9,
-# 16384 -> 7.4/14.5, 32768 -> 13.1/25.9 (local-memory pressure).
+_BLOCK = 2048  # elements per program tile, 16 per lane at 4 warps
 _SCALE_FLOOR = 6.1e-5
-# Elementwise passes in the large per-tensor path: BLOCK/num_warps is the
-# per-lane DMA width on this backend (threads-per-warp == 1), so 65536/1 is the
-# bandwidth sweet spot (measured 385-420 GB/s vs ~40 GB/s at 2048/4).
-_LARGE_BLOCK = 65536
-_RED_BLOCK = 16384  # partial min/max keeps 4 accumulators, so a smaller tile
+# Elementwise passes in the large per-tensor path use the same tile: larger
+# tiles with a single warp leave hundreds of elements per lane and spill.
+_LARGE_BLOCK = 2048
+_RED_BLOCK = 2048  # partial min/max keeps 4 accumulators, so a smaller tile
 _SINGLE_MAX = 1 << 16
 _PARTIAL_G = 256
 _ELEM_G = 1024
@@ -436,7 +432,7 @@ def _fused_moving_avg_obs_fq_helper(
                 N,
                 chunk,
                 BLOCK=_RED_BLOCK,
-                num_warps=1,
+                num_warps=4,
             )
         else:
             G = 0
@@ -478,7 +474,7 @@ def _fused_moving_avg_obs_fq_helper(
                 qmin,
                 qmax,
                 BLOCK=_LARGE_BLOCK,
-                num_warps=1,
+                num_warps=4,
             )
         else:
             _copy_elem[grid](
@@ -488,7 +484,7 @@ def _fused_moving_avg_obs_fq_helper(
                 N,
                 echunk,
                 BLOCK=_LARGE_BLOCK,
-                num_warps=1,
+                num_warps=4,
             )
         return out.view(shape), mask.view(shape)
 
@@ -513,7 +509,7 @@ def _fused_moving_avg_obs_fq_helper(
         FLOOR=_SCALE_FLOOR,
         IEEE_DIV=ieee_div,
         BLOCK=_BLOCK,
-        num_warps=1,
+        num_warps=4,
     )
 
     return out.view(shape), mask.view(shape)
