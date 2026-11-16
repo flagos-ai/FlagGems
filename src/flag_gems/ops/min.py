@@ -485,12 +485,14 @@ class MinDimFunction(torch.autograd.Function):
 
 
 def min(inp):
+    logger.debug("GEMS MIN")
     if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
         return MinFunction.apply(inp)
     return min_forward(inp)
 
 
 def min_dim(inp, dim=None, keepdim=False):
+    logger.debug("GEMS MIN_DIM")
     # `dim is None` keeps the pre-existing forward contract (and its error), so
     # it never enters the autograd path.
     if (

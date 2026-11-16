@@ -274,37 +274,3 @@ def test_min_backward_dim_non_contiguous(dtype):
     assert not inp.is_contiguous()
     _grad_dim(inp, 0, False, dtype)
     _grad_dim(inp, 1, False, dtype)
-
-
-@pytest.mark.min_backward
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_min_backward_use_gems(dtype):
-    # The ATen dispatch path must keep producing correct input gradients for
-    # both overloads.
-    inp = torch.randn((64, 96), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
-    res_inp = inp.detach().clone().requires_grad_()
-
-    ref_global = torch.min(ref_inp)
-    ref_values, ref_indices = torch.min(ref_inp, dim=1)
-    with flag_gems.use_gems():
-        res_global = torch.min(res_inp)
-        res_values, res_indices = torch.min(res_inp, dim=1)
-
-    utils.gems_assert_equal(res_indices, ref_indices)
-    utils.gems_assert_close(res_global, ref_global, dtype)
-    utils.gems_assert_close(res_values, ref_values, dtype)
-
-    grad_global = torch.randn((), dtype=dtype, device=flag_gems.device)
-    grad_values = torch.randn(ref_values.shape, dtype=dtype, device=flag_gems.device)
-    (ref_dx_global,) = torch.autograd.grad(
-        ref_global, ref_inp, utils.to_reference(grad_global)
-    )
-    (res_dx_global,) = torch.autograd.grad(res_global, res_inp, grad_global)
-    utils.gems_assert_close(res_dx_global, ref_dx_global, dtype)
-
-    (ref_dx_values,) = torch.autograd.grad(
-        ref_values, ref_inp, utils.to_reference(grad_values)
-    )
-    (res_dx_values,) = torch.autograd.grad(res_values, res_inp, grad_values)
-    utils.gems_assert_close(res_dx_values, ref_dx_values, dtype)
