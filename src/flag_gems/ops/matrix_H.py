@@ -70,11 +70,8 @@ that aten builds.
 """
 
 import logging
-import warnings
 
-import torch
-
-from flag_gems.ops.mH import _lazy_conj
+from flag_gems.ops.mH import _conjugate_transpose_view
 
 logger = logging.getLogger(__name__)
 
@@ -89,34 +86,14 @@ _MATRIX_H_0D_MESSAGE = "Tensor.H is deprecated on 0-D tensors. Consider using x.
 # timing case does not pay the warnings machinery on every iteration.
 _MATRIX_H_WARN_STATE = {"warned": False}
 
-# Bind the C-level Tensor descriptors once to avoid per-call method lookup.
-_TRANSPOSE = torch.Tensor.transpose
-_IS_COMPLEX = torch.Tensor.is_complex
-
 
 def matrix_H(self):
     """Return the zero-copy conjugate-transpose view of the matrix ``self``."""
     logger.debug("GEMS MATRIX_H")
-
-    ndim = self.dim()
-    if ndim == 2:
-        if _IS_COMPLEX(self):
-            # Complex input: the lazy conjugate bit must be toggled as well.
-            return _TRANSPOSE(_lazy_conj(self), -2, -1)
-        # Real input: conj() is a no-op identity, so the result is the stride
-        # exchange.
-        return _TRANSPOSE(self, -2, -1)
-    if ndim == 1:
-        raise RuntimeError(_MATRIX_H_1D_MESSAGE)
-    if ndim == 0:
-        # 0-D: deprecated aten path, warn once and degrade to conj().
-        if not _MATRIX_H_WARN_STATE["warned"]:
-            _MATRIX_H_WARN_STATE["warned"] = True
-            warnings.warn(_MATRIX_H_0D_MESSAGE, UserWarning, stacklevel=2)
-        return _lazy_conj(self) if _IS_COMPLEX(self) else self
-    # Batches of matrices are aten::mH's domain, not this operator's; aten
-    # rejects them here and names the alternative in the message.
-    raise RuntimeError(
-        f"tensor.H is only supported on matrices (2-D tensors). Got {ndim}-D "
-        "tensor. For batches of matrices, consider using tensor.mH"
+    return _conjugate_transpose_view(
+        self,
+        _MATRIX_H_1D_MESSAGE,
+        _MATRIX_H_0D_MESSAGE,
+        _MATRIX_H_WARN_STATE,
+        matrix_only=True,
     )
