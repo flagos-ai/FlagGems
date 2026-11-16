@@ -91,7 +91,7 @@ def _build_inputs_fn(plan, dtype, device):
     # factorization requires. utils.generate_tensor_input has no float64 or
     # complex128 support, so the matrix is built directly here.
     creation_device = device
-    if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+    if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin", "mthreads"):
         creation_device = "cpu"
     m = torch.randn(shape, dtype=dtype, device=creation_device)
     diagonal_shift = plan.params.get("diagonal_shift", n)
