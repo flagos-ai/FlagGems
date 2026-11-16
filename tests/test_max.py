@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.max import evenly_distribute_backward, max_backward
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -210,7 +211,7 @@ def test_max_backward_full_reduction(shape, dtype):
     )[0]
 
     res_out = flag_gems.max(inp)
-    res_grad = flag_gems.evenly_distribute_backward(out_grad, inp, res_out)
+    res_grad = evenly_distribute_backward(out_grad, inp, res_out)
 
     assert res_grad.shape == inp.shape
     assert res_grad.dtype == inp.dtype
@@ -233,7 +234,7 @@ def test_max_backward_full_reduction_ties(dtype):
     )[0]
 
     res_out = flag_gems.max(inp)
-    res_grad = flag_gems.evenly_distribute_backward(out_grad, inp, res_out)
+    res_grad = evenly_distribute_backward(out_grad, inp, res_out)
 
     utils.gems_assert_close(res_grad, ref_grad, dtype)
     assert torch.count_nonzero(res_grad) == 3
@@ -258,7 +259,7 @@ def test_max_backward_dim(shape, dim, keepdim, dtype):
         ref_values, ref_leaf, utils.to_reference(out_grad, True)
     )[0]
 
-    res_grad = flag_gems.max_backward(out_grad, inp, res_values, res_indices, dim)
+    res_grad = max_backward(out_grad, inp, res_values, res_indices, dim)
 
     assert res_grad.shape == inp.shape
     assert res_grad.dtype == inp.dtype
@@ -283,7 +284,7 @@ def test_max_backward_dim_ties(keepdim, dtype):
         ref_values, ref_leaf, utils.to_reference(out_grad, True)
     )[0]
 
-    res_grad = flag_gems.max_backward(out_grad, inp, res_values, res_indices, 1)
+    res_grad = max_backward(out_grad, inp, res_values, res_indices, 1)
 
     utils.gems_assert_equal(res_indices, ref_indices)
     utils.gems_assert_close(res_grad, ref_grad, dtype)
@@ -315,7 +316,7 @@ def test_max_backward_dim_nan(dtype):
     )[0]
 
     utils.gems_assert_equal(indices, ref_indices)
-    res_grad = flag_gems.max_backward(out_grad, inp, values, indices, 1)
+    res_grad = max_backward(out_grad, inp, values, indices, 1)
 
     utils.gems_assert_close(res_grad, ref_grad, dtype)
     assert res_grad[3, 17] == out_grad[3]
@@ -338,7 +339,7 @@ def test_max_backward_full_reduction_nan(dtype):
 
     result = torch.max(inp)
     assert torch.isnan(result)
-    res_grad = flag_gems.evenly_distribute_backward(out_grad, inp, result)
+    res_grad = evenly_distribute_backward(out_grad, inp, result)
 
     utils.gems_assert_close(res_grad, ref_grad, dtype)
     assert torch.count_nonzero(res_grad) == 2
