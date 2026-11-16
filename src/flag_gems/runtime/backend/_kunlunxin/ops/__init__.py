@@ -813,6 +813,7 @@ from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
 from .scaled_grouped_mm import scaled_grouped_mm
+from .scaled_modified_bessel_k0 import special_scaled_modified_bessel_k0
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
@@ -910,7 +911,6 @@ from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
 from .special_scaled_modified_bessel_k0 import (  # noqa: F401
-    special_scaled_modified_bessel_k0,
     special_scaled_modified_bessel_k0_out,
 )
 from .special_scaled_modified_bessel_k1 import (  # noqa: F401
@@ -1951,6 +1951,7 @@ __all__ = [
     "special_ndtri",
     "special_round",
     "special_round_out",
+    "special_scaled_modified_bessel_k0",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_t",
