@@ -73,8 +73,8 @@ _UNIT_ZERO_POINT = 0
 
 
 def _reference_codes(inp):
-    if flag_gems.vendor_name == "ascend":
-        # QuantizedNPU cannot clone or copy to CPU. Snapshot the native integer
+    if flag_gems.vendor_name in ("ascend", "mthreads"):
+        # This backend cannot reliably clone a quantized tensor. Snapshot the native integer
         # codes before the candidate runs, then move only the plain output.
         codes = torch.ops.aten.int_repr(inp).clone()
         return codes.cpu() if utils.TO_CPU else codes
@@ -100,6 +100,10 @@ def _quantize(payload, qdtype, scale, zero_point):
             zero_point=zero_point,
             dtype=qdtype,
             device=payload.device,
+        )
+    if flag_gems.vendor_name == "mthreads":
+        return torch.quantize_per_tensor(payload.cpu(), scale, zero_point, qdtype).to(
+            payload.device
         )
     return torch.quantize_per_tensor(payload, scale, zero_point, qdtype)
 

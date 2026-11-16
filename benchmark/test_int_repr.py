@@ -256,6 +256,10 @@ def _quantized_input(plan, dtype, device):
         inp = torch._empty_affine_quantized(
             list(shape), scale=scale, zero_point=zero_point, dtype=dtype, device=device
         )
+    elif flag_gems.vendor_name == "mthreads":
+        # The device quantizer has no qint32 path. Transfer the quantized
+        # fixture outside the timed region and retain its dtype and qparams.
+        inp = torch.quantize_per_tensor(payload.cpu(), scale, zero_point, dtype).to(device)
     else:
         inp = torch.quantize_per_tensor(payload, scale, zero_point, dtype)
     return _view(inp, layout)
@@ -322,7 +326,6 @@ def test_int_repr(input_layout):
         case_fn=partial(_case_fn, input_layout=input_layout),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.int_repr,
-        gems_op=getattr(flag_gems, "int_repr", None),
         dtypes=QUANTIZED_DTYPES,
         input_layout=input_layout,
     )
@@ -350,7 +353,6 @@ def test_int_repr_out(input_layout):
         case_fn=partial(_case_fn, input_layout=input_layout),
         build_inputs_fn=_build_inputs_fn_out,
         torch_op=torch.ops.aten.int_repr.out,
-        gems_op=getattr(flag_gems, "int_repr", None),
         dtypes=QUANTIZED_DTYPES,
         input_layout=input_layout,
     )
