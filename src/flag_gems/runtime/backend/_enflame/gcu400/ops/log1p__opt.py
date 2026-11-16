@@ -37,6 +37,7 @@ Probe pitfall: `torch.randn()+2.0` still produces x<-1 and NaN from log1p,
 and `torch.equal` is always False for NaN, so every config would be misjudged as invalid;
 sweeps / gates must use all-positive inputs.
 """
+
 import logging
 
 import torch

@@ -23,6 +23,7 @@ with no duplicate jit objects and zero Python branches.
 `out0=A` guarantees the in-place contract; integral inputs are promoted to floating-point output,
 matching the common implementation.
 """
+
 import logging
 
 from flag_gems.runtime.backend._enflame.gcu400.ops.expm1__opt import _expm1_func

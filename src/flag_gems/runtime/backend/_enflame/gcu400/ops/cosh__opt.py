@@ -23,6 +23,7 @@ word-for-word isomorphic to production `cosh`.
 
 No TRACKED file is modified, nor global CODEGEN_COFIGS.
 """
+
 import logging
 
 from flag_gems.runtime.backend._enflame.gcu400.ops.cosh_out__opt import _cosh_func

@@ -29,6 +29,7 @@ the ``n(n-1)/2`` real index pairs rather than the pow2-padded ``N(N-1)/2``.
 All computation that produces the returned values happens inside the device
 kernel; the host wrapper only allocates the output, reads metadata and launches.
 """
+
 import logging
 
 import torch

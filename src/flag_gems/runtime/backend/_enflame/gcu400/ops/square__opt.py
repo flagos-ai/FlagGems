@@ -19,6 +19,7 @@ then write back to the narrow dtype; fp32 multiplies directly. pointwise_dynamic
 max_grid_size=(12,1,1) leaves large shapes under-parallelized (measured ~6ms vs torch 0.76ms).
 Three BLOCK tiers reuse the strategy validated by square/square_out.
 """
+
 import logging
 
 import torch

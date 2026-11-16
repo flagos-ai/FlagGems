@@ -45,6 +45,7 @@ latency bound on the per-step dependency chain, not bandwidth or issue bound):
 No tl.dot is used anywhere, so the TF32 hazard of the default fp32 dot path is
 irrelevant here.  Everything runs in fp64 when the input is fp64.
 """
+
 import logging
 
 import torch

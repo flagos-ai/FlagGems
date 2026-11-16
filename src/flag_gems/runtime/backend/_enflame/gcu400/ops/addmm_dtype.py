@@ -21,6 +21,7 @@ and only routes "regular large GEMM + contiguous inputs" to the gcu400 kernel (b
 avoiding the redundant bias.broadcast_to(...).contiguous() copy). Small dimensions / non-contiguous /
 scalar or vector bias / beta=0 all fall back to the common implementation, keeping semantics and numerics unchanged.
 """
+
 import logging
 
 import torch

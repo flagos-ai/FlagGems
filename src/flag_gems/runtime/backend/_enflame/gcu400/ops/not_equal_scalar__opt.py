@@ -22,6 +22,7 @@ identical to the common implementation with no microsecond regression, while lar
 Keep production's `is_tensor=[True, False]` and `ALWAYS_BOOL` promotion semantics
 (bool output, scalar B compared in fp32). Global CODEGEN_COFIGS is not modified.
 """
+
 import logging
 
 import triton

@@ -24,6 +24,7 @@ objects.
 The host branch is word-for-word isomorphic to production (zero extra Python checks), preserving ValueError semantics;
 `out0=A` guarantees the in-place contract (the return value is A itself).
 """
+
 import logging
 
 from flag_gems.runtime.backend._enflame.gcu400.ops.clip__opt import (

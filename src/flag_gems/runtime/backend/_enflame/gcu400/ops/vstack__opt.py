@@ -32,6 +32,7 @@ Reuse `cat__opt`'s `_can_fast_path` boundary checks and `_linear_cat_kernel`,
 without changing cat.py / cat__opt.py (to avoid affecting the closed item 21 concat and
 item 30 cat_out), only choosing a larger BLOCK per operator.
 """
+
 import logging
 from typing import List, Tuple, Union
 

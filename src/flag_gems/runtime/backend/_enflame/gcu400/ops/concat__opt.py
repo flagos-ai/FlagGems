@@ -32,6 +32,7 @@ Safety boundaries (fall back to common cat otherwise, full correctness coverage)
 - all inputs rank>=1.
 BLOCK is tiered by single-input element count (probe optimum): <65536 uses 16384, otherwise 32768.
 """
+
 import logging
 from typing import List, Tuple, Union
 

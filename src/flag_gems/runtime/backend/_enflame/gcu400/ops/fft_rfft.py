@@ -27,6 +27,7 @@ tiles of BLOCK_J samples; phases are formed as ``m = (j * k) mod n`` so the trig
 argument stays in ``[0, 2*pi)`` and never loses precision to huge intermediate
 angles; DC and (even length) Nyquist imaginary parts are forced to exactly zero.
 """
+
 import logging
 
 import torch

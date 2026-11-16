@@ -28,6 +28,7 @@ rank-1 updates.  Every floating point operation that contributes to the
 returned factor happens inside the Triton kernel; the host wrapper only
 allocates outputs, computes a few scalars and launches the kernel.
 """
+
 import logging
 
 import torch

@@ -25,6 +25,7 @@ and this implementation matches it with zero Python branches; note `out0=None` m
 (codegen would read `.dtype` and raise, so omitting the argument is the automatic allocation path).
 Global CODEGEN_COFIGS is not modified, satisfying the skill's "pointwise_dynamic must be specialized" requirement.
 """
+
 import logging
 
 import triton

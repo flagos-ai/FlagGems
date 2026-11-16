@@ -28,6 +28,7 @@ unchanged; the fp32 dtype is preserved so the output dtype stays correct.
 Half-precision inputs keep the generic path (their tests pass and the host
 fold would change dgamma's dtype).
 """
+
 import logging
 
 import torch

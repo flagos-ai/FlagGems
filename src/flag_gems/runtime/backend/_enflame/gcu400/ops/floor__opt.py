@@ -29,6 +29,7 @@ with `exact=True` for every shape and grid.
 Global CODEGEN_COFIGS is not modified; only this operator's generated wrapper is affected, with no side effects on
 others.
 """
+
 import logging
 
 import triton

@@ -31,6 +31,7 @@ Non-contiguous inputs are made `.contiguous()` in place instead of delegating to
 An empty reduction with RS==0 still delegates to production. NaN semantics match production (indices come from forward,
 this operator only does scatter-add).
 """
+
 import logging
 
 import torch

@@ -49,6 +49,7 @@ materialiser for a promoted payload (any rank, any dtype, tail-masked); the
 aliasing fast path above never calls it, because for every rank the reference
 result is a view and a copy would violate the tested storage-aliasing contract.
 """
+
 import logging
 
 import torch

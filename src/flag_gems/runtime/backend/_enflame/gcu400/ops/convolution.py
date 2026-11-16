@@ -23,6 +23,7 @@ grouped channels.  Formulated as an implicit GEMM:
 
 Program grid = (cdiv(M, BLOCK_M), cdiv(C_out_pg, BLOCK_N), groups).
 """
+
 import logging
 
 import torch

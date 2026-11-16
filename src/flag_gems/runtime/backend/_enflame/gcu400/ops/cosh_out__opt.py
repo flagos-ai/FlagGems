@@ -25,6 +25,7 @@ with the kernel body word-for-word isomorphic to the common implementation; code
 Self-contained (does not import other candidate files) so an override can load it from a standalone directory.
 Global CODEGEN_COFIGS is not modified.
 """
+
 import logging
 
 import triton

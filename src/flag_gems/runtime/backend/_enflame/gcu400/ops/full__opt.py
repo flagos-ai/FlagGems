@@ -20,6 +20,7 @@ time is spent in codegen's Python layer. Here fp16/fp32/bf16 scalar fills on GCU
 use a single Triton launch; all other dtypes / Tensor fill_value / non-GCU devices
 delegate to production, keeping dtype policy and overflow-check semantics unchanged.
 """
+
 import logging
 import math
 

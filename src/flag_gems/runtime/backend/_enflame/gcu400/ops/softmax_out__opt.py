@@ -49,6 +49,7 @@ contiguous out with matching dtype, K>1 and K>=256, N>=64; all others
 non-contiguous input/out, out-of-range dims other than negative, out aliasing self)
 delegate to production `softmax_out`, guaranteeing full correctness coverage.
 """
+
 import logging
 
 import triton

@@ -51,6 +51,7 @@ above that.  The 16-bit split is worth its own bucket: loading half/bf16 and
 widening it stalls (tcu: 1D data hazard 24%, scalar hazard 33%, vs 8%/10% for
 fp32), and the 2048 tile is 16% faster than 4096 there while fp32 prefers 4096.
 """
+
 import logging
 
 import torch

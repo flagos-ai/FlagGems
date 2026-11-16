@@ -19,6 +19,7 @@ Production (common + gcu400) uses pointwise_dynamic rsub_func_tensor_scalar:
 ENFLAME max_grid_size=(12,1,1) leaves large shapes under-parallelized.
 Reuse the tiered strategy validated by square/square_out/clamp_max_.
 """
+
 import logging
 
 import torch

@@ -20,6 +20,7 @@ leaves large shapes under-parallelized. v2 adds a B131072/nw4 tier for shapes ab
 Small shapes also use a hand-written small-BLOCK kernel (falling back to the common implementation adds a dispatch
 layer).
 """
+
 import logging
 
 import triton

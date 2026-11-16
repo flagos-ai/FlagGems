@@ -19,6 +19,7 @@ gems latency of 1.3~33.6 ms under gcu400's benchmark convention. Use a single ke
 bit patterns as uint8 (no device-side FP8 pointer dependency), decode to float32 by group scale,
 then repeatedly select extrema for an ordered top-k; one launch, no temporary candidate buffer needed.
 """
+
 import logging
 import math
 

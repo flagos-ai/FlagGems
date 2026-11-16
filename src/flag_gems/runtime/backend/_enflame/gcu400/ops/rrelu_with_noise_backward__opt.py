@@ -24,6 +24,7 @@ This candidate:
 - keeps the grid-stride loop, correct for any N; numeric path matches production (f32 intermediates).
 TRACKED files are untouched; delivered additively by rebinding imports.
 """
+
 import logging
 
 import torch

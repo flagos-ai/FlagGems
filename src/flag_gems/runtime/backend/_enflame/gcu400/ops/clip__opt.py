@@ -22,6 +22,7 @@ the three jit objects' config to `(1024,1,1)`, adding no extra Python checks.
 
 Global CODEGEN_COFIGS is not modified, satisfying the skill's "pointwise_dynamic must be specialized" requirement.
 """
+
 import logging
 
 import triton

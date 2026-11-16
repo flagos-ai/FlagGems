@@ -19,6 +19,7 @@ but small shapes (64x64) showed slight 0.920~0.987 regressions, triggering the p
 gate and FAIL. v2 sends n<65536 straight to common pointwise_dynamic,
 removing that regression; everything else keeps v1's large-BLOCK hand-written kernel.
 """
+
 import logging
 
 import torch

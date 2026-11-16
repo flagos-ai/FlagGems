@@ -19,6 +19,7 @@ and ENFLAME max_grid_size=(12,1,1) leaves large shapes under-parallelized.
 On gt_scalar_, B131072/nw4 was verified clearly better than B32768/nw4 at the 2^24/2^30 tiers;
 microsecond small shapes reuse production's same underlying call to avoid regressions from extra Python checks.
 """
+
 import logging
 
 import triton
