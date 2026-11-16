@@ -412,3 +412,156 @@ def test_linalg_inv_singular_input(kind, shape):
     inp = _singular_matrix(kind, shape)
     with pytest.raises(RuntimeError):
         flag_gems.linalg_inv(inp)
+
+
+_MASTER_INV_CASES = [
+    ((), 2, torch.float32),
+    ((1,), 3, torch.float32),
+    ((2,), 4, torch.float64),
+    ((2, 3), 5, torch.float32),
+    ((1,), 7, torch.float64),
+    ((3,), 3, torch.float32),
+    ((2, 2), 4, torch.float32),
+    ((4,), 6, torch.float64),
+    ((1, 2, 1), 3, torch.float32),
+    ((2,), 8, torch.float64),
+]
+
+
+def _inputs(case):
+    batch_shape, n, dtype = case
+    torch.manual_seed(0)
+    raw = torch.randn(*batch_shape, n, n, dtype=dtype, device=flag_gems.device)
+    eye = torch.eye(n, dtype=dtype, device=flag_gems.device).expand(*batch_shape, n, n)
+    return raw @ raw.transpose(-1, -2) + 3.0 * eye
+
+
+@pytest.mark.linalg_inv
+@pytest.mark.parametrize("case", _MASTER_INV_CASES)
+def test_linalg_inv_master_cases(case):
+    dtype = case[-1]
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inputs = _inputs(case)
+    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inputs))
+    res = flag_gems.linalg_inv(inputs)
+    utils.gems_assert_close(res, ref.to(dtype), dtype, reduce_dim=case[1] * case[1])
+
+
+def _well_conditioned(n, batch=(), dtype=torch.float32):
+    torch.manual_seed(0)
+    raw = torch.randn(*batch, n, n, dtype=dtype, device=flag_gems.device)
+    eye = torch.eye(n, dtype=dtype, device=flag_gems.device).expand(*batch, n, n)
+    return raw @ raw.transpose(-1, -2) + 3.0 * eye
+
+
+@pytest.mark.linalg_inv
+@pytest.mark.parametrize(
+    "shape", tu.selected_cases([(0, 0), (0, 3, 3), (2, 0, 0)], quick=[(0, 0)])
+)
+def test_linalg_inv_master_empty(shape):
+    """Zero-sized inputs invert to zero-sized outputs without a launch."""
+    inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    res = flag_gems.linalg_inv(inp)
+    assert res.shape == ref.shape
+    assert res.dtype == inp.dtype
+
+
+@pytest.mark.linalg_inv
+def test_linalg_inv_master_noncontiguous():
+    """A transposed view inverts to the transpose of the inverse."""
+    base = _well_conditioned(5, batch=(2,))
+    view = base.transpose(-1, -2)
+    assert not view.is_contiguous()
+    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(view))
+    res = flag_gems.linalg_inv(view)
+    utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=25)
+
+
+@pytest.mark.linalg_inv
+@pytest.mark.parametrize("n", tu.selected_cases([2, 3, 5, 8], quick=[3, 5]))
+def test_linalg_inv_master_round_trip(n):
+    """``A @ inv(A)`` is the identity, which pins down pivoting end to end."""
+    inp = _well_conditioned(n)
+    res = flag_gems.linalg_inv(inp)
+    prod = tu.to_reference(inp) @ utils.to_reference(res, True)
+    eye = torch.eye(n, dtype=prod.dtype, device=prod.device)
+    utils.gems_assert_close(
+        prod.to(torch.float32), eye.to(torch.float32), torch.float32, reduce_dim=n
+    )
+
+
+@pytest.mark.linalg_inv
+def test_linalg_inv_master_row_swap_pivoting():
+    """A zero leading pivot forces a row interchange, which must still invert."""
+    inp = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32, device=flag_gems.device)
+    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    res = flag_gems.linalg_inv(inp)
+    utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=2)
+
+
+@pytest.mark.linalg_inv
+def test_linalg_inv_master_batch_independence():
+    """Each matrix in a batch is inverted on its own, not blended with others."""
+    a = _well_conditioned(4)
+    b = _well_conditioned(4) * 2.0 + torch.eye(4, device=flag_gems.device)
+    stacked = torch.stack([a, b])
+    res = flag_gems.linalg_inv(stacked)
+    res_a = flag_gems.linalg_inv(a)
+    res_b = flag_gems.linalg_inv(b)
+    torch.testing.assert_close(res[0], res_a)
+    torch.testing.assert_close(res[1], res_b)
+
+
+@pytest.mark.linalg_inv
+def test_linalg_inv_master_binds_single_argument():
+    """``aten::linalg_inv`` takes only ``A``, so the wrapper must too."""
+    inp = _well_conditioned(4)
+    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    res = flag_gems.linalg_inv(A=inp)
+    utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=16)
+
+
+@pytest.mark.linalg_inv
+@pytest.mark.parametrize(
+    "bad_fn, match",
+    [
+        pytest.param(
+            lambda: torch.randn(3, 4, device=flag_gems.device), "square", id="non_square"
+        ),
+        pytest.param(
+            lambda: torch.randn(4, device=flag_gems.device), "2 dimensions", id="one_dimensional"
+        ),
+        pytest.param(
+            lambda: torch.randn(5, device=flag_gems.device)[0],
+            "2 dimensions",
+            id="zero_dimensional",
+        ),
+    ],
+)
+def test_linalg_inv_master_invalid_shape(bad_fn, match):
+    """Shapes ATen refuses must raise instead of silently reshaping."""
+    with pytest.raises(RuntimeError, match=match):
+        flag_gems.linalg_inv(bad_fn())
+
+
+@pytest.mark.linalg_inv
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_linalg_inv_master_rejects_low_precision(dtype):
+    """Half precision cannot carry the elimination, so it is refused like ATen."""
+    inp = _well_conditioned(4).to(dtype)
+    with pytest.raises(RuntimeError, match="Low precision"):
+        flag_gems.linalg_inv(inp)
+
+
+@pytest.mark.linalg_inv
+def test_linalg_inv_master_fp64_preserved():
+    """Double precision stays double rather than silently narrowing."""
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inp = _well_conditioned(4, dtype=torch.float64)
+    res = flag_gems.linalg_inv(inp)
+    assert res.dtype == torch.float64
+    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    utils.gems_assert_close(res, ref, torch.float64, reduce_dim=16)
