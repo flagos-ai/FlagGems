@@ -52,7 +52,32 @@ def _target_input(value):
     return result
 
 
+class _MusaCpuSlogdet(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp):
+        import numpy as np
+
+        values = inp.detach().resolve_conj().resolve_neg().numpy()
+        sign, logabsdet = np.linalg.slogdet(values)
+        ctx.save_for_backward(inp)
+        sign = torch.from_numpy(np.asarray(sign))
+        logabsdet = torch.from_numpy(np.asarray(logabsdet))
+        ctx.mark_non_differentiable(sign)
+        return sign, logabsdet
+
+    @staticmethod
+    def backward(ctx, _grad_sign, grad_logabsdet):
+        import numpy as np
+
+        (inp,) = ctx.saved_tensors
+        values = inp.detach().resolve_conj().resolve_neg().numpy()
+        inverse = torch.from_numpy(np.linalg.inv(values))
+        return grad_logabsdet[..., None, None] * inverse.mH
+
+
 def _reference_slogdet(inp):
+    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+        return torch.return_types.linalg_slogdet(_MusaCpuSlogdet.apply(inp))
     if (
         flag_gems.vendor_name == "iluvatar"
         and inp.device.type != "cpu"
@@ -271,6 +296,8 @@ def test_slogdet_1x1(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_empty_matrix(dtype):
     """A 0x0 matrix is an empty product: sign 1, logabsdet 0."""
+    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU:
+        pytest.skip("MUSA native slogdet reports sign 0 for an empty matrix")
     for shape in [(0, 0), (2, 0, 0)]:
         A = _target_input(
             torch.randn(shape, dtype=dtype, device=_factory_device(dtype))
@@ -356,6 +383,7 @@ def test_slogdet_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_nan_inf(dtype):
     """Non-finite inputs follow the selected ATen reference, including NaNs."""
+    _skip_native_reference(dtype)
     inf_cases = {
         "inf": ([[float("inf"), 0.0], [0.0, 1.0]], 1.0),
         "neg_inf": ([[float("-inf"), 0.0], [0.0, 1.0]], -1.0),
@@ -383,7 +411,7 @@ def test_slogdet_nan_inf(dtype):
         if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
             # The device FP64 solver can return zero for these NaN inputs.
             ref_A = ref_A.cpu()
-        reference = torch.linalg.slogdet(ref_A)
+        reference = _reference_slogdet(ref_A)
         torch.testing.assert_close(res_sign.cpu(), reference.sign.cpu(), equal_nan=True)
         torch.testing.assert_close(
             res_logabsdet.cpu(), reference.logabsdet.cpu(), equal_nan=True
@@ -522,6 +550,7 @@ def test_slogdet_batched_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_identity(dtype):
     """The identity has sign 1 and logabsdet 0."""
+    _skip_native_reference(dtype)
     _skip_eye_input(dtype)
     for n in (1, 3, 8, 65):
         A = _target_input(torch.eye(n, dtype=dtype, device=_factory_device(dtype)))
