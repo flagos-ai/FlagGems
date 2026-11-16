@@ -232,6 +232,11 @@ for item in "${PERF_TEST_CASES[@]}"; do
     if $FAIL_FAST; then exit 1; fi
     FAILURES+=("${item} (benchmark)")
   fi
+  echo "Running kernel-check for ${item}"
+  if ! pytest -s ${item} --kernel-check; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item} (kernel-check)")
+  fi
 done
 
 # Process coverage data only when full-range testing

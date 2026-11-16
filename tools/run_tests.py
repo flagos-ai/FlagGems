@@ -898,45 +898,6 @@ def run_benchmark_q(gpu_id, op):
     return record
 
 
-def run_kernel_check_q(gpu_id, op):
-    """Check that the benchmark baseline invokes at least one device kernel.
-
-    Runs pytest with --kernel-check for the operator's benchmark test.  The
-    session passes as long as at least one case launches a kernel, so a CPU-
-    only or no-op baseline is caught here.  Returns a compact result dict with
-    the same keys used by run_benchmark_q for uniform summary handling.
-    """
-    env = get_env(str(gpu_id))
-
-    benchmark_dir = ROOT / "benchmark"
-    result_file = benchmark_dir / f"kernel_check_{op}.json"
-    if result_file.exists():
-        result_file.unlink()
-
-    op_dir = CFG.output_dir.joinpath(op)
-    ensure_dir(op_dir)
-
-    dur = time.time()
-    marker = op_marker(op)
-    cmd = (
-        f'pytest -m "{marker}" --kernel-check --record json '
-        f"--output kernel_check_{op}.json --continue-on-collection-errors"
-    )
-    code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="kernel_check")
-    dur = time.time() - dur
-
-    if code == TIMEOUT:
-        return {"status": "Timeout", "exit_code": TIMEOUT, "duration": dur}
-
-    dest = op_dir / "kernel_check_result.json"
-    if result_file.exists():
-        shutil.move(result_file, str(dest))
-        status = "Passed" if code == 0 else "Failed"
-    else:
-        status = "Failed" if code != 0 else "NoRecord"
-    return {"status": status, "exit_code": code, "duration": dur}
-
-
 def worker_proc(gpu_id, work_queue, display_queue):
     # Redirect stdout/stderr to /dev/null to avoid file handle issues in subprocesses.
     # Open file handles in forked processes can cause deadlocks.
@@ -1004,7 +965,6 @@ def worker_proc(gpu_id, work_queue, display_queue):
                             perf.get("duration", 0),
                         )
                     )
-                    kc = run_kernel_check_q(gpu_id, op)
                 else:
                     perf = {
                         "status": "NotFound",
@@ -1012,7 +972,6 @@ def worker_proc(gpu_id, work_queue, display_queue):
                         "duration": 0,
                         "data": {},
                     }
-                    kc = {"status": "NotFound", "exit_code": 0, "duration": 0}
                     display_queue.put(("done", gpu_id, "benchmark", op, "NotFound", 0))
 
                 customized_ops = [
@@ -1022,7 +981,6 @@ def worker_proc(gpu_id, work_queue, display_queue):
                     "customized": op in customized_ops,
                     "accuracy": acc,
                     "performance": perf,
-                    "kernel_check": kc,
                 }
                 worker_result.setdefault(op, result)
 
