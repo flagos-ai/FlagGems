@@ -24,7 +24,7 @@ from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
 from ._ctc_loss import _ctc_loss, _ctc_loss_out
 from ._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
-from ._dirichlet_grad import _dirichlet_grad, _dirichlet_grad_into  # noqa: F401
+from ._dirichlet_grad import _dirichlet_grad_into  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
@@ -410,6 +410,7 @@ from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .digamma import digamma
 from .digamma_ import digamma_
+from .dirichlet_grad import _dirichlet_grad
 from .dist import dist
 from .div import (
     div_mode,
@@ -1041,6 +1042,7 @@ __all__ = [
     "_ctc_loss_backward",
     "_ctc_loss_backward_out",
     "_ctc_loss_out",
+    "_dirichlet_grad",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",

@@ -78,6 +78,8 @@ def _dirichlet_inputs(shape, dtype, alpha_range, seed):
 @pytest.mark.parametrize("k", DIRICHLET_KS)
 @pytest.mark.parametrize("shape_kind", ["flat", "rows", "batched", "deep"])
 def test_dirichlet_grad(shape_kind, dtype, alpha_range, k):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin FP64 inputs/results are narrowed to FP32")
     shape = {"flat": (k,), "rows": (8, k), "batched": (64, k), "deep": (20, 320, k)}[
         shape_kind
     ]
