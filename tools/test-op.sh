@@ -226,16 +226,16 @@ done
 
 # Run benchmark test if necessary
 for item in "${PERF_TEST_CASES[@]}"; do
+  echo "Running kernel-check for ${item}"
+  if ! pytest -s ${item} --kernel-check; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item} (kernel-check)")
+  fi
   echo "Running benchmark tests for ${item}"
   echo "pytest -s ${item} --level core --record log"
   if ! pytest -s ${item} --level core --record log; then
     if $FAIL_FAST; then exit 1; fi
     FAILURES+=("${item} (benchmark)")
-  fi
-  echo "Running kernel-check for ${item}"
-  if ! pytest -s ${item} --kernel-check; then
-    if $FAIL_FAST; then exit 1; fi
-    FAILURES+=("${item} (kernel-check)")
   fi
 done
 
