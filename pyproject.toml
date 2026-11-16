@@ -214,6 +214,10 @@ mthreads-musa520 = [
     "flagtree==0.7.0+mthreads3.6",
 ]
 
+mthreads = [
+    "torchada==0.1.54",
+]
+
 nvidia-cuda128 = [
     "torch==2.10.0+cu128",
     "torchaudio==2.10.0+cu128",
