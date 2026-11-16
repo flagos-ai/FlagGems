@@ -1414,7 +1414,7 @@ class _Median(torch.autograd.Function):
     def forward(ctx, inp):
         logger.debug("GEMS MEDIAN_FORWARD")
         contiguous = _anonymous(inp).contiguous()
-        value = _median_impl(inp, contiguous.reshape(-1))
+        value = median(contiguous)
         ctx.save_for_backward(contiguous, value)
         return value
 
@@ -1435,7 +1435,7 @@ class _MedianDim(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, dim, keepdim):
         logger.debug("GEMS MEDIAN_DIM_FORWARD")
-        values, indices = _median_dim_impl(inp, dim, keepdim)
+        values, indices = median_dim(inp, dim, keepdim)
         ctx.input_shape = tuple(inp.shape)
         ctx.reduction_size = inp.shape[dim] if inp.ndim else 0
         ctx.inner_size = math.prod(inp.shape[dim + 1 :]) if inp.ndim else 1
@@ -1472,7 +1472,11 @@ def _copy_out(src, out, name):
     return out
 
 
-def _median_impl(inp, flat=None):
+def median(inp):
+    logger.debug("GEMS MEDIAN")
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return _Median.apply(inp)
+
     inp = _anonymous(inp)
     if inp.numel() == 0:
         return _empty_result_value(inp)
@@ -1481,8 +1485,7 @@ def _median_impl(inp, flat=None):
     if inp.numel() == 1:
         return inp.reshape(()).clone()
 
-    if flat is None:
-        flat = inp.contiguous().reshape(-1)
+    flat = inp.contiguous().reshape(-1)
     row_data = flat.reshape(1, inp.numel())
     if _use_float_key_select(inp.dtype, inp.numel()):
         values, _ = _median_float_key_select_rows(row_data, ())
@@ -1508,30 +1511,21 @@ def _median_impl(inp, flat=None):
     return values.reshape(())
 
 
-def median(inp):
-    logger.debug("GEMS MEDIAN")
-    return _Median.apply(inp)
-
-
+@torch.no_grad()
 def median_out(inp, *, out):
     logger.debug("GEMS MEDIAN.OUT")
-    return _copy_out(_median_impl(inp), out, "out")
-
-
-def _resolve_median_dim(inp, dim):
-    if isinstance(dim, str):
-        dim = _name_to_dim(inp, dim)
-    return _canonical_dim(inp.ndim, dim)
+    return _copy_out(median(inp), out, "out")
 
 
 def median_dim(inp, dim=0, keepdim=False):
     logger.debug("GEMS MEDIAN.DIM")
-    dim = _resolve_median_dim(inp, dim)
-    values, indices = _MedianDim.apply(inp, dim, keepdim)
-    return MedianResult(values=values, indices=indices)
 
-
-def _median_dim_impl(inp, dim, keepdim):
+    if isinstance(dim, str):
+        dim = _name_to_dim(inp, dim)
+    dim = _canonical_dim(inp.ndim, dim)
+    if torch.is_grad_enabled() and inp.requires_grad:
+        values, indices = _MedianDim.apply(inp, dim, keepdim)
+        return MedianResult(values, indices)
     names = inp.names if _has_names(inp) else None
     work = _anonymous(inp)
 
@@ -1631,10 +1625,10 @@ def _median_dim_impl(inp, dim, keepdim):
     return MedianResult(values=values, indices=indices)
 
 
+@torch.no_grad()
 def median_dim_values(inp, dim=0, keepdim=False, *, values, indices):
     logger.debug("GEMS MEDIAN.DIM_VALUES")
-    dim = _resolve_median_dim(inp, dim)
-    result_values, result_indices = _median_dim_impl(inp, dim, keepdim)
-    _copy_out(result_values, values, "values")
-    _copy_out(result_indices, indices, "indices")
+    result = median_dim(inp, dim=dim, keepdim=keepdim)
+    _copy_out(result.values, values, "values")
+    _copy_out(result.indices, indices, "indices")
     return MedianResult(values=values, indices=indices)
