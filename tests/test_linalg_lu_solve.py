@@ -18,9 +18,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-SHAPES = [(4, 4), (16, 1), (33, 16), (64, 64), (100, 40)]
-if flag_gems.vendor_name == "metax":
-    SHAPES += [(8, 8), (16, 16), (32, 32), (48, 15), (128, 128), (32, 7), (64, 1)]
+SHAPES = [
+    (4, 4), (8, 8), (16, 16), (32, 32), (33, 16), (48, 15),
+    (64, 64), (100, 40), (128, 128), (32, 7), (16, 1), (64, 1),
+]
 DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 

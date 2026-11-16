@@ -28,7 +28,7 @@ from . import base
 from .generated_operator_utils import OperatorBenchmark
 
 SHAPES = [(4, 4), (16, 1), (33, 16), (64, 64), (128, 128)]
-_METAX_MASTER_SHAPES = [
+_MASTER_SHAPES = [
     (4, 4),
     (8, 8),
     (16, 16),
@@ -360,7 +360,7 @@ class LinalgLuSolveBenchmark(OperatorBenchmark):
 
     def set_shapes(self, shape_file_path=None):
         # Ascend's static timing records cover only the existing five shapes.
-        shapes = _METAX_MASTER_SHAPES if flag_gems.vendor_name == "metax" else SHAPES
+        shapes = SHAPES if flag_gems.vendor_name == "ascend" else _MASTER_SHAPES
         super().set_shapes(shape_file_path, default_shapes=shapes)
 
 
