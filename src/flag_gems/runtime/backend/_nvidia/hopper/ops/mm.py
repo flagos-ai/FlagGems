@@ -2765,7 +2765,12 @@ def cluster_remote_mm(a, b, c, M, N, K):
     return c
 
 
-def _hopper_mm_forward(a, b):
+def mm(a, b):
+    from flag_gems.ops.mm import mm_needs_autograd
+
+    if mm_needs_autograd(a, b):
+        return HopperMmFunction.apply(a, b)
+
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -2831,7 +2836,7 @@ class HopperMmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, a, b):
         ctx.save_for_backward(a, b)
-        return _hopper_mm_forward(a, b)
+        return mm(a, b)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -2839,14 +2844,6 @@ class HopperMmFunction(torch.autograd.Function):
 
         a, b = ctx.saved_tensors
         return mm_backward(grad_output, a, b, ctx.needs_input_grad)
-
-
-def mm(a, b):
-    from flag_gems.ops.mm import mm_needs_autograd
-
-    if mm_needs_autograd(a, b):
-        return HopperMmFunction.apply(a, b)
-    return _hopper_mm_forward(a, b)
 
 
 def mm_out(a, b, *, out):

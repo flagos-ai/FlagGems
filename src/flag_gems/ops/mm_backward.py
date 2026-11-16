@@ -372,10 +372,10 @@ class MmFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, a, b):
-        from .mm import _mm_forward
+        from .mm import mm
 
         ctx.save_for_backward(a, b)
-        return _mm_forward(a, b)
+        return mm(a, b)
 
     @staticmethod
     def backward(ctx, grad_output):
