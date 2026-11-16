@@ -60,7 +60,6 @@ CLI Arguments
                       Example: --ops "add,mul,softmax"
 
   --op-list-file FILE Read operator list from file, one ID per line (# = comment).
-                      Mutually exclusive with --ops.
                       Priority: --ops > --op-list-file > --stages
 
   --start OP_ID       Start from this operator ID; only test operators with
@@ -81,9 +80,15 @@ CLI Arguments
   --dump-output       Save each test's stdout/stderr to log files.
                       Without this flag, subprocess output is discarded.
 
+  --quick             Run tests in quick mode (reduced parameter combinations
+                      for faster testing).
+
   --color MODE        ANSI color output mode.
                       Options: auto (TTY only), always, never
                       Default: "auto"
+
+  --base-data FILE    Optional ops-baseline JSON; a matched external speedup
+                      wins in summaries.
 
 Examples
 --------
