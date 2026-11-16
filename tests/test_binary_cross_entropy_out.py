@@ -141,7 +141,9 @@ def test_binary_cross_entropy_out_cast_contract():
     wide_out = torch.empty(inp.shape, dtype=torch.float64, device=flag_gems.device)
     result = _call(inp, target, weight, 0, wide_out)
     assert result is wide_out
-    utils.gems_assert_close(wide_out, expected, torch.float32)
+    assert wide_out.device == inp.device
+    assert wide_out.dtype == torch.float64
+    utils.gems_assert_close(wide_out.cpu().float(), expected.cpu(), torch.float32)
 
     int_out = torch.empty(inp.shape, dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError):
