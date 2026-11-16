@@ -230,12 +230,16 @@ def test_det_singular(shape, dtype):
 def test_det_empty(shape, dtype):
     A = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A, True)
+    if flag_gems.vendor_name == "mthreads":
+        # The determinant of an empty square matrix is the empty product, 1.
+        ref_A = ref_A.cpu()
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
     assert res_out.device == A.device
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    observed = res_out.cpu() if flag_gems.vendor_name == "mthreads" else res_out
+    utils.gems_assert_close(observed, ref_out, dtype)
 
 
 @pytest.mark.det
