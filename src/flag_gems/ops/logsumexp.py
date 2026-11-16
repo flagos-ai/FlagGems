@@ -575,4 +575,3 @@ class _LogSumExp(torch.autograd.Function):
         return grad_in, None, None
 
 
-logsumexp._flag_gems_autograd_impl = torch.library.fallthrough_kernel

@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -47,4 +49,5 @@ def test_logsumexp_backward():
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
+    bench.set_gems(flag_gems.logsumexp)
     bench.run()
