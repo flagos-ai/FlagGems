@@ -39,7 +39,7 @@ class GroupedGemmInt8Benchmark(Benchmark):
 
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
-    "grouped_gemm_w8a8" not in vars(flag_gems),
+    flag_gems.vendor_name != "thead" or "grouped_gemm_w8a8" not in vars(flag_gems),
     reason="requires a registered PPU grouped INT8 GEMM implementation",
 )
 def test_grouped_gemm_w8a8():

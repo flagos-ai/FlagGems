@@ -20,8 +20,8 @@ import flag_gems
 from .accuracy_utils import gems_assert_equal
 
 pytestmark = pytest.mark.skipif(
-    "grouped_mm_w8a8" not in vars(flag_gems),
-    reason="requires a registered grouped_mm_w8a8 implementation",
+    flag_gems.vendor_name != "metax" or "grouped_gemm_w8a8" not in vars(flag_gems),
+    reason="requires a registered grouped_gemm_w8a8 implementation",
 )
 
 
@@ -65,31 +65,31 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
         ([0, 0, 0], 64, 128),
     ],
 )
-@pytest.mark.grouped_mm_w8a8
-def test_grouped_mm_w8a8(lengths, n, k):
+@pytest.mark.grouped_gemm_w8a8
+def test_grouped_gemm_w8a8(lengths, n, k):
     args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
     expected = grouped_gemm_cpu_reference(*args[:4], lengths)
     pointer = args[4].data_ptr()
-    assert flag_gems.grouped_mm_w8a8(*args) is None
+    assert flag_gems.grouped_gemm_w8a8(*args) is None
     assert args[4].data_ptr() == pointer
     gems_assert_equal(args[4].cpu(), expected)
 
 
-@pytest.mark.grouped_mm_w8a8
-def test_grouped_mm_w8a8_int8_extremes():
+@pytest.mark.grouped_gemm_w8a8
+def test_grouped_gemm_w8a8_int8_extremes():
     args = make_grouped_gemm_case([1, 0, 1], 65, 6144, flag_gems.device)
     args[0].fill_(-128)
     args[2][0].fill_(-128)
     args[2][2].fill_(127)
     expected = grouped_gemm_cpu_reference(*args[:4], [1, 0, 1])
     pointer = args[4].data_ptr()
-    assert flag_gems.grouped_mm_w8a8(*args) is None
+    assert flag_gems.grouped_gemm_w8a8(*args) is None
     assert args[4].data_ptr() == pointer
     gems_assert_equal(args[4].cpu(), expected)
 
 
-@pytest.mark.grouped_mm_w8a8
-def test_grouped_mm_w8a8_changing_expert_rows():
+@pytest.mark.grouped_gemm_w8a8
+def test_grouped_gemm_w8a8_changing_expert_rows():
     for lengths, n, k in (
         ([0, 257, 0, 511], 64, 128),
         ([256, 0, 512, 0], 128, 256),
@@ -98,11 +98,11 @@ def test_grouped_mm_w8a8_changing_expert_rows():
     ):
         args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
         expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-        flag_gems.grouped_mm_w8a8(*args)
+        flag_gems.grouped_gemm_w8a8(*args)
         gems_assert_equal(args[4].cpu(), expected)
 
 
-@pytest.mark.grouped_mm_w8a8
+@pytest.mark.grouped_gemm_w8a8
 @pytest.mark.parametrize(
     "dtype", [torch.int8, torch.float8_e4m3fn, torch.float8_e4m3fnuz]
 )
@@ -117,7 +117,7 @@ def test_grouped_mm_w8a8_changing_expert_rows():
         ([0, 513, 0], 256, 256),
     ],
 )
-def test_grouped_mm_w8a8_dtypes_tails(lengths, n, k, dtype):
+def test_grouped_gemm_w8a8_dtypes_tails(lengths, n, k, dtype):
     args = list(make_grouped_gemm_case(lengths, n, k, flag_gems.device))
     if dtype != torch.int8:
         for index in (0, 2):
@@ -126,7 +126,7 @@ def test_grouped_mm_w8a8_dtypes_tails(lengths, n, k, dtype):
             )
     expected = grouped_gemm_cpu_reference(*args[:4], lengths)
     args[4].fill_(float("nan"))
-    assert flag_gems.grouped_mm_w8a8(*args) is None
+    assert flag_gems.grouped_gemm_w8a8(*args) is None
     if dtype == torch.int8:
         gems_assert_equal(args[4].cpu(), expected)
     else:
@@ -137,9 +137,9 @@ def test_grouped_mm_w8a8_dtypes_tails(lengths, n, k, dtype):
         )
 
 
-@pytest.mark.grouped_mm_w8a8
+@pytest.mark.grouped_gemm_w8a8
 @pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e4m3fnuz])
-def test_grouped_mm_w8a8_fp8_encodings(dtype):
+def test_grouped_gemm_w8a8_fp8_encodings(dtype):
     bits = torch.arange(256, dtype=torch.int16).to(torch.uint8)
     if dtype == torch.float8_e4m3fnuz:
         bits[bits == 128] = 0
@@ -151,25 +151,25 @@ def test_grouped_mm_w8a8_fp8_encodings(dtype):
     args[1].fill_(1)
     args[3].fill_(1)
     expected = args[0].cpu().float().bfloat16()
-    flag_gems.grouped_mm_w8a8(*args)
+    flag_gems.grouped_gemm_w8a8(*args)
     gems_assert_equal(args[4].cpu(), expected)
 
 
-@pytest.mark.grouped_mm_w8a8
-def test_grouped_mm_w8a8_int8_cancellation():
+@pytest.mark.grouped_gemm_w8a8
+def test_grouped_gemm_w8a8_int8_cancellation():
     args = make_grouped_gemm_case([0, 17, 65, 0, 131, 1], 64, 6144, flag_gems.device)
     args[0].fill_(127)
     args[2].fill_(127)
     args[0][:, 3072:] = -127
     args[0][:, 2048] = 126
     expected = grouped_gemm_cpu_reference(*args[:4], [0, 17, 65, 0, 131, 1])
-    flag_gems.grouped_mm_w8a8(*args)
+    flag_gems.grouped_gemm_w8a8(*args)
     gems_assert_equal(args[4].cpu(), expected)
 
 
-@pytest.mark.grouped_mm_w8a8
+@pytest.mark.grouped_gemm_w8a8
 @pytest.mark.parametrize("n,k", [(65, 2051), (1025, 129), (1025, 513)])
-def test_grouped_mm_w8a8_sparse_changing_groups(n, k):
+def test_grouped_gemm_w8a8_sparse_changing_groups(n, k):
     # Compact/noncompact dispatch boundaries, output/K tails, and a group
     # spanning several M tiles. Reuse metadata storage across different routes.
     lengths = [0] * 257
@@ -187,5 +187,5 @@ def test_grouped_mm_w8a8_sparse_changing_groups(n, k):
         )
         expected = grouped_gemm_cpu_reference(*args[:4], lengths)
         args[4].fill_(float("nan"))
-        assert flag_gems.grouped_mm_w8a8(*args) is None
+        assert flag_gems.grouped_gemm_w8a8(*args) is None
         gems_assert_equal(args[4].cpu(), expected)

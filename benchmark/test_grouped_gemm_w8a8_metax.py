@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Standard grouped_mm_w8a8 benchmark with explicit baseline provenance.
+"""Standard grouped_gemm_w8a8 benchmark with explicit baseline provenance.
 
 Real-shape source (external MetaX server dataset):
 /data/fzy/real_shapes_20261019/grouped_gemm_nt_i8i8bf16_nopad
@@ -32,7 +32,7 @@ FP8 diagnostic cases retain their validated Torch tile-prefix adapter.
 No dynamic routing metadata is cached or copied to the CPU. Initial input/output
 allocation, JIT and object construction are outside event timing. The candidate's
 own expert-prefix construction is inside timing. Accuracy tests belong to
-tests/test_grouped_mm_w8a8.py. Historical reference=deep_gemm remains explicit.
+tests/test_grouped_gemm_w8a8_metax.py. Historical reference=deep_gemm remains explicit.
 """
 
 import json
@@ -58,13 +58,13 @@ def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constex
     tl.store(Weights + groups, groups, groups < G)
 
 
-class GroupedMMW8A8Benchmark(base.Benchmark):
+class GroupedGEMMW8A8Benchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         path = Path(shape_file_path or base.Config.shape_file)
         default = Path(__file__).with_name("core_shapes.yaml")
         if path.resolve() == default.resolve():
             pytest.skip(
-                "External grouped_mm_w8a8 dataset required: pass --shape_file "
+                "External grouped_gemm_w8a8 dataset required: pass --shape_file "
                 "PATH to a prepared benchmark JSON. See this module docstring "
                 "for the real-shape source."
             )
@@ -79,7 +79,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             self.torch_op = (
                 self.deepgemm_reference if self.use_deepgemm else self.mctlass_reference
             )
-            self.gems_op = flag_gems.grouped_mm_w8a8
+            self.gems_op = flag_gems.grouped_gemm_w8a8
         self.shape_desc = "G, M, N, K; " + self.dataset["classification"]
         for row in self.shapes:
             lengths = row["lengths"]
@@ -272,15 +272,15 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
         return output
 
 
-@pytest.mark.grouped_mm_w8a8
+@pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     flag_gems.vendor_name != "metax", reason="Requires MetaX mctlass Torch bindings"
 )
-def test_grouped_mm_w8a8():
-    bench = GroupedMMW8A8Benchmark(
-        op_name="grouped_mm_w8a8",
+def test_grouped_gemm_w8a8():
+    bench = GroupedGEMMW8A8Benchmark(
+        op_name="grouped_gemm_w8a8",
         torch_op=None,
-        gems_op=flag_gems.grouped_mm_w8a8,
+        gems_op=flag_gems.grouped_gemm_w8a8,
         dtypes=[torch.int8, torch.float8_e4m3fn],
     )
     bench.torch_op = bench.mctlass_reference

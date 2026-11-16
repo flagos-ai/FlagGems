@@ -23,7 +23,7 @@ import flag_gems
 from .accuracy_utils import gems_assert_close, gems_assert_equal
 
 pytestmark = pytest.mark.skipif(
-    "grouped_gemm_w8a8" not in vars(flag_gems),
+    flag_gems.vendor_name != "thead" or "grouped_gemm_w8a8" not in vars(flag_gems),
     reason="requires a registered PPU grouped INT8 GEMM implementation",
 )
 
