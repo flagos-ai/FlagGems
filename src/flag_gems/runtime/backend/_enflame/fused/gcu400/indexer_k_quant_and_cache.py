@@ -30,7 +30,6 @@
 #   beyond that size are routine, so every scalar cache offset term folds
 #   into one i64 expression before the stores.
 import logging
-
 import os
 import sys
 

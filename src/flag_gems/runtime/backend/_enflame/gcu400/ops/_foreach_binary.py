@@ -766,7 +766,9 @@ BINARY_OPS: Dict[str, BinaryOp] = {
 
 
 def _log(name: str, overload: str, inplace: bool) -> None:
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug(
+        "GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else ""
+    )
     del overload
 
 

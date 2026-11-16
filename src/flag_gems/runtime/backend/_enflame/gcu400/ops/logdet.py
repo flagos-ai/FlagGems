@@ -38,7 +38,8 @@ _MIN_BATCH_FOR_BATCHED_KERNEL = 256
 def _pick_block_batch(block_n: int, batch_count: int) -> int:
     """Choose how many matrices each program handles: too-small batch falls back to the single-matrix kernel (avoiding
     tiles
-    full of masked-out empty matrices), otherwise trade tile capacity against CTA count."""
+    full of masked-out empty matrices), otherwise trade tile capacity against CTA count.
+    """
     if batch_count < _MIN_BATCH_FOR_BATCHED_KERNEL:
         return 1
     capacity = max(1, _BATCH_TILE_ELEMENTS // (block_n * block_n))
@@ -117,7 +118,8 @@ def _logdet_batch_register_kernel(
 ):
     """Process block_batch matrices at once: fold the batch axis into the tile so small matrices (n<=16) can also
     fill the vector width. Elimination steps are identical to the single-matrix version, except all row/column
-    extractions degenerate into reductions along axis=1 / axis=2, parallel over the batch axis."""
+    extractions degenerate into reductions along axis=1 / axis=2, parallel over the batch axis.
+    """
     pid = tle.program_id(0)
     rows = tl.arange(0, block_n)
     cols = tl.arange(0, block_n)

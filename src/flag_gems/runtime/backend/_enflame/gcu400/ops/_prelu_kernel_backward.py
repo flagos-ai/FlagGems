@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 _TILE_ELEMENTS = 8192
 _MAX_GRID_PROGRAMS = 48
 _NUM_WARPS = 4
-_NUM_STAGES = 0  # 0 means keep the backend default; do not set an extra software pipeline depth
+_NUM_STAGES = (
+    0  # 0 means keep the backend default; do not set an extra software pipeline depth
+)
 _FUSED_SELECT = False  # Whether to fuse two comparisons into one comparison plus arithmetic selection
 
 

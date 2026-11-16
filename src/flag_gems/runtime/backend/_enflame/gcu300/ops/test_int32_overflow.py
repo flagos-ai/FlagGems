@@ -81,7 +81,9 @@ def verify_unique_result(
                     for idx in mismatch_idx:
                         triton_val = triton_inverse_flat[idx].item()
                         torch_val = torch_inverse_flat[idx].item()
-                        print(f"    Position {idx}: triton={triton_val}, torch={torch_val}")
+                        print(
+                            f"    Position {idx}: triton={triton_val}, torch={torch_val}"
+                        )
 
                 # Check for overflow symptoms (negative or unexpectedly large values)
                 if triton_inverse_flat is not None:
@@ -151,7 +153,9 @@ def test_various_sizes(device="cuda"):
         print(f"\nTest size: {size:,}")
         try:
             # Generate random data with a controlled number of unique values
-            num_unique = min(size // 10 + 1, 100000)  # Control the number of unique values
+            num_unique = min(
+                size // 10 + 1, 100000
+            )  # Control the number of unique values
             data = torch.randint(
                 0, num_unique, (size,), dtype=torch.int64, device=device
             )
@@ -176,8 +180,14 @@ def test_edge_cases(device="cuda"):
     print("=" * 80)
 
     test_cases = [
-        ("All identical elements", torch.zeros(10000, dtype=torch.int64, device=device)),
-        ("All distinct elements", torch.arange(10000, dtype=torch.int64, device=device)),
+        (
+            "All identical elements",
+            torch.zeros(10000, dtype=torch.int64, device=device),
+        ),
+        (
+            "All distinct elements",
+            torch.arange(10000, dtype=torch.int64, device=device),
+        ),
         (
             "Sorted data",
             torch.sort(

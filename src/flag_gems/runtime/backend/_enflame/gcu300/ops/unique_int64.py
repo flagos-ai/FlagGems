@@ -796,7 +796,11 @@ def simple_unique_flat_int64(
                 tile_size=triton.next_power_of_2(out_size),
                 num_warps=8,
             )
-    return data_out[:out_size], inverse_indices, counts  # No conversion needed, already int64
+    return (
+        data_out[:out_size],
+        inverse_indices,
+        counts,
+    )  # No conversion needed, already int64
 
 
 def _unique2_int64(

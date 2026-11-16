@@ -42,7 +42,9 @@ def fake_quantize_per_tensor_affine_cachemask_backward_kernel(
 
 
 def fake_quantize_per_tensor_affine_cachemask_backward(grad, mask):
-    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_BACKWARD")
+    logger.debug(
+        "GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_BACKWARD"
+    )
     grad = grad.contiguous()
     mask = mask.contiguous()
     output = torch.empty_like(grad)

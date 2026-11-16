@@ -179,7 +179,8 @@ def prod_dim_inner_kernel(
     EVEN_N: tl.constexpr,
 ):
     """Reduced dimension is innermost: persistent row-batch tile [BM, BN], acc2d elementwise multiply,
-    one tree at each row tile's finish; main loop is mask-free (tail block separated by constexpr)."""
+    one tree at each row tile's finish; main loop is mask-free (tail block separated by constexpr).
+    """
     if (
         tl.constexpr(X.dtype.element_ty == tl.float16)
         | tl.constexpr(X.dtype.element_ty == tl.bfloat16)

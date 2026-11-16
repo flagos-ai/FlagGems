@@ -168,7 +168,9 @@ def analyze_differences(results, in0, verbose=True):
 
         if not torch.equal(inv32_flat, inv_pt_flat):
             diff = (inv32_flat != inv_pt_flat).sum().item()
-            issues.append(f"int32 inverse_indices differs from pytorch: {diff} elements")
+            issues.append(
+                f"int32 inverse_indices differs from pytorch: {diff} elements"
+            )
 
             if verbose:
                 # Find the first mismatch position
@@ -182,11 +184,15 @@ def analyze_differences(results, in0, verbose=True):
 
         if inv64_flat is not None and not torch.equal(inv64_flat, inv_pt_flat):
             diff = (inv64_flat != inv_pt_flat).sum().item()
-            issues.append(f"int64 inverse_indices differs from pytorch: {diff} elements")
+            issues.append(
+                f"int64 inverse_indices differs from pytorch: {diff} elements"
+            )
 
         if inv64_flat is not None and not torch.equal(inv32_flat, inv64_flat):
             diff = (inv32_flat != inv64_flat).sum().item()
-            issues.append(f"★ int32 and int64 inverse_indices differ: {diff} elements ★")
+            issues.append(
+                f"★ int32 and int64 inverse_indices differ: {diff} elements ★"
+            )
 
             if verbose:
                 mismatch_idx = torch.where(inv32_flat != inv64_flat)[0]
@@ -195,7 +201,9 @@ def analyze_differences(results, in0, verbose=True):
                     for idx in mismatch_idx[:5]:
                         int32_val = inv32_flat[idx].item()
                         int64_val = inv64_flat[idx].item()
-                        print(f"      Position {idx}: int32={int32_val}, int64={int64_val}")
+                        print(
+                            f"      Position {idx}: int32={int32_val}, int64={int64_val}"
+                        )
 
     # Compare counts
     cnt32 = results["int32"]["counts"]
@@ -246,7 +254,9 @@ def analyze_differences(results, in0, verbose=True):
             print(f"    int32 reconstruction matches: {match32}")
             if not match32:
                 diff = (reconstructed32 != in0_flat).sum().item()
-                issues.append(f"★ int32 reconstruction failed: {diff} elements differ ★")
+                issues.append(
+                    f"★ int32 reconstruction failed: {diff} elements differ ★"
+                )
         except Exception as e:
             issues.append(f"int32 reconstruction raised an error: {e}")
 
@@ -258,7 +268,9 @@ def analyze_differences(results, in0, verbose=True):
                 print(f"    int64 reconstruction matches: {match64}")
                 if not match64:
                     diff = (reconstructed64 != in0_flat).sum().item()
-                    issues.append(f"int64 reconstruction failed: {diff} elements differ")
+                    issues.append(
+                        f"int64 reconstruction failed: {diff} elements differ"
+                    )
             except Exception as e:
                 issues.append(f"int64 reconstruction raised an error: {e}")
 
@@ -343,7 +355,9 @@ def run_tests(device="cuda"):
             for name, issue in int32_issues:
                 print(f"  [{name}] {issue}")
     else:
-        print("\n✅ All tests passed! int32 and int64 versions produce identical results.")
+        print(
+            "\n✅ All tests passed! int32 and int64 versions produce identical results."
+        )
 
     return all_issues
 

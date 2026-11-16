@@ -20,7 +20,6 @@ bit patterns as uint8 (no device-side FP8 pointer dependency), decode to float32
 then repeatedly select extrema for an ordered top-k; one launch, no temporary candidate buffer needed.
 """
 import logging
-
 import math
 
 import torch

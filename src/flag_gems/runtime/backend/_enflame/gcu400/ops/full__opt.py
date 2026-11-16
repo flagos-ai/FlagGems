@@ -21,7 +21,6 @@ use a single Triton launch; all other dtypes / Tensor fill_value / non-GCU devic
 delegate to production, keeping dtype policy and overflow-check semantics unchanged.
 """
 import logging
-
 import math
 
 import torch

@@ -130,7 +130,9 @@ def _cdist_forward(
 
     # Only support p=2.0 for now
     if p != 2.0:
-        logger.debug("GEMS_ENFLAME_GCU400 CDIST_FORWARD falling back to torch (p != 2.0)")
+        logger.debug(
+            "GEMS_ENFLAME_GCU400 CDIST_FORWARD falling back to torch (p != 2.0)"
+        )
         return flag_gems.cdist(x1, x2, p=p, compute_mode=compute_mode)
 
     # Handle broadcasting - get shapes

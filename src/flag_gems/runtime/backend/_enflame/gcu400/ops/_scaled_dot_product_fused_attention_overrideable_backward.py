@@ -338,7 +338,9 @@ def scaled_dot_product_fused_attention_overrideable_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _scaled_dot_product_fused_attention_overrideable_backward")
+    logger.debug(
+        "GEMS_ENFLAME_GCU400 _scaled_dot_product_fused_attention_overrideable_backward"
+    )
 
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 

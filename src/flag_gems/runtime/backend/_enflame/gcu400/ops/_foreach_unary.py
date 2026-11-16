@@ -912,7 +912,9 @@ def _apply_unary_chunked(op, tensors, inplace: bool):
 def apply_unary(name: str, self, inplace: bool):
     """Dispatch one table row through the shared executor."""
     op = UNARY_OPS[name]
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug(
+        "GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else ""
+    )
     route_min_numel = UNARY_LARGE_TENSOR_TUNING.get(op.name, {}).get("route_min_numel")
     # ATen raises RuntimeError for both empty TensorLists and non-Tensor elements, while numel() /
     # is_contiguous() in route probing would raise AttributeError first. Wrap the whole routing decision

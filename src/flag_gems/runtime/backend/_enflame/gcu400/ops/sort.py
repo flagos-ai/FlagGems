@@ -186,7 +186,9 @@ def block_base_kernel(
         row_total = tl.zeros((r,), dtype=tl.int32)
         for g in range(0, grid_n):
             row_total += tl.load(hist_ptr + (g * m + row) * r + bin_all)
-        bin_prefix = tl.cumsum(row_total, axis=0) - row_total  # exclusive prefix across bins
+        bin_prefix = (
+            tl.cumsum(row_total, axis=0) - row_total
+        )  # exclusive prefix across bins
 
         # Exclusive prefix across CTA blocks (accumulation of the same (row, bin) along pid_n)
         running = tl.zeros((r,), dtype=tl.int32)

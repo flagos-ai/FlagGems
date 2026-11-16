@@ -33,7 +33,6 @@ without changing cat.py / cat__opt.py (to avoid affecting the closed item 21 con
 item 30 cat_out), only choosing a larger BLOCK per operator.
 """
 import logging
-
 from typing import List, Tuple, Union
 
 import torch

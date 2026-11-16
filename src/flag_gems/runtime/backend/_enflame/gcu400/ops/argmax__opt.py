@@ -34,7 +34,6 @@ the original JITFunction is taken from `LibEntry.fn.fn` and passed constexpr exp
 Runtime patching of `Heuristics.values` has no effect (LibEntry cache is frozen), measured 1.00x.
 """
 import logging
-
 import math
 
 import torch
