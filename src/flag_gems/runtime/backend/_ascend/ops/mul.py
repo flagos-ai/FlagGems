@@ -51,13 +51,17 @@ def mul_persistent_kernel(
     output_ptr,
     scalar,
     n_elements,
-    blocks_per_program,
     BLOCK_SIZE: tl.constexpr,
     SCALAR: tl.constexpr,
     FULL_BLOCKS: tl.constexpr,
 ):
-    start = tl.program_id(0) * blocks_per_program
-    stop = tl.minimum(start + blocks_per_program, tl.cdiv(n_elements, BLOCK_SIZE))
+    pid = tl.program_id(0)
+    programs = tl.num_programs(0)
+    tiles = tl.cdiv(n_elements, BLOCK_SIZE)
+    base = tiles // programs
+    remainder = tiles % programs
+    start = pid * base + tl.minimum(pid, remainder)
+    stop = start + base + (pid < remainder).to(tl.int32)
     for block in range(start, stop):
         offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = True if FULL_BLOCKS else offsets < n_elements
@@ -75,7 +79,7 @@ def _launch_persistent_mul(tensor, other, output, *, scalar=False):
         return output
     cores = _mul_vector_cores(output.device.index)
     # Bound both the UB footprint and the number of scheduled programs.
-    # Each program processes adjacent blocks to keep HBM accesses contiguous.
+    # Balance adjacent blocks across programs to keep HBM accesses contiguous.
     block = min(16384, max(128, triton.next_power_of_2(triton.cdiv(n, cores))))
     tiles = triton.cdiv(n, block)
     grid = min(tiles, cores)
@@ -86,7 +90,6 @@ def _launch_persistent_mul(tensor, other, output, *, scalar=False):
             output,
             other if scalar else 0,
             n,
-            triton.cdiv(tiles, grid),
             BLOCK_SIZE=block,
             SCALAR=scalar,
             FULL_BLOCKS=n % block == 0,
