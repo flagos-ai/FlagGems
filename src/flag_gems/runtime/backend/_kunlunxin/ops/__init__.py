@@ -267,7 +267,7 @@ from .any import any, any_dim, any_dims
 from .apply_repetition_penalties import apply_repetition_penalties
 from .arange import arange, arange_start
 from .arccos import arccos, arccos_
-from .arccosh_inplace import arccosh_  # noqa: F401
+from .arccosh import arccosh_  # noqa: F401
 from .arcsin import arcsin, arcsin_, arcsin_out
 from .arcsinh import arcsinh, arcsinh_, arcsinh_out  # noqa: F401
 from .arctan import arctan, arctan_
