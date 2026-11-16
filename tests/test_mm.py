@@ -25,6 +25,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+mm_backward = importlib.import_module(flag_gems.mm.__module__).mm_backward
+
 if QUICK_MODE:
     MNK_SHAPES = [
         (1, 1, 32),
@@ -385,7 +387,7 @@ def test_mm_backward_entry(M, N, K, dtype, needs_input_grad):
         torch.mm(ref_mat1.t(), ref_grad_output) if needs_input_grad[1] else None
     )
 
-    grad_a, grad_b = flag_gems.mm_backward(grad_output, mat1, mat2, needs_input_grad)
+    grad_a, grad_b = mm_backward(grad_output, mat1, mat2, needs_input_grad)
 
     if needs_input_grad[0]:
         assert grad_a.shape == (M, K) and grad_a.dtype == dtype
@@ -422,7 +424,7 @@ def test_mm_backward_use_gems(dtype):
     ref_grad = utils.to_reference(out_grad, True)
 
     with flag_gems.use_gems():
-        res_out = torch.mm(mat1, mat2)
+        res_out = flag_gems.mm(mat1, mat2)
         res_grad_a, res_grad_b = torch.autograd.grad(res_out, (mat1, mat2), (out_grad,))
 
     ref_out = torch.mm(ref_mat1, ref_mat2)
@@ -460,7 +462,7 @@ def test_mm_backward_selectable_path(monkeypatch, M, N, K, dtype, path):
     """
     # ``flag_gems.ops.mm_backward`` the attribute is the function, so resolve
     # the implementation module through importlib instead of attribute access.
-    backward_module = importlib.import_module("flag_gems.ops.mm")
+    backward_module = importlib.import_module(flag_gems.mm.__module__)
 
     limit = 0 if path == "tuned" else float("inf")
     monkeypatch.setitem(backward_module._HOST_BOUND_LIMIT, dtype, limit)
@@ -475,7 +477,7 @@ def test_mm_backward_selectable_path(monkeypatch, M, N, K, dtype, path):
     ref_grad_a = torch.mm(ref_grad_output, ref_mat2.t())
     ref_grad_b = torch.mm(ref_mat1.t(), ref_grad_output)
 
-    grad_a, grad_b = flag_gems.mm_backward(grad_output, mat1, mat2, (True, True))
+    grad_a, grad_b = mm_backward(grad_output, mat1, mat2, (True, True))
 
     assert (M, K) == grad_a.shape and (K, N) == grad_b.shape
     utils.gems_assert_close(
