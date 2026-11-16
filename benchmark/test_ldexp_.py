@@ -370,7 +370,11 @@ class LdexpInplaceBenchmark(
 ):
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
-        if flag_gems.vendor_name != "mthreads":
+        if (
+            flag_gems.vendor_name != "mthreads"
+            or Path(shape_file_path).resolve()
+            != Path(__file__).with_name("core_shapes.yaml").resolve()
+        ):
             return
         master_shapes = [(1,), (1024,), (1024, 1024), (4096, 4096), (16, 128, 64, 64)]
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:

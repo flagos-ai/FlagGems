@@ -28,6 +28,13 @@ def _functional_reference(self, other):
     return torch.ops.aten.ldexp.Tensor(self, other).to(self.dtype)
 
 
+def _comparison_result(result):
+    # Enflame has no native device ldexp reference.
+    if flag_gems.vendor_name == "enflame":
+        return result.cpu()
+    return result
+
+
 @pytest.mark.ldexp_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
@@ -39,11 +46,13 @@ def test_ldexp_(shape, dtype):
     ref_out = _functional_reference(ref_self, ref_other)
 
     ptr = self.data_ptr()
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     assert result is self
     assert result.data_ptr() == ptr
-    utils.gems_assert_close(result, ref_out, dtype)
+    utils.gems_assert_close(_comparison_result(result), ref_out, dtype)
 
 
 @pytest.mark.ldexp_
@@ -60,10 +69,12 @@ def test_ldexp_mixed_dtype_(self_dtype, other_dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = _functional_reference(ref_self, ref_other)
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     assert result.dtype == self_dtype
-    utils.gems_assert_close(result, ref_out, self_dtype)
+    utils.gems_assert_close(_comparison_result(result), ref_out, self_dtype)
 
 
 @pytest.mark.ldexp_
@@ -75,11 +86,13 @@ def test_ldexp_broadcast_noncontiguous_and_empty_():
     ref_other = utils.to_reference(other)
     ref_out = _functional_reference(ref_self, ref_other)
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     assert result is self
     assert result.stride() == original_stride
-    utils.gems_assert_close(result, ref_out, torch.float32)
+    utils.gems_assert_close(_comparison_result(result), ref_out, torch.float32)
 
     empty = torch.empty((0, 7), device=flag_gems.device)
     empty_other = torch.empty((1, 7), dtype=torch.int32, device=flag_gems.device)
@@ -105,9 +118,11 @@ def test_ldexp_special_values_(dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = _functional_reference(ref_self, ref_other)
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
-    utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
+    utils.gems_assert_close(_comparison_result(result), ref_out, dtype, equal_nan=True)
     result_cpu = result.cpu()
     ref_cpu = ref_out.cpu()
     valid = ~(torch.isnan(result_cpu) | torch.isnan(ref_cpu))
@@ -134,10 +149,12 @@ def test_ldexp_extreme_integral_exponents_():
         utils.to_reference(self.clone(), True), utils.to_reference(other)
     ).to(torch.float32)
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     assert torch.isfinite(result).all()
-    utils.gems_assert_equal(result, ref_out)
+    utils.gems_assert_equal(_comparison_result(result), ref_out)
 
 
 @pytest.mark.ldexp_
@@ -153,7 +170,9 @@ def test_ldexp_fp64_exponent_precision_():
         utils.to_reference(self.clone(), True), utils.to_reference(other, True)
     )
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     torch.testing.assert_close(result.cpu(), ref_out.cpu(), rtol=1e-12, atol=0.0)
 
@@ -178,10 +197,12 @@ def test_ldexp_complex_(dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = _functional_reference(ref_self, ref_other)
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     assert result is self
-    utils.gems_assert_close(result, ref_out, dtype)
+    utils.gems_assert_close(_comparison_result(result), ref_out, dtype)
 
 
 @pytest.mark.ldexp_
@@ -204,7 +225,9 @@ def test_ldexp_complex128_exponent_precision_():
         utils.to_reference(self.clone(), True), utils.to_reference(other, True)
     )
 
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     torch.testing.assert_close(result.cpu(), ref_out.cpu(), rtol=1e-12, atol=1e-14)
 
@@ -213,7 +236,7 @@ def test_ldexp_complex128_exponent_precision_():
 @pytest.mark.parametrize("overlap", ["exact", "partial"])
 def test_ldexp_overlapping_operands_(overlap):
     storage = torch.tensor([0.25, 0.5, 1.0, 1.5, 2.0], device=flag_gems.device)
-    ref_storage = utils.to_reference(storage.clone(), True)
+    ref_storage = _comparison_result(utils.to_reference(storage.clone(), True))
     if overlap == "exact":
         self, other = storage[1:4], storage[1:4]
         ref_self, ref_other = ref_storage[1:4], ref_storage[1:4]
@@ -222,10 +245,12 @@ def test_ldexp_overlapping_operands_(overlap):
         ref_self, ref_other = ref_storage[1:], ref_storage[:-1]
 
     ref_result = ref_self.ldexp_(ref_other)
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
+    assert result.device == expected_device
 
     assert result is self
-    utils.gems_assert_close(result, ref_result, torch.float32)
+    utils.gems_assert_close(_comparison_result(result), ref_result, torch.float32)
 
 
 @pytest.mark.ldexp_
@@ -277,8 +302,10 @@ def test_ldexp_mixed_precision_extreme_exponent_():
     reference = _functional_reference(
         utils.to_reference(self), utils.to_reference(other)
     )
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
-    utils.gems_assert_equal(result, reference, equal_nan=True)
+    assert result.device == expected_device
+    utils.gems_assert_equal(_comparison_result(result), reference, equal_nan=True)
 
 
 @pytest.mark.ldexp_
@@ -292,8 +319,10 @@ def test_ldexp_int64_exponent_outside_int32_range_():
     reference = _functional_reference(
         utils.to_reference(self), utils.to_reference(other)
     )
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
-    utils.gems_assert_equal(result, reference, equal_nan=True)
+    assert result.device == expected_device
+    utils.gems_assert_equal(_comparison_result(result), reference, equal_nan=True)
 
 
 @pytest.mark.ldexp_
@@ -320,8 +349,10 @@ def test_ldexp_complex_integral_extremes_(dtype, conjugated):
     reference = _functional_reference(
         utils.to_reference(self), utils.to_reference(other)
     )
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
-    utils.gems_assert_close(result, reference, dtype, equal_nan=True)
+    assert result.device == expected_device
+    utils.gems_assert_close(_comparison_result(result), reference, dtype, equal_nan=True)
 
 
 @pytest.mark.ldexp_
@@ -335,5 +366,7 @@ def test_ldexp_conjugated_complex_exponent_():
     reference = _functional_reference(
         utils.to_reference(self, True), utils.to_reference(other, True)
     )
+    expected_device = self.device
     result = flag_gems.ldexp_(self, other)
-    utils.gems_assert_close(result, reference, self.dtype, equal_nan=True)
+    assert result.device == expected_device
+    utils.gems_assert_close(_comparison_result(result), reference, self.dtype, equal_nan=True)
