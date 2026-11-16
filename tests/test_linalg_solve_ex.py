@@ -60,8 +60,7 @@ def test_linalg_solve_ex(batch_shape, n, nrhs, dtype):
     ref_rhs = utils.to_reference(rhs, True)
     expected = torch.linalg.solve_ex(ref_matrix, ref_rhs)
 
-    with flag_gems.use_gems():
-        actual = torch.linalg.solve_ex(matrix, rhs)
+    actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
     _assert_outputs(actual, expected, dtype)
     utils.gems_assert_equal(matrix, matrix_before)
@@ -86,8 +85,7 @@ def test_linalg_solve_ex_broadcast(dtype):
     ref_rhs = utils.to_reference(rhs, True)
     expected = torch.linalg.solve_ex(ref_matrix, ref_rhs)
 
-    with flag_gems.use_gems():
-        actual = torch.linalg.solve_ex(matrix, rhs)
+    actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
     _assert_outputs(actual, expected, dtype)
     assert actual.result.shape == (2, 3, 4, 2)
@@ -102,8 +100,7 @@ def test_linalg_solve_ex_empty_batch():
         utils.to_reference(matrix, True), utils.to_reference(rhs, True)
     )
 
-    with flag_gems.use_gems():
-        actual = torch.linalg.solve_ex(matrix, rhs)
+    actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
     _assert_outputs(actual, expected, torch.float32)
 
@@ -113,8 +110,8 @@ def test_linalg_solve_ex_check_errors_raises_for_singular_matrix():
     matrix = torch.zeros((4, 4), dtype=torch.float32, device=flag_gems.device)
     rhs = torch.ones((4, 1), dtype=torch.float32, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(torch.linalg.LinAlgError):
-        torch.linalg.solve_ex(matrix, rhs, check_errors=True)
+    with pytest.raises(torch.linalg.LinAlgError):
+        flag_gems.linalg_solve_ex(matrix, rhs, check_errors=True)
 
 
 @pytest.mark.linalg_solve_ex
@@ -127,8 +124,7 @@ def test_linalg_solve_ex_autograd_matches_reference():
         expected.square().sum(), (ref_matrix, ref_rhs)
     )
 
-    with flag_gems.use_gems():
-        result, info = torch.linalg.solve_ex(matrix, rhs)
+    result, info = flag_gems.linalg_solve_ex(matrix, rhs)
     actual_grads = torch.autograd.grad(result.square().sum(), (matrix, rhs))
 
     assert result.requires_grad
@@ -148,8 +144,8 @@ def test_linalg_solve_ex_invalid_shapes(matrix_shape, rhs_shape):
     matrix = torch.randn(matrix_shape, device=flag_gems.device)
     rhs = torch.randn(rhs_shape, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises((ValueError, RuntimeError)):
-        torch.linalg.solve_ex(matrix, rhs)
+    with pytest.raises((ValueError, RuntimeError)):
+        flag_gems.linalg_solve_ex(matrix, rhs)
 
 
 @pytest.mark.linalg_solve_ex
@@ -158,13 +154,64 @@ def test_linalg_solve_ex_rejects_unsupported_dtype(dtype):
     matrix = torch.eye(4, dtype=dtype, device=flag_gems.device)
     rhs = torch.ones((4, 1), dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises((AssertionError, RuntimeError)):
-        torch.linalg.solve_ex(matrix, rhs)
+    with pytest.raises((AssertionError, RuntimeError)):
+        flag_gems.linalg_solve_ex(matrix, rhs)
 
 
 @pytest.mark.linalg_solve_ex
 def test_linalg_solve_ex_right_side_is_rejected_by_current_kernel():
     matrix, rhs = _make_inputs((), 4, 4, torch.float32)
 
-    with flag_gems.use_gems(), pytest.raises(NotImplementedError, match="right=True"):
-        torch.linalg.solve_ex(matrix, rhs, left=False)
+    with pytest.raises(NotImplementedError, match="right=True"):
+        flag_gems.linalg_solve_ex(matrix, rhs, left=False)
+
+
+SOLVE_EX_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
+
+
+def _make_solve_ex_inputs(shape, k, dtype, device, left=True):
+    """Create well-conditioned A and random B for solve_ex test."""
+    n = shape[-1]
+    A = torch.randn(*shape, dtype=dtype, device=device)
+    eye = torch.eye(n, dtype=dtype, device=device)
+    batch_dims = [1] * (A.ndim - 2)
+    if batch_dims:
+        eye = eye.view(*batch_dims, n, n)
+    A = A @ A.mH + eye * n
+    B_shape = shape[:-1] + (k,) if left else shape[:-2] + (k, n)
+    B = torch.randn(*B_shape, dtype=dtype, device=device)
+    return A, B
+
+
+@pytest.mark.linalg_solve_ex
+@pytest.mark.parametrize("shape", SOLVE_EX_SHAPES)
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test_linalg_solve_ex_square_rhs(shape, dtype):
+    n, k = shape
+    A, B = _make_solve_ex_inputs((n, n), k, dtype, flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
+    res_out, res_info = flag_gems.linalg_solve_ex(A, B)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert torch.equal(res_info, ref_info.to(res_info.device))
+
+
+@pytest.mark.linalg_solve_ex
+@pytest.mark.parametrize("batch_shape", [(1,), (3,), (4,), (2, 4)])
+@pytest.mark.parametrize("n", [4, 8, 16])
+@pytest.mark.parametrize("k", [1, 4])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test_linalg_solve_ex_batched(batch_shape, n, k, dtype):
+    shape_A = batch_shape + (n, n)
+    A, B = _make_solve_ex_inputs(shape_A, k, dtype, flag_gems.device)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
+    res_out, res_info = flag_gems.linalg_solve_ex(A, B)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert torch.equal(res_info, ref_info.to(res_info.device))
