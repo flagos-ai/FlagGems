@@ -25,10 +25,13 @@ RNN_HIDDEN_SIZES = [8, 16]
 pytestmark = [
     pytest.mark.rnn_relu,
     pytest.mark.skipif(
-        flag_gems.device != "cuda"
-        or not torch.cuda.is_available()
-        or (cfg.TO_CPU and flag_gems.vendor_name != "metax"),
-        reason="This RNN suite requires a CUDA-compatible target",
+        flag_gems.vendor_name != "mthreads"
+        and (
+            flag_gems.device != "cuda"
+            or not torch.cuda.is_available()
+            or (cfg.TO_CPU and flag_gems.vendor_name != "metax")
+        ),
+        reason="This RNN suite requires a validated native target",
     ),
 ]
 
