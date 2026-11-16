@@ -164,6 +164,24 @@ def test_short_k_sync_admits_odd_n_in_both_layouts(router, monkeypatch):
     assert not router._SHORT_K_STORAGE.supports(a, nn, c)
 
 
+@pytest.mark.parametrize("k,expected", [(320, (64,)), (512, (64,)), (576, ())])
+def test_expanded_short_k_admits_up_to_eight_panels(router, monkeypatch, k, expected):
+    m, n = 2048, 2048
+    monkeypatch.setattr(router, "_short_k_supported", lambda: True)
+    monkeypatch.setattr(
+        router.torch_device_fn,
+        "get_device_properties",
+        lambda device: SimpleNamespace(multi_processor_count=80),
+    )
+    a = tensor((m, k), (k, 1), 0x100000)
+    c = tensor((m, n), (n, 1), 0x200000000)
+    for stride in ((n, 1), (1, k)):
+        b = tensor((k, n), stride, 0x100000000)
+        assert router.short_k_mm_candidates(a, b, c) == ()
+        configs = router.short_k_mm_candidates(a, b, c, extended=True)
+        assert tuple(config.block_k for config in configs) == expected
+
+
 @pytest.mark.parametrize(
     "nt,n,a_offset,b_offset,expected",
     [

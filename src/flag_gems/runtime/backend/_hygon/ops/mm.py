@@ -1723,6 +1723,11 @@ _SHARED_TWO_CTA_CONFIGS = (
     SharedMMConfig((64, 128, 32), num_stages=4),
 )
 
+_SHARED_SHORT_REDUCTION_CONFIGS = (
+    SharedMMConfig((128, 256, 16), num_stages=4),
+    SharedMMConfig((256, 256, 16), warps=(4, 2), num_stages=4),
+)
+
 
 def _shared_two_cta_candidates(m, n, compute_units):
     # These schedules fit two CTA LDS allocations per CU. Give them a
@@ -1733,6 +1738,20 @@ def _shared_two_cta_candidates(m, n, compute_units):
         if compute_units
         < triton.cdiv(m, config.tile[0]) * triton.cdiv(n, config.tile[1])
         <= 2 * compute_units
+    )
+
+
+def _shared_short_reduction_candidates(m, n, k, compute_units):
+    # Short reductions can benefit from processing more output tiles at once.
+    # Bound the K loop and retain enough output tiles to occupy the device.
+    return tuple(
+        config
+        for config in _SHARED_SHORT_REDUCTION_CONFIGS
+        if k <= 32 * config.tile[2]
+        and m >= config.tile[0]
+        and n >= config.tile[1]
+        and triton.cdiv(m, config.tile[0]) * triton.cdiv(n, config.tile[1])
+        >= compute_units
     )
 
 
@@ -1757,11 +1776,11 @@ def _short_k_supported():
     return callable(getattr(tle, "load", None)) and supports_hcu_options(_SHORT_K_HCU_OPTIONS)
 
 
-def short_k_mm_candidates(a, b, c):
+def short_k_mm_candidates(a, b, c, *, extended=False):
     m, k = a.shape
     n = b.shape[1]
     if (
-        min(m, n) < 128 or not 64 <= k <= 256
+        min(m, n) < 128 or not 64 <= k <= (512 if extended else 256)
         or not _short_k_supported()
         or not _SHORT_K_STORAGE.supports(a, b, c, async_load=False)
     ):
@@ -1769,11 +1788,12 @@ def short_k_mm_candidates(a, b, c):
     compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
     if triton.cdiv(m, 128) * triton.cdiv(n, 128) < compute_units:
         return ()
-    # Two to four whole K panels can be folded into a straight-line
-    # synchronous schedule. The regular tuner remains in the competition.
+    # Keep the existing unroll budget for 32-wide panels. Larger panels
+    # can cover a short reduction with up to eight synchronous iterations.
     return tuple(
         config for config in SHORT_K_MM_CONFIGS
-        if k % config.block_k == 0 and 2 <= k // config.block_k <= 4
+        if k % config.block_k == 0
+        and 2 <= k // config.block_k <= (8 if config.block_k == 64 else 4)
     )
 
 
@@ -1786,7 +1806,8 @@ def launch_short_k_mm(a, b, c, config):
             BLOCK_M=128, BLOCK_N=128, BLOCK_K=config.block_k, GROUP_M=4,
             MASK_EDGES=m % 128 != 0 or n % 128 != 0,
             USE_TLE=True, LOAD_MODE=0, K_DIVISIBLE_BY_16=True,
-            B_K_CONTIGUOUS=b.stride() == (1, k), LOOP_UNROLL_FACTOR=4,
+            B_K_CONTIGUOUS=b.stride() == (1, k),
+            LOOP_UNROLL_FACTOR=8 if k > 4 * config.block_k else 4,
             num_warps=4, num_stages=2, **_SHORT_K_HCU_OPTIONS,
         )
 
@@ -2404,6 +2425,8 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False, expanded=False):
     if expanded and shared_configs and not splitk_pool:
         compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
         shared_configs += _shared_two_cta_candidates(*c.shape, compute_units)
+        m, k = a.shape
+        shared_configs += _shared_short_reduction_candidates(m, c.shape[1], k, compute_units)
     if splitk_pool:
         m, n = c.shape
         compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
@@ -2428,7 +2451,7 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False, expanded=False):
     if splitk_pool:
         return local + shared + grouped_mv_candidates(a, b, compute_units)
     cooperative = _cooperative_mm_candidates(a, b, c, allow_nn=expanded)
-    short_k = short_k_mm_candidates(a, b, c)
+    short_k = short_k_mm_candidates(a, b, c, extended=expanded)
     return shared + cooperative + local + short_k
 
 
