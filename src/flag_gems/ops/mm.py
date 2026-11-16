@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.mm_backward import MmFunction
 from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -579,12 +580,28 @@ def streamk_scenario(a, b, M, N, K):
     )
 
 
-def mm(a, b):
+def _mm_forward(a, b):
+    """Matrix product without autograd bookkeeping.
+
+    This is the shared compute path for the public ``mm`` entry and for the
+    first-order backward, which issues the two gradient GEMMs directly.
+    """
     logger.debug("GEMS MM")
 
     device = a.device
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    M, K = a.shape
+    N = b.shape[1]
+    if M == 0 or N == 0:
+        # Degenerate output: no element of the product is defined, so no
+        # kernel launch is needed (an empty tensor is the exact result).
+        c_dtype = get_higher_dtype(a.dtype, b.dtype)
+        return torch.empty((M, N), device=device, dtype=c_dtype)
+    if K == 0:
+        # Empty contraction: every output element is a sum over zero terms.
+        c_dtype = get_higher_dtype(a.dtype, b.dtype)
+        return torch.zeros((M, N), device=device, dtype=c_dtype)
     if is_syrk_transpose_pair(a, b):
-        M, K = a.shape
         c = torch.empty((M, M), device=device, dtype=a.dtype)
         return syrk_mm(a, c, M, K)
     # handle non-contiguous inputs if necessary
@@ -592,10 +609,6 @@ def mm(a, b):
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
@@ -606,6 +619,17 @@ def mm(a, b):
     if cluster_remote_mm_scenario(a, b, c, M, N, K):
         return cluster_remote_mm(a, b, c, M, N, K)
     return general_mm(a, b, c, M, N, K)
+
+
+def mm_needs_autograd(a, b):
+    """Whether the public ``mm`` entry must build a first-order autograd node."""
+    return bool((a.requires_grad or b.requires_grad) and torch.is_grad_enabled())
+
+
+def mm(a, b):
+    if mm_needs_autograd(a, b):
+        return MmFunction.apply(a, b)
+    return _mm_forward(a, b)
 
 
 def mm_out(a, b, *, out):
