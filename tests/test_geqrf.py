@@ -20,6 +20,39 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+def _reference_geqrf(inp, *, a=None, tau=None):
+    if flag_gems.vendor_name != "mthreads" or inp.device.type != "cpu":
+        if a is None:
+            return torch.ops.aten.geqrf.default(inp)
+        return torch.ops.aten.geqrf.a(inp, a=a, tau=tau)
+
+    # The MUSA image's CPU PyTorch has no LAPACK build.
+    import numpy as np
+
+    packed, reflectors = np.linalg.qr(inp.numpy(), mode="raw")
+    matrix = torch.from_numpy(packed.swapaxes(-1, -2)).to(inp.dtype)
+    factors = torch.from_numpy(reflectors).to(inp.dtype)
+    if a is None:
+        return matrix, factors
+    a.copy_(matrix)
+    tau.copy_(factors)
+    return a, tau
+
+
+def _assert_geqrf_result_close(result, reference):
+    if flag_gems.vendor_name == "mthreads":
+        assert result.device.type == flag_gems.device
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_close(result, reference)
+
+
+def _assert_geqrf_input_unchanged(inp, snapshot):
+    assert inp.device == snapshot.device
+    if flag_gems.vendor_name == "mthreads" and inp.is_complex():
+        inp, snapshot = inp.cpu(), snapshot.cpu()
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
+
+
 # geqrf is the LAPACK Householder QR factorisation: an input of shape
 # (*batch, M, N) is factored into the packed reflector matrix a (*batch, M, N)
 # and the reflector scalars tau (*batch, min(M, N)). The default overload is
@@ -247,9 +280,9 @@ def _assert_terminal_reflector_equivalent(
     _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
     a, tau = a.cpu(), tau.cpu()
 
-    tu.assert_result_close(a[:-1], ref_a[:-1])
-    tu.assert_result_close(a[-1, :-1], ref_a[-1, :-1])
-    tu.assert_result_close(tau[:-1], ref_tau[:-1])
+    _assert_geqrf_result_close(a[:-1], ref_a[:-1])
+    _assert_geqrf_result_close(a[-1, :-1], ref_a[-1, :-1])
+    _assert_geqrf_result_close(tau[:-1], ref_tau[:-1])
 
     # The final square reflector acts only on one coordinate. LAPACK and
     # Hygon may split that coordinate's phase differently between Q and R.
@@ -267,7 +300,7 @@ def _assert_terminal_reflector_equivalent(
         _assert_projected_terminal(column, a, tau)
         _assert_projected_terminal(column, ref_a, ref_tau)
     else:
-        tu.assert_result_close(terminal[0], terminal[1])
+        _assert_geqrf_result_close(terminal[0], terminal[1])
 
 
 def _assert_qr_factorization(inp, a, tau, ref_a, ref_tau):
@@ -321,7 +354,7 @@ def test_geqrf_value_range(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
     snapshot = inp.clone()
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
+    ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
     if (
@@ -352,10 +385,10 @@ def test_geqrf_value_range(shape, value_range, dtype):
             ),
         )
     else:
-        tu.assert_result_close(res_a, ref_a)
-        tu.assert_result_close(res_tau, ref_tau)
+        _assert_geqrf_result_close(res_a, ref_a)
+        _assert_geqrf_result_close(res_tau, ref_tau)
     # The default overload is not in-place.
-    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
+    _assert_geqrf_input_unchanged(inp, snapshot)
 
 
 @pytest.mark.geqrf
@@ -365,11 +398,11 @@ def test_geqrf_boundary_shapes(shape, dtype):
     inp = tu.make_input(dtype, shape, GEQRF_RANGE)
     ref_inp = tu.to_reference(inp)
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
+    ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a)
+    _assert_geqrf_result_close(res_tau, ref_tau)
 
 
 @pytest.mark.geqrf
@@ -379,11 +412,11 @@ def test_geqrf_empty_shapes(shape, dtype):
     inp = tu.make_input(dtype, shape, GEQRF_RANGE)
     ref_inp = tu.to_reference(inp)
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
+    ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a)
+    _assert_geqrf_result_close(res_tau, ref_tau)
 
 
 @pytest.mark.geqrf
@@ -394,12 +427,12 @@ def test_geqrf_non_contiguous_input(layout, dtype):
     ref_inp = tu.to_reference(inp)
     snapshot = inp.clone()
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
+    ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
-    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
+    _assert_geqrf_result_close(res_a, ref_a)
+    _assert_geqrf_result_close(res_tau, ref_tau)
+    _assert_geqrf_input_unchanged(inp, snapshot)
 
 
 @pytest.mark.geqrf
@@ -413,7 +446,7 @@ def test_geqrf_out_buffers(shape, layout, dtype):
     out_a, out_tau = make_out_buffers(inp, shape, layout)
     supplied_metadata = out_buffer_metadata((out_a, out_tau))
 
-    torch.ops.aten.geqrf.a(ref_inp, a=ref_a, tau=ref_tau)
+    _reference_geqrf(ref_inp, a=ref_a, tau=ref_tau)
     returned_a, returned_tau = flag_gems.geqrf(inp, a=out_a, tau=out_tau)
 
     # The out overload has to write the caller's buffers and hand back those
@@ -421,9 +454,9 @@ def test_geqrf_out_buffers(shape, layout, dtype):
     assert returned_a is out_a
     assert returned_tau is out_tau
     assert out_buffer_metadata((out_a, out_tau)) == supplied_metadata
-    tu.assert_result_close(out_a, ref_a)
-    tu.assert_result_close(out_tau, ref_tau)
-    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
+    _assert_geqrf_result_close(out_a, ref_a)
+    _assert_geqrf_result_close(out_tau, ref_tau)
+    _assert_geqrf_input_unchanged(inp, snapshot)
 
 
 @pytest.mark.geqrf
@@ -434,11 +467,11 @@ def test_geqrf_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).reshape(1, 5)
     ref_inp = tu.to_reference(inp)
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
+    ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a)
+    _assert_geqrf_result_close(res_tau, ref_tau)
 
 
 @pytest.mark.geqrf
@@ -447,15 +480,15 @@ def test_geqrf_special_values_placed(dtype, scenario):
     inp = make_placed_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
 
-    ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
+    ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
     # A payload in an early row propagates through the later reflectors, which is
     # what distinguishes this workload from the single-row case; both packed A and
     # tau are compared with matching NaNs (equal_nan) and no masking, so a
     # candidate that computes different positions still fails.
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a)
+    _assert_geqrf_result_close(res_tau, ref_tau)
 
 
 @pytest.mark.geqrf
@@ -540,7 +573,7 @@ def test_geqrf_well_conditioned(shape, dtype):
     A = _well_conditioned(shape, dtype, flag_gems.device)
     ref_A = utils.to_reference(A)
 
-    ref_a, ref_tau = torch.ops.aten.geqrf.default(ref_A)
+    ref_a, ref_tau = _reference_geqrf(ref_A)
     res_a, res_tau = flag_gems.geqrf(A)
 
     assert res_a.device == res_tau.device == A.device
@@ -587,7 +620,7 @@ def test_geqrf_well_conditioned_non_contiguous():
     # logical matrix
     base = _well_conditioned((16, 8), torch.float32, flag_gems.device)
     At = base.t().t().t()[:8]  # non-contiguous view with the same rows
-    ref = torch.ops.aten.geqrf.default(utils.to_reference(At.contiguous()))
+    ref = _reference_geqrf(utils.to_reference(At.contiguous()))
     res_a, res_tau = flag_gems.geqrf(At)
     assert res_a.device == res_tau.device == At.device
     assert res_a.dtype == res_tau.dtype == At.dtype
@@ -624,6 +657,6 @@ def test_geqrf_zero_and_tiny_sizes():
     a, tau = flag_gems.geqrf(A)
     assert a.device == tau.device == A.device
     assert a.dtype == tau.dtype == A.dtype
-    ref_a, ref_tau = torch.ops.aten.geqrf.default(utils.to_reference(A))
+    ref_a, ref_tau = _reference_geqrf(utils.to_reference(A))
     assert tau.item() == ref_tau.item() == 0.0
     utils.gems_assert_close(a, ref_a, torch.float32)
