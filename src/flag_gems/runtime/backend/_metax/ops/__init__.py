@@ -108,6 +108,7 @@ from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
+from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_bessel_y0 import special_bessel_y0
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
@@ -275,6 +276,8 @@ __all__ = [
     "segment_reduce_out",
     "sigmoid",
     "silu",
+    "sort",
+    "sort_stable",
     "special_bessel_j0",
     "special_bessel_j0_out",
     "special_bessel_y0",
