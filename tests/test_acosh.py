@@ -112,9 +112,9 @@ def _make_float_input(dtype, shape, low, high):
     values = torch.rand(shape, dtype=torch.float32, device=flag_gems.device)
     inp = (values * (high - low) + low).to(dtype)
     if inp.numel() > 1:
-        edges = torch.tensor([low, high], dtype=torch.float32, device=flag_gems.device).to(
-            dtype
-        )
+        edges = torch.tensor(
+            [low, high], dtype=torch.float32, device=flag_gems.device
+        ).to(dtype)
         inp.view(-1)[:2] = edges
     return inp
 
@@ -140,7 +140,9 @@ def _make_int_input(dtype, shape, low, high):
         flag_gems.device
     )
     if inp.numel() > 1:
-        edges = torch.tensor([low, high], dtype=dtype, device="cpu").to(flag_gems.device)
+        edges = torch.tensor([low, high], dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
         inp.view(-1)[:2] = edges
     return inp
 
@@ -280,6 +282,7 @@ def test_acosh__integer_rejects(shape, dtype):
 
 def _debug_fp8_inplace():
     import torch as _t
+
     shape = (16, 128, 64, 60)
     dtype = _t.float8_e5m2
     low, high = -1000.0, 0.0
@@ -288,5 +291,5 @@ def _debug_fp8_inplace():
     snapshot = inp.float().clone()
     res_out = flag_gems.acosh_(inp)
     ref_out = _t.acosh(snapshot).to(dtype)
-    print('DBG res nan:', res_out.float().isnan().sum().item())
-    print('DBG ref nan:', ref_out.float().isnan().sum().item())
+    print("DBG res nan:", res_out.float().isnan().sum().item())
+    print("DBG ref nan:", ref_out.float().isnan().sum().item())
