@@ -1669,24 +1669,8 @@ _FULL_CONFIG = (
     ("lstm_cell", lstm_cell),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
-    # In-place comparisons have an ATen Autograd kernel whose gradient is
-    # identically zero. The FlagGems entries wrap that same contract in
-    # ``torch.autograd.Function`` so the zero gradient is produced by the FlagGems
-    # path instead of a native ``zeros_like``; the Autograd fallthrough below
-    # lets the wrapper own the whole differentiable path (cf. ``clone`` and
-    # ``adaptive_avg_pool3d``).
-    (
-        "lt_.Scalar",
-        lt_scalar_,
-        None,
-        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
-    ),
-    (
-        "lt_.Tensor",
-        lt_,
-        None,
-        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
-    ),
+    ("lt_.Scalar", lt_scalar_),
+    ("lt_.Tensor", lt_),
     ("lu_solve", lu_solve),
     ("lu_solve.out", lu_solve_out),
     ("lu_unpack", lu_unpack),

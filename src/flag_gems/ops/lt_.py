@@ -32,6 +32,16 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
+def lt_(A, B):
+    logger.debug("GEMS LT_")
+    if torch.is_grad_enabled() and (A.requires_grad or B.requires_grad):
+        return _LtInplaceFunction.apply(A, B)
+    lt_func(A, B, out0=A)
+    if not _reached_through_dispatch():
+        increment_version(A)
+    return A
+
+
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def lt_func_scalar(x, y):
@@ -170,16 +180,6 @@ def _reached_through_dispatch():
     return probe(torch._C.DispatchKey.ADInplaceOrView)
 
 
-def lt_(A, B):
-    logger.debug("GEMS LT_")
-    if torch.is_grad_enabled() and (A.requires_grad or B.requires_grad):
-        return _LtInplaceFunction.apply(A, B)
-    lt_func(A, B, out0=A)
-    if not _reached_through_dispatch():
-        increment_version(A)
-    return A
-
-
 def lt_scalar_(A, B):
     logger.debug("GEMS LT_SCALAR_")
     if torch.is_grad_enabled() and A.requires_grad:
@@ -188,3 +188,9 @@ def lt_scalar_(A, B):
     if not _reached_through_dispatch():
         increment_version(A)
     return A
+
+
+lt_._flag_gems_autograd_impl = torch.library.fallthrough_kernel
+
+
+lt_scalar_._flag_gems_autograd_impl = torch.library.fallthrough_kernel
