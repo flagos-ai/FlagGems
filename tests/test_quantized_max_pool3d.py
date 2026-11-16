@@ -431,10 +431,9 @@ def test_quantized_max_pool3d_empty_batch():
 @pytest.mark.quantized_max_pool3d
 def test_quantized_max_pool3d_rejects_non_quantized():
     """A plain float tensor is not a valid input."""
+    inp = torch.randn((1, 2, 6, 6, 6), device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        flag_gems.quantized_max_pool3d(
-            torch.randn(1, 2, 6, 6, 6, device=flag_gems.device), kernel_size=2
-        )
+        flag_gems.quantized_max_pool3d(inp, kernel_size=2)
 
 
 @pytest.mark.quantized_max_pool3d
