@@ -148,6 +148,23 @@ jobs:
           python3 tools/ci_checks/check_aten_operators.py \
             --operators '${{ steps.derive.outputs.changed_operators }}'
 
+      # Only lines added by the PR are checked; the legacy backlog of torch
+      # compute calls is not flagged. Opt out per line with '# allow-torch-compute'.
+      - name: Check no torch compute calls in operator code
+        id: check-no-torch-fallback
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          files=$(git diff --name-only --diff-filter=d \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" -- '*.py')
+          if [ -z "$files" ]; then
+            echo "No changed Python files."
+            exit 0
+          fi
+          python3 tools/ci_checks/check_no_torch_fallback.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" $files
+
       # --- Warning-only checks (emit ::warning annotations, always exit 0) ---
 
       - name: Check API logging convention
@@ -168,7 +185,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           failed=0
-          for step_id in check-operators-yaml check-init-exports check-backend-imports check-kernelgen-tests check-operator-markers check-aten-operators; do
+          for step_id in check-operators-yaml check-init-exports check-backend-imports check-kernelgen-tests check-operator-markers check-aten-operators check-no-torch-fallback; do
             result=$(echo "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
             echo "$step_id: $result"
             if [ "$result" = "failure" ]; then
