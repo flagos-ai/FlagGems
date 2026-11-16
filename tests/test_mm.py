@@ -460,7 +460,7 @@ def test_mm_backward_selectable_path(monkeypatch, M, N, K, dtype, path):
     """
     # ``flag_gems.ops.mm_backward`` the attribute is the function, so resolve
     # the implementation module through importlib instead of attribute access.
-    backward_module = importlib.import_module("flag_gems.ops.mm_backward")
+    backward_module = importlib.import_module("flag_gems.ops.mm")
 
     limit = 0 if path == "tuned" else float("inf")
     monkeypatch.setitem(backward_module._HOST_BOUND_LIMIT, dtype, limit)

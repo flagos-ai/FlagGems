@@ -28,6 +28,8 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
+from flag_gems.ops.mm import mm_backward  # noqa: F401
+from flag_gems.ops.mm import _with_hopper_mm_backward
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -64,6 +66,9 @@ aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
 SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
+
+if vendor_name == "nvidia" and mm.__module__.endswith("hopper.ops.mm"):
+    mm = _with_hopper_mm_backward(mm)
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None

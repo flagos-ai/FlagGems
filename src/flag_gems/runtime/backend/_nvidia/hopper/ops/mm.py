@@ -2766,11 +2766,6 @@ def cluster_remote_mm(a, b, c, M, N, K):
 
 
 def mm(a, b):
-    from flag_gems.ops.mm import mm_needs_autograd
-
-    if mm_needs_autograd(a, b):
-        return HopperMmFunction.apply(a, b)
-
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -2786,9 +2781,6 @@ def mm(a, b):
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     if M == 0 or N == 0:
         return c
-    if K == 0:
-        # Empty contraction: every output element is a sum over zero terms.
-        return c.zero_()
 
     # Optimize for N=1 case (matrix-vector multiplication)
     if N == 1:
@@ -2828,22 +2820,6 @@ def mm(a, b):
         if c.dtype in (torch.float16, torch.bfloat16, torch.float32):
             return splitk_mm_two_step(a, b, c, M, N, K)
     return general_mm(a, b, c, M, N, K)
-
-
-class HopperMmFunction(torch.autograd.Function):
-    """First-order autograd node around the Hopper TMA ``mm`` kernels."""
-
-    @staticmethod
-    def forward(ctx, a, b):
-        ctx.save_for_backward(a, b)
-        return mm(a, b)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        from flag_gems.ops.mm_backward import mm_backward
-
-        a, b = ctx.saved_tensors
-        return mm_backward(grad_output, a, b, ctx.needs_input_grad)
 
 
 def mm_out(a, b, *, out):
