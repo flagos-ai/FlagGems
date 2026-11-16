@@ -77,6 +77,7 @@ from .div import (
     div_mode_,
     floor_divide,
     floor_divide_,
+    true_divide,
     true_divide_,
     true_divide_out,
 )
@@ -202,6 +203,7 @@ from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .true_divide import true_divide
+from .true_divide_ import true_divide_
 from .trunc import trunc, trunc_
 from .uniform import uniform
 from .unique import _unique2
