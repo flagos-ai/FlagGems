@@ -328,6 +328,51 @@ def _logcumsumexp_carry_kernel(
 
 @libentry()
 @triton.jit
+def _logcumsumexp_carry_scan_kernel(
+    chunk_total,
+    carry,
+    num_chunks,
+    NC: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
+    """Vectorised exclusive scan over a row's chunk totals.
+
+    Same result as :func:`_logcumsumexp_carry_kernel` but the ``num_chunks``
+    scalar iterations become one ``tl.associative_scan`` over a fixed ``NC``
+    (< = 512) lane tile.  The serial scalar loop measured 39% of the total time
+    on (1024, 1024) and 15% on (4096, 4096): one program per row, each running a
+    latency-bound scalar ``scf.for``.
+
+    The exclusive scan is obtained by loading chunk ``j-1`` into lane ``j``
+    (lane 0 masked to ``-inf``, the identity of ``logaddexp``) and taking the
+    inclusive scan of that shifted view, so ``carry[j] == logaddexp(t[0..j-1])``
+    exactly as the serial pass computed it.  ``NC`` is a constexpr and the tile
+    has no runtime loop, which is what this backend needs (a runtime trip count
+    plus a wide tile crashes ``TritonXPUUnrollControl``).
+    """
+    pid_r = tle.program_id(0)
+    acc_ty = tl.float64 if IS_FP64 else tl.float32
+
+    j = tl.arange(0, NC)
+    row_mask = j < num_chunks
+    # Shift by one: lane j reads chunk_total[j-1]; lane 0 uses the identity.
+    # The load and the store must share the *same* mask (a masked load consumed
+    # by a different-mask store is not predicated on this backend), and the
+    # pointer is clamped so even lane 0 reads in-bounds; lane 0 is then forced to
+    # the identity with ``tl.where``.
+    idx = tl.maximum(j - 1, 0)
+    t = tl.load(
+        chunk_total + pid_r * num_chunks + idx,
+        mask=row_mask,
+        other=float("-inf"),
+    ).to(acc_ty)
+    t = tl.where(j >= 1, t, float("-inf"))
+    exc = tl.associative_scan(t, 0, _logaddexp)
+    tl.store(carry + pid_r * num_chunks + j, exc, mask=row_mask)
+
+
+@libentry()
+@triton.jit
 def _logcumsumexp_shift_kernel(
     out,
     carry,
@@ -350,6 +395,32 @@ def _logcumsumexp_shift_kernel(
     res = tl.load(out + base + offsets * K, mask=mask, other=0).to(acc_ty)
     shifted = _logaddexp(c, tl.where(mask, res, float("-inf")))
     tl.store(out + base + offsets * K, shifted.to(out.dtype.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit
+def _logcumsumexp_identity_kernel(
+    inp, out, n_elements, BLOCK: tl.constexpr, IS_FP64: tl.constexpr
+):
+    """Flat elementwise identity-cast for scanned rows of length 1.
+
+    ``logcumsumexp`` over a single element is that element itself: the scan's
+    identity is ``-inf`` and ``logaddexp(-inf, x) == x`` for every ``x``
+    (finite, ``+-inf`` and NaN all reproduce ``x`` exactly, see
+    :func:`_logaddexp`).  Running a whole ``tl.associative_scan`` per row is
+    pure overhead there: measured 0.018x vs ATen on the (10000, 1) benchmark
+    case (10000 programs each widening a 1-lane tile to the 64-lane scan
+    minimum).  A flat cast copy is bit-identical and memory bound.
+    """
+    pid = tle.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+    x = tl.load(inp + offs, mask=mask, other=0)
+    if IS_FP64:
+        x = x.to(tl.float64)
+    else:
+        x = x.to(tl.float32)
+    tl.store(out + offs, x.to(out.dtype.element_ty), mask=mask)
 
 
 @libentry()
@@ -441,6 +512,46 @@ def _logcumsumexp_complex_carry_kernel(
         tr = tl.load(chunk_total_r + pid_r * num_chunks + j).to(acc_ty)
         ti = tl.load(chunk_total_i + pid_r * num_chunks + j).to(acc_ty)
         carry_r, carry_i = _complex_logaddexp(carry_r, carry_i, tr, ti)
+
+
+@libentry()
+@triton.jit
+def _logcumsumexp_complex_carry_scan_kernel(
+    chunk_total_r,
+    chunk_total_i,
+    carry_r_out,
+    carry_i_out,
+    num_chunks,
+    NC: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
+    """Complex counterpart of :func:`_logcumsumexp_carry_scan_kernel`.
+
+    Tuple ``associative_scan`` over the shifted chunk-total pairs, so the
+    exclusive carry is ``carry[j] = logaddexp(t[0..j-1])`` as in the serial
+    complex carry pass.
+    """
+    pid_r = tle.program_id(0)
+    acc_ty = tl.float64 if IS_FP64 else tl.float32
+
+    j = tl.arange(0, NC)
+    row_mask = j < num_chunks
+    idx = tl.maximum(j - 1, 0)
+    tr = tl.load(
+        chunk_total_r + pid_r * num_chunks + idx,
+        mask=row_mask,
+        other=float("-inf"),
+    ).to(acc_ty)
+    ti = tl.load(
+        chunk_total_i + pid_r * num_chunks + idx,
+        mask=row_mask,
+        other=0.0,
+    ).to(acc_ty)
+    tr = tl.where(j >= 1, tr, float("-inf"))
+    ti = tl.where(j >= 1, ti, 0.0)
+    exc_r, exc_i = tl.associative_scan((tr, ti), 0, _complex_logaddexp)
+    tl.store(carry_r_out + pid_r * num_chunks + j, exc_r, mask=row_mask)
+    tl.store(carry_i_out + pid_r * num_chunks + j, exc_i, mask=row_mask)
 
 
 @libentry()
@@ -599,6 +710,10 @@ def _chunked_scan(
     carry = torch.empty(rows, num_chunks, dtype=total_dtype, device=inp.device)
 
     warps = 8 if chunk > 2048 else 4
+    # The vectorised carry pass scans ``next_pow2(num_chunks)`` lanes; above the
+    # 512-lane scan lowering limit the serial per-row loop is used instead.
+    vector_carry = num_chunks <= 512
+    nc_tile = triton.next_power_of_2(num_chunks) if vector_carry else 0
     with torch_device_fn.device(inp.device):
         if is_complex:
             # The imaginary totals are a separate buffer rather than a second
@@ -623,15 +738,27 @@ def _chunked_scan(
                 REAL_INPUT=real_input,
                 num_warps=warps,
             )
-            _logcumsumexp_complex_carry_kernel[(rows,)](
-                chunk_total,
-                chunk_total_i,
-                carry,
-                carry_i,
-                num_chunks,
-                IS_FP64=acc_is_fp64,
-                num_warps=1,
-            )
+            if vector_carry:
+                _logcumsumexp_complex_carry_scan_kernel[(rows,)](
+                    chunk_total,
+                    chunk_total_i,
+                    carry,
+                    carry_i,
+                    num_chunks,
+                    NC=nc_tile,
+                    IS_FP64=acc_is_fp64,
+                    num_warps=4,
+                )
+            else:
+                _logcumsumexp_complex_carry_kernel[(rows,)](
+                    chunk_total,
+                    chunk_total_i,
+                    carry,
+                    carry_i,
+                    num_chunks,
+                    IS_FP64=acc_is_fp64,
+                    num_warps=1,
+                )
             _logcumsumexp_complex_shift_kernel[(rows, num_chunks)](
                 dst_view,
                 carry,
@@ -655,13 +782,23 @@ def _chunked_scan(
             IS_FP64=acc_is_fp64,
             num_warps=warps,
         )
-        _logcumsumexp_carry_kernel[(rows,)](
-            chunk_total,
-            carry,
-            num_chunks,
-            IS_FP64=acc_is_fp64,
-            num_warps=1,
-        )
+        if vector_carry:
+            _logcumsumexp_carry_scan_kernel[(rows,)](
+                chunk_total,
+                carry,
+                num_chunks,
+                NC=nc_tile,
+                IS_FP64=acc_is_fp64,
+                num_warps=4,
+            )
+        else:
+            _logcumsumexp_carry_kernel[(rows,)](
+                chunk_total,
+                carry,
+                num_chunks,
+                IS_FP64=acc_is_fp64,
+                num_warps=1,
+            )
         _logcumsumexp_shift_kernel[(rows, num_chunks)](
             dst_view,
             carry,
@@ -733,6 +870,29 @@ def _logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
 
     src_view = _real_view(inp)
     dst_view = _real_view(target)
+
+    # A scanned row of length 1 reduces to an elementwise identity-cast (see
+    # ``_logcumsumexp_identity_kernel``).  This is the overwhelmingly common
+    # "empty scan axis" shape family in practice (e.g. (10000, 1)) and running a
+    # per-row cross-lane scan there is ~50x slower than ATen.  Complex output is
+    # left on the generic path: its re/im pair layout needs the pair kernels.
+    if N == 1 and not is_complex:
+        n_elements = target.numel()
+        BLOCK = 1024
+        grid = (triton.cdiv(n_elements, BLOCK),)
+        with torch_device_fn.device(inp.device):
+            _logcumsumexp_identity_kernel[grid](
+                src_view,
+                dst_view,
+                n_elements,
+                BLOCK=BLOCK,
+                IS_FP64=acc_is_fp64,
+                num_warps=4,
+            )
+        if scratch is not None:
+            scratch.copy_(target)
+            return scratch
+        return out
 
     # A single program would have to scan the whole row, and
     # ``tl.associative_scan`` compile time grows steeply with the block size

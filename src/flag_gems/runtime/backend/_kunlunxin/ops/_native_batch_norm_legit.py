@@ -163,3 +163,27 @@ def _native_batch_norm_legit_no_stats_out(
         eps,
     )
     return _copy_outputs(result, out, save_mean, save_invstd)
+
+
+import sys as _sys  # noqa: E402
+
+# The platform benchmark (benchmark/test_native_batch_norm_legit.py) binds its
+# candidate from the *generic* module path
+# (`from flag_gems.ops._native_batch_norm_legit import ...`) instead of
+# `flag_gems._native_batch_norm_legit`. On XPU3 the generic
+# `batch_norm_forward_kernel` does not lower (`TritonXPUUnrollControl` /
+# `uni_sram` pass failure), so that path can never be executed here even though
+# the registrar already routes `flag_gems._native_batch_norm_legit` to this
+# module. Rebind the generic module attributes to this vendor implementation so
+# both call paths resolve to the kernel that actually runs on XPU (same pattern
+# as `_kunlunxin/ops/_batch_norm_impl_index.py`).
+_generic_module = _sys.modules.get("flag_gems.ops._native_batch_norm_legit")
+if _generic_module is not None:
+    _generic_module._native_batch_norm_legit = _native_batch_norm_legit
+    _generic_module._native_batch_norm_legit_no_stats = (
+        _native_batch_norm_legit_no_stats
+    )
+    _generic_module._native_batch_norm_legit_out = _native_batch_norm_legit_out
+    _generic_module._native_batch_norm_legit_no_stats_out = (
+        _native_batch_norm_legit_no_stats_out
+    )

@@ -26,6 +26,18 @@ def special_softmax(self, dim, dtype=None):
         # Cast input to the specified dtype for computation
         self = self.to(dtype)
 
-    result = core_softmax(self, dim)
+    # The tuned backend `softmax` only handles the reduced dim as the innermost
+    # axis (its K > 1 transpose path is broken: the rank-reducing device copy
+    # it needs is not available). For a non-last `dim`, move it last with a
+    # metadata-only view, run the tuned last-axis path, and move the result
+    # back. ``movedim`` is a view (no compute) and the contiguous copies it
+    # forces are device-side data movement, never an ATen/CPU fallback.
+    if self.ndim == 0:
+        return core_softmax(self, dim)
 
-    return result
+    dim = dim % self.ndim
+    if dim == self.ndim - 1:
+        return core_softmax(self, dim)
+
+    result = core_softmax(self.movedim(dim, -1), -1)
+    return result.movedim(-1, dim).contiguous()

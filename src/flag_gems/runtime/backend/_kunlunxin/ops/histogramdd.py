@@ -25,109 +25,302 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# Points processed per program by the index kernel, coordinates scanned per inner
+# iteration by the setup reduction, and points scanned per program by the count
+# kernel.  Fixed constexpr tiles (instead of ``next_power_of_2(N)``) keep every
+# reduction inside the verified 64..8192 lane window and let ``N`` exceed a tile.
+# Measured on P800/XPU3 at N=4096: the index kernel is fastest at 1024 (it wants
+# program-count parallelism), the bin-major count kernel at 4096 (it wants the
+# fewest chunk iterations), so they use different tiles and the index scratch is
+# padded to a multiple of the count tile.
+SETUP_TILE = 1024
+INDEX_TILE = 1024
+COUNT_TILE = 4096
+
 
 @libentry()
 @triton.jit
-def histogramdd_kernel(
-    input_ptr,  # (D, N) contiguous float input (transposed from the caller)
-    hist_ptr,  # (num_bins,) fp32 histogram accumulator
-    edge_mins_ptr,  # (D,) per-dimension lower edge
-    edge_maxs_ptr,  # (D,) per-dimension upper edge
-    bins_ptr,  # (D,) per-dimension bin count
-    strides_ptr,  # (D,) row-major strides (stride[d] = prod(bins[d+1:]))
+def histogramdd_setup_kernel(
+    input_ptr,  # (D, N) contiguous float input (transposed by the caller)
+    lo_ptr,  # (DPAD,) per-dimension lower edge (device)
+    hi_ptr,  # (DPAD,) per-dimension upper edge (device)
+    edges_ptr,  # (DPAD * MAX_EDGES,) padded per-dimension edge slabs
     N,
     D: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    DPAD: tl.constexpr,  # next_pow2(D)
+    BINS: tl.constexpr,  # tuple, per-dimension bin counts
+    MAX_EDGES: tl.constexpr,  # edge slab width, >= 64 (narrow 2D tiles scramble)
+    TILE: tl.constexpr,
 ):
-    """Bin-major histogram: one program per output bin.
+    """Derive ``(lo, hi)`` per dimension from the data and emit the bin edges.
 
-    The generic KernelGen kernel accumulates into the histogram with a scalar
-    ``tl.atomic_add`` inside a per-point loop, which is unreliable on this XPU
-    backend (cross-program atomics drop or double-count increments).  Instead each
-    program owns one linear bin index ``b`` and scans the whole point cloud,
-    computing every point's row-major linear bin index and counting the points that
-    land in ``b``.  Counting uses a per-program int32 vector accumulator (the same
-    ``grid = (bins,)`` scan pattern as ``histc``), so no cross-program atomic is
-    ever issued.
+    The reduction runs as a 2D ``(DPAD, TILE)`` tile whose rows are the
+    transposed input's per-dimension rows (stride-1 block DMA), so one
+    ``axis=1`` reduce yields every dimension's min/max at once -- a serial
+    per-dimension loop was measured 2x slower.  ``DPAD``/``TILE`` are powers of
+    two so the axis-1 reduction stays in the verified ``%8 == 0`` width window.
 
-    The input is transposed to ``(D, N)`` so each dimension's ``N`` coordinates are
-    contiguous.  Accessing column ``d`` of the native ``(N, D)`` layout is a
-    strided gather (``input[i*D + d]``, stride ``D``); on this backend a large
-    strided gather hangs the card (``kl3_wait_for_noc_idle() timeout`` / NOC).
-    Transposing turns every ``input_T[d*N + i]`` into a stride-1 block DMA load.
+    The tail is handled with an explicit address clamp plus a lane mask (this
+    backend ignores the ``other`` fill of a masked load and would read
+    neighbouring memory), and padded rows clamp back to the last real dimension.
+
+    Writing ``lo``/``hi``/``edges`` on the device removes the two
+    ``device -> host`` ``.tolist()`` round trips (and the per-dimension
+    ``torch.linspace`` launches) the previous implementation paid for.
     """
-    b = ext.program_id(0)
-    # Single tile: BLOCK_SIZE is next_power_of_2(N), so every point is covered in
-    # one shot.  A runtime outer loop (grid-stride over N) trips the XPU
-    # TritonXPUMemoryInplace/dominance verifier on the nested D-loop, so the tile
-    # is sized to hold the whole point cloud instead.
-    offs = tl.arange(0, BLOCK_SIZE)
-    # Clamp the address before the unmasked load: this backend ignores the
-    # ``other`` fill of a masked load and reads neighbouring memory for the
-    # out-of-range lanes, so the tail is handled with an explicit clamp plus an
-    # ``ok`` mask instead.
-    safe = tl.minimum(offs, N - 1)
-    ok = (offs < N).to(tl.int32)
+    j = tl.arange(0, DPAD)
+    i = tl.arange(0, TILE)
+    safe_j = tl.minimum(j, D - 1)
+    row = input_ptr + safe_j[:, None] * N
 
-    linear = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
-    in_range = tl.full((BLOCK_SIZE,), 1, dtype=tl.int32)
-    for d in range(D):
-        val = tl.load(input_ptr + d * N + safe).to(tl.float32)
-        edge_min = tl.load(edge_mins_ptr + d).to(tl.float32)
-        edge_max = tl.load(edge_maxs_ptr + d).to(tl.float32)
-        num_bins = tl.load(bins_ptr + d).to(tl.int32)
-        stride = tl.load(strides_ptr + d).to(tl.int32)
+    acc_min = tl.full((DPAD, TILE), float("inf"), dtype=tl.float32)
+    acc_max = tl.full((DPAD, TILE), float("-inf"), dtype=tl.float32)
+    nchunks = tl.cdiv(N, TILE)
+    for c in range(0, nchunks):
+        cur = c * TILE + i
+        safe_i = tl.minimum(cur, N - 1)
+        vals = tl.load(row + safe_i[None, :]).to(tl.float32)
+        keep = (cur < N)[None, :]
+        acc_min = tl.minimum(acc_min, tl.where(keep, vals, float("inf")))
+        acc_max = tl.maximum(acc_max, tl.where(keep, vals, float("-inf")))
+    mn = tl.min(acc_min, axis=1)
+    mx = tl.max(acc_max, axis=1)
 
-        # A NaN fails every comparison; exclude it explicitly.
-        cur_in = (val >= edge_min) & (val <= edge_max) & (val == val)
-        in_range = in_range & cur_in.to(tl.int32)
+    # Degenerate range (all values equal) folds into [v-0.5, v+0.5], matching
+    # ``torch.histogramdd``.
+    lo = tl.where(mn == mx, mn - 0.5, mn)
+    hi = tl.where(mn == mx, mn + 0.5, mx)
+    tl.store(lo_ptr + j, lo)
+    tl.store(hi_ptr + j, hi)
 
-        # Uniform-bin closed form: bin = floor((val - min) / width).  Values
-        # exactly at the upper edge fold into the last bin.
-        bin_width = (edge_max - edge_min) / num_bins.to(tl.float32)
-        bin_idx = tl.floor((val - edge_min) / bin_width).to(tl.int32)
-        bin_idx = tl.where(val >= edge_max, num_bins - 1, bin_idx)
-        bin_idx = tl.maximum(0, tl.minimum(num_bins - 1, bin_idx))
-        linear = linear + bin_idx * stride
+    # Per-dimension bin count as a vector: DPAD is constexpr, so a static
+    # where-chain can pick ``BINS[d]`` without a device-side bins tensor.
+    nb = tl.zeros((DPAD,), dtype=tl.float32) + BINS[0]
+    for dd in tl.static_range(1, D):
+        nb = tl.where(j == dd, BINS[dd] * 1.0, nb)
 
-    hit = (linear == b).to(tl.int32) & in_range & ok
-    tl.store(hist_ptr + b, tl.sum(hit, axis=0).to(tl.float32))
+    e = tl.arange(0, MAX_EDGES)
+    safe_e = tl.minimum(e[None, :], nb[:, None].to(tl.int32))
+    step = (hi - lo) / nb
+    edge = lo[:, None] + safe_e.to(tl.float32) * step[:, None]
+    tl.store(edges_ptr + j[:, None] * MAX_EDGES + e[None, :], edge)
 
 
 @libentry()
 @triton.jit
-def histogramdd_range_kernel(
-    input_ptr,  # (D, N) contiguous float input (transposed from the caller)
-    mn_ptr,  # (D,) per-dimension minimum
-    mx_ptr,  # (D,) per-dimension maximum
-    N,
-    BLOCK_SIZE: tl.constexpr,
+def histogramdd_setup_range_kernel(
+    lohi_ptr,  # (2 * D,) [lo0, hi0, lo1, hi1, ...] already degenerate-adjusted
+    lo_ptr,  # (D,) per-dimension lower edge (device)
+    hi_ptr,  # (D,) per-dimension upper edge (device)
+    edges_ptr,  # (D * MAX_EDGES,) padded per-dimension edge slabs
+    D: tl.constexpr,
+    BINS: tl.constexpr,
+    MAX_EDGES: tl.constexpr,
 ):
-    """One program per dimension: reduce its contiguous row to (min, max).
+    """Explicit-range variant of :func:`histogramdd_setup_kernel`.
 
-    Replaces ``input[:, d].min().item()`` / ``.max().item()``, which issue two
-    device->host round trips per dimension.  Each program owns one row of the
-    transposed ``(D, N)`` layout (stride-1 loads) and writes a scalar, so the
-    host pays a single ``.tolist()`` sync per extremum regardless of ``D``.
+    ``lo``/``hi`` come from the caller's ``range`` (or the ``[0, 1]`` default for
+    an empty input), so only the edge slabs have to be materialised.
     """
-    d = ext.program_id(0)
-    offs = tl.arange(0, BLOCK_SIZE)
+    idx = tl.arange(0, MAX_EDGES)
+    for d in tl.static_range(D):
+        lo = tl.load(lohi_ptr + 2 * d).to(tl.float32)
+        hi = tl.load(lohi_ptr + 2 * d + 1).to(tl.float32)
+        tl.store(lo_ptr + d, lo)
+        tl.store(hi_ptr + d, hi)
+
+        nb = BINS[d]
+        step = (hi - lo) / nb
+        safe_i = tl.minimum(idx, nb)
+        edge = lo + safe_i.to(tl.float32) * step
+        tl.store(edges_ptr + d * MAX_EDGES + idx, edge)
+
+
+@libentry()
+@triton.jit
+def histogramdd_index_kernel(
+    input_ptr,  # (D, N) contiguous float input (transposed by the caller)
+    lo_ptr,  # (D,) per-dimension lower edge (device)
+    hi_ptr,  # (D,) per-dimension upper edge (device)
+    idx_ptr,  # (nchunks * TILE,) int32 row-major linear bin (or -1) per point
+    N,
+    D: tl.constexpr,
+    BINS: tl.constexpr,
+    STRIDES: tl.constexpr,
+    TILE: tl.constexpr,
+):
+    """Compute every point's row-major linear bin index exactly once.
+
+    The previous design re-derived all ``D`` coordinates inside *every*
+    output-bin program (``num_bins * N * D`` lane evaluations, each paying a
+    soft-extern ``tl.floor``).  Folding the bin computation into one pass costs
+    ``N * D`` lanes, and the fallback for out-of-range / NaN points is ``-1`` so
+    the counting pass never matches them.
+    """
+    pid = ext.program_id(0)
+    offs = pid * TILE + tl.arange(0, TILE)
     safe = tl.minimum(offs, N - 1)
-    vals = tl.load(input_ptr + d * N + safe).to(tl.float32)
-    # Out-of-range tail lanes are masked with the neutral element so they do not
-    # pollute the reduction.
-    mn = tl.min(tl.where(offs < N, vals, float("inf")), axis=0)
-    mx = tl.max(tl.where(offs < N, vals, float("-inf")), axis=0)
-    tl.store(mn_ptr + d, mn)
-    tl.store(mx_ptr + d, mx)
+
+    linear = tl.zeros((TILE,), dtype=tl.int32)
+    in_range = tl.full((TILE,), 1, dtype=tl.int32)
+    for d in tl.static_range(D):
+        val = tl.load(input_ptr + d * N + safe).to(tl.float32)
+        lo = tl.load(lo_ptr + d).to(tl.float32)
+        hi = tl.load(hi_ptr + d).to(tl.float32)
+        nb = BINS[d]
+
+        # NaN fails both comparisons and is therefore excluded here; values
+        # exactly at the upper edge stay in the last bin.
+        in_range = in_range & ((val >= lo) & (val <= hi)).to(tl.int32)
+
+        # ``floor((val - lo) / width)`` for in-range values: they are
+        # non-negative, so the int cast truncates exactly like ``floor`` -- this
+        # avoids the soft-extern ``tl.floor`` (3-40x slower per lane on XPU3).
+        inv_width = nb / (hi - lo)
+        bin_idx = tl.minimum(((val - lo) * inv_width).to(tl.int32), nb - 1)
+        linear = linear + bin_idx * STRIDES[d]
+
+    # Padding lanes (offs >= N) are also tagged -1 so the counting pass can scan
+    # the whole padded tile without a mask.
+    linear = tl.where((offs < N) & (in_range != 0), linear, -1)
+    tl.store(idx_ptr + offs, linear)
+
+
+@libentry()
+@triton.jit
+def histogramdd_count_kernel(
+    idx_ptr,  # (nchunks * TILE,) int32 linear bin per point, -1 = drop
+    hist_ptr,  # (num_bins,) histogram accumulator
+    N,
+    TILE: tl.constexpr,
+):
+    """One program per output bin: count the points whose linear index is ``b``.
+
+    Bin-major ownership means no cross-program atomic is issued (``tl.atomic_add``
+    is unreliable on this XPU backend) and every output element has exactly one
+    writer, so the histogram buffer only needs an allocation, not a zero fill.
+    The scan is over int32 indices (one load per point) instead of ``D`` float
+    coordinates, and it drops the per-dimension scalar loads the old bin-major
+    kernel paid once per program.
+    """
+    b = ext.program_id(0)
+    offs = tl.arange(0, TILE)
+    acc = tl.zeros((TILE,), dtype=tl.int32)
+    nchunks = tl.cdiv(N, TILE)
+    for c in range(0, nchunks):
+        # The index buffer is padded to ``nchunks * TILE`` and the padding is
+        # pre-tagged -1, so the scan needs neither an address clamp nor a mask
+        # (clamping would re-read a real index and double count the tail).
+        acc += (tl.load(idx_ptr + c * TILE + offs) == b).to(tl.int32)
+    tl.store(hist_ptr + b, tl.sum(acc, axis=0).to(tl.float32))
+
+
+@libentry()
+@triton.jit
+def histogramdd_density_kernel(
+    hist_ptr,  # (num_bins,) counts, normalised in place
+    lo_ptr,  # (D,) per-dimension lower edge (device)
+    hi_ptr,  # (D,) per-dimension upper edge (device)
+    num_bins,
+    D: tl.constexpr,
+    BINS: tl.constexpr,
+    TILE: tl.constexpr,
+):
+    """Density normalisation in place, without any host round trip.
+
+    ``torch``-side ``hist.sum() / hist / bin_volumes`` would launch a reduction,
+    force a host sync for the zero-total branch and run one multiply per
+    dimension.  Uniform bins make the volume a single scalar (the product of the
+    per-dimension widths), so one program can fold total + volume into one scale.
+    """
+    offs = tl.arange(0, TILE)
+    nchunks = tl.cdiv(num_bins, TILE)
+
+    acc = tl.zeros((TILE,), dtype=tl.float32)
+    for c in range(0, nchunks):
+        cur = c * TILE + offs
+        safe = tl.minimum(cur, num_bins - 1)
+        vals = tl.load(hist_ptr + safe).to(tl.float32)
+        acc += tl.where(cur < num_bins, vals, 0.0)
+    total = tl.sum(acc, axis=0)
+
+    volume = 1.0
+    for d in tl.static_range(D):
+        lo = tl.load(lo_ptr + d).to(tl.float32)
+        hi = tl.load(hi_ptr + d).to(tl.float32)
+        volume = volume * ((hi - lo) / BINS[d])
+
+    # Empty histogram keeps ``torch`` behaviour (0 / volume == 0).
+    scale = tl.where(total > 0, 1.0 / (total * volume), 1.0 / volume)
+    for c in range(0, nchunks):
+        cur = c * TILE + offs
+        tail = cur < num_bins
+        # Masked store on purpose: clamping the address would let several lanes
+        # rewrite the last bin from its *already normalised* value (this backend
+        # walks wide tiles in sequential lane groups, so the re-read sees the
+        # scaled result and the last bin ends up normalised twice).
+        vals = tl.load(hist_ptr + tl.minimum(cur, num_bins - 1)).to(tl.float32)
+        tl.store(hist_ptr + cur, vals * scale, mask=tail)
+
+
+def _normalise_bins(bins, D):
+    """``torch.histogramdd`` accepts an int, a sequence or a tensor of bin counts."""
+    if isinstance(bins, int):
+        return [bins] * D
+    if torch.is_tensor(bins):
+        return [int(b) for b in bins.reshape(-1).tolist()]
+    return [int(b) for b in bins]
+
+
+def _normalise_range(range, D):
+    """Flatten ``range`` to ``[lo0, hi0, lo1, hi1, ...]`` with degenerate widening.
+
+    Accepts the flat ``2 * D`` form, a sequence of ``(min, max)`` pairs and device
+    tensors, mirroring ``torch.histogramdd``.
+    """
+    if torch.is_tensor(range):
+        flat = [float(v) for v in range.reshape(-1).tolist()]
+    else:
+        flat = []
+        for entry in range:
+            if isinstance(entry, (list, tuple)):
+                flat.extend(float(v) for v in entry)
+            else:
+                flat.append(float(entry))
+
+    if len(flat) != 2 * D:
+        raise ValueError(
+            f"range must provide {2 * D} values (lo/hi per dim), got {flat}"
+        )
+
+    out = []
+    for d in builtins.range(D):
+        dim_min = flat[2 * d]
+        dim_max = flat[2 * d + 1]
+        if dim_min == dim_max:
+            dim_min -= 0.5
+            dim_max += 0.5
+        out.extend([dim_min, dim_max])
+    return out
 
 
 def histogramdd(input, bins, range=None, weight=None, density=False):
     """Compute the D-dimensional histogram of a (N, D) input tensor.
 
-    Functional override of the generic KernelGen ``histogramdd``: identical edge
-    semantics and density normalisation, but the counting kernel is atomic-free
-    (see :func:`histogramdd_kernel`).
+    Functional override of the generic KernelGen ``histogramdd`` with identical
+    edge / density semantics, but the accumulation is atomic-free and split into
+    three passes:
+
+    1. :func:`histogramdd_setup_kernel` reduces each dimension's contiguous row to
+       ``(lo, hi)`` and writes the bin edges on the device (no host round trip).
+    2. :func:`histogramdd_index_kernel` computes every point's linear bin index
+       once (``N * D`` lane evaluations).
+    3. :func:`histogramdd_count_kernel` owns one output bin per program and counts
+       matching indices (``num_bins * N`` int32 compares).
+
+    The old bin-major kernel re-derived all coordinates inside every bin program
+    (``num_bins * N * D`` lanes, each with a soft-extern ``tl.floor``) and paid
+    ``4 * D`` scalar loads per program.
     """
     logger.debug("GEMS_KUNLUNXIN HISTOGRAMDD")
 
@@ -146,8 +339,11 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
     if D < 2:
         raise ValueError(f"histogramdd requires at least 2 dimensions, got D={D}")
 
+    bins = _normalise_bins(bins, D)
     if len(bins) != D:
         raise ValueError(f"bins length {len(bins)} must match input dimensions {D}")
+    if any(b <= 0 for b in bins):
+        raise ValueError(f"each bin count must be positive, got {bins}")
 
     if weight is not None:
         if weight.shape != (N,):
@@ -159,109 +355,91 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         raise NotImplementedError("weighted histogramdd not yet implemented")
 
     input = input.contiguous()
-
-    # Transpose to (D, N) up front: each dimension's N coordinates become
-    # contiguous, so both the min/max reduction and the counting kernel use
-    # stride-1 block DMA loads instead of strided gathers (a strided gather at
-    # large BLOCK_SIZE hangs this backend's NOC).
-    input_t = input.t().contiguous()
-
-    range_vals = range
-    bin_edges = []
-    edge_min_vals = []
-    edge_max_vals = []
-
-    # GPU per-dimension min/max: one program per dimension scans its contiguous
-    # row and reduces to a scalar, then a single host sync per extremum.  This
-    # replaces ``input[:, d].min().item()`` / ``.max().item()``, which issue two
-    # device->host round trips per dimension.
-    if range_vals is None and N > 0:
-        mn_t = torch.empty(D, dtype=torch.float32, device=input.device)
-        mx_t = torch.empty(D, dtype=torch.float32, device=input.device)
-        with torch_device_fn.device(input.device):
-            histogramdd_range_kernel[(D,)](
-                input_t, mn_t, mx_t, N, BLOCK_SIZE=triton.next_power_of_2(N)
-            )
-        mn_host = mn_t.tolist()
-        mx_host = mx_t.tolist()
-
-    for d in builtins.range(D):
-        num_bins = bins[d]
-
-        if range_vals is not None:
-            dim_min = float(range_vals[2 * d])
-            dim_max = float(range_vals[2 * d + 1])
-        elif N == 0:
-            dim_min = 0.0
-            dim_max = 1.0
-        else:
-            dim_min = float(mn_host[d])
-            dim_max = float(mx_host[d])
-
-        # Degenerate range (all values equal) folds into [v-0.5, v+0.5].
-        if dim_min == dim_max:
-            lo = dim_min - 0.5
-            hi = dim_min + 0.5
-        else:
-            lo = dim_min
-            hi = dim_max
-
-        edges = torch.linspace(
-            lo, hi, num_bins + 1, dtype=input.dtype, device=input.device
-        )
-        bin_edges.append(edges)
-        edge_min_vals.append(lo)
-        edge_max_vals.append(hi)
-
-    hist_shape = tuple(bins)
-    hist = torch.zeros(hist_shape, dtype=input.dtype, device=input.device)
-
-    if N == 0:
-        return hist, bin_edges
-
-    bins_tensor = torch.tensor(bins, dtype=torch.int32, device=input.device)
-    edge_mins = torch.tensor(edge_min_vals, dtype=input.dtype, device=input.device)
-    edge_maxs = torch.tensor(edge_max_vals, dtype=input.dtype, device=input.device)
+    device = input.device
 
     # Row-major strides: stride[d] = prod(bins[d+1:]), last dim fastest.
-    strides_host = [1] * D
+    strides = [1] * D
     for d in builtins.range(D - 2, -1, -1):
-        strides_host[d] = strides_host[d + 1] * bins[d + 1]
-    strides = torch.tensor(strides_host, dtype=torch.int32, device=input.device)
+        strides[d] = strides[d + 1] * bins[d + 1]
 
     num_bins = 1
     for b in bins:
         num_bins *= b
 
-    BLOCK_SIZE = triton.next_power_of_2(N)
-    grid = (num_bins,)
+    max_edges = triton.next_power_of_2(max(bins) + 1)
+    # The edge slab is written with a 2D ``(DPAD, MAX_EDGES)`` store; a tile
+    # narrower than one warp (<64 lanes) is silently miscompiled by this backend
+    # (measured: scattered values for MAX_EDGES=8), so the slab is padded.
+    edge_stride = max(64, max_edges)
+    bins_key = tuple(bins)
+    dpad = triton.next_power_of_2(D)
 
-    with torch_device_fn.device(input.device):
-        histogramdd_kernel[grid](
-            input_t,
-            hist,
-            edge_mins,
-            edge_maxs,
-            bins_tensor,
-            strides,
-            N,
-            D=D,
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
+    lo = torch.empty(dpad, dtype=torch.float32, device=device)
+    hi = torch.empty(dpad, dtype=torch.float32, device=device)
+    edges = torch.empty(dpad * edge_stride, dtype=input.dtype, device=device)
+    hist = torch.empty(tuple(bins), dtype=input.dtype, device=device)
 
-    if density:
-        bin_volumes = torch.ones_like(hist)
-        for d in builtins.range(D):
-            widths = bin_edges[d][1:] - bin_edges[d][:-1]
-            shape = [1] * D
-            shape[d] = bins[d]
-            widths_shaped = widths.reshape(shape)
-            bin_volumes = bin_volumes * widths_shaped
-
-        total_count = hist.sum()
-        if total_count > 0:
-            hist = hist / total_count / bin_volumes
+    with torch_device_fn.device(device):
+        # Per-dimension coordinates become contiguous, so both the reduction and
+        # the binning pass read stride-1 block DMA instead of a strided gather (a
+        # large strided gather hangs this backend's NOC).
+        input_t = input.t().contiguous() if N > 0 else input
+        if range is None and N > 0:
+            histogramdd_setup_kernel[(1,)](
+                input_t,
+                lo,
+                hi,
+                edges,
+                N,
+                D=D,
+                DPAD=dpad,
+                BINS=bins_key,
+                MAX_EDGES=edge_stride,
+                TILE=SETUP_TILE,
+            )
+            need_index = True
         else:
-            hist = hist / bin_volumes
+            lohi_host = [0.0, 1.0] * D if range is None else _normalise_range(range, D)
+            lohi = torch.tensor(lohi_host, dtype=torch.float32, device=device)
+            histogramdd_setup_range_kernel[(1,)](
+                lohi,
+                lo,
+                hi,
+                edges,
+                D=D,
+                BINS=bins_key,
+                MAX_EDGES=edge_stride,
+            )
+            need_index = N > 0
 
+        if need_index:
+            # The index scratch is padded to a multiple of COUNT_TILE; the extra
+            # programs clamp-load and tag their lanes -1, so the counting pass can
+            # scan it unmasked.
+            padded = triton.cdiv(N, COUNT_TILE) * COUNT_TILE
+            idx = torch.empty(padded, dtype=torch.int32, device=device)
+            histogramdd_index_kernel[(padded // INDEX_TILE,)](
+                input_t,
+                lo,
+                hi,
+                idx,
+                N,
+                D=D,
+                BINS=bins_key,
+                STRIDES=tuple(strides),
+                TILE=INDEX_TILE,
+            )
+            histogramdd_count_kernel[(num_bins,)](idx, hist, N, TILE=COUNT_TILE)
+            if density:
+                histogramdd_density_kernel[(1,)](
+                    hist, lo, hi, num_bins, D=D, BINS=bins_key, TILE=SETUP_TILE
+                )
+        else:
+            # No point can land in any bin.
+            hist = torch.zeros(tuple(bins), dtype=input.dtype, device=device)
+
+    bin_edges = [
+        edges[d * edge_stride : d * edge_stride + bins[d] + 1]
+        for d in builtins.range(D)
+    ]
     return hist, bin_edges

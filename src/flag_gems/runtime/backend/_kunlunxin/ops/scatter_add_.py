@@ -199,6 +199,35 @@ except Exception:  # tle unavailable / import failure -> keep atomic fallback
     _SA2D_TLE_TILE_KERNELS = {}
 
 
+if _HAS_SA2D_TLE:
+    # Triton's frontend only permits an @triton.jit body to reference a global
+    # that is an import / constexpr / JITCallable, or whose __module__ starts
+    # with "triton.experimental.tle". The XPU TLE overlay ships each payload
+    # handle as a raw.runtime.XPUJITFunction whose __module__ is the truncated
+    # bare name "runtime", so `tle.raw.call(<payload>, ...)` is rejected with
+    # "Cannot access global variable ..." unless the process opts into
+    # TRITON_ALLOW_NON_CONSTEXPR_GLOBALS=1. Tagging the handles with the tle
+    # namespace lets the intended vendor path compile without mutating that
+    # process-global knob (a fresh-import regression here is why the on-chip
+    # path silently stayed off and scatter_add fell back to the atomic kernel).
+    _SA2D_TLE_PAYLOADS = (
+        _scatter_add_2d_payload,
+        _scatter_add_2d_payload_fp16,
+        _scatter_add_2d_payload_bf16,
+        _scatter_add_2d_tile_payload,
+        _scatter_add_2d_tile_payload_fp16,
+        _scatter_add_2d_tile_payload_bf16,
+        _scatter_add_2d_big_payload,
+        _scatter_add_2d_big_payload_fp16,
+        _scatter_add_2d_big_payload_bf16,
+    )
+    for _sa2d_pl in _SA2D_TLE_PAYLOADS:
+        try:
+            _sa2d_pl.__module__ = "triton.experimental.tle.raw.runtime"
+        except Exception:  # read-only attr on another toolchain -> keep probe fallback
+            pass
+
+
 # On the CI flagtree Triton build, tle.raw with object= may either be rejected at
 # decoration (caught above -> _HAS_SA2D_TLE False) OR accepted yet silently run
 # the wrong code / no-op, leaving the output buffer untouched and producing wrong

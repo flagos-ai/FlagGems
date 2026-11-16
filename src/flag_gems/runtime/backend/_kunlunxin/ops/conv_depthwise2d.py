@@ -158,6 +158,143 @@ def conv2d_forward_kernel(
     )
 
 
+# ---------------------------------------------------------------------------
+# Depthwise fast path.
+#
+# All geometry is passed as ``tl.constexpr`` so the tap loops unroll and the
+# index arithmetic (div/mod, stride multiplies) folds into constants; the
+# runtime-scalar version of the same math was ~15-30x slower because every
+# lane carried a soft integer division and dynamic tap loops.  Two launch
+# geometries are used, chosen from the measured benchmark matrix:
+#   * ``row``  -- one program per (n, c, oh) output row.  Best when WOUT is
+#                 small/misaligned (WOUT % 16 != 0), where the flat layout
+#                 straddles 16-lane vector groups.
+#   * ``flat`` -- flat output index with the channel on grid axis 1.  Best
+#                 when WOUT is large and 16-aligned (the loads stay in
+#                 contiguous 16-lane groups).
+# Both use clamp+``tl.where`` (never a masked load, which is unreliable on
+# this backend) and a clamped unmasked store (idempotent last-lane write).
+# ---------------------------------------------------------------------------
+@triton.jit
+def _dw_rows_kernel(
+    x,
+    w,
+    b,
+    y,
+    n,
+    CIN: tl.constexpr,
+    COUT: tl.constexpr,
+    OPG: tl.constexpr,
+    HIN: tl.constexpr,
+    WIN: tl.constexpr,
+    HOUT: tl.constexpr,
+    WOUT: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    DH: tl.constexpr,
+    DW: tl.constexpr,
+    BLOCK: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+):
+    # grid = (n * cout * hout,), one program per (n, c, oh) output row.
+    pid = tl.program_id(0)
+    oh = pid % HOUT
+    t = pid // HOUT
+    oc = t % COUT
+    ni = t // COUT
+    ic = oc // OPG
+    ow = tl.arange(0, BLOCK)
+    owm = ow < WOUT
+    xb = x + ni * (CIN * HIN * WIN) + ic * (HIN * WIN)
+    acc = tl.zeros((BLOCK,), tl.float32)
+    for r in tl.static_range(KH):
+        ih = oh * SH - PH + r * DH
+        rv = (ih >= 0) & (ih < HIN)
+        sih = tl.minimum(tl.maximum(ih, 0), HIN - 1)
+        for s in tl.static_range(KW):
+            iw = ow * SW - PW + s * DW
+            valid = owm & rv & (iw >= 0) & (iw < WIN)
+            siw = tl.minimum(tl.maximum(iw, 0), WIN - 1)
+            xv = tl.load(xb + sih * WIN + siw)
+            xv = tl.where(valid, xv.to(tl.float32), 0.0)
+            wv = tl.load(w + oc * (KH * KW) + r * KW + s).to(tl.float32)
+            acc += xv * wv
+    if HAS_BIAS:
+        acc += tl.load(b + oc).to(tl.float32)
+    tl.store(
+        y + ni * (COUT * HOUT * WOUT) + oc * (HOUT * WOUT) + oh * WOUT + ow,
+        acc,
+        mask=owm,
+    )
+
+
+@triton.jit
+def _dw_flat_kernel(
+    x,
+    w,
+    b,
+    y,
+    n,
+    CIN: tl.constexpr,
+    COUT: tl.constexpr,
+    OPG: tl.constexpr,
+    HIN: tl.constexpr,
+    WIN: tl.constexpr,
+    HOUT: tl.constexpr,
+    WOUT: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    DH: tl.constexpr,
+    DW: tl.constexpr,
+    BLOCK: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+):
+    # grid = (cdiv(n * hout * wout, BLOCK), cout)
+    oc = tl.program_id(1)
+    m = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    total = n * HOUT * WOUT
+    mmask = m < total
+    ni = m // (HOUT * WOUT)
+    q = m % (HOUT * WOUT)
+    oh = q // WOUT
+    ow = q % WOUT
+    ic = oc // OPG
+    xb = x + ni * (CIN * HIN * WIN) + ic * (HIN * WIN)
+    acc = tl.zeros((BLOCK,), tl.float32)
+    for r in tl.static_range(KH):
+        ih = oh * SH - PH + r * DH
+        rv = (ih >= 0) & (ih < HIN)
+        sih = tl.minimum(tl.maximum(ih, 0), HIN - 1)
+        for s in tl.static_range(KW):
+            iw = ow * SW - PW + s * DW
+            valid = mmask & rv & (iw >= 0) & (iw < WIN)
+            siw = tl.minimum(tl.maximum(iw, 0), WIN - 1)
+            xv = tl.load(xb + sih * WIN + siw)
+            xv = tl.where(valid, xv.to(tl.float32), 0.0)
+            wv = tl.load(w + oc * (KH * KW) + r * KW + s).to(tl.float32)
+            acc += xv * wv
+    if HAS_BIAS:
+        acc += tl.load(b + oc).to(tl.float32)
+    tl.store(
+        y + ni * (COUT * HOUT * WOUT) + oc * (HOUT * WOUT) + q,
+        acc,
+        mask=mmask,
+    )
+
+
+# Tap-count cap for the fully-unrolled constexpr path; larger kernels keep the
+# original dynamic-loop kernel (unroll blow-up risk on this backend).
+_DW_STATIC_TAPS_MAX = 36
+
+
 def _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups):
     """Launch the depthwise forward kernel."""
     n, cin, hin, win = input.shape
@@ -168,6 +305,70 @@ def _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups):
     hout = (hin + 2 * ph - dh * (kh - 1) - 1) // sh + 1
     wout = (win + 2 * pw - dw * (kw - 1) - 1) // sw + 1
     out = torch.empty((n, cout, hout, wout), device=input.device, dtype=input.dtype)
+    opg = cout // groups
+    if cpg == 1 and 0 < kh * kw <= _DW_STATIC_TAPS_MAX and hout > 0 and wout > 0:
+        # flat needs the whole plane to divide the block so the last block has
+        # no out-of-range lanes (the kernel indexes ``ni`` without a clamp,
+        # which is what keeps the loads vectorized).
+        flat_block = 1024
+        use_flat = wout >= 128 and (n * hout * wout) % flat_block == 0
+        row_block = max(256, triton.next_power_of_2(max(wout, 1)))
+        if not use_flat and row_block <= 2048:
+            block = row_block
+            _dw_rows_kernel[(n * cout * hout,)](
+                input,
+                weight,
+                bias,
+                out,
+                n,
+                cin,
+                cout,
+                opg,
+                hin,
+                win,
+                hout,
+                wout,
+                kh,
+                kw,
+                sh,
+                sw,
+                ph,
+                pw,
+                dh,
+                dw,
+                BLOCK=block,
+                HAS_BIAS=True,
+                num_warps=4,
+            )
+        elif use_flat:
+            block = flat_block
+            _dw_flat_kernel[(triton.cdiv(n * hout * wout, block), cout)](
+                input,
+                weight,
+                bias,
+                out,
+                n,
+                cin,
+                cout,
+                opg,
+                hin,
+                win,
+                hout,
+                wout,
+                kh,
+                kw,
+                sh,
+                sw,
+                ph,
+                pw,
+                dh,
+                dw,
+                BLOCK=block,
+                HAS_BIAS=True,
+                num_warps=4,
+            )
+        return out
+
     block = 64
     conv2d_forward_kernel[(triton.cdiv(n * cout * hout * wout, block),)](
         input,

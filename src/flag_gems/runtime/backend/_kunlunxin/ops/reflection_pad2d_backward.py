@@ -143,6 +143,7 @@ _XPU_GRID = 12  # clusters on this device (extra clusters self-disable)
 _PAYLOAD_OBJ = os.path.join(os.path.dirname(__file__), "..", "payload", "obj", "rp2b.o")
 
 _XPU_KERNELS = {}
+_XPU_PAYLOADS = ()
 if _HAS_TLE:
     # The object= loader only exists on newer tle builds; guard the whole
     # declaration so an unsupported tle leaves _XPU_KERNELS empty and the
@@ -172,6 +173,8 @@ if _HAS_TLE:
         def _rp2b_raw_bf16(GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR):
             tle.raw.call(rp2b_bf16, (GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR))
 
+        _XPU_PAYLOADS = (rp2b_f32, rp2b_f16, rp2b_bf16)
+
         _XPU_KERNELS = {
             torch.float32: _rp2b_raw_f32,
             torch.float16: _rp2b_raw_f16,
@@ -179,6 +182,23 @@ if _HAS_TLE:
         }
     except Exception:  # pragma: no cover - toolchain without object= loader
         _XPU_KERNELS = {}
+        _XPU_PAYLOADS = ()
+
+if _XPU_PAYLOADS:
+    # Triton's frontend only allows an @triton.jit body to reference a global
+    # that is an import / constexpr / JITCallable, or whose __module__ starts
+    # with "triton.experimental.tle".  @tle.raw.dialect hands back
+    # raw.runtime.XPUJITFunction handles whose __module__ is the truncated bare
+    # name "runtime", so `tle.raw.call(rp2b_*...)` is rejected with
+    # "Cannot access global variable rp2b_*" on a cold compile (the previous
+    # on-chip path thus raised for every call instead of running).  Tag the
+    # handles with the tle namespace: scoped to this module's own payloads, no
+    # process-global TRITON_ALLOW_NON_CONSTEXPR_GLOBALS mutation.
+    for _pl in _XPU_PAYLOADS:
+        try:
+            _pl.__module__ = "triton.experimental.tle.raw.runtime"
+        except Exception:  # read-only attr on another toolchain -> keep fallback
+            pass
 
 
 def _normalize_padding(padding):

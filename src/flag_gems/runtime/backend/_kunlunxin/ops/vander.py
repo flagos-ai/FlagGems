@@ -23,22 +23,29 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_M = 16
-_BLOCK_N = 64
+# Flat 1-D tiles that span whole output rows. The output [M, N] is row-major, so
+# a program walking a contiguous span of it stores with unit stride (contiguous
+# DMA on XPU3); a 2-D tile whose row stride is the *runtime* N instead lowers to
+# one short strided DMA per row (~20x slower on P800). N is a constexpr so the
+# row/column split (off // N, off % N) strength-reduces to shifts and the bit
+# loop unrolls completely.
+_BLOCK_FLOAT = 4096
+_BLOCK_DD = 2048
+_BLOCK_INT = 1024
+_BLOCK_COMPLEX = 2048
 
 
 @libentry()
 @triton.jit
-def _vander_pow_kernel(
+def _vander_flat_kernel(
     x_ptr,
     out_ptr,
-    M,
-    N,
+    numel,
+    N: tl.constexpr,
     x_stride,
     increasing: tl.constexpr,
     NBITS: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
 ):
     # out[i, j] = x[i] ** p, p = j (increasing) or N-1-j. The exponent is a
@@ -46,64 +53,56 @@ def _vander_pow_kernel(
     # each step multiplies the running result by the current square only where
     # the corresponding exponent bit is set. This avoids the transcendental
     # expansion of a general pow and keeps the rounding chain logarithmic in p.
-    pid_m = ext.program_id(0)
-    pid_n = ext.program_id(1)
-    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask_m = rows < M
-    mask_n = cols < N
+    pid = ext.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    valid = off < numel
+    row = off // N
+    col = off % N
 
-    x_val = tl.load(x_ptr + rows * x_stride, mask=mask_m, other=1.0).to(COMPUTE_DTYPE)
-    powers = cols if increasing else (N - 1 - cols)
-    powers = tl.maximum(powers, 0).to(tl.int32)[None, :]
-    exponent = powers + tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
+    x_val = tl.load(x_ptr + row * x_stride, mask=valid, other=1.0).to(COMPUTE_DTYPE)
+    exponent = (col if increasing else (N - 1 - col)).to(tl.int32)
 
-    result = tl.full([BLOCK_M, BLOCK_N], 1.0, dtype=COMPUTE_DTYPE)
-    base = tl.zeros([BLOCK_M, BLOCK_N], dtype=COMPUTE_DTYPE) + x_val[:, None]
-    for i in range(0, NBITS):
+    result = tl.full([BLOCK], 1.0, dtype=COMPUTE_DTYPE)
+    base = x_val
+    for i in tl.static_range(NBITS):
         bit = (exponent >> i) & 1
         result = tl.where(bit != 0, result * base, result)
         base = base * base
 
-    out_off = rows[:, None] * N + cols[None, :]
-    tl.store(out_ptr + out_off, result, mask=mask_m[:, None] & mask_n[None, :])
+    tl.store(out_ptr + off, result, mask=valid)
 
 
 @libentry()
 @triton.jit
-def _vander_dd_pow_kernel(
+def _vander_flat_dd_kernel(
     x_ptr,
     out_ptr,
-    M,
-    N,
+    numel,
+    N: tl.constexpr,
     x_stride,
     increasing: tl.constexpr,
     NBITS: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     # float32 path with a double-float (hi, lo) accumulator. Binary
     # exponentiation in plain float32 accumulates one rounding per step, which is
     # not enough for large exponents; carrying the residual of every product
     # (exact via fma) keeps ~48 bits and makes the stored float32 correctly
     # rounded without needing a wider device type.
-    pid_m = ext.program_id(0)
-    pid_n = ext.program_id(1)
-    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask_m = rows < M
-    mask_n = cols < N
+    pid = ext.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    valid = off < numel
+    row = off // N
+    col = off % N
 
-    x_val = tl.load(x_ptr + rows * x_stride, mask=mask_m, other=1.0).to(tl.float32)
-    powers = cols if increasing else (N - 1 - cols)
-    powers = tl.maximum(powers, 0).to(tl.int32)[None, :]
-    exponent = powers + tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
+    x_val = tl.load(x_ptr + row * x_stride, mask=valid, other=1.0).to(tl.float32)
+    exponent = (col if increasing else (N - 1 - col)).to(tl.int32)
 
-    res_hi = tl.full([BLOCK_M, BLOCK_N], 1.0, dtype=tl.float32)
-    res_lo = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    base_hi = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) + x_val[:, None]
-    base_lo = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for i in range(0, NBITS):
+    res_hi = tl.full([BLOCK], 1.0, dtype=tl.float32)
+    res_lo = tl.zeros([BLOCK], dtype=tl.float32)
+    base_hi = x_val
+    base_lo = tl.zeros([BLOCK], dtype=tl.float32)
+    for i in tl.static_range(NBITS):
         bit = (exponent >> i) & 1
         take = bit != 0
         prod = res_hi * base_hi
@@ -120,84 +119,74 @@ def _vander_dd_pow_kernel(
         base_hi = sq + sq_err
         base_lo = sq_err - (base_hi - sq)
 
-    out_off = rows[:, None] * N + cols[None, :]
-    tl.store(out_ptr + out_off, res_hi, mask=mask_m[:, None] & mask_n[None, :])
+    tl.store(out_ptr + off, res_hi, mask=valid)
 
 
 @libentry()
 @triton.jit
-def _vander_int_pow_kernel(
+def _vander_flat_int_kernel(
     x_ptr,
     out_ptr,
-    M,
-    N,
+    numel,
+    N: tl.constexpr,
     x_stride,
     increasing: tl.constexpr,
     NBITS: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     # Integer path: exact int64 powers including two's-complement wrap-around,
     # matching ATen's int64 cumprod semantics.
-    pid_m = ext.program_id(0)
-    pid_n = ext.program_id(1)
-    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask_m = rows < M
-    mask_n = cols < N
+    pid = ext.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    valid = off < numel
+    row = off // N
+    col = off % N
 
-    x_val = tl.load(x_ptr + rows * x_stride, mask=mask_m, other=1)
-    powers = cols if increasing else (N - 1 - cols)
-    powers = tl.maximum(powers, 0).to(tl.int32)[None, :]
-    exponent = powers + tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
+    x_val = tl.load(x_ptr + row * x_stride, mask=valid, other=1).to(tl.int64)
+    exponent = (col if increasing else (N - 1 - col)).to(tl.int32)
 
-    result = tl.full([BLOCK_M, BLOCK_N], 1, dtype=tl.int64)
-    base = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int64) + x_val[:, None].to(tl.int64)
-    for i in range(0, NBITS):
+    result = tl.full([BLOCK], 1, dtype=tl.int64)
+    base = x_val
+    for i in tl.static_range(NBITS):
         bit = (exponent >> i) & 1
         result = tl.where(bit != 0, result * base, result)
         base = base * base
 
-    out_off = rows[:, None] * N + cols[None, :]
-    tl.store(out_ptr + out_off, result, mask=mask_m[:, None] & mask_n[None, :])
+    tl.store(out_ptr + off, result, mask=valid)
 
 
 @libentry()
 @triton.jit
-def _vander_complex_kernel(
+def _vander_flat_complex_kernel(
     xr_ptr,
     xi_ptr,
     outr_ptr,
     outi_ptr,
-    M,
-    N,
+    numel,
+    N: tl.constexpr,
     x_stride,
     increasing: tl.constexpr,
     NBITS: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
 ):
     # Complex path: (re, im) carried separately, powers built with the same
     # binary exponentiation and the complex squaring (a+bi)^2 = (a^2-b^2, 2ab).
-    pid_m = ext.program_id(0)
-    pid_n = ext.program_id(1)
-    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask_m = rows < M
-    mask_n = cols < N
+    pid = ext.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    valid = off < numel
+    row = off // N
+    col = off % N
 
-    xr = tl.load(xr_ptr + rows * x_stride, mask=mask_m, other=1.0).to(COMPUTE_DTYPE)
-    xi = tl.load(xi_ptr + rows * x_stride, mask=mask_m, other=0.0).to(COMPUTE_DTYPE)
-    powers = cols if increasing else (N - 1 - cols)
-    powers = tl.maximum(powers, 0).to(tl.int32)[None, :]
-    exponent = powers + tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int32)
+    xr = tl.load(xr_ptr + row * x_stride, mask=valid, other=1.0).to(COMPUTE_DTYPE)
+    xi = tl.load(xi_ptr + row * x_stride, mask=valid, other=0.0).to(COMPUTE_DTYPE)
+    exponent = (col if increasing else (N - 1 - col)).to(tl.int32)
 
-    resr = tl.full([BLOCK_M, BLOCK_N], 1.0, dtype=COMPUTE_DTYPE)
-    resi = tl.zeros([BLOCK_M, BLOCK_N], dtype=COMPUTE_DTYPE)
-    baser = tl.zeros([BLOCK_M, BLOCK_N], dtype=COMPUTE_DTYPE) + xr[:, None]
-    basei = tl.zeros([BLOCK_M, BLOCK_N], dtype=COMPUTE_DTYPE) + xi[:, None]
-    for i in range(0, NBITS):
+    resr = tl.full([BLOCK], 1.0, dtype=COMPUTE_DTYPE)
+    resi = tl.zeros([BLOCK], dtype=COMPUTE_DTYPE)
+    baser = xr
+    basei = xi
+    for i in tl.static_range(NBITS):
         bit = (exponent >> i) & 1
         sel = bit != 0
         newr = resr * baser - resi * basei
@@ -206,14 +195,16 @@ def _vander_complex_kernel(
         resi = tl.where(sel, newi, resi)
         baser, basei = baser * baser - basei * basei, 2.0 * baser * basei
 
-    out_off = rows[:, None] * N + cols[None, :]
-    mask = mask_m[:, None] & mask_n[None, :]
-    tl.store(outr_ptr + out_off, resr, mask=mask)
-    tl.store(outi_ptr + out_off, resi, mask=mask)
+    tl.store(outr_ptr + off, resr, mask=valid)
+    tl.store(outi_ptr + off, resi, mask=valid)
 
 
 def _nbits(n):
     return max(1, int(n - 1).bit_length())
+
+
+def _grid(numel, block):
+    return (triton.cdiv(numel, block),)
 
 
 def vander(x, N=None, increasing=False):
@@ -239,18 +230,18 @@ def vander(x, N=None, increasing=False):
         outr = torch.empty((M, N), dtype=xr.dtype, device=x.device)
         outi = torch.empty((M, N), dtype=xr.dtype, device=x.device)
         compute_dtype = tl.float32 if xr.dtype == torch.float32 else tl.float64
-        _vander_complex_kernel[(triton.cdiv(M, _BLOCK_M), triton.cdiv(N, _BLOCK_N))](
+        numel = M * N
+        _vander_flat_complex_kernel[_grid(numel, _BLOCK_COMPLEX)](
             xr,
             xi,
             outr,
             outi,
-            M,
-            N,
-            xr.stride(0),
+            numel,
+            N=N,
+            x_stride=xr.stride(0),
             increasing=increasing,
             NBITS=_nbits(N),
-            BLOCK_M=_BLOCK_M,
-            BLOCK_N=_BLOCK_N,
+            BLOCK=_BLOCK_COMPLEX,
             COMPUTE_DTYPE=compute_dtype,
         )
         out.real.copy_(outr)
@@ -262,42 +253,43 @@ def vander(x, N=None, increasing=False):
     if M == 0 or N == 0:
         return out
 
+    numel = M * N
+    nbits = _nbits(N)
+
     if x.dtype == torch.float32:
-        _vander_dd_pow_kernel[(triton.cdiv(M, _BLOCK_M), triton.cdiv(N, _BLOCK_N))](
+        _vander_flat_dd_kernel[_grid(numel, _BLOCK_DD)](
             x,
             out,
-            M,
-            N,
-            x.stride(0),
+            numel,
+            N=N,
+            x_stride=x.stride(0),
             increasing=increasing,
-            NBITS=_nbits(N),
-            BLOCK_M=_BLOCK_M,
-            BLOCK_N=_BLOCK_N,
+            NBITS=nbits,
+            BLOCK=_BLOCK_DD,
         )
     elif x.is_floating_point():
         compute_dtype = tl.float64 if x.dtype == torch.float64 else tl.float32
-        _vander_pow_kernel[(triton.cdiv(M, _BLOCK_M), triton.cdiv(N, _BLOCK_N))](
+        block = _BLOCK_INT if x.dtype == torch.float64 else _BLOCK_FLOAT
+        _vander_flat_kernel[_grid(numel, block)](
             x,
             out,
-            M,
-            N,
-            x.stride(0),
+            numel,
+            N=N,
+            x_stride=x.stride(0),
             increasing=increasing,
-            NBITS=_nbits(N),
-            BLOCK_M=_BLOCK_M,
-            BLOCK_N=_BLOCK_N,
+            NBITS=nbits,
+            BLOCK=block,
             COMPUTE_DTYPE=compute_dtype,
         )
     else:
-        _vander_int_pow_kernel[(triton.cdiv(M, _BLOCK_M), triton.cdiv(N, _BLOCK_N))](
+        _vander_flat_int_kernel[_grid(numel, _BLOCK_INT)](
             x,
             out,
-            M,
-            N,
-            x.stride(0),
+            numel,
+            N=N,
+            x_stride=x.stride(0),
             increasing=increasing,
-            NBITS=_nbits(N),
-            BLOCK_M=_BLOCK_M,
-            BLOCK_N=_BLOCK_N,
+            NBITS=nbits,
+            BLOCK=_BLOCK_INT,
         )
     return out

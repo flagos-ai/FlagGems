@@ -249,6 +249,24 @@ try:
         torch.float16: _bn_bwd_raw_kernel_f16,
         torch.bfloat16: _bn_bwd_raw_kernel_bf16,
     }
+
+    # Triton 3.6's frontend only lets an @triton.jit body reference a global that
+    # is an import / a JITCallable / tl.constexpr / a `triton.*` object, or whose
+    # __module__ starts with "triton.experimental.tle". The TLE overlay returns
+    # each payload handle as a raw.runtime.XPUJITFunction whose __module__ is the
+    # truncated bare name "runtime", so `_tle.raw.call(bn_bwd_*)` raises
+    # NameError("Cannot access global variable bn_bwd_f32 ...") on a cold cache.
+    # The broad try/except below then swallows it and re-runs the Triton path --
+    # but only AFTER paying that failed compile (~2x ~5ms) on EVERY call, which
+    # is exactly the tiny-shape regression this tag removes. Tag the handles with
+    # the tle namespace (scoped, no process-global TRITON_ALLOW_NON_CONSTEXPR_GLOBALS).
+    _BN_RAW_PAYLOADS = (bn_bwd_f32, bn_bwd_f16, bn_bwd_bf16)
+    for _bn_pl in _BN_RAW_PAYLOADS:
+        try:
+            _bn_pl.__module__ = "triton.experimental.tle.raw.runtime"
+        except Exception:  # read-only attr on another toolchain -> keep fallback
+            pass
+
     _HAS_BN_RAW = True
 except Exception:  # pragma: no cover - environment without tle.raw
     _HAS_BN_RAW = False

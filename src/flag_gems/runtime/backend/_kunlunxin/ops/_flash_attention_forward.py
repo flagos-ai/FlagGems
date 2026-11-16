@@ -44,6 +44,7 @@ _LOCK = threading.Lock()
 _CACHE = {}
 _MAX_KEYS = 64
 _GENERIC = None
+_BACKEND = None
 # Steady-state fast path: serving loops hand us the same input objects every
 # call, so an identity check (GIL-atomic tuple swap, no lock) skips rebuilding
 # and hashing the config tuple.
@@ -58,6 +59,22 @@ def _generic_entry():
     return _GENERIC
 
 
+def _backend_entry():
+    """XPU two-pass implementation (see ``_kunlunxin/ops/attention.py``).
+
+    The generic ``flag_gems.ops.flash_kernel`` forward cannot be lowered on
+    XPU3 (``[C-015] event demand ... exceeds the hardware range 80``), so the
+    generic delegate above aborts at compile time.  The backend two-pass kernel
+    is the validated path and exposes the same signature.
+    """
+    global _BACKEND
+    if _BACKEND is None:
+        from .attention import flash_attention_forward as impl
+
+        _BACKEND = impl
+    return _BACKEND
+
+
 def _supported(query, key, value, cu_q, cu_k, dropout_p, seqused_k, alibi_slopes):
     return (
         cu_q is None
@@ -68,6 +85,10 @@ def _supported(query, key, value, cu_q, cu_k, dropout_p, seqused_k, alibi_slopes
         and query.dtype in (torch.float16, torch.bfloat16)
         and key.dtype == query.dtype
         and value.dtype == query.dtype
+        and query.shape[-1] in (16, 32, 64, 96, 128, 192, 256)
+        and key.shape[-1] == query.shape[-1]
+        and value.shape[-1] == query.shape[-1]
+        and query.shape[-2] % key.shape[-2] == 0
         and query.is_cuda
     )
 
@@ -170,6 +191,38 @@ def _flash_attention_forward(
 ):
     logger.debug("GEMS_KUNLUNXIN _FLASH_ATTENTION_FORWARD")
     entry = _generic_entry()
+
+    # The generic ops.flash_kernel path does not lower on XPU3 (SDNN event
+    # budget); route the supported ATen space straight to the validated
+    # two-pass backend kernel. Unsupported configs keep the previous (generic)
+    # behaviour.
+    if _ENABLED and _supported(
+        query,
+        key,
+        value,
+        cumulative_sequence_length_q,
+        cumulative_sequence_length_k,
+        dropout_p,
+        seqused_k,
+        alibi_slopes,
+    ):
+        return _backend_entry()(
+            query,
+            key,
+            value,
+            cumulative_sequence_length_q,
+            cumulative_sequence_length_k,
+            max_q,
+            max_k,
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            scale=scale,
+            window_size_left=window_size_left,
+            window_size_right=window_size_right,
+            seqused_k=seqused_k,
+            alibi_slopes=alibi_slopes,
+        )
 
     def _delegate():
         return entry(

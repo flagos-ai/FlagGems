@@ -22,6 +22,28 @@ left padding.  This override follows the proven max_pool2d flat kernel: clamp
 the input address to an in-bounds lane first, load unconditionally, then apply
 an explicit validity check. Integer ordering preserves NaNs, infinities and
 first-occurrence numeric ties without backend float-comparison lowering.
+
+Fast path: for the dominant geometry ``k=3, s=2, p=1, dilation=1,
+ceil_mode=False, L % 2 == 0`` (out_len == L // 2) the window of output ``o`` is
+``[2o-1, 2o, 2o+1]``.  With the input viewed as pairs (fp32 -> int64, fp16/bf16
+-> int32) the flat output index equals the flat pair index, so the three taps
+are recovered from two unit-stride pair streams:
+
+    self = pair[q]    (lo=x[2o], hi=x[2o+1])   -> xp + q
+    left = pair[q-1]  (hi=x[2o-1])             -> xp + q - 1
+
+``pair[-1]`` of the very first output is out of the allocation, so the head of
+the output runs on a clamped (de-vectorised) launch while the rest stays purely
+affine -- the same split the proven ``max_pool1d`` / ``avg_pool1d`` pair kernels
+use.  The pair path is 1.7-1.9x faster than the packed-word kernel and removes
+the per-lane address clamp from the hot loop.
+
+bf16 detail: the previous implementation stored bf16 as two ``uint8`` stores
+(``2*offset`` / ``2*offset+1``) because the backend rejects a bf16 bitcast
+store.  That per-byte, stride-2 store was measured **16x** slower than a single
+``uint16`` store (2890 us vs 173 us on the benchmark's smallest cell), so both
+16-bit dtypes now store through a ``uint16`` pointer.  The bf16 flat path loads
+through a ``uint16`` pointer as well (1.7x faster than two ``uint8`` loads).
 """
 
 import logging
@@ -34,6 +56,14 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+# outputs covered by the clamped head launch of the pair kernel.  Only lane 0
+# needs it (its left tap is pair[-1]); a *clamped* block is de-vectorised and
+# costs ~90us when it is the only block in flight, so this stays tiny.
+HEAD_OUT = 64
+# below this output count the whole operator is launch bound, so a single
+# clamped launch is faster than head + affine body
+SINGLE_LAUNCH_MAX = 4096
 
 
 def max_pool1d_output_size(
@@ -54,6 +84,33 @@ def max_pool1d_output_size(
     else:
         output_size = numerator // stride + 1
     return output_size
+
+
+def _pair_block(total: int) -> int:
+    # Measured on P800/XPU3 (same table as the max_pool1d pair kernel).
+    if total <= 4096:
+        return 1024
+    if total <= 262144:
+        return 2048
+    return 4096
+
+
+def _flat_block(total: int, elem_size: int) -> int:
+    """Measured medians on P800/XPU3 for the flat / wide kernels.
+
+    Small totals stay at 1024 (a 4096-lane tile costs 8-10% there); fp32 prefers
+    2048 once it has work to hide, while 16-bit loads pack two elements per
+    word and only want 4096 past ~2M outputs (1M outputs: 1024 is 7% faster).
+    """
+    if total <= 2048:
+        return 512
+    if total <= 16384:
+        return 1024
+    if elem_size >= 4:
+        return 1024 if total <= 163840 else 2048
+    if total > 2000000:
+        return 4096
+    return 1024
 
 
 @triton.jit
@@ -100,6 +157,115 @@ def _pool_value(
             return bits.to(tl.uint16).to(tl.float16, bitcast=True)
     else:
         return bits.to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _store16(output_ptr, offsets, bits, mask):
+    """Single 16-bit store; a byte-pair store is 16x slower on this backend."""
+    out16 = output_ptr.to(tl.pointer_type(tl.uint16))
+    tl.store(out16 + offsets, bits.to(tl.uint16), mask=mask)
+
+
+@libentry()
+@triton.jit
+def max_pool1d_forward_pair_kernel(
+    xp,
+    yp,
+    ip,
+    total: tl.constexpr,
+    off: tl.constexpr,
+    OW: tl.constexpr,
+    CLAMP: tl.constexpr,
+    FULL: tl.constexpr,
+    MODE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """``k=3, s=2, p=1, dilation=1, ceil_mode=False, L % 2 == 0`` fast path.
+
+    MODE 0: fp32 input viewed as int64 pairs.
+    MODE 1: fp16 input viewed as int32 pairs.
+    MODE 2: bf16 input viewed as int32 pairs.
+
+    ``CLAMP`` bounds both pair indices to the last pair: lane 0 of the head
+    would otherwise read ``pair[-1]``, and the tail lanes of a single clamped
+    launch (small outputs) would read past the last pair.  This backend still
+    performs the access of a *masked* load (only the ``other=`` select is
+    dropped), so the clamp -- not the mask -- is what keeps those launches
+    inside the allocation.  ``FULL`` marks the interior body blocks and the
+    boundary-aligned last block (no mask at all, nothing to clamp).
+    """
+    lan = tl.arange(0, BLOCK)
+    q0 = tl.program_id(0) * BLOCK + lan + off
+    m = q0 < total
+    if CLAMP:
+        q = tl.minimum(q0, total - 1)
+        left = tl.maximum(q - 1, 0)
+    else:
+        q = q0
+        left = q - 1
+    if FULL:
+        v0 = tl.load(xp + q)
+        v1 = tl.load(xp + left)
+    else:
+        v0 = tl.load(xp + q, mask=m, other=0)
+        v1 = tl.load(xp + left, mask=m, other=0)
+
+    if MODE == 0:
+        v0 = v0.to(tl.uint64, bitcast=True)
+        v1 = v1.to(tl.uint64, bitcast=True)
+        lo_bits = (v0 & 0xFFFFFFFF).to(tl.uint32)
+        hi_bits = (v0 >> 32).to(tl.uint32)
+        led_bits = (v1 >> 32).to(tl.uint32)
+    else:
+        v0 = v0.to(tl.uint32, bitcast=True)
+        v1 = v1.to(tl.uint32, bitcast=True)
+        lo_bits = v0 & 0xFFFF
+        hi_bits = v0 >> 16
+        led_bits = v1 >> 16
+
+    ELEM16: tl.constexpr = MODE != 0
+    IS_BF16: tl.constexpr = MODE == 2
+    ol = q % OW
+
+    # Integer sort keys, never a float comparison: this backend flushes fp32
+    # subnormals in compares (measured: bf16 0x0001 vs 0x0000 compare equal),
+    # which would return the wrong value and index.  Window order is
+    # left -> lo -> hi; ATen keeps the first maximum and always updates on a
+    # NaN (so the last NaN wins).  Seeding with the left (or lo) tap removes
+    # one full update chain.
+    key_led = _pool_key(led_bits, ELEM16, IS_BF16)
+    key_lo = _pool_key(lo_bits, ELEM16, IS_BF16)
+    key_hi = _pool_key(hi_bits, ELEM16, IS_BF16)
+    has_left = ol > 0
+    mx_bits = tl.where(has_left, led_bits, lo_bits)
+    mx_key = tl.where(has_left, key_led, key_lo)
+    mx_idx = tl.where(has_left, 2 * ol - 1, 2 * ol).to(tl.int32)
+
+    is_new = (key_lo > mx_key) | (key_lo == 0x7FFFFFFF)
+    mx_bits = tl.where(is_new, lo_bits, mx_bits)
+    mx_key = tl.where(is_new, key_lo, mx_key)
+    mx_idx = tl.where(is_new, (2 * ol).to(mx_idx.dtype), mx_idx)
+
+    is_new = (key_hi > mx_key) | (key_hi == 0x7FFFFFFF)
+    mx_bits = tl.where(is_new, hi_bits, mx_bits)
+    mx_idx = tl.where(is_new, (2 * ol + 1).to(mx_idx.dtype), mx_idx)
+
+    if FULL:
+        # Interior / boundary-aligned blocks: every lane is a real output, so
+        # the stores are plain (measured neutral vs masked stores; the win in
+        # this kernel comes from the affine addressing, not from the mask).
+        if ELEM16:
+            out16 = yp.to(tl.pointer_type(tl.uint16))
+            tl.store(out16 + q, mx_bits.to(tl.uint16))
+        else:
+            tl.store(yp + q, mx_bits.to(tl.float32, bitcast=True))
+        tl.store(ip + q, mx_idx.to(tl.int64))
+    else:
+        if ELEM16:
+            _store16(yp, q, mx_bits, m)
+        else:
+            tl.store(yp + q, mx_bits.to(tl.float32, bitcast=True), mask=m)
+        tl.store(ip + q, mx_idx.to(tl.int64), mask=m)
 
 
 @libentry()
@@ -153,19 +319,17 @@ def max_pool1d_forward_flat_kernel(
             neg_inf: tl.constexpr = 0xFF800000
     max_bits = tl.full((BLOCK,), neg_inf, bits_type)
     max_key = _pool_key(max_bits, ELEM16, IS_BF16, ELEM64)
-
+    if IS_BF16:
+        # 16-bit gather through a uint16 pointer: one load per tap instead of
+        # two byte loads (1.7x faster); every address is element aligned.
+        ptr16 = input_ptr.to(tl.pointer_type(tl.uint16))
     for kl in tl.static_range(0, kernel_l):
         il = start + kl * dilation_l
         valid = output_mask & (il >= 0) & (il < in_l)
         il_safe = tl.where(valid, il, 0)
         input_offset = nc_safe * in_l + il_safe
         if IS_BF16:
-            # Avoid bf16 and u16 loads on the fallback path too. Two byte loads
-            # do not overread odd lengths or require packed-word alignment.
-            ptr = input_ptr.to(tl.pointer_type(tl.uint8))
-            lo = tl.load(ptr + input_offset * 2).to(tl.uint32)
-            hi = tl.load(ptr + input_offset * 2 + 1).to(tl.uint32)
-            bits = lo | (hi << 8)
+            bits = tl.load(ptr16 + input_offset).to(tl.uint32)
         else:
             value = tl.load(input_ptr + input_offset)
             if ELEM16:
@@ -179,16 +343,7 @@ def max_pool1d_forward_flat_kernel(
         max_idx = tl.where(is_new, il.to(max_idx.dtype), max_idx)
 
     if IS_BF16:
-        # bf16 bitcast store hits XPU `TritonXPUDtypeConvert` "Cannot bitcast
-        # size 16 to size 32". Store the two bytes directly, symmetric to the
-        # byte loads above, to keep bit-exact NaNs/signed-zero.
-        out8 = output_ptr.to(tl.pointer_type(tl.uint8))
-        tl.store(out8 + offsets * 2, (max_bits & 0xFF).to(tl.uint8), mask=output_mask)
-        tl.store(
-            out8 + offsets * 2 + 1,
-            ((max_bits >> 8) & 0xFF).to(tl.uint8),
-            mask=output_mask,
-        )
+        _store16(output_ptr, offsets, max_bits, output_mask)
     else:
         tl.store(
             output_ptr + offsets,
@@ -274,14 +429,8 @@ def max_pool1d_forward_wide_kernel(
                 max_key = tl.where(is_new, key, max_key)
                 max_idx = tl.where(is_new, e.to(max_idx.dtype), max_idx)
 
-    if IS_BF16:
-        out8 = output_ptr.to(tl.pointer_type(tl.uint8))
-        tl.store(out8 + offsets * 2, (max_bits & 0xFF).to(tl.uint8), mask=output_mask)
-        tl.store(
-            out8 + offsets * 2 + 1,
-            ((max_bits >> 8) & 0xFF).to(tl.uint8),
-            mask=output_mask,
-        )
+    if ELEM16:
+        _store16(output_ptr, offsets, max_bits, output_mask)
     else:
         tl.store(
             output_ptr + offsets,
@@ -321,6 +470,66 @@ def _parse_pool_params(kernel_size, stride, padding, dilation):
     return kernel_l, stride_l, padding_l, dilation_l
 
 
+def _pair_fast_path(inp, kernel_l, stride_l, padding_l, dilation_l, ceil_mode, out_l):
+    if ceil_mode or kernel_l != 3 or stride_l != 2 or padding_l != 1:
+        return False
+    if dilation_l != 1:
+        return False
+    if inp.dtype not in (torch.float32, torch.float16, torch.bfloat16):
+        return False
+    if inp.shape[-1] % 2 != 0 or inp.shape[-1] // 2 != out_l:
+        return False
+    align = 8 if inp.dtype == torch.float32 else 4
+    if inp.data_ptr() % align != 0:
+        return False
+    # the pair kernel indexes with int32
+    if inp.numel() // 2 > 0x7FFFFFFF:
+        return False
+    return True
+
+
+def _launch_pair(inp, output, indices, out_l, dtype):
+    total = output.numel()
+    if dtype == torch.float32:
+        xv, mode = inp.view(torch.int64), 0
+    else:
+        xv, mode = inp.view(torch.int32), (2 if dtype == torch.bfloat16 else 1)
+    block = _pair_block(total)
+    head = min(HEAD_OUT, total)
+    launches = []
+    if total <= SINGLE_LAUNCH_MAX:
+        launches.append((triton.cdiv(total, block), 0, True, False, block))
+    else:
+        # head: clamped so lane 0 never reads pair[-1]
+        launches.append((1, 0, True, False, head))
+        rest = total - head
+        full = rest // block
+        if full:
+            launches.append((full, head, False, True, block))
+        if rest - full * block:
+            # Tail without a clamped (de-vectorised) launch: an overlapping
+            # last block that ends exactly at `total` stays fully in bounds and
+            # only repeats lanes with identical values.
+            launches.append((1, total - block, False, True, block))
+    with torch_device_fn.device(inp.device):
+        for grid, off, clamp, full, blk in launches:
+            max_pool1d_forward_pair_kernel[(grid,)](
+                xv,
+                output,
+                indices,
+                total,
+                off,
+                OW=out_l,
+                CLAMP=clamp,
+                FULL=full,
+                MODE=mode,
+                BLOCK=blk,
+                num_warps=4,
+                buffer_size_limit=2048,
+                isCloseVectorization=False,
+            )
+
+
 def max_pool1d_with_indices(
     input: torch.Tensor,
     kernel_size,
@@ -355,17 +564,20 @@ def max_pool1d_with_indices(
             indices = indices.squeeze(0)
         return output, indices
 
-    total = output.numel()
-    block = 1024
-    grid = (triton.cdiv(total, block),)
-
-    if (
+    if _pair_fast_path(
+        input, kernel_l, stride_l, padding_l, dilation_l, ceil_mode, out_l
+    ):
+        _launch_pair(input, output, indices, out_l, input.dtype)
+    elif (
         input.dtype in (torch.float32, torch.float16, torch.bfloat16)
         and dilation_l == 1
         and stride_l % 2 == 0
         and in_l % 2 == 0
         and input.data_ptr() % (2 * input.element_size()) == 0
     ):
+        total = output.numel()
+        block = _flat_block(total, input.element_size())
+        grid = (triton.cdiv(total, block),)
         with torch_device_fn.device(input.device):
             max_pool1d_forward_wide_kernel[grid](
                 input,
@@ -386,6 +598,9 @@ def max_pool1d_with_indices(
                 isCloseVectorization=False,
             )
     else:
+        total = output.numel()
+        block = _flat_block(total, input.element_size())
+        grid = (triton.cdiv(total, block),)
         with torch_device_fn.device(input.device):
             max_pool1d_forward_flat_kernel[grid](
                 input,

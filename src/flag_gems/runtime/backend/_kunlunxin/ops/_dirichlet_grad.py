@@ -370,9 +370,18 @@ def _dirichlet_grad_tile(x, alpha, total):
     approx = _div_rn(x * (_digamma_one(total) - _digamma_one(alpha)), beta)
     r_rational = _div_rn(p, q) * approx
 
-    out = tl.where(small_branch, r_small, r_rational)
+    # ATen's controls are early returns, so the *first* matching branch wins:
+    # ``small`` > ``beta_small`` > ``mid`` > rational.  Chaining ``tl.where`` in
+    # the same order would instead give the later branches the higher priority
+    # and select ``mid`` whenever ``alpha > 6 && beta > 6`` -- which is a strict
+    # subset of the ``small``/``beta_small`` regions for extreme ``x``.  That
+    # previously turned ``x == 0`` into NaN (the saddle-point form evaluates
+    # ``0 * inf``) where ATen returns 0, and shifted near-boundary values by
+    # ~1e-2 relative.  Apply the ``tl.where`` cascade from lowest to highest
+    # priority so the final selection matches the reference cascade.
+    out = tl.where(mid_branch, r_mid, r_rational)
     out = tl.where(beta_small_branch, r_beta_small, out)
-    out = tl.where(mid_branch, r_mid, out)
+    out = tl.where(small_branch, r_small, out)
     return out
 
 

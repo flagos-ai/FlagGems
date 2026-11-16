@@ -44,6 +44,11 @@ def batch_norm_impl_index(
     (output, save_mean, save_var, reserve, impl_index).
     """
     logger.debug("GEMS_KUNLUNXIN _BATCH_NORM_IMPL_INDEX")
+    # aten::_batch_norm_impl_index updates the running statistics in *every*
+    # input dtype (not just float32) and uses the unbiased variance estimate
+    # (n / (n - 1)) for `running_var`; `save_var` keeps the biased
+    # `1/sqrt(var + eps)`. The local `batch_norm` wrapper defaults both
+    # behaviours off, so opt in explicitly here.
     output, save_mean, save_var = batch_norm(
         input,
         weight,
@@ -53,6 +58,26 @@ def batch_norm_impl_index(
         training,
         momentum,
         eps,
+        update_running_all_dtypes=True,
+        unbiased_running_var=True,
     )
     reserve = torch.empty((0,), dtype=torch.uint8, device=input.device)
     return output, save_mean, save_var, reserve, 0
+
+
+import sys as _sys  # noqa: E402
+
+# The platform benchmarks (benchmark/test_batch_norm_impl_index.py) bind their
+# candidate from the *generic* module path
+# (`from flag_gems.ops._batch_norm_impl_index import batch_norm_impl_index`)
+# instead of `flag_gems._batch_norm_impl_index`. On XPU3 the generic
+# `batch_norm_forward_kernel` does not lower at all (`TritonXPUUnrollControl` /
+# `uni_sram` pass failure), so that path can never be measured or executed
+# here even though the registrar already routes `flag_gems._batch_norm_impl_index`
+# to this module. Rebind the generic module attribute to this vendor
+# implementation so both call paths resolve to the kernel that actually runs on
+# XPU (same pattern as `_enflame/gcu300/ops/div.py`, which rebinds
+# `flag_gems.ops.div_mode`).
+_generic_module = _sys.modules.get("flag_gems.ops._batch_norm_impl_index")
+if _generic_module is not None:
+    _generic_module.batch_norm_impl_index = batch_norm_impl_index

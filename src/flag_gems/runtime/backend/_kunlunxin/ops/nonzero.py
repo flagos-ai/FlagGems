@@ -130,29 +130,52 @@ def _nz_scan16_kernel(pcount, prefix, total, NW: tl.constexpr):
     tl.store(total, tl.sum(c, axis=0).to(tl.int64))
 
 
+def _make_tle_kernel(name, payload_params, call_args):
+    """Build the `tle.raw` payload + its `@triton.jit` wrapper for one variant.
+
+    Both the payload handle and the wrapper are exec'd into a *single* fresh
+    namespace so the payload is a **global callable** of the wrapper.  Two
+    Triton-frontend constraints force this shape:
+      * The wrapper may not read the payload through a closure variable: the
+        frontend resolves free names as globals and rejects anything that is
+        not a constexpr ("Cannot access global variable <callee> ...").  A
+        module/exec-global *callable* is whitelisted instead.
+      * The exec'd `tle.raw.dialect` handle reports ``__module__ == 'runtime'``
+        (the C-extension module), which fails the whitelist's
+        ``startswith("triton.experimental.tle")`` test; the real, imported
+        payloads (e.g. scatter_add_) carry the fully-qualified module.  Fix the
+        tag up so the handle is accepted.  The device-object dependency used by
+        the compile-cache key lives on the handle itself (``object=``), so this
+        tag does not change cache invalidation.
+    """
+    import linecache
+
+    # Stub name == entry symbol, stub signature == the C++ ABI.  In object=
+    # mode the merge-time signature check is skipped (the payload isn't in IR),
+    # so a mismatched stub fails at runtime, not at compile -- keep them in
+    # lockstep with the C++ in ../payload/src/.
+    src = (
+        "@tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
+        "def %s(%s): ...\n"
+        "@triton.jit\n"
+        "def %s_k(%s):\n"
+        "    tle.raw.call(%s, (%s))\n"
+    ) % (name, payload_params, name, call_args, name, call_args)
+    filename = "<flag_gems_nonzero_%s>" % name
+    linecache.cache[filename] = (len(src), None, src.splitlines(True), filename)
+    ns = {"tle": _tle, "triton": triton, "_OBJ": _tle_payload_obj()}
+    exec(compile(src, filename, "exec"), ns)
+    ns[name].__module__ = "triton.experimental.tle.raw.nonzero"
+    return ns[name + "_k"]
+
+
 def _tle_stub(key):
     """Build (and memoise) the `tle.raw` compaction kernel for one variant."""
     if key in _TLE_CACHE:
         return _TLE_CACHE[key]
     esize, is_float, ndim = key
     name = "nz_pack_%s_d%d" % (_TLE_SYM[(esize, is_float)], ndim)
-    # Stub name == entry symbol, stub signature == the C++ ABI.  In object=
-    # mode the merge-time signature check is skipped (the payload isn't in IR),
-    # so a mismatched stub fails at runtime, not at compile -- keep them in
-    # lockstep with the C++ in ../payload/src/.
-    ns = {"tle": _tle, "triton": triton, "_OBJ": _tle_payload_obj()}
-    exec(
-        "@tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
-        "def %s(out, inp, prefix, meta):\n"
-        "    ...\n" % name,
-        ns,
-    )
-    callee = ns[name]
-
-    @triton.jit
-    def _k(OUT, INP, PFX, META):
-        _tle.raw.call(callee, (OUT, INP, PFX, META))
-
+    _k = _make_tle_kernel(name, "out, inp, prefix, meta", "OUT, INP, PFX, META")
     _TLE_CACHE[key] = _k
     return _k
 
@@ -164,19 +187,7 @@ def _tle_count_stub(key):
         return _TLE_CACHE[ck]
     esize, is_float = key
     name = "nz_cnt_%s" % _TLE_SYM[(esize, is_float)]
-    ns = {"tle": _tle, "triton": triton, "_OBJ": _tle_payload_obj()}
-    exec(
-        "@tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
-        "def %s(pcount, inp, meta):\n"
-        "    ...\n" % name,
-        ns,
-    )
-    callee = ns[name]
-
-    @triton.jit
-    def _k(PC, INP, META):
-        _tle.raw.call(callee, (PC, INP, META))
-
+    _k = _make_tle_kernel(name, "pcount, inp, meta", "PC, INP, META")
     _TLE_CACHE[ck] = _k
     return _k
 

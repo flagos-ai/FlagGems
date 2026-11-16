@@ -60,11 +60,13 @@ def _conj_from_storage(input: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def _conj(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS_KUNLUNXIN CONJ")
-    if not input.is_complex():
-        raise RuntimeError("_conj only supports complex tensors")
+def _conj_materialize(input: torch.Tensor) -> torch.Tensor:
+    """Physically materialize ``conj(input)`` into a fresh tensor.
 
+    This is *not* ``aten::_conj`` semantics (that op is a zero-copy view); it
+    is the private helper used by ``conj_physical``, which must write the
+    conjugated values to memory.
+    """
     if input.is_conj():
         out = torch.empty_like(input, memory_format=torch.contiguous_format)
         fin = _flatten_storage(input)
@@ -77,3 +79,26 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
         return out
 
     return _conj_from_storage(input)
+
+
+def _conj(input: torch.Tensor) -> torch.Tensor:
+    """``aten::_conj``: zero-copy lazy conjugate view.
+
+    Native ``aten::_conj`` returns a view of ``input`` (same storage, same
+    shape/stride/storage_offset) with the per-tensor lazy conjugate bit
+    toggled; it reads and writes no element.  Materializing a copy here (the
+    old behaviour) both loses the alias contract and launches a device kernel
+    for an op that should be metadata-only, which also broke ``use_gems``
+    consumers such as ``adjoint``/``mH`` that rely on ``conj`` being a view.
+
+    Build the view from raw metadata (``torch.as_strided``) and flip the flag
+    with ``torch._C._set_conj`` -- exactly like ``adjoint`` does; calling
+    ``Tensor.conj()``/``aten::_conj`` from here would recurse.
+    """
+    logger.debug("GEMS_KUNLUNXIN CONJ")
+    if not input.is_complex():
+        raise RuntimeError("_conj only supports complex tensors")
+
+    out = torch.as_strided(input, input.shape, input.stride(), input.storage_offset())
+    torch._C._set_conj(out, not input.is_conj())
+    return out

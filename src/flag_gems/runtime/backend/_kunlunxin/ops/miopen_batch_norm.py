@@ -56,10 +56,23 @@ def miopen_batch_norm(
     """
     logger.debug("GEMS_KUNLUNXIN MIOPEN_BATCH_NORM_FORWARD")
 
-    # exponential_average_factor is used as momentum; the vendor entry point
-    # expects the running-stat buffers to be real tensors even when unused.
-    running_mean = input if running_mean is None else running_mean
-    running_var = input if running_var is None else running_var
+    # exponential_average_factor is used as momentum.
+    #
+    # TRAINING with ``running_mean`` / ``running_var`` == None: keep them None.
+    # ``batch_norm`` then disables the running-stat update (HAS_RM/HAS_RV are
+    # False), matching ``aten::native_batch_norm`` (which leaves the input and
+    # any stats untouched when they are omitted). This used to alias the missing
+    # buffers to ``input`` "because the vendor entry point wants real tensors",
+    # but with ``update_running_all_dtypes=True`` the fused kernel then wrote the
+    # updated running mean/var into ``input[0:C]`` -- silently corrupting the
+    # caller's input in place (verified: max |delta| ~0.6 for fp32 (16,16,64)).
+    #
+    # EVAL still reads the running stats, and the vendor no-update entry raises
+    # when they are None, so there keep the historical alias to preserve the
+    # old (garbage-in) behaviour instead of surfacing a new error.
+    if not training:
+        running_mean = input if running_mean is None else running_mean
+        running_var = input if running_var is None else running_var
 
     output, mean, inv_std = _batch_norm(
         input,

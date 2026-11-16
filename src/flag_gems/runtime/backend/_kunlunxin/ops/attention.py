@@ -1556,10 +1556,33 @@ def _fa_lout_kernel(
         mask=q_mask[:, None] & d_mask[None, :],
     )
     if STORE_LSE:
-        # Natural log: lse = m + ln(sum(exp2((qk - m) * LOG2E))).
-        lse = m_i + tl.log(l_i)
+        # Store the RAW denominator l_i = sum(exp2((qk' - m) * LOG2E)); the
+        # natural log is applied later by `_fa_lse_finalize_kernel`.
+        # `tl.log(l_i)` cannot be used here: because l_i is a loop-carried 1-D
+        # value fed by the `tl.dot` accumulator, the XPU vectorizer lowers the
+        # log to the width-2 extern `xpu::math_log(float AS2*, ...)`, which has
+        # no definition in the XPU3 toolchain (ld.lld "undefined symbol
+        # xpu::math_log").  A plain load-rooted 1-D kernel keeps the log scalar
+        # and links correctly.
         lse_ptrs = Lse + off_hz * Q_CTX + offs_m
-        tl.store(lse_ptrs, lse, mask=q_mask)
+        tl.store(lse_ptrs, l_i, mask=q_mask)
+
+
+@triton.jit
+def _fa_lse_finalize_kernel(M, Lse, N, BLOCK: tl.constexpr):
+    """lse = m + ln(sum(exp2((qk' - m) * LOG2E))) for every (b, h, q) row.
+
+    Kept as a separate, load-rooted 1-D kernel so `tl.log` lowers to the
+    scalar `xpu::math_log` instead of the undefined width-2 vector extern
+    emitted inside the dot-loop epilogue (see `_fa_lout_kernel`).
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    m = tl.load(M + offs, mask=mask, other=0.0)
+    denom = tl.load(Lse + offs, mask=mask, other=1.0)
+    denom = tl.maximum(denom, 1e-30)
+    tl.store(Lse + offs, m + tl.log(denom), mask=mask)
 
 
 def _fa_pad_d(t, padded):
@@ -1746,6 +1769,19 @@ def flash_attention_forward(
                 **common,
             )
             d_off += 128
+        # Apply ln() to the raw denominator stored by pass 2, in a separate
+        # load-rooted 1-D kernel (see _fa_lse_finalize_kernel).
+        n_lse = batch * q_head_num * q_len
+        if n_lse > 0:
+            BLOCK_LSE = 1024
+            _fa_lse_finalize_kernel[(triton.cdiv(n_lse, BLOCK_LSE),)](
+                m_buf,
+                lse,
+                n_lse,
+                BLOCK=BLOCK_LSE,
+                num_warps=4,
+                num_stages=1,
+            )
 
     return out, lse, None, None, None
 

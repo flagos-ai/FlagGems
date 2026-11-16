@@ -12,6 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+fill_mem_eff_dropout_mask_:
+  shapes:
+    - [1, 1, 4, 8]
+    - [2, 3, 4, 8]
+    - [4, 8, 64, 64]
+    - [8, 16, 128, 128]
+    - [16, 16, 256, 256]
+    - [8, 32, 512, 512]
+  shape_desc: "B, H, Q, K"
+
 fractional_max_pool2d_backward:
   shapes:
     - [4, 3, 224, 224]
@@ -79,6 +89,35 @@ cdist_backward:
     - [4, 32, 64]
     - [8, 64, 128]
   shape_desc: "batch, n1, dim"
+
+# _ctc_loss benchmarks destructure 4-tuples (T, N, C, S); without an explicit
+# key the MRO fallback resolves `Benchmark` (2-element shapes) and the input
+# builder fails with "not enough values to unpack".
+_ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+_ctc_loss_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+# Same 4-tuple (T, N, C, S) layout as `_ctc_loss`; without this key the input
+# builder falls back to `Benchmark`'s 2-element shapes and fails to unpack.
+_ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
 
 vdot:
   <<: *single_dim_shapes

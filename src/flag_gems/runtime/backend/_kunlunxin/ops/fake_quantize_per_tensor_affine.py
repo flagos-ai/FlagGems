@@ -156,8 +156,15 @@ def fake_quantize_per_tensor_affine_kernel(
 # covers the machine, with the tile bounded so tiny inputs do not pay for a
 # 32768-lane program and huge ones do not serialize on a single CTA.
 def _pick_block(n_elements):
-    if n_elements <= 1024:
-        return max(16, triton.next_power_of_2(n_elements))
+    # The smallest tensors are pure fixed cost, and it is not monotone in the
+    # tile: at n=16 a 16-lane program (grid 1) measures 13.8us while a 2048-lane
+    # program covering the same 16 elements measures 5.2us, and at n=4096 the
+    # 1024-lane tile (grid 4) measures 9.4us while 2048 (grid 2) measures 5.2us.
+    # Both were measured with the launch options below fixed, see
+    # harness/perf_ir/sweep_fq_pta_tile2.log; from n=32768 up the ~12-wave grid
+    # below is already the best measured tile.
+    if n_elements <= 4096:
+        return 2048
     block = triton.next_power_of_2(triton.cdiv(n_elements, 12))
     return min(32768, max(1024, block))
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import logging
 import warnings
 
@@ -21,13 +22,18 @@ import triton.language as tl
 
 from flag_gems.ops.linalg_multi_dot import _matrix_chain_order, _validate_and_prepare
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
 
-@libentry()
+# The kernel keeps Triton's default argument specialization (in particular the
+# divisibility hints on shape/stride scalars): on XPU3 a masked *strided* store
+# (e.g. the transposed ``out`` of the non-contiguous test) mis-vectorizes when
+# the stride scalars lose their ``tt.divisibility`` attribute -- measured as a
+# wrong result.  The per-launch specialization cost is instead avoided on the
+# host side by caching the compiled kernel (see ``_launch_gemm``), keyed on the
+# exact shape/stride values so each cached binary matches its specialization.
 @triton.jit
 def _multi_dot_mm_kernel(
     left,
@@ -49,13 +55,13 @@ def _multi_dot_mm_kernel(
 ):
     """Small-tile masked GEMM used for one step of a multi_dot chain.
 
-    Mirrors the generic ``_multi_dot_mm_kernel`` (BLOCK 32, masked 2D loads,
-    fp32/fp64 accumulation) so the small/ragged shapes that dominate the
-    multi_dot benchmark keep the generic kernel's performance.  The single
-    difference vs. the generic path is on the host side (see
-    ``_matrix_multiply``): for bf16 the accumulator is written to an fp32
-    buffer and converted to bf16 on the host, because the XPU's in-kernel
-    fp32 -> bf16 store mis-rounds by several bf16 ULPs.
+    Mirrors the generic multi_dot GEMM (masked 2D loads, fp32/fp64
+    accumulation) so the small/ragged shapes keep the generic numerics.  The
+    backend-local change is purely on the host side (see ``_launch_gemm``): the
+    compiled kernel is cached and launched through its low-level runner, which
+    removes the per-launch argument-specialization cost.  For a chain of N
+    matrices that per-launch cost dominated the whole operator (the GEMMs
+    themselves are only a few microseconds).
     """
     pid = ext.program_id(0)
     grid_n = tl.cdiv(columns, BLOCK_N)
@@ -105,12 +111,32 @@ def _pick_blocks(rows, columns, inner):
     return bm, bn, bk
 
 
+# Per (device, dtypes, tile config) cache of a directly-callable launcher.
+# Each entry is (compiled.run, compiled.function, compiled.packed_metadata, grid_x).
+_LAUNCH_CACHE = {}
+_TRITON_DRIVER = None
+
+
+def _triton_driver():
+    global _TRITON_DRIVER
+    if _TRITON_DRIVER is None:
+        _TRITON_DRIVER = triton.runtime.driver.active
+    return _TRITON_DRIVER
+
+
 def _launch_gemm(left, right, output, rows, columns, inner, is_fp64):
     bm, bn, bk = _pick_blocks(rows, columns, inner)
-    grid = (triton.cdiv(rows, bm) * triton.cdiv(columns, bn),)
+    grid_x = triton.cdiv(rows, bm) * triton.cdiv(columns, bn)
     num_warps = 4 if (bm <= 64 and bn <= 64) else 8
-    with torch_device_fn.device(left.device):
-        _multi_dot_mm_kernel[grid](
+
+    aligned = (
+        left.data_ptr() % 16 == 0
+        and right.data_ptr() % 16 == 0
+        and output.data_ptr() % 16 == 0
+    )
+    if not aligned:
+        # Rare: let Triton's own specialization handle pointer alignment.
+        _multi_dot_mm_kernel[(grid_x,)](
             left,
             right,
             output,
@@ -129,20 +155,100 @@ def _launch_gemm(left, right, output, rows, columns, inner, is_fp64):
             IS_FP64=is_fp64,
             num_warps=num_warps,
         )
-    return output
+        return
+
+    device_index = left.device.index
+    if device_index is None:
+        device_index = 0
+    # Key on the exact shape/stride values: they fully determine Triton's
+    # argument specialization, so a cached binary is only reused for an
+    # identical specialization.
+    key = (
+        device_index,
+        left.dtype,
+        right.dtype,
+        output.dtype,
+        rows,
+        columns,
+        inner,
+        left.stride(0),
+        left.stride(1),
+        right.stride(0),
+        right.stride(1),
+        output.stride(0),
+        output.stride(1),
+        bm,
+        bn,
+        bk,
+        is_fp64,
+        num_warps,
+        grid_x,
+    )
+    entry = _LAUNCH_CACHE.get(key)
+    if entry is None:
+        compiled = _multi_dot_mm_kernel.warmup(
+            left,
+            right,
+            output,
+            rows,
+            columns,
+            inner,
+            left.stride(0),
+            left.stride(1),
+            right.stride(0),
+            right.stride(1),
+            output.stride(0),
+            output.stride(1),
+            BLOCK_M=bm,
+            BLOCK_N=bn,
+            BLOCK_K=bk,
+            IS_FP64=is_fp64,
+            num_warps=num_warps,
+            grid=(grid_x, 1, 1),
+        )
+        entry = (compiled.run, compiled.function, compiled.packed_metadata, grid_x)
+        _LAUNCH_CACHE[key] = entry
+
+    run, function, packed_metadata, gx = entry
+    stream = _triton_driver().get_current_stream(device_index)
+    run(
+        gx,
+        1,
+        1,
+        stream,
+        function,
+        packed_metadata,
+        None,
+        None,
+        None,
+        left,
+        right,
+        output,
+        rows,
+        columns,
+        inner,
+        left.stride(0),
+        left.stride(1),
+        right.stride(0),
+        right.stride(1),
+        output.stride(0),
+        output.stride(1),
+    )
 
 
 def _matrix_multiply(left, right, out=None):
     """Multiply without TF32 so results match ATen's multi_dot precision.
 
     The XPU ``tl.dot`` accumulates bf16 operands in fp32 correctly, but the
-    in-kernel fp32 -> bf16 store (``tl.store`` into a bf16 buffer) rounds the
-    mantissa down by up to 4 bf16 ULPs (measured ~0.25 on unit-scale data),
-    which compounds through a chain and exceeds the bf16 accuracy tolerance.
-    The fp32 accumulator itself is only ~1 fp32 ULP from the native result, and
-    converting that fp32 buffer to bf16 on the host is exact, so bf16 goes
-    through an fp32 buffer + host-side conversion.  fp16/fp32 keep the generic
-    store path (fp16's store error stays within its 1e-3 tolerance).
+    in-kernel fp32 -> bf16 store (``tl.store`` into a bf16 buffer) truncates the
+    mantissa instead of rounding (measured up to ~0.5 bf16 ULP off, ~0.25 on
+    unit-scale data), which compounds through a chain and exceeds the bf16
+    accuracy tolerance.  A round-to-nearest-even epilogue built from int32
+    arithmetic is bit-exact but makes the dot kernel ~10x slower on this
+    backend, so bf16 goes through an fp32 buffer plus a host conversion (the
+    fp32 buffer is only ~1 fp32 ULP from the native result and the conversion is
+    exact).  fp16/fp32 keep the generic store path (fp16's store error stays
+    within its tolerance).
     """
     if left.device.type == "cpu":
         raise RuntimeError("multi_dot(): Kunlunxin backend requires device tensors")
@@ -207,10 +313,28 @@ def _multi_dot_impl(arrays, out=None):
     return _multiply_chain(arrays, splits, 0, num_tensors - 1, out=out)
 
 
+def _device_guard(tensor):
+    """Select ``tensor``'s device for the duration of a chain, cheaply.
+
+    ``torch_device_fn.device`` swaps the current device on entry/exit; when the
+    device is already current (the common case) that exchange is pure overhead
+    for these microsecond-scale launches, so check first.
+    """
+    index = tensor.device.index
+    if index is None:
+        index = 0
+    if torch_device_fn.current_device() == index:
+        return contextlib.nullcontext()
+    return torch_device_fn.device(tensor.device)
+
+
 def linalg_multi_dot(tensors):
     logger.debug("GEMS_KUNLUNXIN LINALG_MULTI_DOT")
     arrays, output_shape = _validate_and_prepare(tensors)
-    result = _multi_dot_impl(arrays)
+    # One device-context switch for the whole chain (all tensors share a device);
+    # the per-GEMM launch no longer pays this cost.
+    with _device_guard(arrays[0]):
+        result = _multi_dot_impl(arrays)
     return result.view(output_shape)
 
 
@@ -245,5 +369,6 @@ def linalg_multi_dot_out(tensors, *, out):
         out.resize_(output_shape)
 
     matrix_out = out.view(arrays[0].shape[0], arrays[-1].shape[1])
-    _multi_dot_impl(arrays, out=matrix_out)
+    with _device_guard(first):
+        _multi_dot_impl(arrays, out=matrix_out)
     return out

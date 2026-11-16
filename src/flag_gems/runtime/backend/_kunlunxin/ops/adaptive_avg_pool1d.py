@@ -24,7 +24,36 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-FLAT_BLOCK = 1024
+# Static-unroll depth is bounded: fully unrolling `tl.static_range(KW)` blows the
+# XPU3 buffer-size tuner for very large windows (`Failed to tune buffer size.`,
+# observed at KW=224).  Windows above this go through the dynamic-loop kernels.
+STATIC_KW_MAX = 64
+
+# General (non-exact adaptive window) path: 256-lane tiles measured fastest on
+# the (4,3,32)->7 case; the analytic kernel carries a runtime `min` per tap so it
+# favours narrower tiles than the exact-division path.
+GENERAL_BLOCK = 256
+# The dynamic-loop kernels keep the loop-carried accumulator at 64 lanes; wider
+# dynamic accumulators hit `TritonXPUUnrollControl OutOfResources: uni_sram`.
+DYN_BLOCK = 64
+
+
+def _flat_block(kw, dtype):
+    """Tile width for the exact-division flat kernel.
+
+    Measured medians (do_bench, warmup=50/rep=200) on P800/XPU3 show the optimum
+    tile shrinks with the unroll depth (register/IR pressure) and that fp32, with
+    twice the bytes per lane, prefers one step narrower than 16-bit dtypes.
+    """
+    is_f32 = dtype == torch.float32
+    if kw >= 32:
+        return 256
+    if kw >= 16:
+        return 512
+    # kw <= 8
+    if kw <= 4:
+        return 512 if is_f32 else 1024
+    return 512 if dtype != torch.float16 else 1024
 
 
 @triton.jit
@@ -112,6 +141,67 @@ def _adaptive_avg_pool1d_general_kernel(
     _store_f32_1d(output + q, acc / area, mask, BF16)
 
 
+@libentry()
+@triton.jit
+def _adaptive_avg_pool1d_flat_dyn_kernel(
+    input,
+    output,
+    total,
+    L: tl.constexpr,
+    OW: tl.constexpr,
+    KW: tl.constexpr,
+    AREA: tl.constexpr,
+    BLOCK: tl.constexpr,
+    BF16: tl.constexpr,
+):
+    # Exact-division path for very large windows. Identical math to the flat
+    # kernel but the window loop is a runtime `tl.range` so the IR stays bounded
+    # (a fully-unrolled KW>112 static_range fails the buffer-size tuner). Kept at
+    # a narrow BLOCK because wide loop-carried accumulators exceed uni_sram.
+    pid = ext.program_id(0)
+    q = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = q < total
+    ow = q % OW
+    nc = q // OW
+    base = nc * L + ow * KW
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for kw in tl.range(0, KW):
+        acc += _load_f32_1d(input + base + kw, mask, BF16)
+    _store_f32_1d(output + q, acc / AREA, mask, BF16)
+
+
+@libentry()
+@triton.jit
+def _adaptive_avg_pool1d_general_dyn_kernel(
+    input,
+    output,
+    total,
+    L: tl.constexpr,
+    OW: tl.constexpr,
+    MAX_KW: tl.constexpr,
+    BLOCK: tl.constexpr,
+    BF16: tl.constexpr,
+):
+    # Non-exact path for very large adaptive windows: same window arithmetic as
+    # the static general kernel, but a runtime loop keeps the IR bounded.
+    pid = ext.program_id(0)
+    q = (pid * BLOCK + tl.arange(0, BLOCK)).to(tl.int32)
+    mask = q < total
+    ow = q % OW
+    nc = q // OW
+    iw_start = (ow * L) // OW
+    iw_end = ((ow + 1) * L + OW - 1) // OW
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for kw in tl.range(0, MAX_KW):
+        iw = iw_start + kw
+        active = mask & (iw < iw_end)
+        safe_iw = tl.minimum(iw, iw_end - 1)
+        v = _load_f32_1d(input + nc * L + safe_iw, mask, BF16)
+        acc += tl.where(active, v, 0.0)
+    area = (iw_end - iw_start).to(tl.float32)
+    _store_f32_1d(output + q, acc / area, mask, BF16)
+
+
 def adaptive_avg_pool1d(input: torch.Tensor, output_size):
     """Adaptive average pooling over the innermost 1D axis.
 
@@ -145,31 +235,59 @@ def adaptive_avg_pool1d(input: torch.Tensor, output_size):
     with torch_device_fn.device(input.device):
         if lin % out_size == 0:
             kw = lin // out_size
-            _adaptive_avg_pool1d_flat_kernel[
-                (triton.cdiv(output.numel(), FLAT_BLOCK),)
-            ](
-                flat_input,
-                flat_output,
-                output.numel(),
-                L=lin,
-                OW=out_size,
-                KW=kw,
-                AREA=kw,
-                BLOCK=FLAT_BLOCK,
-                BF16=is_bf16,
-            )
+            if kw <= STATIC_KW_MAX:
+                block = _flat_block(kw, input_contiguous.dtype)
+                _adaptive_avg_pool1d_flat_kernel[(triton.cdiv(output.numel(), block),)](
+                    flat_input,
+                    flat_output,
+                    output.numel(),
+                    L=lin,
+                    OW=out_size,
+                    KW=kw,
+                    AREA=kw,
+                    BLOCK=block,
+                    BF16=is_bf16,
+                )
+            else:
+                _adaptive_avg_pool1d_flat_dyn_kernel[
+                    (triton.cdiv(output.numel(), DYN_BLOCK),)
+                ](
+                    flat_input,
+                    flat_output,
+                    output.numel(),
+                    L=lin,
+                    OW=out_size,
+                    KW=kw,
+                    AREA=kw,
+                    BLOCK=DYN_BLOCK,
+                    BF16=is_bf16,
+                )
         else:
             max_kw = triton.cdiv(lin, out_size) + 1
-            _adaptive_avg_pool1d_general_kernel[
-                (triton.cdiv(output.numel(), FLAT_BLOCK),)
-            ](
-                flat_input,
-                flat_output,
-                output.numel(),
-                L=lin,
-                OW=out_size,
-                MAX_KW=max_kw,
-                BLOCK=FLAT_BLOCK,
-                BF16=is_bf16,
-            )
+            if max_kw <= STATIC_KW_MAX:
+                _adaptive_avg_pool1d_general_kernel[
+                    (triton.cdiv(output.numel(), GENERAL_BLOCK),)
+                ](
+                    flat_input,
+                    flat_output,
+                    output.numel(),
+                    L=lin,
+                    OW=out_size,
+                    MAX_KW=max_kw,
+                    BLOCK=GENERAL_BLOCK,
+                    BF16=is_bf16,
+                )
+            else:
+                _adaptive_avg_pool1d_general_dyn_kernel[
+                    (triton.cdiv(output.numel(), DYN_BLOCK),)
+                ](
+                    flat_input,
+                    flat_output,
+                    output.numel(),
+                    L=lin,
+                    OW=out_size,
+                    MAX_KW=max_kw,
+                    BLOCK=DYN_BLOCK,
+                    BF16=is_bf16,
+                )
     return output

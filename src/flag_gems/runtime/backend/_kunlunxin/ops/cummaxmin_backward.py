@@ -187,6 +187,29 @@ def _cummaxmin_backward_atomic_kernel(
         tl.atomic_add(grad_input_base + t * red_stride, g, mask=mask)
 
 
+@triton.jit
+def _cummaxmin_backward_copy_kernel(
+    src_ptr,
+    dst_ptr,
+    numel,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Flat copy used when the reduction axis has length 1.
+
+    ``grad_input = grad_output.scatter_add_(dim, indices, grad_output)`` with a
+    single element along ``dim`` reduces to ``grad_input == grad_output``:
+    every gradient lands on position 0 (a forward cummax/cummin index over a
+    length-1 axis is always 0). Accumulating one term into a float32 buffer and
+    casting back is the identity for fp16/bf16/fp32, so a plain copy is exact.
+    Running the generic scan instead costs one full per-row program per row
+    (measured 2.76 ms vs 0.006 ms for `(10000, 1)` fp16).
+    """
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < numel
+    tl.store(dst_ptr + offsets, tl.load(src_ptr + offsets, mask=mask), mask=mask)
+
+
 def cummaxmin_backward(
     grad_output: Tensor, input: Tensor, indices: Tensor, dim: int
 ) -> Tensor:
@@ -200,6 +223,9 @@ def cummaxmin_backward(
 
     Routing:
 
+    * Reduction axis of length 1: the scatter-add is the identity, so a flat
+      copy kernel is used (a scan over one element still costs one full program
+      per row).
     * Power-of-two reduction size <= 128: single-kernel reversed scan with an
       affine (reversed) store.
     * Power-of-two reduction size > 128: two-pass reversed scan (reversed load +
@@ -216,6 +242,19 @@ def cummaxmin_backward(
 
     shape = list(grad_output.shape)
     reduction_size = shape[dim]
+
+    if reduction_size == 1:
+        # Every output position scatters into reduction position 0, so the
+        # result is exactly the (float32-accumulated) gradient itself.
+        grad_c = grad_output.contiguous()
+        out = torch.empty_like(grad_c)
+        numel = out.numel()
+        BLOCK_SIZE = 4096
+        grid = (triton.cdiv(numel, BLOCK_SIZE),)
+        with torch_device_fn.device(grad_output.device):
+            if numel > 0:
+                _cummaxmin_backward_copy_kernel[grid](grad_c, out, numel, BLOCK_SIZE)
+        return out
 
     grad_c = grad_output.contiguous()
     # Segment keys are reduction positions (< 2**31), so int32 is sufficient and

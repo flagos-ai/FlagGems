@@ -11,24 +11,36 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# kunlunxin (XPU) conv_transpose2d.
-#
-# The generic triton implementation hits the SDNN pipeline on XPU and produces
-# wrong values / aborts (tickets/t4).  This overlay binds the operator to the
-# vendor implementation instead: the kernel below is a launch-table binding
-# shell ("conv_transpose2d_forward" pattern) whose real computation is
-# performed by xpudnn::conv2d_transpose_fusion_v2 inside liblaunch_shared.so
-# (see third_party/xpu/device/xpu3/launch_extra.cpp).  bf16 has no vendor
-# transpose instantiation; bf16 inputs are converted in the C handler
-# (cast -> fp32 v2 -> cast back, all inside one launch).
-#
-# Performance note: the flag_gems `to`/`_to_copy` overlay (a pointwise_dynamic
-# kernel) costs ~0.1-0.2 ms of HOST time per call on this stack, and python
-# level pad/assign ops used to materialise the dilation are in the same class.
-# On these small shapes that host cost dominates the measured latency, so the
-# casts and the dilation fold are done with two bare triton kernels (~25 us of
-# host time each) instead of the overlay ops.
+"""Triton conv_transpose2d for Kunlunxin (XPU3).
+
+Two XPU3 codegen properties drive this implementation (see the KernelWiki
+entries `pattern-xpu3-gapped-access-3gbs-cliff` and
+`pattern-xpu3-strided-store-miscompile`):
+
+* the DMA only forms a fast transfer for a single contiguous run per program;
+  a "gap" (row stride != row length, strided store, clamped index) collapses to
+  ~3 GB/s per-lane accesses;
+* a store whose lane stride is > 1 is *miscompiled* (the offset analysis assumes
+  contiguity and spills whole sub-runs into the neighbouring row), so output
+  stores must stay unit-stride.
+
+Hence: lanes always enumerate a contiguous run of output columns (unit-stride
+store, mask-free because the row is over-allocated to a whole number of tiles),
+and the input is materialised into a zero-padded staging buffer so window taps
+that fall outside the input read real zeros instead of needing a mask/clamp.
+
+To keep the *loads* contiguous for `stride == 1`, the output rows are
+decomposed by their `stride_h` phase (`oh = rh + stride_h*q`) and the phase is
+passed as a `tl.constexpr`, which resolves the `kh` divisibility test at compile
+time.  (A runtime `if` wrapped around the accumulation inside a
+`tl.static_range` miscompiles here: the last iteration's predicate clobbers the
+loop-carried accumulator.)  For `stride > 1` the column tap addresses are
+strided by construction; they are applied with `tl.where` (no branch, no mask on
+the load) and are the known-slow path.
+
+`U` output channels share one input load (register reuse).
+"""
+
 import logging
 
 import torch
@@ -37,179 +49,177 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# NOTE: the binding shell below deliberately has no @libentry wrapper: the
-# wrapper costs ~0.02 ms of host time per call on this stack and the shell body
-# is never executed anyway (the launch-table handler serves it).
 
-_ZERO_BIAS_CACHE = {}
-
-
-_SCRATCH_CACHE = {}
-
-
-def _scratch_buf(shape, device):
-    # internal fp32 staging buffers for the C-side bf16 conversion; reused
-    # across calls (they are fully overwritten before use).
-    key = (tuple(shape), str(device))
-    t = _SCRATCH_CACHE.get(key)
-    if t is None:
-        t = torch.empty(shape, dtype=torch.float32, device=device)
-        _SCRATCH_CACHE[key] = t
-    return t
-
-
-def _zero_bias(out_c, device):
-    key = (out_c, str(device))
-    t = _ZERO_BIAS_CACHE.get(key)
-    if t is None:
-        t = torch.zeros(out_c, device=device, dtype=torch.float)
-        _ZERO_BIAS_CACHE[key] = t
-    return t
+def _ceil_div(a, b):
+    return -(-a // b)
 
 
 @triton.jit
-def _cast_kernel(src, dst, n, BLOCK: tl.constexpr):
-    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n
-    v = tl.load(src + offs, mask=mask, other=0.0)
-    tl.store(dst + offs, v.to(dst.dtype.element_ty), mask=mask)
+def _pad_copy_kernel(src, dst, iw, iwp, boff_w, boff_h, ih, ihr, BLOCK: tl.constexpr):
+    """Copy one source row into the interior of the zero-padded staging buffer.
 
-
-def _fast_cast(t, dtype):
-    out = torch.empty(t.shape, dtype=dtype, device=t.device)
-    n = t.numel()
-    # a large block keeps the CTA count (and its dispatch cost) low; verified
-    # ~2x cheaper than BLOCK=1024 on the official event-timing protocol.
-    _cast_kernel[(triton.cdiv(n, 16384),)](t, out, n, BLOCK=16384)
-    return out
+    Grid: (n*c*ih, cdiv(iw, BLOCK)).  Both the load and the store are a single
+    contiguous run per program.
+    """
+    row = tl.program_id(0)
+    tile = tl.program_id(1)
+    col = tile * BLOCK + tl.arange(0, BLOCK)
+    mask = col < iw
+    nc = row // ih
+    r = row - nc * ih
+    v = tl.load(src + row * iw + col, mask=mask, other=0.0)
+    dst_row = nc * ihr + boff_h + r
+    tl.store(dst + dst_row * iwp + boff_w + col, v, mask=mask)
 
 
 @triton.jit
-def _fold_kernel(src, dst, kh, kw, kh2, kw2, dh, dw, BLOCK: tl.constexpr):
-    r = tl.program_id(1)
-    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < kh2 * kw2
-    col = offs % kw2
-    row = offs // kw2
-    keep = (row % dh == 0) & (col % dw == 0)
-    v = tl.load(
-        src + r * kh * kw + (row // dh) * kw + (col // dw), mask=mask, other=0.0
-    )
-    # NB: folding the keep predicate into the load mask (mask & keep) is ignored
-    # by the current XPU triton build (observed on 2026-09-18); an explicit
-    # select is used instead.
-    v = tl.where(keep, v, 0.0)
-    tl.store(dst + r * kh2 * kw2 + offs, v, mask=mask)
-
-
-def _fold_dilation(weight, dh, dw):
-    kh, kw = weight.shape[2], weight.shape[3]
-    kh2 = (kh - 1) * dh + 1
-    kw2 = (kw - 1) * dw + 1
-    rows = weight.numel() // (kh * kw)
-    out = torch.empty((rows, kh2 * kw2), device=weight.device, dtype=weight.dtype)
-    _fold_kernel[(triton.cdiv(kh2 * kw2, 256), rows)](
-        weight, out, kh, kw, kh2, kw2, dh, dw, BLOCK=256
-    )
-    return out.view(weight.shape[0], weight.shape[1], kh2, kw2)
-
-
-_DIM_ARGS = [
-    "in_n",
-    "input_height",
-    "input_width",
-    "out_c",
-    "out_height",
-    "out_width",
-    "input_n_stride",
-    "input_c_stride",
-    "input_height_stride",
-    "input_width_stride",
-    "weight_n_stride",
-    "weight_c_stride",
-    "weight_height_stride",
-    "weight_width_stride",
-    "output_n_stride",
-    "output_c_stride",
-    "output_height_stride",
-    "output_width_stride",
-    "weight_c",
-    "weight_height",
-    "weight_width",
-    "stride_height",
-    "stride_width",
-    "padding_height",
-    "padding_width",
-    "dilation_height",
-    "dilation_width",
-    "groups",
-    "output_padding_height",
-    "output_padding_width",
-    "has_bias",
-]
-
-
-@triton.jit(do_not_specialize=_DIM_ARGS)
-def conv_transpose2d_forward_kernel(
-    input_pointer,
-    weight_pointer,
-    output_pointer,
-    bias_pointer,
-    in_n,
-    input_height,
-    input_width,
-    out_c,
-    out_height,
-    out_width,
-    input_n_stride,
-    input_c_stride,
-    input_height_stride,
-    input_width_stride,
-    weight_n_stride,
-    weight_c_stride,
-    weight_height_stride,
-    weight_width_stride,
-    output_n_stride,
-    output_c_stride,
-    output_height_stride,
-    output_width_stride,
-    weight_c,
-    weight_height,
-    weight_width,
-    stride_height,
-    stride_width,
-    padding_height,
-    padding_width,
-    dilation_height,
-    dilation_width,
-    groups,
-    output_padding_height,
-    output_padding_width,
-    has_bias,
-    scratch_x_pointer,
-    scratch_w_pointer,
-    out_bf16_pointer,
+def _deconv_rows(
+    xpad,
+    w,
+    bias,
+    out,
+    IC: tl.constexpr,
+    COG: tl.constexpr,
+    IHP: tl.constexpr,
+    IWP: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    DH: tl.constexpr,
+    DW: tl.constexpr,
+    BOFF_H: tl.constexpr,
+    BOFF_W: tl.constexpr,
+    OH: tl.constexpr,
+    OWP: tl.constexpr,
+    G: tl.constexpr,
+    NCB: tl.constexpr,
+    U: tl.constexpr,
     BLOCK: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    RH: tl.constexpr,
 ):
-    # Binding shell: the launch-table handler serves this kernel through
-    # xpudnn::conv2d_transpose_fusion_v2 and strips this body on the SDNN
-    # pipeline.  The dead tl.dot below is what makes the launcher classify
-    # this kernel as an SDNN kernel, which pins the kernel-parameter table
-    # layout the C++ handler indexes into (same convention as the conv2d
-    # binding kernels).  The branch is unreachable (program ids are >= 0).
-    pid = tl.program_id(0)
-    offs = tl.arange(0, 1)
-    keep = (pid < 0) & (offs < 0)
-    v = tl.load(input_pointer + offs, mask=keep, other=0.0)
-    tl.store(output_pointer + offs, v.to(output_pointer.dtype.element_ty), mask=keep)
-    if pid == -1:
-        _z = tl.zeros((16, 16), dtype=tl.float32)
-        _d = tl.dot(_z, _z)
-        tl.store(
-            output_pointer + tl.arange(0, 16),
-            tl.sum(_d, axis=0),
-            mask=tl.arange(0, 16) < 0,
-        )
+    pid0 = tl.program_id(0)
+    cb = pid0 % NCB
+    rest = pid0 // NCB
+    g = rest % G
+    nidx = rest // G
+
+    q = tl.program_id(1)
+    oh = RH + q * SH
+    if oh >= OH:
+        return
+
+    ow = tl.program_id(2) * BLOCK + tl.arange(0, BLOCK)
+
+    acc0 = tl.zeros((BLOCK,), dtype=tl.float32)
+    acc1 = tl.zeros((BLOCK,), dtype=tl.float32)
+    acc2 = tl.zeros((BLOCK,), dtype=tl.float32)
+    acc3 = tl.zeros((BLOCK,), dtype=tl.float32)
+
+    w_plane: tl.constexpr = COG * KH * KW
+    x_plane: tl.constexpr = IHP * IWP
+    taps: tl.constexpr = KH * KW
+    x_base = xpad + (nidx * IC * G + g * IC) * x_plane
+    y_stride = OH * OWP
+    y_base = out + ((nidx * (COG * G) + g * COG + cb * U) * OH + oh) * OWP
+    w_base = w + (g * IC) * w_plane + (cb * U) * taps
+
+    for kh in tl.static_range(0, KH):
+        NUM_H = RH + PH - kh * DH
+        if NUM_H % SH == 0:
+            ih = q + (NUM_H // SH) + BOFF_H
+            for kw in tl.static_range(0, KW):
+                NUM_W = PW - kw * DW
+                if SW == 1:
+                    iw = ow + NUM_W + BOFF_W
+                    ok = ow >= 0
+                else:
+                    num_w = ow + NUM_W
+                    iw = num_w // SW + BOFF_W
+                    ok = num_w % SW == 0
+                xp = x_base + (ih * IWP) + iw
+                wc0 = kh * KW + kw
+                for ci in tl.range(0, IC):
+                    v = tl.load(xp + ci * x_plane).to(tl.float32)
+                    if SW > 1:
+                        v = tl.where(ok, v, 0.0)
+                    wc = w_base + wc0 + ci * w_plane
+                    acc0 += v * tl.load(wc).to(tl.float32)
+                    if U > 1:
+                        acc1 += v * tl.load(wc + taps).to(tl.float32)
+                    if U > 2:
+                        acc2 += v * tl.load(wc + 2 * taps).to(tl.float32)
+                        acc3 += v * tl.load(wc + 3 * taps).to(tl.float32)
+
+    if HAS_BIAS:
+        ob = bias + g * COG + cb * U
+        acc0 += tl.load(ob).to(tl.float32)
+        if U > 1:
+            acc1 += tl.load(ob + 1).to(tl.float32)
+        if U > 2:
+            acc2 += tl.load(ob + 2).to(tl.float32)
+            acc3 += tl.load(ob + 3).to(tl.float32)
+
+    op = y_base + ow
+    tl.store(op, acc0.to(out.dtype.element_ty))
+    if U > 1:
+        tl.store(op + y_stride, acc1.to(out.dtype.element_ty))
+    if U > 2:
+        tl.store(op + 2 * y_stride, acc2.to(out.dtype.element_ty))
+        tl.store(op + 3 * y_stride, acc3.to(out.dtype.element_ty))
+
+
+_XPAD_CACHE = {}
+
+
+def _padded_input(shape, dtype, device):
+    key = (tuple(shape), dtype, str(device))
+    t = _XPAD_CACHE.get(key)
+    if t is None:
+        # Allocation + zero initialisation only.  The interior is rewritten by
+        # _pad_copy_kernel on every call, so the halo stays zero for good.
+        t = torch.zeros(shape, dtype=dtype, device=device)
+        _XPAD_CACHE[key] = t
+    return t
+
+
+def _pick_block(width):
+    # NB: a program whose lane count is below the XPU3 core width is padded up
+    # to it by the launcher, and the padded lanes spill into the *next* row of
+    # the output (measured: BLOCK=32 duplicates every program's run).  Keep the
+    # tile at least 64 lanes wide.
+    block = 64
+    while block < width and block < 512:
+        block *= 2
+    return block
+
+
+_KCACHE = {}
+
+
+def _ladder(ow, cog):
+    """Candidate ``(U, BLOCK)`` pairs, most-preferred first.
+
+    The XPU3 ``TritonXPUUnrollControl`` pass aborts compilation when the
+    unrolled body (``taps * U`` copies of the inner loop) gets too large, so the
+    exact tile that compiles depends on the geometry.  Walk a small ladder once
+    per shape and memoise the winner; failing candidates are compile-time
+    errors, so no partial output is produced.
+    """
+    native = _pick_block(ow)
+    blocks = []
+    for b in (native, max(64, native // 2), min(512, native * 2), 64, 128, 256):
+        if b >= 64 and b not in blocks:
+            blocks.append(b)
+    cands = []
+    for b in blocks:
+        for u in (4, 2, 1):
+            if cog % u == 0 and (u, b) not in cands:
+                cands.append((u, b))
+    return cands
 
 
 def conv_transpose2d(
@@ -225,30 +235,22 @@ def conv_transpose2d(
     logger.debug("GEMS_KUNLUNXIN CONV_TRANSPOSE2D")
 
     from flag_gems.ops.conv_transpose2d import (
+        _pair,
         _unsupported_conv_transpose2d,
         _validate_conv_transpose2d_args,
     )
-
-    def _pair2(v):
-        # the aten schema may pass int[N] args as lists; accept ints, length-1
-        # and length-2 sequences, reject longer ones like the generic _pair
-        if isinstance(v, (list, tuple)):
-            if len(v) == 1:
-                return int(v[0]), int(v[0])
-            if len(v) != 2:
-                raise RuntimeError("expected a single int or a pair of ints")
-            return int(v[0]), int(v[1])
-        return v, v
-
-    stride_h, stride_w = _pair2(stride)
-    padding_h, padding_w = _pair2(padding)
-    output_padding_h, output_padding_w = _pair2(output_padding)
-    dilation_h, dilation_w = _pair2(dilation)
 
     input_was_unbatched = input.dim() == 3
     if input_was_unbatched:
         input = input.unsqueeze(0)
 
+    sh, sw = _pair(stride)
+    ph, pw = _pair(padding)
+    oph, opw = _pair(output_padding)
+    dh, dw = _pair(dilation)
+
+    # The validator rejects non-contiguous tensors, so normalise first: the
+    # gather-free kernel only ever reads strided planes.
     if not input.is_contiguous():
         input = input.contiguous()
     if not weight.is_contiguous():
@@ -257,177 +259,109 @@ def conv_transpose2d(
         bias = bias.contiguous()
 
     if not _validate_conv_transpose2d_args(
-        input,
-        weight,
-        bias,
-        stride_h,
-        stride_w,
-        padding_h,
-        padding_w,
-        output_padding_h,
-        output_padding_w,
-        groups,
-        dilation_h,
-        dilation_w,
+        input, weight, bias, sh, sw, ph, pw, oph, opw, groups, dh, dw
     ):
         _unsupported_conv_transpose2d(
-            input,
-            weight,
-            bias,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            output_padding_h,
-            output_padding_w,
-            groups,
-            dilation_h,
-            dilation_w,
+            input, weight, bias, sh, sw, ph, pw, oph, opw, groups, dh, dw
         )
 
-    orig_dtype = input.dtype
-    # bf16 has no vendor transpose instantiation at all; for fp16 the fusion
-    # entry's grouped+strided combination is far slower than the fp32 v2 one.
-    # Both ride the C handler's cast pipeline (cast -> fp32 v2 -> cast back).
-    use_cast_ride = orig_dtype == torch.bfloat16 or (
-        orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
-    )
-    scratch_x = scratch_w = None
-    if use_cast_ride:
-        scratch_x = _scratch_buf(input.shape, input.device)
-        scratch_w = _scratch_buf(weight.shape, weight.device)
-
-    if bias is None:
-        # a None argument would drop its slot from the launcher parameter
-        # table and shift every later index; always pass a real fp32 tensor
-        # (mirrors the conv2d binding).  The bias value itself is applied in
-        # python below; the vendor bias path is unreliable on degenerate or
-        # heavily padded shapes.
-        bias_f32 = _zero_bias(weight.shape[1] * groups, input.device)
-    elif bias.dtype != torch.float32:
-        bias_f32 = _fast_cast(bias, torch.float32)
-    else:
-        bias_f32 = bias
-    has_bias = 0 if bias is None else 1
-
-    if dilation_h != 1 or dilation_w != 1:
-        # the vendor's combined asymmetric stride+dilation handling is broken
-        # (t4 family); materialising the dilation into a zero-stuffed weight
-        # is mathematically exact and lets us pass dilation=(1, 1).
-        weight = _fold_dilation(weight, dilation_h, dilation_w)
-        dilation_h, dilation_w = 1, 1
-
-    # output_padding identity: conv_transpose(s, p, op) equals
-    #   conv_transpose(s, p - op, 0)[op : op + out]
-    # which keeps the vendor call free of output_padding (its op handling is
-    # unreliable, t4 family).  Valid whenever p >= op (holds for the official
-    # matrix); otherwise fall back to passing op through.
-    borrow_op = (
-        (output_padding_h or output_padding_w)
-        and padding_h >= output_padding_h
-        and padding_w >= output_padding_w
-    )
-    pad_h = padding_h - output_padding_h if borrow_op else padding_h
-    pad_w = padding_w - output_padding_w if borrow_op else padding_w
-    op_h = 0 if borrow_op else output_padding_h
-    op_w = 0 if borrow_op else output_padding_w
-
-    n, c, h, w = input.shape
+    n, c, ih, iw = input.shape
+    ic = c // groups
+    cog = weight.shape[1]
     kh, kw = weight.shape[2], weight.shape[3]
-    out_c = weight.shape[1] * groups
-    out_h = (
-        (h - 1) * stride_h
-        - 2 * padding_h
-        + dilation_h * (kh - 1)
-        + output_padding_h
-        + 1
-    )
-    out_w = (
-        (w - 1) * stride_w
-        - 2 * padding_w
-        + dilation_w * (kw - 1)
-        + output_padding_w
-        + 1
+    co = cog * groups
+    oh = (ih - 1) * sh - 2 * ph + dh * (kh - 1) + oph + 1
+    ow = (iw - 1) * sw - 2 * pw + dw * (kw - 1) + opw + 1
+
+    if n == 0 or co == 0 or oh <= 0 or ow <= 0:
+        out = torch.empty(
+            (n, co, max(oh, 0), max(ow, 0)), device=input.device, dtype=input.dtype
+        )
+        return out.squeeze(0) if input_was_unbatched else out
+
+    # Halo geometry.  Every window offset a program can reach must land inside
+    # the staging buffer, and the halo must be at least one real zero wide.
+    boff_h = _ceil_div(max(0, (kh - 1) * dh - ph), sh) + 1
+    boff_w = _ceil_div(max(0, (kw - 1) * dw - pw), sw) + 1
+    qn = _ceil_div(oh, sh)
+    # the widest offset the lane range can reach bounds the staging buffer, and
+    # it only depends on OWP >= OW, so size it for the largest candidate block
+    iwr = iw + boff_w + max(0, (512 - 1 + pw) // sw + boff_w + 2 - iw)
+    ihr = ih + boff_h + max(0, (qn - 1) + (sh - 1 + ph) // sh + boff_h + 2 - ih)
+
+    xpad = _padded_input((n, c, ihr, iwr), input.dtype, input.device)
+    _pad_copy_kernel[(n * c * ih, _ceil_div(iw, 1024))](
+        input, xpad, iw, iwr, boff_w, boff_h, ih, ihr, BLOCK=1024
     )
 
-    # the borrowed call produces out0 + 2*op rows/cols; target already holds
-    # out0 + op, so the buffer needs exactly target + op
-    alloc_h = out_h + (output_padding_h if borrow_op else 0)
-    alloc_w = out_w + (output_padding_w if borrow_op else 0)
-    if use_cast_ride:
-        out = torch.empty(
-            (n, out_c, alloc_h, alloc_w), device=input.device, dtype=torch.float32
-        )
-        out_final = torch.empty(
-            (n, out_c, alloc_h, alloc_w), device=input.device, dtype=orig_dtype
-        )
-        sx, sw = scratch_x, scratch_w
-    else:
-        out = torch.empty(
-            (n, out_c, alloc_h, alloc_w), device=input.device, dtype=input.dtype
-        )
-        out_final = out
-        sx = sw = out
-    conv_transpose2d_forward_kernel[(1,)](
-        input,
-        weight,
-        out,
-        bias_f32,
+    key = (
         n,
-        h,
-        w,
-        out_c,
-        alloc_h,
-        alloc_w,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
-        weight.stride(0),
-        weight.stride(1),
-        weight.stride(2),
-        weight.stride(3),
-        out.stride(0),
-        out.stride(1),
-        out.stride(2),
-        out.stride(3),
         c,
+        ih,
+        iw,
+        ic,
+        cog,
         kh,
         kw,
-        stride_h,
-        stride_w,
-        pad_h,
-        pad_w,
-        dilation_h,
-        dilation_w,
-        groups,
-        op_h,
-        op_w,
-        has_bias,
-        sx,
+        sh,
         sw,
-        out_final,
-        BLOCK=64,
+        ph,
+        pw,
+        dh,
+        dw,
+        oh,
+        ow,
+        input.dtype,
     )
-    if use_cast_ride:
-        out = out_final
-    if borrow_op:
-        out = out[
-            ...,
-            output_padding_h : output_padding_h + out_h,
-            output_padding_w : output_padding_w + out_w,
-        ]
-        out = out.contiguous()
-    if bias is not None:
-        # the vendor bias path is unreliable on degenerate or heavily padded
-        # shapes; apply the bias here instead.  For fp32 outputs the add is
-        # exact; for narrow dtypes it is done in fp32 with a single rounding
-        # (matching the generic op's accumulation contract).
-        b = bias_f32.view(1, -1, 1, 1)
-        if out.dtype == torch.float32:
-            out = out + b
-        else:
-            out = _fast_cast(_fast_cast(out, torch.float32) + b, out.dtype)
+    cands = [_KCACHE[key]] if key in _KCACHE else _ladder(ow, cog)
+    last_error = None
+    for u, block in cands:
+        tiles = _ceil_div(ow, block)
+        owp = tiles * block
+        out = torch.empty((n, co, oh, owp), device=input.device, dtype=input.dtype)
+        bias_arg = bias if bias is not None else out
+        grid0 = n * groups * (cog // u)
+        try:
+            for rh in range(min(sh, oh)):
+                rows = _ceil_div(oh - rh, sh)
+                _deconv_rows[(grid0, rows, tiles)](
+                    xpad,
+                    weight,
+                    bias_arg,
+                    out,
+                    ic,
+                    cog,
+                    ihr,
+                    iwr,
+                    kh,
+                    kw,
+                    sh,
+                    sw,
+                    ph,
+                    pw,
+                    dh,
+                    dw,
+                    boff_h,
+                    boff_w,
+                    oh,
+                    owp,
+                    groups,
+                    cog // u,
+                    u,
+                    BLOCK=block,
+                    HAS_BIAS=bias is not None,
+                    RH=rh,
+                )
+        except triton.runtime.errors.OutOfResources as err:
+            last_error = err
+            continue
+        _KCACHE[key] = (u, block)
+        break
+    else:
+        raise last_error
+
+    if owp != ow:
+        out = out[..., :ow].contiguous()
     if input_was_unbatched:
         out = out.squeeze(0)
     return out

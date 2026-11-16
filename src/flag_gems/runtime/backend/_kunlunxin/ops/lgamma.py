@@ -24,6 +24,10 @@ from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+# Magic number for round-to-nearest-integer by add/subtract.  ``(x + M) - M``
+# rounds x to the nearest even integer for |x| < 2**22 using only FADD, which
+# is far cheaper on XPU3 than the per-lane ``tl.floor``/``tl.ceil`` soft externs.
+
 
 @triton.jit
 def _cheb_h(d):
@@ -63,28 +67,66 @@ def _lanczos_f32(x):
 
 
 @triton.jit
-def _lgamma_kernel(A_ptr, O_ptr, n_elements, BLOCK: tl.constexpr):
+def _dist_to_int(x, ax):
+    """|x - nearest_integer(x)| in [0, 0.5], branch-free and floor/ceil-free.
+
+    The magic-add rounding is only exact for |x| < 2**22; a second level at
+    half scale extends it to 2**23 (the only range where a negative fp32 value
+    can still be a non-integer), beyond which every fp32 value is an integer.
+    """
+    d1 = tl.abs(x - ((x + 12582912.0) - 12582912.0))
+    hx = 0.5 * x
+    d2 = 2.0 * tl.abs(hx - ((hx + 12582912.0) - 12582912.0))
+    return tl.where(ax < 4194304.0, d1, d2)
+
+
+@triton.jit
+def _lgamma_store(A_ptr, O_ptr, n_elements, BLOCK: tl.constexpr, MASKED: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n_elements
-    x0 = tl.load(A_ptr + offs, mask=mask)
+    if MASKED:
+        mask = offs < n_elements
+        x0 = tl.load(A_ptr + offs, mask=mask, other=0.0)
+    else:
+        x0 = tl.load(A_ptr + offs)
     x = x0.to(tl.float32)
 
-    # Distance of x to the nearest integer (well-conditioned subtractions).
-    u = x - tl.floor(x)
-    b = tl.ceil(x) - x
-    d = tl.minimum(u, b)
-
-    # One Lanczos evaluation per element: lnGamma(1-x) for x < 0 else lnGamma(x).
+    # Reflection identity for x < 0:
+    #   ln|Gamma(x)| = -ln d - h(d) - lnGamma(1 - x),  d = dist(x, nearest int)
+    # with h(d) folded so that ln|sin(pi x)| = ln(pi) + ln d + h(d).
+    d = _dist_to_int(x, tl.abs(x))
     arg = tl.where(x < 0.0, 1.0 - x, x)
     L = _lanczos_f32(arg)
-
-    # For x < 0: ln|Gamma(x)| = -ln d - h(d) - lnGamma(1 - x).
-    lg_neg = -tl.log(d) - _cheb_h(d) - L
-    y = tl.where(x < 0.0, lg_neg, L)
+    y = tl.where(x < 0.0, -tl.log(d) - _cheb_h(d) - L, L)
     # lnGamma(1) = lnGamma(2) = 0 exactly.
     y = tl.where((x == 1.0) | (x == 2.0), 0.0, y)
-    tl.store(O_ptr + offs, y.to(x0.dtype), mask=mask)
+    # Poles (0, negative integers) and infinities map to +inf; NaN stays NaN.
+    y = tl.where(x == 0.0, float("inf"), y)
+    y = tl.where(tl.abs(x) == float("inf"), float("inf"), y)
+
+    if MASKED:
+        tl.store(O_ptr + offs, y.to(x0.dtype), mask=mask)
+    else:
+        tl.store(O_ptr + offs, y.to(x0.dtype))
+
+
+def _pick_block(n):
+    if n <= 512:
+        return 256
+    if n <= 4096:
+        return 512
+    if n <= 262144:
+        return 2048
+    if n <= 4194304:
+        return 4096
+    return 8192
+
+
+def _launch(a, o, n):
+    block = _pick_block(n)
+    masked = (n % block) != 0
+    grid = (triton.cdiv(n, block),)
+    _lgamma_store[grid](a, o, n, BLOCK=block, MASKED=masked)
 
 
 def lgamma(A):
@@ -95,9 +137,7 @@ def lgamma(A):
             return out
         a = A.contiguous().view(-1)
         o = out.reshape(-1)
-        BLOCK = 1024
-        grid = (triton.cdiv(n, BLOCK),)
-        _lgamma_kernel[grid](a, o, n, BLOCK=BLOCK)
+        _launch(a, o, n)
         return out
 
 
@@ -124,5 +164,20 @@ def lgamma_func(x):
 
 def lgamma_(A):
     logger.debug("GEMS_KUNLUNXIN LGAMMA_")
+    # Fast path: contiguous floating tensors run the same flat kernel as
+    # ``lgamma`` in place (each program owns disjoint offsets, so read-then-write
+    # on the same buffer is safe). Fall back to the generic pointwise kernel for
+    # non-contiguous / non-supported dtypes.
+    if A.is_contiguous() and A.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ):
+        with torch_device_fn.device(A.device):
+            n = A.numel()
+            if n != 0:
+                a = A.view(-1)
+                _launch(a, a, n)
+        return A
     lgamma_func(A, out0=A)
     return A

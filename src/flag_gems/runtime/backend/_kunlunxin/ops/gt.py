@@ -37,28 +37,6 @@ def _wrap_to_dtype(B, dtype):
     return math.isfinite(v), v
 
 
-def _bf16_as_fp16_key(B):
-    """Reinterpret the bits of bf16(B) as an fp16 python float.
-
-    Reinterpreting a bf16 bit pattern as fp16 is order-preserving in the real
-    value: both IEEE formats order by the same low-15-bit integer for a fixed
-    sign, and the sign bit lines up, so `x >bf16 c  <=>  fp16bits(x) >fp16
-    fp16bits(c)` exactly (negatives included). This lets a bf16 compare run on
-    the native fp16 32-lane vcmpf with NO bf16->f32 vmerge widen.
-
-    Returns (ok, fp16_key_float). ok=False when bf16(B) is non-finite or its
-    bits reach the fp16 inf/nan exponent band (0x7C00 mask), i.e. |B| >~ 2.6e36,
-    the only region where the reinterpret stops being order-preserving."""
-    fb = float(B)
-    if not math.isfinite(fb):
-        return False, 0.0
-    u32 = struct.unpack("<I", struct.pack("<f", fb))[0]
-    u16 = ((u32 + 0x7FFF + ((u32 >> 16) & 1)) >> 16) & 0xFFFF  # RNE f32->bf16 bits
-    if (u16 & 0x7C00) == 0x7C00:  # fp16 exp all-ones => inf/nan reinterpret
-        return False, 0.0
-    return True, struct.unpack("<e", struct.pack("<H", u16))[0]
-
-
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -114,130 +92,165 @@ def gt_func_scalar(x, y):
 
 
 # ---------------------------------------------------------------------------
-# gt_scalar SMALL/MID-shape fast paths (mirrors eq_scalar).
+# gt_scalar flat fast paths (bypass pointwise_dynamic).
 #
 # The generic pointwise_dynamic path is dominated by its host dispatch layer
 # (~60-180us/call for small shapes, ~28us/call at mid) which dwarfs the short
-# device kernel. Bypassing it with hand-written kernels that keep the SAME
-# CmpF-fusion device path (`x.to(f32) > wrapped_scalar` -> vcmpf, needs the
-# TRITONXPU_COMPARE_FUSION/FP16_FAST env) recovers the framework overhead.
+# device kernel; on large shapes it also pays for a masked program shape. Both
+# are recovered by hand-written flat kernels that keep the SAME CmpF-fusion
+# device path (needs TRITONXPU_COMPARE_FUSION/FP16_FAST around the launch):
+#   * fp32 input       -> `x.to(f32) > wrapped` on the native 16-lane f32 vcmpf
+#   * fp16 input       -> `x > fp16(wrapped)` on the native 32-lane fp16 vcmpf
+#   * bf16 input       -> load bf16, convert to fp16 (saturating), same native
+#     32-lane vcmpf. A bf16 significand is a subset of fp16's, so the
+#     conversion is exact inside fp16's exponent range and the compare matches
+#     torch bit-for-bit (bf16 NaN -> fp16 NaN -> False, +-inf and huge finite
+#     saturate to +-inf -> correct `>`), which a raw bf16->fp16 BITCAST does not
+#     (bf16 |x| >= ~2.66e36 / +inf land in the fp16 NaN band and would answer
+#     False). Outside fp16's exact range for the scalar, bf16 falls back to the
+#     generic path (see _GT_SCALAR_BF16_FP16_MIN/MAX).
+# MASKED is a constexpr so shapes that divide the tile skip the XPU
+# masked-memory path entirely (that path is ~40% slower on 16.7M: 38us vs 54us).
 #
-# SMALL (numel <= _GT_SCALAR_SMALL_NUMEL): single masked tile. MID (65536 <
-# numel <= _GT_SCALAR_MID_NUMEL): multi-tile kernel with TILE=65536 +
-# buffer_size_limit=16384 + unroll_num=16, matching the tuned pointwise DMA
-# structure (ONE big gm2lm(65536) -> chunked compute -> ONE big lm2gm(65536))
-# so the DMA is coalesced instead of many tiny transactions (see eq.py notes).
-# fp32 is excluded from MID: its longer kernel already amortizes the host cost.
-# NOTE bf16 does NOT reach here as bf16: gt_scalar() reinterprets bf16 tensors as
-# fp16 up front (see _bf16_as_fp16_key), because a bf16 bit pattern read as fp16 is
-# order-preserving in the real value, so bf16 rides the native fp16 32-lane vcmpf
-# with no bf16->f32 widen. Only fp16/fp32 (and the rare non-finite/overflow bf16
-# scalar that fails the bitcast guard) fall through to these paths as-is.
+# TILE is picked per numel from measured do_bench sweeps (KERNEL mode) --
+# see harness/perf_ir/probe_gt_scalar_{tiny,table,cfg,split}.log:
+#   half domain: single program up to 4K | 16K up to 128K | 32K up to 256K |
+#                128K above (16.7M 0.82x, 268M 0.79x, 2.56M 0.84x, 67M 0.79x,
+#                vs 0.56/0.52/0.63/0.53 for the generic path)
+#   fp32 domain: single program up to 4K | 8K up to 64K | 16K up to 128K |
+#                32K up to 1M | 64K above (16.7M 0.75x, 268M 0.73x, 2.56M
+#                0.76x, 67M 0.73x vs 0.71/0.69/0.70/0.70 generic)
+# The compare itself is free on XPU3 (a load + int8-store kernel without any
+# compare takes the same time), so this is a pure DMA-shape problem: bigger
+# unmasked tiles, never a per-lane path.
 # Semantics identical to gt_func_scalar; the scalar is wrapped to the tensor
 # dtype for bit-exact parity with torch (non-finite scalars keep the generic
 # path).
-_GT_SCALAR_SMALL_NUMEL = 65536
-_GT_SCALAR_MID_NUMEL = 4194304
-_GT_SCALAR_MID_TILE = 65536
-_GT_SCALAR_MID_BSL = 16384
-_GT_SCALAR_MID_UNROLL = 16
+_GT_SCALAR_TILE_MAX_TINY = 4096
+_GT_SCALAR_BSL = 16384
+_GT_SCALAR_UNROLL = 16
+# bf16 takes the fp16-conversion path only while the wrapped scalar is inside
+# fp16's exactly-representable range (2^-14 .. 65504); outside it, bf16 overflow
+# to inf / underflow to 0 would change the comparison result.
+_GT_SCALAR_BF16_FP16_MIN = 2.0**-14
+_GT_SCALAR_BF16_FP16_MAX = 65504.0
+# half-domain (fp16 / bf16-converted) tile table
+_GT_SCALAR_HALF_TILE_TINY = 16384
+_GT_SCALAR_HALF_TILE_MID = 32768
+_GT_SCALAR_HALF_TILE_LARGE = 131072
+_GT_SCALAR_HALF_MID_MIN = 131072
+_GT_SCALAR_HALF_LARGE_MIN = 262144
+# fp32-domain tile table
+_GT_SCALAR_F32_TILE_TINY = 8192
+_GT_SCALAR_F32_TILE_MID = 16384
+_GT_SCALAR_F32_TILE_LARGE = 32768
+_GT_SCALAR_F32_TILE_HUGE = 65536
+_GT_SCALAR_F32_MID_MIN = 65536
+_GT_SCALAR_F32_LARGE_MIN = 131072
+_GT_SCALAR_F32_HUGE_MIN = 1048576
+
+
+def _gt_scalar_tile(numel, dtype):
+    if dtype == torch.float32:
+        if numel <= _GT_SCALAR_F32_MID_MIN:
+            return _GT_SCALAR_F32_TILE_TINY
+        if numel <= _GT_SCALAR_F32_LARGE_MIN:
+            return _GT_SCALAR_F32_TILE_MID
+        if numel <= _GT_SCALAR_F32_HUGE_MIN:
+            return _GT_SCALAR_F32_TILE_LARGE
+        return _GT_SCALAR_F32_TILE_HUGE
+    if numel <= _GT_SCALAR_HALF_MID_MIN:
+        return _GT_SCALAR_HALF_TILE_TINY
+    if numel <= _GT_SCALAR_HALF_LARGE_MIN:
+        return _GT_SCALAR_HALF_TILE_MID
+    return _GT_SCALAR_HALF_TILE_LARGE
 
 
 @triton.jit
-def gt_scalar_small_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr):
-    tid = tl.arange(0, TILE)
-    mask = tid < numel
-    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
-    tl.store(out_ptr + tid, (x > scalar).to(tl.int8), mask=mask)
-
-
-def _gt_scalar_small(A, wrapped):
-    numel = A.numel()
-    out = torch.empty(numel, dtype=torch.int8, device=A.device)
-    TILE = triton.next_power_of_2(numel)
-    gt_scalar_small_kernel[(1,)](
-        out,
-        A.reshape(-1),
-        wrapped,
-        numel,
-        TILE=TILE,
-        num_warps=4,
-        isCloseMemoryAsync=False,
-    )
-    return out.view(torch.bool).reshape(A.shape)
-
-
-@triton.jit
-def gt_scalar_tile_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr):
+def gt_scalar_tile_kernel(
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, MASKED: tl.constexpr
+):
     pid = tl.program_id(0)
     off = pid * TILE + tl.arange(0, TILE)
-    mask = off < numel
-    x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-    tl.store(out_ptr + off, (x > scalar).to(tl.int8), mask=mask)
+    if MASKED:
+        mask = off < numel
+        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+        tl.store(out_ptr + off, (x > scalar).to(tl.int8), mask=mask)
+    else:
+        x = tl.load(x_ptr + off).to(tl.float32)
+        tl.store(out_ptr + off, (x > scalar).to(tl.int8))
 
 
-def _gt_scalar_tiled(A, wrapped):
+@triton.jit
+def gt_scalar_tile_half_kernel(
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, MASKED: tl.constexpr
+):
+    # fp16 loads keep fp16 (the explicit .to(tl.float16) folds away); bf16
+    # loads are converted for real -- bf16 -> fp16 is a saturating conversion
+    # (huge finite -> inf, NaN -> NaN) and a bf16 significand is a subset of
+    # fp16's, so `x_fp16 > fp16(wrapped)` is exactly torch.gt for every bf16
+    # value as long as the wrapped scalar is inside fp16's exact range (see
+    # _GT_SCALAR_BF16_FP16_MIN/MAX in gt_scalar).
+    half_scalar = scalar.to(tl.float16)
+    pid = tl.program_id(0)
+    off = pid * TILE + tl.arange(0, TILE)
+    if MASKED:
+        mask = off < numel
+        x = tl.load(x_ptr + off, mask=mask).to(tl.float16)
+        tl.store(out_ptr + off, (x > half_scalar).to(tl.int8), mask=mask)
+    else:
+        x = tl.load(x_ptr + off).to(tl.float16)
+        tl.store(out_ptr + off, (x > half_scalar).to(tl.int8))
+
+
+def _gt_scalar_flat(A, wrapped):
     numel = A.numel()
     out = torch.empty(numel, dtype=torch.int8, device=A.device)
-    grid = (triton.cdiv(numel, _GT_SCALAR_MID_TILE),)
-    gt_scalar_tile_kernel[grid](
+    if numel <= _GT_SCALAR_TILE_MAX_TINY:
+        # one program covering the whole tensor; a wider grid is slower here
+        tile = triton.next_power_of_2(numel)
+    else:
+        tile = _gt_scalar_tile(numel, A.dtype)
+    masked = (numel % tile) != 0
+    grid = (triton.cdiv(numel, tile),)
+    kernel = (
+        gt_scalar_tile_kernel
+        if A.dtype == torch.float32
+        else gt_scalar_tile_half_kernel
+    )
+    kernel[grid](
         out,
         A.reshape(-1),
         wrapped,
         numel,
-        TILE=_GT_SCALAR_MID_TILE,
+        TILE=tile,
+        MASKED=masked,
         num_warps=4,
         isCloseMemoryAsync=False,
-        buffer_size_limit=_GT_SCALAR_MID_BSL,
-        unroll_num=_GT_SCALAR_MID_UNROLL,
+        buffer_size_limit=_GT_SCALAR_BSL,
+        unroll_num=_GT_SCALAR_UNROLL,
     )
     return out.view(torch.bool).reshape(A.shape)
 
 
 def gt_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GT_SCALAR")
-    # bf16 fast path via BITCAST bf16->fp16 (no widen). Reinterpreting a bf16 bit
-    # pattern as fp16 is order-preserving in the real value (see _bf16_as_fp16_key),
-    # so `x >bf16 B  <=>  fp16bits(x) >fp16 fp16bits(B)` exactly. Viewing A as fp16
-    # and comparing against the fp16-reinterpreted scalar key routes bf16 through
-    # the native fp16 32-lane vcmpf (NO bf16->f32 vmerge widen -> ~1.5x faster),
-    # while every downstream fp16 path stays bit-exact vs torch.gt on bf16.
-    if A.dtype == torch.bfloat16 and A.is_contiguous():
-        ok, key = _bf16_as_fp16_key(B)
-        if ok:
-            A = A.view(torch.float16)
-            B = key
-    # Small-shape fast path: bypass the pointwise_dynamic host layer with a
-    # single-tile hand kernel (finite wrapped scalar only, for bit-exact parity).
+    # Flat fast path for contiguous fp16/bf16/fp32 with a finite wrapped scalar
+    # (non-finite scalars, other dtypes and non-contiguous inputs keep the
+    # generic pointwise_dynamic path below).
     if (
         A.is_contiguous()
         and A.dtype in (torch.float16, torch.bfloat16, torch.float32)
-        and 0 < A.numel() <= _GT_SCALAR_SMALL_NUMEL
+        and A.numel() > 0
     ):
         wrapped_finite, wrapped = _wrap_to_dtype(B, A.dtype)
-        if wrapped_finite:
+        if wrapped_finite and (
+            A.dtype != torch.bfloat16
+            or _GT_SCALAR_BF16_FP16_MIN <= abs(wrapped) <= _GT_SCALAR_BF16_FP16_MAX
+        ):
             os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
             os.environ["TRITONXPU_FP16_FAST"] = "1"
-            res = _gt_scalar_small(A, wrapped)
-            del os.environ["TRITONXPU_COMPARE_FUSION"]
-            del os.environ["TRITONXPU_FP16_FAST"]
-            return res
-    # Mid-shape fast path (fp16/fp32, 65536 < numel <= _GT_SCALAR_MID_NUMEL):
-    # multi-tile hand kernel with the coalesced-DMA tile config. bf16 arrives here
-    # already reinterpreted as fp16 (see top of gt_scalar). fp32 is included too:
-    # at mid shapes the generic pointwise_dynamic path is dominated by its host
-    # dispatch layer, so the hand kernel that bypasses it recovers that overhead
-    # (fp32 x.to(f32) is a no-op; the compare is the native 16-lane f32 vcmpf).
-    if (
-        A.is_contiguous()
-        and A.dtype in (torch.float16, torch.bfloat16, torch.float32)
-        and _GT_SCALAR_SMALL_NUMEL < A.numel() <= _GT_SCALAR_MID_NUMEL
-    ):
-        wrapped_finite, wrapped = _wrap_to_dtype(B, A.dtype)
-        if wrapped_finite:
-            os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
-            os.environ["TRITONXPU_FP16_FAST"] = "1"
-            res = _gt_scalar_tiled(A, wrapped)
+            res = _gt_scalar_flat(A, wrapped)
             del os.environ["TRITONXPU_COMPARE_FUSION"]
             del os.environ["TRITONXPU_FP16_FAST"]
             return res

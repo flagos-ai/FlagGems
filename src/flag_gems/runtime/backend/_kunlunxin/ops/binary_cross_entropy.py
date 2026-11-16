@@ -61,6 +61,39 @@ _TAIL_SPAN = _TAIL_BLOCK * _TAIL_U
 # single-CTA fold covers up to _TILE partials, i.e. N <= 2**30
 _FOLD_BLOCK = _TILE
 
+# ---- reduction=none elementwise tile policy (2026-11-12) -------------------
+# probe: harness/perf_ir/probe_bce_small.py / probe_bce_10k.py / probe_bce_mid.py
+#   * N=65536: 8192-lane tiles (8 programs) 7.9 us vs 32768-lane (2 programs)
+#     15.7 us -- the wide tile gives each CTA too little parallelism.
+#   * N >= 1M: the 32768-lane tile is at least as fast (fp16 1M: 8192 tiles
+#     are ~14% slower in the full benchmark), so the 8192 tile is capped at
+#     128K.  N >= 16.7M: 32768-lane tiles are ~12% faster (DMA saturation).
+#   * N <= 32768: a single CTA is fastest; a power-of-two N is one exact
+#     unmasked tile (4096: 6.2 us vs 7.9 us masked), otherwise one unmasked
+#     8192-tile chain + one masked tail tile (10000: 9.1 us vs 12.8 us fully
+#     masked).  Clamped-index tricks are NOT usable (gather breaks the affine
+#     DMA path: N=4096 single-CTA reduce with a clamped index costs 40 us vs
+#     13 us), and masked loads must never feed a reduction, so the masked
+#     tail is only ever consumed by a masked store.
+_ELEM_MID_TILE = 8192
+_ELEM_MID_MAX = 131072
+_ELEM_ONE_CTA_MAX = 32768
+_ELEM_MIN_LANES = 64
+
+
+def _tail_launch_params(tail):
+    """(BLOCK, U, grid, NEED_MASK) for an elementwise trailing partial tile.
+
+    A tail that is an exact multiple of _TAIL_BLOCK takes the unmasked path
+    (masked elementwise tiles cost ~2x per useful lane and waste the unused
+    lanes of the span); only a genuinely ragged tail is masked.
+    """
+    if tail % _TAIL_BLOCK == 0:
+        u = min(_TAIL_U, tail // _TAIL_BLOCK)
+        return _TAIL_BLOCK, u, (tail // (_TAIL_BLOCK * u),), False
+    grid = (triton.cdiv(tail, _TAIL_SPAN),)
+    return _TAIL_BLOCK, _TAIL_U, grid, (tail % _TAIL_SPAN) != 0
+
 
 @triton.jit
 def _bce_loss(xv, yv):
@@ -169,6 +202,26 @@ def _bce_weight_flat_kernel(
             tl.store(out + idx, (_bce_loss(xv, yv) * wv).to(out.dtype.element_ty))
 
 
+@triton.jit
+def _bce_flat_chunks_kernel(
+    x, y, out, N, BLOCK: tl.constexpr, U: tl.constexpr, TAIL: tl.constexpr
+):
+    # One CTA: U unmasked BLOCK-lane tiles followed by one masked TAIL tile.
+    # Only used for tiny N (<= _ELEM_ONE_CTA_MAX); the masked tail feeds a
+    # masked store, never a reduction.
+    for i in tl.static_range(U):
+        idx = i * BLOCK + tl.arange(0, BLOCK)
+        xv = tl.load(x + idx).to(tl.float32)
+        yv = tl.load(y + idx).to(tl.float32)
+        tl.store(out + idx, _bce_loss(xv, yv).to(out.dtype.element_ty))
+    if TAIL > 0:
+        idx = U * BLOCK + tl.arange(0, TAIL)
+        m = idx < N
+        xv = tl.load(x + idx, mask=m, other=0.5).to(tl.float32)
+        yv = tl.load(y + idx, mask=m, other=0.0).to(tl.float32)
+        tl.store(out + idx, _bce_loss(xv, yv).to(out.dtype.element_ty), mask=m)
+
+
 # ------------------ pointwise_dynamic path (non-contiguous) -----------------
 
 
@@ -248,61 +301,97 @@ def _pw_reduced(input, target, weight, red, n_elements):
 # ------------------------------- fast paths ---------------------------------
 
 
+def _flat_unweighted(xf, yf, of, n_elements):
+    """Unweighted reduction='none' launch policy (see the tile-policy notes)."""
+    with torch_device_fn.device(xf.device):
+        if n_elements <= _ELEM_ONE_CTA_MAX:
+            if (
+                n_elements >= _ELEM_MIN_LANES
+                and (n_elements & (n_elements - 1)) == 0
+                and n_elements <= _ELEM_MID_TILE
+            ):
+                # exactly one unmasked power-of-two tile, one CTA
+                _bce_flat_kernel[(1,)](
+                    xf,
+                    yf,
+                    of,
+                    n_elements,
+                    BLOCK=n_elements,
+                    U=1,
+                    NEED_MASK=False,
+                    buffer_size_limit=_BUF,
+                )
+                return
+            block = _ELEM_MID_TILE
+            u = n_elements // block
+            rem = n_elements - u * block
+            tail = max(_ELEM_MIN_LANES, triton.next_power_of_2(rem)) if rem else 0
+            _bce_flat_chunks_kernel[(1,)](
+                xf, yf, of, n_elements, BLOCK=block, U=u, TAIL=tail
+            )
+            return
+        tile = _ELEM_MID_TILE if n_elements <= _ELEM_MID_MAX else _TILE
+        n_tiles = n_elements // tile
+        bulk = n_tiles * tile
+        tail = n_elements - bulk
+        if n_tiles:
+            _bce_flat_kernel[(n_tiles,)](
+                xf,
+                yf,
+                of,
+                bulk,
+                BLOCK=tile,
+                U=1,
+                NEED_MASK=False,
+                buffer_size_limit=_BUF,
+            )
+        if tail:
+            blk, u, grid, need_mask = _tail_launch_params(tail)
+            _bce_flat_kernel[grid](
+                xf[bulk:],
+                yf[bulk:],
+                of[bulk:],
+                tail,
+                BLOCK=blk,
+                U=u,
+                NEED_MASK=need_mask,
+            )
+
+
 def _fast_elementwise(xf, yf, wf, n_elements, out):
     """Elementwise BCE over flat contiguous inputs, writing into flat `out`."""
     of = out.reshape(-1)
+    if wf is None:
+        _flat_unweighted(xf, yf, of, n_elements)
+        return out
     n_tiles = n_elements // _TILE
     bulk = n_tiles * _TILE
     tail = n_elements - bulk
     with torch_device_fn.device(xf.device):
         if n_tiles:
-            if wf is None:
-                _bce_flat_kernel[(n_tiles,)](
-                    xf,
-                    yf,
-                    of,
-                    bulk,
-                    BLOCK=_TILE,
-                    U=1,
-                    NEED_MASK=False,
-                    buffer_size_limit=_BUF,
-                )
-            else:
-                _bce_weight_flat_kernel[(n_tiles,)](
-                    xf,
-                    yf,
-                    wf,
-                    of,
-                    bulk,
-                    BLOCK=_TILE,
-                    U=1,
-                    NEED_MASK=False,
-                    buffer_size_limit=_BUF,
-                )
+            _bce_weight_flat_kernel[(n_tiles,)](
+                xf,
+                yf,
+                wf,
+                of,
+                bulk,
+                BLOCK=_TILE,
+                U=1,
+                NEED_MASK=False,
+                buffer_size_limit=_BUF,
+            )
         if tail:
-            grid = (triton.cdiv(tail, _TAIL_SPAN),)
-            need_mask = (tail % _TAIL_SPAN) != 0
-            if wf is None:
-                _bce_flat_kernel[grid](
-                    xf[bulk:],
-                    yf[bulk:],
-                    of[bulk:],
-                    tail,
-                    BLOCK=_TAIL_BLOCK,
-                    U=_TAIL_U,
-                    NEED_MASK=need_mask,
-                )
-            else:
-                _bce_weight_flat_kernel[grid](
-                    xf[bulk:],
-                    yf[bulk:],
-                    wf[bulk:],
-                    of[bulk:],
-                    tail,
-                    BLOCK=_TAIL_BLOCK,
-                    U=_TAIL_U,
-                    NEED_MASK=need_mask,
-                )
+            blk, u, grid, need_mask = _tail_launch_params(tail)
+            _bce_weight_flat_kernel[grid](
+                xf[bulk:],
+                yf[bulk:],
+                wf[bulk:],
+                of[bulk:],
+                tail,
+                BLOCK=blk,
+                U=u,
+                NEED_MASK=need_mask,
+            )
     return out
 
 
@@ -336,16 +425,15 @@ def _reduce_partials(xf, yf, wf, n_elements, n_slots):
                     xf, yf, wf, mid, BLOCK=_TILE, buffer_size_limit=_BUF
                 )
         if tail:
-            grid = (triton.cdiv(tail, _TAIL_SPAN),)
-            need_mask = (tail % _TAIL_SPAN) != 0
+            blk, u, grid, need_mask = _tail_launch_params(tail)
             if wf is None:
                 _bce_flat_kernel[grid](
                     xf[bulk:],
                     yf[bulk:],
                     mid[n_slots:],
                     tail,
-                    BLOCK=_TAIL_BLOCK,
-                    U=_TAIL_U,
+                    BLOCK=blk,
+                    U=u,
                     NEED_MASK=need_mask,
                 )
             else:
@@ -355,8 +443,8 @@ def _reduce_partials(xf, yf, wf, n_elements, n_slots):
                     wf[bulk:],
                     mid[n_slots:],
                     tail,
-                    BLOCK=_TAIL_BLOCK,
-                    U=_TAIL_U,
+                    BLOCK=blk,
+                    U=u,
                     NEED_MASK=need_mask,
                 )
     return mid
@@ -454,6 +542,40 @@ def _fast_reduced(xf, yf, wf, red, n_elements, dtype, out):
                 )
             else:
                 _bce_reduce_single_kernel[(1,)](xf, yf, result, denom, BLOCK=n_elements)
+        return result
+
+    if wf is None and n_elements < _ELEM_ONE_CTA_MAX:
+        # Small non-power-of-two N (e.g. 10000): one masked elementwise pass
+        # writes every per-element loss into a next_pow2 fp32 scratch, then a
+        # single-CTA fold reduces it.  The old route built a 2*_TILE scratch
+        # plus a 2048x8 masked tile and an extra reduce launch; this is one
+        # launch fewer with a 4x smaller fold (measured 22.6us -> ~17us for
+        # N=10000, the worst cell of the official matrix).
+        # Only the masked store touches memory, so a partial masked load is
+        # never observed (masked loads must not feed a reduction on this
+        # backend).
+        span = max(_ELEM_MIN_LANES, triton.next_power_of_2(n_elements))
+        mid = torch.zeros(span, dtype=torch.float32, device=xf.device)
+        grid = (triton.cdiv(n_elements, _TAIL_BLOCK),)
+        with torch_device_fn.device(xf.device):
+            _bce_flat_kernel[grid](
+                xf,
+                yf,
+                mid,
+                n_elements,
+                BLOCK=_TAIL_BLOCK,
+                U=1,
+                NEED_MASK=True,
+            )
+            _bce_fold_kernel[(1,)](
+                mid,
+                mid,
+                result,
+                denom,
+                BLOCK=span,
+                HAS_TAIL=False,
+                buffer_size_limit=_BUF,
+            )
         return result
 
     # ---- fallback: current robust path (partial tail / weighted / N > 2^30) -

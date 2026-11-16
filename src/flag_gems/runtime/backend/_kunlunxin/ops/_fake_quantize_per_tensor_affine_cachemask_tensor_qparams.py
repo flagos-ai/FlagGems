@@ -39,6 +39,21 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
+def _allow_as_jit_global(handle):
+    """Make a ``tle.raw.dialect`` handle visible to the Triton AST visitor.
+
+    The installed compiler only lets a kernel read a module-level global if
+    ``getattr(val, "__module__", "").startswith("triton.experimental.tle")``.
+    The handle returned by ``@tle.raw.dialect`` is a ``RawJITFunction`` whose
+    class reports ``__module__ == "runtime"`` (the extension module), so the
+    allowlist check fails with ``NameError: Cannot access global variable``.
+    Tagging the instance with the package name it actually comes from restores
+    the intended lookup; nothing else about the handle changes.
+    """
+    handle.__module__ = "triton.experimental.tle.raw"
+    return handle
+
+
 # Hand-written tle.raw payloads (xpu3), precompiled once to device ELF objects
 # under ../payload/obj and linked at the ELF stage via object=. This keeps the
 # test path independent of the XTDK clang (which the CI runtime image does not
@@ -54,6 +69,7 @@ _PAY_OBJ = os.path.join(
 try:
     import triton.experimental.tle as tle
 
+    @_allow_as_jit_global
     @tle.raw.dialect(
         "xpu3",
         object=os.path.join(_PAY_OBJ, "gems_quantize_f32.o"),
@@ -63,6 +79,7 @@ try:
         x, y, mask, n, scale, inv, zero, enabled, qmin, qmax, pid, np, dtype
     ): ...
 
+    @_allow_as_jit_global
     @tle.raw.dialect(
         "xpu3",
         object=os.path.join(_PAY_OBJ, "gems_quantize_f16.o"),
@@ -72,6 +89,7 @@ try:
         x, y, mask, n, scale, inv, zero, enabled, qmin, qmax, pid, np, dtype
     ): ...
 
+    @_allow_as_jit_global
     @tle.raw.dialect(
         "xpu3",
         object=os.path.join(_PAY_OBJ, "gems_quantize_bf16.o"),
@@ -127,6 +145,27 @@ except Exception:  # pragma: no cover - object= channel not available
     _HAS_TLE_RAW = False
 
 
+def _programs(n_elements):
+    """Number of clusters to launch (measured on XPU3, fp32, ``do_bench``).
+
+    The payload is one work item per cluster (64 cores) and its element rate
+    saturates at 12 clusters, but the per-cluster share has to be at least a
+    few 10^4 elements for the split to pay off (a cluster launch costs a few
+    microseconds): n=10K -> 1 (14.5 us) beats 12 (15.6 us); n=262K -> 4
+    (16.9 us) beats 12 (19.0 us); n=1M -> 8 (28.2 us) beats 12 (29.3 us);
+    n>=2.5M -> 12 is best (40.1 us at 2.56M, 180 us at 16.7M).
+    """
+    if n_elements <= 65536:
+        return 1
+    if n_elements <= 131072:
+        return 2
+    if n_elements <= 262144:
+        return 4
+    if n_elements <= 1048576:
+        return 8
+    return 12
+
+
 def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
     self, scale, zero_point, fake_quant_enabled, quant_min, quant_max
 ):
@@ -146,7 +185,7 @@ def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
     if n_elements == 0:
         return out, mask
 
-    programs = 1 if n_elements <= 65536 else 12
+    programs = _programs(n_elements)
     dtype = (
         0 if self.dtype == torch.float32 else (1 if self.dtype == torch.float16 else 2)
     )

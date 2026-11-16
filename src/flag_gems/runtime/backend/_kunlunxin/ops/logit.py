@@ -34,12 +34,15 @@ def logit_kernel(
     HAS_EPS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
+    MASKED: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    x = tl.load(x_ptr + offsets, mask=mask, other=0)
+    if MASKED:
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+    else:
+        x = tl.load(x_ptr + offsets)
     x_f32 = x.to(tl.float32)
 
     if HAS_EPS:
@@ -48,7 +51,25 @@ def logit_kernel(
         x_f32 = tl.minimum(tl.maximum(x_f32, lo), hi)
 
     y = tl.log(x_f32 / (1.0 - x_f32))
-    tl.store(y_ptr + offsets, y.to(OUT_DTYPE), mask=mask)
+    if MASKED:
+        tl.store(y_ptr + offsets, y.to(OUT_DTYPE), mask=mask)
+    else:
+        tl.store(y_ptr + offsets, y.to(OUT_DTYPE))
+
+
+def _pick_block_size(n_elements, elem_size):
+    # Tiny tensors: one small program (BLOCK<64 spills on XPU3).
+    if n_elements <= 64:
+        return 64
+    # Sweet spot is ~8 programs per launch; clamp to the measured best tile.
+    if elem_size >= 4:
+        min_block, max_block = 1024, BLOCK_SIZE
+    else:
+        min_block = 2048
+        # 2-byte lanes keep scaling past 8K only once the tensor is large.
+        max_block = 16384 if n_elements > 262144 else BLOCK_SIZE
+    block = 1 << max(0, ((n_elements + 7) // 8) - 1).bit_length()
+    return max(min_block, min(block, max_block))
 
 
 def _to_triton_dtype(dtype):
@@ -92,8 +113,10 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
             work_out = out
 
         n_elements = in_kernel.numel()
+        block_size = _pick_block_size(n_elements, in_kernel.element_size())
+        masked = (n_elements % block_size) != 0
         # Concrete tuple grid: a callable grid recompiles on every launch on XPU.
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+        grid = (triton.cdiv(n_elements, block_size),)
 
         triton_dtype = _to_triton_dtype(work_out.dtype)
         with torch_device_fn.device(input.device):
@@ -103,8 +126,9 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
                 n_elements,
                 eps if eps is not None else 0.0,
                 HAS_EPS=(eps is not None),
-                BLOCK_SIZE=BLOCK_SIZE,
+                BLOCK_SIZE=block_size,
                 OUT_DTYPE=triton_dtype,
+                MASKED=masked,
             )
 
         if need_copy_back:
@@ -120,7 +144,9 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
         work_out = torch.empty_like(input, dtype=torch.float32)
 
     n_elements = in_kernel.numel()
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    block_size = _pick_block_size(n_elements, in_kernel.element_size())
+    masked = (n_elements % block_size) != 0
+    grid = (triton.cdiv(n_elements, block_size),)
 
     triton_dtype = _to_triton_dtype(work_out.dtype)
     with torch_device_fn.device(input.device):
@@ -130,8 +156,9 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
             n_elements,
             eps if eps is not None else 0.0,
             HAS_EPS=(eps is not None),
-            BLOCK_SIZE=BLOCK_SIZE,
+            BLOCK_SIZE=block_size,
             OUT_DTYPE=triton_dtype,
+            MASKED=masked,
         )
 
     if desired_supported:

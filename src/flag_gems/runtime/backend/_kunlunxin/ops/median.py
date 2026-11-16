@@ -1069,8 +1069,8 @@ def _median_dim_impl(inp, dim, keepdim, out=None):
         return MedianResult(values=values, indices=indices)
 
     if out is None:
-        values = torch.empty(compute_shape, dtype=inp.dtype, device=inp.device)
-        indices = torch.empty(compute_shape, dtype=torch.long, device=inp.device)
+        values = None
+        indices = None
     else:
         values, indices = out
         if tuple(values.shape) != tuple(compute_shape):
@@ -1079,20 +1079,24 @@ def _median_dim_impl(inp, dim, keepdim, out=None):
             indices = indices.resize_(compute_shape)
 
     if M == 0:
-        if out is None and not keepdim:
-            values = torch.squeeze(values, dim)
-            indices = torch.squeeze(indices, dim)
+        if out is None:
+            values = torch.empty(output_shape, dtype=inp.dtype, device=inp.device)
+            indices = torch.empty(output_shape, dtype=torch.long, device=inp.device)
         return MedianResult(values=values, indices=indices)
 
     with torch_device_fn.device(inp.device):
         rows = _reduction_rows(inp, dim, M, N)
         out_values, out_indices = _median_key_select(rows, N)
-        torch.ops.aten._copy_from(out_values, values, False)
-        torch.ops.aten._copy_from(out_indices, indices, False)
-
-    if out is None and not keepdim:
-        values = torch.squeeze(values, dim)
-        indices = torch.squeeze(indices, dim)
+        if out is None:
+            # The kernel writes flat ``(M,)`` results in row-major output order;
+            # reshape in place instead of allocating a keepdim buffer and
+            # squeezing, which failed for trailing reduction dims (the old
+            # ``_copy_from`` could only broadcast a leading singleton).
+            values = out_values.reshape(output_shape)
+            indices = out_indices.reshape(output_shape)
+        else:
+            _gems_copy_(values, out_values.reshape(compute_shape))
+            _gems_copy_(indices, out_indices.reshape(compute_shape))
 
     return MedianResult(values=values, indices=indices)
 
@@ -1101,7 +1105,7 @@ def _write_flat_out(out, result):
     """Write the 0-d scalar result into ``out`` following the ``.out`` contract.
 
     The reduction kernels produce a ``(1,)`` vector before it is squeezed, so a
-    direct ``_copy_from`` into a 0-d ``out`` fails with "expand ... to size=[]".
+    direct device copy into a 0-d ``out`` fails with "expand ... to size=[]".
     Materialise the scalar first and use the Triton copy instead.  Like ATen,
     resize ``out`` when its shape does not match the required output shape.
     """
