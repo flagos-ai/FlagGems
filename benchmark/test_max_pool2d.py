@@ -120,7 +120,8 @@ def build_max_pool2d_inputs(plan, dtype, device):
 def test_max_pool2d_with_indices():
     bench = MaxPool2dBenchmark(
         op_name="max_pool2d_with_indices",
-        input_fn=max_pool2d_input_fn,
+        case_fn=max_pool2d_case_fn,
+        build_inputs_fn=build_max_pool2d_inputs,
         torch_op=torch.nn.functional.max_pool2d_with_indices,
         dtypes=consts.FLOAT_DTYPES,
     )
