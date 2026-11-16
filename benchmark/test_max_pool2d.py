@@ -92,7 +92,7 @@ def max_pool2d_input_fn(shape, dtype, device):
         yield inp, params
 
 
-class MaxPool2dBackwardBenchmark(base.GenericBenchmark):
+class MaxPool2dCaseBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         if not base.Config.query:
@@ -118,7 +118,7 @@ def build_max_pool2d_inputs(plan, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_max_pool2d_with_indices():
-    bench = MaxPool2dBenchmark(
+    bench = MaxPool2dCaseBenchmark(
         op_name="max_pool2d_with_indices",
         case_fn=max_pool2d_case_fn,
         build_inputs_fn=build_max_pool2d_inputs,
@@ -154,7 +154,7 @@ def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_max_pool2d_backward():
-    bench = MaxPool2dBackwardBenchmark(
+    bench = MaxPool2dCaseBenchmark(
         case_fn=max_pool2d_case_fn,
         build_inputs_fn=build_max_pool2d_backward_inputs,
         op_name="max_pool2d_backward",
