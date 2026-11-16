@@ -402,25 +402,6 @@ def test_kernel_check_case_no_kernel_records_false(monkeypatch, kc_runner):
     assert rec["status"] == "passed"
 
 
-def test_kernel_check_view_op_skips_profiling(monkeypatch, kc_runner):
-    """BASELINE_USES_KERNEL=False benchmarks return immediately with one None record."""
-
-    def exploding_profile():
-        raise AssertionError("profiler must not be called for view ops")
-
-    bench, config, _ = kc_runner
-    bench.BASELINE_USES_KERNEL = False
-    monkeypatch.setattr(base.torch.profiler, "profile", exploding_profile)
-    executed = bench._run_kernel_check_cases(case_ids=["case-0"])
-    # Early return: no cases iterated, one synthetic record appended
-    assert executed == []
-    assert len(config.kernel_check_records) == 1
-    rec = config.kernel_check_records[0]
-    assert rec["invoked_kernel"] is None
-    assert rec["status"] == "passed"
-    assert rec["case_id"] is None
-
-
 def test_kernel_check_all_cases_run_by_default(monkeypatch, kc_runner):
     from torch.autograd import DeviceType
 
@@ -507,26 +488,6 @@ def test_kernel_check_session_fails_if_no_kernel(runner):
     )
     conftest.pytest_sessionfinish(session, 0)
     assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
-
-
-def test_kernel_check_session_passes_if_all_view_ops(runner):
-    """A run of only BASELINE_USES_KERNEL=False ops (all None) should pass."""
-    bench, config, _ = runner
-    config.preflight_only = False
-    config.override_registry = None
-    config.kernel_check = True
-    config.kernel_check_records = [
-        {"invoked_kernel": None},
-        {"invoked_kernel": None},
-    ]
-    session = SimpleNamespace(
-        exitstatus=pytest.ExitCode.OK,
-        config=SimpleNamespace(
-            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
-        ),
-    )
-    conftest.pytest_sessionfinish(session, 0)
-    assert session.exitstatus == pytest.ExitCode.OK
 
 
 def test_kernel_check_session_fails_if_no_records(runner):

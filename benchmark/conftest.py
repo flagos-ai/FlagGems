@@ -795,18 +795,10 @@ def pytest_sessionfinish(session, exitstatus):
         if incomplete and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and Config.kernel_check:
-        records = Config.kernel_check_records
-        any_kernel = any(r.get("invoked_kernel") for r in records)
-        # A run consisting entirely of view ops (BASELINE_USES_KERNEL=False)
-        # legitimately skips the check; every record is None, so do not fail.
-        all_skipped = bool(records) and all(
-            r.get("invoked_kernel") is None for r in records
+        any_kernel = any(
+            record.get("invoked_kernel") for record in Config.kernel_check_records
         )
-        if (
-            not any_kernel
-            and not all_skipped
-            and session.exitstatus == pytest.ExitCode.OK
-        ):
+        if not any_kernel and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is None or Config.case_ids is None:
         return

@@ -37,8 +37,6 @@ class ExpandBenchmark(base.Benchmark):
     """Benchmark for expand operation (zero-copy view)."""
 
     DEFAULT_SHAPE_DESC = "input shape"
-    # expand/expand_ only adjust strides on the CPU; no device kernel is launched.
-    BASELINE_USES_KERNEL = False
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = EXPAND_SHAPES

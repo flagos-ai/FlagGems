@@ -98,7 +98,6 @@ class Benchmark:
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     EPS = 1e-7
-    BASELINE_USES_KERNEL = True
     """
     the base class for the operations benchmark
     """
@@ -851,26 +850,8 @@ class Benchmark:
         records whether a non-CPU device event with recorded device time was
         observed.  The session passes as long as at least one case across the
         whole benchmark run launched a kernel (checked in pytest_sessionfinish).
-
-        Benchmarks that set BASELINE_USES_KERNEL = False (e.g. zero-copy view
-        ops like expand) are skipped entirely: a single synthetic record with
-        invoked_kernel=None is appended to signal "not applicable" and the
-        method returns immediately.  The session-level check ignores None
-        entries so a run consisting entirely of view ops does not fail.
         """
         from torch.autograd import DeviceType
-
-        if not self.BASELINE_USES_KERNEL:
-            Config.kernel_check_records.append(
-                {
-                    "operator": self.op_name,
-                    "nodeid": Config.current_nodeid,
-                    "case_id": None,
-                    "invoked_kernel": None,
-                    "status": "passed",
-                }
-            )
-            return []
 
         if not self.supports_cases():
             raise ValueError(
@@ -889,7 +870,7 @@ class Benchmark:
                 "operator": self.op_name,
                 "nodeid": Config.current_nodeid,
                 "case_id": case.case_id,
-                "invoked_kernel": None,
+                "invoked_kernel": False,
                 "status": "failed",
             }
             Config.kernel_check_records.append(record)
@@ -920,8 +901,6 @@ class Benchmark:
             metric.shape_detail = self.record_shapes(*args, **kwargs)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
-                if self.BASELINE_USES_KERNEL:
-                    self._verify_base_invokes_kernel(self.torch_op, args, kwargs)
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
             if "latency" in self.to_bench_metrics:
                 op, dispatch, overridden = self._candidate_call()
