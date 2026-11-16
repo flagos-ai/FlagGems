@@ -280,7 +280,7 @@ def test_nanmean_out_rejects_device_mismatch():
 @pytest.mark.nanmean
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="torch_gcu has no complex nanmean datapath",
+    reason="enflame has no complex nanmean datapath",
 )
 def test_nanmean_complex_and_autograd():
     inp = torch.tensor(

@@ -21,7 +21,7 @@ from . import accuracy_utils as utils
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame (torch_gcu) does not support sparse BSC tensors",
+    reason="enflame does not support sparse BSC tensors",
 )
 
 BSC_UNSAFE_DTYPES = utils.FLOAT_DTYPES

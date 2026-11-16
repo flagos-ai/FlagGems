@@ -314,7 +314,7 @@ def test_slice_copy_complex(dtype):
         torch.complex32,
         torch.complex128,
     ):
-        pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6, 5), dtype)
 
     cases = [
@@ -340,7 +340,7 @@ def test_slice_copy_lazy_conj_neg(dtype):
         torch.complex32,
         torch.complex128,
     ):
-        pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6), dtype)
     lazy = inp.conj() if dtype.is_complex else torch.ops.aten._neg_view(inp)
     ref_out = _aten_slice_copy(lazy, 1, 1, 5, 2)
@@ -441,7 +441,7 @@ def test_slice_copy_out_vs_aten_all_dtypes(dtype):
         torch.complex32,
         torch.complex128,
     ):
-        pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((5, 9), dtype)
     ref_inp = utils.to_reference(inp)
     for dim, start, end, step in [(0, 1, 5, 2), (1, 2, 8, 3), (1, 0, 9, 1)]:
@@ -464,7 +464,7 @@ def test_slice_copy_out_mismatched_size(dtype):
         torch.complex32,
         torch.complex128,
     ):
-        pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6), dtype)
     ref_slice = _aten_slice_copy(inp, 1, 1, 5, 2)
 
@@ -486,7 +486,7 @@ def test_slice_copy_out_non_contiguous(dtype):
         torch.complex32,
         torch.complex128,
     ):
-        pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6), dtype)
     ref_slice = _aten_slice_copy(inp, 1, 1, 5, 2)  # (4, 2)
 
@@ -580,7 +580,7 @@ def test_slice_copy_out_overlapping(dtype):
         torch.complex32,
         torch.complex128,
     ):
-        pytest.skip("enflame (torch_gcu) does not support complex32/complex128")
+        pytest.skip("enflame does not support complex32/complex128")
     for out_lo, dim, start, end, step in [
         (1, 1, 0, 2, 1),  # out shifted forward by one column
         (1, 1, 1, 5, 2),  # out is exactly the sliced region
