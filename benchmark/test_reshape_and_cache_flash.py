@@ -44,6 +44,18 @@ def torch_reshape_and_cache_flash_ref(
 
 
 class ReshapeAndCacheFlashBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        # reshape_and_cache_flash takes a 5-tuple shape (num_tokens, num_heads,
+        # head_size, block_size, num_blocks), unlike GenericBenchmark's generic shapes.
+        if flag_gems.vendor_name == "kunlunxin":
+            self.shapes = [
+                (256, 32, 128, 16, 1024),
+                (1024, 32, 128, 16, 4096),
+                (4096, 32, 128, 32, 8192),
+            ]
+        else:
+            super().set_shapes(shape_file_path)
+
     def set_more_shapes(self):
         return []
 

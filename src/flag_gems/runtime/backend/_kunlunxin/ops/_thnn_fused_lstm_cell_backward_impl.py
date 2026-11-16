@@ -238,7 +238,8 @@ def _thnn_fused_lstm_cell_backward_impl(
         fuse_b1 = has_bias and batch_size == 1 and N < 256
         if N > 0:
             if fuse_b1:
-                BLOCK = 512
+                # A 256-lane masked tile measured cheaper than 512 on this backend.
+                BLOCK = 256
                 grid = (triton.cdiv(N, BLOCK),)
                 _lstm_cell_bwd_b1_kernel[grid](
                     grad_hy,
@@ -284,7 +285,9 @@ def _thnn_fused_lstm_cell_backward_impl(
                     BLOCK,
                     num_warps=4,
                 )
-        if has_bias and not fuse_b1 and batch_size > 0:
+        # batch_size == 0 still needs grad_biases filled (ATen returns zeros);
+        # both bias kernels reduce an empty batch to a zero accumulator.
+        if has_bias and not fuse_b1:
             if 4 * hidden_size == 256:
                 grid = (1,)
                 _bias_grad_kernel_exact[grid](
@@ -295,7 +298,9 @@ def _thnn_fused_lstm_cell_backward_impl(
                     num_warps=4,
                 )
             else:
-                BLOCK_M = 1024
+                # One 256-column program covers every bias width this op sees;
+                # the wider masked tile only added empty lanes.
+                BLOCK_M = 256
                 grid = (triton.cdiv(4 * hidden_size, BLOCK_M),)
                 _bias_grad_kernel[grid](
                     grad_input_gates,

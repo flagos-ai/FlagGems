@@ -21,16 +21,14 @@ import torch
 # import torch.nn.functional as F
 import triton
 import triton.language as tl
-from triton.language.extra import libdevice
+from packaging.version import parse as _parse_version
 
 from flag_gems.config import use_c_extension
+from flag_gems.ops.arange import arange_start as _arange
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import broadcasted_stride
 
 from .flash_api import mha_varlan_fwd
-
-# Cap the per-launch program count and split the (batch*head) grid dimension
-# instead of launching one huge grid.
-_FA_MAX_PROGRAMS = int(os.environ.get("FA_MAX_PROGRAMS", "2048"))
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +148,10 @@ def _attn_fwd_inner(
 
 # NOTE: we assert BLOCK_N <= HEAD_DIM in _attn_fwd, so for small head_dim,
 # we need to generate more configs.
-# [kunlunxin] single-config: multi-config autotuning costs a long first call
-# per (KV_CTX, HEAD_DIM) key. Only BLOCK_M is consumed here (it drives the grid).
+# [kunlunxin] single-config: on this backend the attention kernel body compiles
+# to a launch-table stub, so multi-config autotuning would benchmark the stub on
+# every new (KV_CTX, HEAD_DIM) key and fold ~100 ms into the first call. Only
+# BLOCK_M is consumed here (it drives the grid).
 configs = [
     triton.Config(
         {"BLOCK_M": 128, "BLOCK_N": 16, "PRE_LOAD_V": 0}, num_stages=2, num_warps=4
@@ -508,10 +508,8 @@ def prob_ds_finalize_kernel(
         score += tl.load(SCORE_PARTIAL + partial_base + chunk, mask=n_mask, other=0.0)
         dp += tl.load(DP_PARTIAL + partial_base + chunk, mask=n_mask, other=0.0)
         delta += tl.load(DELTA_PARTIAL + delta_base + chunk)
-    # Native convention, measured on device: logits = (Q@K^T) * scale + bias,
-    # i.e. the bias is added AFTER the scale.  It therefore must NOT be folded
-    # into `score`, which is multiplied by SCALE below -- adding it there would
-    # implement (Q@K^T + bias) * scale instead.
+    # The bias is added to the logits AFTER the scale, so it must not be
+    # folded into `score`, which is multiplied by SCALE below.
     bias_val = tl.zeros((BLOCK_N_,), dtype=tl.float32)
     if HAS_BIAS:
         bias_val = tl.load(
@@ -725,17 +723,28 @@ def grad_finalize_kernel(
         tl.store(OUT + out_base + d_offset, acc, mask=d_idx < D)
 
 
-def _fa_bias_4d(t, batch, heads, q_len, kv_len):
-    """Broadcast a 2D/3D/4D attention bias to (B, H, Q, K)."""
-    if t.dim() == 2:
-        t = t[None, None]
-    elif t.dim() == 3:
-        t = t[:, None]
-    elif t.dim() != 4:
-        raise ValueError(f"attn_mask must be 2D/3D/4D, got {t.dim()}D")
-    if t.shape[-2] != q_len or t.shape[-1] != kv_len:
-        raise ValueError("attn_mask shape must be (Q, K) along the last dims")
-    return t.expand(batch, heads, q_len, kv_len)
+def _mask_strides(mask, batch, heads, q_len, kv_len):
+    """Return the 4D broadcast strides for a 2D/3D/4D attention mask."""
+    shape = tuple(mask.shape)
+    if len(shape) == 2:
+        shape4 = (1, 1, shape[0], shape[1])
+        strides4 = (0, 0, mask.stride(0), mask.stride(1))
+    elif len(shape) == 3:
+        shape4 = (shape[0], 1, shape[1], shape[2])
+        strides4 = (mask.stride(0), 0, mask.stride(1), mask.stride(2))
+    elif len(shape) == 4:
+        shape4 = shape
+        strides4 = tuple(mask.stride())
+    else:
+        raise ValueError(f"attn_mask must be 2D/3D/4D, got {len(shape)}D")
+    if shape4[2] not in (1, q_len) or shape4[3] != kv_len:
+        raise ValueError("attn_mask shape must be broadcastable to (B, H, Q, K)")
+    try:
+        return broadcasted_stride(shape4, strides4, (batch, heads, q_len, kv_len))
+    except AssertionError as exc:
+        raise ValueError(
+            "attn_mask shape must be broadcastable to (B, H, Q, K)"
+        ) from exc
 
 
 def scaled_dot_product_attention_forward(
@@ -747,10 +756,13 @@ def scaled_dot_product_attention_forward(
     is_causal=False,
     scale=None,
     enable_gqa=False,
+    causal_offset=None,
+    return_lse=False,
+    return_weights=False,
 ):
     if dropout_p != 0.0:
         raise NotImplementedError(
-            "Kunlunxin scaled_dot_product_attention_forward does not support dropout"
+            "scaled_dot_product_attention_forward does not support dropout"
         )
     if attn_mask is not None and is_causal:
         raise RuntimeError("Explicit attn_mask should not be set when is_causal=True")
@@ -766,12 +778,14 @@ def scaled_dot_product_attention_forward(
     device = query.device
     softmax_scale = scale if scale is not None else 1.0 / (head_dim**0.5)
 
-    out = torch.empty(
-        (batch, q_head_num, q_len, value_dim), dtype=value.dtype, device=device
-    )
-    lse = torch.empty((batch, q_head_num, q_len), dtype=torch.float32, device=device)
+    out = query.new_empty((batch, q_head_num, q_len, value_dim), dtype=value.dtype)
+    lse = query.new_empty((batch, q_head_num, q_len), dtype=torch.float32)
 
-    if q_len % 128 == 0 and kv_len % 128 == 0:
+    if query.dtype == torch.bfloat16:
+        # bf16 output tiles require BLOCK_N <= 16 for non-divisible KV lengths.
+        BLOCK_M = 64
+        BLOCK_N = 16
+    elif q_len % 128 == 0 and kv_len % 128 == 0:
         BLOCK_M = 128
         BLOCK_N = 128
     else:
@@ -780,66 +794,68 @@ def scaled_dot_product_attention_forward(
     k_pad = triton.cdiv(kv_len, BLOCK_N) * BLOCK_N
     padded_dq = triton.next_power_of_2(head_dim)
     padded_dv = triton.next_power_of_2(value_dim)
-    q_in = _fa_pad_d(query, padded_dq) if padded_dq != head_dim else query
-    v_in = _fa_pad_d(value, padded_dv) if padded_dv != value_dim else value
-
-    # cmask carries only the 0.0 / 1e30 sentinel; a finite additive bias is
-    # routed through the alibi channel, which kernel A adds to qk.
-    cm_vals = None
-    bias_vals = None
-    if attn_mask is not None:
-        if attn_mask.dtype == torch.bool:
-            cm_vals = torch.where(attn_mask, 0.0, 1e30)
-        else:
-            bias = attn_mask.to(torch.float32)
-            masked = bias == float("-inf")
-            cm_vals = torch.where(masked, 1e30, 0.0)
-            bias_vals = torch.where(masked, 0.0, bias)
-        cm_vals = _fa_bias_4d(cm_vals, batch, q_head_num, q_len, kv_len)
-        if bias_vals is not None:
-            bias_vals = _fa_bias_4d(bias_vals, batch, q_head_num, q_len, kv_len)
-
-    use_cmask = cm_vals is not None or is_causal
-    if use_cmask:
-        cmask = torch.full(
-            (batch, q_head_num, q_len, k_pad), 1e30, dtype=torch.float32, device=device
+    q_in = query
+    k_in = key
+    v_in = value
+    if padded_dq != head_dim:
+        q_in = query.new_empty((batch, q_head_num, q_len, padded_dq), dtype=query.dtype)
+        k_in = key.new_empty((batch, kv_head_num, kv_len, padded_dq), dtype=key.dtype)
+    if padded_dv != value_dim:
+        v_in = value.new_empty(
+            (batch, kv_head_num, kv_len, padded_dv), dtype=value.dtype
         )
-        if cm_vals is not None:
-            cmask[..., :kv_len] = cm_vals
-        else:
-            cmask[..., :kv_len] = 0.0
-        if is_causal:
-            # Top-left alignment, matching torch SDPA: row i attends keys <= i.
-            rows = torch.arange(q_len, device=device)[:, None]
-            cols = torch.arange(kv_len, device=device)[None, :]
-            allowed = cols <= rows  # (Q, K)
-            cmask[..., :kv_len] = torch.where(allowed[None, None], 0.0, 1e30).expand(
-                batch, q_head_num, q_len, kv_len
-            )
-        cmask = cmask.reshape(batch * q_head_num, q_len, k_pad)
-
-    alibi_bias = None
-    if bias_vals is not None:
-        padded_bias = torch.zeros(
-            (batch, q_head_num, q_len, k_pad), dtype=torch.float32, device=device
-        )
-        padded_bias[..., :kv_len] = bias_vals
-        alibi_bias = padded_bias.reshape(batch * q_head_num, q_len, k_pad)
 
     if kv_len % BLOCK_N == 0:
-        # Every column is written by kernel A (no n >= KV_CTX padding), so the
-        # -1e30 prefill is dead cost: torch.empty avoids a full-buffer write.
-        qk_buf = torch.empty(
-            (batch * q_head_num, q_len, k_pad), dtype=torch.float32, device=device
+        qk_buf = query.new_empty(
+            (batch * q_head_num, q_len, k_pad), dtype=torch.float32
         )
     else:
-        qk_buf = torch.full(
-            (batch * q_head_num, q_len, k_pad),
-            -1e30,
-            dtype=torch.float32,
-            device=device,
+        # Padding columns stay at a value whose exponential underflows to zero.
+        qk_buf = query.new_full(
+            (batch * q_head_num, q_len, k_pad), -1e30, dtype=torch.float32
         )
-    m_buf = torch.empty((batch, q_head_num, q_len), dtype=torch.float32, device=device)
+
+    use_cmask = attn_mask is not None or is_causal
+    if use_cmask:
+        cmask = query.new_full(
+            (batch * q_head_num, q_len, k_pad), 1e30, dtype=torch.float32
+        )
+        if attn_mask is not None:
+            mask_arg = attn_mask
+            mask_strides = _mask_strides(attn_mask, batch, q_head_num, q_len, kv_len)
+            mask_is_bool = attn_mask.dtype == torch.bool
+        else:
+            mask_arg = query
+            mask_strides = (0, 0, 0, 0)
+            mask_is_bool = False
+        offset = kv_len - q_len if causal_offset is None else causal_offset
+        c_grid = (
+            triton.cdiv(q_len, 64),
+            batch * q_head_num,
+            triton.cdiv(k_pad, 64),
+        )
+        with torch_device_fn.device(device):
+            _fa_cmask_kernel[c_grid](
+                cmask,
+                mask_arg,
+                mask_strides[0],
+                mask_strides[1],
+                mask_strides[2],
+                mask_strides[3],
+                q_len,
+                kv_len,
+                k_pad,
+                q_head_num,
+                USE_MASK=attn_mask is not None,
+                MASK_IS_BOOL=mask_is_bool,
+                IS_CAUSAL=is_causal,
+                CAUSAL_OFFSET=offset,
+                BLOCK_M=64,
+                BLOCK_N=64,
+                num_warps=4,
+                num_stages=1,
+            )
+    m_buf = query.new_empty((batch, q_head_num, q_len), dtype=torch.float32)
     grid = (triton.cdiv(q_len, BLOCK_M), batch * q_head_num)
     common_q = dict(
         GROUP_HEAD=q_head_num // kv_head_num,
@@ -856,32 +872,103 @@ def scaled_dot_product_attention_forward(
         BLOCK_N=BLOCK_N,
     )
     with torch_device_fn.device(device):
+        if padded_dq != head_dim:
+            pad_grid = (
+                batch * q_head_num,
+                triton.cdiv(q_len, 64),
+                triton.cdiv(padded_dq, 64),
+            )
+            _fa_pad_d_kernel[pad_grid](
+                query,
+                q_in,
+                query.stride(0),
+                query.stride(2),
+                query.stride(1),
+                query.stride(3),
+                q_in.stride(0),
+                q_in.stride(2),
+                q_in.stride(1),
+                q_in.stride(3),
+                q_len,
+                q_head_num,
+                head_dim,
+                padded_dq,
+                BLOCK_S=64,
+                BLOCK_D=64,
+                num_warps=4,
+                num_stages=1,
+            )
+            pad_grid = (
+                batch * kv_head_num,
+                triton.cdiv(kv_len, 64),
+                triton.cdiv(padded_dq, 64),
+            )
+            _fa_pad_d_kernel[pad_grid](
+                key,
+                k_in,
+                key.stride(0),
+                key.stride(2),
+                key.stride(1),
+                key.stride(3),
+                k_in.stride(0),
+                k_in.stride(2),
+                k_in.stride(1),
+                k_in.stride(3),
+                kv_len,
+                kv_head_num,
+                head_dim,
+                padded_dq,
+                BLOCK_S=64,
+                BLOCK_D=64,
+                num_warps=4,
+                num_stages=1,
+            )
+        if padded_dv != value_dim:
+            pad_grid = (
+                batch * kv_head_num,
+                triton.cdiv(kv_len, 64),
+                triton.cdiv(padded_dv, 64),
+            )
+            _fa_pad_d_kernel[pad_grid](
+                value,
+                v_in,
+                value.stride(0),
+                value.stride(2),
+                value.stride(1),
+                value.stride(3),
+                v_in.stride(0),
+                v_in.stride(2),
+                v_in.stride(1),
+                v_in.stride(3),
+                kv_len,
+                kv_head_num,
+                value_dim,
+                padded_dv,
+                BLOCK_S=64,
+                BLOCK_D=64,
+                num_warps=4,
+                num_stages=1,
+            )
         _fa_qk_m_kernel[grid](
             q_in,
-            key,
+            k_in,
             qk_buf,
             m_buf,
             cmask if use_cmask else qk_buf,
-            # This entry point implements neither softcap nor alibi slopes; the
-            # ALIBI channel carries only the additive attn_mask, when present.
-            alibi_bias if alibi_bias is not None else qk_buf,
             softmax_scale,
-            0.0,
             q_in.stride(0),
             q_in.stride(2),
             q_in.stride(1),
             q_in.stride(3),
-            key.stride(0),
-            key.stride(2),
-            key.stride(1),
-            key.stride(3),
+            k_in.stride(0),
+            k_in.stride(2),
+            k_in.stride(1),
+            k_in.stride(3),
             q_len,
             kv_len,
             k_pad,
             q_head_num,
             USE_CMASK=use_cmask,
-            USE_SOFTCAP=False,
-            USE_ALIBI=alibi_bias is not None,
             num_warps=8,
             num_stages=1,
             **common_q,
@@ -894,8 +981,6 @@ def scaled_dot_product_attention_forward(
                 out,
                 lse,
                 m_buf,
-                qk_buf,
-                qk_buf,
                 v_in.stride(0),
                 v_in.stride(2),
                 v_in.stride(1),
@@ -908,19 +993,57 @@ def scaled_dot_product_attention_forward(
                 kv_len,
                 k_pad,
                 q_head_num,
-                1.0,
-                0,
                 D_WIDTH=min(128, padded_dv - d_off),
                 D_OFF=d_off,
-                STORE_LSE=False,
-                USE_DROPOUT=False,
-                STORE_DBG=False,
+                STORE_LSE=return_lse or return_weights,
                 num_warps=8,
                 num_stages=1,
                 **common_v,
             )
             d_off += 128
+        if return_lse or return_weights:
+            total = batch * q_head_num * q_len
+            _fa_lse_kernel[(triton.cdiv(total, 256),)](
+                m_buf,
+                lse,
+                total,
+                BLOCK=256,
+                num_warps=4,
+                num_stages=1,
+            )
 
+    if return_weights:
+        weights = query.new_empty((batch, q_head_num, q_len, kv_len))
+        w_grid = (
+            triton.cdiv(q_len, 64),
+            batch * q_head_num,
+            triton.cdiv(kv_len, 64),
+        )
+        with torch_device_fn.device(device):
+            _fa_weights_kernel[w_grid](
+                qk_buf,
+                lse,
+                weights,
+                weights.stride(0),
+                weights.stride(2),
+                weights.stride(1),
+                weights.stride(3),
+                q_len,
+                kv_len,
+                k_pad,
+                q_head_num,
+                BLOCK_M=64,
+                BLOCK_N=64,
+                num_warps=4,
+                num_stages=1,
+            )
+
+    if return_lse and return_weights:
+        return out, lse, weights
+    if return_weights:
+        return out, weights
+    if return_lse:
+        return out, lse
     return out
 
 
@@ -1254,7 +1377,7 @@ def efficient_attention_backward(
 
 
 def _sdpa_attn_fwd_grid(args):
-    # Module-level (stable identity) launch grid for ``_attn_fwd``.
+    """Module-level (stable identity) launch grid for ``_attn_fwd``."""
     return (
         triton.cdiv(args["Q_CTX"], args["BLOCK_M"]),
         args["Z"] * args["q_head_num"],
@@ -1399,6 +1522,221 @@ class ScaleDotProductAttention(torch.autograd.Function):
         return dq, dk, dv, None, None, None, None, None
 
 
+def _scaled_dot_product_flash_attention(
+    query,
+    key,
+    value,
+    dropout_p=0.0,
+    is_causal=False,
+    return_debug_mask=False,
+    *,
+    scale=None,
+):
+    """Vendor SDPA flash entry.
+
+    Routes to the vendor Triton two-pass attention kernels with the bottom-right
+    causal alignment used by aten flash attention.
+    """
+    logger.debug("GEMS_KUNLUNXIN _SCALED_DOT_PRODUCT_FLASH_ATTENTION")
+    max_q = query.shape[2]
+    max_k = key.shape[2]
+    output, logsumexp = scaled_dot_product_attention_forward(
+        query,
+        key,
+        value,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=query.shape[1] != key.shape[1],
+        return_lse=True,
+    )
+    return (
+        output,
+        logsumexp,
+        None,
+        None,
+        max_q,
+        max_k,
+        None,
+        None,
+        None,
+    )
+
+
+def _scaled_dot_product_attention_math(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    dropout_mask=None,
+    *,
+    scale=None,
+    enable_gqa=False,
+):
+    """Vendor SDPA math entry.
+
+    The generic math kernel fails to compile here, so use the vendor Triton
+    two-pass kernel with top-left causal alignment and return the materialized
+    attention weights required by the aten math contract.
+    """
+    logger.debug("GEMS_KUNLUNXIN _SCALED_DOT_PRODUCT_ATTENTION_MATH")
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math: dropout > 0 is not supported"
+        )
+    output, weights = scaled_dot_product_attention_forward(
+        query,
+        key,
+        value,
+        attn_mask=attn_mask,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+        causal_offset=0,
+        return_weights=True,
+    )
+    return output, weights
+
+
+def _scaled_dot_product_cudnn_attention(
+    query,
+    key,
+    value,
+    attn_bias=None,
+    compute_log_sumexp=True,
+    dropout_p=0.0,
+    is_causal=False,
+    return_debug_mask=False,
+    *,
+    scale=None,
+):
+    """Vendor cuDNN attention entry backed by the vendor Triton kernels.
+
+    The generic Triton FA2 kernel produces NaN/inf for non-divisible Q/KV
+    shapes here, so use the vendor two-pass kernels.  The return signature
+    mirrors ``aten::_scaled_dot_product_cudnn_attention``.
+    """
+    logger.debug("GEMS_KUNLUNXIN _SCALED_DOT_PRODUCT_CUDNN_ATTENTION")
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "_scaled_dot_product_cudnn_attention: dropout > 0 is not supported"
+        )
+
+    result = scaled_dot_product_attention_forward(
+        query,
+        key,
+        value,
+        attn_mask=attn_bias,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        causal_offset=0,
+        return_lse=bool(compute_log_sumexp),
+    )
+    if compute_log_sumexp:
+        output, logsumexp = result
+    else:
+        output = result
+        logsumexp = query.new_empty(0, dtype=torch.float32)
+
+    cum_seq_q = query.new_empty(0, dtype=torch.int32)
+    cum_seq_k = query.new_empty(0, dtype=torch.int32)
+    philox_seed = query.new_empty((), dtype=torch.int64)
+    philox_offset = query.new_empty((), dtype=torch.int64)
+    if return_debug_mask:
+        debug_attn_mask = query.new_zeros(
+            (query.shape[0], query.shape[1], query.shape[2], key.shape[2])
+        )
+    else:
+        debug_attn_mask = query.new_empty(0)
+
+    return (
+        output,
+        logsumexp,
+        cum_seq_q,
+        cum_seq_k,
+        query.shape[2],
+        key.shape[2],
+        philox_seed,
+        philox_offset,
+        debug_attn_mask,
+    )
+
+
+def cudnn_attention_forward(
+    query,
+    key,
+    value,
+    attn_bias,
+    cum_seq_q,
+    cum_seq_k,
+    max_q,
+    max_k,
+    compute_log_sumexp,
+    dropout_p=0.0,
+    is_causal=False,
+    return_debug_mask=False,
+    *,
+    scale=None,
+):
+    """Vendor cuDNN attention forward entry backed by the vendor Triton kernels.
+
+    Same numeric issue as ``_scaled_dot_product_cudnn_attention``.  Keep the
+    aten-compatible wrapper/return contract.
+    """
+    logger.debug("GEMS_KUNLUNXIN CUDNN_ATTENTION_FORWARD")
+    if dropout_p > 0.0:
+        raise NotImplementedError(
+            "cudnn_attention_forward: dropout > 0 is not yet supported"
+        )
+    if cum_seq_q is not None or cum_seq_k is not None:
+        raise NotImplementedError(
+            "cudnn_attention_forward: varlen is not yet supported"
+        )
+
+    result = scaled_dot_product_attention_forward(
+        query,
+        key,
+        value,
+        attn_mask=attn_bias,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        causal_offset=0,
+        return_lse=bool(compute_log_sumexp),
+    )
+    if compute_log_sumexp:
+        output, lse = result
+    else:
+        output = result
+        lse = query.new_zeros(
+            (query.shape[0], query.shape[1], query.shape[2]),
+            dtype=torch.float32,
+        )
+    # PyTorch < 2.9 returns [B, H, S_q], >= 2.9 returns [B, H, S_q, 1].
+    if _parse_version(torch.__version__.split("+")[0]).release[:2] >= (2, 9):
+        lse = lse.unsqueeze(-1)
+
+    zero_seed = query.new_zeros((), dtype=torch.int64)
+    zero_offset = query.new_zeros((), dtype=torch.int64)
+    debug_mask = query.new_zeros(0)
+
+    return (
+        output,
+        lse,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        zero_seed,
+        zero_offset,
+        debug_mask,
+    )
+
+
 def scaled_dot_product_attention(
     query,
     key,
@@ -1409,15 +1747,16 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
-    return ScaleDotProductAttention.apply(
+    return scaled_dot_product_attention_forward(
         query,
         key,
         value,
-        attn_mask,
-        dropout_p,
-        is_causal,
-        scale,
-        enable_gqa,
+        attn_mask=attn_mask,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+        causal_offset=0,
     )
 
 
@@ -1485,6 +1824,200 @@ def scaled_dot_product_efficient_attention_backward(
 
 
 _LOG2E = tl.constexpr(1.4426950408889634)
+_LN2 = tl.constexpr(0.6931471805599453)
+
+
+@triton.jit
+def _ln(x):
+    """Natural log for positive finite x using exponent extraction.
+
+    ``x = m * 2**e`` with ``m`` in [1, 2); ``ln(x) = ln(m) + e * ln(2)``.
+    The atanh series for ``ln(m)`` converges quickly because
+    ``z = (m - 1) / (m + 1)`` lies in [0, 1/3].
+    """
+    bits = x.to(tl.int32, bitcast=True)
+    exp = ((bits >> 23) & 0xFF) - 127
+    mant_bits = (bits & 0x7FFFFF) | 0x3F800000
+    m = mant_bits.to(tl.float32, bitcast=True)
+    z = (m - 1.0) / (m + 1.0)
+    z2 = z * z
+    poly = z * (
+        1.0
+        + z2
+        * (
+            0.3333333333333333
+            + z2
+            * (
+                0.2
+                + z2
+                * (
+                    0.14285714285714285
+                    + z2 * (0.1111111111111111 + z2 * 0.09090909090909091)
+                )
+            )
+        )
+    )
+    res = 2.0 * poly + exp.to(tl.float32) * _LN2
+    return tl.where(x == float("inf"), float("inf"), res)
+
+
+@triton.jit
+def _fa_cmask_kernel(
+    CMASK,
+    MASK,
+    stride_mb,
+    stride_mh,
+    stride_mq,
+    stride_mk,
+    Q_CTX,
+    KV_CTX,
+    K_PAD,
+    q_head_num,
+    USE_MASK: tl.constexpr,
+    MASK_IS_BOOL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+    CAUSAL_OFFSET: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Materialize the dense additive mask consumed by the qk kernel.
+
+    ``cmask = -attn_mask`` for float masks and ``0/1e30`` for boolean or causal
+    masks.  Columns beyond ``KV_CTX`` stay ``1e30`` so their contribution
+    underflows to zero in the output pass.
+    """
+    pid_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+    pid_n = tl.program_id(2)
+    batch_id = off_hz // q_head_num
+    head_id = off_hz % q_head_num
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    q_mask = offs_m < Q_CTX
+    kv_mask = offs_n < KV_CTX
+    cm = tl.full([BLOCK_M, BLOCK_N], 1e30, dtype=tl.float32)
+    if USE_MASK:
+        m_ptrs = (
+            MASK
+            + batch_id * stride_mb
+            + head_id * stride_mh
+            + offs_m[:, None] * stride_mq
+            + offs_n[None, :] * stride_mk
+        )
+        mv = tl.load(m_ptrs, mask=q_mask[:, None] & kv_mask[None, :], other=0.0)
+        if MASK_IS_BOOL:
+            cm = tl.where(mv != 0, 0.0, 1e30)
+        else:
+            mv = mv.to(tl.float32)
+            mv = tl.where(mv == float("-inf"), -1e30, mv)
+            cm = -mv
+    if IS_CAUSAL:
+        causal = offs_n[None, :] <= offs_m[:, None] + CAUSAL_OFFSET
+        cm = tl.where(causal, 0.0, 1e30)
+    ptrs = CMASK + off_hz * Q_CTX * K_PAD + offs_m[:, None] * K_PAD + offs_n[None, :]
+    tl.store(ptrs, cm, mask=q_mask[:, None] & kv_mask[None, :])
+
+
+@triton.jit
+def _fa_pad_d_kernel(
+    SRC,
+    DST,
+    stride_sb,
+    stride_ss,
+    stride_sh,
+    stride_sd,
+    stride_db,
+    stride_ds,
+    stride_dh,
+    stride_dd,
+    S,
+    H,
+    D,
+    PADDED_D,
+    BLOCK_S: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Copy a BHSD tensor into a contiguous head-dim-padded buffer."""
+    pid_bh = tl.program_id(0)
+    pid_s = tl.program_id(1)
+    pid_d = tl.program_id(2)
+    batch_id = pid_bh // H
+    head_id = pid_bh % H
+    offs_s = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)
+    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    s_mask = offs_s < S
+    d_valid = offs_d < D
+    # Clamp the source column so padding lanes read a valid element, then zero
+    # them explicitly; this avoids relying on masked-load fill semantics.
+    d_safe = tl.minimum(offs_d, D - 1)
+    src = tl.load(
+        SRC
+        + batch_id * stride_sb
+        + head_id * stride_sh
+        + offs_s[:, None] * stride_ss
+        + d_safe[None, :] * stride_sd,
+        mask=s_mask[:, None],
+        other=0.0,
+    )
+    src = src * d_valid.to(src.dtype)[None, :]
+    dst_ptrs = (
+        DST
+        + batch_id * stride_db
+        + head_id * stride_dh
+        + offs_s[:, None] * stride_ds
+        + offs_d[None, :] * stride_dd
+    )
+    dst_mask = s_mask[:, None] & (offs_d[None, :] < PADDED_D)
+    tl.store(dst_ptrs, src, mask=dst_mask)
+
+
+@triton.jit
+def _fa_weights_kernel(
+    QK,
+    LSE,
+    W,
+    stride_wb,
+    stride_ws,
+    stride_wh,
+    stride_wd,
+    Q_CTX,
+    KV_CTX,
+    K_PAD,
+    q_head_num,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Materialize normalized attention weights from the qk/lse buffers.
+
+    ``qk`` holds the mask-applied logits and ``lse`` the natural-log row
+    normalizer, so ``w = exp(qk - lse)``.  The ``-12`` cut matches kernel B's
+    exact-zero rule for the exponential underflow range.
+    """
+    pid_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+    pid_n = tl.program_id(2)
+    batch_id = off_hz // q_head_num
+    head_id = off_hz % q_head_num
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    q_mask = offs_m < Q_CTX
+    kv_mask = offs_n < KV_CTX
+    qk = tl.load(
+        QK + off_hz * Q_CTX * K_PAD + offs_m[:, None] * K_PAD + offs_n[None, :],
+        mask=q_mask[:, None] & kv_mask[None, :],
+        other=-1e30,
+    )
+    lse = tl.load(LSE + off_hz * Q_CTX + offs_m, mask=q_mask, other=0.0)
+    p = tl.exp(qk - lse[:, None])
+    p = tl.where((qk - lse[:, None]) > -12.0, p, 0.0)
+    w_ptrs = (
+        W
+        + batch_id * stride_wb
+        + head_id * stride_wh
+        + offs_m[:, None] * stride_ws
+        + offs_n[None, :] * stride_wd
+    )
+    tl.store(w_ptrs, p.to(W.dtype.element_ty), mask=q_mask[:, None] & kv_mask[None, :])
 
 
 @triton.jit
@@ -1494,9 +2027,7 @@ def _fa_qk_m_kernel(
     QK,
     M,
     CMASK,
-    ALIBI,
     sm_scale,
-    softcap,
     stride_qb,
     stride_qs,
     stride_qh,
@@ -1515,18 +2046,22 @@ def _fa_qk_m_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     USE_CMASK: tl.constexpr,
-    USE_SOFTCAP: tl.constexpr,
-    USE_ALIBI: tl.constexpr,
 ):
-    """Pass 1: ``qk' = (Q @ K^T) * scale - cmask * 1e29`` and ``m = max(qk')``.
+    """Pass 1: ``qk' = (Q @ K^T) * scale - cmask`` and ``m = max(rowmax(qk'), 0)``.
 
-    ``CMASK`` is a dense ``(B*H, Q_CTX, K_PAD)`` f32 buffer holding 0.0 for
-    kept cells and a large sentinel for masked cells.  ``USE_ALIBI`` adds a
-    dense additive ``(B*H, Q_CTX, K_PAD)`` bias.  ``QK`` is prefilled with
-    -1e30 so cells with ``n >= KV_CTX`` underflow to exactly 0.0.
+    When ``USE_CMASK``, the mask is folded into the stored qk here
+    (``qk' = qk - cm``) from a dense ``(B*H, Q_CTX, K_PAD)`` f32 ``CMASK``:
+    0.0/50.0 for the FA3 causal/window masks, ``-attn_mask`` / ``+1e30`` for
+    SDPA.  Masking must NOT happen in kernel B: the compiler corrupts that
+    kernel's loop-carried ``l_i``/``acc`` when the loop body holds an in-loop
+    load/branch.  ``QK`` is prefilled with -1e30 so cells with
+    ``n >= KV_CTX`` stay at a value whose exponential underflows to 0.0.
 
-    ``m`` is taken over the mask-applied ``qk'`` so that ``m >= max(qk')``,
-    i.e. ``qk' - m <= 0`` for every cell.
+    ``m`` is computed over the MASK-APPLIED qk' (NOT the raw qk) so that
+    ``m >= max(qk')``: the exponential overflows for positive arguments, and
+    kernel B's ``(qk' - m)`` must stay ``<= 0`` (this matters for positive
+    additive masks, e.g. ``attn_mask = +3``, which raise qk' above rowmax of
+    the raw qk).
     """
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
@@ -1543,47 +2078,24 @@ def _fa_qk_m_kernel(
     query = tl.load(q_ptrs, mask=q_mask[:, None], other=0.0)
     qk_base = QK + off_hz * Q_CTX * K_PAD
     cm_base = CMASK + off_hz * Q_CTX * K_PAD + offs_m[:, None] * K_PAD
-    ab_base = ALIBI + off_hz * Q_CTX * K_PAD + offs_m[:, None] * K_PAD
     for start_n in range(0, KV_CTX, BLOCK_N):
         offs_n = start_n + tl.arange(0, BLOCK_N)
         kv_mask = offs_n < KV_CTX
         k_ptrs = k_base + offs_n[:, None] * stride_ks + offs_d[None, :] * stride_kd
         key = tl.load(k_ptrs, mask=kv_mask[:, None], other=0.0)
         qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
-        if USE_SOFTCAP:
-            # softcap: qk = softcap * tanh(qk / softcap).  `tl.tanh` does not
-            # exist in this Triton build; libdevice.tanh does (measured max
-            # abs err 1.9e-06 on fp32).
-            qk = softcap * libdevice.tanh(qk / softcap)
         if USE_CMASK:
             cm = tl.load(cm_base + offs_n[None, :], mask=q_mask[:, None], other=0.0)
-        else:
-            cm = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        if USE_ALIBI:
-            # alibi is an ADDITIVE bias applied AFTER the causal/window mask
-            # (reference order: scale -> softcap -> mask -> +attn_bias).
-            ab = tl.load(ab_base + offs_n[None, :], mask=q_mask[:, None], other=0.0)
-            qk = qk + ab
-        # m is the max over valid cells of the mask-applied qk'.  Kernel B
-        # relies on the invariant (qk' - m) <= 0, so m must never be taken
-        # from a masked cell; the mask is applied arithmetically (cm * 1e29)
-        # and no all-cells max is taken here.
-        qk_sel = qk - cm * 1e29
-        m_i = tl.maximum(m_i, tl.max(qk_sel, 1))
+            qk = qk - cm
+        # m MUST be taken over the mask-applied qk' (NOT the raw qk): the
+        # exponential overflows for positive arguments, so kernel B relies on
+        # the invariant (qk' - m) <= 0.  A positive additive mask
+        # (attn_mask > 0) makes qk' > rowmax(raw qk), which would overflow.
+        m_i = tl.maximum(m_i, tl.max(qk, 1))
         qk_ptrs = qk_base + offs_m[:, None] * K_PAD + offs_n[None, :]
         # separable (1D-broadcast) store mask; n >= KV_CTX stays -1e30.
-        tl.store(qk_ptrs, qk_sel, mask=q_mask[:, None] & (offs_n[None, :] < KV_CTX))
-    # m_i is the max over valid cells.  A row with NO valid cell (fully
-    # masked, e.g. a window row outside its band) must produce an all-zero
-    # row: m_fb + 13 puts every cell below kernel B's -12 cutoff, so p = 0
-    # and out = 0.  Without USE_CMASK there is no mask, so m_i is the plain
-    # row max.
-    if USE_CMASK:
-        # No valid cell in the row (m_i is the -1e29-shifted sentinel): force
-        # m above every cell so kernel B's -12 cutoff zeroes the whole row.
-        m_safe = tl.where(m_i > -1e29, m_i, 1e30)
-    else:
-        m_safe = m_i
+        tl.store(qk_ptrs, qk, mask=q_mask[:, None] & (offs_n[None, :] < KV_CTX))
+    m_safe = tl.maximum(m_i, 0.0)
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_safe, mask=q_mask)
 
@@ -1595,8 +2107,6 @@ def _fa_lout_kernel(
     Out,
     Lse,
     M,
-    DMASK,
-    DBG,
     stride_vb,
     stride_vs,
     stride_vh,
@@ -1609,8 +2119,6 @@ def _fa_lout_kernel(
     KV_CTX,
     K_PAD,
     q_head_num,
-    drop_scale,
-    hz_off,
     GROUP_HEAD: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     PADDED_D: tl.constexpr,
@@ -1619,18 +2127,21 @@ def _fa_lout_kernel(
     D_WIDTH: tl.constexpr,
     D_OFF: tl.constexpr,
     STORE_LSE: tl.constexpr,
-    USE_DROPOUT: tl.constexpr,
-    STORE_DBG: tl.constexpr,
 ):
-    """Pass 2: ``p = exp2((qk' - m) * LOG2E)``, ``out = p @ V / sum(p)``.
+    """Pass 2: ``p = exp(qk' - m)``, ``out = p @ V / sum``.
 
-    The mask is already folded into ``qk'`` by kernel A and the
-    ``n >= KV_CTX`` padding stays at ``-1e30``.  Cells with
-    ``(qk' - m) < -12`` are zeroed explicitly, so a fully masked row
-    contributes nothing.
+    The mask was already folded into ``qk`` by kernel A (``qk' = qk - cmask``)
+    with ``m >= max(qk')`` (so ``(qk' - m) <= 0``), and the ``n >= KV_CTX``
+    padding stays at ``-1e30``.  There is NO branch/load inside the loop: the
+    compiler corrupts the loop-carried ``l_i``/``acc`` otherwise.  The
+    ``tl.where`` zeroes cells with ``(qk' - m) < -12`` explicitly because the
+    exponential underflow is inexact for inputs below ~-11.09: such cells would
+    otherwise leak a small non-zero value into ``l_i`` of short rows.  The
+    threshold is on ``(qk' - m)`` (not ``qk'``) so cells with very negative
+    additive mask biases (e.g. ``attn_mask = -20``) are also zeroed exactly.
     """
     start_m = tl.program_id(0)
-    off_hz = tl.program_id(1) + hz_off
+    off_hz = tl.program_id(1)
     batch_id = off_hz // q_head_num
     head_id = off_hz % q_head_num
     kv_head_id = head_id // GROUP_HEAD
@@ -1644,40 +2155,13 @@ def _fa_lout_kernel(
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, D_WIDTH], dtype=tl.float32)
     qk_base = QK + off_hz * Q_CTX * K_PAD
-    dm_base = DMASK + off_hz * Q_CTX * K_PAD + offs_m[:, None] * K_PAD
     for start_n in range(0, KV_CTX, BLOCK_N):
         offs_n = start_n + tl.arange(0, BLOCK_N)
         kv_mask = offs_n < KV_CTX
         qk_ptrs = qk_base + offs_m[:, None] * K_PAD + offs_n[None, :]
         qk = tl.load(qk_ptrs, mask=q_mask[:, None], other=0.0)
-        p = tl.exp2((qk - m_i[:, None]) * _LOG2E)
+        p = tl.exp(qk - m_i[:, None])
         p = tl.where((qk - m_i[:, None]) > -12.0, p, 0.0)
-        if USE_DROPOUT:
-            # Dropout multiplies the probabilities, so it cannot be folded
-            # into kernel A's additive mask.  `dm` is the keep-mask
-            # (1.0 keep / 0.0 drop); p_drop = p * dm / (1 - dropout_p).
-            dm = tl.load(dm_base + offs_n[None, :], mask=q_mask[:, None], other=0.0)
-            if STORE_DBG:
-                # factor = drop_scale when kept (dm == 1) and -1.0 when dropped.
-                tl.store(
-                    DBG
-                    + off_hz * Q_CTX * K_PAD
-                    + offs_m[:, None] * K_PAD
-                    + offs_n[None, :],
-                    p * tl.where(dm > 0.0, dm * drop_scale, -1.0),
-                    mask=q_mask[:, None] & (offs_n[None, :] < KV_CTX),
-                )
-            p = p * dm * drop_scale
-        else:
-            if STORE_DBG:
-                tl.store(
-                    DBG
-                    + off_hz * Q_CTX * K_PAD
-                    + offs_m[:, None] * K_PAD
-                    + offs_n[None, :],
-                    p,
-                    mask=q_mask[:, None] & (offs_n[None, :] < KV_CTX),
-                )
         v_ptrs = v_base + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd
         value = tl.load(v_ptrs, mask=kv_mask[:, None], other=0.0)
         acc = tl.dot(p.to(value.dtype), value, acc=acc)
@@ -1691,53 +2175,20 @@ def _fa_lout_kernel(
         mask=q_mask[:, None] & d_mask[None, :],
     )
     if STORE_LSE:
-        # Natural log: lse = m + ln(sum(exp2((qk - m) * LOG2E))).
-        lse = m_i + tl.log(l_i)
+        # Store the raw row sum; the LSE post kernel applies ln().
         lse_ptrs = Lse + off_hz * Q_CTX + offs_m
-        tl.store(lse_ptrs, lse, mask=q_mask)
-    # NOTE: the 1/l normalisation of the debug weights is applied by
-    # ``_fa_dbg_norm_kernel`` after this kernel.
+        tl.store(lse_ptrs, l_i, mask=q_mask)
 
 
 @triton.jit
-def _fa_dbg_norm_kernel(
-    DBG,
-    Lse,
-    M,
-    Q_CTX,
-    K_PAD,
-    BLOCK_Q: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    """Apply the row normalisation to the raw signed debug weights.
-
-    ``_fa_lout_kernel`` stores the post-dropout weights with dropped entries
-    negated (the reference flash-attn convention); the normaliser
-    ``l_safe = max(l_i, 1e-30)`` is only known after that kernel's main loop,
-    so it is applied here.  ``lse = m + log(l_i)`` and ``m`` are both in
-    memory, hence ``l_i = exp(lse - m)``.
-    """
-    pid_q = tl.program_id(0)
-    pid_hz = tl.program_id(1)
-    offs_q = pid_q * BLOCK_Q + tl.arange(0, BLOCK_Q)
-    q_mask = offs_q < Q_CTX
-    lse = tl.load(Lse + pid_hz * Q_CTX + offs_q, mask=q_mask, other=0.0)
-    m = tl.load(M + pid_hz * Q_CTX + offs_q, mask=q_mask, other=0.0)
-    l_safe = tl.exp(lse - m)
-    # A row with no valid cell stores lse = -inf and m = 1e30; clamp the
-    # result instead of relying on exp(-inf) == 0.
-    l_safe = tl.where(l_safe > 0.0, l_safe, 1e-30)
-    dbg_base = DBG + pid_hz * Q_CTX * K_PAD
-    for start_k in range(0, K_PAD, BLOCK_K):
-        offs_k = start_k + tl.arange(0, BLOCK_K)
-        k_mask = offs_k < K_PAD
-        ptrs = dbg_base + offs_q[:, None] * K_PAD + offs_k[None, :]
-        d = tl.load(ptrs, mask=q_mask[:, None] & k_mask[None, :], other=0.0)
-        tl.store(
-            ptrs,
-            d / l_safe[:, None],
-            mask=q_mask[:, None] & k_mask[None, :],
-        )
+def _fa_lse_kernel(M, L, N, BLOCK: tl.constexpr):
+    """Convert the raw row sum into natural-log LSE."""
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    m = tl.load(M + offs, mask=mask, other=0.0)
+    row_sum = tl.load(L + offs, mask=mask, other=0.0)
+    lse = tl.where(row_sum > 0.0, m + _ln(row_sum), float("-inf"))
+    tl.store(L + offs, lse, mask=mask)
 
 
 def _fa_pad_d(t, padded):
@@ -1754,6 +2205,7 @@ def _fa_pad_d(t, padded):
 # score matrix and reads it back.
 # ---------------------------------------------------------------------------
 _TILED_GRID_CACHE = {}
+_TILED_HEAD_DIMS = (16, 32, 64, 96, 128, 192, 256)
 
 
 def _tiled_grid_for(seq_q, batch_heads):
@@ -1767,9 +2219,6 @@ def _tiled_grid_for(seq_q, batch_heads):
 
         _TILED_GRID_CACHE[key] = fn
     return fn
-
-
-_TILED_HEAD_DIMS = (16, 32, 64, 96, 128, 192, 256)
 
 
 def _flash_forward_tiled(
@@ -1857,8 +2306,8 @@ def _flash_forward_tiled(
         # `_attn_fwd` initialises its running denominator `l_i` to 1.0, so a row
         # whose every cell is masked comes back as `v[argmax]` rather than 0.
         # The operator contract (and the test's reference) zero those rows and
-        # give them lse = -inf, so patch them here.  This happens only on the
-        # window path with q_len > k_len + window_size_right.
+        # give them lse = -inf.  This happens only on the window path with
+        # q_len > k_len + window_size_right.
         out_t[:, :, :empty_rows, :] = 0
         lse[:, :, :empty_rows] = float("-inf")
     if padded_d != head_dim:
@@ -1890,6 +2339,25 @@ def flash_attention_forward(
     assert (
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "Kunlunxin flash_attention_forward does not support dropout"
+        )
+    if return_debug_mask:
+        raise NotImplementedError(
+            "Kunlunxin flash_attention_forward does not support debug mask"
+        )
+    if softcap > 0.0:
+        # exp2-tanh softcap chain is miscompiled by the XPU backend in every
+        # placement (see the two-pass notes above).
+        raise NotImplementedError(
+            "Kunlunxin flash_attention_forward does not support softcap"
+        )
+    if alibi_slopes is not None:
+        # 0-d loaded scalar x 2D alibi is miscompiled by the XPU backend.
+        raise NotImplementedError(
+            "Kunlunxin flash_attention_forward does not support alibi_slopes"
+        )
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
@@ -1937,8 +2405,8 @@ def flash_attention_forward(
         window_mask = None
         empty_rows = 0
         if need_mask:
-            row = torch.arange(q_len, device=device)[:, None]
-            col = torch.arange(k_len, device=device)[None, :]
+            row = _arange(0, q_len, device=device)[:, None]
+            col = _arange(0, k_len, device=device)[None, :]
             off = k_len - q_len
             valid = torch.ones((q_len, k_len), dtype=torch.bool, device=device)
             if is_causal:
@@ -1947,12 +2415,12 @@ def flash_attention_forward(
                 valid = valid & (col >= (row + off - wl))
             if wr >= 0:
                 valid = valid & (col <= (row + off + wr))
+            window_mask = torch.full(
+                (q_len, k_len), -1.0e4, dtype=query.dtype, device=device
+            )
+            window_mask[valid] = 0.0
             window_mask = (
-                torch.where(
-                    valid,
-                    torch.zeros((), dtype=query.dtype, device=device),
-                    torch.full((), -1.0e4, dtype=query.dtype, device=device),
-                )[None, None]
+                window_mask[None, None]
                 .expand(batch, q_head_num, q_len, k_len)
                 .contiguous()
             )
@@ -1974,7 +2442,7 @@ def flash_attention_forward(
         )
         return tiled_out, tiled_lse, None, None, None
 
-    BLOCK_M = 16
+    BLOCK_M = 32
     BLOCK_N = 32
     k_pad = triton.cdiv(k_len, BLOCK_N) * BLOCK_N
     padded_d = triton.next_power_of_2(head_dim)
@@ -1995,61 +2463,26 @@ def flash_attention_forward(
     # n <= row+off, window bounds, and the n >= k_len padding).  Kernel A
     # folds it into the stored qk (qk' = qk - 50); kernel B zeroes cells with
     # (qk' - m) < -12 explicitly.
-    # The causal/window mask stays a pure 0.0/50.0 tensor: kernel A uses
-    # ``cm == 0`` to identify VALID cells when taking the row max, so the
-    # additive alibi bias must NOT be folded into it (that would make every
-    # cell non-zero and hand the row max to the masked cells, which carry
-    # only a -50 penalty while an alibi bias can push a valid logit hundreds
-    # lower).
-    # The mask is ALWAYS built on this path: kernel A takes its row max over
-    # unmasked cells only, so padding (n >= k_len) must carry the 50.0 marker
-    # even when there is no causal/window mask.
-    use_cmask = True
-    use_alibi = alibi_slopes is not None
     cmask = None
-    if use_cmask:
+    if is_causal or has_window:
         cmask2d = torch.full((q_len, k_pad), 50.0, dtype=torch.float32, device=device)
-        rows = torch.arange(q_len, device=device)[:, None]
-        cols = torch.arange(k_pad, device=device)[None, :]
+        rows = _arange(0, q_len, device=device)[:, None]
+        cols = _arange(0, k_pad, device=device)[None, :]
         off = k_len - q_len
         if is_causal:
             valid = cols <= (rows + off)
         else:
-            # Full (q_len, k_pad) shape: a (1, k_pad) mask does not broadcast
-            # on boolean assignment, so it would leave the 50.0 fill in place.
-            valid = torch.ones((q_len, k_pad), dtype=torch.bool, device=device)
+            valid = torch.ones_like(cols, dtype=torch.bool)
         if wl >= 0:
             valid = valid & (cols >= (rows + off - wl))
         if wr >= 0:
             valid = valid & (cols <= (rows + off + wr))
         cmask2d[valid] = 0.0
-        # Padding columns (n >= k_len) always carry the masked marker so they
-        # cannot enter the row max (they load k = 0 and would contribute 0.0).
-        if k_pad > k_len:
-            cmask2d[:, k_len:] = 50.0
         # Materialize the dense (B*H, Q, K_PAD) layout the kernel indexes
         # (off_hz * Q_CTX * K_PAD + m * K_PAD + n); head-independent.
         cmask = (
             cmask2d.unsqueeze(0).expand(batch * q_head_num, q_len, k_pad).contiguous()
         )
-    # alibi: dense additive (B*H, Q, K_PAD) f32 bias, built with exactly the
-    # semantics of tests/test_flash_attention.py::attn_bias_from_alibi_slopes
-    # (causal: slopes * arange(-k+1, 1); else -slopes * |m + k - q - n|).
-    alibi_bias = None
-    if use_alibi:
-        slopes = alibi_slopes.to(device=device, dtype=torch.float32)
-        if slopes.dim() == 1:
-            slopes = slopes.unsqueeze(0).expand(batch, -1)
-        slopes = slopes.reshape(batch, q_head_num)
-        cols_f = torch.arange(k_pad, device=device, dtype=torch.float32)[None, :]
-        if is_causal:
-            bias = slopes[:, :, None] * (cols_f - (k_len - 1))
-            bias = bias[:, :, None, :].expand(batch, q_head_num, q_len, k_pad)
-        else:
-            rows_f = torch.arange(q_len, device=device, dtype=torch.float32)[:, None]
-            rel = (rows_f + (k_len - q_len) - cols_f).abs()
-            bias = -slopes[:, :, None, None] * rel[None, None, :, :]
-        alibi_bias = bias.reshape(batch * q_head_num, q_len, k_pad).contiguous()
 
     # qk scratch prefilled with -1e30: exp2(-1e30) underflows to exactly 0.0
     # (the backend miscompiles exp2(-inf) to nan/inf).
@@ -2058,23 +2491,6 @@ def flash_attention_forward(
     )
     m_buf = torch.empty((batch, q_head_num, q_len), dtype=torch.float32, device=device)
     grid = (triton.cdiv(q_len, BLOCK_M), batch * q_head_num)
-    # Dropout multiplies the probabilities, so it cannot be folded into the
-    # additive mask of kernel A; the keep-mask is applied in kernel B.
-    drop_mask = None
-    drop_scale = 1.0
-    if dropout_p != 0.0:
-        drop_mask = (
-            torch.rand(
-                (batch * q_head_num, q_len, k_pad), device=device, dtype=torch.float32
-            )
-            >= dropout_p
-        ).to(torch.float32)
-        drop_scale = 1.0 / (1.0 - dropout_p)
-    debug_softmax = None
-    if return_debug_mask:
-        debug_softmax = torch.empty(
-            (batch * q_head_num, q_len, k_pad), dtype=torch.float32, device=device
-        )
     common = dict(
         GROUP_HEAD=q_head_num // kv_head_num,
         HEAD_DIM=head_dim,
@@ -2088,10 +2504,8 @@ def flash_attention_forward(
             k_in,
             qk_buf,
             m_buf,
-            cmask if use_cmask else qk_buf,
-            alibi_bias if use_alibi else qk_buf,
+            cmask if (is_causal or has_window) else qk_buf,
             softmax_scale,
-            softcap,
             q_in.stride(0),
             q_in.stride(1),
             q_in.stride(2),
@@ -2104,64 +2518,41 @@ def flash_attention_forward(
             k_len,
             k_pad,
             q_head_num,
-            USE_CMASK=use_cmask,
-            USE_SOFTCAP=softcap > 0.0,
-            USE_ALIBI=use_alibi,
+            USE_CMASK=(is_causal or has_window),
             num_warps=8,
             num_stages=1,
             **common,
         )
         d_off = 0
-        _hz_chunk = max(1, _FA_MAX_PROGRAMS // grid[0])
         while d_off < padded_d:
-            for _h0 in range(0, batch * q_head_num, _hz_chunk):
-                _n = min(_hz_chunk, batch * q_head_num - _h0)
-                _fa_lout_kernel[(grid[0], _n)](
-                    qk_buf,
-                    v_in,
-                    out,
-                    lse,
-                    m_buf,
-                    drop_mask if drop_mask is not None else qk_buf,
-                    debug_softmax if debug_softmax is not None else qk_buf,
-                    v_in.stride(0),
-                    v_in.stride(1),
-                    v_in.stride(2),
-                    v_in.stride(3),
-                    out.stride(0),
-                    out.stride(1),
-                    out.stride(2),
-                    out.stride(3),
-                    q_len,
-                    k_len,
-                    k_pad,
-                    q_head_num,
-                    drop_scale,
-                    _h0,
-                    D_WIDTH=min(128, padded_d - d_off),
-                    D_OFF=d_off,
-                    STORE_LSE=(d_off == 0),
-                    USE_DROPOUT=dropout_p != 0.0,
-                    STORE_DBG=(return_debug_mask and d_off == 0),
-                    num_warps=8,
-                    num_stages=1,
-                    **common,
-                )
-            d_off += 128
-        if return_debug_mask:
-            _fa_dbg_norm_kernel[(triton.cdiv(q_len, 32), batch * q_head_num)](
-                debug_softmax,
+            _fa_lout_kernel[grid](
+                qk_buf,
+                v_in,
+                out,
                 lse,
                 m_buf,
+                v_in.stride(0),
+                v_in.stride(1),
+                v_in.stride(2),
+                v_in.stride(3),
+                out.stride(0),
+                out.stride(1),
+                out.stride(2),
+                out.stride(3),
                 q_len,
+                k_len,
                 k_pad,
-                BLOCK_Q=32,
-                BLOCK_K=128,
-                num_warps=4,
+                q_head_num,
+                D_WIDTH=min(128, padded_d - d_off),
+                D_OFF=d_off,
+                STORE_LSE=(d_off == 0),
+                num_warps=8,
                 num_stages=1,
+                **common,
             )
+            d_off += 128
 
-    return out, lse, None, None, debug_softmax
+    return out, lse, None, None, None
 
 
 # Adapted from https://github.com/vllm-project/flash-attention/blob/main/vllm_flash_attn/flash_attn_interface.py
@@ -2377,20 +2768,19 @@ def flash_attn_varlen_opt_func(
 ):
     """Kunlunxin override for ``flash_attn_varlen_opt_func``.
 
-    The generic implementation routes to ``flag_gems.ops.flash_api``, which
-    owns a second copy of ``flash_varlen_fwd_kernel``.  That copy is a
-    separate compilation unit and does not carry the backend's kernel fixes,
-    so both the ``flash_attn_varlen_func`` and the ``flash_attn_varlen_opt_func``
-    markers would have to be repaired twice.  This override keeps a single
-    source of truth by delegating to the backend-local
+    The generic implementation routes to ``flag_gems.ops.flash_api``, which owns
+    a second copy of ``flash_varlen_fwd_kernel``.  That copy is a separate
+    compilation unit and does not carry the backend's kernel fixes, so this
+    override keeps a single source of truth by delegating to the backend-local
     :func:`flash_attn_varlen_func`.
 
     The ``opt`` entry point carries extra optional parameters that only its
-    generic path uses (``lse``, ``s_aux``, the context-parallel triplet).
-    They are accepted for signature compatibility, but this backend does not
+    generic path uses (``lse``, ``s_aux``, the context-parallel triplet).  They
+    are accepted for signature compatibility, but this backend does not
     implement them: rather than silently ignoring a caller-supplied output
     buffer or an unsupported mode, each is refused explicitly.
     """
+    logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_OPT_FUNC")
     if lse is not None:
         raise NotImplementedError(
             "Kunlunxin flash_attn_varlen_opt_func does not support a "

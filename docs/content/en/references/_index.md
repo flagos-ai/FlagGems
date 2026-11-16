@@ -19,3 +19,13 @@ bookCollapseSection: true
  See the License for the specific language governing permissions and
  limitations under the License.
  -->
+
+# References
+
+This section provides technical references, operator inventories, and project specifications for *FlagGems*:
+
+- **[Supported Operators](operators.md)**: Explore the catalogue of stable mathematical, reduction, linear algebra, and fused operators.
+- **[Experimental Operators](experimental.md)**: Explore operators currently incubating under the experimental stage.
+- **[Project Structure](project_structure.md)**: Overview of repository layout and modular organization.
+- **[Build and Configuration Options Reference](../getting-started/build-options.md)**: Detailed specifications for hardware backends, environment variables, CMake options, and build tools.
+- **[Changelog](changelog.md)**: Version release notes and migration history.

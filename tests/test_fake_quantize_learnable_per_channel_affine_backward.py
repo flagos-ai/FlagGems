@@ -92,6 +92,19 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
     grad, self_t, scale, zero_point = _gen_inputs(
         shape, axis, torch.float32, quant_max, sat_factor, grad_factor
     )
+    # An exact fp32 .5 tie in x * (1 / scale) rounds half-to-even in a float32
+    # kernel, but a reference that keeps more precision may land on the other
+    # side; at the clamp boundary that flips dX between grad and 0 and shifts
+    # the channel's dScale/dZeroPoint. Nudge such inputs off the tie.
+    view = [1] * len(shape)
+    view[axis] = -1
+    inv_scale = (1.0 / scale).view(view)
+    for _ in range(4):
+        scaled = self_t * inv_scale
+        tie = (scaled - torch.floor(scaled)) == 0.5
+        if not tie.any():
+            break
+        self_t = torch.where(tie, torch.nextafter(self_t, self_t + 1), self_t)
 
     ref_grad = utils.to_reference(grad)
     ref_self = utils.to_reference(self_t)

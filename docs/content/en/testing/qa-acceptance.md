@@ -164,5 +164,5 @@ the workflow manually (**Actions -> ops-test -> Run workflow**) and fill in
 the inputs described above: `branch`, `vendors`, `ops`, `upload_log`, and
 `send_feishu`.
 
-See [Testing Python Operators](../unittest) for the lower-level `pytest`
+See [Testing Python Operators](unittest.md) for the lower-level `pytest`
 options that `tools/run_tests.py` drives under the hood.

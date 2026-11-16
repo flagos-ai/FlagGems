@@ -272,4 +272,4 @@ See [Testing Python Operators](../unittest) for the lower-level `pytest`
 options that `tools/run_tests.py` drives under the hood.
 -->
 关于 `tools/run_tests.py` 底层所调用的 `pytest` 选项，请参阅
-[测试 Python 算子](../unittest)。
+[测试 Python 算子](unittest.md)。

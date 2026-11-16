@@ -19,103 +19,37 @@ weight: 20
  limitations under the License.
  -->
 
-<!--
-# Performance Benchmarking in FlagGems
+# 算子性能基准测试开发指南
 
-It is recommended to follow the steps below to add test cases for a new operator.
-These steps apply to Python-based operators as well as C++-wrapped operators.
--->
-# FlagGems 中的性能基准测试
+在为 *FlagGems* 贡献新算子或优化现有实现时，建议遵循以下标准步骤为其编写性能评测用例。本规范同时适用于 Python 算子与 C++ 封装算子。
 
-我们建议开发者基于下面的过程来为新的算子添加测试用例。
-这些步骤既适用于 Python 实现的算子，也适用于 C++ 封装的算子。
-
-<!--
-1. **Select the appropriate test file**
-1. **Check existing benchmark classes**
-1. **Add test cases**
--->
 {{% steps %}}
 
-1. **选择合适的测试用例文件**
-   <!--
-   Based on the type of operator, choose the corresponding file in the `benchmark`
-   directory:
+1. **定位并选择对应的评测脚本**
 
-   - For reduction operators, add the test case to `test_reduction_perf.py`.
-   - For tensor constructor operators, add the test case to `test_tensor_constructor_perf.py`.
-   - If the operator doesn't fit into an existing category, you can add it to `test_special_perf.py`
-     or create a new file for the new operator category.
-   -->
-   基于要测试的算子类型，在 `benchmark/` 目录下选择对应的文件：
+   根据待测算子的数学运算特征，在仓库的 `benchmark/` 目录下匹配对应的测试文件：
+   - 规约类算子（Reduction）：添加到 `test_reduction_perf.py`；
+   - 张量构造类算子（Tensor Constructor）：添加到 `test_tensor_constructor_perf.py`；
+   - 逐元素一元/二元算子：分别添加到 `test_unary_pointwise_perf.py` 或 `test_binary_pointwise_perf.py`；
+   - 其他特种或复合算子：可添加到 `test_special_perf.py`，或按功能新建独立的评测脚本。
 
-   - 对于 *reduction（规约）* 算子，可以将测试用例添加到 `test_reduction_perf.py`。
-   - 对于 Tensor（张量）构造算子，可以将测试用例添加到 `test_tensor_constructor_perf.py` 文件中。
-   - 如果算子无法归类到以上类别，可以将测试用例添加到 `test_special_perf.py` 中，
-     或者为新的算子类型添加一个新文件。
+2. **评估复用现有的 Benchmark 基类**
 
-2. **查阅现有的基准测试类**
+   选定文件后，查阅该文件中继承自 `Benchmark` 的现有评测类，评估是否可直接复用：
+   - **指标采集维度（Metric Collection）**：耗时（Latency/ms）、显存吞吐量（GB/s）或算力利用率（TFLOPS）是否契合；
+   - **输入生成逻辑（Input Generator）**：现有的 `input_generator` 或 `input_fn` 是否支持生成目标算子所需的输入参数与跨步（Stride）。
 
-   <!--
-   Once you've identified the correct file, review the existing classes that inherit
-   from the `Benchmark` structure to see if any fit the test scenario for your operator,
-   specifically considering:
+3. **添加算子评测用例**
 
-   - Whether the **metric collection** is suitable.
-   - Whether the **input generation function** (`input_generator` or `input_fn`) is appropriate.
-   -->
+   根据实际需求，采用以下三种适配路径之一：
 
-   一旦你确定了合适的测试文件，可以先查阅现有的、从 `Benchmark` 结构派生而来的测试类，
-   了解现有的测试类是否能够满足你的算子的测试需要。主要考察点包括：
+   - **路径 A：直接复用已有指标与输入生成器**
+     若现有测试类的指标与输入生成规则完全满足需求，只需在算子列表字典或 `pytest.mark.parametrize` 参数列表中追加待测算子配置即可。
 
-   - 是否其中实现的指标搜集（metric collection）动作符合需要；
-   - 是否其中的输入生成函数（`input_generator` 或 `input_fn`）的实现满足需要。
+   - **路径 B：自定义输入生成函数（Custom Input Generator）**
+     当指标统计通用但需要特定的数据分布或非常规参数时，可在类中传入自定义的 `input_fn`。例如 `test_special_perf.py` 中为 `topk` 算子定制的 `topk_input_fn`。
 
-3. **添加测试用例**
+   - **路径 C：继承扩展专属 Benchmark 类**
+     对于复杂算子（如 FlashAttention、MoE 分发对齐等），建议派生独立的 `Benchmark` 子类，定义专用的吞吐计算公式与复杂的参数生成逻辑。可参考 `benchmark/` 下各专用算子的子类实现。
 
-   <!--
-   Depending on the test scenario, follow one of the approaches below to add the test case:
-
-   - **Using existing metric and input generator**
-
-      If the existing metric collection and input generation function meet the requirements of your operator,
-      you can add a line of `pytest.mark.parametrize` directly, following the code organization in the file.
-      For example, see the operators in `test_binary_pointwise_perf.py`.
-   -->
-   取决于具体的测试场景，按以下方法之一来添加测试用例：
-
-   - **使用现有的指标和输入生成逻辑**
-
-     如果现有的指标采集和输入生成函数满足你的算子的需求，你可以直接添加一行
-     `pytest.mark.parametrize`，保持文件中的代码组织不变。
-     你可以在 `test_binary_pointwise_perf.py` 文件中查阅此类实现的例子。
-
-   <!--
-   - **Custom input generator**
-
-     If the metric collection is suitable but the input generation function does not meet the operator's requirements,
-     you can implement a custom `input_generator`.
-     Refer to the `topk_input_fn` function in `test_special_perf.py` as an example of a custom input function
-     for the `topk` operator.
-   -->
-   - **定制输入生成机制**
-
-     如果指标采集逻辑合适，但输入生成函数不满足算子的需求，你可以实现一个定制的 `input_generator`。
-     你可以参照 `test_special_perf.py` 文件中的 `topk_input_fn` 实现，
-     了解如何为 `topk` 算子添加一个自定义的输入参数生成函数。
-
-   <!--
-   - **Custom metric and input generator**
-
-     If neither the existing metric collection nor the input generation function meets the operator's needs,
-     you can create a new class. The new class should define operator-specific metric collection logic
-     and a custom input generator. You can refer to various `Benchmark` subclasses across the `benchmark` directory
-     for examples.
-   -->
-   - **自定义指标采集和输入生成函数**
-
-     如果现有的指标采集机制和输入生成函数都无法满足算子的需求，
-     你可以创建一个新的测试类。新的测试类要为算子定义特定的指标采集逻辑，
-     以及一个自定义的输入参数生成函数。
-     你可以参照 `benchmark/` 目录下不同的 `Benchmark` 子类，了解这类定制的机制。
 {{% /steps %}}

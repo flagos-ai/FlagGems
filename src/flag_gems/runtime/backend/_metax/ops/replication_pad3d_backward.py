@@ -12,179 +12,450 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-import math
-
 import torch
+import triton
 import triton.language as tl
 
-logger = logging.getLogger(__name__)
+_TILE_CONFIGS = [
+    triton.Config({"BH": 16, "BW": 32}, num_warps=2, num_stages=1),
+    triton.Config({"BH": 16, "BW": 16}, num_warps=2, num_stages=1),
+    triton.Config({"BH": 16, "BW": 8}, num_warps=2, num_stages=1),
+    triton.Config({"BH": 8, "BW": 16}, num_warps=2, num_stages=1),
+    triton.Config({"BH": 8, "BW": 8}, num_warps=2, num_stages=1),
+    triton.Config({"BH": 8, "BW": 8}, num_warps=1, num_stages=1),
+    triton.Config({"BH": 16, "BW": 8}, num_warps=4, num_stages=1),
+    triton.Config({"BH": 8, "BW": 16}, num_warps=4, num_stages=1),
+]
 
 
-def _repad3d_bwd_gather(
-    grad_out_ptr,
-    grad_in_ptr,
-    ACC: tl.constexpr,
-    D_in: tl.constexpr,
-    H_in: tl.constexpr,
-    W_in: tl.constexpr,
-    D_out: tl.constexpr,
-    H_out: tl.constexpr,
-    W_out: tl.constexpr,
-    PF: tl.constexpr,
-    PT: tl.constexpr,
-    PL: tl.constexpr,
-    PR: tl.constexpr,
-    MAX_D: tl.constexpr,
-    MAX_H: tl.constexpr,
-    MAX_WP: tl.constexpr,
-    MAX_WB: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+@triton.jit
+def _rep_pad3d_bwd_body(
+    go_ptr,
+    out_ptr,
+    D,
+    H,
+    W,
+    Od,
+    Oh,
+    Ow,
+    pf,
+    pt,
+    pl,
+    sN,
+    sC,
+    sD,
+    sH,
+    sW,
+    C,
+    W1: tl.constexpr,
+    FLAT: tl.constexpr,
+    IDX64: tl.constexpr,
+    F64: tl.constexpr,
+    BH: tl.constexpr,
+    BW: tl.constexpr,
 ):
-    # grid: (cdiv(W_in, BLOCK_W), H_in * B * D_in)
-    # One program handles BLOCK_W input voxels of one input row (b, d, h, w).
-    # Backward of replicate-pad forward: grad of input voxel (d,h,w) is the sum
-    # of grad_output over the box of output positions that map onto it.
-    #   d_out in [lo_d, lo_d+cnt_d), h_out in [lo_h, lo_h+cnt_h); along W the
-    #   contribution is a contiguous run [w+pl .. w+pl+cnt_w) handled as a
-    #   shifted load plus front/back corrections (pl and pr element windows).
-    # Static d/h loops with scalar runtime `if` guards: interior rows execute
-    # exactly one body iteration (no masked-iteration waste).
-    # All shapes and pads are constexpr: boundary chains, row decode, and
-    # stride arithmetic fold to constants per workload.
-    pid_w = tl.program_id(0)
-    row = tl.program_id(1)
+    NT_W = tl.cdiv(W, BW)
+    NT_H = tl.cdiv(H, BH)
+    pid = tl.program_id(0)
+    wt = pid % NT_W
+    r = pid // NT_W
+    ht = r % NT_H
+    r2 = r // NT_H
+    d = r2 % D
+    nc = r2 // D
 
-    h = row % H_in
-    plane = row // H_in
-    d = plane % D_in
-    b = plane // D_in
+    if IDX64:
+        ncl = nc.to(tl.int64)
+    else:
+        ncl = nc
+    if FLAT:
+        base = ncl * sC
+    else:
+        base = (ncl // C) * sN + (ncl % C) * sC
 
-    w = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
-    wmask = w < W_in
-    vmask = wmask & (w + PL >= 0)
-    kp = tl.arange(0, MAX_WP)
-    kb = tl.arange(0, MAX_WB)
+    h0 = ht * BH
+    w0 = wt * BW
+    h = h0 + tl.arange(0, BH)
+    w = w0 + tl.arange(0, BW)
+    if W1:
+        w = tl.max_contiguous(tl.multiple_of(w, BW), BW)
+    hmask = h < H
+    wmask = w < W
 
-    lo_d = tl.where(
-        D_in == 1,
+    # Offset ranges centred on the natural index (i + pad).  A tile that touches
+    # the low edge also needs the t<0 side, a tile that touches the high edge the
+    # t>0 side.  min/max with 0 keeps the t=0 interior lane reachable for
+    # negative pads.
+    lo_d = tl.minimum(-pf, 0) if d == 0 else 0
+    hi_d = tl.maximum(Od - D - pf, 0) if d == D - 1 else 0
+    lo_h = tl.minimum(-pt, 0) if h0 == 0 else 0
+    hi_h = tl.maximum(Oh - H - pt, 0) if h0 + BH >= H else 0
+    lo_w = tl.minimum(-pl, 0) if w0 == 0 else 0
+    hi_w = tl.maximum(Ow - W - pl, 0) if w0 + BW >= W else 0
+
+    # Per-axis decomposition.  For an offset t != 0 on the h (resp. w) axis the
+    # clamp predicate clamp(i + t, 0, I - 1) == i admits exactly one lane, i = 0
+    # for t < 0 and i = I - 1 for t > 0, so those contributions are a single row
+    # (resp. column) and are accumulated in 1-D and folded in once at the end.
+    # Only extra od offsets are genuinely full-plane work.
+    if F64:
+        acc = tl.zeros((BH, BW), dtype=tl.float64)
+        rt = tl.zeros((BW,), dtype=tl.float64)
+        rb = tl.zeros((BW,), dtype=tl.float64)
+        cl = tl.zeros((BH,), dtype=tl.float64)
+        cr = tl.zeros((BH,), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BH, BW), dtype=tl.float32)
+        rt = tl.zeros((BW,), dtype=tl.float32)
+        rb = tl.zeros((BW,), dtype=tl.float32)
+        cl = tl.zeros((BH,), dtype=tl.float32)
+        cr = tl.zeros((BH,), dtype=tl.float32)
+
+    for td in range(lo_d, hi_d + 1):
+        od = d + pf + td
+        odv = (od >= 0) & (od < Od) & (tl.minimum(tl.maximum(od - pf, 0), D - 1) == d)
+        p_d = base + od * sD
+
+        # th == 0: the whole h tile is active, so w offsets are either the full
+        # tile (tw == 0) or a single column (tw != 0).
+        oh = h + pt
+        hv = (
+            (oh >= 0)
+            & (oh < Oh)
+            & (tl.minimum(tl.maximum(oh - pt, 0), H - 1) == h)
+            & hmask
+        )
+        p_h = p_d + oh * sH
+        ow0 = w + pl
+        wv0 = (
+            (ow0 >= 0)
+            & (ow0 < Ow)
+            & (tl.minimum(tl.maximum(ow0 - pl, 0), W - 1) == w)
+            & wmask
+        )
+        if W1:
+            owv0 = tl.max_contiguous(ow0, BW)
+        else:
+            owv0 = ow0
+        acc += tl.load(
+            go_ptr + p_h[:, None] + owv0[None, :] * sW,
+            mask=hv[:, None] & wv0[None, :] & odv,
+            other=0.0,
+        )
+        for tw in range(lo_w, 0):
+            ows = pl + tw
+            wok = (
+                (ows >= 0)
+                & (ows < Ow)
+                & (tl.minimum(tl.maximum(ows - pl, 0), W - 1) == 0)
+                & odv
+            )
+            cl += tl.load(go_ptr + p_h + ows * sW, mask=hv & wok, other=0.0)
+        for tw in range(1, hi_w + 1):
+            ows = W - 1 + pl + tw
+            wok = (
+                (ows >= 0)
+                & (ows < Ow)
+                & (tl.minimum(tl.maximum(ows - pl, 0), W - 1) == W - 1)
+                & odv
+            )
+            cr += tl.load(go_ptr + p_h + ows * sW, mask=hv & wok, other=0.0)
+
+        # th < 0: every offset lands on the h == 0 row.
+        for th in range(lo_h, 0):
+            ohs = pt + th
+            hok = (
+                (ohs >= 0)
+                & (ohs < Oh)
+                & (tl.minimum(tl.maximum(ohs - pt, 0), H - 1) == 0)
+                & odv
+            )
+            p_r = p_d + ohs * sH
+            for tw in range(lo_w, hi_w + 1):
+                ow = w + pl + tw
+                wv = (
+                    (ow >= 0)
+                    & (ow < Ow)
+                    & (tl.minimum(tl.maximum(ow - pl, 0), W - 1) == w)
+                    & wmask
+                )
+                if W1:
+                    owv = tl.max_contiguous(ow, BW)
+                else:
+                    owv = ow
+                rt += tl.load(go_ptr + p_r + owv * sW, mask=wv & hok, other=0.0)
+
+        # th > 0: every offset lands on the h == H-1 row.
+        for th in range(1, hi_h + 1):
+            ohs = H - 1 + pt + th
+            hok = (
+                (ohs >= 0)
+                & (ohs < Oh)
+                & (tl.minimum(tl.maximum(ohs - pt, 0), H - 1) == H - 1)
+                & odv
+            )
+            p_r = p_d + ohs * sH
+            for tw in range(lo_w, hi_w + 1):
+                ow = w + pl + tw
+                wv = (
+                    (ow >= 0)
+                    & (ow < Ow)
+                    & (tl.minimum(tl.maximum(ow - pl, 0), W - 1) == w)
+                    & wmask
+                )
+                if W1:
+                    owv = tl.max_contiguous(ow, BW)
+                else:
+                    owv = ow
+                rb += tl.load(go_ptr + p_r + owv * sW, mask=wv & hok, other=0.0)
+
+    acc += tl.where((h == 0)[:, None], rt[None, :], 0.0)
+    acc += tl.where((h == H - 1)[:, None], rb[None, :], 0.0)
+    acc += tl.where((w == 0)[None, :], cl[:, None], 0.0)
+    acc += tl.where((w == W - 1)[None, :], cr[:, None], 0.0)
+
+    hw = h[:, None] * W + w[None, :]
+    if IDX64:
+        o_off = ((nc.to(tl.int64) * D + d) * H) * W + hw
+    else:
+        o_off = ((nc * D + d) * H) * W + hw
+    tl.store(out_ptr + o_off, acc, mask=hmask[:, None] & wmask[None, :])
+
+
+# dense-grad_output fast path: the strides follow from the shape, so the launch
+# carries 9 scalar args instead of 15.  The channel stride is Od*Oh*Ow (the
+# grad_output plane count), not D*H*W.
+@triton.autotune(
+    configs=_TILE_CONFIGS,
+    key=["DT", "D", "H", "W", "Od", "Oh", "Ow", "pf", "pt", "pl"],
+    warmup=10,
+    rep=25,
+)
+@triton.jit
+def _rep_pad3d_bwd_c(
+    go_ptr,
+    out_ptr,
+    DT: tl.constexpr,
+    D,
+    H,
+    W,
+    Od,
+    Oh,
+    Ow,
+    pf,
+    pt,
+    pl,
+    F64: tl.constexpr,
+    BH: tl.constexpr,
+    BW: tl.constexpr,
+):
+    _rep_pad3d_bwd_body(
+        go_ptr,
+        out_ptr,
+        D,
+        H,
+        W,
+        Od,
+        Oh,
+        Ow,
+        pf,
+        pt,
+        pl,
         0,
-        tl.where(d == 0, 0, tl.where(d == D_in - 1, D_in - 1 + PF, d + PF)),
-    )
-    cnt_d = tl.where(
-        D_in == 1,
-        D_out,
-        tl.where(d == 0, PF + 1, tl.where(d == D_in - 1, D_out - (D_in - 1 + PF), 1)),
-    )
-    lo_h = tl.where(
-        H_in == 1,
-        0,
-        tl.where(h == 0, 0, tl.where(h == H_in - 1, H_in - 1 + PT, h + PT)),
-    )
-    cnt_h = tl.where(
-        H_in == 1,
-        H_out,
-        tl.where(h == 0, PT + 1, tl.where(h == H_in - 1, H_out - (H_in - 1 + PT), 1)),
+        Od * Oh * Ow,
+        Oh * Ow,
+        Ow,
+        1,
+        1,
+        True,
+        True,
+        False,
+        F64,
+        BH,
+        BW,
     )
 
-    in_off = (b * D_in + d) * H_in * W_in + h * W_in + w
-    out_base = (b * D_out) * H_out * W_out
 
-    acc = tl.zeros([BLOCK_W], dtype=ACC)
-    for td in tl.static_range(MAX_D):
-        if td < cnt_d:
-            do = lo_d + td
-            for th in tl.static_range(MAX_H):
-                if th < cnt_h:
-                    ho = lo_h + th
-                    base = out_base + do * (H_out * W_out) + ho * W_out
-                    acc += tl.load(
-                        grad_out_ptr + base + w + PL, mask=vmask, other=0.0
-                    ).to(ACC)
-                    if PL >= 1:
-                        f = tl.sum(
-                            tl.load(
-                                grad_out_ptr + base + kp, mask=kp < PL, other=0.0
-                            ).to(ACC)
-                        )
-                        acc += tl.where(w == 0, f, 0.0)
-                    if PR >= 1:
-                        bsum = tl.sum(
-                            tl.load(
-                                grad_out_ptr + base + W_in + PL + kb,
-                                mask=(kb < PR) & (W_in + PL + kb >= 0),
-                                other=0.0,
-                            ).to(ACC)
-                        )
-                        acc += tl.where(w == W_in - 1, bsum, 0.0)
-    tl.store(grad_in_ptr + in_off, acc, mask=wmask)
-
-
-def _next_pow2(x):
-    return 1 << (x - 1).bit_length()
+@triton.autotune(
+    configs=_TILE_CONFIGS,
+    key=["DT", "W1", "D", "H", "W", "Od", "Oh", "Ow", "pf", "pt", "pl"],
+    warmup=10,
+    rep=25,
+)
+@triton.jit
+def _rep_pad3d_bwd_g(
+    go_ptr,
+    out_ptr,
+    DT: tl.constexpr,
+    D,
+    H,
+    W,
+    Od,
+    Oh,
+    Ow,
+    pf,
+    pt,
+    pl,
+    sN,
+    sC,
+    sD,
+    sH,
+    sW,
+    C,
+    W1: tl.constexpr,
+    IDX64: tl.constexpr,
+    F64: tl.constexpr,
+    BH: tl.constexpr,
+    BW: tl.constexpr,
+):
+    _rep_pad3d_bwd_body(
+        go_ptr,
+        out_ptr,
+        D,
+        H,
+        W,
+        Od,
+        Oh,
+        Ow,
+        pf,
+        pt,
+        pl,
+        sN,
+        sC,
+        sD,
+        sH,
+        sW,
+        C,
+        W1,
+        False,
+        IDX64,
+        F64,
+        BH,
+        BW,
+    )
 
 
 def replication_pad3d_backward(grad_output, self, padding):
-    # ATen replication_pad3d_backward: self (*, D, H, W), grad_output (*, D+pf+pbk, H+pt+pb, W+pl+pr)
-    # padding: (pl, pr, pt, pb, pf, pbk)
-    if tuple(grad_output.shape[:-3]) != tuple(self.shape[:-3]):
-        raise ValueError("grad_output and self must have matching leading dimensions")
-    spatial = self.shape[-3:]
-    D, H, W = int(spatial[0]), int(spatial[1]), int(spatial[2])
-    B = int(math.prod(self.shape[:-3])) if self.dim() > 3 else 1
-    pl, pr, pt, pb, pf, pbk = (int(p) for p in padding)
-    D_out = D + pf + pbk
-    H_out = H + pt + pb
-    W_out = W + pl + pr
-    if tuple(grad_output.shape[-3:]) != (D_out, H_out, W_out):
+    og = grad_output.shape
+    sg = self.shape
+    nd = len(og)
+    if nd != 4 and nd != 5:
         raise ValueError(
-            f"grad_output spatial shape {tuple(grad_output.shape[-3:])} "
-            f"does not match expected {(D_out, H_out, W_out)}."
+            "replication_pad3d_backward expects a 4D or 5D grad_output, got %dD" % nd
         )
+    if len(sg) != nd or og[:-3] != sg[:-3]:
+        raise ValueError(
+            "grad_output and self must have matching leading dimensions, got %s and %s"
+            % (tuple(og[:-3]), tuple(sg[:-3]))
+        )
+    try:
+        pl, pr, pt, pb, pf, pbk = padding
+        if not isinstance(pl, int):
+            raise TypeError
+    except Exception:
+        pad = [int(p) for p in padding]
+        if len(pad) != 6:
+            raise ValueError(
+                "replication_pad3d_backward expects 6 padding values, got %d" % len(pad)
+            )
+        pl, pr, pt, pb, pf, pbk = pad
 
-    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
-    numel = out.numel()
-    if numel == 0 or grad_output.numel() == 0:
+    D = sg[-3]
+    H = sg[-2]
+    W = sg[-1]
+    Od = og[-3]
+    Oh = og[-2]
+    Ow = og[-1]
+
+    if nd == 5:
+        C = sg[1]
+        NC = sg[0] * C
+    else:
+        C = sg[0]
+        NC = C
+
+    dt = grad_output.dtype
+    out = torch.empty(sg, dtype=dt, device=grad_output.device)
+
+    if D <= 0 or H <= 0 or W <= 0 or NC <= 0:
         return out
 
-    go = grad_output.contiguous()
-    dtype = self.dtype
-
-    if dtype in (torch.float16, torch.bfloat16, torch.float32):
-        acc = tl.float32
-    elif dtype == torch.float64:
-        acc = tl.float64
+    if dt == torch.float16:
+        dt_code = 0
+    elif dt == torch.float32:
+        dt_code = 1
+    elif dt == torch.bfloat16:
+        dt_code = 2
     else:
-        raise TypeError(f"unsupported dtype {dtype}")
+        dt_code = 3
+    f64 = dt == torch.float64
 
-    maxd = D_out if D == 1 else max(pf + 1, pbk + 1, 1)
-    maxh = H_out if H == 1 else max(pt + 1, pb + 1, 1)
-    maxwp = max(1, 1 << (max(pl, 0) - 1).bit_length()) if max(pl, 0) > 0 else 1
-    maxwb = max(1, 1 << (max(pr, 0) - 1).bit_length()) if max(pr, 0) > 0 else 1
-    block_w = min(1024, max(16, _next_pow2(W)))
-    num_warps = max(1, min(8, block_w // 64))
-    grid = ((W + block_w - 1) // block_w, H * B * D)
-    with torch.cuda.device(go.device):
-        _repad3d_bwd_gather[grid](
-            go,
-            out,
-            ACC=acc,
-            D_in=D,
-            H_in=H,
-            W_in=W,
-            D_out=D_out,
-            H_out=H_out,
-            W_out=W_out,
-            PF=pf,
-            PT=pt,
-            PL=pl,
-            PR=pr,
-            MAX_D=maxd,
-            MAX_H=maxh,
-            MAX_WP=maxwp,
-            MAX_WB=maxwb,
-            BLOCK_W=block_w,
-            num_warps=num_warps,
+    if grad_output.is_contiguous() and grad_output.numel() <= 2147483647:
+        grid = lambda META: (
+            NC
+            * D
+            * ((H + META["BH"] - 1) // META["BH"])
+            * ((W + META["BW"] - 1) // META["BW"]),
         )
+        _rep_pad3d_bwd_c[grid](
+            grad_output,
+            out,
+            dt_code,
+            D,
+            H,
+            W,
+            Od,
+            Oh,
+            Ow,
+            pf,
+            pt,
+            pl,
+            F64=f64,
+        )
+        return out
 
+    sN = grad_output.stride(0) if nd == 5 else 0
+    if nd == 5:
+        sC, sD, sH, sW = (
+            grad_output.stride(1),
+            grad_output.stride(2),
+            grad_output.stride(3),
+            grad_output.stride(4),
+        )
+    else:
+        sC, sD, sH, sW = (
+            grad_output.stride(0),
+            grad_output.stride(1),
+            grad_output.stride(2),
+            grad_output.stride(3),
+        )
+    grid = lambda META: (
+        NC
+        * D
+        * ((H + META["BH"] - 1) // META["BH"])
+        * ((W + META["BW"] - 1) // META["BW"]),
+    )
+    _rep_pad3d_bwd_g[grid](
+        grad_output,
+        out,
+        dt_code,
+        D,
+        H,
+        W,
+        Od,
+        Oh,
+        Ow,
+        pf,
+        pt,
+        pl,
+        sN,
+        sC,
+        sD,
+        sH,
+        sW,
+        C,
+        W1=(sW == 1),
+        IDX64=True,
+        F64=f64,
+    )
     return out

@@ -26,7 +26,8 @@ devices through its own environment variable. There is **no vendor-neutral name*
 this variable, and FlagGems deliberately does not invent one: it reads the variable
 owned by the active backend.
 
-> **Warning** — every backend uses a *different* variable name. A name that works on one
+> [!WARNING]
+> Every backend uses a *different* variable name. A name that works on one
 > backend is silently ignored on another. Do not assume the variable you know from one
 > vendor applies to the backend you are currently targeting.
 
@@ -132,7 +133,7 @@ benchmark drivers can restrict devices correctly:
 - Add an entry to the `vendor_env_map` dictionary in
   [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484),
   keyed by the vendor name used by the backend's `VendorDescriptor` (see
-  [Adding a new backend](/FlagGems/contribution/backend/)). Do not edit the fallback
+  [Adding a new backend](backend.md)). Do not edit the fallback
   branch instead — `vendor_env_map` is the single place a new backend is registered.
 - If the runtime accepts several aliases, list them all, most authoritative first.
   `get_env` sets every name in the list to the same value, so the aliases stay consistent

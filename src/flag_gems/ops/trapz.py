@@ -161,6 +161,17 @@ class TrapzOp(torch.autograd.Function):
         return grad_y.to(y_dtype), None, None
 
 
+def _normalize_dx(dx):
+    # Mirror ATen: dx must be a real number. bool and complex scalars (including
+    # 0-d tensors, which ATen inspects before conversion) are rejected, while a
+    # plain python float()/item() would silently coerce True -> 1.0 and drop a
+    # complex imaginary part.
+    dx_val = dx.item() if isinstance(dx, torch.Tensor) else dx
+    if isinstance(dx_val, (bool, complex)) or not isinstance(dx_val, (int, float)):
+        raise RuntimeError("trapezoid: Currently, we only support dx as a real number.")
+    return float(dx_val)
+
+
 def trapz(y, dx=1.0, dim=-1):
     """Compute the trapezoidal rule along a dimension with constant spacing.
 
@@ -172,6 +183,15 @@ def trapz(y, dx=1.0, dim=-1):
     Returns:
         The integral of ``y`` along ``dim``, with the reduced dimension removed.
     """
+    # Match ATen's ordering: the dimension is validated first, then an *empty*
+    # reduction dimension integrates to zero of the input dtype and returns
+    # before the bool/complex/dx checks run at all. A degenerate N == 1 still
+    # goes through those checks (ATen validates dx and rejects bool y for it).
+    dim = _normalize_dim(dim, y.ndim)
+    if y.shape[dim] == 0:
+        out_shape = y.shape[:dim] + y.shape[dim + 1 :]
+        return torch.zeros(out_shape, dtype=y.dtype, device=y.device)
+
     if y.dtype == torch.bool:
         raise RuntimeError(
             "trapezoid: received a bool input for `y`, but bool is not supported"
@@ -184,13 +204,10 @@ def trapz(y, dx=1.0, dim=-1):
             "trapz: complex inputs are not supported by the FlagGems Triton kernel"
         )
 
+    dx = _normalize_dx(dx)
+
     # Integer inputs are promoted to float32, matching PyTorch.
     if not y.is_floating_point():
         y = y.to(torch.float32)
-
-    if isinstance(dx, torch.Tensor):
-        dx = dx.item()
-    else:
-        dx = float(dx)
 
     return TrapzOp.apply(y, dx, dim)
