@@ -39,5 +39,5 @@ def saturate_weight_to_fp16_func(x):
 
 
 def _saturate_weight_to_fp16(A):
-    logger.debug("GEMS _SATURATE_WEIGHT_TO_FP16")
+    logger.debug("GEMS_ENFLAME_GCU400 _SATURATE_WEIGHT_TO_FP16")
     return saturate_weight_to_fp16_func(A)

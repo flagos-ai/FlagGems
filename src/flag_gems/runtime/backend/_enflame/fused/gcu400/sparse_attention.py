@@ -115,6 +115,7 @@ def fused_attn_kernel(
 
 
 def sparse_attn_triton(q, kv, attn_sink, topk_idxs, softmax_scale):
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_ATTN_TRITON")
     b, m, h, d = q.shape
     topk = topk_idxs.shape[-1]
     o = torch.empty_like(q)

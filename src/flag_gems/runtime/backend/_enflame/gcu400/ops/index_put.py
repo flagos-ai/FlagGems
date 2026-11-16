@@ -25,9 +25,10 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 整数索引（可能重复、走原子累加）用较小 tile 保住 fp16 大 shape 时延
+# Integer indices (possibly duplicated, using atomic accumulation) use a smaller tile to preserve fp16 large-shape
+# latency
 BLOCK_SIZE0 = 64
-# bool mask 展开后写者唯一，索引量大，用较大 tile 压 program 调度开销
+# bool masks expand to unique writers with many indices, so use a larger tile to compress program scheduling overhead
 BLOCK_SIZE0_UNIQUE = 64
 BLOCK_SIZE1 = 2048
 GRID_CAP = 65535
@@ -176,7 +177,8 @@ def generate_index_put_kernel(
             with code.indent():
                 code.writeline("if UNIQUE_WRITER:")
                 with code.indent():
-                    # 唯一写者时地址无竞争，普通读改写即可替代低吞吐的标量原子累加
+                    # With a unique writer there is no address contention, so plain read-modify-write replaces
+                    # low-throughput scalar atomics
                     code.writeline(
                         "old_value = tl.load(input_ptr + input_offset, "
                         "mask=mask, other=0)"
@@ -297,7 +299,7 @@ class IndexPutFunction:
 
     def __call__(self, *args, **kwargs):
         inp, tensor_indices, values, accumulate = args[:4]
-        # 其它入口（index_put / index_put_）仍传 4 个参数，默认走原子路径
+        # Other entry points (index_put / index_put_) still pass 4 arguments and use the atomic path by default
         unique_writer = args[4] if len(args) > 4 else False
         full_args = (inp, tensor_indices, values)
 
@@ -306,8 +308,9 @@ class IndexPutFunction:
             overload = self.overloads[key]
         else:
             code = IndentedBuffer()
-            # 唯一写者的索引量远大于整数索引，用更大的 tile 减少 program 调度；
-            # 两类场景分开生成文件，避免 constexpr 互相覆盖。
+            # Unique-writer cases have far more indices than integer-index cases, so use a larger tile to reduce program
+            # scheduling;
+            # the two scenarios are generated into separate files to avoid constexpr overwriting each other.
             block_size0 = BLOCK_SIZE0_UNIQUE if unique_writer else BLOCK_SIZE0
             code = generate_code(
                 full_args,
@@ -459,8 +462,9 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
     # Our implementation always performs bounds checking, so we ignore this parameter.
     # This is consistent with how PyTorch handles it internally.
 
-    # torch.where(bool mask) 展开的坐标天然互不重复，累加时地址无竞争，
-    # 可用普通读改写替代低吞吐的标量原子累加；整数索引可能有重复，保持原子路径。
+    # Coordinates expanded by torch.where(bool mask) are naturally unique, so accumulation has no address contention
+    # and plain read-modify-write can replace low-throughput scalar atomics; integer indices may duplicate, so keep the
+    # atomic path.
     unique_writer = False
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:

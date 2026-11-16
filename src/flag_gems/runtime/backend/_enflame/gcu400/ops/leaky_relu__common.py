@@ -87,7 +87,7 @@ def _leaky_relu_kernel(
 
 
 def leaky_relu(A, negative_slope=0.01):
-    logger.debug("GEMS LEAKY_RELU")
+    logger.debug("GEMS_ENFLAME_GCU400 LEAKY_RELU")
     if not A.is_contiguous():
         A = A.contiguous()
     output = torch.empty_like(A)
@@ -124,7 +124,7 @@ def _leaky_relu_backward_kernel(
 
 
 def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=False):
-    logger.debug("GEMS LEAKY_RELU_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 LEAKY_RELU_BACKWARD")
     if not grad_output.is_contiguous():
         grad_output = grad_output.contiguous()
     if not self.is_contiguous():
@@ -142,7 +142,7 @@ def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=F
 
 
 def leaky_relu_(A, negative_slope=0.01):
-    logger.debug("GEMS LEAKY_RELU_")
+    logger.debug("GEMS_ENFLAME_GCU400 LEAKY_RELU_")
     if not A.is_contiguous():
         raise RuntimeError(
             "leaky_relu_ requires a contiguous tensor for in-place operation"
@@ -165,7 +165,7 @@ def leaky_relu_(A, negative_slope=0.01):
 
 
 def leaky_relu_out(A, negative_slope=0.01, *, out=None):
-    logger.debug("GEMS LEAKY_RELU_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LEAKY_RELU_OUT")
     if out is None:
         return leaky_relu(A, negative_slope)
     if not A.is_contiguous():

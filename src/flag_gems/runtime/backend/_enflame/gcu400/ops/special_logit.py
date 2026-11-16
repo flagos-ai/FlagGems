@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""special_logit enflame 副本：flat grid-stride 家族制式（sigmoid/square 同款）。
+"""special_logit enflame copy: flat grid-stride family pattern (same as sigmoid/square).
 
-公版 one-tile-per-program（grid=cdiv(n,1024)）在 enflame 2^29 元素 core bench
-形状上请求 grid.x=524288，超 GCU 硬件上限 65535 直接 OutOfResources（已知
-grid.x>65535 聚类）。本副本改 48-SIP 持久 grid-stride + BLOCK 阶梯，任意 n 均
-不超过 48 个 CTA；小形状/非连续/非 fp16-bf16-fp32/int32 溢出域回退公版实现，
-语义与公版逐位一致（NaN 透传、eps clamp、out= 校验全保留）。
+The common one-tile-per-program (grid=cdiv(n,1024)) requests grid.x=524288 on enflame's 2^29-element core bench
+shape, exceeding GCU's 65535 hardware limit and raising OutOfResources (known
+grid.x>65535 cluster). This copy uses a 48-SIP persistent grid-stride + BLOCK ladder, never more than
+48 CTAs for any n; small shapes / non-contiguous / non fp16-bf16-fp32 / int32 overflow domain fall back to the common
+implementation,
+bit-identical semantics (NaN propagation, eps clamp, out= validation all retained).
 """
 
 import logging

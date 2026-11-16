@@ -34,11 +34,11 @@ def heaviside_func(x, values):
 
 
 def heaviside(input, values):
-    logger.debug("GEMS HEAVISIDE")
+    logger.debug("GEMS_ENFLAME_GCU400 HEAVISIDE")
     return heaviside_func(input, values)
 
 
 def heaviside_out(input, values, out):
-    logger.debug("GEMS HEAVISIDE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 HEAVISIDE_OUT")
     heaviside_func(input, values, out0=out)
     return out

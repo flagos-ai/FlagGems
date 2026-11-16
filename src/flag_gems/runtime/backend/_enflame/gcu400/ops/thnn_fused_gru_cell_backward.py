@@ -12,16 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_thnn_fused_gru_cell_backward_out``。
+"""GCU400-specific ``_thnn_fused_gru_cell_backward_out``.
 
-公共实现用两步：主 kernel 按 (batch,hidden) 元素写 5 个梯度张量，再单独启动
-一个 bias 归约 kernel（大 batch 时拆成 stage1+stage2 两次）重新读取这些张量并
-沿 batch 维求和，bias 路径会重复读 2×B×3H 个元素。本实现按 hidden 列块划分
-CTA：一个 program 在寄存器内完成四门梯度计算、写出全部张量，并在同一 kernel
-内对 batch 维归约 bias，用一次 launch 完成全部输出。
+The common implementation uses two steps: the main kernel writes 5 gradient tensors by (batch,hidden) element, then a
+separate
+bias reduction kernel (stage1+stage2 for large batch) rereads those tensors and
+sums along batch, so the bias path rereads 2xBx3H elements. This implementation partitions
+CTAs by hidden column block: one program computes all four gate gradients in registers, writes all tensors, and
+reduces bias along batch in the same kernel, finishing all outputs in one launch.
 
-为与工程 CPU 参考的数值口径一致，bias 累加前先把各门梯度转回输出 dtype 再转回
-累加 dtype，复现公共实现「先写回量化张量、再读取求和」的顺序。
+To match the engineering CPU reference's numeric convention, each gate gradient is converted back to the output dtype
+and then to the accumulation dtype before bias accumulation, reproducing the common "write back quantized tensors, then
+read and sum" order.
 """
 
 import logging
@@ -41,7 +43,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 编译期配置，由优化迭代按轮次调整，不改变算子语义。
+# Compile-time config, adjusted per optimization round; semantics unchanged.
 BASELINE_MODE = 0
 FUSED_SINGLE_LAUNCH = 1
 BLOCK_B = 128
@@ -81,15 +83,15 @@ def _gru_cell_backward_fused_kernel(
     BIAS_QUANTIZE: tl.constexpr,
     HAS_BIAS: tl.constexpr,
 ):
-    # 每个 program 负责一段 hidden 列；rows 在 batch 维按 BLOCK_B 分块循环，
-    # 因此无需跨 CTA 的 atomic 归约即可支持任意 batch_size。
+    # Each program owns a hidden column segment; rows loop over batch in BLOCK_B chunks,
+    # so any batch_size is supported without cross-CTA atomic reduction.
     cols = tl.program_id(0) * BLOCK_H + tl.arange(0, BLOCK_H)
     col_mask = cols < H
     accumulator_dtype = tl.float64 if IS_FP64 else tl.float32
     output_dtype = grad_input_ptr.dtype.element_ty
 
-    # has_bias=False 时整段 bias 归约在编译期被消除，bias 指针不会被解引用
-    # （非 out 重载在没有 bias 时不会分配 out3/out4）。
+    # With has_bias=False the whole bias reduction is eliminated at compile time and bias pointers are not dereferenced
+    # (the non-out overload does not allocate out3/out4 without bias).
     bias_input_reset = tl.zeros((BLOCK_H,), accumulator_dtype)
     bias_input_input = tl.zeros((BLOCK_H,), accumulator_dtype)
     bias_input_new = tl.zeros((BLOCK_H,), accumulator_dtype)
@@ -136,7 +138,7 @@ def _gru_cell_backward_fused_kernel(
             hx = hx.to(tl.float32)
             hidden_new = hidden_new.to(tl.float32)
 
-        # 与 ATen / 公共实现保持相同的乘法结合顺序。
+        # Keep the same multiplication association order as ATen / the common implementation.
         grad_input_gate = grad_hy_value * (hx - new_gate)
         grad_input_gate *= 1.0 - input_gate
         grad_input_gate *= input_gate
@@ -181,8 +183,9 @@ def _gru_cell_backward_fused_kernel(
         )
         tl.store(grad_hx_ptr + grad_hx_offset, grad_hx_value, mask=valid)
 
-        # 公共实现先写回量化后的梯度张量、再由 bias kernel 读取累加；
-        # 这里通过 to(output_dtype).to(accumulator_dtype) 复现该量化步骤。
+        # The common implementation writes back quantized gradient tensors first, then the bias kernel reads and
+        # accumulates;
+        # here to(output_dtype).to(accumulator_dtype) reproduces that quantization step.
         if not HAS_BIAS:
             pass
         elif BIAS_QUANTIZE:
@@ -258,15 +261,16 @@ def _launch_fused_kernel(
     out4: torch.Tensor | None,
     has_bias: bool,
 ):
-    """单次 launch 的融合 kernel，non-out 与 out 两个重载共用。"""
+    """Single-launch fused kernel, shared by the non-out and out overloads."""
     batch_size, hidden_size = grad_hy.shape
-    # has_bias=False 时 bias 段被编译期消除；指针仍需可解引用，用 out2 占位。
+    # With has_bias=False the bias segment is eliminated at compile time; pointers still need to be dereferenceable, use
+    # out2 as a placeholder.
     bias_ptr = out2 if not has_bias else out3
     bias_stride = 1 if not has_bias else out3.stride(0)
     hidden_bias_ptr = out2 if not has_bias else out4
     hidden_bias_stride = 1 if not has_bias else out4.stride(0)
-    # 小规模问题（如 1x32）下固定 128x128 的 tile 会空转，按实际尺寸收窄到
-    # 2 的幂；大规模仍用 BLOCK_B/BLOCK_H 上限，保证向量化宽度。
+    # On small problems (e.g. 1x32) a fixed 128x128 tile idles, so narrow it to a
+    # power of two by actual size; large scale still uses the BLOCK_B/BLOCK_H cap to keep vectorization width.
     block_h = min(BLOCK_H, triton.next_power_of_2(max(hidden_size, 1)))
     block_b = min(BLOCK_B, triton.next_power_of_2(max(batch_size, 1)))
     grid = (triton.cdiv(hidden_size, block_h),)
@@ -313,8 +317,8 @@ def _thnn_fused_gru_cell_backward_out(
     out3: torch.Tensor,
     out4: torch.Tensor,
 ):
-    """GRU cell 反向的 out 重载，签名与公共实现一致。"""
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
+    """out overload of GRU cell backward, signature matches the common implementation."""
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
     if BASELINE_MODE == 1 or not FUSED_SINGLE_LAUNCH:
         return _public_out(
             grad_hy,

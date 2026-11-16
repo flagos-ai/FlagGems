@@ -715,11 +715,11 @@ def generate_fast_code(
 
 # ------------------ enflame fast path: whole-tensor block repeat ------------------
 #
-# 当仅首维重复且输入连续时，输出就是整块输入的 rep[0] 次拼接。此时逐行
-# 解码索引（fast_cut 路径）是多余的：把输入切成连续 chunk，kernel 只需按段号
-# 解码 (重复块编号 b, chunk 编号 c)，用连续 load/store 把 in[c] 拷到 out[b]。
-# 这样没有逐元素取模，且一次 kernel launch 覆盖全部输出。BLOCK 按输入字节
-# 预算取档，段数不足 4 波时减半以填满 48 个 CTA。
+# When only the first dim repeats and the input is contiguous, the output is rep[0] concatenations of the whole input.
+# Decoding indices per row (fast_cut path) is then redundant: split the input into contiguous chunks and let the kernel
+# decode only (repeat-block id b, chunk id c), copying in[c] to out[b] with contiguous load/store.
+# This has no per-element modulo and one kernel launch covers the whole output. BLOCK is tiered by input byte
+# budget, and halved when there are fewer than 4 waves of segments to fill 48 CTAs.
 
 
 def generate_block_wrapper(
@@ -843,7 +843,7 @@ class RepeatFunction:
         rep = [int(s) for s in sizes]
         in_shape = [1] * (sizes_rank - in0_rank) + list(x.shape)
         in_strides = [0] * (sizes_rank - in0_rank) + list(x.stride())
-        # 仅首维重复且输入连续：输出是整块输入的 rep[0] 次拼接
+        # Only the first dim repeats and the input is contiguous: output is rep[0] concatenations of the whole input
         if (
             sizes_rank == in0_rank
             and rep[0] > 1
@@ -906,7 +906,7 @@ _repeat_func = RepeatFunction()
 
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
-    logger.debug("GEMS REPEAT")
+    logger.debug("GEMS_ENFLAME_GCU400 REPEAT")
 
     out = _repeat_func(inp, sizes)
     return out

@@ -23,7 +23,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# fixed grid 匹配 GCU400 的 SIP 拓扑，核内跨步循环覆盖大 shape
+# Fixed grid matches GCU400's SIP topology; an in-kernel stride loop covers large shapes
 NUM_SIPS = 24
 GRID_MULT = 2
 BLOCK_16 = 8192
@@ -54,7 +54,7 @@ def _leaky_relu_kernel(
             if KEEP_FP32:
                 x = x.to(tl.float32)
             if MUL_SIGN:
-                # 把 where 的两支收敛成标量因子，只保留一次向量乘法
+                # Collapse where's two branches into a scalar factor, keeping only one vector multiplication
                 factor = tl.where(x >= 0, 1.0, negative_slope)
                 output = x * factor
             else:
@@ -116,9 +116,10 @@ def leaky_relu(A, negative_slope=0.01):
 def leaky_relu_(A, negative_slope=0.01):
     logger.debug("GEMS_ENFLAME LEAKY_RELU_")
     if not A.is_contiguous():
-        # 非连续 view 无法按 1D 平坦地址线性寻址；先在连续副本上走同一 Triton
-        # kernel，再按原 stride 写回，保持 in-place 语义与返回别名不变。
-        # 必须透传 negative_slope，否则会静默退化成默认 0.01。
+        # A non-contiguous view cannot be addressed linearly by 1D flat addresses; run the same Triton
+        # kernel on a contiguous copy first, then write back by the original stride, preserving in-place semantics and
+        # the returned alias.
+        # negative_slope must be forwarded, otherwise it silently degrades to the default 0.01.
         A.copy_(leaky_relu(A, negative_slope))
         return A
     _launch_leaky_relu(A, A, A.numel(), negative_slope)

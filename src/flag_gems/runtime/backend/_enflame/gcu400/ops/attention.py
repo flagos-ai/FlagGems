@@ -1754,6 +1754,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_ATTENTION")
     return ScaleDotProductAttention.apply(
         query,
         key,

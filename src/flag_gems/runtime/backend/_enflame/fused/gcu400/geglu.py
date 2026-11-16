@@ -136,7 +136,7 @@ def dgeglu_kernel(
 
 
 def geglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
-    logger.debug("GEMS GEGLU")
+    logger.debug("GEMS_ENFLAME_GCU400 GEGLU")
     shape = input_tensor.shape
     H = shape[-1] // 2
     M = input_tensor.numel() // (2 * H)
@@ -170,7 +170,7 @@ def dgeglu(
     input_tensor: torch.Tensor,
     quantizer: Optional[Any] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS DGEGLU")
+    logger.debug("GEMS_ENFLAME_GCU400 DGEGLU")
     shape = input_tensor.shape
     H = shape[-1] // 2
     M = input_tensor.numel() // (2 * H)

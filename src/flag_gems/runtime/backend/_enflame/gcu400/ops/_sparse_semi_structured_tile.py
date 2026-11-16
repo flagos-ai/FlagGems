@@ -353,7 +353,7 @@ def _causal1122(dense):
 
 
 def _sparse_semi_structured_tile(input, algorithm: str = "", use_cutlass: bool = True):
-    logger.debug("GEMS SPARSE_SEMI_STRUCTURED_TILE")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_SEMI_STRUCTURED_TILE")
 
     dense = input
     if dense.dim() != 2:

@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
-# benchmark/test_special_xlogy.py 的原地用例经 aten.xlogy_ 分发到这里。
-# 通用 flag_gems.ops.xlogy 的 codegen 配置在 GCU400 上 tile 过大，按实测
-# 与 special_xlogy 使用同一组特化配置，不改动全局配置。
+# benchmark/test_special_xlogy.py's in-place cases dispatch here via aten.xlogy_.
+# Common flag_gems.ops.xlogy's codegen config has too-large tiles on GCU400; use the same
+# specialized config as special_xlogy by measurement, leaving global config untouched.
 _XLOGY_INPLACE_CONFIG = CodeGenConfig(4096, (1024, 1, 1), 4, True, prefer_1d_tile=False)
 
 # ---------------------------------------------------------------------------
@@ -112,14 +112,14 @@ def xlogy_flat_kernel(
             mask = off < N_total
             x = tl.load(x_ptr + off, mask=mask)
             y = tl.load(y_ptr + off, mask=mask)
-        # aten 语义：y 为 NaN 时返回 NaN（优先于 x==0 规则）；
-        # x 为 0 且 y 非 NaN 时返回 0；其余返回 x * log(y)。
+        # aten semantics: y NaN returns NaN (taking priority over the x==0 rule);
+        # x == 0 and y not NaN returns 0; otherwise x * log(y).
         x_fp32 = x.to(tl.float32)
         y_fp32 = y.to(tl.float32)
         if POSTSEL:
-            # fp32 中小规模档：select 消费 mul 输出的 postsel 形态
-            # （special_xlogy 同款）。y=NaN 落 else 分支经 x*NaN=NaN
-            # 天然传播（含 x==0 时 0*NaN=NaN），NaN 守卫免费折叠进谓词。
+            # fp32 small/medium tier: select consumes mul's output in postsel form
+            # (same as special_xlogy). y=NaN takes the else branch and x*NaN=NaN
+            # propagates naturally (including 0*NaN=NaN when x==0), so the NaN guard folds into the predicate for free.
             prod = x_fp32 * tl.log(y_fp32)
             result = tl.where((x_fp32 == 0.0) & (y_fp32 == y_fp32), 0.0, prod)
         elif WHERE_AFTER_LOG:
@@ -129,8 +129,8 @@ def xlogy_flat_kernel(
             log_y = tl.log(y_fp32)
             result = x_fp32 * tl.where(x_is_zero & ~y_is_nan, 0.0, log_y)
         else:
-            # x 为 0 且 y 非 NaN 时把 y 换成 1，log(1)=0，乘积自然为 0；
-            # y 为 NaN 时保留 NaN，0 * NaN 仍为 NaN，语义不变。
+            # When x == 0 and y is not NaN, replace y with 1: log(1)=0, so the product is naturally 0;
+            # when y is NaN keep NaN, 0 * NaN is still NaN, semantics unchanged.
             y_is_nan = y_fp32 != y_fp32
             x_is_zero = x_fp32 == 0.0
             safe_y = tl.where(x_is_zero & ~y_is_nan, 1.0, y_fp32)
@@ -164,15 +164,15 @@ def xlogy_scalar_flat_kernel(
             x = tl.load(x_ptr + off, mask=mask)
         x_fp32 = x.to(tl.float32)
         if GUARDED:
-            # y <= 0 或 NaN：需要 select 兜住 x==0 行的 ±inf/NaN 乘积。
+            # y <= 0 or NaN: select must cover the +-inf/NaN products of x==0 rows.
             y_fp32 = y.to(tl.float32)
             y_is_nan = y_fp32 != y_fp32
             x_is_zero = x_fp32 == 0.0
             log_y = tl.log(y_fp32)
             result = x_fp32 * tl.where(x_is_zero & ~y_is_nan, 0.0, log_y)
         else:
-            # y > 0（host 已知标量）：log(y) 有限，x==0 处 x*log(y)
-            # 天然给出 +0/-0，无需任何向量 select。
+            # y > 0 (host-known scalar): log(y) is finite, so x*log(y) at x==0
+            # naturally gives +0/-0 without any vector select.
             result = x_fp32 * tl.log(y.to(tl.float32))
         if EXACT:
             tl.store(x_ptr + off, result)
@@ -188,9 +188,9 @@ def _xlogy_choose_block_and_warps(N_total, itemsize, is_fp32, is_tt=False):
     if N_total <= (1 << 21):
         return 8192, 4
     if is_tt and not is_fp32 and N_total <= (1 << 25):
-        # 16-bit tensor-tensor 中间规模档（2M < N <= 32M）：B32768 实测
-        # 4M -13% / 16.7M -2.9%；64M 起与 1G 档 B65536 更优（+2.4%/+4.3%）。
-        # tensor-scalar 体在中间档偏好 B65536（B32768 反而 +5.4%），不分档。
+        # 16-bit tensor-tensor medium tier (2M < N <= 32M): B32768 measured
+        # 4M -13% / 16.7M -2.9%; from 64M and 1G the B65536 tier is better (+2.4%/+4.3%).
+        # The tensor-scalar body prefers B65536 in the medium tier (B32768 is +5.4% worse), no tiering.
         return 32768, 2
     block = 131072 // itemsize
     warps = 4 if is_fp32 else 2
@@ -238,13 +238,13 @@ def _launch_xlogy_flat(x, y, kernel, is_tt=False, **extra):
 
 @triton.jit
 def _xlogy_inplace_compute(x, y):
-    # aten 语义：y 为 NaN 时返回 NaN；x 为 0 时返回 0；其余返回 x * log(y)。
+    # aten semantics: y NaN returns NaN; x == 0 returns 0; otherwise x * log(y).
     x_fp32 = x.to(tl.float32)
     y_fp32 = y.to(tl.float32)
     y_is_nan = y_fp32 != y_fp32
     x_is_zero = x_fp32 == 0.0
-    # x 为 0 且 y 非 NaN 时把 y 换成 1，log(1)=0，乘积自然为 0；
-    # y 为 NaN 时保留 NaN，0 * NaN 仍为 NaN，语义不变。
+    # When x == 0 and y is not NaN, replace y with 1: log(1)=0, so the product is naturally 0;
+    # when y is NaN keep NaN, 0 * NaN is still NaN, semantics unchanged.
     safe_y = tl.where(x_is_zero & ~y_is_nan, 1.0, y_fp32)
     return x_fp32 * tl.log(safe_y)
 
@@ -270,7 +270,7 @@ def xlogy_func_tensor_scalar(x, y):
 
 
 def xlogy_(A, B):
-    logger.debug("GEMS XLOGY_")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY_")
     if (
         isinstance(B, torch.Tensor)
         and A.dtype in _FLOAT_DTYPES
@@ -297,7 +297,7 @@ def xlogy_(A, B):
 
 
 def xlogy_tensor_scalar_(A, B):
-    logger.debug("GEMS XLOGY__TENSOR_SCALAR")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY__TENSOR_SCALAR")
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         y = float(B)
         # Host-visible scalar metadata only (never device data): y > 0 makes

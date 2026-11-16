@@ -11,12 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils.triton_version_utils import has_triton_tle
+
+logger = logging.getLogger(__name__)
+
 
 if has_triton_tle(3, 6, 0):
     try:
@@ -1132,6 +1136,7 @@ def _should_use_tle_bucket_sort_topk(inputs, topk):
 
 
 def bucket_sort_topk(inputs, starts, ends, topk):
+    logger.debug("GEMS_ENFLAME_GCU400 BUCKET_SORT_TOPK")
     if _should_use_tle_bucket_sort_topk(inputs, topk):
         try:
             return tle_bucket_sort_topk(inputs, starts, ends, topk)

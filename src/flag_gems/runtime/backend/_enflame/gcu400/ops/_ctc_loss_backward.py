@@ -77,8 +77,8 @@ def _prepare_backward(
 
     original_dtype = log_probs.dtype
     compute_dtype = _compute_dtype(original_dtype)
-    # GCU400 Triton 编译管线不支持 fp64 kernel：host 侧统一提升到 fp32 计算，
-    # work_grad / work_log_probs 随之转 fp32，返回时再回转调用方 dtype。
+    # The GCU400 Triton compile pipeline does not support fp64 kernels: promote to fp32 on the host,
+    # work_grad / work_log_probs are converted to fp32 accordingly, then converted back to the caller's dtype on return.
     if compute_dtype == torch.float64:
         compute_dtype = torch.float32
     unbatched = log_probs.ndim == 2
@@ -218,7 +218,7 @@ def _ctc_loss_backward(
     Returns:
         grad_log_probs: gradient w.r.t. log_probs
     """
-    logger.debug("GEMS _CTC_LOSS_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _CTC_LOSS_BACKWARD")
 
     setup = _prepare_backward(
         grad,
@@ -321,7 +321,7 @@ def _ctc_loss_backward_out(
     out: Optional[torch.Tensor] = None,
 ):
     """Out variant of _ctc_loss_backward."""
-    logger.debug("GEMS _CTC_LOSS_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _CTC_LOSS_BACKWARD_OUT")
 
     grad_log_probs = _ctc_loss_backward(
         grad,

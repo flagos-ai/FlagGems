@@ -277,7 +277,7 @@ def argwhere(input):
     The output is allocated at its exact final size after step 2, so no
     max-size buffer is needed.
     """
-    logger.debug("GEMS ARGWHERE")
+    logger.debug("GEMS_ENFLAME_GCU400 ARGWHERE")
 
     inp_ndim = input.ndim
     input = input.contiguous()

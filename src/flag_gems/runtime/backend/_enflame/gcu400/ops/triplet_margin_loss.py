@@ -379,7 +379,7 @@ def triplet_margin_loss(
     swap=False,
     reduction="mean",
 ):
-    logger.debug("GEMS TRIPLET_MARGIN_LOSS")
+    logger.debug("GEMS_ENFLAME_GCU400 TRIPLET_MARGIN_LOSS")
 
     # reduction may come as an aten integer (0=none, 1=mean, 2=sum) or a string
     if isinstance(reduction, int):

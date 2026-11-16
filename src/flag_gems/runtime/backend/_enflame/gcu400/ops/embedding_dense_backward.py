@@ -107,7 +107,7 @@ def embedding_dense_backward(
     padding_idx: int,
     scale_grad_by_freq: bool,
 ):
-    logger.debug("GEMS EMBEDDING_DENSE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 EMBEDDING_DENSE_BACKWARD")
     assert indices.dtype in (
         torch.int32,
         torch.int64,

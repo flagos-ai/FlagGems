@@ -123,7 +123,7 @@ def _launch_special_erfinv_kernel(x: torch.Tensor, out: torch.Tensor):
 
 def special_erfinv(x: torch.Tensor):
     """Special erfinv function"""
-    logger.debug("GEMS SPECIAL_ERFINV")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFINV")
     x_in = x
     if not x_in.is_contiguous():
         x_in = x_in.contiguous()
@@ -137,7 +137,7 @@ def special_erfinv(x: torch.Tensor):
 
 def special_erfinv_out(x: torch.Tensor, out: torch.Tensor):
     """Special erfinv out function"""
-    logger.debug("GEMS SPECIAL_ERFINV_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFINV_OUT")
     # Resize out to match input shape if necessary
     if out.shape != x.shape:
         out.resize_(x.shape)
@@ -156,7 +156,7 @@ def special_erfinv_out(x: torch.Tensor, out: torch.Tensor):
 
 def special_erfinv_(x: torch.Tensor):
     """Special erfinv_ in-place function"""
-    logger.debug("GEMS SPECIAL_ERFINV_")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFINV_")
     original_shape = x.shape
     original_stride = x.stride()
     x_in = x if x.is_contiguous() else x.contiguous()

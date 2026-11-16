@@ -44,9 +44,9 @@ logger = logging.getLogger(__name__)
 )
 @triton.jit
 def le_func(x, y):
-    # 直接按原 dtype 比较：<= 是精确比较，无需上采样到 float32；
-    # 省掉一次 f16/bf16 -> f32 的转换后，小张量（如 [1024,16]）与中等张量
-    # 的带宽利用率明显提升（GRID 放宽到 12 SIP * 4 CTA = 48 个 program）。
+    # Compare directly in the original dtype: <= is exact, no upcast to float32 needed;
+    # after dropping one f16/bf16 -> f32 conversion, bandwidth utilization improves noticeably for small
+    # tensors (e.g. [1024,16]) and medium tensors (GRID widened to 12 SIP * 4 CTA = 48 programs).
     return x <= y
 
 

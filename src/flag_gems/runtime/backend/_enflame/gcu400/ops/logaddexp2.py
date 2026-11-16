@@ -60,11 +60,11 @@ def logaddexp2_func(x, y):
 
 
 def logaddexp2(self, other):
-    logger.debug("GEMS LOGADDEXP2")
+    logger.debug("GEMS_ENFLAME_GCU400 LOGADDEXP2")
     return logaddexp2_func(self, other)
 
 
 def logaddexp2_out(self, other, out):
-    logger.debug("GEMS LOGADDEXP2_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LOGADDEXP2_OUT")
     logaddexp2_func(self, other, out0=out)
     return out

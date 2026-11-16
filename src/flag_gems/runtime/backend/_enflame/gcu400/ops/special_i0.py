@@ -119,7 +119,7 @@ def special_i0(x: torch.Tensor):
     ATen wrapper: special_i0(Tensor self) -> Tensor
     Computes the zeroth order modified Bessel function of the first kind for each element.
     """
-    logger.debug("GEMS SPECIAL_I0")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_I0")
     if x.device.type != device.name:
         raise ValueError(
             f"special_i0: input tensor must be on the {device.name} device"
@@ -134,7 +134,7 @@ def special_i0_out(x: torch.Tensor, out: torch.Tensor):
     """
     ATen wrapper: special_i0.out(Tensor self, Tensor out) -> Tensor
     """
-    logger.debug("GEMS SPECIAL_I0_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_I0_OUT")
     if not (x.device.type == device.name and out.device.type == device.name):
         raise ValueError(
             "special_i0_out: input and output tensors must be on the "

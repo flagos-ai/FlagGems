@@ -51,6 +51,7 @@ above that.  The 16-bit split is worth its own bucket: loading half/bf16 and
 widening it stalls (tcu: 1D data hazard 24%, scalar hazard 33%, vs 8%/10% for
 fp32), and the 2048 tile is 16% faster than 4096 there while fp32 prefers 4096.
 """
+import logging
 
 import torch
 import triton
@@ -64,6 +65,9 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 from flag_gems.utils.shape_utils import volume
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["poisson"]
 
@@ -161,6 +165,7 @@ def poisson_kernel_dyn(
 
 
 def poisson(input, generator=None):
+    logger.debug("GEMS_ENFLAME_GCU400 POISSON")
     assert input.dtype in (
         torch.float16,
         torch.bfloat16,

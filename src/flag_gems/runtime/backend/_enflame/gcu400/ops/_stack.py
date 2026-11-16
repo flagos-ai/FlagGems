@@ -12,27 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``aten::_stack`` 实现。
+"""GCU400-specific implementation of ``aten::_stack``.
 
-输出布局为 ``out[pre, t, post] = in_t[pre, post]``，其中
-``outer = prod(shape[:dim])``、``seg = prod(shape[dim:])``、``P = len(tensors)``。
-原实现把输入扁平索引用运行时 int64 除法拆成 ``idx // seg`` 与 ``idx % seg``，
-GCU400 上的软件除法叠加交织写，使大 shape 退化到 0.015x。本实现按布局分
-三条路径，目标地址只用乘法与加法计算，不再有除法：
+Output layout is ``out[pre, t, post] = in_t[pre, post]``, where
+``outer = prod(shape[:dim])``, ``seg = prod(shape[dim:])``, ``P = len(tensors)``.
+The original implementation splits the flat input index with runtime int64 division into ``idx // seg`` and ``idx %
+seg``;
+on GCU400 software division plus interleaved writes degrades large shapes to 0.015x. This implementation uses
+three layout-based paths whose target addresses need only multiplication and addition, with no division:
 
-* ``outer == 1``：每个输入就是输出的一个连续块，一次 launch 的二维 grid 直接拷贝；
-* ``seg == 1``：连续 load + stride-P store；
-* 其它：二维 tile 直接给出 pre 行号与 post slot 号，行偏移是纯乘法。
+* ``outer == 1``: each input is one contiguous block of the output, copied directly by a 2D grid in one launch;
+* ``seg == 1``: contiguous load + stride-P store;
+* otherwise: a 2D tile directly gives the pre row and post slot, and the row offset is pure multiplication.
 
-``outer == 1`` 且 dtype 字节数不超过 4 时走宽通道：把输入与输出重解释为
-int64 视图，一次 load/store 搬 8 字节，减少逐元素地址运算与访存请求
-（探针实测 16.7M 元素 fp32 210 -> 139µs、fp16 85 -> 74µs）。其中
-``lanes <= 8192``（<=64KB/输入）按 lane 数精确分块单块单 launch；
-``lanes > 65536``（>512KB/输入）固定 32768-lane 块（grid cap 256 +
-块跨步循环），中间档维持元素路径不变。
+When ``outer == 1`` and dtype itemsize <= 4, use the wide channel: reinterpret input and output as
+int64 views so one load/store moves 8 bytes, reducing per-element address arithmetic and memory requests
+(probe: 16.7M elements fp32 210 -> 139us, fp16 85 -> 74us). Within that,
+``lanes <= 8192`` (<=64KB/input) uses exact lane-based single-block single-launch tiling;
+``lanes > 65536`` (>512KB/input) uses fixed 32768-lane blocks (grid cap 256 +
+block stride loop); the middle tier keeps the element path.
 
-bool / int64 / uint64 / fp8 的二维 masked store 在 GCU400 上不可靠，这部分
-dtype 回退到已验证的 legacy kernel（性能不在本算子 benchmark 口径内）。
+bool / int64 / uint64 / fp8 2D masked stores are unreliable on GCU400, so these
+dtypes fall back to the verified legacy kernel (outside this operator's benchmark scope).
 """
 
 import logging
@@ -44,7 +45,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# 以下常量是迭代轮次的 A/B 参数；每轮只改一档，验证后保留最优值。
+# The constants below are A/B parameters per iteration round; change one tier per round and keep the best.
 _FLAT_BLOCK = 16384
 _FLAT_GRID_CAP = 256
 _FLAT_WARPS = 8
@@ -55,10 +56,10 @@ _TILE_BT = 256
 _TILE_WARPS = 4
 _LEGACY_BLOCK = 1024
 
-# 宽通道路径（int64 视图，8 字节 lane）分档（探针 2026-11-13 定标）：
-#   lanes <= _WIDE_SMALL_LANES：按 lane 数精确分块，grid=(1, P) 单发；
-#   lanes  > _WIDE_LARGE_LANES：32768-lane 大块 + grid cap + 块跨步循环；
-#   两者之间：保持元素路径（中档一次大块 program 数不足，元素路径不劣）。
+# Wide-channel path (int64 view, 8-byte lanes) tiers (probe calibrated 2026-11-13):
+#   lanes <= _WIDE_SMALL_LANES: exact lane-based tiling, single grid=(1, P) launch;
+#   lanes  > _WIDE_LARGE_LANES: 32768-lane large blocks + grid cap + block stride loop;
+#   in between: keep the element path (too few large-block programs at medium sizes, element path is not worse).
 _WIDE_SMALL_LANES = 8192
 _WIDE_LARGE_LANES = 65536
 _WIDE_BLOCK = 32768
@@ -66,18 +67,19 @@ _WIDE_GRID_CAP = 256
 _WIDE_SMALL_WARPS = 4
 _WIDE_LARGE_WARPS = 8
 
-# 外部 /opt/triton_gcu 转换器冷编译偶发 SIGSEGV（compiler_problems/P02），
-# 概率性、不留缓存条目、重试即可通过；确定性失败在重试耗尽后原样抛出。
-# 同 row_stack 先例：仅包宽通道 launch。
+# The external /opt/triton_gcu converter occasionally SIGSEGVs on cold compilation (compiler_problems/P02),
+# probabilistically, leaving no cache entry; a retry succeeds. Deterministic failures are re-raised unchanged after
+# retries are exhausted.
+# As in row_stack: wrap only the wide-channel launch.
 _TOOLCHAIN_COMPILE_RETRIES = 3
 
-# GCU400 资源上限：grid.y 不得超过 255，二维 tile 的字节数不得超过 DSM 预算。
+# GCU400 resource limits: grid.y must not exceed 255, and 2D tile bytes must stay within the DSM budget.
 _MAX_GRID_Y = 255
 _DSM_LIMIT_BYTES = 900000
 _MAX_POINTERS = 4
 
-# 二维 masked load/store 在 i1 指针与 64 位整数上会失败或读出未定义值，
-# fp8 的 masked load 无法产生合法的默认值，这些 dtype 一律走 legacy 路径。
+# 2D masked load/store fails or reads undefined values with i1 pointers and 64-bit integers,
+# and fp8 masked loads cannot produce a legal default, so all these dtypes take the legacy path.
 _TILE_EXCLUDED_DTYPES = {
     torch.bool,
     torch.int64,
@@ -109,7 +111,7 @@ def stack_copy_func_kernel_4(
     total_elements_d,
     BLOCK_X: tl.constexpr,
 ):
-    """原始交织 kernel：仅作为受 dtype / 资源限制时的正确性回退路径。"""
+    """Original interleaved kernel: correctness fallback only when dtype / resource limits require it."""
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
 
@@ -165,11 +167,11 @@ def _stack_flat_copy_kernel(
     chunks_per_program,
     BLOCK_X: tl.constexpr,
 ):
-    """``outer == 1`` 路径：输入 t 整体写到输出第 t 个连续块。
+    """``outer == 1`` path: input t is written wholly into the t-th contiguous output block.
 
-    grid.y 直接给出批内输入索引，因此不需要任何索引除法；store 侧也是
-    一段连续地址，读写两端都是合并访问。索引统一使用 int32（host 侧已
-    按输出字节数守卫溢出），避免 GCU400 上昂贵的 64 位地址运算。
+    grid.y directly gives the in-batch input index, so no index division is needed; the store side is also
+    a contiguous address range, so both reads and writes are coalesced. Indices are uniformly int32 (the host
+    already guards overflow by output bytes), avoiding expensive 64-bit address arithmetic on GCU400.
     """
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
@@ -209,12 +211,12 @@ def _stack_wide_copy_kernel(
     BLOCK_X: tl.constexpr,
     MASKED: tl.constexpr,
 ):
-    """``outer == 1`` 宽通道路径：int64 视图按 8 字节 lane 整块搬运。
+    """``outer == 1`` wide-channel path: int64 view moves whole 8-byte lanes.
 
-    输入与输出都以 ``view(torch.int64)`` 重解释，每条 lane 搬 8 字节，
-    逐元素地址运算与访存请求缩减为 1/2（fp32）到 1/4（fp16/bf16/int16）。
-    grid.y 直接给出批内输入索引；host 侧已按输出字节数守卫 int32 溢出，
-    全部索引保持 int32。整除时由 ``MASKED == False`` 特化掉尾块掩码。
+    Input and output are both reinterpreted with ``view(torch.int64)``, each lane moving 8 bytes,
+    reducing per-element address arithmetic and memory requests to 1/2 (fp32) or 1/4 (fp16/bf16/int16).
+    grid.y directly gives the in-batch input index; the host already guards int32 overflow by output bytes,
+    so all indices remain int32. Exact division lets ``MASKED == False`` specialize away the tail mask.
     """
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
@@ -256,7 +258,7 @@ def _stack_stride_copy_kernel(
     output_offset,
     BLOCK_X: tl.constexpr,
 ):
-    """``seg == 1`` 路径：连续 load + stride-P store，每个输入一次 launch。"""
+    """``seg == 1`` path: contiguous load + stride-P store, one launch per input."""
     offsets = tl.program_id(0).to(tl.int64) * BLOCK_X + tl.arange(0, BLOCK_X).to(
         tl.int64
     )
@@ -276,10 +278,10 @@ def _stack_tile_copy_kernel(
     BR: tl.constexpr,
     BT: tl.constexpr,
 ):
-    """通用路径：二维 tile 直接给出 pre 行号与 post slot 号。
+    """Generic path: a 2D tile directly gives the pre row and post slot.
 
-    行偏移只含乘法，原 1D kernel 的 ``idx // seg`` 运行时 int64 软件除法
-    是 GCU400 上大 shape 的主要瓶颈，这里从算法层面消除它。
+    The row offset contains only multiplication; the original 1D kernel's ``idx // seg`` runtime int64 software division
+    is the main bottleneck for large shapes on GCU400, and is eliminated here at the algorithmic level.
     """
     row_index = (tl.program_id(0) * BR + tl.arange(0, BR)).to(tl.int64)
     slot_index = (tl.program_id(1) * BT + tl.arange(0, BT)).to(tl.int64)
@@ -309,7 +311,7 @@ def _next_power_of_two(value: int) -> int:
 
 
 def _launch_legacy(tensors, out, dim_size_out, dim_prod_post) -> None:
-    """回退到原始交织 kernel，保持 bool / int64 / fp8 / 资源超限时的语义。"""
+    """Fall back to the original interleaved kernel, preserving semantics for bool / int64 / fp8 / resource overflow."""
     block_size = _LEGACY_BLOCK
     tensor_index = 0
     while tensor_index < len(tensors):
@@ -352,7 +354,8 @@ def _launch_legacy(tensors, out, dim_size_out, dim_prod_post) -> None:
 
 
 def _launch_with_toolchain_retry(kernel, grid, args, launch_kwargs):
-    """P02：冷编译偶发 SIGSEGV 时重试 launch；确定性失败重试耗尽后原样抛出。"""
+    """P02: retry the launch on an occasional cold-compile SIGSEGV; deterministic failures are re-raised unchanged
+    after retries are exhausted."""
     for attempt in range(_TOOLCHAIN_COMPILE_RETRIES):
         try:
             return kernel[grid](*args, **launch_kwargs)
@@ -368,7 +371,7 @@ def _launch_with_toolchain_retry(kernel, grid, args, launch_kwargs):
 
 
 def _launch_wide(tensors, out, num_lanes) -> None:
-    """宽通道路径：int64 视图按 8 字节 lane 搬运，每 4 个输入一次 launch。"""
+    """Wide-channel path: int64 view moves 8-byte lanes, one launch per 4 inputs."""
     if num_lanes <= _WIDE_SMALL_LANES:
         block_lanes = _next_power_of_two(num_lanes)
         grid_cap = 1
@@ -409,7 +412,7 @@ def _launch_wide(tensors, out, num_lanes) -> None:
 
 
 def _launch_flat(tensors, out, num_elements) -> None:
-    """连续块路径：byte 对齐且 <=4 字节 dtype 走 int64 宽通道，否则元素分块。"""
+    """Contiguous-block path: byte-aligned dtypes <= 4 bytes use the int64 wide channel, otherwise element tiling."""
     itemsize = tensors[0].element_size()
     total_bytes = num_elements * itemsize
     if itemsize <= 4 and total_bytes % 8 == 0:
@@ -439,7 +442,7 @@ def _launch_flat(tensors, out, num_elements) -> None:
 
 
 def _launch_stride(tensors, out, num_elements) -> None:
-    """stride-P 路径：每个输入一次连续读 + 等步长写。"""
+    """stride-P path: one contiguous read + equal-stride write per input."""
     grid = (triton.cdiv(num_elements, _STRIDE_BLOCK),)
     tensor_count = len(tensors)
     for tensor_index, tensor in enumerate(tensors):
@@ -455,7 +458,7 @@ def _launch_stride(tensors, out, num_elements) -> None:
 
 
 def _launch_tile(tensors, out, outer, seg, element_size) -> bool:
-    """二维 tile 路径；资源超限时返回 False，由调用方回退 legacy。"""
+    """2D tile path; returns False on resource overflow so the caller falls back to legacy."""
     rows_per_block = min(_TILE_BR, _next_power_of_two(outer))
     slots_per_block = min(_TILE_BT, _next_power_of_two(seg))
     grid_y = triton.cdiv(seg, slots_per_block)
@@ -482,15 +485,15 @@ def _launch_tile(tensors, out, outer, seg, element_size) -> bool:
 def _stack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS _STACK")
+    logger.debug("GEMS_ENFLAME_GCU400 _STACK")
 
     if len(tensors) == 0:
         raise RuntimeError("stack expected a non-empty TensorList")
 
     inp_shapes = [list(_.shape) for _ in tensors]
     inp0_shape = inp_shapes[0]
-    # 单输入时下面的逐项循环不会执行，因此必须无条件校验 dim 范围，
-    # 才能与 ATen 的越界行为一致。
+    # With a single input the per-item loop below never runs, so the dim range must be validated
+    # unconditionally to match ATen's out-of-range behavior.
     ndim0 = tensors[0].dim()
     if (dim < -ndim0 - 1) or (dim > ndim0):
         raise IndexError(
@@ -514,12 +517,12 @@ def _stack(
     if dim < 0:
         dim = dim + len(inp0_shape) + 1
 
-    # 类型提升：所有输入统一到公共 dtype。
+    # Type promotion: all inputs are cast to a common dtype.
     dtypes = [t.dtype for t in tensors]
     dtype = dtypes[0]
     for dt in dtypes[1:]:
         dtype = torch.promote_types(dtype, dt)
-    # Triton 没有复数标量类型，用零拷贝 real view 搬运，末尾再还原为复数。
+    # Triton has no complex scalar type; move data through a zero-copy real view and restore complex at the end.
     is_complex = dtype.is_complex
     if is_complex:
         complex_dtype = dtype
@@ -529,8 +532,8 @@ def _stack(
     device = tensors[0].device
     work_shape = list(tensors[0].shape)
     out_shape = work_shape[:dim] + [len(tensors)] + work_shape[dim:]
-    # 用 empty_strided 绕开 GEMS 的 empty.memory_format override（会额外启动
-    # 一次 zero-init kernel）；stack kernel 会写满输出全部元素，无需初始化。
+    # empty_strided bypasses GEMS's empty.memory_format override (which would launch an extra
+    # zero-init kernel); the stack kernel writes every output element, so no initialization is needed.
     contig_strides = []
     stride = 1
     for dim_sz in reversed(out_shape):
@@ -539,7 +542,7 @@ def _stack(
     contig_strides.reverse()
     out = torch.empty_strided(out_shape, contig_strides, dtype=dtype, device=device)
 
-    # 零体积输出直接返回，避免零维 grid 的非法 launch。
+    # Zero-volume outputs return directly, avoiding an illegal launch with a zero-dimensional grid.
     if out.numel() == 0:
         return torch.view_as_complex(out) if is_complex else out
 
@@ -548,8 +551,8 @@ def _stack(
     num_elements = outer * seg
     contiguous_tensors = [tensor.contiguous() for tensor in tensors]
 
-    # int32 索引的 flat 路径要求输出字节偏移不越过 2^31；超大张量回退到
-    # 使用 int64 索引的 legacy kernel，保证语义与地址计算都安全。
+    # The int32-indexed flat path requires output byte offsets below 2^31; very large tensors fall back to
+    # the legacy kernel with int64 indices, keeping both semantics and address computation safe.
     needs_int64_index = out.numel() * out.element_size() > (1 << 31) - 1
     if dtype in _TILE_EXCLUDED_DTYPES or (outer == 1 and needs_int64_index):
         _launch_legacy(contiguous_tensors, out, len(tensors), seg)

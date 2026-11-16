@@ -223,7 +223,7 @@ def linalg_solve(A, B, *, left=True):
     Returns:
         X: (*, n, k) solution matrix
     """
-    logger.debug("GEMS LINALG_SOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SOLVE")
 
     if not left:
         raise NotImplementedError("right=True (XA = B) is not yet supported")

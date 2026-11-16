@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_thnn_fused_lstm_cell_backward_impl``。
+"""GCU400-specific ``_thnn_fused_lstm_cell_backward_impl``.
 
-公共实现把 LSTM cell 反向拆成十余次 PyTorch 张量操作（切片、tanh、逐元素乘、
-cat、按列求和），在 GCU 上每次 launch 的固定开销远大于实际计算量。这里按
-hidden 列块划分 CTA：一个 program 负责若干列的全部 batch 行，同时写出四个门的
-梯度、grad_cx，并在寄存器内对 batch 维归约得到 bias 梯度，从而用一次 Triton
-launch 完成全部输出。
+The common implementation splits the LSTM cell backward into a dozen PyTorch tensor ops (slicing, tanh,
+elementwise multiply, cat, column sums), and on GCU each launch's fixed overhead far exceeds the actual compute.
+Here CTAs are partitioned by hidden column block: one program handles all batch rows for several columns,
+writing the four gate gradients and grad_cx while reducing over batch in registers for the bias gradients,
+so all outputs are produced by a single Triton launch.
 
-``FUSED_TRITON=0`` 保留与公共实现逐字等价的 PyTorch 路径，作为基线与回退；
-优化完成后主路径固定为 ``FUSED_TRITON=1`` 的 Triton kernel。
+``FUSED_TRITON=0`` keeps a PyTorch path word-for-word equivalent to the common implementation as baseline and fallback;
+after optimization the main path is fixed to the ``FUSED_TRITON=1`` Triton kernel.
 """
 
 import logging
@@ -37,7 +37,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 编译期配置，由优化迭代按轮次调整，不改变算子语义。
+# Compile-time config, adjusted per optimization round; semantics unchanged.
 FUSED_TRITON = 1
 BLOCK_B = 32
 BLOCK_H = 32
@@ -64,8 +64,8 @@ def _lstm_cell_backward_fused_kernel(
     BLOCK_H: tl.constexpr,
     TANH_VIA_SIGMOID: tl.constexpr,
 ):
-    # 二维 tile：rows 覆盖 batch 行，cols 覆盖连续的一段 hidden 列。
-    # workspace 沿 dim=1 按 [i, f, g, o] 连续排布，故四段基址相差 H。
+    # 2D tile: rows cover batch rows, cols cover a contiguous range of hidden columns.
+    # workspace is laid out contiguously along dim=1 as [i, f, g, o], so the four base addresses differ by H.
     rows = tl.arange(0, BLOCK_B)
     cols = tl.program_id(0) * BLOCK_H + tl.arange(0, BLOCK_H)
     valid = (rows[:, None] < B) & (cols[None, :] < H)
@@ -87,7 +87,7 @@ def _lstm_cell_backward_fused_kernel(
         tl.float32
     )
 
-    # tanh(cy) 用 2*sigmoid(2*cy)-1 的恒等式表达，避免依赖设备侧 libdevice。
+    # tanh(cy) is expressed with the identity 2*sigmoid(2*cy)-1 to avoid depending on device-side libdevice.
     if TANH_VIA_SIGMOID:
         tanh_cy = 2.0 * tl.sigmoid(2.0 * cy) - 1.0
     else:
@@ -106,8 +106,8 @@ def _lstm_cell_backward_fused_kernel(
     tl.store(grad_gates_ptr + gate_offset + 3 * H, grad_o, mask=valid)
     tl.store(grad_cx_ptr + hidden_offset, d_cy * f_gate, mask=valid)
 
-    # bias 梯度是 grad_input_gates 沿 batch 维的列和；掩码外的元素已置零，
-    # 因此可在同一 kernel 内对 rows 归约，无需 atomic 或第二次 launch。
+    # The bias gradient is the column sum of grad_input_gates over batch; masked-out elements are already zero,
+    # so it can be reduced over rows inside the same kernel without atomics or a second launch.
     if HAS_BIAS:
         bias_mask = cols < H
         tl.store(grad_bias_ptr + cols, tl.sum(grad_i, axis=0), mask=bias_mask)
@@ -124,7 +124,7 @@ def _public_equivalent(
     workspace: torch.Tensor,
     has_bias: bool,
 ):
-    """与公共实现逐字等价的基线路径，仅在 ``FUSED_TRITON=0`` 时使用。"""
+    """Baseline path word-for-word equivalent to the common implementation, used only with ``FUSED_TRITON=0``."""
     _, hidden_size = cx.shape
     grad_hy = grad_hy.contiguous()
     grad_cy = grad_cy.contiguous()
@@ -160,8 +160,8 @@ def _thnn_fused_lstm_cell_backward_impl(
     workspace: torch.Tensor,
     has_bias: bool,
 ):
-    """计算 fused LSTM cell 反向的三个输出，签名与公共实现一致。"""
-    logger.debug("GEMS _THNN_FUSED_LSTM_CELL_BACKWARD_IMPL")
+    """Compute the three outputs of fused LSTM cell backward; signature matches the common implementation."""
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_LSTM_CELL_BACKWARD_IMPL")
     if FUSED_TRITON == 0:
         return _public_equivalent(grad_hy, grad_cy, cx, cy, workspace, has_bias)
 
@@ -181,7 +181,7 @@ def _thnn_fused_lstm_cell_backward_impl(
     else:
         grad_biases = torch.empty(0, dtype=cx.dtype, device=cx.device)
 
-    # grid 限幅：BLOCK_H 较小时防止超出 GCU 硬件 grid 上限。
+    # Grid cap: prevents exceeding GCU's hardware grid limit when BLOCK_H is small.
     grid_size = min(triton.cdiv(hidden_size, BLOCK_H), 65535)
     with torch_device_fn.device(cx.device):
         _lstm_cell_backward_fused_kernel[(grid_size,)](

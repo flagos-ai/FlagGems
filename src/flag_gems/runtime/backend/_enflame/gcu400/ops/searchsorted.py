@@ -25,15 +25,16 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 _CUDA_BLOCK_SIZE = 256
-# 整数序列保守回退通用向量 kernel：整数路径已达标（1.8x），不值得为窄整型
-# 与 python int 标量实参的混合比较再承担一次未验证的 GCU 风险；块宽压小以
-# 避免 1 个元素时的 lane 空转。
+# Integral sequences conservatively fall back to the generic vector kernel: the integer path already meets target
+# (1.8x),
+# not worth another unverified GCU risk from mixing narrow ints with python int scalar args; keep block width small to
+# avoid idle lanes for a single element.
 SCALAR_BLOCK_SIZE = 64
-# 1D 序列上用 int32 索引替代 int64，降低地址计算开销。
+# Use int32 indices instead of int64 on 1D sequences, lowering address computation cost.
 GCU400_SCALAR_INT32_INDEX = True
-# GCU400 tensor 路径同样用 int32 索引（i64 地址状态链软模拟开销大），numel 超 2^31
-# 自动回退 i64 保正确；标量入口走 _searchsorted_scalar_kernel（全程标量二分，
-# 无 lane 空转），块宽由 _select_launch_config 按 dtype/工作量选定。
+# The GCU400 tensor path also uses int32 indices (i64 address state chains are costly to emulate); numel beyond 2^31
+# automatically falls back to i64 for correctness; the scalar entry uses _searchsorted_scalar_kernel (all-scalar binary
+# search, no idle lanes), with block width chosen by _select_launch_config from dtype / workload.
 GCU400_TENSOR_INT32_INDEX = True
 _GCU_BLOCK_SIZE = 512
 _GCU_NUM_WARPS = 4
@@ -119,10 +120,10 @@ def _searchsorted_scalar_kernel(
     RIGHT: tl.constexpr,
     OUT_INT32: tl.constexpr,
 ):
-    """单个标量值的二分查找：全程标量运算，无 arange / 无向量 lane 空转。
+    """Binary search for a single scalar value: all-scalar operations, no arange / no idle vector lanes.
 
-    指针按 dtype 宽度偏移由 Triton 自行完成；mid 会被钳到 [0, sequence_len-1]
-    以免 low>=high 时越界，此时该次比较结果被 active 屏蔽。
+    Pointer offsets by dtype width are handled by Triton itself; mid is clamped to [0, sequence_len-1]
+    to avoid out-of-bounds when low>=high, in which case the comparison result is masked by active.
     """
     low = tl.zeros((), dtype=tl.int32)
     high = low + sequence_len
@@ -145,14 +146,14 @@ def _searchsorted_scalar_kernel(
 
 
 def _select_launch_config(dtype, numel, is_1d_sequence):
-    """按元素宽度与工作量选 (BLOCK_SIZE, num_warps)。
+    """Choose (BLOCK_SIZE, num_warps) by element width and workload.
 
-    该 kernel 的瓶颈是 sorted_sequence 上的非连续 gather（每步一次）：
-    - 2 字节浮点（fp16/bf16）单次 gather 事务只搬一半字节，放大块能摊薄
-      每步的固定开销，实测大 case 2048/w4 比 512/w4 快 1.6x；
-    - 4/8 字节元素放大块反而更慢（gather 事务数翻倍、寄存器压力上升），
-      保持 512/w4；1D 序列上 2 字节浮点用 512/w2 最快。
-    以上来自 gcu400 kernel-only sweep（256/512/1024/2048 × w2/w4）。
+    This kernel's bottleneck is the non-contiguous gather on sorted_sequence (once per step):
+    - 2-byte floats (fp16/bf16) move only half the bytes per gather transaction, so larger blocks amortize
+      the per-step fixed cost; measured large case 2048/w4 is 1.6x faster than 512/w4;
+    - 4/8-byte elements get slower with larger blocks (double gather transactions, higher register pressure),
+      keep 512/w4; on 1D sequences 2-byte floats use 512/w2.
+    From the gcu400 kernel-only sweep (256/512/1024/2048 x w2/w4).
     """
     if dtype in (torch.float16, torch.bfloat16):
         if numel >= 65536:
@@ -268,7 +269,7 @@ def _prepare_scalar_out(
     out_int32: bool,
     out: torch.Tensor | None,
 ):
-    """标量入口的 out 准备：0 维输出，不需要 values 张量。"""
+    """out preparation for the scalar entry: 0-dim output, no values tensor needed."""
     out_dtype = torch.int32 if out_int32 else torch.int64
     if out is None:
         return torch.empty((), dtype=out_dtype, device=sorted_sequence.device)
@@ -296,12 +297,12 @@ def _searchsorted_scalar_impl(
     sorter: torch.Tensor | None,
     out: torch.Tensor | None = None,
 ):
-    """python 标量入口。
+    """python scalar entry.
 
-    原实现先 `torch.scalar_tensor(value, device=...)` 造一个 0 维设备张量（每次
-    调用一次 H2D 拷贝），再跑向量 kernel（多 lane 空转）。改为把标量直接作为
-    kernel 实参、全程标量二分，省掉 H2D 与 lane 空转；带 sorter 或 ascend
-    仍走通用张量路径。
+    The original first built a 0-dim device tensor with `torch.scalar_tensor(value, device=...)` (one H2D copy
+    per call), then ran the vector kernel (many idle lanes). Passing the scalar directly as a
+    kernel argument with all-scalar binary search removes the H2D and idle lanes; with sorter or ascend
+    it still uses the generic tensor path.
     """
     right = _normalize_right(right, side)
     _check_dtype(sorted_sequence, "sorted_sequence")
@@ -403,7 +404,7 @@ def _searchsorted_impl(
             sorted_sequence.dtype, values.numel(), is_1d_sequence
         )
         if scalar_values:
-            # 单元素仍走向量 kernel 时（整数 dtype 回退路径），压小块宽
+            # Single elements still using the vector kernel (integer dtype fallback) get a smaller block width
             block_size, num_warps = SCALAR_BLOCK_SIZE, _GCU_NUM_WARPS
     int32_index_safe = (
         values.numel() < torch.iinfo(torch.int32).max
@@ -454,7 +455,7 @@ def searchsorted(
     side=None,
     sorter=None,
 ):
-    logger.debug("GEMS SEARCHSORTED")
+    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED")
     return _searchsorted_impl(
         sorted_sequence,
         self,
@@ -475,7 +476,7 @@ def searchsorted_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS SEARCHSORTED_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED_OUT")
     return _searchsorted_impl(
         sorted_sequence,
         self,
@@ -487,18 +488,19 @@ def searchsorted_out(
     )
 
 
-# ---------------- native 参考桥（torch_gcu topsaten searchsorted 破损失域） -----------
-# 探针实证（2026-11-12，L600，TORCH_GCU_ENABLE_INT64_AND_UINT64=1，逐 case 子进程）：
-#   - side="right"（right=False）→ gcu_utils.cpp:74 Check failed: 0，
-#     TOPSATEN_STATUS_BAD_PARAM 硬 abort；right=True 单独可用、side="left" 可用；
-#   - 空 boundaries（sorted_sequence.shape[-1] == 0）→ BAD_PARAM 硬 abort（全 dtype）；
-#   - python float 标量（.Scalar / .Scalar_out 重载）→ NOT_SUPPORT（F64 标量）硬
-#     abort；int 标量可用；
-#   - values 含 NaN → 错值（NaN 视作小于全部→0；CPU/FlagGems 语义为排尾）。
-# 修复口径 = 参考路径回退 CPU（服务须知第 9 条）：仅上述破损失域改走 CPU 原生
-# 实现，正常张量域原样透传 native（bench latency_base 不受影响）；FlagGems 算子
-# 路径（flag_gems.searchsorted*）零改动。use_gems 激活期间整体透传——FlagGems
-# kernel 已在 dispatcher 层接管且覆盖全部破损失域。
+# ---------------- native reference bridge (torch_gcu topsaten searchsorted broken domains) -----------
+# Probe results (2026-11-12, L600, TORCH_GCU_ENABLE_INT64_AND_UINT64=1, per-case subprocess):
+#   - side="right" (right=False) -> gcu_utils.cpp:74 Check failed: 0,
+#     TOPSATEN_STATUS_BAD_PARAM hard abort; right=True alone works, side="left" works;
+#   - empty boundaries (sorted_sequence.shape[-1] == 0) -> BAD_PARAM hard abort (all dtypes);
+#   - python float scalar (.Scalar / .Scalar_out overloads) -> NOT_SUPPORT (F64 scalar) hard
+#     abort; int scalar works;
+#   - values containing NaN -> wrong values (NaN treated as less than all -> 0; CPU/FlagGems semantics put it last).
+# Fix = reference path falls back to CPU (service note item 9): only the broken domains above use the CPU native
+# implementation; the normal tensor domain passes through to native unchanged (bench latency_base unaffected); the
+# FlagGems
+# operator path (flag_gems.searchsorted*) is untouched. While use_gems is active everything passes through - FlagGems
+# kernels already take over at the dispatcher layer and cover all broken domains.
 _NAN_CHECK_NUMEL_LIMIT = 1024
 _TORCH_SEARCHSORTED_NATIVE = None
 _SCALAR_OUT_BRIDGE_LIBRARY = None
@@ -570,23 +572,24 @@ def _searchsorted_reference_bridge(
     if not _gems_runtime_active() and _has_gcu_tensor(
         sorted_sequence, self, sorter, out
     ):
-        # side 规范化：side 只在 python 层改写为 right（native 对 side="right" 是
-        # 硬 abort，对 side/right 冲突同样是硬 abort 而非 RuntimeError）。
+        # side normalization: side is rewritten to right only in the python layer (native hard-aborts on side="right",
+        # and also on side/right conflicts instead of raising RuntimeError).
         if side is not None:
             right = _normalize_right(right, side)
             side = None
         need_cpu_reference = False
         if isinstance(self, (int, float)):
-            # python 标量（含 int）：native 对 int16 等窄整型序列 + int 标量同样
-            # 硬 abort（test_searchsorted_scalar[int16-...] 实测栈落在本函数末行），
-            # 因此 int/float 标量统一走 CPU 参考。
+            # python scalars (including int): native also hard-aborts on narrow integer sequences like int16 + int
+            # scalar
+            # (test_searchsorted_scalar[int16-...] stack landed on this function's last line),
+            # so int/float scalars uniformly use the CPU reference.
             need_cpu_reference = True
         elif isinstance(sorted_sequence, torch.Tensor):
             if sorted_sequence.dim() > 0 and sorted_sequence.shape[-1] == 0:
                 need_cpu_reference = True
             elif isinstance(self, torch.Tensor) and self.numel() == 0:
-                # 空 values（如 values.shape=(2,0)）同样落在 native 破损失域：
-                # test_searchsorted_tensor[empty_values-*] 直接 TOPSATEN 硬 abort。
+                # Empty values (e.g. values.shape=(2,0)) also land in native's broken domain:
+                # test_searchsorted_tensor[empty_values-*] directly TOPSATEN hard-aborts.
                 need_cpu_reference = True
             elif (
                 isinstance(self, torch.Tensor)
@@ -625,11 +628,12 @@ def _searchsorted_tensor_out_gcu_impl(
     sorter=None,
     out=None,
 ):
-    # 本槽位（searchsorted.Tensor_out@PrivateUse1）修前对任意 out 布局 100% 硬
-    # abort（TOPSATEN_STATUS_BAD_PARAM，见 log_ss_tensor_out.log：连 contiguous
-    # out 也 abort），因此参考实现不可用、tests/test_searchsorted.py 的
-    # test_searchsorted_tensor_out 无法通过。修法与 Scalar_out 槽位一致：
-    # use_gems 激活时委托 FlagGems kernel（保住 Triton 主路径），否则回退 CPU 参考。
+    # This slot (searchsorted.Tensor_out@PrivateUse1) hard-aborted 100% before the fix for any out layout
+    # (TOPSATEN_STATUS_BAD_PARAM, see log_ss_tensor_out.log: even contiguous
+    # out aborted), so the reference implementation was unusable and
+    # tests/test_searchsorted.py's test_searchsorted_tensor_out could not pass. Same fix as the Scalar_out slot:
+    # delegate to the FlagGems kernel when use_gems is active (keeping the Triton main path), otherwise fall back to the
+    # CPU reference.
     if _gems_runtime_active():
         return searchsorted_out(
             sorted_sequence,
@@ -661,11 +665,12 @@ def _searchsorted_scalar_out_gcu_impl(
     sorter=None,
     out=None,
 ):
-    # 本槽位（searchsorted.Scalar_out@PrivateUse1）修前 native 对 float 标量
-    # 100% 硬 abort（int 标量可用但一并走 CPU 保语义一致，零回退面）。
+    # This slot (searchsorted.Scalar_out@PrivateUse1) hard-aborted 100% for float scalars before the fix
+    # (int scalars worked but also use CPU for consistent semantics, zero fallback surface).
     if _gems_runtime_active():
-        # use_gems 下本应由 FlagGems 注册本槽位（被本桥占位而跳过）；直接委托
-        # vendor 实现，保住 kernel 路径。
+        # Under use_gems FlagGems should register this slot (skipped because this bridge occupies it); delegate directly
+        # to the
+        # vendor implementation to preserve the kernel path.
         return searchsorted_scalar_out(
             sorted_sequence,
             self,
@@ -687,7 +692,8 @@ def _searchsorted_scalar_out_gcu_impl(
 
 
 def _install_searchsorted_reference_bridge():
-    """幂等安装（后端加载器会以两个模块名各 import 一次本文件，锚定 torch 属性）。"""
+    """Idempotent install (the backend loader imports this file once under each of two module names; anchor on a
+    torch attribute)."""
     global _TORCH_SEARCHSORTED_NATIVE, _SCALAR_OUT_BRIDGE_LIBRARY
     if getattr(torch, "_flaggems_gcu_searchsorted_bridge", None) is not None:
         return
@@ -737,7 +743,7 @@ def searchsorted_scalar(
     side=None,
     sorter=None,
 ):
-    logger.debug("GEMS SEARCHSORTED_SCALAR")
+    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED_SCALAR")
     return _searchsorted_scalar_impl(
         sorted_sequence,
         self,
@@ -758,7 +764,7 @@ def searchsorted_scalar_out(
     sorter=None,
     out,
 ):
-    logger.debug("GEMS SEARCHSORTED_SCALAR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SEARCHSORTED_SCALAR_OUT")
     return _searchsorted_scalar_impl(
         sorted_sequence,
         self,

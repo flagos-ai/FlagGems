@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# mm 按 fp16 优先原则整体回退到优化前版本（fp16 最优）。
-# 确定性大 tile（BK=512）在 fp16 4096² 上稳定劣化：3 轮 benchmark 实测
-# fp16 均值 1.0268x -> 0.9638x，fp16 4096² gems 0.998/0.968 ms -> 1.298/1.232 ms；
-# 而 bf16 同配置反而变好（0.7565x -> 0.8803x）。整体均值的提升来自牺牲 fp16，
-# 按「fp16 不降」硬约束不可接受，因此回退整份实现。
-# 保留的优化结论见报告与 optimizer_agent_gcu400.md 条目 44/45/46。
+# mm is rolled back wholesale to the pre-optimization version per the fp16-first principle (fp16 was optimal).
+# Deterministic large tiles (BK=512) consistently degrade fp16 at 4096^2: 3 benchmark rounds measured
+# fp16 mean 1.0268x -> 0.9638x, fp16 4096^2 gems 0.998/0.968 ms -> 1.298/1.232 ms;
+# while bf16 with the same config improved (0.7565x -> 0.8803x). The overall mean gain came at fp16's expense,
+# which is unacceptable under the "fp16 must not regress" hard constraint, so the whole implementation is rolled back.
+# Retained optimization conclusions are in the report and optimizer_agent_gcu400.md items 44/45/46.
 
 import logging
 

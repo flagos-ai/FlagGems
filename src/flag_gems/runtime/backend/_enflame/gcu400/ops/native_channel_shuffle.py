@@ -59,7 +59,7 @@ def _native_channel_shuffle_kernel(
 
 
 def native_channel_shuffle(input: torch.Tensor, groups: int) -> torch.Tensor:
-    logger.debug("GEMS NATIVE_CHANNEL_SHUFFLE")
+    logger.debug("GEMS_ENFLAME_GCU400 NATIVE_CHANNEL_SHUFFLE")
     x = input
     if not x.is_contiguous():
         x = x.contiguous()

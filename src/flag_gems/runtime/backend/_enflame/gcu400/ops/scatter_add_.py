@@ -314,9 +314,9 @@ def scatter_add_0(inp, dim, index, src):
         out = inp
 
     src_strided = src.as_strided(index.shape, src.stride())
-    # fp16/bf16 会经 `out = inp.to(torch.float32)` 物化出布局可能不同的
-    # 张量（带 storage 洞的切片会退化为 contiguous），kernel 的寻址 strides
-    # 必须取自真正被写的 `out`，否则原子累加会落到错误偏移上。
+    # fp16/bf16 materialize `out = inp.to(torch.float32)` into a tensor with possibly different
+    # layout (a slice with storage holes degrades to contiguous), so the kernel's addressing strides
+    # must come from the real `out` being written, or atomic accumulation lands at wrong offsets.
     inp_restrided = restride_dim(out, dim, index.shape)
     dim_size = out.size(dim)
     dim_stride = out.stride(dim)
@@ -375,14 +375,15 @@ def scatter_add_1(x, dim, index, src):
             return origin.copy_(x.to(src.dtype).permute(order))
         return x.permute(order)
     else:
-        # 尾维分支同样必须回写 origin：dtype 中转后 x 是新张量，
-        # 直接返回会破坏原地契约（generic 版同款 origin.copy_）
+        # The last-dim branch must also write back origin: after dtype conversion x is a new tensor,
+        # returning it directly breaks the in-place contract (generic version uses the same origin.copy_)
         if dtype_convert:
             return origin.copy_(x.to(src.dtype))
         return x
 
 
 def scatter_add_(x, dim, index, src):
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_ADD_")
     assert x.dim() == index.dim() and x.dim() == src.dim(), "Invalid dim"
     dim = dim % x.ndim
     assert dim >= 0 and dim < x.dim(), "Invalid dim"
@@ -399,7 +400,8 @@ def scatter_add_(x, dim, index, src):
 
     src_view = src.as_strided(index.shape, src.stride())
     if is_last_dim_flat(x, dim, index, src_view):
-        # 直接累加到原 dtype：FP32 中转要多走三遍全量流量，而原子次数不变
+        # Accumulate directly in the original dtype: an FP32 detour adds three full traffic passes without changing
+        # atomic count
         scatter_last_dim(x, dim, index, src_view, True)
         return x
 
@@ -416,7 +418,7 @@ def scatter_add_(x, dim, index, src):
 
 
 def scatter_add(inp, dim, index, src):
-    """非原地 scatter_add：克隆输入后复用原地实现。"""
+    """Non-in-place scatter_add: clone the input and reuse the in-place implementation."""
     logger.debug("GEMS_ENFLAME SCATTER_ADD")
 
     out = inp.clone()

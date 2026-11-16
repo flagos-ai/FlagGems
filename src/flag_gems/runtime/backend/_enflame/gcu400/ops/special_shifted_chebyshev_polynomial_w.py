@@ -91,7 +91,7 @@ def _compute_w(y, n):
 
 
 def special_shifted_chebyshev_polynomial_w(x, n):
-    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
     assert x.dtype in (
         torch.float32,
         torch.float64,

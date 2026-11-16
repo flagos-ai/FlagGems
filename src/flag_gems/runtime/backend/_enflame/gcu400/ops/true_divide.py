@@ -21,5 +21,5 @@ logger = logging.getLogger(__name__)
 
 def true_divide_tensor(A, B):
     """Canonical Tensor overload for element-wise true division."""
-    logger.debug("GEMS TRUE_DIVIDE")
+    logger.debug("GEMS_ENFLAME_GCU400 TRUE_DIVIDE")
     return true_divide(A, B)

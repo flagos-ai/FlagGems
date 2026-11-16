@@ -191,7 +191,7 @@ def _le_cmp_run(A, B, out):
 
 
 def less_equal_(A, B):
-    logger.debug("GEMS LESS_EQUAL_")
+    logger.debug("GEMS_ENFLAME_GCU400 LESS_EQUAL_")
     if (
         isinstance(B, torch.Tensor)
         and A.dtype == B.dtype
@@ -207,7 +207,7 @@ def less_equal_(A, B):
 
 
 def less_equal_scalar_(A, B):
-    logger.debug("GEMS LESS_EQUAL_SCALAR_")
+    logger.debug("GEMS_ENFLAME_GCU400 LESS_EQUAL_SCALAR_")
     if (
         isinstance(B, (int, float))
         and not isinstance(B, bool)

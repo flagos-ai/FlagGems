@@ -114,7 +114,7 @@ def _order_workspace(device):
 
 
 def numpy_T(self):
-    logger.debug("GEMS NUMPY_T")
+    logger.debug("GEMS_ENFLAME_GCU400 NUMPY_T")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "numpy_T(): argument 'self' must be Tensor, not {}".format(

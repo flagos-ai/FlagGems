@@ -25,10 +25,10 @@ from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
 logger = logging.getLogger(__name__)
 
-# GCU400 归约亲和参数（取值由 2026-11-13 板上 A/B 扫描确定，见任务
-# j20261113032234_423a8985）：平坦归约用条带持久化 CTA + 单 load +
-# nomask 热循环；行归约去逐元素 where 谓词税；非末维归约走免物化跨步
-# kernel，避免 dim_compress 转置拷贝的读放大。
+# GCU400 reduction-friendly parameters (values from on-board A/B sweeps on 2026-11-13, see task
+# j20261113032234_423a8985): flat reduction uses striped persistent CTAs + single load +
+# nomask hot loop; row reduction removes the per-element where predicate tax; non-last-dim reduction
+# uses a materialization-free striding kernel, avoiding the read amplification of dim_compress transpose copies.
 _FLAT_BLOCK = 16384
 _FLAT_GRID_SMALL = 48
 _FLAT_GRID_LARGE = 512
@@ -354,7 +354,7 @@ def _aminmax_strided(inp, min_out, max_out, R, inner, outer):
 
 
 def aminmax(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("GEMS AMINMAX")
+    logger.debug("GEMS_ENFLAME_GCU400 AMINMAX")
 
     if dim is None:
         return _aminmax_flat(inp, keepdim, out)

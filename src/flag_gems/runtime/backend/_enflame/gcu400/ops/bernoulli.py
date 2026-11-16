@@ -85,7 +85,7 @@ def bernoulli_kernel(
 
 
 def bernoulli(self, *, generator=None):
-    logger.debug("GEMS BERNOULLI")
+    logger.debug("GEMS_ENFLAME_GCU400 BERNOULLI")
     assert self.dtype in (
         torch.float16,
         torch.bfloat16,

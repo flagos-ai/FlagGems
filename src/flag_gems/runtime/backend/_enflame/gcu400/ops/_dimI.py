@@ -18,17 +18,17 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# GCU400 没有 SparseCOO TensorImpl，aten 的 sparse COO 构造算子未注册到
-# SparsePrivateUse1，导致 sparse 元数据算子的测试在构造输入时抛
-# NotImplementedError。这里补一份 CPU 侧构造实现：元数据查询不读取存储数据，
-# 把 indices/values 复制到 CPU 后构造等价 COO 张量，sparse_dim / dense_dim /
-# shape / coalesced 状态保持不变。注册幂等，_dimV 等同类算子可复用。
+# GCU400 has no SparseCOO TensorImpl, and aten's sparse COO constructor is not registered for
+# SparsePrivateUse1, so tests of sparse metadata operators raise NotImplementedError while building inputs.
+# This adds a CPU-side constructor: metadata queries do not read storage, so indices/values are copied to CPU
+# to build an equivalent COO tensor with sparse_dim / dense_dim / shape / coalesced unchanged.
+# Registration is idempotent and reusable by _dimV and similar operators.
 _SPARSE_COO_FALLBACK_FLAG = "_flag_gems_gcu400_sparse_coo_fallback_registered"
 _SPARSE_COO_LIBRARY = None
 
 
 def ensure_sparse_coo_gcu_fallback():
-    """幂等注册 SparsePrivateUse1 的 sparse COO 构造实现，供 sparse 元数据算子复用。"""
+    """Idempotently register a SparsePrivateUse1 sparse COO constructor for sparse metadata operators."""
     global _SPARSE_COO_LIBRARY
     if getattr(torch, _SPARSE_COO_FALLBACK_FLAG, False):
         return
@@ -46,8 +46,8 @@ def ensure_sparse_coo_gcu_fallback():
         pin_memory=False,
         is_coalesced=None,
     ):
-        # sparse_dim / dense_dim / size 由 indices 与 values 的形状隐式给出；
-        # device 固定为 CPU，layout 固定为 sparse_coo，其余参数与 aten schema 对齐。
+        # sparse_dim / dense_dim / size are implied by the shapes of indices and values;
+        # device is fixed to CPU and layout to sparse_coo; other arguments match the aten schema.
         cpu_indices = indices.detach().to("cpu")
         cpu_values = values.detach().to("cpu")
         if dtype is not None:
@@ -103,7 +103,7 @@ def _dimI(self: torch.Tensor) -> int:
       'CUDA'/'SparseCsrCUDA' backend"). Mirror that contract here instead of
       guessing a formula.
     """
-    logger.debug("GEMS _DIMI")
+    logger.debug("GEMS_ENFLAME_GCU400 _DIMI")
     if self.layout is torch.sparse_coo:
         return int(self._indices().shape[0])
     raise NotImplementedError(

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 BCEWithLogits：默认路径用融合 1D flat kernel，其余走公共 Triton kernel。"""
+"""GCU400-specific BCEWithLogits: default path uses a fused 1D flat kernel, others use the common Triton kernel."""
 
 import logging
 
@@ -49,7 +49,7 @@ def _bce_logits_flat_kernel(
         targets = tl.load(target_ptr + element_offsets, mask=valid_mask, other=0).to(
             tl.float32
         )
-        # 数值稳定形式：max(x,0) - x*y + log(1 + exp(-|x|))
+        # Numerically stable form: max(x,0) - x*y + log(1 + exp(-|x|))
         loss = (
             tl.maximum(logits, 0.0)
             - logits * targets
@@ -86,7 +86,7 @@ def _launch_fused(input_tensor, target, output_tensor):
 
 
 def _common_elementwise(self, target, weight, pos_weight, out0=None):
-    """保留公共实现的 weight / pos_weight / 广播语义，全部仍是 Triton kernel。"""
+    """Keep the common implementation's weight / pos_weight / broadcast semantics; all paths remain Triton kernels."""
     from flag_gems.ops.binary_cross_entropy_with_logits import (
         binary_cross_entropy_with_logits_kernel,
         binary_cross_entropy_with_logits_pos_weight_kernel,
@@ -112,7 +112,7 @@ def _common_elementwise(self, target, weight, pos_weight, out0=None):
 
 
 def _apply_reduction(output_tensor, reduction):
-    # reduction: 0=NONE, 1=MEAN, 2=SUM；与公共实现口径一致。
+    # reduction: 0=NONE, 1=MEAN, 2=SUM; matches the common implementation.
     if reduction == 1:
         return output_tensor.mean()
     if reduction == 2:

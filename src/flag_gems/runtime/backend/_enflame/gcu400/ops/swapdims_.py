@@ -37,7 +37,7 @@ def swapdims_(self: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     leaf-requires-grad error and the IndexError for out-of-range dims) without
     a Triton kernel.
     """
-    logger.debug("GEMS SWAPDIMS_")
+    logger.debug("GEMS_ENFLAME_GCU400 SWAPDIMS_")
 
     ndim = self.dim()
 

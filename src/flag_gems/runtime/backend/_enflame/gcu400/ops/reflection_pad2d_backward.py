@@ -202,7 +202,7 @@ def reflection_pad2d_backward(grad_output, self, padding):
     Returns:
         Gradient of loss w.r.t. input, shape (N, C, H, W)
     """
-    logger.debug("GEMS REFLECTION_PAD2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD2D_BACKWARD")
 
     grad_output = grad_output.contiguous()
 

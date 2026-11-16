@@ -426,7 +426,7 @@ def _narrowed_int64_transpose_copy(
 
 def transpose_copy(input: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     """Return a contiguous copy with ``dim0`` and ``dim1`` swapped."""
-    logger.debug("GEMS TRANSPOSE_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 TRANSPOSE_COPY")
 
     normalized_dim0 = _normalize_dim(dim0, input.ndim)
     normalized_dim1 = _normalize_dim(dim1, input.ndim)

@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_add_.List``（in-place）。
+"""GCU400-specific ``_foreach_add_.List`` (in-place).
 
-公共 ``foreach_binary_list`` 执行器把 tensor 地址表放到设备侧，用二维 grid
-承载 chunk metadata；GCU400 上该 int64 指针表会被 torch_gcu 截成 int32，
-且 grid.y 有 255 的硬件上限。这里改走逐 tensor 的一维固定 grid + 核内跨步
-kernel，完全不依赖设备侧指针表；非浮点 / 复数 / 非连续输入回退公共实现。
+The common ``foreach_binary_list`` executor places the tensor address table on the device and uses a 2D grid
+for chunk metadata; on GCU400 that int64 pointer table is truncated to int32 by torch_gcu, and grid.y is
+limited to 255 by hardware. This uses a per-tensor 1D fixed grid with in-kernel striding instead, with no
+device-side pointer table at all; non-float / complex / non-contiguous inputs fall back to the common implementation.
 """
 
 import logging
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # --- TUNING PARAMS START ---
 
 
-# 由优化迭代驱动脚本按轮次生成；编译期/启动期配置，不改变算子语义。
+# Generated per round by the optimization driver script; compile-time / launch-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 NUM_WARPS = 4
@@ -61,7 +61,7 @@ def _foreach_add_list_flat_kernel(
     BLOCK: tl.constexpr,
     FP32_ROUNDTRIP: tl.constexpr,
 ):
-    """一维固定 grid 跨步执行 self += alpha * other。"""
+    """1D fixed grid with striding, computing self += alpha * other."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -71,7 +71,8 @@ def _foreach_add_list_flat_kernel(
         lhs = tl.load(self_ptr + offs, mask=mask)
         rhs = tl.load(other_ptr + offs, mask=mask)
         if FP32_ROUNDTRIP:
-            # 与公共实现一致：低精度先提升 fp32 再相加，store 时隐式降回。
+            # Same as the common implementation: promote low precision to fp32 before adding, then implicitly cast back
+            # on store.
             result = lhs.to(tl.float32) + alpha * rhs.to(tl.float32)
         else:
             result = lhs + alpha * rhs
@@ -79,7 +80,7 @@ def _foreach_add_list_flat_kernel(
 
 
 def _can_use_flat_kernel(self, other):
-    """仅接受同长度、同 dtype 的连续浮点 tensor 列表。"""
+    """Accept only contiguous float tensor lists of equal length and equal dtype."""
     if len(self) == 0:
         return False
     if len(self) != len(other):

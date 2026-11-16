@@ -83,7 +83,7 @@ def _special_round_kernel(
 
 
 def special_round(A, *, decimals=0):
-    logger.debug("GEMS SPECIAL_ROUND")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ROUND")
     scale = float(10**decimals)
     out = torch.empty_like(A)
     n_elements = out.numel()
@@ -95,7 +95,7 @@ def special_round(A, *, decimals=0):
 
 
 def special_round_out(self, out, *, decimals=0):
-    logger.debug("GEMS SPECIAL_ROUND_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ROUND_OUT")
     scale = float(10**decimals)
     n_elements = out.numel()
     if n_elements == 0:

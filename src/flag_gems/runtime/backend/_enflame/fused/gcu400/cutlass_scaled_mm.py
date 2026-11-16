@@ -28,6 +28,7 @@ SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
 
 def get_sm_version_num():
+    logger.debug("GEMS_ENFLAME_GCU400 GET_SM_VERSION_NUM")
     major, minor = get_device_capability()
     return major * 10 + minor
 
@@ -46,6 +47,7 @@ def get_block_wise_smm_configs():
     # block and the b-scale base stays a scalar address (a per-lane
     # offs_bn // SCALE_BLOCK_N divide in a load address scalarizes the
     # whole loop on GCU). num_warps=4 is the GCU hard cap.
+    logger.debug("GEMS_ENFLAME_GCU400 GET_BLOCK_WISE_SMM_CONFIGS")
     tile_configs = [
         # (TILE_M, TILE_N, num_warps, num_stages)
         (16, 128, 4, 3),
@@ -96,6 +98,7 @@ def _prune_block_wise_configs(configs, named_args, **kwargs):
 def grouped_launch(
     pid, M, N, TILE_M: tl.constexpr, TILE_N: tl.constexpr, SWIZZLE_GROUP_M: tl.constexpr
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 GROUPED_LAUNCH")
     grid_m = tl.cdiv(M, TILE_M)
     grid_n = tl.cdiv(N, TILE_N)
 
@@ -538,6 +541,7 @@ def dispatch_scaled_mm(
     int8_func: Optional[Callable],
     blockwise_func: Callable,
 ) -> None:
+    logger.debug("GEMS_ENFLAME_GCU400 DISPATCH_SCALED_MM")
     assert a_scale.dtype == torch.float32, "a_scale must be float32"
     assert b_scale.dtype == torch.float32, "b_scale must be float32"
 
@@ -598,6 +602,7 @@ def cutlass_scaled_mm_sm90(
     b_scale: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
 ) -> None:
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM90")
     dispatch_scaled_mm(
         c=c,
         a=a,
@@ -612,22 +617,27 @@ def cutlass_scaled_mm_sm90(
 
 
 def cutlass_scaled_mm_sm120(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM120")
     raise NotImplementedError("cutlass_scaled_mm_sm120 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm100(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM100")
     raise NotImplementedError("cutlass_scaled_mm_sm100 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm89(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM89")
     raise NotImplementedError("cutlass_scaled_mm_sm89 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm80(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM80")
     raise NotImplementedError("cutlass_scaled_mm_sm80 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm75(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM75")
     raise NotImplementedError("cutlass_scaled_mm_sm75 is not yet implemented. ")
 
 
@@ -639,7 +649,7 @@ def cutlass_scaled_mm(
     b_scale: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS CUTLASS_SCALED_MM")
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM")
     assert (
         a.dim() == 2 and b.dim() == 2 and c.dim() == 2
     ), "All inputs must be 2D tensors"
@@ -764,6 +774,7 @@ def cutlass_scaled_mm_fp8(c, a, b, scale_a, scale_b, bias):
     Unlike the general CUTLASS-compatible entry, the ATen caller has already
     validated metadata. Avoid repeating its dispatch and autotuning overhead.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_FP8")
     m, k = a.shape
     n = b.shape[1]
     bm, bn, bk = (

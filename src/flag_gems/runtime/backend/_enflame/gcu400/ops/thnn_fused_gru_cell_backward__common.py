@@ -445,21 +445,22 @@ def _launch_gru_cell_backward(
 _FUSED_LAUNCH = None
 _FUSED_RESOLVED = False
 
-# 融合 kernel 的适用规模门槛（实测标定，单位 = batch_size * hidden_size）：
-#  - has_bias=True：两步实现额外要跑 bias 归约 kernel，固定开销约 60us，
-#    因此很小规模（>= 512，例如 8x64）融合也更快；
-#  - has_bias=False：两步实现只有 1 个轻量主 kernel，而融合 kernel 单次 launch
-#    约 12us，小规模反而更慢，需要 >= 131072（例如 512x1024）才切换。
+# Scale threshold for the fused kernel (measured, unit = batch_size * hidden_size):
+#  - has_bias=True: the two-step implementation additionally runs a bias reduction kernel with ~60us fixed cost,
+#     so fusion is faster even at very small scale (>= 512, e.g. 8x64);
+#  - has_bias=False: the two-step implementation has only 1 lightweight main kernel, while a single fused launch
+#    is ~12us and is slower at small scale, so switch only at >= 131072 (e.g. 512x1024).
 _FUSED_MIN_ELEMS_WITH_BIAS = 512
 _FUSED_MIN_ELEMS_NO_BIAS = 131072
 
 
 def _fused_launcher():
-    """取 gcu400 的单 kernel 融合实现（同目录模块），失败则返回 None。
+    """Get gcu400's single-kernel fused implementation (module in the same directory), or return None.
 
-    融合实现按 hidden 列块划分 CTA，在寄存器内同时完成四门梯度与 bias 归约，
-    相比本节的两步实现省去 2~3 次 launch 与 2xBx3H 元素的重复读取。
-    解析结果缓存，避免每次调用都走一遍 import 机制。
+    The fused implementation partitions CTAs by hidden column block and computes four gate gradients plus bias reduction
+    in registers,
+    saving 2~3 launches and rereading 2xBx3H elements versus the two-step implementation here.
+    The resolution result is cached, avoiding the import machinery on every call.
     """
     global _FUSED_LAUNCH, _FUSED_RESOLVED
     if not _FUSED_RESOLVED:
@@ -468,7 +469,7 @@ def _fused_launcher():
             from .thnn_fused_gru_cell_backward import _launch_fused_kernel
 
             _FUSED_LAUNCH = _launch_fused_kernel
-        except Exception:  # pragma: no cover - 回退到两步实现
+        except Exception:  # pragma: no cover - fall back to the two-step implementation
             _FUSED_LAUNCH = None
     return _FUSED_LAUNCH
 
@@ -476,7 +477,7 @@ def _fused_launcher():
 def _thnn_fused_gru_cell_backward(
     grad_hy: torch.Tensor, workspace: torch.Tensor, has_bias: bool
 ):
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL_BACKWARD")
     _validate_inputs(grad_hy, workspace)
     batch_size, hidden_size = grad_hy.shape
     gate_shape = (batch_size, 3 * hidden_size)
@@ -544,7 +545,7 @@ def _thnn_fused_gru_cell_backward_out(
     out3: torch.Tensor,
     out4: torch.Tensor,
 ):
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
     _validate_inputs(grad_hy, workspace)
     if not has_bias:
         raise RuntimeError("the out overload requires has_bias=True")

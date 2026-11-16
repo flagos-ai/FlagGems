@@ -50,26 +50,26 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 _BLOCK = 256
-# r == 4 的 (BLOCK, 16) tile 最耗 DSM；512 实测超出 GCU400 的 917504 上限，
-# 该路径单独降到 128，其余路径保持 256。
+# The (BLOCK, 16) tile for r == 4 uses the most DSM; 512 measured above GCU400's 917504 limit,
+# so that path alone drops to 128 while other paths keep 256.
 _BLOCK_R4 = 128
-# r == 2 用持久网格，CTA 数固定不超过 48，剩余行由核内跨步循环消费。
+# r == 2 uses a persistent grid with at most 48 CTAs; remaining rows are consumed by an in-kernel stride loop.
 _MAX_GRID = 48
 _CAP = 1 << 62
 
 
 def _warps_for(r):
-    """按 kernel 路径分档 num_warps。
+    """Tier num_warps by kernel path.
 
-    r == 3 / r == 4 的大 tile 需要 4 个 warp 维持访存并行度（单 warp 实测
-    分别劣化 23% 与 55%）；r == 2 与 generic 路径的 lane 工作量小，
-    单 warp 反而更快（-4.5% / -5.8%）。
+    The large tiles of r == 3 / r == 4 need 4 warps to sustain memory parallelism (a single warp measured
+    23% and 55% worse respectively); r == 2 and the generic path have small per-lane work,
+    so a single warp is faster instead (-4.5% / -5.8%).
     """
     return 4 if r == 3 else 1
 
 
 def _block_for(r):
-    """按 kernel 的 tile 形状分档：r == 4 用 128 规避 DSM 上限，其余用 256。"""
+    """Tier by kernel tile shape: r == 4 uses 128 to stay under the DSM limit, others use 256."""
     return _BLOCK_R4 if r == 4 else _BLOCK
 
 
@@ -155,8 +155,8 @@ def _combinations_kernel(
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     lanes = tl.arange(0, BLOCK)
-    # 持久网格：固定少量 CTA，每个 CTA 跨步消费多个 4*BLOCK 行块，
-    # 消除数百个 CTA 的调度开销；nchunks 由 total 与 CTA 数在设备侧计算。
+    # Persistent grid: a fixed small number of CTAs, each striding over several 4*BLOCK row blocks,
+    # removing the scheduling overhead of hundreds of CTAs; nchunks is computed on device from total and CTA count.
     nchunks = tl.cdiv(total, 4 * BLOCK * num_programs)
     for chunk in range(nchunks):
         m0 = (pid + chunk * num_programs) * (4 * BLOCK) + 4 * lanes
@@ -294,8 +294,8 @@ def _combinations4_kernel(
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     lanes = tl.arange(0, BLOCK)
-    # 持久网格：r == 4 原本约 2 万个 CTA，固定 48 个 CTA 后由核内跨步循环
-    # 消费剩余行块，显著削减 CTA 调度开销。
+    # Persistent grid: r == 4 originally had ~20k CTAs; fixing 48 CTAs and consuming the remaining
+    # row blocks with an in-kernel stride loop significantly cuts CTA scheduling overhead.
     nchunks = tl.cdiv(total, 4 * BLOCK * num_programs)
     for chunk in range(nchunks):
         m0 = (pid + chunk * num_programs) * (4 * BLOCK) + 4 * lanes
@@ -447,7 +447,7 @@ def _unrank_kernel(
 
 
 def combinations(self, r=2, with_replacement=False):
-    logger.debug("GEMS COMBINATIONS")
+    logger.debug("GEMS_ENFLAME_GCU400 COMBINATIONS")
     if r < 0:
         raise RuntimeError("Expect a non-negative number, but got {}".format(r))
     if self.dim() != 1:
@@ -463,8 +463,9 @@ def combinations(self, r=2, with_replacement=False):
         total = math.comb(n + r - 1, r) if n + r - 1 >= r else 0
     else:
         total = math.comb(n, r) if n >= r else 0
-    # GCU400 的 maskedstore 不接受 i1 指针；bool 输入与输出改用等宽 uint8 视图，
-    # 计算完成后再 view 回 bool。非连续输入先物化为连续张量以保留 gather 语义。
+    # GCU400 maskedstore does not accept i1 pointers; bool input and output use equal-width uint8 views
+    # and are viewed back to bool after computation. Non-contiguous inputs are materialized contiguous to preserve
+    # gather semantics.
     is_bool = source_dtype == torch.bool
     if is_bool:
         flat = flat.contiguous().view(torch.uint8)
@@ -472,7 +473,7 @@ def combinations(self, r=2, with_replacement=False):
     if total == 0:
         return out.view(source_dtype) if is_bool else out
     if r == 2 and n <= (1 << 20):
-        # grid 必须使用与 kernel 相同的 BLOCK；r == 2 走持久网格，CTA 数封顶 48。
+        # grid must use the same BLOCK as the kernel; r == 2 uses a persistent grid with CTA count capped at 48.
         grid = (min(triton.cdiv(total, 4 * _block_for(r)), _MAX_GRID),)
         _combinations_kernel[grid](
             out,
@@ -499,7 +500,7 @@ def combinations(self, r=2, with_replacement=False):
             num_warps=_warps_for(r),
         )
     elif r == 4 and n <= (1 << 20):
-        # grid 必须与 kernel 实际使用的 BLOCK 一致；r == 4 同样走持久网格。
+        # grid must match the BLOCK actually used by the kernel; r == 4 also uses a persistent grid.
         grid = (min(triton.cdiv(total, 4 * _block_for(r)), _MAX_GRID),)
         _combinations4_kernel[grid](
             out,

@@ -24,12 +24,12 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# 拼接拷贝 kernel 分档（2026-11-13 本机 A/B 扫参定标：B8192/cap24/w4 在
-# 2B/4B 全部 bench 形状上最优或贴最优，含 NT=1 大组件与中档尺寸）：
-#   宽通道（int64 视图，8 字节 lane，host 侧保证 8B 对齐）BLOCK=8192 lanes；
-#   非对齐/元素路径 BLOCK=16384 elements；grid_x 封顶 24 + 块跨步循环。
-# 平坦流式拷贝经 DMA 传输、不驻留 DSM（同 kernel 形态实测 dsm_memory_size=0），
-# BLOCK 取值无 DSM 预算压力；grid.y = 组件数 <= _MAX_POINTERS 守卫 255 上限。
+# Copy-kernel tiers for concatenated copies (calibrated by local A/B sweeps on 2026-11-13: B8192/cap24/w4 is
+# optimal or near-optimal for all 2B/4B benchmark shapes, including large NT=1 components and medium sizes):
+#   wide channel (int64 view, 8-byte lanes, host guarantees 8B alignment): BLOCK=8192 lanes;
+#   unaligned / element path: BLOCK=16384 elements; grid_x capped at 24 with a block stride loop.
+# Flat streaming copies go through DMA and do not reside in DSM (measured dsm_memory_size=0 for this kernel shape),
+# so BLOCK has no DSM budget pressure; grid.y = component count <= _MAX_POINTERS guards the 255 limit.
 _WIDE_BLOCK = 8192
 _WIDE_GRID_CAP = 24
 _WIDE_WARPS = 4
@@ -40,10 +40,11 @@ _MAX_POINTERS = 4
 _INT32_LIMIT_BYTES = (1 << 31) - 1
 _TOOLCHAIN_COMPILE_RETRIES = 3
 
-# 单 kernel 快路径承接的 dtype 白名单（`_stack` 宽/平坦路径验证过的域）。
+# Dtype whitelist for the single-kernel fast path (domain validated by the _stack wide / flat paths).
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
-# 运行时标量不做特化：组件长度/偏移随调用变化，避免 JIT 按值分桶导致重编译。
+# Runtime scalars are not specialized: component lengths / offsets change per call, avoiding JIT recompilation from
+# value bucketing.
 _NO_SPECIALIZE = [
     "n0",
     "n1",
@@ -85,10 +86,11 @@ def _nested_cat_copy_kernel(
     MASKED: tl.constexpr,
     WIDE: tl.constexpr,
 ):
-    # 每个组件是输出里的一段连续块：grid.y 给出组件号，块内是纯仿射
-    # load/store（连续读 + 连续写），整除时由 MASKED == False 特化掉尾块掩码。
-    # 索引保持 int32（host 侧按输出字节数守卫 < 2^31）。WIDE 时指针按 int64
-    # 位重解释（host 侧已守卫 8B 对齐），一次搬 8 字节免去逐元素寻址开销。
+    # Each component is one contiguous block of the output: grid.y gives the component id, and within a block the
+    # load/store is purely affine (contiguous read + contiguous write); exact division lets MASKED == False specialize
+    # away the tail mask.
+    # Indices stay int32 (host guards output bytes < 2^31). With WIDE, pointers are reinterpreted as int64
+    # bits (host already guards 8B alignment), moving 8 bytes at once and avoiding per-element address computation.
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
     num_programs = tl.num_programs(0)
@@ -104,9 +106,9 @@ def _nested_cat_copy_kernel(
         out_ptr = out_ptr.to(tl.pointer_type(tl.int64))
         source_ptr = source_ptr.to(tl.pointer_type(tl.int64))
     if pid_x == 0 and pid_y == 0:
-        # offsets 是 host 已知的形状元数据，由 (0, 0) 号 program 在设备侧写
-        # 出——免除 host->device 拷贝（分页 H2D 阻塞设备队列；pinned 暂存
-        # 的按次分配在存在在飞工作时 host 侧 ~30µs 起且污染计时窗）。
+        # offsets are shape metadata known on the host, written out on the device by program (0, 0)
+        # - this avoids host-to-device copies (paged H2D blocks the device queue; pinned staging
+        # allocations cost ~30us or more on the host when work is in flight and pollute the timing window).
         tl.store(offsets_ptr, 0)
         if NT >= 1:
             tl.store(offsets_ptr + 1, l0.to(tl.int64))
@@ -131,8 +133,9 @@ def _nested_cat_copy_kernel(
 
 
 def _launch_with_toolchain_retry(kernel, grid, args, launch_kwargs):
-    # 外部 /opt/triton_gcu 转换器冷编译偶发 SIGSEGV（compiler_problems/P02），
-    # 概率性、不留缓存条目、重试即可通过；确定性失败重试耗尽后原样抛出。
+    # The external /opt/triton_gcu converter occasionally SIGSEGVs on cold compilation (compiler_problems/P02),
+    # probabilistically, leaving no cache entry; a retry succeeds. Deterministic failures are re-raised unchanged after
+    # retries are exhausted.
     for attempt in range(_TOOLCHAIN_COMPILE_RETRIES):
         try:
             return kernel[grid](*args, **launch_kwargs)
@@ -158,12 +161,12 @@ def _contiguous_strides(shape):
 
 
 def _try_fast_concat(components):
-    """dim-0 连续块拼接快路径：命中返回 ``(values, offsets)``，否则 None。
+    """Fast path for concatenating dim-0 contiguous blocks: returns ``(values, offsets)`` on a hit, otherwise None.
 
-    语义与 ``torch.cat(components, dim=0)`` 逐位一致（纯拷贝、输出全新连续
-    缓冲）。所有组件连续、同 dtype、同尾随形状、同设备时，拼接对每个组件
-    就是一次平坦整块搬运；offsets 一并由同一 kernel 在设备侧写出，整个
-    values+offsets 组装只花一次 kernel launch、零 host->device 拷贝。
+    Semantics are bit-identical to ``torch.cat(components, dim=0)`` (pure copy into a fresh contiguous
+    buffer). When all components are contiguous with the same dtype, trailing shape and device, concatenation
+    is one flat bulk transfer per component; offsets are written by the same kernel on device, so assembling
+    values+offsets costs one kernel launch and zero host-to-device copies.
     """
     count = len(components)
     if count == 0 or count > _MAX_POINTERS:
@@ -206,8 +209,8 @@ def _try_fast_concat(components):
     for lead in leads:
         offsets_list.append(offsets_list[-1] + lead)
     if total == 0:
-        # 零体积：不 launch，offsets 直接以 pinned CPU 张量异步入队（一次性
-        # 小拷贝，此路径无后续 kernel 争用）。
+        # Zero volume: no launch; offsets are enqueued asynchronously as a pinned CPU tensor (one small
+        # copy, with no subsequent kernel contention on this path).
         try:
             offsets = torch.tensor(offsets_list, dtype=torch.int64, pin_memory=True).to(
                 first.device, non_blocking=True
@@ -216,8 +219,8 @@ def _try_fast_concat(components):
             offsets = torch.tensor(offsets_list, dtype=torch.int64, device=first.device)
         return out, offsets
 
-    # 宽通道条件：dtype 字节数 <= 4、各组件字节数 8 对齐且数据指针 8B 对齐
-    # （kernel 侧按 int64 位重解释；未对齐视图走元素路径保正确）。
+    # Wide-channel conditions: dtype itemsize <= 4, each component's byte size 8-aligned and data pointer 8B-aligned
+    # (the kernel reinterprets as int64 bits; unaligned views take the element path for correctness).
     wide = itemsize <= 4 and out.data_ptr() % 8 == 0
     if wide:
         for tensor in components:
@@ -278,11 +281,11 @@ def _try_fast_concat(components):
 
 
 def _build_jagged_nested(values, offsets):
-    # `torch.nested.nested_tensor_from_jagged` 的 aten 分派链在本栈上纯 host
-    # 侧约 75-86µs（无设备同步，纯 Python/dispatch 开销），其返回对象就是
-    # torch.nested._internal 的 `NestedTensor` 包装子类——直构同类对象省去
-    # aten 分派（~53µs），unbind/shape/值语义逐位一致。非 GCU/CUDA 设备
-    # 保留官方入口。
+    # The aten dispatch chain of `torch.nested.nested_tensor_from_jagged` is pure host
+    # overhead on this stack, about 75-86us (no device sync, pure Python/dispatch cost), and its return value is
+    # the `NestedTensor` wrapper subclass from torch.nested._internal - constructing the same class directly
+    # skips aten dispatch (~53us) with bit-identical unbind/shape/value semantics. Non-GCU/CUDA devices
+    # keep the official entry point.
     if values.device.type in ("gcu", "cuda"):
         from torch.nested._internal.nested_tensor import NestedTensor
 
@@ -301,7 +304,7 @@ def _nested_tensor_from_tensor_list(
     tensors. Each element of ``tensor_list`` becomes a component of the
     resulting nested tensor."""
 
-    logger.debug("GEMS _NESTED_TENSOR_FROM_TENSOR_LIST")
+    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_TENSOR_FROM_TENSOR_LIST")
     # Build each component honouring the optional dtype/device overrides. The
     # default strided construction ``torch.nested.nested_tensor`` re-dispatches
     # into this same aten op (infinite recursion once FlagGems overrides it), so
@@ -320,11 +323,11 @@ def _nested_tensor_from_tensor_list(
 
     device_ = components[0].device
 
-    # values+offsets 组装：dim-0 拼接对各组件是一次整块平坦拷贝——快路径
-    # 单 kernel launch 完成、offsets 同 kernel 设备侧写出（Host 侧无 aten
-    # 计算外流、零 H2D）；域外（>4 组件 / 非 float dtype / 非连续 / 超大）
-    # 组合复用 enflame cat 算子；非 GCU 设备保留公版行为（该路径不经 GCU
-    # dispatch，仅直调可达）。
+    # values+offsets assembly: dim-0 concatenation is one flat bulk copy per component - the fast path
+    # finishes in a single kernel launch and writes offsets on device in the same kernel (no host-side aten
+    # compute offload, zero H2D); out-of-domain cases (>4 components / non-float dtype / non-contiguous / very large)
+    # reuse the enflame cat operator; non-GCU devices keep common behavior (that path does not go through GCU
+    # dispatch and is only reachable by direct calls).
     fast = _try_fast_concat(components)
     if fast is not None:
         values, offsets = fast
@@ -356,32 +359,35 @@ def _nested_tensor_from_tensor_list(
 
 
 # ---------------------------------------------------------------------------
-# aten PrivateUse1 bridge（`_convolution_double_backward.py` 门禁修复轮制式）。
+# aten PrivateUse1 bridge (pattern from the _convolution_double_backward.py gate fix).
 #
-# native `aten::_nested_tensor_from_tensor_list`@PrivateUse1 是 CompositeExplicit
-# Autograd 复合核：对 GCU 组件构造 strided NestedTensorgcu 半成品（P21 档：
-# unbind/values/select/t/to 全 accessor 族 NotImplementedError）。精度门禁与
-# benchmark 的参考腿不经 enable()/use_gems() 直连 torch.ops.aten.*，在
-# `torch.unbind(ref_out)` 处全灭。桥接规则：
-#   * 直连 aten 调用 -> 本地实现（jagged 布局，GCU 上全 accessor 可用）；
-#   * `torch.nested.nested_tensor()` 重派发（调用栈含 torch/nested/__init__.py
-#     的 nested_tensor 帧）-> 委托 native：该 strided 构造 API 被 dim/sparse_dim
-#     等测试钉住 strided 语义（layout == strided、sparse_dim 的
-#     NotImplementedError 奇偶校验），保持原行为；
-#   * 异构尾维（jagged 布局不可表达）-> 委托 native（本地 cat 路径本就不
-#     支持，native 语义更宽）。
-# 桥接函数在调用期解析 `flag_gems.FULL_CONFIG_BY_FUNC`：enable()/use_gems()
-# 对同一 key 的重复注册被 registrar 捕获为 warning（torch 拒绝二次 python
-# override），spy 型 dispatch 测试因此仍能经 live 映射命中被替换的实现。
-# native kernel 在本桥接注册前捕获（call_boxed 绕过 dispatcher，不会重入）；
-# 状态挂 torch 属性上，防本文件多模块别名导入时重复捕获自陷。
+# The native `aten::_nested_tensor_from_tensor_list`@PrivateUse1 is a CompositeExplicit
+# Autograd composite kernel: for GCU components it builds a half-finished strided NestedTensorgcu (P21 case:
+# unbind/values/select/t/to accessors all raise NotImplementedError). The accuracy gate and
+# benchmark reference legs call torch.ops.aten.* directly without enable()/use_gems(), and fail at
+# `torch.unbind(ref_out)`. Bridging rules:
+#   * direct aten call -> local implementation (jagged layout, all accessors available on GCU);
+#   * `torch.nested.nested_tensor()` redispatch (call stack contains the nested_tensor frame
+#     of torch/nested/__init__.py) -> delegate to native: that strided constructor API is pinned by
+#     dim/sparse_dim tests to strided semantics (layout == strided, sparse_dim
+#     NotImplementedError parity checks), so keep the original behavior;
+#   * heterogeneous trailing dimensions (not expressible as jagged) -> delegate to native (the local cat path
+#     does not support them anyway, and native semantics are broader).
+# The bridge function resolves `flag_gems.FULL_CONFIG_BY_FUNC` at call time: duplicate registration by
+# enable()/use_gems()
+# for the same key is caught by the registrar as a warning (torch rejects a second python
+# override), so spy-style dispatch tests still hit the replaced implementation through the live mapping.
+# The native kernel is captured before this bridge registers (call_boxed bypasses the dispatcher, no re-entry);
+# state is attached to a torch attribute to prevent repeated self-capture when this file is imported under multiple
+# module aliases.
 # ---------------------------------------------------------------------------
 _ATEN_BRIDGE_FLAG = "_flag_gems_gcu400_nested_from_tensor_list_bridge"
 
 
 def _from_nested_tensor_api():
-    # 目标帧（torch/nested/__init__.py::nested_tensor）距 kernel 调用只有
-    # 2-3 层（C++ dispatcher 不产生 Python 帧），限深遍历保持 O(1)。
+    # The target frame (torch/nested/__init__.py::nested_tensor) is only
+    # 2-3 levels above the kernel call (the C++ dispatcher produces no Python frames), so a depth-limited walk stays
+    # O(1).
     frame = sys._getframe(1)
     for _ in range(10):
         if frame is None:

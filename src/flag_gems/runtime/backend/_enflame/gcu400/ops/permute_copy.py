@@ -160,7 +160,7 @@ def permute_copy(x: torch.Tensor, dims):
     Wrapper for aten::permute_copy
     Creates and returns a copy of x with permuted dimensions.
     """
-    logger.debug("GEMS PERMUTE_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 PERMUTE_COPY")
     ndim = x.ndim
     if ndim == 0:
         # Scalar tensor - just return a copy

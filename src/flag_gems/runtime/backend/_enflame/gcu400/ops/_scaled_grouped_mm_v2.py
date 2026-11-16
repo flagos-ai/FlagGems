@@ -482,7 +482,7 @@ def _scaled_grouped_mm_v2(
     contraction_dim=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS _SCALED_GROUPED_MM_V2")
+    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_GROUPED_MM_V2")
     if bias is not None:
         raise ValueError(_BIAS_ERROR)
     if contraction_dim:

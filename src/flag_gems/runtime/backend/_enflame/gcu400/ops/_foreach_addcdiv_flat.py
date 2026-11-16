@@ -11,14 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""GCU400 专属 ``_foreach_addcdiv_.Tensor`` 一维融合实现。
+"""GCU400-specific 1D fused implementation of ``_foreach_addcdiv_.Tensor``.
 
-公共 ``foreach_ternary`` 执行器以二维 ``grid=(tensor, tile)`` 启动；在
-16 个 512x512 张量、BLOCK=1024 时第二维达到 256，越过 GCU400 ``grid.y``
-的 255 硬件上限，benchmark 直接 ``OutOfResources``。这里把 ``grid.x`` 按
-``(tensor, part)`` 线性展开为单次 launch，并在核内跨步覆盖剩余 tile。
-混合 dtype、非连续、广播、标量 value、非法 dtype 等形态仍回退公共执行器，
-保证原有 dtype policy 与异常语义不变。
+The common ``foreach_ternary`` executor launches a 2D ``grid=(tensor, tile)``; with
+16 tensors of 512x512 and BLOCK=1024 the second dimension reaches 256, exceeding the GCU400 ``grid.y``
+hardware limit of 255 and making the benchmark fail with ``OutOfResources``. Here ``grid.x`` is
+linearized over ``(tensor, part)`` in a single launch, and the kernel strides over remaining tiles.
+Mixed dtype, non-contiguous, broadcast, scalar value, and invalid dtype cases still fall back to the
+common executor, keeping the original dtype policy and exception semantics.
 """
 
 import logging
@@ -39,11 +39,11 @@ _TL_DTYPES = {
     torch.bfloat16: tl.bfloat16,
 }
 
-# 不适合快路径时返回该哨兵，由调用方委托公共执行器。
+# Returned when the fast path is not applicable, so the caller delegates to the common executor.
 FALLBACK = object()
 
 # --- TUNING PARAMS START (foreach_addcdiv_tensor_) ---
-# 由优化迭代扫描逐轮注入；均为编译期/启动期配置，不改变算子语义。
+# Injected per round by the optimization sweep; all compile-time / launch-time config, semantics unchanged.
 ADDC_DIV_TENSOR_TUNING = {
     "enabled": 1,
     "fixed_grid": 24,
@@ -55,9 +55,9 @@ ADDC_DIV_TENSOR_TUNING = {
 }
 # --- TUNING PARAMS END (foreach_addcdiv_tensor_) ---
 
-# do_bench 反复调用同一组 tensor，metadata 只与地址 / numel / value 有关。
-# 命中缓存即可省掉两次 host→device 小张量构造；键包含全部地址与 value，
-# 地址复用但内容变化时仍会重新构造，缓存上限避免长期驻留。
+# do_bench repeatedly calls the same group of tensors; metadata depends only on addresses / numel / value.
+# A cache hit avoids two host-to-device small-tensor constructions; the key includes all addresses and values,
+# so reused addresses with changed contents still rebuild it, and the cache cap avoids long-term residency.
 _META_CACHE: Dict[Tuple, Tuple[torch.Tensor, torch.Tensor]] = {}
 _META_CACHE_MAX = 64
 
@@ -72,11 +72,11 @@ def fused_addcdiv_tensor_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """一次 launch 完成 ``self + value * (tensor1 / tensor2)``。
+    """Compute ``self + value * (tensor1 / tensor2)`` in one launch.
 
-    ``meta_ptr`` 为 int64，依次存放 self / output / tensor1 / tensor2 指针与
-    元素数（各 NT 项）；``value_ptr`` 存放每个 tensor 的 fp32 value。
-    ``grid.x`` 由 ``(tensor, part)`` 线性展开，绕开 grid.y 的 255 上限。
+    ``meta_ptr`` is int64 and holds self / output / tensor1 / tensor2 pointers plus
+    element counts (NT entries each); ``value_ptr`` holds one fp32 value per tensor.
+    ``grid.x`` is linearized over ``(tensor, part)`` to bypass the grid.y limit of 255.
     """
     program_id = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -104,7 +104,7 @@ def fused_addcdiv_tensor_kernel(
         tensor1_value = tl.load(tensor1_ptr + offsets, mask=mask, other=0)
         tensor2_value = tl.load(tensor2_ptr + offsets, mask=mask, other=0)
         if FP32_PROMOTE:
-            # 低精度除法先提升 fp32 计算，store 时隐式降回输出 dtype。
+            # Low-precision division is promoted to fp32 first, then implicitly cast back to the output dtype on store.
             self_value = self_value.to(tl.float32)
             tensor1_value = tensor1_value.to(tl.float32)
             tensor2_value = tensor2_value.to(tl.float32)
@@ -114,7 +114,7 @@ def fused_addcdiv_tensor_kernel(
 
 
 def _build_launch_data(self, tensor1, tensor2, out_tensors, values):
-    """返回 (int64 metadata, fp32 value)；命中缓存时复用 device 侧张量。"""
+    """Return (int64 metadata, fp32 value); reuse device-side tensors on a cache hit."""
     key = (
         tuple(tensor.data_ptr() for tensor in self),
         tuple(tensor.data_ptr() for tensor in out_tensors),
@@ -149,7 +149,7 @@ def _build_launch_data(self, tensor1, tensor2, out_tensors, values):
 
 
 def can_use_flat(self, tensor1, tensor2, scalars) -> bool:
-    """只有同 dtype、连续、等长且逐 tensor 数值 value 的列表才走快路径。"""
+    """Use the fast path only for same-dtype, contiguous, equal-length lists with per-tensor numeric values."""
     if not self:
         return False
     if not isinstance(scalars, torch.Tensor) or scalars.numel() != len(self):
@@ -188,7 +188,7 @@ def can_use_flat(self, tensor1, tensor2, scalars) -> bool:
 
 
 def run_addcdiv_tensor(self, tensor1, tensor2, scalars, inplace: bool):
-    """执行 addcdiv 的 .Tensor 重载；不适合快路径时返回 ``FALLBACK`` 哨兵。"""
+    """Execute the .Tensor overload of addcdiv; return the ``FALLBACK`` sentinel when the fast path does not apply."""
     config = ADDC_DIV_TENSOR_TUNING
     if not config["enabled"] or not can_use_flat(self, tensor1, tensor2, scalars):
         return FALLBACK
@@ -219,7 +219,7 @@ def run_addcdiv_tensor(self, tensor1, tensor2, scalars, inplace: bool):
 
     block_size = config["block_size"]
     blocks_per_tensor = triton.cdiv(max(tensor.numel() for tensor in self), block_size)
-    # 至少让每个 tensor 有一个 program，且不超过固定 grid 上限。
+    # Give every tensor at least one program without exceeding the fixed grid limit.
     grid = max(1, min(config["fixed_grid"], num_tensors * blocks_per_tensor))
     fused_addcdiv_tensor_kernel[(grid,)](
         meta,

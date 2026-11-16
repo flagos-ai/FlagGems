@@ -22,12 +22,12 @@ import flag_gems
 
 logger = logging.getLogger(__name__)
 
-# 性能扫描参数：集中定义便于逐轮替换与回退，默认值与修复版 V0 行为一致
+# Small-table path: pass only cumulative row counts and reconstruct time step and in-batch index inside the kernel.
 _TILE_ELEMENTS = 8192
 _MAX_GRID_PROGRAMS = 48
 _NUM_WARPS = 4
-_NUM_STAGES = 0  # 0 表示沿用后端默认，不额外设置软件流水级数
-_FUSED_SELECT = False  # 是否把两次比较融合为一次比较 + 算术选择
+_NUM_STAGES = 0  # 0 means keep the backend default; do not set an extra software pipeline depth
+_FUSED_SELECT = False  # Whether to fuse two comparisons into one comparison plus arithmetic selection
 
 
 @triton.jit
@@ -43,7 +43,8 @@ def _prelu_kernel_backward_kernel(
     IS_SCALAR_WEIGHT: tl.constexpr,
     FUSED_SELECT: tl.constexpr,
 ):
-    # 固定 program 数 + grid-stride：大 shape 不再按元素数展开 grid，规避 GCU grid.x 65535 上限
+    # Fixed program count + grid-stride: large shapes no longer expand the grid by element count, avoiding the GCU
+    # grid.x limit of 65535
     program_id = tl.program_id(axis=0)
     num_programs = tl.num_programs(axis=0)
     element_range = tl.arange(0, BLOCK_SIZE)
@@ -56,7 +57,8 @@ def _prelu_kernel_backward_kernel(
         grad_output = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0)
         x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
 
-        # 标量 weight 只需一次标量加载；逐通道 weight 才按最后一维索引 gather
+        # Fixed program count + grid-stride: large shapes no longer expand the grid by element count, avoiding the GCU
+        # grid.x limit of 65535
         if IS_SCALAR_WEIGHT:
             weight = tl.load(weight_ptr)
         else:
@@ -66,7 +68,7 @@ def _prelu_kernel_backward_kernel(
         # grad_input = grad_output if x > 0 else grad_output * weight
         # grad_weight = grad_output * x if x < 0 else 0
         if FUSED_SELECT:
-            # 一次符号比较同时驱动两个输出，去掉 x < 0 的第二次比较
+            # Scalar weight needs only one scalar load; per-channel weight is gathered by the last dimension index
             is_positive = x > 0
             grad_input = grad_output * tl.where(is_positive, 1.0, weight)
             grad_weight = grad_output * tl.where(is_positive, 0.0, tl.minimum(x, 0.0))
@@ -79,7 +81,7 @@ def _prelu_kernel_backward_kernel(
 
 
 def _prelu_kernel_backward(*args, **kwargs):
-    logger.debug("GEMS _PRELU_KERNEL_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _PRELU_KERNEL_BACKWARD")
 
     # Extract inputs
     if len(args) >= 3:
@@ -140,7 +142,7 @@ def _prelu_kernel_backward(*args, **kwargs):
     # Make sure C is at least 1 to avoid div/mod by zero in kernel math
     C = max(int(C), 1)
 
-    # 每个 tile 处理 BLOCK_SIZE 个元素，program 数恒定，由 kernel 内部 grid-stride 覆盖全部 tile
+    # One sign comparison drives both outputs, removing the second comparison of x < 0
     BLOCK_SIZE = _TILE_ELEMENTS
     num_blocks = triton.cdiv(n_elements, BLOCK_SIZE)
     grid = (min(num_blocks, _MAX_GRID_PROGRAMS),)

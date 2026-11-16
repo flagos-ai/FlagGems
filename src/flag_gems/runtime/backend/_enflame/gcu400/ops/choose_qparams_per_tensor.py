@@ -280,7 +280,7 @@ def _quant_params_from_extrema(fmin, fmax, nan_any, qmax):
 
 
 def choose_qparams_per_tensor(self, reduce_range=False):
-    logger.debug("GEMS CHOOSE_QPARAMS_PER_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 CHOOSE_QPARAMS_PER_TENSOR")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "_choose_qparams_per_tensor expects a Tensor input, got "

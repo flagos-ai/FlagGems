@@ -420,12 +420,12 @@ def _int_mm_impl(self, mat2, launcher, out=None):
 
 
 def int_mm(self, mat2):
-    logger.debug("GEMS INT_MM")
+    logger.debug("GEMS_ENFLAME_GCU400 INT_MM")
     return _int_mm_impl(self, mat2, _BACKEND_LAUNCHER)
 
 
 def int_mm_out(self, mat2, *, out):
-    logger.debug("GEMS INT_MM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 INT_MM_OUT")
     return _int_mm_impl(self, mat2, _BACKEND_LAUNCHER, out=out)
 
 

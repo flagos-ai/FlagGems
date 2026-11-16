@@ -29,16 +29,16 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# GCU400 对 grid.y 的硬件上限为 255；大矩阵的 bidiagonalization 中
-# (tile × strip) 的乘积会超过该上限，需要按 tile 方向分段 launch。
+# GCU400's grid.y hardware limit is 255; in large-matrix bidiagonalization
+# the (tile x strip) product exceeds it, so launches must be segmented along the tile direction.
 _GCU_GRID_Y_LIMIT = 255
 
 
 def _split_tile_launches(first_dim, second_dim):
-    """把 first_dim × second_dim 的二维工作网格按 grid.y 上限切段。
+    """Split the first_dim x second_dim 2D work grid into segments by the grid.y limit.
 
-    返回 [(tile_offset, tile_count)]：每段 launch 的 grid.y = tile_count × second_dim，
-    kernel 内用 tile_offset 还原全局 tile 索引，语义与单次 launch 完全一致。
+    #
+    Returns [(tile_offset, tile_count)]: each segment launches with grid.y = tile_count x second_dim,
     """
     if first_dim <= 0 or second_dim <= 0:
         return []
@@ -62,14 +62,14 @@ _FUSED_JACOBI_WIDE_MAX_ROWS = 128
 # faster than the tridiagonalization path.
 _HERM_TRIDIAG_MIN_K_FP64 = 32
 _HERM_TRIDIAG_MIN_K_FP32 = 33
-# 无原生 FP64 的设备（如 GCU400）走纯 FP32 Sturm 回退，其阈值独立取值。
-# GCU400 上 k=9..31 的 tridiag + graph replay 比单程序 fused Jacobi 更快：
-# k=16 从 0.440ms 降到 0.377ms、k=17 从 0.631ms 降到 0.398ms；k<=8
-# 仍走 fused Jacobi，避免 tridiag 的固定开销。
+# and the kernel restores the global tile index from tile_offset, semantically identical to a single launch.
+# Devices without native FP64 (e.g. GCU400) use a pure-FP32 Sturm fallback with an independent threshold.
+# On GCU400, tridiag + graph replay is faster than single-program fused Jacobi for k=9..31:
+# k=16 drops from 0.440ms to 0.377ms, k=17 from 0.631ms to 0.398ms; k<=8
 _HERM_TRIDIAG_MIN_K_NOFP64 = 9
 
-# 三组 launch 参数提为模块级常量：Jacobi 单程序路径对 warp 数极敏感，
-# 归约 kernel 的 warp 数则决定小方阵固定开销，便于按 shape 分档回归验证。
+# still uses fused Jacobi to avoid tridiag's fixed overhead.
+# Three groups of launch parameters are module-level constants: the Jacobi single-program path is extremely
 _FUSED_JACOBI_WARPS_BASE = 1
 _FUSED_JACOBI_WARPS_LARGE = 8
 _HERM_SCALE_WARPS = 4
@@ -186,9 +186,10 @@ def _mr_graph_cached(key, device, make_workspace, copy_in, run, copy_out):
     # publishes the result.
     # Graph capture is only a performance optimization. Any capture failure
     # falls back to direct launches, and FLAGGEMS_MR_NO_GRAPH=1 disables it.
-    # GCU 后端把 torch.cuda 的 graph/stream API 重定向到本设备，device.type
-    # 为 "gcu"；放开判断后 O(k) 次 launch 可被一次 graph replay 取代。
-    # 捕获失败时仍回退到直接 launch，正确性不受影响。
+    # sensitive to warp count, while the reduction kernel's warp count decides small-square fixed cost, easing
+    # shape-tiered regression checks.
+    # The GCU backend redirects torch.cuda graph/stream APIs to this device, with device.type
+    # "gcu"; relaxing the check lets O(k) launches be replaced by one graph replay.
     if (
         device.type not in ("cuda", "gcu")
         or os.environ.get("FLAGGEMS_MR_NO_GRAPH") == "1"
@@ -255,9 +256,10 @@ def _mr_graph_cached(key, device, make_workspace, copy_in, run, copy_out):
 def _matrix_rank_herm_scale_kernel(
     MATRIX, SCALE, K: tl.constexpr, BLOCK_K: tl.constexpr
 ):
-    # hermitian 输入只读取下三角，严格上三角可能存放无关数据。
-    # 用单个 kernel 求逐 batch 的 max|值|，替代 torch.tril + abs + amax
-    # 的多次 launch 与 O(k^2) 临时张量。
+    # On capture failure it still falls back to direct launches, with no effect on correctness.
+    # hermitian inputs read only the lower triangle; the strict upper triangle may hold unrelated data.
+    # Use one kernel for per-batch max|value|, replacing multiple launches and O(k^2) temporaries from torch.tril + abs
+    # + amax.
     batch_index = tl.program_id(0)
     row_index = tl.arange(0, BLOCK_K)
     col_index = tl.arange(0, BLOCK_K)
@@ -727,9 +729,9 @@ def _df64_add(h1, l1, h2, l2):
 
 @triton.jit
 def _two_prod_error(a, b, p):
-    # 无 fma 的 Dekker TwoProd 残差 a*b - p。GCU400 工具链无法链接显式
-    # tl.fma 生成的 tops_fma_fp32 重定位（R_DTU_ADDR16_LO_ICALL），
-    # 这里用 12-bit 拆分保持 error-free 变换，配合 enable_fp_fusion=False。
+    # FMA-free Dekker TwoProd residual a*b - p. The GCU400 toolchain cannot link the explicit
+    # tl.fma-generated tops_fma_fp32 relocation (R_DTU_ADDR16_LO_ICALL),
+    # so use 12-bit splitting to keep the error-free transform, together with enable_fp_fusion=False.
     splitter = 4097.0
     c = splitter * a
     a_hi = c - (c - a)
@@ -1509,8 +1511,8 @@ def _matrix_rank_herm_tridiag_mat_kernel(W, V, ACC, CSCA, J, RS, WPITCH, APITCH,
     # and no masks (pad rows/cols are zeros by construction and excluded
     # entirely).  Each program also accumulates its slice of v^T omega
     # into CSCA (for the rank-2 correction coefficient in apply).
-    # 一维 grid：GCU400 的 grid.y 上限是 255，装不下 nrt² 个 tile；
-    # 线性 program_id 拆回 batch 与 (col tile, row strip)。
+    # 1D grid: GCU400's grid.y limit of 255 cannot hold nrt^2 tiles;
+    # the linear program_id is decoded back into batch and (col tile, row strip).
     pid = tl.program_id(0) // (NRT * NRT)
     flat = tl.program_id(0) % (NRT * NRT)
     ct = flat // NRT
@@ -1662,8 +1664,8 @@ def _matrix_rank_herm_tridiag_pmat_kernel(
     # flat == 0 additionally stores D[J] / E[J].  Tiles are K-trimmed
     # trailing blocks (c0/r0 = J+1+tile*64 reach at most K+62 < RS), so no
     # masks -- pad rows/cols are zeros by construction.
-    # 一维 grid：GCU400 的 grid.y 上限是 255，装不下 nrt² 个 tile；
-    # 线性 program_id 拆回 batch 与 (col tile, row strip)。
+    # 1D grid: GCU400's grid.y limit of 255 cannot hold nrt^2 tiles;
+    # the linear program_id is decoded back into batch and (col tile, row strip).
     pid = tl.program_id(0) // (NRT * NRT)
     flat = tl.program_id(0) % (NRT * NRT)
     ct = flat // NRT
@@ -1790,8 +1792,8 @@ def _matrix_rank_herm_tridiag_rank2k_kernel(
     # tile (c, r) is exactly tl.trans(upd), so it is written back from the
     # same program, halving the tl.dot work while keeping both triangles
     # of W consistent for pmat's full-block reads.
-    # GCU400 的 grid.y 上限为 255，而 NT*NT 在 k>=1024 时可达 256。
-    # 把 (batch, tile) 展平成一维 program，并在必要时按 batch 分批 launch。
+    # GCU400's grid.y limit is 255, while NT*NT can reach 256 at k>=1024.
+    # Flatten (batch, tile) into a 1D program and split by batch when necessary.
     linear_id = tl.program_id(0)
     pid = B0 + linear_id // (NT * NT)
     flat = linear_id % (NT * NT)
@@ -1869,8 +1871,8 @@ def _matrix_rank_herm_tridiag_apply_kernel(
     # w = tau*omega - (tau^2/2)(v^T omega) v (LAPACK DSYTD2 form), one
     # program per (col tile, row strip) of the K-trimmed trailing block
     # (tiles never reach RS, so no masks).
-    # 一维 grid：GCU400 的 grid.y 上限是 255，装不下 nrt² 个 tile；
-    # 线性 program_id 拆回 batch 与 (col tile, row strip)。
+    # 1D grid: GCU400's grid.y limit of 255 cannot hold nrt^2 tiles;
+    # the linear program_id is decoded back into batch and (col tile, row strip).
     pid = tl.program_id(0) // (NRT * NRT)
     flat = tl.program_id(0) % (NRT * NRT)
     ct = flat // NRT
@@ -2161,7 +2163,7 @@ def _herm_tridiag_blocked_run(ws, k, batch_count, ds32):
         if t0 < k:
             nt = triton.cdiv(k - t0, 64)
             total_tiles = nt * nt
-            # grid.x 上限 65535；按 batch 切分，避免大批次时越界。
+            # grid.x limit 65535; split by batch to avoid overflow with large batches.
             max_batch_per_launch = max(1, 65535 // total_tiles)
             for b0 in range(0, batch_count, max_batch_per_launch):
                 launch_batch = min(max_batch_per_launch, batch_count - b0)
@@ -2619,8 +2621,8 @@ def _bidiag_run(ws, m, n, k, rows, batch_count, ds32):
             num_stages=1,
         )
         if ntl > 0:
-            # grid.y 超限时按列 tile 分段；必须先完成全部 matvec 段（atomic_add
-            # 累加到同一个 ACC），再启动 apply 段，保证 apply 读到完整归约结果。
+            # When grid.y overflows, segment by column tile; all matvec segments (atomic_add
+            # into the same ACC) must finish before the apply segment starts, so apply reads complete reduction results.
             left_splits = _split_tile_launches(ntl, nrct)
             for ct0, ct_count in left_splits:
                 _matrix_rank_bidiag_lmat_kernel[(batch_count, ct_count * nrct)](
@@ -2672,8 +2674,8 @@ def _bidiag_run(ws, m, n, k, rows, batch_count, ds32):
                 num_warps=4,
                 num_stages=1,
             )
-            # 右路径同理：rmat 按行 tile 分段、rapply 按列 tile 分段，
-            # 两阶段之间保持 uacc 的完整累加可见性。
+            # The right path is analogous: rmat segments by row tile and rapply by column tile,
+            # keeping uacc's full accumulation visible between the two stages.
             matvec_splits = _split_tile_launches(ntr, ncct)
             for rt0, rt_count in matvec_splits:
                 _matrix_rank_bidiag_rmat_kernel[(batch_count, rt_count * ncct)](
@@ -2843,9 +2845,9 @@ def _launch_matrix_rank(
         if is_fp64
         else (_HERM_TRIDIAG_MIN_K_FP32 if native_fp64 else _HERM_TRIDIAG_MIN_K_NOFP64)
     )
-    # k=32 在无原生 FP64 时被禁止走 fused Jacobi（精度风险）。若此时阈值
-    # 又高于 32，hermitian 输入必须落到 tridiag，否则会错误进入 fused
-    # Jacobi 分支并访问未定义的 atol_ptr（UnboundLocalError）。
+    # k=32 is forbidden from fused Jacobi without native FP64 (accuracy risk). If the threshold
+    # is then above 32, hermitian inputs must land on tridiag, or they wrongly enter the fused
+    # Jacobi branch and access an undefined atol_ptr (UnboundLocalError).
     herm_tridiag = hermitian and (k >= tridiag_min_k or (avoid_fused_k32 and k > 2))
     # Single-program fused Jacobi eligibility (no grid synchronization by
     # construction).  Everything beyond this goes to the barrier-free
@@ -2882,7 +2884,7 @@ def _launch_matrix_rank(
     # strict upper triangle, which torch never reads (it may hold
     # garbage).
     if hermitian and m == n and k <= 128:
-        # 小方阵走单次 Triton kernel；大矩阵仍用通用归约，避免 BLOCK_K^2 过大。
+        # Small square matrices use one Triton kernel; large matrices keep generic reduction to avoid a huge BLOCK_K^2.
         scale = torch.empty((batch_count,), dtype=input.dtype, device=input.device)
         with torch_device_fn.device(input.device):
             _matrix_rank_herm_scale_kernel[(batch_count,)](
@@ -2908,9 +2910,9 @@ def _launch_matrix_rank(
     # matrices eligible for BOTH fused Jacobi and tridiagonalization take
     # the tridiag branch (use_bidiag and fused are mutually exclusive, so
     # no guard is needed there).
-    # 与实际分派顺序严格一致：k<=2 / fused Jacobi 用 atol_ptr，
-    # tridiag / bidiag 用 staged atol_tensor。原先依赖 fused_eligible，
-    # 在 "hermitian 且 fused 被禁用" 时与实际分支脱节。
+    # Strictly match actual dispatch order: k<=2 / fused Jacobi uses atol_ptr,
+    # tridiag / bidiag uses staged atol_tensor. The old fused_eligible dependency
+    # diverged from the real branch for "hermitian with fused disabled".
     small_path = (k <= 2) or (not herm_tridiag and not use_bidiag)
     # Scalar tolerances are passed as tl.float64 kernel arguments; on
     # devices without native FP64 the f64 kernel code is off-limits even
@@ -3107,7 +3109,7 @@ def _correct_negative_tolerance_rank(input, result, atol, rtol, hermitian):
 
 def linalg_matrix_rank(input, *, atol=None, rtol=None, hermitian=False):
     """Computes numerical matrix rank using shape-specialized Triton kernels."""
-    logger.debug("GEMS LINALG_MATRIX_RANK")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK")
     _check_input(input, hermitian)
 
     output_shape = input.shape[:-2]
@@ -3132,7 +3134,7 @@ def linalg_matrix_rank(input, *, atol=None, rtol=None, hermitian=False):
 
 def linalg_matrix_rank_tol(input, tol, hermitian=False):
     """NumPy-compatible legacy overload where tol is an absolute tolerance."""
-    logger.debug("GEMS LINALG_MATRIX_RANK_TOL")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK_TOL")
     return linalg_matrix_rank(input, atol=tol, rtol=0.0, hermitian=hermitian)
 
 
@@ -3165,12 +3167,12 @@ def _copy_rank_to_out(input, result, out):
 
 
 def linalg_matrix_rank_out(input, *, atol=None, rtol=None, hermitian=False, out=None):
-    logger.debug("GEMS LINALG_MATRIX_RANK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK_OUT")
     result = linalg_matrix_rank(input, atol=atol, rtol=rtol, hermitian=hermitian)
     return _copy_rank_to_out(input, result, out)
 
 
 def linalg_matrix_rank_tol_out(input, tol, hermitian=False, *, out=None):
-    logger.debug("GEMS LINALG_MATRIX_RANK_TOL_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK_TOL_OUT")
     result = linalg_matrix_rank_tol(input, tol, hermitian)
     return _copy_rank_to_out(input, result, out)

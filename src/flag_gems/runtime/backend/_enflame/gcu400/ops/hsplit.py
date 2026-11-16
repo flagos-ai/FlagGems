@@ -37,7 +37,7 @@ def hsplit(
     Returns:
         List[torch.Tensor]: List of tensor views.
     """
-    logger.debug("GEMS HSPLIT")
+    logger.debug("GEMS_ENFLAME_GCU400 HSPLIT")
 
     # hsplit works on dim=1 for 2D+ tensors, dim=0 for 1D tensors
     if A.dim() == 0:

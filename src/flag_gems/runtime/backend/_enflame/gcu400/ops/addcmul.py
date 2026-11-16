@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""t8 4/8 addcmul 候选 v1：小 shape 手写 1D kernel，其余回退公共 codegen。
+"""t8 4/8 addcmul candidate v1: hand-written 1D kernel for small shapes, common codegen otherwise.
 
-生产走 pointwise_dynamic（gcu400 配置 max_tile=65536 / max_grid=(48,1,1)），
-小 shape 的延迟主要是 codegen Python wrapper 开销。快速路径要求三个输入
-同 shape / 同 dtype / contiguous / value 为标量 / n<=65536，其余全部回退，
-保证语义不变。HP=True 用 fp32 中间计算，与生产逐位一致。
+Production uses pointwise_dynamic (gcu400 config max_tile=65536 / max_grid=(48,1,1)), where
+small-shape latency is dominated by the codegen Python wrapper. The fast path requires three inputs
+with same shape / same dtype / contiguous / scalar value / n<=65536; everything else falls back,
+guaranteeing unchanged semantics. HP=True uses fp32 intermediates, bit-identical to production.
 """
 
 import logging
@@ -64,8 +64,8 @@ _BLOCK = 4096
 
 def addcmul(inp, tensor1, tensor2, *, value=1.0, out=None):
     logger.debug("GEMS_ENFLAME ADDCMUL")
-    # 内联检查：把最便宜的 out/numel 判断放最前，让大 shape 回退路径
-    # 几乎零额外开销（v1 的 _fast_ok 让 float16/1M 劣化到 0.930x）。
+    # Inline checks: put the cheapest out/numel checks first so the large-shape fallback has
+    # almost zero extra cost (v1's _fast_ok degraded float16/1M to 0.930x).
     n = inp.numel()
     if out is None and n <= _FAST_MAX and isinstance(value, (int, float)):
         if (
@@ -94,4 +94,5 @@ def addcmul(inp, tensor1, tensor2, *, value=1.0, out=None):
 
 
 def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
+    logger.debug("GEMS_ENFLAME_GCU400 ADDCMUL_OUT")
     return addcmul(inp, tensor1, tensor2, value=value, out=out)

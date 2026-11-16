@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import torch
 import triton
@@ -18,6 +19,8 @@ import triton.language as tl
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 def _check_supported_scales(scale: torch.Tensor, name: str) -> bool:
@@ -306,6 +309,7 @@ def fp8_fp4_mega_moe(
       * l2_weights: [num_experts, hidden, intermediate // 2]
       * l2_scales : [num_experts, hidden, intermediate // 32]
     """
+    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_MEGA_MOE")
     if x_fp8.ndim != 2:
         raise ValueError("x_fp8 must be [num_tokens, hidden]")
     if topk_idx.shape != topk_weights.shape:
@@ -465,6 +469,7 @@ def fp8_fp4_mega_moe_torch_ref(
     l2_scales: torch.Tensor,
     activation_clamp: float | None = None,
 ) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_MEGA_MOE_TORCH_REF")
     x = x_fp8.float() * _expand_scale_torch(x_scale, x_fp8.shape[-1])
     l1 = _unpack_fp4_e2m1_torch(l1_weights) * _expand_scale_torch(
         l1_scales, l1_weights.shape[-1] * 2

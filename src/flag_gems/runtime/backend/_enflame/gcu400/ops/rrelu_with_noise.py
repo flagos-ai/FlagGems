@@ -286,7 +286,7 @@ def rrelu_with_noise(
     channels-last workspace: the result was right, the noise buffer was not).
     Sample into a contiguous copy and write it back with the native copy.
     """
-    logger.debug("GEMS RRELU_WITH_NOISE")
+    logger.debug("GEMS_ENFLAME_GCU400 RRELU_WITH_NOISE")
     if training and not noise.is_contiguous():
         noise_c = noise.contiguous()
         output = _rrelu_with_noise_impl(
@@ -314,7 +314,7 @@ def rrelu_with_noise_(
     (measured with a ``[:, ::2]`` view -- both tensors came back wrong).  Run
     the implementation on contiguous copies and copy the results back.
     """
-    logger.debug("GEMS RRELU_WITH_NOISE_")
+    logger.debug("GEMS_ENFLAME_GCU400 RRELU_WITH_NOISE_")
     if self.is_contiguous() and noise.is_contiguous():
         return _rrelu_with_noise_impl(
             self, noise, lower, upper, training, generator, out=self

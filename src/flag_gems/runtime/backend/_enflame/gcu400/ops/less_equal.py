@@ -83,8 +83,8 @@ NUM_SIPS = 24
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def less_equal_func(x, y):
-    # 与手写快路径一致改用 native dtype 比较：避免 int64/uint64 经 fp32 丢失精度，
-    # 同时去掉 16 位输入上多余的 fp32 提升 ALU 开销。
+    # Like the hand-written fast path, compare in the native dtype: avoid precision loss of int64/uint64 through fp32
+    # and remove redundant fp32 promotion ALU work on 16-bit inputs.
     return x <= y
 
 
@@ -198,7 +198,8 @@ def _le_cmp_run(A, B, out):
 
 
 def less_equal(A, B):
-    # 常量日志已关闭（fix4 等价改写）
+    # Constant logging is disabled (fix4 equivalent rewrite)
+    logger.debug("GEMS_ENFLAME_GCU400 LESS_EQUAL")
     if (
         isinstance(B, torch.Tensor)
         and A.device == B.device

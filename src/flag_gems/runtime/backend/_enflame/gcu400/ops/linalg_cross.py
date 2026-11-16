@@ -1010,12 +1010,12 @@ def _linalg_cross_impl(input, other, dim, output=None):
 
 def linalg_cross(input, other, *, dim=-1):
     """NVIDIA Triton implementation of ``torch.linalg.cross``."""
-    logger.debug("GEMS LINALG_CROSS")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_CROSS")
     return _linalg_cross_impl(input, other, dim)
 
 
 def linalg_cross_out(input, other, *, dim=-1, out):
-    logger.debug("GEMS LINALG_CROSS_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_CROSS_OUT")
     if torch._C._is_alias_of(out, input) or torch._C._is_alias_of(out, other):
         raise RuntimeError(
             "linalg_cross: out must not share memory with either input tensor"

@@ -130,7 +130,7 @@ def _copy_from_and_resize(self: torch.Tensor, dst: torch.Tensor) -> torch.Tensor
     Returns ``dst`` itself; the caller's tensor object is mutated in place
     (``self``'s shape, ``dst``'s dtype preserved).
     """
-    logger.debug("GEMS _COPY_FROM_AND_RESIZE")
+    logger.debug("GEMS_ENFLAME_GCU400 _COPY_FROM_AND_RESIZE")
     dst.resize_(self.shape)
     if not _fast_resize_copy(dst, self):
         copy_(dst, self)
@@ -142,7 +142,7 @@ def _copy_from_and_resize_out(
 ) -> torch.Tensor:
     """``out`` variant: resize-and-copy ``self`` into ``dst``, then mirror the
     result into ``out`` (resized in place) and return ``out``."""
-    logger.debug("GEMS _COPY_FROM_AND_RESIZE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _COPY_FROM_AND_RESIZE_OUT")
     result = _copy_from_and_resize(self, dst)
     if out is result:
         return out

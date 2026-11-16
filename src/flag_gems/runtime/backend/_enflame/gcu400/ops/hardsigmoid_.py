@@ -44,7 +44,7 @@ def hardsigmoid_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def hardsigmoid_(*args, **kwargs):
-    logger.debug("GEMS HARDSIGMOID_")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDSIGMOID_")
     if len(args) >= 1:
         x = args[0]
     else:

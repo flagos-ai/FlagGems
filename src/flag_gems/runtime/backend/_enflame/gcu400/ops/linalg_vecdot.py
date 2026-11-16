@@ -1,6 +1,9 @@
+import logging
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -31,6 +34,7 @@ def _vecdot_kernel(
 def linalg_vecdot(x, y, dim=-1):
     # Fast path: dim=-1, same shape, already contiguous, no half-precision
     # The benchmark (and most real use cases) hit this path
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_VECDOT")
     if (
         dim == -1
         and x.is_contiguous()
@@ -88,6 +92,7 @@ def linalg_vecdot(x, y, dim=-1):
 
 
 def linalg_vecdot_out(x, y, dim=-1, out=None):
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_VECDOT_OUT")
     if out is None:
         return linalg_vecdot(x, y, dim=dim)
     res = linalg_vecdot(x, y, dim=dim)

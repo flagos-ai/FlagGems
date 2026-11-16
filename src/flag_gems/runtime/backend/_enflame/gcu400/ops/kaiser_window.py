@@ -128,7 +128,7 @@ def kaiser_window(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS KAISER_WINDOW")
+    logger.debug("GEMS_ENFLAME_GCU400 KAISER_WINDOW")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:
@@ -185,6 +185,7 @@ def kaiser_window_periodic(
     device=None,
     pin_memory=None,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 KAISER_WINDOW_PERIODIC")
     return kaiser_window(
         window_length,
         periodic,
@@ -205,6 +206,7 @@ def kaiser_window_beta(
     device=None,
     pin_memory=None,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 KAISER_WINDOW_BETA")
     return kaiser_window(
         window_length,
         periodic,

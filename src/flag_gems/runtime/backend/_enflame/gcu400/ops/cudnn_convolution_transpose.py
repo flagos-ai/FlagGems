@@ -24,7 +24,7 @@ import flag_gems
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-# gather 式转置卷积的三维 tile；按 GCU400 的 DSM / 矩阵单元调优。
+# 3D tile for gather-style transposed convolution; tuned for GCU400's DSM / matrix units.
 CONV_TRANSPOSE_BLOCK_M = 16
 CONV_TRANSPOSE_BLOCK_CI = 32
 CONV_TRANSPOSE_BLOCK_CO = 64
@@ -199,7 +199,7 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
         deterministic,
         allow_tf32,
     ):
-        logger.debug("GEMS CUDNN_CONV_TRANSPOSE")
+        logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONV_TRANSPOSE")
         assert weight.ndim == 4, "Weights must be 4D for conv_transpose2d"
         assert input.ndim == 4, "Input must be 4D for conv_transpose2d"
 
@@ -326,7 +326,7 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS CUDNN_CONV_TRANSPOSE_VJP")
+        logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONV_TRANSPOSE_VJP")
         input, weight = ctx.saved_tensors
 
         stride = ctx.stride
@@ -404,6 +404,7 @@ def cudnn_convolution_transpose(
     allow_tf32=True,
 ):
     # Handle default values
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION_TRANSPOSE")
     if padding is None:
         padding = (0, 0)
     elif isinstance(padding, int):

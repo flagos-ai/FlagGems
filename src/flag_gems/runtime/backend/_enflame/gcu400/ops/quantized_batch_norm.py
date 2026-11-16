@@ -603,7 +603,7 @@ def quantized_batch_norm(
     output_scale=1.0,
     output_zero_point=0,
 ):
-    logger.debug("GEMS QUANTIZED_BATCH_NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_BATCH_NORM")
     return _quantized_batch_norm_impl(
         input, weight, bias, mean, var, eps, output_scale, output_zero_point
     )
@@ -621,7 +621,7 @@ def quantized_batch_norm_out(
     *,
     out=None,
 ):
-    logger.debug("GEMS QUANTIZED_BATCH_NORM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_BATCH_NORM_OUT")
 
     if out is None:
         raise TypeError(

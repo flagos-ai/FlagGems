@@ -51,7 +51,7 @@ def fix_(self: torch.Tensor):
     In-place truncation toward zero for floating tensors.
     Integer tensors are left unchanged (no-op).
     """
-    logger.debug("GEMS FIX_")
+    logger.debug("GEMS_ENFLAME_GCU400 FIX_")
 
     if self.is_complex():
         # Fallback for complex dtypes not supported by Triton.

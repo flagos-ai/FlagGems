@@ -90,7 +90,7 @@ def _normal_fused_kernel(
 
 
 def normal_functional(self, mean=0.0, std=1.0, *, generator=None):
-    logger.debug("GEMS NORMAL_FUNCTIONAL")
+    logger.debug("GEMS_ENFLAME_GCU400 NORMAL_FUNCTIONAL")
     shape = self.shape
     device = self.device
 

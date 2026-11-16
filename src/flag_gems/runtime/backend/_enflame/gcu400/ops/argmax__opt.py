@@ -12,27 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""argmax 候选 v2：inner 路径 nw=4 + non_inner 的 fp32/bf16 tile 优化。
+"""argmax candidate v2: inner path nw=4 plus fp32/bf16 tile optimization for non_inner.
 
-两条独立路径均来自 constexpr 扫描（与 CPU 参考逐位一致）：
+Both independent paths come from constexpr sweeps (bit-identical to the CPU reference):
 
-1. inner (K==1)：生产 heuristic 对 M>128 给 num_warps=1/2，实测欠配。
-   `G48 / BM8 / TILE_N=npo2(N) / nw4` 在 (4096,4096) 上
-   fp16 1.88x、fp32 2.10x、bf16 2.13x。
-2. non_inner (K>1) 且 dtype 为 fp32/bfloat16 且 K>=512 且 N>=512：
-   生产用 TILE_N=128/nw2(或4)，实测 `TILE_K=512 / TILE_N=64 /
-   nw4 / ONE_TILE_PER_CTA=False` 在 (64,512,512) 上 1.47~1.48x、
-   (1024,1024,512) 上 1.23x。fp16 的生产配置已是最优（1.000x），
-   更大 TILE_N 全部严重劣化（16~18ms），故 fp16 一律委托生产。
+1. inner (K==1): the production heuristic gives num_warps=1/2 for M>128, which is underconfigured.
+   `G48 / BM8 / TILE_N=npo2(N) / nw4` on (4096,4096) gives
+   fp16 1.88x, fp32 2.10x, bf16 2.13x.
+2. non_inner (K>1) with fp32/bfloat16 dtype, K>=512 and N>=512:
+   production uses TILE_N=128/nw2(or 4); measured `TILE_K=512 / TILE_N=64 /
+   nw4 / ONE_TILE_PER_CTA=False` gives 1.47~1.48x on (64,512,512) and
+   1.23x on (1024,1024,512). fp16's production config is already optimal (1.000x),
+   and larger TILE_N degrades severely (16~18ms), so fp16 always delegates to production.
 
-其余情况（dim=None 的 flat 路径、keepdim、dtype 参数、空张量、
-非连续输入、fp16 的 non_inner、不满足尺寸门槛的 non_inner）
-全部委托生产 `argmax`，保证 correctness 全覆盖与边界语义不变。
+All other cases (dim=None flat path, keepdim, dtype argument, empty tensors,
+non-contiguous input, fp16 non_inner, non_inner below the size threshold)
+delegate to production `argmax`, guaranteeing full correctness coverage and unchanged edge semantics.
 
-不修改 TRACKED 的 argmax.py，也不改全局 HEURISTICS_CONFIGS：
-直接取 `LibEntry.fn.fn` 原始 JITFunction 显式传 constexpr。
-运行时 patch `Heuristics.values` 无效（LibEntry 缓存已固化），实测 1.00x。
+TRACKED argmax.py is not modified, nor are the global HEURISTICS_CONFIGS:
+the original JITFunction is taken from `LibEntry.fn.fn` and passed constexpr explicitly.
+Runtime patching of `Heuristics.values` has no effect (LibEntry cache is frozen), measured 1.00x.
 """
+import logging
 
 import math
 
@@ -47,6 +48,9 @@ from flag_gems.runtime.backend._enflame.gcu400.ops.argmax import (
 from flag_gems.runtime.backend._enflame.gcu400.ops.argmax import (
     argmax_kernel_non_inner as _kn_wrapped,
 )
+
+logger = logging.getLogger(__name__)
+
 
 _KI = _ki_wrapped.fn.fn
 _KN = _kn_wrapped.fn.fn
@@ -69,6 +73,7 @@ def _out_index(inp, shape_list, dim, keepdim):
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_ENFLAME_GCU400 ARGMAX")
     if (
         dim is None
         or dtype is not None

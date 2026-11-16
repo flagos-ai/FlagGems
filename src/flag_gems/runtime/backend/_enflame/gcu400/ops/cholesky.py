@@ -122,7 +122,7 @@ _MAX_N = 64
 
 
 def cholesky(A, upper=False):
-    logger.debug("GEMS CHOLESKY")
+    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY")
     if A.dim() < 2:
         raise RuntimeError(
             "cholesky: The input tensor A must have at least 2 dimensions."

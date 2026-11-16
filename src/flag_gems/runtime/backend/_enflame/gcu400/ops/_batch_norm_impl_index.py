@@ -31,9 +31,9 @@ def _gcu400_bn_block_m(args):
 
 
 def _gcu400_bn_block_n(args):
-    # spatial_dim=1 时通用 heuristic 给出 BLOCK_N=1，(BLOCK_M, 1) 会退化成
-    # ttg.slice 布局，GCU400 编译器在紧随的 arith.cmpi 上触发 LLVM 断言。
-    # 下限 8 保持真正的二维 tile，同时 BLOCK_M * BLOCK_N 仍 ≤ 16384。
+    # With spatial_dim=1 the generic heuristic gives BLOCK_N=1, and (BLOCK_M, 1) degenerates into a
+    # ttg.slice layout that triggers an LLVM assertion on the following arith.cmpi in the GCU400 compiler.
+    # The lower bound of 8 keeps a real 2D tile while BLOCK_M * BLOCK_N stays <= 16384.
     block_m = _gcu400_bn_block_m(args)
     block_n = triton.next_power_of_2(args["spatial_dim"])
     return max(
@@ -42,8 +42,8 @@ def _gcu400_bn_block_n(args):
     )
 
 
-# BLOCK_N 下限。8 是 A/B 交替复测后在「规避切片布局编译器断言」与
-# 「tile 元素数 / 寄存器占用」之间的最优折中，提为常量便于批量扫描。
+# Lower bound for BLOCK_N. 8 is the best trade-off between "avoiding the slice-layout compiler assertion"
+# and "tile element count / register pressure" after alternating A/B tests; kept as a constant for batch sweeps.
 _GCU400_BN_MIN_BLOCK_N = 8
 
 
@@ -78,9 +78,9 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
 
 @libentry()
 @triton.autotune(
-    # GCU400 上 autotune 逐个 do_bench 编译多个配置时会在 make_gcuir 崩溃；
-    # 固定单配置规避 tuner 缺陷。14 轮 A/B 交替复测显示 num_warps=1 的
-    # 6 case 总延迟中位数 0.2133 ms，比 num_warps=4 的 0.2725 ms 快约 22%。
+    # On GCU400 autotune crashes in make_gcuir when do_bench compiles multiple configs;
+    # a single fixed config avoids the tuner defect. 14 alternating A/B rounds show num_warps=1
+    # gives a median total latency of 0.2133 ms over 6 cases, ~22% faster than num_warps=4 (0.2725 ms).
     configs=[triton.Config({}, num_warps=1, num_stages=2)],
     key=["batch_dim", "spatial_dim"],
     restore_value=["running_mean_pointer", "running_var_pointer"],
@@ -234,7 +234,7 @@ def batch_norm_impl_index(
     tensor is empty and impl_index is 0 since this fallback path does not use
     cuDNN or MIOpen.
     """
-    logger.debug("GEMS _BATCH_NORM_IMPL_INDEX")
+    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_IMPL_INDEX")
 
     input_3d = make_3d_for_bn(input)
 

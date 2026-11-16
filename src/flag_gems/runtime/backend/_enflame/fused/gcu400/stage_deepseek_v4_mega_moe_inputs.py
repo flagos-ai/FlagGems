@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import os
 import sys
@@ -20,6 +21,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 def _gcu_real_int64_storage():
@@ -153,6 +156,7 @@ def stage_deepseek_v4_mega_moe_inputs(
     topk_idx_out: torch.Tensor,
     topk_weights_out: torch.Tensor,
 ) -> None:
+    logger.debug("GEMS_ENFLAME_GCU400 STAGE_DEEPSEEK_V4_MEGA_MOE_INPUTS")
     num_tokens, hidden_size = hidden_states.shape
     if num_tokens == 0:
         return

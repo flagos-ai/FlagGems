@@ -217,7 +217,7 @@ def _sample_dirichlet(input, generator=None):
         Tensor of same shape as input, where each K-dimensional vector
         sums to 1
     """
-    logger.debug("GEMS _SAMPLE_DIRICHLET")
+    logger.debug("GEMS_ENFLAME_GCU400 _SAMPLE_DIRICHLET")
 
     assert input.dtype in (
         torch.float16,

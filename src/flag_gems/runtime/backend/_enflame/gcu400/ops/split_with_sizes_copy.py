@@ -289,7 +289,7 @@ def _launch_segmented_copy(
 
 
 def split_with_sizes_copy(inp, split_sizes, dim=0):
-    logger.debug("GEMS SPLIT_WITH_SIZES_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 SPLIT_WITH_SIZES_COPY")
 
     dim = _normalize_dim(inp, dim)
     split_sizes = _normalize_split_sizes(split_sizes)

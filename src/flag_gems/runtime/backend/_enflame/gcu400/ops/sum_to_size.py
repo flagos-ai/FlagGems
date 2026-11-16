@@ -172,7 +172,7 @@ def _partial_reduce(inp, reduce_dims):
 
 
 def sum_to_size(inp, *size):
-    logger.debug("GEMS SUM_TO_SIZE")
+    logger.debug("GEMS_ENFLAME_GCU400 SUM_TO_SIZE")
     # ``size`` may arrive as a single sequence (the aten schema passes a
     # SymInt[] list) or as a variadic list of ints (Tensor.sum_to_size(*size)).
     if len(size) == 1 and isinstance(size[0], (list, tuple)):

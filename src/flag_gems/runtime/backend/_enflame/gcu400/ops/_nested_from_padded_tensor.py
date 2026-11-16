@@ -20,11 +20,11 @@ import torch
 import triton
 import triton.language as tl
 
-# 与公共实现共享同一份 offsets→sum_S 缓存：上层框架与 correctness 用例
-# 从 flag_gems.ops._nested_from_padded_tensor 读取该字典校验版本失效行为。
-# 后端若自建独立字典，会造成「调用方看到的缓存」与「实际使用的缓存」不一致，
-# 使 cache invalidation 断言失败。缓存仍以 offsets._version 作失效依据，
-# inference tensor 无版本计数器时走始终正确的同步路径。
+# Share the same offsets-to-sum_S cache with the common implementation: the upper framework and correctness cases
+# read this dict from flag_gems.ops._nested_from_padded_tensor to validate version-invalidation behavior.
+# A separate backend-owned dict would make "the cache the caller sees" differ from "the cache actually used",
+# breaking cache invalidation assertions. The cache is still invalidated by offsets._version,
+# and inference tensors without a version counter take the always-correct synchronous path.
 from flag_gems.ops._nested_from_padded_tensor import _SUM_S_CACHE
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -105,7 +105,7 @@ def _nested_from_padded_tensor(
     flat values buffer) is performed by a Triton kernel, then the resulting
     values buffer is wrapped into a nested tensor view together with ``offsets``.
     """
-    logger.debug("GEMS _NESTED_FROM_PADDED_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_FROM_PADDED_TENSOR")
 
     padded = padded.contiguous()
     shape = padded.shape

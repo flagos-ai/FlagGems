@@ -12,16 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_floor`` / ``_foreach_floor_`` 大 shape 路径。
+"""GCU400-specific ``_foreach_floor`` / ``_foreach_floor_`` large-shape path.
 
-公共 foreach unary 执行器已经具备 int64 metadata 缓存、kernel launch replay
-以及 p4 向量化打包；自建一维融合 kernel 每次重建 metadata 且缺少对齐提示，
-实测只有公共路径的 40%。因此这里只把「大张量」分支隔离到本文件：沿用公共
-``@triton.jit`` kernel 与缓存工具，但使用 floor 专属的 BLOCK 起点、p4 开关
-与 fp32 提升策略，避免原地改动共享的 ``_foreach_unary.py`` 影响同族算子。
+The common foreach unary executor already has int64 metadata caching, kernel launch replay
+and p4 vectorized packing; a self-built 1D fused kernel rebuilds metadata each time and lacks alignment hints,
+measuring only 40% of the common path. Therefore this file isolates only the "large tensor" branch: it reuses the common
+``@triton.jit`` kernel and cache utilities, but with floor-specific BLOCK starting points, p4 switches
+and an fp32 promotion strategy, avoiding in-place edits to the shared ``_foreach_unary.py`` that would affect sibling
+operators.
 
-小张量与非浮点/非连续等形态直接回退公共 ``apply_unary``，dtype policy 与
-异常语义完全不变；主计算路径始终是 Triton kernel。
+Small tensors and non-float / non-contiguous shapes fall back directly to the common ``apply_unary``, with dtype policy
+and
+exception semantics unchanged; the main compute path is always a Triton kernel.
 """
 
 import logging
@@ -45,7 +47,7 @@ from . import _foreach_unary as shared_unary
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 迭代驱动按轮改写；全部是启动期配置，不改变算子语义。
+# Rewritten per iteration by the driver; all launch-time config, semantics unchanged.
 LARGE_BLOCK_START = 65536
 LARGE_TENSOR_STRATEGY = 2
 PACK4_MODE = 0
@@ -57,18 +59,18 @@ FALLBACK_TO_PUBLIC = 0
 
 @triton.jit
 def _floor_promote_fn(x):
-    """与公共 floor_func 一致：先提升 fp32 再取整，store 时降回原 dtype。"""
+    """Same as the common floor_func: promote to fp32 before rounding, then cast back to the original dtype on store."""
     return tl.floor(x.to(tl.float32)).to(x.dtype)
 
 
 @triton.jit
 def _floor_native_fn(x):
-    """低精度直接取整；用于验证 GCU 后端是否接受 fp16/bf16 的 tl.floor。"""
+    """Round low precision directly; used to check whether the GCU backend accepts tl.floor on fp16/bf16."""
     return tl.floor(x)
 
 
 def _floor_op():
-    """构造仅用于大 shape 路径的 unary 表行，不修改共享 UNARY_OPS。"""
+    """Build a unary table row used only by the large-shape path, without modifying shared UNARY_OPS."""
     fn = _floor_promote_fn if FP32_PROMOTE else _floor_native_fn
     return shared_unary.UnaryOp(
         "floor", fn, same_dtype, shared_unary.NO_BOOL_NO_COMPLEX
@@ -76,10 +78,11 @@ def _floor_op():
 
 
 def _launch_large_block_group(op, tensors, inplace):
-    """放大 BLOCK 把二维 grid 的第二维压回 255 上限内，保留公共缓存与向量化。
+    """Increase BLOCK to push the second dimension of the 2D grid back under the 255 limit, keeping the common cache and
+    vectorization.
 
-    metadata 布局与公共执行器完全一致，因此可直接复用 ``_device_meta``
-    （带 memoisation）和 ``_launch_executor_kernel``（带 launch replay）。
+    The metadata layout is identical to the common executor, so ``_device_meta``
+    (with memoisation) and ``_launch_executor_kernel`` (with launch replay) can be reused directly.
     """
     dtype = tensors[0].dtype
     out_dtype = op.out_dtype_fn(dtype)
@@ -124,13 +127,13 @@ def _launch_large_block_group(op, tensors, inplace):
 
 
 def _run_floor(self, inplace):
-    """小 shape 与不支持的形态走公共执行器；大 shape 走专属参数分支。"""
+    """Small shapes and unsupported forms use the common executor; large shapes use the dedicated parameter branch."""
     if FALLBACK_TO_PUBLIC or USE_SHARED_PATH:
         return shared_unary.apply_unary("floor", self, inplace=inplace)
     try:
         needs_chunking = shared_unary._needs_chunking(self)
     except AttributeError:
-        # 非 Tensor 元素：回退公共执行器，对齐 ATen 的 TypeError/RuntimeError。
+        # Non-Tensor elements: fall back to the common executor to match ATen's TypeError/RuntimeError.
         return shared_unary.apply_unary("floor", self, inplace=inplace)
     if not needs_chunking:
         return shared_unary.apply_unary("floor", self, inplace=inplace)

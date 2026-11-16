@@ -334,8 +334,8 @@ def mul_complex_generic_nd_kernel(
         br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
         bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-        # complex32 的实部/虚部是 fp16，全程 fp16 乘加会让极少数元素超出容差；
-        # 提升到 fp32 做中间计算再转回原 dtype，与参考实现的舍入一致。
+        # complex32's real/imag parts are fp16; all-fp16 multiply-add pushes a few elements beyond tolerance;
+        # promote to fp32 for intermediates then cast back to the original dtype, matching the reference rounding.
         ar_f32 = ar.to(tl.float32)
         ai_f32 = ai.to(tl.float32)
         br_f32 = br.to(tl.float32)
@@ -408,8 +408,8 @@ def mul_complex_generic_nd_runtime_meta_kernel(
         br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
         bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-        # complex32 的实部/虚部是 fp16，全程 fp16 乘加会让极少数元素超出容差；
-        # 提升到 fp32 做中间计算再转回原 dtype，与参考实现的舍入一致。
+        # complex32's real/imag parts are fp16; all-fp16 multiply-add pushes a few elements beyond tolerance;
+        # promote to fp32 for intermediates then cast back to the original dtype, matching the reference rounding.
         ar_f32 = ar.to(tl.float32)
         ai_f32 = ai.to(tl.float32)
         br_f32 = br.to(tl.float32)

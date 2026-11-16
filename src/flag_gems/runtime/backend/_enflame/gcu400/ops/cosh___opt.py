@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""cosh_ 的 GCU400 专属 Triton 实现：in-place 逐元素双曲余弦。
+"""GCU400-specific Triton implementation of cosh_: in-place elementwise hyperbolic cosine.
 
-用固定规模 CTA + 网格跨步循环的 1D flat kernel 替代公共 pointwise_dynamic
-codegen 的 Python 侧调度；输入与输出共用同一块显存，读写各一次。
+A 1D flat kernel with a fixed number of CTAs and a grid-stride loop replaces the common pointwise_dynamic
+codegen's Python-side dispatch; input and output share one memory block, with one read and one write each.
 """
 
 import logging
@@ -30,9 +30,9 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# 与 GCU400 SIP 拓扑对齐的常驻 CTA 数，kernel 内部以跨步循环复用
+# Resident CTA count aligned with GCU400 SIP topology, reused by an in-kernel stride loop
 NUM_CTAS = 48
-# 大 shape 下按元素字节数区分的 tile 元素数
+# Tile element count tiered by element bytes for large shapes
 BLOCK_LARGE_16BIT = 8192
 BLOCK_LARGE_32BIT = 32768
 NUM_WARPS = 4
@@ -48,13 +48,13 @@ def _cosh_inplace_kernel(x_ptr, num_elements, BLOCK: tl.constexpr):
         offsets = tile_index * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < num_elements
         value = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        # cosh(x) = (exp(x) + exp(-x)) / 2；fp32 中间计算保证低精度输入的精度
+        # cosh(x) = (exp(x) + exp(-x)) / 2; fp32 intermediates preserve accuracy for low-precision inputs
         result = 0.5 * (tl.exp(value) + tl.exp(-value))
         tl.store(x_ptr + offsets, result, mask=mask)
 
 
 def _select_block_size(num_elements, is_fp32):
-    """小 shape 用 1024，中 shape 取最接近的 2 次幂，大 shape 按 dtype 分档。"""
+    """Small shapes use 1024, medium shapes the nearest power of two, large shapes are tiered by dtype."""
     if num_elements <= 1024:
         return 1024
     if num_elements <= 32768:
@@ -67,7 +67,7 @@ def cosh_(A):
     num_elements = A.numel()
     if num_elements == 0:
         return A
-    # 非浮点 / 非连续输入沿用公共 codegen 路径，保持 promotion 与 stride 语义
+    # Non-float / non-contiguous inputs keep the common codegen path, preserving promotion and stride semantics
     supported_dtypes = (torch.float16, torch.bfloat16, torch.float32)
     if A.dtype not in supported_dtypes or not A.is_contiguous():
         return _common_cosh_func(A, out0=A)

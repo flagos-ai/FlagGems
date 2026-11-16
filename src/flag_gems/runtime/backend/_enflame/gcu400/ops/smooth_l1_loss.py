@@ -86,11 +86,11 @@ def _smooth_l1_loss_kernel(
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK_SIZE)
     num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
-    # EVEN_N：N_total 整除 BLOCK_SIZE 时每个 block 都满载，省掉逐元素 mask；
-    # GCU 上 masked load/store 会打断 16 位向量化（与 backward 同源结论）。
-    # 另一处改动是把 quad 段的 /beta 换成 host 预计算的 *inv_beta（vector 除法
-    # 是逐元素开销）：16.7M 元素 fp16 0.0934ms -> 0.0868ms，fp32 0.1337 ->
-    # 0.1287ms（do_bench median，mask 路径下测得）。
+    # EVEN_N: when N_total is divisible by BLOCK_SIZE every block is full, dropping the per-element mask;
+    # on GCU masked load/store breaks 16-bit vectorization (same conclusion as backward).
+    # Another change replaces the quad segment's /beta with a host-precomputed *inv_beta (vector division
+    # is per-element cost): 16.7M fp16 0.0934ms -> 0.0868ms, fp32 0.1337 ->
+    # 0.1287ms (do_bench median, measured on the mask path).
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK_SIZE + arange
         if EVEN_N:
@@ -190,9 +190,9 @@ def _smooth_l1_loss_backward_kernel(
 ):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    # EVEN_N：N_total 是 BLOCK_SIZE 的整数倍时所有 program 都满载，省掉
-    # 逐元素 mask。GCU 上 masked load/store 会打断 16 位向量化，实测 16.7M
-    # 元素 fp16/bf16 从 0.143ms 降到 0.094ms（1.5x），fp32 基本不变。
+    # EVEN_N: when N_total is an integer multiple of BLOCK_SIZE all programs are full, dropping the
+    # per-element mask. On GCU masked load/store breaks 16-bit vectorization; measured 16.7M
+    # fp16/bf16 from 0.143ms to 0.094ms (1.5x), fp32 basically unchanged.
     if EVEN_N:
         inp_val = tl.load(inp + offsets).to(tl.float32)
         target_val = tl.load(target + offsets).to(tl.float32)
@@ -209,11 +209,12 @@ def _smooth_l1_loss_backward_kernel(
         # gate, so match the device semantics.
         grad = tl.where(diff > 0.0, 1.0, -1.0)
     else:
-        # 用 host 预计算的 1/beta 做乘法代替除法：select 两条分支都会求值，
-        # 除法是逐元素开销（向量除法走倒数近似+牛顿步），换成乘法后
-        # 16.7M 元素 fp32 从 0.119ms 降到 0.098ms、fp16 从 0.094ms 降到
-        # 0.072ms（do_bench median）。用 where 而非 clamp 是为了保持
-        # NaN/-inf 输入下与原生实现一致（clamp 会把 NaN 压成 -1.0）。
+        # Replace division with a host-precomputed 1/beta multiply: select evaluates both branches,
+        # division is a per-element cost (vector division uses reciprocal approximation + Newton step), so switching to
+        # multiply gives
+        # 16.7M fp32 0.119ms -> 0.098ms, fp16 0.094ms ->
+        # 0.072ms (do_bench median). where instead of clamp keeps
+        # NaN/-inf inputs consistent with native (clamp would squash NaN to -1.0).
         grad = tl.where(diff < -beta, -1.0, tl.where(diff > beta, 1.0, diff * inv_beta))
     if GRAD_OUTPUT_SCALAR:
         grad_out = tl.load(grad_output).to(tl.float32)
@@ -291,16 +292,16 @@ def _empty_reduction(input, reduction):
 
 
 def _none_config(n_elements, itemsize):
-    """逐元素（reduction=none）路径的 (BLOCK_SIZE, num_warps, grid)。
+    """(BLOCK_SIZE, num_warps, grid) for the elementwise (reduction=none) path.
 
-    该 kernel 是 2 读 1 写的 persistent 循环，DSM 占用 3*BLOCK*itemsize，
-    与 backward 同一条 ~384KB 上限，因此 4B 封顶 16384、2B 封顶 65536。
-    do_bench(median) 扫描（3 档 dtype × 3 档规模 × BLOCK{8K..64K} ×
-    warps{2,4} × grid{24,48,96,192}）结论：
-      - fp32 一律 16384/2/grid<=48（16.7M: 93.2us，比旧 32768/4 的
-        128.7us 快 1.38x）；
-      - 16 位 <=1M 用 8192/2/grid<=48（1M: 9.4us），>=4M 用
-        65536/2/grid<=96（16.7M: 58.5us，比旧 32768/4 的 86.8us 快 1.48x）。
+    This kernel is a 2-read 1-write persistent loop with DSM usage 3*BLOCK*itemsize,
+    the same ~384KB cap as backward, so 4B caps at 16384 and 2B at 65536.
+    do_bench(median) sweep (3 dtype tiers x 3 size tiers x BLOCK{8K..64K} x
+    warps{2,4} x grid{24,48,96,192}) conclusions:
+      - fp32 always 16384/2/grid<=48 (16.7M: 93.2us, 1.38x faster than old 32768/4's
+        128.7us);
+      - 16-bit <=1M uses 8192/2/grid<=48 (1M: 9.4us), >=4M uses
+        65536/2/grid<=96 (16.7M: 58.5us, 1.48x faster than old 32768/4's 86.8us).
     """
     if itemsize >= 4:
         return 16384, 2, NUM_SIPS * 2
@@ -315,9 +316,9 @@ def _reduce_config(n_elements, itemsize):
     # persistent loop, so its DSM footprint is 2 * itemsize * BLOCK (loads)
     # + 4 * BLOCK (accumulator); wider blocks hit the 917504B dsm limit.
     # 2026-11-15: only the 16-bit large bucket moves (8192 -> 32768, grid<=48:
-    # 16.7M 71.0us -> 57.8us, 1.23x, A/B 同进程交错取最小).  fp32 保持原值：
-    # 大规模 fp32 上无 mask 反而慢 1.35x（0.0759ms -> 0.1021ms），所以那里
-    # 连 EVEN_N 都关掉（见 _smooth_l1_loss_reduce 的 even_n 判定）。
+    # 16.7M 71.0us -> 57.8us, 1.23x, interleaved same-process A/B minimum). fp32 keeps its value:
+    # on large-scale fp32 unmasked is 1.35x slower (0.0759ms -> 0.1021ms), so there
+    # even EVEN_N is disabled (see _smooth_l1_loss_reduce's even_n decision).
     if itemsize >= 4:
         if n_elements <= 4096:
             return triton.next_power_of_2(max(n_elements, 1)), 4, NUM_SIPS * 2
@@ -332,18 +333,18 @@ def _reduce_config(n_elements, itemsize):
 
 
 def _backward_config(n_elements, itemsize):
-    # BLOCK 由「每流 DSM 占用」决定：backward 是 2 读 1 写的逐元素 kernel，
-    # 三个流各占 BLOCK*itemsize。GCU400 单个 program 超过 ~384KB 后
-    # occupancy 掉到 1 program/SIP，512KB 以上明显变慢（do_bench median，
-    # 16.7M 元素：fp32 BLOCK=32768 0.143ms vs 65536 0.219ms；fp16 65536
-    # 0.124ms vs 131072 0.204ms），所以 4B 封顶 32768、2B 封顶 65536。
-    # 小规模反向受 launch 与尾部浪费支配，BLOCK 越小越快（262144 元素
-    # fp32：8192 比 32768 快 1.25x，fp16 快 1.5x）。
-    # num_warps 在 2/4/8 间差异 < 0.5%，统一用 4。
+    # BLOCK is determined by "per-stream DSM usage": backward is a 2-read 1-write elementwise kernel,
+    # with three streams each occupying BLOCK*itemsize. On GCU400 a single program above ~384KB
+    # drops occupancy to 1 program/SIP, and above 512KB is noticeably slower (do_bench median,
+    # 16.7M elements: fp32 BLOCK=32768 0.143ms vs 65536 0.219ms; fp16 65536
+    # 0.124ms vs 131072 0.204ms), so 4B caps at 32768 and 2B at 65536.
+    # Small-scale backward is dominated by launch and tail waste, so smaller BLOCK is faster (262144 elements
+    # fp32: 8192 is 1.25x faster than 32768, fp16 1.5x).
+    # num_warps differs by < 0.5% among 2/4/8, so use 4 uniformly.
     #
-    # 16 位另有一条约束：能整除 BLOCK 时走 EVEN_N 无 mask 快路径，最优 BLOCK
-    # 是 16384（<=1M 元素）与 65536（>=4M）；不能整除时退回 mask 路径，
-    # 实测最优固定为 32768（1M：0.0155ms vs 16384 的 0.0204ms）。
+    # 16-bit has another constraint: when BLOCK divides evenly use the EVEN_N unmasked fast path, with optimal BLOCK
+    # 16384 (<=1M elements) and 65536 (>=4M); otherwise fall back to the mask path,
+    # whose measured optimum is a fixed 32768 (1M: 0.0155ms vs 16384's 0.0204ms).
     if itemsize >= 4:
         if n_elements <= (1 << 18):
             return 8192
@@ -423,9 +424,9 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         mid = torch.empty((grid,), device=input.device, dtype=torch.float32)
 
     beta_f = float(beta)
-    # EVEN_N（无 mask 快路径）在 16 位与中小规模 fp32 上稳定赚 1.27~1.34x，
-    # 但大规模 fp32 上反而慢 1.35x（16.7M：0.0759ms -> 0.1021ms，同进程交错
-    # 取最小的 A/B），所以那里显式关掉。
+    # EVEN_N (unmasked fast path) steadily gains 1.27~1.34x on 16-bit and small/medium fp32,
+    # but is 1.35x slower on large-scale fp32 (16.7M: 0.0759ms -> 0.1021ms, interleaved
+    # same-process A/B minimum), so it is explicitly disabled there.
     even_n = n_elements % block_size == 0
     if input.element_size() >= 4 and n_elements > (1 << 21):
         even_n = False
@@ -514,12 +515,12 @@ def smooth_l1_loss_backward(
         return out
     block_size = _backward_config(n_elements, input.element_size())
     if triton.cdiv(n_elements, block_size) > 65535:
-        # grid 维度上限保护：超大张量时放大 BLOCK，保持一次 launch。
+        # Grid dimension cap protection: enlarge BLOCK for huge tensors to keep one launch.
         block_size = 65536
     grid = triton.cdiv(n_elements, block_size)
     beta_f = float(beta)
-    # 与归约路径同一条经验规则：大规模 fp32 上无 mask 反而略慢（16.7M
-    # 元素 0.1270ms vs 0.1203ms），16 位则稳定赚 1.5~2.5x，因此只在那里关。
+    # Same empirical rule as the reduction path: unmasked is slightly slower on large fp32 (16.7M
+    # elements 0.1270ms vs 0.1203ms), while 16-bit steadily gains 1.5~2.5x, so disable only there.
     even_n = n_elements % block_size == 0
     if input.element_size() >= 4 and n_elements > (1 << 21):
         even_n = False

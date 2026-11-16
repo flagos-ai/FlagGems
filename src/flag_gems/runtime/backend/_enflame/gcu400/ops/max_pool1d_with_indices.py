@@ -142,7 +142,7 @@ def max_pool1d_with_indices(
     dilation=1,
     ceil_mode=False,
 ):
-    logger.debug("GEMS MAX_POOL1D_WITH_INDICES")
+    logger.debug("GEMS_ENFLAME_GCU400 MAX_POOL1D_WITH_INDICES")
 
     kernel_l, stride_l, padding_l, dilation_l = _parse_pool_params(
         kernel_size, stride, padding, dilation

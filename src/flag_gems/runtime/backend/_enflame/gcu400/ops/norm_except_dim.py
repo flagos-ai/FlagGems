@@ -20,9 +20,9 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# gcu400 硬件上限：grid.y > 255 触发 OutOfResources（backend.py 启动前检查）。
-# split 归约的第二 grid 轴（chunk 数）必须封顶；被压缩的 chunk 由 kernel 内
-# 的 start/end/rchunk 边界自适应吸收（空 chunk 段零迭代，贡献为零）。
+# gcu400 hardware limit: grid.y > 255 triggers OutOfResources (checked before launch in backend.py).
+# The second grid axis (chunk count) of split reduction must be capped; compressed chunks are absorbed
+# by the kernel's adaptive start/end/rchunk boundaries (empty chunk segments do zero iterations, contributing nothing).
 GCU_MAX_GRID_Y = 255
 
 
@@ -193,7 +193,7 @@ def _finalize_kernel(out_ptr, D, POW, IS_P2: tl.constexpr, BLOCK: tl.constexpr):
 
 
 def norm_except_dim(v, pow=2, dim=0):
-    logger.debug("GEMS NORM_EXCEPT_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 NORM_EXCEPT_DIM")
 
     assert v.dtype in (
         torch.float16,

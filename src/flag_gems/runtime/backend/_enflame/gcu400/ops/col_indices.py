@@ -60,7 +60,7 @@ def col_indices(self: torch.Tensor) -> torch.Tensor:
     native ``SparseCsrCUDA`` kernel instead, preserving the zero-copy alias
     contract.
     """
-    logger.debug("GEMS COL_INDICES")
+    logger.debug("GEMS_ENFLAME_GCU400 COL_INDICES")
     if self.layout not in (torch.sparse_csr, torch.sparse_bsr):
         layout_name = _NON_ROW_COMPRESSED_LAYOUT_NAMES.get(self.layout)
         if layout_name is None:

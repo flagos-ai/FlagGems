@@ -631,7 +631,7 @@ def cudnn_convolution_relu(
     Returns:
         Output tensor of shape (N, C_out, *out_spatial_dims)
     """
-    logger.debug("GEMS CUDNN_CONVOLUTION_RELU")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION_RELU")
     _check_dtype(input)
 
     ndim = input.ndim - 2
@@ -730,7 +730,7 @@ def cudnn_convolution_relu_out(
     Args mirror ``cudnn_convolution_relu``; ``out`` must have the conv output
     shape (N, C_out, *out_spatial_dims) and is returned.
     """
-    logger.debug("GEMS CUDNN_CONVOLUTION_RELU_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION_RELU_OUT")
     _check_dtype(input)
 
     ndim = input.ndim - 2

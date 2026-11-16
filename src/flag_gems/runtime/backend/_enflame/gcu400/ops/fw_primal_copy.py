@@ -95,7 +95,7 @@ _MAXD = 8
 
 def _fw_primal_copy(self: torch.Tensor, level: int) -> torch.Tensor:
     """``aten::_fw_primal_copy``: fresh copy of ``self`` (``level`` unused)."""
-    logger.debug("GEMS _FW_PRIMAL_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _FW_PRIMAL_COPY")
     numel = self.numel()
     if self.is_contiguous():
         out = torch.empty_like(self)
@@ -138,7 +138,7 @@ def _fw_primal_copy_out(
     self: torch.Tensor, level: int, *, out: torch.Tensor
 ) -> torch.Tensor:
     """``aten::_fw_primal_copy.out``: copy ``self`` into ``out``."""
-    logger.debug("GEMS _FW_PRIMAL_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _FW_PRIMAL_COPY_OUT")
     if out.dtype != self.dtype:
         raise RuntimeError("_fw_primal_copy.out: dtype of input and output must match.")
     if out.device != self.device:

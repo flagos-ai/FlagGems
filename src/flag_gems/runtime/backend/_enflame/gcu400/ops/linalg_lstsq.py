@@ -659,10 +659,11 @@ _WY_WARPS = 8
 _TSQR_MIN_CHUNKS = 16
 _TSQR_MAX_NC = 256
 
-# GCU400 工具链的 MaskAnalysis 在 _wy_panel 的标量 cmpi 模式上触发 C++ 断言
-# （"unsupported cmpi scenario"），compact-WY 路径完全无法编译。把 tall
-# 路径里原本落到 WY 的 case 改走 TSQR：实测 2048x300 精度一致，
-# 代价是少数方形/大 NC 场景比 WY 慢，但优先保证可用性。
+# GCU400 toolchain's MaskAnalysis triggers a C++ assertion ("unsupported cmpi scenario") on _wy_panel's scalar cmpi
+# pattern
+# so the compact-WY path cannot compile at all. Route tall-path cases that used WY to TSQR instead:
+# measured 2048x300 accuracy is identical; the cost is that a few square / large-NC cases are slower than WY,
+# but availability takes priority.
 _WY_PANEL_AVAILABLE = False
 
 
@@ -1186,8 +1187,9 @@ def _lstsq_gels_wide_blocked(A, B, rcond=None):
         # program exactly as square does on the tall path -- route those to WY.
         # (Genuinely wide inputs have small m and stay on TSQR, which is ideal
         # for the resulting tall-skinny A^T.)
-        # WY 面板在当前 GCU400 工具链无法编译（MaskAnalysis 标量 cmpi 断言），
-        # 因此即使 m 较大也统一走 TSQR；大 m 会退化成单 program，牺牲性能换可用性。
+        # The WY panel cannot compile on the current GCU400 toolchain (MaskAnalysis scalar cmpi assertion),
+        # so even large m uses TSQR uniformly; large m degrades to a single program, trading performance for
+        # availability.
         if m > _TSQR_MAX_NC and _WY_PANEL_AVAILABLE:
             R = _wy_R(scratch, m, dt, compute)  # (batch, m, m) view
         else:
@@ -1246,7 +1248,7 @@ def _lstsq_gels_wide_blocked(A, B, rcond=None):
 def _fallback(A, b, rcond, driver):
     """Reference path for cases outside the fast-path scope. Routed through CPU
     so it does not re-enter our overridden device kernel."""
-    logger.debug("GEMS LINALG_LSTSQ")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LSTSQ")
     res = torch.linalg.lstsq(A.cpu(), b.cpu(), rcond=rcond, driver=driver)
     dev = A.device
     return (
@@ -1264,9 +1266,9 @@ def _fallback(A, b, rcond, driver):
 # reflectors and apply them in reverse. One program per batch element; bounded
 # by the tile (W + reflectors), else the caller uses the blocked wide path.
 # ---------------------------------------------------------------------------
-# GCU400 的 DSM 上限为 917504 字节：单 tile kernel 在 64x512（area=32768）
-# 需要 1030144 字节而直接 OutOfResources。把预算降到 16384，让边界及更大
-# 的 shape 改走 blocked TSQR（实测 64x512 最大误差 1.6e-7）。
+# GCU400's DSM limit is 917504 bytes: a single-tile kernel at 64x512 (area=32768)
+# needs 1030144 bytes and raises OutOfResources directly. Lower the budget to 16384 so boundary and larger
+# shapes use blocked TSQR (measured max error 1.6e-7 at 64x512).
 _UNDERDET_TILE_F32 = 16384
 _UNDERDET_TILE_F64 = 8192
 
@@ -1420,7 +1422,7 @@ def _empty_rank_sv(A):
 
 
 def linalg_lstsq(A, b, rcond=None, driver=None):
-    logger.debug("GEMS LINALG_LSTSQ")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LSTSQ")
 
     # non-gels driver: torch's CUDA gels backend rejects it -> raise likewise
     # (do NOT silently CPU-fall-back and compute a result torch would refuse).
@@ -1518,8 +1520,8 @@ def linalg_lstsq(A, b, rcond=None, driver=None):
     elif (not _WY_PANEL_AVAILABLE) or (
         chunks >= _TSQR_MIN_CHUNKS and NC <= _TSQR_MAX_NC
     ):
-        # WY 面板在当前工具链无法编译，统一改走 TSQR；其余工具链仍按
-        # chunk 数 / NC 规模在 TSQR 与 WY 之间择优。
+        # The WY panel cannot compile on the current toolchain, so TSQR is used uniformly; other toolchains still
+        # choose between TSQR and WY by chunk count / NC scale.
         X, RES, _INFO = _lstsq_gels_tall_blocked(Af, Bf, rcond=rcond)
     else:
         X, RES, _INFO = _lstsq_gels_tall_wy(Af, Bf, rcond=rcond)

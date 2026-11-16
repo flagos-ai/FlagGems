@@ -70,7 +70,7 @@ def mse_loss_backward(grad_output, self, target, reduction=1):
         target: Target tensor
         reduction: Reduction mode (0=none, 1=mean, 2=sum)
     """
-    logger.debug("GEMS MSE_LOSS_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 MSE_LOSS_BACKWARD")
 
     # Save original shape
     original_shape = self.shape

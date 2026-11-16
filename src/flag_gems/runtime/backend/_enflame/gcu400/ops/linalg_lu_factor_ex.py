@@ -379,7 +379,7 @@ def _check_linalg_lu_factor_ex_args(pivot, check_errors):
 
 
 def linalg_lu_factor_ex(input, *, pivot=True, check_errors=False):
-    logger.debug("GEMS LINALG_LU_FACTOR_EX")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU_FACTOR_EX")
     _check_linalg_lu_factor_ex_args(pivot, check_errors)
 
     res = _linalg_lu_factor_ex_impl(input, pivot=pivot)
@@ -420,7 +420,7 @@ def linalg_lu_factor_ex_out(
     info=None,
     out=None,
 ):
-    logger.debug("GEMS LINALG_LU_FACTOR_EX.OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU_FACTOR_EX.OUT")
     _check_linalg_lu_factor_ex_args(pivot, check_errors)
     lu_out, pivots_out, info_out = _resolve_linalg_lu_factor_ex_out_args(
         LU, pivots, info, out

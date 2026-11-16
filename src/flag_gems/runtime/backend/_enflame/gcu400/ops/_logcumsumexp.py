@@ -27,31 +27,32 @@ logger = logging.getLogger(__name__)
 
 _INT_DTYPES = (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64)
 
-# 固定网格：GCU400 的 grid 维度有 255 上限，且 rows 可能远大于硬件上限，
-# 因此每个 program 通过 tl.range 跨步处理多行，而不是给每行一个 program。
+# Fixed grid: GCU400 limits grid dimensions to 255 and rows may far exceed the hardware limit,
+# so each program strides over multiple rows via tl.range instead of assigning one program per row.
 _GRID_DIM = 48
 
-# 每轮 Hillis-Steele 处理的连续元素数。固定宽度可复用编译缓存，
-# 也避免按行长度构造超大 tile 导致编译时间爆炸。
+# Number of consecutive elements processed by one Hillis-Steele round. A fixed width reuses the compile cache
+# and avoids a compile-time explosion from building huge tiles based on row length.
 _STEP_BLOCK = 1024
 
 
 @triton.jit
 def _logaddexp(a, b):
-    """实数 logaddexp：逐对取 max 平移，保证低量级前缀不因整块 max 下溢。"""
+    """Real-valued logaddexp: shift by the pairwise max so low-magnitude prefixes do not underflow under a block-wide
+    max."""
     lo = tl.minimum(a, b)
     hi = tl.maximum(a, b)
     merged = tl.log(1.0 + tl.exp(lo - hi)) + hi
-    # 两个 +-inf 时 ATen 原样返回第一个参数，避免 inf - inf 产生 NaN。
+    # With two +-inf values ATen returns the first argument unchanged, avoiding NaN from inf - inf.
     both_inf = (lo == hi) & (tl.abs(lo) == float("inf"))
     res = tl.where(both_inf, a, merged)
-    # fmin/fmax 会忽略 NaN，需显式让 NaN 具有传染性。
+    # fmin/fmax ignore NaN, so NaN must be made explicitly contagious.
     return tl.where((a != a) | (b != b), float("nan"), res)
 
 
 @triton.jit
 def _complex_log1p(x, y):
-    """复数 log1p：用模长平方的 log1p 保证原点附近精度。"""
+    """Complex log1p: use log1p of the squared modulus to keep accuracy near the origin."""
     zabs = tl.sqrt(x * x + y * y)
     theta = tl_extra_shim.atan2(y, x + 1.0)
     r = x * (2.0 + x) + y * y
@@ -62,14 +63,14 @@ def _complex_log1p(x, y):
 
 @triton.jit
 def _complex_exp(x, y):
-    """有限复数的指数：exp(x) * (cos(y) + i sin(y))。"""
+    """Exponential of a finite complex number: exp(x) * (cos(y) + i sin(y))."""
     exp_abs = tl.exp(x)
     return exp_abs * tl.cos(y), exp_abs * tl.sin(y)
 
 
 @triton.jit
 def _complex_exp_pos_inf(y):
-    """实部为 +inf 的 ATen 分支：只有相位参与，避免 inf * 0 变 NaN。"""
+    """ATen branch for real part +inf: only the phase participates, avoiding NaN from inf * 0."""
     cos_v = tl.cos(y)
     sin_v = tl.sin(y)
     real = tl.where(cos_v == 0.0, 0.0, float("inf") * cos_v)
@@ -79,7 +80,7 @@ def _complex_exp_pos_inf(y):
 
 @triton.jit
 def _complex_logaddexp(ar, ai, br, bi):
-    """复数 logaddexp：按实部排序，复刻 ATen 的 +-inf 与 NaN 分支。"""
+    """Complex logaddexp: sort by real part, reproducing ATen's +-inf and NaN branches."""
     a_nan = (ar != ar) | (ai != ai)
     b_nan = (br != br) | (bi != bi)
     a_first = ar < br
@@ -125,12 +126,12 @@ def _logcumsumexp_step_kernel(
     IS_FP64: tl.constexpr,
     SRC_IS_INPUT: tl.constexpr,
 ):
-    """Hillis-Steele 的一轮：dst[i] = logaddexp(src[i - shift], src[i])。
+    """One Hillis-Steele round: dst[i] = logaddexp(src[i - shift], src[i]).
 
-    每轮用 tl.load 读取 shifted 地址，不依赖 GCU400 不支持的 tt.scan /
-    tt.gather。shift 依次为 1、2、4 ...，共 ceil(log2(N)) 次 launch 后
-    dst[i] 即为 x[0..i] 的 logaddexp。首轮可直接从输入 buffer 读取，
-    省掉一次额外的初始化 kernel。
+    Each round reads shifted addresses with tl.load, avoiding tt.scan /
+    tt.gather. shift goes 1, 2, 4 ...; after ceil(log2(N)) launches
+    dst[i] equals logaddexp of x[0..i]. The first round can read directly from the input buffer,
+    saving an extra initialization kernel.
     """
     pid_r = tle.program_id(0)
     pid_b = tle.program_id(1)
@@ -146,7 +147,8 @@ def _logcumsumexp_step_kernel(
             cur_off = (base + idx * K) * 2
             left_off = (base + (idx - shift) * K) * 2
             if SRC_IS_INPUT and REAL_INPUT:
-                # 实数输入提升到复数结果：虚部恒为 0，每个逻辑元素只有 1 个值。
+                # Real input is promoted to a complex result: the imaginary part is always 0, one value per logical
+                # element.
                 cur_r = tl.load(src + base + idx * K, mask=valid, other=0).to(acc_ty)
                 cur_i = cur_r * 0.0
                 left_r = tl.load(
@@ -165,8 +167,8 @@ def _logcumsumexp_step_kernel(
             left_r = tl.where(left_valid, left_r, float("-inf"))
             left_i = tl.where(left_valid, left_i, 0.0)
             comb_r, comb_i = _complex_logaddexp(left_r, left_i, cur_r, cur_i)
-            # shift 之前的 lane 不做 combine，直接保留本轮状态，避免
-            # 复数 (-inf, 0) identity 在 both_inf 分支上改写虚部。
+            # Lanes before shift do not combine and keep their current state, avoiding
+            # the complex (-inf, 0) identity from changing the imaginary part in the both_inf branch.
             res_r = tl.where(left_valid, comb_r, cur_r)
             res_i = tl.where(left_valid, comb_i, cur_i)
             tl.store(dst + cur_off, res_r.to(dst.dtype.element_ty), mask=valid)
@@ -193,7 +195,8 @@ def _logcumsumexp_identity_kernel(
     IS_COMPLEX: tl.constexpr,
     REAL_INPUT: tl.constexpr,
 ):
-    """N == 1 时前缀即输入本身；同时完成 dtype 转换与复数虚部补零。"""
+    """With N == 1 the prefix is the input itself; this also performs dtype conversion and zero-fills the complex
+    imaginary part."""
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < numel
     if IS_COMPLEX:
@@ -213,7 +216,7 @@ def _logcumsumexp_identity_kernel(
 
 
 def _normalize_dim(inp, dim):
-    # maybe_wrap_dim 把 0 维张量视为 1 维，标量同样接受 dim=0 / -1。
+    # maybe_wrap_dim treats 0-d tensors as 1-D, so scalars also accept dim=0 / -1.
     ndim = max(inp.ndim, 1)
     if dim < -ndim or dim >= ndim:
         raise IndexError(
@@ -232,7 +235,7 @@ def _resolve_dtype(inp, dtype):
 
 
 def _real_view(tensor):
-    """给 kernel 提供可直接线性寻址的 contiguous 实数 buffer。"""
+    """Provide the kernel with a contiguous real buffer that can be addressed linearly."""
     tensor = tensor.contiguous()
     if tensor.is_complex():
         return torch.view_as_real(tensor)
@@ -254,7 +257,7 @@ def _logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
     if out is None:
         out = torch.empty(inp.shape, dtype=result_dtype, device=inp.device)
     else:
-        # out= 契约：同设备、同 dtype、可调形状，且必须返回调用者的 tensor。
+        # out= contract: same device, same dtype, resizable shape, and the caller's tensor must be returned.
         if out.device != inp.device:
             raise RuntimeError(
                 "Expected all tensors to be on the same device, but got self "
@@ -285,7 +288,7 @@ def _logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
     real_input = not inp.is_complex()
     acc_dtype = torch.float64 if acc_is_fp64 else torch.float32
 
-    # 非连续输出用 contiguous scratch 计算，再拷回调用者的布局。
+    # Non-contiguous outputs are computed in contiguous scratch and copied back to the caller's layout.
     if out.is_contiguous():
         target = out
         scratch = None
@@ -347,12 +350,12 @@ def _logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
 
 
 def _logcumsumexp(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS _LOGCUMSUMEXP")
+    logger.debug("GEMS_ENFLAME_GCU400 _LOGCUMSUMEXP")
     return _logcumsumexp_wrapper(inp, dim, dtype)
 
 
 def _logcumsumexp_out(inp, dim=1, *, dtype=None, out):
-    logger.debug("GEMS _LOGCUMSUMEXP_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _LOGCUMSUMEXP_OUT")
     return _logcumsumexp_wrapper(inp, dim, dtype, out)
 
 

@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属的 W8A16 FP8 TopK（单 kernel 实现）。
+"""GCU400-specific W8A16 FP8 TopK (single-kernel implementation).
 
-原多阶段实现（TLE radix / chunked stage1+stage2 / argsort）在 gcu400 的
-benchmark 口径下 gems latency 达到 1.3~33.6 ms。这里改为单 kernel：把 FP8
-位模式按 uint8 读入（不依赖设备侧 FP8 指针），按组 scale 解码成 float32 值，
-再逐次选极值得到有序的 top-k；一次 launch 完成，不需要临时候选缓冲。
+The original multi-stage implementation (TLE radix / chunked stage1+stage2 / argsort) had
+gems latency of 1.3~33.6 ms under gcu400's benchmark convention. Use a single kernel instead: read FP8
+bit patterns as uint8 (no device-side FP8 pointer dependency), decode to float32 by group scale,
+then repeatedly select extrema for an ordered top-k; one launch, no temporary candidate buffer needed.
 """
+import logging
 
 import math
 
@@ -28,6 +29,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -62,7 +65,7 @@ def topk_w8a16_fp8_kernel(
         normal_bits = (sign << 31) | ((exp + 112) << 23) | (mantissa << 21)
         subnormal = mantissa.to(tl.float32) * 1.52587890625e-5
 
-    # normal 的 IEEE 位里已含符号位；subnormal 没有位模式，需单独带符号
+    # normal IEEE bits already contain the sign bit; subnormals have no bit pattern and need a separate sign
     normal_value = normal_bits.to(tl.float32, bitcast=True)
     signed_subnormal = tl.where(sign == 1, -subnormal, subnormal)
     decoded = tl.where(exp > 0, normal_value, signed_subnormal)
@@ -73,7 +76,7 @@ def topk_w8a16_fp8_kernel(
     )
     value = decoded * scale
 
-    # 无效 padding 用极值屏蔽，保证极值/索引只在真实元素中选出
+    # Mask invalid padding with extrema so extrema / indices are selected only among real elements
     if LARGEST:
         sentinel = float("-inf")
     else:
@@ -102,6 +105,7 @@ def topk_w8a16_fp8(
     group_size=128,
     out_dtype=torch.bfloat16,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 TOPK_W8A16_FP8")
     if dim < 0:
         dim += x_fp8.ndim
     assert dim == x_fp8.ndim - 1, "Currently only support topk in last dimension"
@@ -130,7 +134,7 @@ def topk_w8a16_fp8(
         tuple(leading_shape) + (k,), device=x_fp8.device, dtype=torch.int64
     )
 
-    # FP8 位模式按 uint8 读取：不依赖设备侧 FP8 指针，也不改变量化数据
+    # FP8 bit patterns are read as uint8: no device-side FP8 pointer dependency and no change to quantized data
     x_bits = x_fp8.contiguous().view(torch.uint8).reshape(batch_size, n)
     scale_2d = x_scale.reshape(batch_size, num_groups)
     is_e4m3 = x_fp8.dtype == torch.float8_e4m3fn

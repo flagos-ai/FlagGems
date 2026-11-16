@@ -289,7 +289,7 @@ def slow_conv_transpose3d(
     dilation=1,
     out=None,
 ):
-    logger.debug("GEMS SLOW_CONV_TRANSPOSE3D")
+    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_TRANSPOSE3D")
     inp = self
     if not torch.is_tensor(inp) or not torch.is_tensor(weight):
         raise TypeError("slow_conv_transpose3d expects tensor inputs")

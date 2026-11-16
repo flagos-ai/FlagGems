@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_tan``（out-of-place）。
+"""GCU400-specific ``_foreach_tan`` (out-of-place).
 
-公共 ``foreach_unary`` 执行器用二维 grid 承载 chunk table，在 GCU400 上会撞
-grid.y<=255 限制且 metadata 依赖 64 位偏移。这里把 tensor 列表的
-(输入指针, 输出指针, 元素数) 打包成 int64 metadata，一维 grid 一次 launch
-处理全部 tensor，消除逐 tensor 的 launch 固定开销；FUSED_LAUNCH=0 时回退
-逐 tensor 跨步 kernel。非浮点、复数或混合 dtype 输入回退公共 ``apply_unary``
-以维持 ATen 的 dtype 提升策略。
+The common ``foreach_unary`` executor carries the chunk table in a 2D grid, which on GCU400 hits the
+The grid.y<=255 limit and 64-bit offsets in metadata are addressed here by packing the tensor list's
+(input pointer, output pointer, element count) into int64 metadata and processing all tensors in one
+launch with a 1D grid, removing per-tensor launch overhead; with FUSED_LAUNCH=0 it falls back to
+the per-tensor striding kernel. Non-float, complex or mixed dtype inputs fall back to common ``apply_unary``
+to preserve ATen's dtype promotion policy.
 """
 
 import logging
@@ -36,7 +36,7 @@ from flag_gems.utils import libentry, tl_extra_shim  # noqa: F401
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 编译期配置，由优化迭代按轮次调整，不改变算子语义。
+# Compile-time config, adjusted per optimization round; semantics unchanged.
 FUSED_LAUNCH = 1
 BLOCK_SIZE = 8192
 FIXED_GRID = 24
@@ -64,7 +64,7 @@ def _foreach_tan_out_kernel(
     BLOCK: tl.constexpr,
     FIXED_GRID: tl.constexpr,
 ):
-    """逐 tensor launch：一维固定 grid 跨步计算并写出。"""
+    """Per-tensor launch: 1D fixed-grid striding computation and write-out."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -85,10 +85,10 @@ def _foreach_tan_fused_kernel(
     BLOCK: tl.constexpr,
     USE_MULTIPLE_OF: tl.constexpr,
 ):
-    """单次 launch：metadata 布局 [输入指针*NT, 输出指针*NT, 元素数*NT]。
+    """Single launch: metadata layout [input pointers * NT, output pointers * NT, element counts * NT].
 
-    一维 grid 把 (tensor_id, chunk_id) 扁平化，避开 GCU400 的 grid.y 上限；
-    超出各 tensor 元素数的 program 由 mask 全屏蔽。
+    The 1D grid flattens (tensor_id, chunk_id) to avoid GCU400's grid.y limit;
+    programs beyond a tensor's element count are fully masked off.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -118,15 +118,16 @@ def _foreach_tan(self):
             for tensor in self
         )
         homogeneous = len({tensor.dtype for tensor in self}) == 1
-        # 融合 kernel 用 data_ptr()/numel() 平坦寻址，非连续视图会写错位置。
+        # The fused kernel addresses memory flat via data_ptr()/numel(), so non-contiguous views would write to wrong
+        # locations.
         contiguous = all(tensor.is_contiguous() for tensor in self)
     except AttributeError:
-        # 非 Tensor 元素：回退公共执行器，对齐 ATen 的 TypeError/RuntimeError。
+        # Non-Tensor elements: fall back to the common executor to match ATen's TypeError/RuntimeError.
         return apply_unary("tan", self, inplace=False)
     if FALLBACK_TO_PUBLIC or not (all_float and homogeneous and contiguous):
         return apply_unary("tan", self, inplace=False)
 
-    # 输出列表顺序必须与 self 一致。
+    # the output list order must match self.
     outputs = [torch.empty_like(tensor) for tensor in self]
     device = self[0].device
     device_context = (
@@ -135,7 +136,7 @@ def _foreach_tan(self):
 
     if FUSED_LAUNCH:
         tensor_count = len(self)
-        # int64 保存设备指针，必须开启 GCU 64 位支持，否则指针会被截断。
+        # Device pointers are stored as int64, so GCU 64-bit support must be enabled or pointers are truncated.
         metadata = torch.empty(3 * tensor_count, dtype=torch.int64)
         for index, (src_tensor, dst_tensor) in enumerate(zip(self, outputs)):
             metadata[index] = src_tensor.data_ptr()

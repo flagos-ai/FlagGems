@@ -526,7 +526,7 @@ class _TrapezoidX(torch.autograd.Function):
 
 
 def trapezoid_x(y, x, dim=-1):
-    logger.debug("GEMS TRAPEZOID_X")
+    logger.debug("GEMS_ENFLAME_GCU400 TRAPEZOID_X")
     if _is_complex(y, x):
         # Complex routes through the CPU fallback, which is autograd
         # transparent on its own; _TrapezoidX.forward would run under

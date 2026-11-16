@@ -12,23 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 bitwise left shift：同形 contiguous 张量走 1D flat kernel。
+"""GCU400-specific bitwise left shift: same-shape contiguous tensors use a 1D flat kernel.
 
-codegen 路径（tile 65536 + block pointer）在 48-SIP Fixed Grid 上对中档规模
-（如 16M 元素，256 tile / 48 CTA = 5.33 wave）存在尾波负载不均，实测比
-torch native 慢 5~14%；1D flat kernel（更小 BLOCK、grid-stride 均分）可
-追平或反超。超大规模 int32（>=128M）时 bptr DMA 流式路径更快，回退 codegen。
+The codegen path (tile 65536 + block pointer) on a 48-SIP Fixed Grid has uneven tail waves at medium sizes
+(e.g. 16M elements, 256 tiles / 48 CTAs = 5.33 waves), measuring 5~14% slower than
+torch native; a 1D flat kernel (smaller BLOCK, grid-stride balancing) can
+match or beat it. For very large int32 (>=128M) the bptr DMA streaming path is faster, so fall back to codegen.
 
-int64：codegen 的 i64 同形 tensor-tensor 路径在本机读错操作数（错值/偶发
-SIP 异常），改走 i32 view + u32 半字仿真（x86 shl 语义），见
-_lshift_i64_flat_kernel。
+int64: the codegen i64 same-shape tensor-tensor path reads the wrong operand on this machine (wrong values / occasional
+SIP exception), so use an i32 view + u32 half-word emulation (x86 shl semantics), see
+_lshift_i64_flat_kernel.
 
-int64 无 TORCH_GCU_ENABLE_INT64_AND_UINT64 时（P17）：torch_gcu 传输层把
-int64 窄化为「前 N 个 int32 word（仅低 32 位）」存储，`.view(torch.int32)`
-会得到 2N 元素、codegen 按 8B 宽读，均为交错垃圾。此时改走
-_narrowed_i32_alias（按真实物理布局重解释为同形 int32 视图）复用 int32
-路径计算：输入在 H2D 时已截断，int32 计算与 D2H 后的参考语义一致（移位
-计数 >=32 或结果溢出 int32 属窄化平台固有丢失，非本层可恢复）。
+int64 without TORCH_GCU_ENABLE_INT64_AND_UINT64 (P17): the torch_gcu transport narrows
+int64 to "the first N int32 words (low 32 bits only)" storage; `.view(torch.int32)`
+gives 2N elements and codegen reads 8B-wide interleaved garbage. In that case use
+_narrowed_i32_alias (reinterpret as a same-shape int32 view by the real physical layout) and reuse the int32
+path: the input was already truncated at H2D, so int32 computation matches the reference semantics after D2H (shift
+counts >=32 or int32 result overflow are inherent losses of the narrowing platform, not recoverable here).
 """
 
 import logging
@@ -45,8 +45,8 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 FLAT_SIPS = 24
-# int32 超过该规模后 codegen 的 bptr/DMA 路径更快（实测 256M/1G：1.047x/1.055x
-# vs flat32768w2 1.038x/1.045x），回退；int16 各规模 flat 均占优，不设阈值。
+# Beyond this int32 scale the codegen bptr/DMA path is faster (measured 256M/1G: 1.047x/1.055x
+# vs flat32768w2 1.038x/1.045x), so fall back; int16 flat wins at all scales, so no threshold there.
 FLAT_INT32_MAX_NUMEL = 128 * 1024 * 1024
 FLAT_MIN_BLOCK = 256
 FLAT_DTYPES = (torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64)
@@ -56,7 +56,7 @@ _I64_NARROWED = None
 
 
 def _int64_narrowed(sample):
-    """探测传输层是否把 int64 窄化为 int32 word 布局（P17，进程内缓存一次）。"""
+    """Detect whether the transport narrows int64 into an int32 word layout (P17, cached once per process)."""
     global _I64_NARROWED
     if _I64_NARROWED is None:
         probe = torch.tensor([(1 << 32) + 1], dtype=torch.int64, device="cpu")
@@ -65,7 +65,7 @@ def _int64_narrowed(sample):
 
 
 def _narrowed_i32_alias(t):
-    """窄化布局的 int64 张量 -> 同形 int32 视图（元素 i 即物理 word i）。"""
+    """Narrowed-layout int64 tensor -> same-shape int32 view (element i is physical word i)."""
     alias = torch.empty(0, dtype=torch.int32, device=t.device)
     alias.set_(t.untyped_storage(), t.storage_offset(), t.shape, t.stride())
     return alias
@@ -93,10 +93,10 @@ def _lshift_flat_kernel(A, B, Out, N, BLOCK_SIZE: tl.constexpr, EVEN_N: tl.const
 def _lshift_i64_flat_kernel(
     A, B, Out, N, BLOCK_SIZE: tl.constexpr, EVEN_N: tl.constexpr
 ):
-    # int64 左移的 i32 安全域仿真：GCU codegen 的 i64 同形 tensor-tensor 路径
-    # 会读错操作数（实测错值/偶发 SIP 异常），这里将 i64 视为 little-endian 的
-    # (lo, hi) i32 对（host 侧 .view(torch.int32)），用纯 i32 移位精确重建
-    # x86 shl 语义（count 取低 6 位）。唯一需要逻辑右移处用 uint32 bitcast。
+    # i32 safe-domain emulation of int64 left shift: GCU codegen's i64 same-shape tensor-tensor path
+    # reads the wrong operand (measured wrong values / occasional SIP exception), so treat i64 as little-endian
+    # (lo, hi) i32 pairs (host-side .view(torch.int32)) and rebuild x86 shl semantics exactly with pure i32 shifts
+    # (count takes the low 6 bits). The only logical right shift uses a uint32 bitcast.
     num_programs = tl.num_programs(0)
     for block in tl.range(tl.program_id(0), tl.cdiv(N, BLOCK_SIZE), num_programs):
         offs = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -151,7 +151,7 @@ def _lshift_use_flat(A, B):
         and A.dtype in FLAT_DTYPES
         and not (
             A.element_size() == 4 and A.numel() >= FLAT_INT32_MAX_NUMEL
-        )  # 大规模 int32 走 codegen bptr/DMA
+        )  # Large int32 uses codegen bptr/DMA
     )
 
 
@@ -244,8 +244,8 @@ def bitwise_left_shift_(A, B):
                 bitwise_left_shift_func(a32, b32, out0=a32)
             return A
         if _lshift_use_flat(A, B):
-            # 同形同 dtype 的常见 inplace case 用 1D flat kernel，避开 codegen
-            # wrapper 的索引分解与 dtype 提升（小 dtype 在 codegen 路径上偏慢）。
+            # Common same-shape same-dtype in-place cases use the 1D flat kernel, avoiding codegen
+            # wrapper index decomposition and dtype promotion (small dtypes are slower on the codegen path).
             return _lshift_flat_launch(A, B, A)
         return bitwise_left_shift_func(A, B, out0=A)
     else:

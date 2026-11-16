@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 upsample_nearest_exact2d_backward 实现。
+"""GCU400-specific upsample_nearest_exact2d_backward implementation.
 
-公共实现把 (n, c) 直接映射为 grid.y，N*C 较大时（512 / 555 / 24576）
-会超过 GCU400 的 255 硬件上限并抛 OutOfResources。这里把 (nc, 输出 tile)
-展平成一维任务队列，用固定 program 数加核内跨步循环，解除 grid 维度限制。
+The common implementation maps (n, c) directly to grid.y, and large N*C (512 / 555 / 24576)
+exceeds GCU400's 255 hardware limit and raises OutOfResources. Here (nc, output tile) is
+flattened into a 1D task queue with a fixed program count plus an in-kernel stride loop, removing the grid dimension
+limit.
 """
 
 import logging
@@ -72,8 +73,8 @@ def _upsample_nearest_exact2d_backward_kernel(
 ):
     pid = tl.program_id(0)
 
-    # 反向等价形式：每个输入位置累加所有映射到它的输出梯度。
-    # 用 gather-reduce 取代 atomic_add，既消除原子竞争，也省掉 fp32 中转与末尾 dtype 转换。
+    # Backward equivalent form: each input position accumulates all output gradients mapping to it.
+    # gather-reduce replaces atomic_add, removing atomic contention and the fp32 detour plus final dtype conversion.
     for block_id in tl.range(pid, num_blocks, NUM_PROGRAMS):
         idx = block_id * BLOCK + tl.arange(0, BLOCK)
         mask = idx < total_input
@@ -81,12 +82,13 @@ def _upsample_nearest_exact2d_backward_kernel(
         ih = (idx // IW) % IH
         nc = idx // (IH * IW)
 
-        # 整数 scale 时窗口起点和大小精确，无需候选外溢与反向映射校验。
+        # With integer scale the window start and size are exact, no candidate overflow or reverse-mapping check needed.
         if EXACT_SCALE:
             oh_base = ih * INT_H
             ow_base = iw * INT_W
         else:
-            # 非整数 scale 用 floor 起点 + 额外一行/一列候选，靠反向映射判定归属。
+            # With non-integer scale use a floor start plus one extra row/column of candidates, deciding ownership by
+            # reverse mapping.
             oh_base = (ih.to(tl.float32) * scale_h).to(tl.int32)
             ow_base = (iw.to(tl.float32) * scale_w).to(tl.int32)
         accumulator = tl.zeros([BLOCK], dtype=tl.float32)
@@ -151,14 +153,16 @@ def _upsample_nearest_exact2d_backward(
     else:
         reciprocal_scale_w = IW / OW
 
-    # gather-reduce 不需要原子累加，输出直接按目标 dtype 分配，省掉 fp32 中转与末尾转换。
+    # gather-reduce needs no atomic accumulation, so output is allocated directly in the target dtype, saving the fp32
+    # detour and final conversion.
     grad_input = torch.empty(
         (N, C, IH, IW), device=grad_output.device, dtype=grad_output.dtype
     )
 
     scale_h = 1.0 / reciprocal_scale_h
     scale_w = 1.0 / reciprocal_scale_w
-    # 整数倍上采样可精确切出 scale_h x scale_w 的输出窗口，避免多余候选 load。
+    # Integer-multiple upsampling can carve out an exact scale_h x scale_w output window, avoiding extra candidate
+    # loads.
     exact_scale = (
         abs(scale_h - round(scale_h)) < 1e-6 and abs(scale_w - round(scale_w)) < 1e-6
     )

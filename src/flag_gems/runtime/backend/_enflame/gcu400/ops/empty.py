@@ -64,7 +64,7 @@ def empty(
     memory_format=None,
 ):
     """Returns a tensor filled with uninitialized data."""
-    logger.debug("GEMS EMPTY")
+    logger.debug("GEMS_ENFLAME_GCU400 EMPTY")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

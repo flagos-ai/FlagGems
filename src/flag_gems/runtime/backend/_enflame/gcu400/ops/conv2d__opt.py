@@ -64,7 +64,7 @@ def conv2d_output_size(
             num_stages=2,
         )
     ],
-    # Step 4 13 轮扫描最优 (C07)：0.8018ms vs 原 0.8736ms，fp16/fp32 精度 PASS
+    # Step 4 13-round sweep optimum (C07): 0.8018ms vs original 0.8736ms, fp16/fp32 accuracy PASS
     key=[
         "in_n",
         "weight_c",
@@ -127,9 +127,9 @@ def conv2d_forward_kernel(
     # Workaround: on GCU the first 12 lanes of every CTA produce wrong dot
     # results. Reserve them as invalid (masked) rows so valid rows start at
     # lane 12. Keep PAD_LANES in sync with the grid computation on the host.
-    # GCU400: gcu-triton-fusion pass 在 num_warps=1 时崩溃，且原 PAD_LANES=12
-    # workaround 是为 num_warps=1 的 dot lane 错误准备的，在 num_warps>=2 下
-    # 会造成约 50% 元素错误。这里用连续行映射，配合 num_warps=8/num_stages=2。
+    # GCU400: the gcu-triton-fusion pass crashes with num_warps=1, and the original PAD_LANES=12
+    # workaround was designed for the num_warps=1 dot-lane error, causing ~50% wrong elements
+    # with num_warps>=2. Here use contiguous row mapping with num_warps=8/num_stages=2.
     PAD_LANES = 0  # noqa: F841
     lanes = tl.arange(0, BLOCK_NI_HO_WO)
     ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + lanes
@@ -387,7 +387,7 @@ def conv2d_backward_kernel_weight(
 class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
-        logger.debug("GEMS CONV2D")
+        logger.debug("GEMS_ENFLAME_GCU400 CONV2D")
         assert weight.ndim == 4, "Weights must be 4D, received shape {weight.shape}"
         assert (
             bias is None or bias.ndim == 1
@@ -526,7 +526,7 @@ class Conv2d(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS CONV2D_VJP")
+        logger.debug("GEMS_ENFLAME_GCU400 CONV2D_VJP")
         weight, input, bias = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
@@ -702,6 +702,7 @@ class Conv2d(torch.autograd.Function):
 
 # todo test SymInt[2] of stride or padding
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+    logger.debug("GEMS_ENFLAME_GCU400 CONV2D")
     if isinstance(padding, str):
         if padding == "same":
             assert stride == 1, "Doesn't support any stride values other than 1 \

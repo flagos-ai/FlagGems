@@ -521,7 +521,7 @@ def quantized_max_pool2d(
     An omitted or empty ``stride`` falls back to ``kernel_size``, matching the
     ``int[2] stride=[]`` schema default of ``aten::quantized_max_pool2d``.
     """
-    logger.debug("GEMS QUANTIZED_MAX_POOL2D")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL2D")
 
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
     out_shape = _quantized_max_pool2d_output_shape(input, params, ceil_mode)
@@ -685,7 +685,7 @@ def quantized_max_pool2d_out(
     the native quantized ``copy_``: ``Tensor.copy_`` on quantized tensors
     redispatches to ATen, which would add a native O(n) pass after the kernel.
     """
-    logger.debug("GEMS QUANTIZED_MAX_POOL2D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL2D_OUT")
 
     # The functional result's shape, dtype and device are all known without
     # running the kernel, so the resize and the two checks happen in ATen's

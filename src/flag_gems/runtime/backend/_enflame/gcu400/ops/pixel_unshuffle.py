@@ -123,7 +123,7 @@ def _launch_pixel_unshuffle_kernel(
 
 
 def pixel_unshuffle(input, downscale_factor, *, layout=None):
-    logger.debug("GEMS PIXEL_UNSHUFFLE")
+    logger.debug("GEMS_ENFLAME_GCU400 PIXEL_UNSHUFFLE")
     x = input
     if not x.is_contiguous():
         x = x.contiguous()
@@ -142,7 +142,7 @@ def pixel_unshuffle(input, downscale_factor, *, layout=None):
 
 
 def pixel_unshuffle_out(input, downscale_factor, out):
-    logger.debug("GEMS PIXEL_UNSHUFFLE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 PIXEL_UNSHUFFLE_OUT")
     x = input
     if not x.is_contiguous():
         x = x.contiguous()

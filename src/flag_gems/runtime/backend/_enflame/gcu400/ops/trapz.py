@@ -257,7 +257,7 @@ class TrapzOp(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, y, dx, dim):
-        logger.debug("GEMS TRAPEZOID_DX")
+        logger.debug("GEMS_ENFLAME_GCU400 TRAPEZOID_DX")
 
         dim = _normalize_dim(dim, y.ndim)
         shape = y.shape
@@ -348,6 +348,7 @@ def trapz(y, dx=1.0, dim=-1):
     # reduction dimension integrates to zero of the input dtype and returns
     # before the bool/complex/dx checks run at all. A degenerate N == 1 still
     # goes through those checks (ATen validates dx and rejects bool y for it).
+    logger.debug("GEMS_ENFLAME_GCU400 TRAPZ")
     dim = _normalize_dim(dim, y.ndim)
     if y.shape[dim] == 0:
         out_shape = y.shape[:dim] + y.shape[dim + 1 :]

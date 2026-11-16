@@ -144,7 +144,7 @@ def log_normal_distribution(
 
 
 def log_normal_(self, mean=1.0, std=2.0, *, generator=None):
-    logger.debug("GEMS LOG_NORMAL_")
+    logger.debug("GEMS_ENFLAME_GCU400 LOG_NORMAL_")
     shape = self.shape
     device = self.device
     dtype = self.dtype

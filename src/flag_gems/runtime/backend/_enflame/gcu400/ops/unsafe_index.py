@@ -369,7 +369,7 @@ def unsafe_index(inp, indices):
     input/output strides, so no input permute/contiguous and no output
     post-permute is ever needed.
     """
-    logger.debug("GEMS UNSAFE_INDEX")
+    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_INDEX")
     if not indices:
         raise ValueError("at least one index must be provided")
     indices = _check_indices(inp, list(indices))

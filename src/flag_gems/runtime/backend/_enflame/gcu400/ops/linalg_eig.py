@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 _TINY = tl.constexpr(1e-30)
 _EPS = tl.constexpr(1e-6)
 
-# QR 迭代上限与发射配置：单 program 持有整张矩阵，迭代次数决定最坏耗时。
+# QR iteration cap and launch config: a single program holds the whole matrix, so iteration count determines worst-case
+# time.
 _MAXIT_SLOPE = 100
 _MAXIT_BIAS = 100
 _NUM_WARPS = 8
@@ -321,7 +322,7 @@ def _eig_kernel(A, LR, LI, VR, VI, N, MAXIT, BLOCK: tl.constexpr):
 
 
 def linalg_eig(A):
-    logger.debug("GEMS LINALG_EIG")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIG")
     if _NATIVE_EIG is not None:
         return _NATIVE_EIG.call_boxed(_DEVICE_KEYSET, A)
 

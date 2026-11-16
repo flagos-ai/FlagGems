@@ -26,7 +26,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
-# GCU400 归一化反向的 tile / launch 参数，由批量 A/B 扫描确定。
+# Tile / launch parameters for GCU400 normalization backward, chosen by batch A/B sweeps.
 _GCU400_BN_NUM_WARPS = 2
 _GCU400_BN_NUM_STAGES = 2
 _GCU400_BN_MIN_BLOCK_N = 8
@@ -39,8 +39,8 @@ def _gcu400_bn_block_m(args):
 
 
 def _gcu400_bn_block_n(args):
-    # BLOCK_N=1 会把 (BLOCK_M, 1) tile 退化成 ttg.slice，编译器在 arith.cmpi
-    # 上触发 LLVM SmallVector 断言；下限 8 规避该工具链缺陷。
+    # BLOCK_N=1 degenerates the (BLOCK_M, 1) tile into ttg.slice, triggering an LLVM SmallVector assertion
+    # on arith.cmpi; the lower bound of 8 avoids this toolchain defect.
     block_m = _gcu400_bn_block_m(args)
     block_n = triton.next_power_of_2(args["spatial_dim"])
     return max(
@@ -82,8 +82,8 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
 
 @libentry()
 @triton.autotune(
-    # GCU400 上多配置 do_bench 会在 make_gcuir 崩溃；固定单配置规避工具链
-    # tuner 缺陷，num_warps=1 由 forward 侧的 14 轮 A/B 交替复测确认最优。
+    # Multi-config do_bench crashes in make_gcuir on GCU400; a single fixed config avoids the toolchain
+    # tuner defect. num_warps=1 was confirmed optimal by 14 alternating A/B rounds on the forward side.
     configs=[
         triton.Config(
             {},
@@ -273,7 +273,7 @@ def _batch_norm_impl_index_backward(
     via ``rsqrt(running_var + eps)``; the input gradient then degenerates to the
     plain ``grad_output * weight * inv_std`` form.
     """
-    logger.debug("GEMS _BATCH_NORM_IMPL_INDEX_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_IMPL_INDEX_BACKWARD")
 
     input_3d = make_3d_for_bn(input)
     grad_output_3d = make_3d_for_bn(grad_output)

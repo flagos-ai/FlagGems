@@ -161,7 +161,7 @@ def _launch(value, other, out):
 
 def __rshift__(self: torch.Tensor, other, *, out=None) -> torch.Tensor:
     """Apply arithmetic or logical right shift for tensor and scalar operands."""
-    logger.debug("GEMS RSHIFT")
+    logger.debug("GEMS_ENFLAME_GCU400 RSHIFT")
     if _use_flat(self, other, out):
         return _launch(self, other, out)
     kernel = _rshift_tensor_kernel if torch.is_tensor(other) else _rshift_scalar_kernel
@@ -173,7 +173,7 @@ def __rshift__(self: torch.Tensor, other, *, out=None) -> torch.Tensor:
 
 def __rshift___out(self: torch.Tensor, other, *, out) -> torch.Tensor:
     """Apply arithmetic or logical right shift for tensor and scalar operands (out variant)."""
-    logger.debug("GEMS RSHIFT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 RSHIFT_OUT")
     if _use_flat(self, other, out):
         return _launch(self, other, out)
     kernel = _rshift_tensor_kernel if torch.is_tensor(other) else _rshift_scalar_kernel

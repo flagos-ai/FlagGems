@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 特化的 sum 系列实现。
+"""GCU400-specific sum family implementation.
 
-全局求和（dim=None / dim=[]）按数据规模分三条路径：
-- 不足一个 tile：单 program 一次归约；
-- 中等规模且最后一维够宽：2D block tiling，两阶段（分段 partial + 归并）；
-- 其余：1D 流式单 launch，各 program 分段累加后原子归并。
+Global sum (dim=None / dim=[]) has three paths by data size:
+- less than one tile: one program reduces in one pass;
+- medium scale with a wide last dimension: 2D block tiling, two stages (segmented partial + merge);
+- others: 1D streaming single launch, each program accumulates a segment then atomically merges.
 
-单维求和按 (M, N, K) 展开选路：N==1 走拷贝，K==1 走行归约，K>1 走 (行, 尾块) 切分。
-多 dim 统一先经 dim_compress 压成 (M, N) 的 K == 1 情形。
+Single-dimension sum is routed by an (M, N, K) expansion: N==1 uses copy, K==1 uses row reduction, K>1 uses (row,
+tail-block) splitting.
+Multiple dims are first compressed by dim_compress into the (M, N) K == 1 case.
 """
 
 import builtins
@@ -38,37 +39,37 @@ logger = logging.getLogger(__name__)
 _min = builtins.min
 _max = builtins.max
 
-# GCU400 有 48 个计算单元；固定网格 + 核内跨步可让 SP 占满。
+# GCU400 has 48 compute units; a fixed grid + in-kernel stride keeps SPs saturated.
 MAX_GRID = 48
 
-# 全局求和：实测 65536 元素（fp16 128 KiB / fp32 256 KiB）带宽最好。
+# Global sum: 65536 elements (fp16 128 KiB / fp32 256 KiB) measured best bandwidth.
 GLOBAL_TILE_ELEMS = 65536
 
-# 行归约单个 tile 的字节预算：sum 只有一趟读，tile 敢开到 256 KiB。
+# Byte budget of one row-reduction tile: sum has one read pass, so the tile can be 256 KiB.
 INNER_TILE_BYTES = 131072
 
-# 非行归约（K > 1）单个 tile 的字节预算。
+# Byte budget of one tile for non-row reduction (K > 1).
 NON_INNER_TILE_BYTES = 131072
 
-# 全局求和的 2D block tiling 只在中等规模启用：数据量再大时 1D 流式的连续
-# 访问更划算（实测 2 GiB 时 1D 1.66x vs 2D 1.46x），再小时启动开销占主导。
+# 2D block tiling for global sum is enabled only at medium scale: for larger data 1D streaming's contiguous
+# access is better (measured 2 GiB: 1D 1.66x vs 2D 1.46x), for smaller data launch overhead dominates.
 GLOBAL_2D_MIN_BYTES = 64 * 1024 * 1024
 GLOBAL_2D_MAX_BYTES = 512 * 1024 * 1024
 
-# 2D 全局求和的归约宽度上限（fp16/fp32 实测均在此附近最优）。
+# Reduction width cap of 2D global sum (measured optimum for both fp16/fp32).
 GLOBAL_2D_WIDTH = 8192
 
-# 行内归约宽度的上限：跨 lane 归约的开销随宽度增长，
-# 实测超过 16384 后带宽下降。
+# In-row reduction width cap: cross-lane reduction cost grows with width,
+# measured bandwidth drops beyond 16384.
 MAX_REDUCE_WIDTH = 16384
 
-# 行数很少而行长极长时，行归约只有 1 个 tile，必须沿 N 维再切一刀分摊到 48 个 program。
+# When rows are few but rows are long, row reduction has only 1 tile, so split once more along N across 48 programs.
 ROW_SPLIT_MAX_ROWS = 8
 ROW_SPLIT_MIN_N = 65536
 
 
 def _tile_elems(element_size, budget):
-    """按字节预算换算出单 tile 可容纳的元素数。"""
+    """Convert a byte budget into the number of elements one tile can hold."""
     return _max(1024, budget // element_size)
 
 
@@ -81,11 +82,11 @@ def sum_global_direct_kernel(
     BLOCK: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    """Out 预清零后，各 program 直接把 partial 原子累加进去。
+    """After Out is pre-zeroed, each program atomically accumulates its partial directly into it.
 
-    单 launch 里最省的一条路径：不需要 Part / Counter，也没有二次归并。
-    partial 始终在 fp32 上累加（fp16/bf16 输入亦然），只有最后的原子归并落到
-    Out 的 dtype 上。
+    The cheapest path within one launch: no Part / Counter and no second merge.
+    Partials always accumulate in fp32 (including fp16/bf16 inputs), and only the final atomic merge lands in
+    Out's dtype.
     """
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -102,15 +103,15 @@ def sum_global_direct_kernel(
         offset = tile_id * BLOCK + tl.arange(0, BLOCK)
         x = tl.load(X + offset, mask=offset < n_elem, other=0.0)
         acc += tl.sum(x).to(cdtype)
-    # 各 program 之间无数据依赖，只需原子性、不需要 ordering/visibility，
-    # 用 relaxed 避免 acq_rel 带来的多余 fence（默认就是 acq_rel）。
+    # Programs have no data dependency, only atomicity is needed (no ordering/visibility),
+    # so relaxed avoids the extra fence of acq_rel (which is the default).
     tl.atomic_add(Out, acc.to(Out.dtype.element_ty), sem="relaxed")
 
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elem"])
 def sum_global_single_kernel(X, Out, n_elem, BLOCK: tl.constexpr):
-    """小规模输入：单 program 一次归约到底，省掉第二阶段的启动开销。"""
+    """Small inputs: one program reduces to the end, saving the second stage's launch overhead."""
     offset = tl.arange(0, BLOCK)
     x = tl.load(X + offset, mask=offset < n_elem, other=0.0)
     tl.store(Out, tl.sum(x, axis=0).to(Out.dtype.element_ty))
@@ -119,7 +120,7 @@ def sum_global_single_kernel(X, Out, n_elem, BLOCK: tl.constexpr):
 @libentry()
 @triton.jit(do_not_specialize=["n_elem"])
 def sum_copy_kernel(Out, X, n_elem, BLOCK: tl.constexpr):
-    """被归约维长度为 1：输出就是输入本身，走一遍 elementwise 拷贝即可。"""
+    """Reduced dimension length is 1: output is the input itself, one elementwise copy."""
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tile = (n_elem + BLOCK - 1) // BLOCK
@@ -141,9 +142,9 @@ def sum_dim_row_split_partial_kernel(
     BLOCK_N: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    """行数很少的场合：把行内 N 维也切给多个 program，各产出一份 partial。
+    """When rows are few: split the in-row N dimension across programs, each producing one partial.
 
-    partial 布局为 [n_part, BLOCK_M]，第 i 个 program 写第 i 行。
+    partial layout is [n_part, BLOCK_M], program i writes row i.
     """
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -177,7 +178,7 @@ def sum_dim_row_split_final_kernel(
     BLOCK_P: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
-    """把 [n_part, BLOCK_M] 的 partial 按行归并。"""
+    """Merge [n_part, BLOCK_M] partials by row."""
     if tl.constexpr(Part.dtype.element_ty == tl.float16) | tl.constexpr(
         Part.dtype.element_ty == tl.bfloat16
     ):
@@ -209,10 +210,11 @@ def sum_dim_inner_kernel(
     BLOCK_N: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    """被归约维在最内层：一个 tile 覆盖 BLOCK_M 行 × BLOCK_N 列，按行归约。
+    """Reduced dimension is innermost: one tile covers BLOCK_M rows x BLOCK_N columns, reducing by row.
 
-    归约在 fp32 上完成：低精度累加在 4096 长度的行上相对误差已达 5e-3，
-    过不了 sum_dim 的精度门（全局求和因归一化长度极长、容差按 reduce_dim 放宽才可用）。
+    Reduction is done in fp32: low-precision accumulation on rows of length 4096 already has 5e-3 relative error,
+    which fails sum_dim's accuracy gate (global sum can use it because the normalization length is huge and tolerance is
+    relaxed by reduce_dim).
     """
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -250,10 +252,10 @@ def sum_dim_non_inner_kernel(
     BLOCK_K: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    """被归约维后面还有 K 个元素：任务 = (行 m, 尾块 k)，沿被归约维累加。
+    """K elements follow the reduced dimension: task = (row m, tail block k), accumulating along the reduced dimension.
 
-    tile 取 (BLOCK_I, BLOCK_K)，其中 BLOCK_K 沿尾维（即内存连续维），
-    保证每次 load 都是若干段连续访存；acc 沿尾维保留，最后一次性写出。
+    Tile is (BLOCK_I, BLOCK_K), with BLOCK_K along the tail (memory-contiguous) dimension,
+    so each load is several contiguous segments; acc is retained along the tail dimension and written once at the end.
     """
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -296,11 +298,11 @@ def sum_global_block_partial_kernel(
     BLOCK_N: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    """中等规模全局求和的 2D block tiling 阶段一。
+    """Stage one of 2D block tiling for medium-scale global sum.
 
-    输入按最后一维摊成 (M, N)，tile 取 BLOCK_M 行 x BLOCK_N 列，每行一个
-    fp32 累加器跨 tile 累加。归约宽度固定在 BLOCK_N，跨 lane 归约成本不随
-    tile 整体放大（这是 2D 化相对整块 1D 归约的关键收益）。
+    Input is laid out as (M, N) along the last dimension, tile is BLOCK_M rows x BLOCK_N columns, each row has one
+    fp32 accumulator across tiles. Reduction width is fixed at BLOCK_N, so cross-lane reduction cost does not grow with
+    overall tile size (the key benefit of 2D over a whole-block 1D reduction).
     """
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -340,7 +342,7 @@ def sum_global_block_final_kernel(
     BLOCK_P: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
-    """把 [n_part, BLOCK_M] 的 partial 压成一个标量。"""
+    """Compress [n_part, BLOCK_M] partials into one scalar."""
     if tl.constexpr(Part.dtype.element_ty == tl.float16) | tl.constexpr(
         Part.dtype.element_ty == tl.bfloat16
     ):
@@ -360,11 +362,11 @@ def sum_global_block_final_kernel(
 
 
 def _launch_global_sum(inp, out, n_elem):
-    """全局求和：按数据规模在三条路径间选。
+    """Global sum: choose among three paths by data size.
 
-    - 不足一个 tile：单 kernel 直接出结果；
-    - 中等规模且最后一维够宽：2D block tiling（归约宽度压到 BLOCK_N）；
-    - 其余（含超大数据量）：1D 流式单 launch，分段累加 + 原子归并。
+    - less than one tile: one kernel produces the result directly;
+    - medium scale with a wide last dimension: 2D block tiling (reduction width compressed to BLOCK_N);
+    - others (including very large data): 1D streaming single launch, segmented accumulation + atomic merge.
     """
     element_size = inp.element_size()
     block = _min(triton.next_power_of_2(n_elem), GLOBAL_TILE_ELEMS)
@@ -408,15 +410,15 @@ def _launch_global_sum(inp, out, n_elem):
             )
             return
 
-        # 1D 流式：2 字节类型给 2 倍网格、2 warp（实测能吃满 2.4 TB/s）；
-        # 4 字节类型和小规模都退回 1 warp——前者带宽本就不是瓶颈，后者由
-        # 启动开销主导，多出来的 warp 只会拖慢。
+        # 1D streaming: 2-byte types get 2x grid and 2 warps (measured saturating 2.4 TB/s);
+        # 4-byte types and small scales fall back to 1 warp - the former is not bandwidth bound, the latter is
+        # launch-overhead bound, so extra warps only slow things down.
         grid_cap = MAX_GRID * 2 if element_size == 2 else MAX_GRID
         grid = _min(grid_cap, triton.cdiv(n_elem, block))
 
-        # 各 program 直接把 partial 原子累加进预清零的 Out，单 launch、无临时
-        # buffer。partial 在 fp32 上累加（fp16/bf16 输入亦然），只有最后的原子
-        # 归并落到 Out 的 dtype 上。
+        # Each program atomically accumulates its partial into the pre-zeroed Out, single launch, no temporary
+        # buffer. Partials accumulate in fp32 (including fp16/bf16 inputs), and only the final atomic
+        # merge lands in Out's dtype.
         out.zero_()
         sum_global_direct_kernel[(grid,)](
             inp,
@@ -429,13 +431,13 @@ def _launch_global_sum(inp, out, n_elem):
 
 
 def _launch_dim_sum(inp, out, M, N, K):
-    """单维求和：按 (M, N, K) 的形态选路。
+    """Single-dimension sum: routed by (M, N, K) shape.
 
-    N == 1           → 输出即输入，走 elementwise 拷贝；
-    K == 1 且 M == 1 → 退化为全局求和（复用单 launch 全局路径）；
-    K == 1 且行数极少 → 再沿 N 维切一刀，否则只有 1 个 program 串行整行；
-    K == 1           → 行归约（BLOCK_M × BLOCK_N tile）；
-    K > 1            → (行, 尾块) 任务切分，沿被归约维累加。
+    N == 1           -> output is input, elementwise copy;
+    K == 1 and M == 1 -> degenerates to global sum (reuse the single-launch global path);
+    K == 1 with very few rows -> split once more along N, otherwise 1 program serializes the whole row;
+    K == 1           -> row reduction (BLOCK_M x BLOCK_N tile);
+    K > 1            -> (row, tail-block) partitioning, accumulating along the reduced dimension.
     """
     element_size = inp.element_size()
 
@@ -488,7 +490,7 @@ def _launch_dim_sum(inp, out, M, N, K):
                 )
                 return
 
-            # fp32 的跨 lane 归约成本更低，超长行可以让归约宽度翻倍
+            # fp32 cross-lane reduction is cheaper, so extremely long rows can double the reduction width
             max_width = MAX_REDUCE_WIDTH * 2 if element_size >= 4 else MAX_REDUCE_WIDTH
             block_n = _min(triton.next_power_of_2(N), max_width)
             batch_rows = triton.next_power_of_2(triton.cdiv(M, MAX_GRID))
@@ -507,8 +509,8 @@ def _launch_dim_sum(inp, out, M, N, K):
             )
             return
 
-        # 尾块宽度：优先取大值（访存段更长），但任务数不足会让 48 个计算单元
-        # 出现空转尾效应，因此按 2 倍网格数回退。
+        # Tail-block width: prefer large (longer memory segments), but too few tasks make 48 compute units
+        # idle in a tail effect, so fall back by 2x grid count.
         block_k = _min(triton.next_power_of_2(K), 512)
         while block_k > 16 and M * triton.cdiv(K, block_k) < 2 * MAX_GRID:
             block_k //= 2
@@ -533,7 +535,7 @@ def _launch_dim_sum(inp, out, M, N, K):
 
 
 def _normalize_dtype(inp, dtype):
-    """保持与公共实现一致的 dtype 推算（bool 走整型累加）。"""
+    """Keep dtype inference consistent with the common implementation (bool accumulates as integer)."""
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -573,7 +575,7 @@ def sum_out(inp, *, dtype=None, out):
 
 
 def _empty_out_shape(shape, dim, keepdim):
-    """空输入的输出形状（与 aten 一致）。"""
+    """Output shape for empty inputs (same as aten)."""
     if dim is None:
         return [1] * len(shape) if keepdim else []
     dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
@@ -590,7 +592,8 @@ def _empty_out_shape(shape, dim, keepdim):
 
 
 def _sum_dim_impl(inp, dim, keepdim, dtype, out):
-    """单维 / 多维求和的统一实现，语义与公共实现保持一致。"""
+    """Unified implementation of single-dimension / multi-dimension sum, semantics consistent with the common
+    implementation."""
     if dim is None or (isinstance(dim, (list, tuple)) and len(dim) == 0):
         result = _sum_dim_global(inp, keepdim, dtype, out)
         return result
@@ -600,7 +603,7 @@ def _sum_dim_impl(inp, dim, keepdim, dtype, out):
     dims = [d % ndim for d in dim]
 
     if len(dims) == 1:
-        # 单维：(M, N, K) 三维展开，K 为被归约维之后的元素数。
+        # Single dim: (M, N, K) 3D expansion, K is the element count after the reduced dimension.
         reduce_dim = dims[0]
         N = shape[reduce_dim]
         M = 1
@@ -623,7 +626,7 @@ def _sum_dim_impl(inp, dim, keepdim, dtype, out):
             _launch_dim_sum(inp, out, M, N, K)
         return out
 
-    # 多维：把被归约维压缩到末尾，退化为 (M, N) 的行归约。
+    # Multiple dims: compress the reduced dims to the end, degenerating into an (M, N) row reduction.
     inp = dim_compress(inp, dims)
     N = 1
     for d in dims:
@@ -643,7 +646,7 @@ def _sum_dim_impl(inp, dim, keepdim, dtype, out):
 
 
 def _sum_dim_global(inp, keepdim, dtype, out):
-    """dim=None 或 dim=[]：退化为全局求和。"""
+    """dim=None or dim=[]: degenerates to global sum."""
     if out is None:
         result = sum(inp, dtype=dtype)
         return result.reshape([1] * inp.ndim) if keepdim else result

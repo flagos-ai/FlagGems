@@ -280,6 +280,7 @@ class GeluAndMul(torch.autograd.Function):
 
 def gelu_and_mul(x, y, approximate="none"):
     # Inference path: avoid autograd.Function.apply graph construction.
+    logger.debug("GEMS_ENFLAME_GCU400 GELU_AND_MUL")
     if not torch.is_grad_enabled() or not (x.requires_grad or y.requires_grad):
         if approximate not in ("none", "tanh"):
             raise ValueError(f"Invalid approximate value: {approximate}")

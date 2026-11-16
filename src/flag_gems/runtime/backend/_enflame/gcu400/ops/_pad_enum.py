@@ -86,7 +86,7 @@ _MODE_CONSTANT = 3
 
 
 def _pad_enum(self, pad, mode, value=None):
-    logger.debug("GEMS _PAD_ENUM")
+    logger.debug("GEMS_ENFLAME_GCU400 _PAD_ENUM")
 
     assert len(pad) % 2 == 0, "Padding length must be divisible by 2"
     ndim = self.dim()

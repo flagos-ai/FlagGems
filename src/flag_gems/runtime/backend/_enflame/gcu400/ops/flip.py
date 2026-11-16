@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 #     negative-stride block pointer returns garbage for 8-byte types.
 #     They run the same kernels over a same-shape int32 word view (set_
 #     over the same storage; the numel-doubled word view is falsified,
-#     see perf_playbook int64 payload 双视图归一).
+#     see the perf_playbook int64 payload dual-view normalization note).
 # Grids are capped at 48 (one program per SPC) with grid-stride loops; the
 # 2D-tile forms are deliberately avoided (HC_PAD/LANES unmasked 2D tile
 # silent-corruption family).
@@ -504,7 +504,7 @@ def _int32_word_view(A):
     # TORCH_GCU_ENABLE_INT64_AND_UINT64 turns on real 8B storage; a
     # same-shape / same-stride / same-offset int32 set_ view aliases those
     # words 1:1 (the numel-doubled "word view" is a falsified form -- see
-    # perf_playbook int64 payload 双视图归一).  flip is a pure permutation,
+    # perf_playbook int64 payload dual-view normalization). flip is a pure permutation,
     # so moving the physical words moves the elements exactly.
     view = torch.empty(0, dtype=torch.int32, device=A.device)
     view.set_(
@@ -617,7 +617,7 @@ def flip(A: torch.Tensor, dims) -> torch.Tensor:
             return _flip_pointwise_fallback(A, strides, offset)
         # same-shape word views are only safe at storage_offset 0
         # (offset > 0 slices land at half the byte offset -- compiler_traps
-        # "fake-int64 切片/字视图" entry), so keep those on the bptr path.
+        # "fake-int64 slice/word view" entry), so keep those on the bptr path.
         if A.storage_offset() != 0:
             strides, offset = _signed_view(A, flip_dims_b)
             return _flip_pointwise_fallback(A, strides, offset)

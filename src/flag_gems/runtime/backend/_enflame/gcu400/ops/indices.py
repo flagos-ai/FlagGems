@@ -105,7 +105,7 @@ def indices(self: torch.Tensor) -> torch.Tensor:
     tensor, please call .coalesce() first``), and batched/hybrid COO layouts
     report the same ``(sparse_dim, nnz)`` shape the native reader does.
     """
-    logger.debug("GEMS INDICES")
+    logger.debug("GEMS_ENFLAME_GCU400 INDICES")
     if type(self) is not torch.Tensor:
         raise TypeError(f"indices: input must be a Tensor, got {type(self).__name__}")
     if self.layout != torch.sparse_coo:

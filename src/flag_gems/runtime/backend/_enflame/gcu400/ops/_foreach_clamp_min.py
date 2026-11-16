@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_clamp_min_.List``（in-place）。
+"""GCU400-specific ``_foreach_clamp_min_.List`` (in-place).
 
-公共 ``foreach_binary_list`` 用二维 grid 承载 tensor 列表，GCU400 的
-``grid.y`` 上限 255 在大 shape 下会 ``out of resource``。这里对浮点连续
-列表改走一维固定 grid + 核内跨步的 maximum kernel；非浮点 / 非连续 /
-广播不等长等形态仍委托公共 ``_apply_list`` 保持 dtype policy。
+The common ``foreach_binary_list`` carries the tensor list in a 2D grid, and GCU400's
+``grid.y`` limit of 255 causes ``out of resource`` on large shapes. Contiguous float
+lists use a 1D fixed grid + in-kernel striding maximum kernel instead; non-float / non-contiguous /
+broadcast length mismatches still delegate to the common ``_apply_list`` to keep dtype policy.
 """
 
 import logging
@@ -29,7 +29,7 @@ from ._foreach_flat import FALLBACK, MODE_LIST, OP_MAX, run_binary
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；均为编译期/启动期配置，不改变算子语义。
+# Generated per round by the optimization driver script; all compile-time / launch-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 NUM_WARPS = 4

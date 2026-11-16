@@ -55,7 +55,7 @@ def bartlett_window(
     device=None,
     requires_grad=False,
 ):
-    logger.debug("GEMS BARTLETT_WINDOW")
+    logger.debug("GEMS_ENFLAME_GCU400 BARTLETT_WINDOW")
     if dtype is None:
         dtype = torch.get_default_dtype()
     assert dtype in (

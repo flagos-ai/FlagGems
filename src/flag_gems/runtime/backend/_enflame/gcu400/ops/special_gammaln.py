@@ -33,12 +33,12 @@ def special_gammaln_func(x):
 
 
 def special_gammaln(A):
-    logger.debug("GEMS SPECIAL_GAMMALN")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_GAMMALN")
     return special_gammaln_func(A)
 
 
 def special_gammaln_out(A, *, out=None):
-    logger.debug("GEMS SPECIAL_GAMMALN_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_GAMMALN_OUT")
     if out is None:
         return special_gammaln_func(A)
     special_gammaln_func(A, out0=out)

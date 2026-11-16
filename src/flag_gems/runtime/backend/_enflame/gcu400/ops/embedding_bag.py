@@ -26,7 +26,7 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；只改变 launch 几何，不改变语义。
+# Generated per optimization round; only launch geometry changes, not semantics.
 NUM_WARPS = 1
 BLOCK_D_CAP = 256
 BLOCK_L_SMALL = 16
@@ -499,7 +499,7 @@ def _embedding_bag_impl(
             _check_error(error, error_blocks)
         elif (n or o) and not async_assert:
             if USE_FAST_ERROR_CHECK:
-                # 只同步一个标量，避免把整个 error 张量搬回 host。
+                # Sync only one scalar, avoiding moving the whole error tensor back to the host.
                 code = int(error.max().item())
             else:
                 code = max(error.tolist())
@@ -565,7 +565,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_ENFLAME_GCU400 _EMBEDDING_BAG_FORWARD_ONLY")
     return _embedding_bag_impl(
         weight,
         indices,

@@ -25,9 +25,9 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
-# GCU400 硬限：grid.y <= 255（同 addmm/_addmm_activation 的 GCU_MAX_GRID_Y）。
-# index_len / inner 超过 255*BLOCK 时 cdiv 出的 y 维会 OutOfResources，
-# 故两处 kernel 都用 grid-stride 循环覆盖全部 y 块（先例 cummin 双轴跨步）。
+# GCU400 hard limit: grid.y <= 255 (same GCU_MAX_GRID_Y as addmm/_addmm_activation).
+# When index_len / inner exceeds 255*BLOCK, the cdiv'd y dimension raises OutOfResources,
+# so both kernels use a grid-stride loop over all y blocks (precedent: cummin dual-axis striding).
 GCU_MAX_GRID_Y = 63
 
 
@@ -42,8 +42,9 @@ def index_select_kernel(
     num_prog_x = tl.num_programs(axis=0)
     num_prog_y = tl.num_programs(axis=1)
 
-    # y 块 grid-stride 放外层：cols 只算一次，k 循环体与未钳制版本
-    # 逐指令一致（common case 每程序仅 1 个 y 块，零额外开销）。
+    # y-block grid-stride is the outer loop: cols is computed once, and the k loop body is
+    # instruction-for-instruction identical to the unclamped version (common case has 1 y block per program, zero extra
+    # cost).
     for y_block in range(pid_y, tl.cdiv(index_len, BLOCK_N), num_prog_y):
         cols_offsets = y_block * BLOCK_N + tl.arange(0, BLOCK_N)
         cols_mask = cols_offsets < index_len
@@ -67,8 +68,8 @@ def index_select_kernel(
 @libentry()
 @triton.jit
 def index_select_contiguous_kernel(
-    inp,  # contiguous，逻辑 shape (outer, N, inner)
-    out,  # contiguous，逻辑 shape (outer, index_len, inner)
+    inp,  # contiguous, logical shape (outer, N, inner)
+    out,  # contiguous, logical shape (outer, index_len, inner)
     index,
     N,
     inner,
@@ -78,23 +79,24 @@ def index_select_contiguous_kernel(
     GRID_X: tl.constexpr,
     OUTER_ONE: tl.constexpr,
 ):
-    # 直接在输入原始布局上做连续访存，替代 dim_compress 的整张量搬运：
-    # 固定 (o, j) 时，inner 维是连续的一段，可用一次连续 load/store 完成。
-    # grid.x 固定为 GRID_X，用跨步循环覆盖全部 (o, j) 对；全展开
-    # （grid.x=total_p）实测劣化 0.66~0.92x（CTA 过多、调度开销），
-    # 固定 grid 更贴合 GCU 计算单元数。
+    # Do contiguous access directly in the input's original layout, replacing dim_compress's whole-tensor move:
+    # for a fixed (o, j), the inner dimension is one contiguous segment, handled by a single contiguous load/store.
+    # grid.x is fixed at GRID_X with a stride loop covering all (o, j) pairs; full expansion
+    # (grid.x=total_p) measured 0.66~0.92x worse (too many CTAs, scheduling overhead),
+    # so a fixed grid better matches the GCU compute unit count.
     pid_x = tl.program_id(0)
     pid_i = tl.program_id(1)
     num_prog_i = tl.num_programs(1)
     inner_blocks = tl.cdiv(inner, BLOCK_I)
-    # i 块 grid-stride 放外层：i_offs/i_mask 每块只算一次，p 循环体与
-    # 未钳制版本逐指令一致（common case 每程序仅 1 个 i 块，零额外开销）。
+    # i-block grid-stride is the outer loop: i_offs/i_mask are computed once per block, and the p loop body is
+    # instruction-for-instruction identical to the unclamped version (common case has 1 i block per program, zero extra
+    # cost).
     for bi in range(pid_i, inner_blocks, num_prog_i):
         i_offs = bi * BLOCK_I + tl.arange(0, BLOCK_I)
         i_mask = i_offs < inner
         for p in range(pid_x, total_p, GRID_X):
             if OUTER_ONE:
-                # dim == 0 时 outer 恒为 1，p 就是 j，省掉整数除法/取模
+                # With dim == 0, outer is always 1 and p is j, so integer division / modulo is avoided
                 o = 0
                 j = p
             else:
@@ -108,9 +110,9 @@ def index_select_contiguous_kernel(
 
 
 def make_contiguous_with_correct_stride(tensor):
-    """确保 contiguous 后的 tensor 具有正确的 stride"""
+    """Ensure the tensor has the correct stride after calling contiguous."""
     if tensor.numel() == 0:
-        # 对于空 tensor，手动创建具有正确 stride 的版本
+        # For empty tensors, manually build a version with the correct stride
         new_tensor = tensor.flatten().view(tensor.shape)
         return new_tensor.contiguous()
     return tensor.contiguous()
@@ -120,10 +122,10 @@ def index_select(inp, dim, index):
     logger.debug("GEMS_ENFLAME INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    # 不要写成 `assert (... for i in index)`：generator 创建时就会 iter(index)
-    # 触发 Tensor.unbind，实测单次 0.31ms（占端到端 90%+），且 generator 恒为
-    # truthy 本身就是无效检查。通用实现 src/flag_gems/ops/index_select.py 也
-    # 无此校验；index 范围由调用方保证。
+    # Do not write `assert (... for i in index)`: creating the generator already iterates index,
+    # triggering Tensor.unbind, measured at 0.31ms per call (90%+ of end-to-end), and a generator is always
+    # truthy, so the check is invalid anyway. The common implementation src/flag_gems/ops/index_select.py has
+    # no such check either; index range is guaranteed by the caller.
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
@@ -138,17 +140,17 @@ def index_select(inp, dim, index):
     outer = inp.numel() // (N * inner)
     total_p = outer * index_len
 
-    # dim 不是最后一维且 dim 之后的连续块足够大时，直接在原布局上做连续访存，
-    # 省掉 dim_compress 的 permute().contiguous() 整张量拷贝以及输出侧的
-    # permute().contiguous() 拷贝（两次 O(numel) 搬运是主要瓶颈）。
+    # When dim is not the last dimension and the contiguous block after dim is large enough, access the original layout
+    # contiguously, avoiding dim_compress's permute().contiguous() whole-tensor copy and the output-side
+    # permute().contiguous() copy (two O(numel) moves are the main bottleneck).
     if dim != inp.ndim - 1 and inner >= 16 and index_len > 0:
         out_shape = list(inp_shape)
         out_shape[dim] = index_len
         out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
         if not inp.is_contiguous():
             inp = inp.contiguous()
-        # grid.x 固定贴合 GCU 计算单元数：全展开（grid.x=total_p）实测劣化
-        # 0.66x（CTA 过多、调度开销），固定 48 配跨步循环最优。
+        # grid.x is fixed to match the GCU compute unit count: full expansion (grid.x=total_p) measured
+        # 0.66x worse (too many CTAs, scheduling overhead); a fixed 48 with a stride loop is optimal.
         grid_x = min(total_p, MAX_GRID_DIM)
         block_i = min(triton.next_power_of_2(inner), 1024)
         index_select_contiguous_kernel[
@@ -164,13 +166,14 @@ def index_select(inp, dim, index):
             block_i,
             grid_x,
             outer == 1,
-            # 大 inner（单次连续传输 >= 8192 元素）用 4 warps 吞吐更高，
-            # 中小 inner 用 2 warps 启动/占用更省（实测分路径优于单一值）。
+            # Large inner (a single contiguous transfer >= 8192 elements) has higher throughput with 4 warps,
+            # while small/medium inner uses 2 warps for cheaper launch / occupancy (measured better than a single value
+            # for all paths).
             num_warps=4 if inner >= 8192 else 2,
         )
         return out
 
-    # with dim_compress（dim == last 时为恒等 permute，无拷贝）
+    # with dim_compress (when dim == last it is an identity permute, no copy)
     inp = dim_compress(inp, dim)
     M = inp.numel() // N
     out_shape = list(inp.shape)

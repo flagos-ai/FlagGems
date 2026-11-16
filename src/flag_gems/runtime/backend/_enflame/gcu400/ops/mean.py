@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 # DTE hardware register bitwidth limit: each tile dimension must fit in 24 bits.
 DTE_DIM_MAX = (1 << 24) - 1
-# 归约 kernel 的 program 上限，按 GCU400 SIP 数调优。
+# Program cap of the reduction kernel, tuned for GCU400's SIP count.
 MEAN_GRID_CAP = 24
-# libtuner 二维 tile 面积范围，控制编译配置数量与寄存器压力。
+# libtuner 2D tile area range, controlling compile config count and register pressure.
 MEAN_TILE_MIN = 2048
 MEAN_TILE_MAX = 128 * 1024
 
@@ -83,11 +83,12 @@ def _mean_dtype(inp, dtype):
 
 
 def mean(inp, *, dtype=None):
+    logger.debug("GEMS_ENFLAME_GCU400 MEAN")
     if not inp.is_contiguous():
         inp = inp.contiguous()
     M = inp.numel()
     dtype = _mean_dtype(inp, dtype)
-    # 空 tensor 的全量均值在 aten 中为 NaN；短路避免 0 元素 kernel 启动。
+    # Full-mean of an empty tensor is NaN in aten; short-circuit to avoid launching a 0-element kernel.
     if M == 0:
         return torch.full([], float("nan"), dtype=dtype, device=inp.device)
 
@@ -426,11 +427,12 @@ def _largest_divisor_le(n, limit):
 
 
 def _empty_mean_dim_output(x, dim, keepdim, dtype):
-    """构造空输入按 dim 求均值的输出。
+    """Build the output of mean over dim for empty inputs.
 
-    PyTorch 语义：被归约轴长度为 0 时输出元素全为 NaN，形状由 keepdim
-    决定是否保留归约轴。此处直接构造结果，不启动 0 元素的 Triton kernel，
-    也避免 ``numel // N`` 在 N 为 0 时触发除零。
+    PyTorch semantics: when the reduced axis has length 0, all output elements are NaN, and keepdim
+    decides whether the reduced axis is retained. Construct the result directly here, without launching a 0-element
+    Triton kernel,
+    and avoiding division by zero in ``numel // N`` when N is 0.
     """
     if dim is None:
         reduced_dims = list(range(x.ndim))
@@ -454,7 +456,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     if not x.is_contiguous():
         x = x.contiguous()
     dtype = _mean_dtype(x, dtype)
-    # 空输入统一走 NaN 输出短路，覆盖单轴 / 多轴 / dim=None 三种分支。
+    # Empty inputs uniformly take the NaN-output short circuit, covering single-axis / multi-axis / dim=None branches.
     if x.numel() == 0:
         return _empty_mean_dim_output(x, dim, keepdim, dtype)
     if dim is None:

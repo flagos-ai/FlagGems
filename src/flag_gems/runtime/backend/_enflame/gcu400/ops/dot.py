@@ -69,7 +69,7 @@ def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
 
 
 def dot(x, y):
-    logger.debug("GEMS DOT")
+    logger.debug("GEMS_ENFLAME_GCU400 DOT")
 
     assert x.shape == y.shape, "Input vectors must have the same shape"
     assert x.dim() == 1, "Input must be 1D tensors"
@@ -79,9 +79,9 @@ def dot(x, y):
     # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel,
     # and performance is better when N < 4096
     if N >= 4096:
-        # t9 批 Step 4 B04：固定 block_size=8192 替代 sqrt(N)。
-        # mid_size 从 N/1024 降到 N/8192（大 shape 1024 -> 128 CTA），
-        # 第二 kernel 单 CTA 归约量减少 8x；A/B 共 22 轮，三次复现 2.58~2.68x。
+        # t9 batch Step 4 B04: fix block_size=8192 instead of sqrt(N).
+        # mid_size drops from N/1024 to N/8192 (large shape 1024 -> 128 CTAs),
+        # reducing the second kernel's single-CTA reduction by 8x; 22 A/B rounds, three runs reproduced 2.58~2.68x.
         block_size = 8192
 
         mid_size = triton.cdiv(N, block_size)
@@ -102,9 +102,9 @@ def dot(x, y):
 
         grid = (1, 1, 1)
 
-        # t9 批 Step 4 B02：直接按输入 dtype 分配标量输出，
-        # tl.store 的 fp32->fp16/bf16 转换与 .to(x.dtype) 逐位一致，
-        # 小 shape 省掉一次额外 kernel launch（0.0064 -> 0.0042ms）。
+        # t9 batch Step 4 B02: allocate the scalar output directly in the input dtype;
+        # tl.store's fp32->fp16/bf16 conversion is bit-identical to .to(x.dtype),
+        # saving one extra kernel launch on small shapes (0.0064 -> 0.0042ms).
         out = torch.empty([], dtype=x.dtype, device=x.device)
 
         with torch_device_fn.device(x.device):

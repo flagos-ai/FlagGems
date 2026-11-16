@@ -19,7 +19,7 @@ def add_relu_func(x, y):
 
 
 def _add_relu(A, B):
-    logger.debug("GEMS ADD_RELU")
+    logger.debug("GEMS_ENFLAME_GCU400 ADD_RELU")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if B.device != A.device:
             B = B.to(A.device)

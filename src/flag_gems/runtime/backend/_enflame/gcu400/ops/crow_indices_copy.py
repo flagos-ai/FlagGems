@@ -82,7 +82,7 @@ def crow_indices_copy(self: torch.Tensor) -> torch.Tensor:
     ``n_elements == 0`` short-circuit skips the launch (an empty crow buffer
     appears for a zero-sized batch dimension).
     """
-    logger.debug("GEMS CROW_INDICES_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 CROW_INDICES_COPY")
     if self.layout == _LAYOUT_COO:
         # Native has no crow_indices_copy kernel on the sparse-COO key
         # (verified on H20: CUDA COO raises NotImplementedError with the

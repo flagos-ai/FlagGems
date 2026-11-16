@@ -44,11 +44,15 @@ Everything else (left=False, vector right-hand sides, broadcast batches,
 other dtypes, empty inputs, CPU tensors) keeps the exact redispatch behavior
 of the previous implementation.
 """
+import logging
 
 import torch
 
 import flag_gems
 from flag_gems import runtime
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["linalg_solve_ex"]
 
@@ -152,6 +156,7 @@ def _vendor_solve_ex(A, B, check_errors):
 
 def linalg_solve_ex(A, B, *, left=True, check_errors=False):
     """Solve AX = B, returning (result, info); see the module docstring."""
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SOLVE_EX")
     if _can_use_vendor_solve(A, B, left):
         return _vendor_solve_ex(A, B, check_errors)
 

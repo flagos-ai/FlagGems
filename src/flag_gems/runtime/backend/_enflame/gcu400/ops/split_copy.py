@@ -364,7 +364,7 @@ def split_copy(self: torch.Tensor, split_size: int, dim: int = 0):
     ``split_size`` (unless the dimension itself is empty) are rejected with the
     same error messages PyTorch raises.
     """
-    logger.debug("GEMS SPLIT_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 SPLIT_COPY")
 
     if self.dim() == 0:
         raise RuntimeError("split expects at least a 1-dimensional tensor")

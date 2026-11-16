@@ -178,7 +178,7 @@ def _validate_input(inp):
 
 def linalg_matrix_sqrth(inp):
     """Compute the principal square root of a Hermitian positive-definite matrix."""
-    logger.debug("GEMS LINALG_MATRIX_SQRTH")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_SQRTH")
     _validate_input(inp)
 
     if inp.shape[-1] == 0:
@@ -210,7 +210,7 @@ def linalg_matrix_sqrth(inp):
 
 
 def linalg_matrix_sqrth_out(inp, *, out):
-    logger.debug("GEMS LINALG_MATRIX_SQRTH_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_SQRTH_OUT")
     result = linalg_matrix_sqrth(inp)
 
     if out.dtype != result.dtype:

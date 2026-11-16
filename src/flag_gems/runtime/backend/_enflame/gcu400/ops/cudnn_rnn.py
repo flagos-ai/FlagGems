@@ -1479,7 +1479,7 @@ def cudnn_rnn(
             Philox stream, so results are reproducible via ``manual_seed``
             rather than through this tensor.
     """
-    logger.debug("GEMS CUDNN_RNN")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_RNN")
 
     num_directions = 2 if bidirectional else 1
     has_bias, has_proj = _decode_layout(weight_stride0, mode)

@@ -409,7 +409,7 @@ def reduce_then_scan_block_scan_kernel_row(
 
 
 def cumprod(inp, dim, *, dtype=None):
-    logger.debug("GEMS CUMPROD")
+    logger.debug("GEMS_ENFLAME_GCU400 CUMPROD")
     out_dtype = _get_output_dtype(inp, dtype)
     if is_boolean_dtype(inp.dtype):
         if is_boolean_dtype(out_dtype):
@@ -430,7 +430,7 @@ def cumprod(inp, dim, *, dtype=None):
 
 
 def cumprod_(inp, dim, *, dtype=None):
-    logger.debug("GEMS CUMPROD_")
+    logger.debug("GEMS_ENFLAME_GCU400 CUMPROD_")
     if dtype is not None and dtype != inp.dtype:
         raise RuntimeError(
             "Bad in-place call: input tensor dtype and output tensor dtype should match"
@@ -443,9 +443,12 @@ def cumprod_(inp, dim, *, dtype=None):
         return torch.ops.aten.cumprod_.default.redispatch(
             _FALLBACK_KEYSET, inp, dim, dtype=dtype
         )
-    # 连续浮点张量直接与输入共用输出缓冲，省去临时张量分配与整张 D2D 拷贝；
-    # 非连续视图在 cumprod_wrapper 内会被 contiguous() 另建副本，kernel 按连续
-    # 布局写 out 会错位，故保留原路径；整数张量需 int64 累加中间缓冲同理。
+    # Contiguous float tensors share the output buffer directly with the input, saving a temporary allocation and a full
+    # D2D copy;
+    # non-contiguous views get a separate copy from contiguous() inside cumprod_wrapper, so a kernel writing out by
+    # contiguous
+    # layout would be misaligned, hence the original path is kept; integer tensors need an int64 accumulation buffer for
+    # the same reason.
     if inp.is_floating_point() and inp.is_contiguous():
         return cumprod_wrapper(inp, dim, inp.dtype, inp)
     out = cumprod_wrapper(inp, dim, inp.dtype)
@@ -653,7 +656,7 @@ def _cumprod_backward_kernel_3d_batch(
 
 
 def cumprod_backward(grad, input, dim, output):
-    logger.debug("GEMS CUMPROD_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 CUMPROD_BACKWARD")
     ndim = input.ndim
     dim = int(dim)
     if dim < 0:

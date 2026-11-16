@@ -109,7 +109,7 @@ def large_n_log_softmax_kernel(
 
 
 def special_log_softmax(self, dim, dtype=None):
-    logger.debug("GEMS SPECIAL_LOG_SOFTMAX")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOG_SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim

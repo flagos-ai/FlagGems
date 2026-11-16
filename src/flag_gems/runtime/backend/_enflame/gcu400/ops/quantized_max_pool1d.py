@@ -703,7 +703,7 @@ def quantized_max_pool1d(
     dilation=[1],
     ceil_mode=False,
 ):
-    logger.debug("GEMS QUANTIZED_MAX_POOL1D")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL1D")
 
     out_shape, kernel_size, stride, padding, dilation = _plan(
         input, kernel_size, stride, padding, dilation, ceil_mode
@@ -731,7 +731,7 @@ def quantized_max_pool1d_out(
     *,
     out=None,
 ):
-    logger.debug("GEMS QUANTIZED_MAX_POOL1D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL1D_OUT")
 
     if out is None:
         return quantized_max_pool1d(

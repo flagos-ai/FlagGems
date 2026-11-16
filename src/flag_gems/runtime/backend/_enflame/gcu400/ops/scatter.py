@@ -377,7 +377,7 @@ def scatter(inp, dim, index, src, reduce=None):
         out = out.contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
-    # src 必须用 as_strided 之后的视图判断：原始 src 的前导维可能更大
+    # src must be judged by the as_strided view: the original src's leading dim may be larger
     if reduce in (None, "add") and is_last_dim_flat(out, dim, index, src_strided):
         scatter_last_dim(out, dim, index, src_strided, reduce == "add")
         if needs_upcast:
@@ -468,12 +468,13 @@ def scatter_(inp, dim, index, src, reduce=None):
 
 
 # ---------------------------------------------------------------------------
-# 尾维 scatter 快速路径
+# Last-dimension scatter fast path
 #
-# benchmark 与绝大多数真实调用都是沿最后一维 scatter：index/src 除 scatter
-# 维外的位置与输出对应，写地址 = 行基址 + index 值。此时不再需要逐元素做
-# rank 次 `/` `%` 的多维坐标拆解——把前导维压成「行」、尾维当「列」，用
-# BLOCK_M × BLOCK_N 的 2D tile 覆盖，tile 内部只有一次乘加。
+# Benchmarks and most real calls scatter along the last dimension: index/src positions outside the scatter
+# dimension map to the output, so the write address = row base + index value. No per-element
+# rank-times `/` `%` coordinate decomposition is needed - compress leading dims into "rows" and treat the last as
+# "columns",
+# covering with a BLOCK_M x BLOCK_N 2D tile, with only one multiply-add inside the tile.
 # ---------------------------------------------------------------------------
 
 LAST_DIM_TILE_BYTES = 4 * 1024
@@ -507,16 +508,16 @@ def scatter_last_dim_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """沿尾维 scatter：tile = BLOCK_M 行 × BLOCK_N 列。
+    """Scatter along the last dim: tile = BLOCK_M rows x BLOCK_N columns.
 
-    rows/width 为 index 展平后的行数与行宽；三个 row_stride 分别是
-    index/src/out 展平后的行步长（要求前导维链式齐次，见 is_last_dim_flat）。
+    rows/width are the flattened index's row count and row width; the three row_strides are
+    index/src/out's flattened row strides (leading dims must be chain-homogeneous, see is_last_dim_flat).
     """
     pid = tl.program_id(0)
     num_cta = tl.num_programs(0)
     num_tile = tl.cdiv(rows, BLOCK_M) * num_col_tile
     for tile in range(pid, num_tile, num_cta):
-        # 每个 tile 只在这里做一次除法，摊到 BLOCK_M*BLOCK_N 个元素上
+        # Each tile does one division here, amortized over BLOCK_M*BLOCK_N elements
         row_tile = tile // num_col_tile
         col_tile = tile - row_tile * num_col_tile
         row_idx = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -524,7 +525,8 @@ def scatter_last_dim_kernel(
         idx_off = row_idx[:, None] * idx_row_stride + col_idx[None, :]
         src_off = row_idx[:, None] * src_row_stride + col_idx[None, :]
         if EVEN:
-            # 整 tile 落在计算域内：省掉逐元素谓词，原子路径尤其划算
+            # Whole tile inside the compute domain: drop per-element predicates, especially worthwhile for the atomic
+            # path
             index_val = tl.load(index_ptr + idx_off)
             src_val = tl.load(src_ptr + src_off)
         else:
@@ -574,11 +576,12 @@ def scatter_last_dim_mul_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """尾维 scatter 乘法：out[.., index] *= src，用 CAS 循环保交换律语义。
+    """Last-dim scatter multiplication: out[.., index] *= src, CAS loop keeps commutativity semantics.
 
-    与 scatter_last_dim_kernel 的区别是走乘法，没有原生 atomic_mul，只能用
-    atomic_cas 做读-乘-写重试。tile 内部一次乘加即可定位地址（省掉通用 kernel
-    的 rank 次 / %），i32 偏移，未完成 lane 以「写回原值」空转。
+    Unlike scatter_last_dim_kernel this multiplies; with no native atomic_mul it can only use
+    atomic_cas for read-multiply-write retry. One multiply-add inside the tile locates addresses (saving the generic
+    kernel's
+    rank-times / %), i32 offsets, unfinished lanes spin by "writing back the old value".
     """
     pid = tl.program_id(0)
     num_cta = tl.num_programs(0)
@@ -617,19 +620,20 @@ def scatter_last_dim_mul_kernel(
             block_stop = tl.sum(pending.to(tl.int32)) == 0
 
 
-# 乘法 CAS 路径实测网格放大无收益（原子吞吐才是上限），上限取一个够用的常数
+# Measured grid enlargement gives no gain on the multiply CAS path (atomic throughput is the cap), so use a sufficient
+# constant cap
 SCATTER_MUL_MAX_GRID = 4096
 
 
 def scatter_last_dim_multiply(out, dim, index, src):
-    """尾维 scatter(乘法) 的 host 侧派发，就地写 out 并返回它。"""
+    """Host dispatch for last-dim scatter (multiply), writes out in place and returns it."""
     rank = index.dim()
     width = index.shape[-1]
     rows = index.numel() // width
     block_m = 1
     block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
     num_col_tile = triton.cdiv(width, block_n)
-    # 并行度不足时收窄列块，让更多 CTA 参与到同一行
+    # When parallelism is low, narrow the column block so more CTAs join the same row
     while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
         block_n //= 2
         num_col_tile = triton.cdiv(width, block_n)
@@ -656,7 +660,7 @@ def scatter_last_dim_multiply(out, dim, index, src):
 
 
 def _max_offset(tensor):
-    """张量可能访问到的最大线性偏移，用于判断能否用 int32 计算地址。"""
+    """Maximum linear offset a tensor may access, used to decide whether addresses fit int32."""
     return sum(
         (size - 1) * stride
         for size, stride in zip(tensor.shape, tensor.stride())
@@ -665,7 +669,7 @@ def _max_offset(tensor):
 
 
 def _flat_leading(tensor, rank):
-    """前导维是否链式齐次：可把 rank-1 个前导维压成一个「行」维。"""
+    """Whether leading dims are chain-homogeneous: rank-1 leading dims can be flattened into one "row" dim."""
     if tensor.stride(rank - 1) != 1:
         return False
     for i in range(rank - 2):
@@ -675,15 +679,15 @@ def _flat_leading(tensor, rank):
 
 
 def is_last_dim_flat(out, dim, index, src):
-    """判断能否走尾维 2D tile 快速路径。
+    """Decide whether the last-dim 2D tile fast path applies.
 
-    行的展平以 index 的前导维为基准，因此三个张量的前导维形状必须与
-    index 完全一致（维度更大时行号无法用一个步长映射过去）。
+    Row flattening is based on index's leading dims, so all three tensors' leading shapes must match
+    index exactly (larger dims cannot map row numbers with a single stride).
     """
     rank = index.dim()
     if rank < 2:
         return False
-    # dim 可能为负值（-1 最常见），先归一化再判断是否为尾维
+    # dim may be negative (-1 is most common); normalize before checking for the last dim
     if dim % rank != rank - 1:
         return False
     if out.dim() != rank or src.dim() != rank:
@@ -700,16 +704,16 @@ def is_last_dim_flat(out, dim, index, src):
 
 
 def _last_dim_tile(rows, width, element_size, add):
-    """选 (BLOCK_M, BLOCK_N)。
+    """Choose (BLOCK_M, BLOCK_N).
 
-    事务性写（普通 scatter）按 16 KiB 字节预算铺 tile；原子写（scatter_add）
-    的耗时完全由原子次数决定，实测单行覆盖 4096 列比 2048 列更快，因此走
-    单行 + 大列块的形状。并行度不足时先收窄列块、再收窄行块。
+    Transactional writes (plain scatter) lay tiles by a 16 KiB byte budget; atomic writes (scatter_add)
+    cost is entirely determined by atomic count, and one row covering 4096 columns measured faster than 2048, so
+    use one row + a large column block. When parallelism is low, narrow columns first, then rows.
     """
     budget = max(1, LAST_DIM_TILE_BYTES // element_size)
 
     def _rows_per_tile(col_block):
-        """非原子路径按字节预算铺行；行数足够多时单行 tile 更快。"""
+        """Non-atomic path lays rows by byte budget; with enough rows a single-row tile is faster."""
         if rows >= 8 * MAX_GRID_DIM:
             return 1
         return max(1, min(triton.next_power_of_2(rows), budget // col_block))
@@ -721,7 +725,8 @@ def _last_dim_tile(rows, width, element_size, add):
         block_n = min(triton.next_power_of_2(width), LAST_DIM_MAX_BLOCK_N)
         block_m = _rows_per_tile(block_n)
     num_col_tile = triton.cdiv(width, block_n)
-    # 并行度不足时只收窄列块：小 case 把行块也切碎会让 tile 循环开销翻上来
+    # With low parallelism narrow only the column block: splitting rows on small cases makes the tile loop overhead
+    # dominant
     while triton.cdiv(rows, block_m) * num_col_tile < MAX_GRID_DIM and block_n > 64:
         block_n //= 2
         num_col_tile = triton.cdiv(width, block_n)
@@ -731,7 +736,7 @@ def _last_dim_tile(rows, width, element_size, add):
 
 
 def scatter_last_dim(out, dim, index, src, add):
-    """尾维 scatter 的 host 侧派发，就地写 out 并返回它。"""
+    """Host dispatch for last-dim scatter, writes out in place and returns it."""
     rank = index.dim()
     width = index.shape[-1]
     rows = index.numel() // width
@@ -755,7 +760,7 @@ def scatter_last_dim(out, dim, index, src, add):
         EVEN=even,
         BLOCK_M=block_m,
         BLOCK_N=block_n,
-        # 原子写吞吐随 warp 数线性增长并在 4 处饱和，普通写 2 warp 已够
+        # Atomic write throughput grows linearly with warp count and saturates at 4; plain writes need only 2 warps
         num_warps=4 if add else 2,
     )
     return out

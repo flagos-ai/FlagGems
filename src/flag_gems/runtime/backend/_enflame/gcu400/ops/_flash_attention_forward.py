@@ -53,7 +53,7 @@ def _flash_attention_forward(
     """Run the canonical ATen entry through the existing
     FlashAttention implementation.
     """
-    logger.debug("GEMS _FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _FLASH_ATTENTION_FORWARD")
     query = _materialize_bshd_view(query)
     key = _materialize_bshd_view(key)
     value = _materialize_bshd_view(value)
@@ -77,17 +77,17 @@ def _flash_attention_forward(
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu dispatch adaptation（aten::_flash_attention_forward 无 GCU kernel）
+# torch_gcu dispatch adaptation (aten::_flash_attention_forward has no GCU kernel)
 #
-# 本 torch_gcu 构建只为 `aten::_flash_attention_forward` 注册了 CPU 回退
-# （aten_cpu_fallback.cpp [backend fallback]），GCU 张量调用会被搬到 CPU 再撞上
-# 「无 CPU kernel」直接 NotImplementedError——FlagGems 侧 enable()/use_gems()
-# 之外的进程（精度测试框架与 benchmark 的参考腿不经 enable 直接调
-# torch.ops.aten.*）因此全灭。照 `resize_as_sparse_.py` 的既定制式，把本实现
-# 幂等注册到 device key 上：显式 kernel 优先级高于 backend fallback，import
-# flag_gems 即生效。enable()/use_gems() 后续对同一 key 的重复注册被 registrar
-# 捕获为 warning，注册的又是同一函数（_FULL_CONFIG 经 SpecOpRegistrar 解析到
-# 本文件），行为不变。
+# This torch_gcu build only registers a CPU fallback for `aten::_flash_attention_forward`
+# (aten_cpu_fallback.cpp [backend fallback]); calling it with GCU tensors moves them to CPU and then hits
+# "no CPU kernel" with NotImplementedError, so processes outside FlagGems enable()/use_gems()
+# (accuracy framework and benchmark reference legs that call torch.ops.aten.* directly) all fail.
+# Following the existing pattern in `resize_as_sparse_.py`, register this implementation idempotently
+# on the device key: an explicit kernel outranks the backend fallback and takes effect on import flag_gems.
+# Later duplicate registrations of the same key by enable()/use_gems() are caught by the registrar as a warning;
+# they register the same function (_FULL_CONFIG resolves to this file via SpecOpRegistrar),
+# so behavior is unchanged.
 # ---------------------------------------------------------------------------
 _FLASH_ATTN_FWD_KEY_FLAG = "_flag_gems_gcu400_flash_attn_fwd_key_registered"
 _FLASH_ATTN_FWD_LIBRARY = None

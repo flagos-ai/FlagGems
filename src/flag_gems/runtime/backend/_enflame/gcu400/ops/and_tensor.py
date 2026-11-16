@@ -65,7 +65,7 @@ def and_tensor(self, other):
     generic rank/stride analysis in ``pointwise_dynamic`` — its Python-side
     preparation dominates latency for small and mid-size inputs.
     """
-    logger.debug("GEMS AND")
+    logger.debug("GEMS_ENFLAME_GCU400 AND")
     if _use_fast_path(self, other):
         numel = self.numel()
         if numel == 0:

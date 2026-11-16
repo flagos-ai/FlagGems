@@ -29,6 +29,7 @@
 # - i32 addptr chains truncate element offsets >= 2**31, and paged KV caches
 #   beyond that size are routine, so every scalar cache offset term folds
 #   into one i64 expression before the stores.
+import logging
 
 import os
 import sys
@@ -36,6 +37,8 @@ import sys
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 def _get_fp8_dtype() -> torch.dtype:
@@ -161,6 +164,7 @@ def indexer_k_quant_and_cache(
     quant_block_size,
     scale_fmt,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 INDEXER_K_QUANT_AND_CACHE")
     num_blocks = kv_cache.shape[0]
     head_dim = k.shape[-1]
     num_tokens = slot_mapping.shape[0]

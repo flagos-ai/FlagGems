@@ -179,7 +179,7 @@ def sparse_bsc_tensor(
     device=None,
     pin_memory=False,
 ):
-    logger.debug("GEMS SPARSE_BSC_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_BSC_TENSOR")
     if layout is not None and layout != torch.sparse_bsc:
         raise RuntimeError(
             "sparse_bsc_tensor: layout must be SparseBsc but got "

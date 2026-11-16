@@ -75,7 +75,7 @@ def indices_copy_impl(self, out=None):
 
 def indices_copy(self: torch.Tensor) -> torch.Tensor:
     """``aten::indices_copy``: fresh copy of a sparse COO tensor's indices."""
-    logger.debug("GEMS INDICES_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 INDICES_COPY")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "indices_copy only supports sparse coordinate (coo) tensors, "
@@ -86,7 +86,7 @@ def indices_copy(self: torch.Tensor) -> torch.Tensor:
 
 def indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::indices_copy.out``: write the indices copy into ``out``."""
-    logger.debug("GEMS INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 INDICES_COPY_OUT")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "indices_copy only supports sparse coordinate (coo) tensors, "

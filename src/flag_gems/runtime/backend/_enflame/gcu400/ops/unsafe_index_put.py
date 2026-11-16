@@ -255,7 +255,7 @@ _unsafe_index_put_func = UnsafeIndexPutFunction()
 
 
 def unsafe_index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS UNSAFE_INDEX_PUT")
+    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_INDEX_PUT")
 
     out = inp.clone()
     return unsafe_index_put_impl(out, indices, values, accumulate)

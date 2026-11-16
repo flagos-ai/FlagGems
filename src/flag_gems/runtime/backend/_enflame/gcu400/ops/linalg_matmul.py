@@ -100,7 +100,7 @@ def _tiny_mm(a, b):
 
 
 def _select_linalg_bmm_config(Batch, M, N, K, dtype):
-    """返回本算子专用的 batched GEMM tile；基线沿用 bmm 的确定性分档。"""
+    """Return this operator's dedicated batched GEMM tile; the baseline keeps bmm's deterministic tiering."""
     block_m, block_n, block_k, num_warps, num_stages, _ = _select_bmm_config(
         Batch, M, N, K, dtype
     )
@@ -113,7 +113,8 @@ def _select_linalg_bmm_config(Batch, M, N, K, dtype):
 
 
 def _linalg_bmm(a, b):
-    """复用 bmm_kernel，但按本算子自己的 tile 档位启动，不改动 bmm 通用实现。"""
+    """Reuse bmm_kernel but launch with this operator's own tile tier, leaving the generic bmm implementation
+    untouched."""
     a = a.contiguous()
     b = b.contiguous()
     Batch, M, K = a.shape
@@ -127,7 +128,7 @@ def _linalg_bmm(a, b):
         num_stages,
         group_m,
     ) = _select_linalg_bmm_config(Batch, M, N, K, a.dtype)
-    # 只有三个维度都能被 tile 整除，才能走无 mask 的编译期快速路径。
+    # Only when all three dimensions are divisible by the tile can the unmasked compile-time fast path be used.
     even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
     grid = (Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
     with torch_device_fn.device(a.device):
@@ -304,4 +305,5 @@ def linalg_matmul(input, other):
 
     This is an alias for torch.linalg.matmul.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATMUL")
     return LinalgMatmulFunction.apply(input, other)

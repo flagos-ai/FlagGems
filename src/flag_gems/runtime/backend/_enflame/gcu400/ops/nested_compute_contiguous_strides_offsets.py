@@ -12,21 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``nested_compute_contiguous_strides_offsets``。
+"""GCU400-specific ``nested_compute_contiguous_strides_offsets``.
 
-该算子是纯 host 侧元数据算术：输入为 int64 的 ``(ntensors, dim)`` 尺寸矩阵，
-输出为 strides 与 offsets 两个很小的 CPU 元数据张量。公共实现用 numpy 的
-向量化归约取代 ATen 的 C++ host 循环；把这条路径改写成 Triton device kernel
-只会额外引入一次 launch 与 host/device 拷贝（KernelGen 的 Triton 版本实测
-仅 0.074x），因此保持 host 算术主路径。
+This operator is pure host-side metadata arithmetic: input is an int64 ``(ntensors, dim)`` size matrix,
+output is two small CPU metadata tensors, strides and offsets. The common implementation uses numpy's
+vectorized reduction instead of ATen's C++ host loop; rewriting that path as a Triton device kernel
+only adds one launch and host/device copies (KernelGen's Triton version measured
+just 0.074x), so the host arithmetic main path is kept.
 
-优化结论：13 轮策略中，纯 Python 标量路径在 (1024, 3) 等 shape 上劣化到
-0.53x；基线「反转视图 + cumprod + astype 链」有冗余中间数组。定稿实现用
-单次反向递推原地写出 strides、一次 cumsum 原地写出 offsets，gem 侧总延迟
-由 0.012637ms 降到 0.012552ms（3 轮均值），且消除了 ``np.errstate`` 上下文
-与一次 ``np.zeros`` 分配。语义与公共实现逐字对齐：0 维输入返回输入本身、
-(N, 0) 返回 iota offsets、dtype / 维度报错、行乘积截断到 int32 后再累积、
-非连续输入按裸数据指针顺序读取。
+Optimization conclusion: among 13 strategies, the pure Python scalar path degraded to
+0.53x on shapes like (1024, 3); the baseline "reverse view + cumprod + astype chain" had redundant intermediate arrays.
+The final implementation writes strides in place with a single reverse recurrence and offsets with a single cumsum,
+reducing gem-side total latency from 0.012637ms to 0.012552ms (3-round mean) and removing the ``np.errstate`` context
+and one ``np.zeros`` allocation. Semantics are word-for-word aligned with the common implementation: 0-dim input returns
+itself,
+(N, 0) returns iota offsets, dtype / dimension errors, row products truncated to int32 before accumulation,
+non-contiguous inputs read in raw data-pointer order.
 """
 
 import logging
@@ -36,7 +37,7 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# ATen 标量类型名，用于 dtype 报错信息。
+# ATen scalar type name, used in dtype error messages.
 _DEBUG_TAG = "GEMS _NESTED_COMPUTE_CONTIGUOUS_STRIDES_OFFSETS"
 
 
@@ -57,10 +58,10 @@ _ATEN_TYPE_NAMES = {
 
 
 def _raw_matrix(sizes, ntensors, orig_dim):
-    """按裸数据指针顺序读取 int64 元素，返回 numpy 的 (N, D) 矩阵。
+    """Read int64 elements in raw data-pointer order, returning a numpy (N, D) matrix.
 
-    非连续输入不能用 ``.contiguous()``：ATen 直接按连续窗口解读
-    ``data_ptr()``，因此用 ``as_strided`` 复现同样的窗口。
+    Non-contiguous inputs must not use ``.contiguous()``: ATen interprets
+    ``data_ptr()`` directly as a contiguous window, so ``as_strided`` reproduces the same window.
     """
     if sizes.is_contiguous():
         return sizes.cpu().numpy()
@@ -69,17 +70,17 @@ def _raw_matrix(sizes, ntensors, orig_dim):
 
 
 def _compute_strides_offsets(mat):
-    """单次反向递推产出 strides，一次 cumsum 产出 offsets。
+    """A single reverse recurrence produces strides and one cumsum produces offsets.
 
-    ``strides[j] = prod(sizes[j+1:])`` 从右向左递推；整行乘积等于
-    ``strides[0] * sizes[0]``，按 ATen 的 int 累加器语义截断到 int32 再
-    符号扩展回 int64。所有 numpy 运算在 int64 补码下自然回绕，无需
-    ``np.errstate`` 上下文。
+    ``strides[j] = prod(sizes[j+1:])`` recurses right to left; the whole row product equals
+    ``strides[0] * sizes[0]``, truncated to int32 per ATen's int accumulator semantics and
+    sign-extended back to int64. All numpy ops wrap naturally in int64 two's complement, so no
+    ``np.errstate`` context is needed.
     """
     ntensors, orig_dim = mat.shape
-    # 只有最右一列恒为 1，其余列会被下面的递推覆盖，因此用 np.empty 再单独
-    # 初始化一列即可：np.ones 的全量填充在 (1024, 3) 上实测 2.33us，而
-    # np.empty 加一次列赋值只要约 1.8us。
+    # Only the rightmost column is always 1; other columns are overwritten by the recurrence below, so np.empty
+    # plus one column assignment suffices: np.ones' full fill measured 2.33us at (1024, 3), while
+    # np.empty plus one column assignment takes about 1.8us.
     strides = np.empty((ntensors, orig_dim), dtype=np.int64)
     strides[:, orig_dim - 1] = 1
     for col_index in range(orig_dim - 2, -1, -1):
@@ -89,10 +90,10 @@ def _compute_strides_offsets(mat):
             out=strides[:, col_index],
         )
     row_products = np.multiply(strides[:, 0], mat[:, 0])
-    # ATen 的行累加器是 ``int``（int32）：先按 int32 截断行乘积，再以 int64
-    # 累积即可复现同一语义。``np.add.accumulate``/``cumsum`` 是同一个 ufunc
-    # 归约，但 accumulate 在当前 numpy 上实测比 cumsum 快约 2.3us（(1024, 3)
-    # 的 offsets：6.55us -> 4.21us），因此这里直接用 accumulate。
+    # ATen's row accumulator is ``int`` (int32): truncate the row product to int32 first, then
+    # accumulate as int64 to reproduce the same semantics. ``np.add.accumulate``/``cumsum`` are the same ufunc
+    # reduction, but accumulate measured ~2.3us faster than cumsum on current numpy ((1024, 3)
+    # offsets: 6.55us -> 4.21us), so accumulate is used directly here.
     addends = row_products.astype(np.int32)
     offsets = np.empty(ntensors, np.int64)
     offsets[0] = 0
@@ -103,17 +104,17 @@ def _compute_strides_offsets(mat):
 def nested_compute_contiguous_strides_offsets(
     nested_size: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """从 nested sizes 计算连续 strides 与 storage offsets（CPU 元数据）。"""
+    """Compute contiguous strides and storage offsets from nested sizes (CPU metadata)."""
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(_DEBUG_TAG)
 
     sizes = nested_size
 
-    # 0 维输入：ATen 直接把输入对象本身作为 strides，不做 dtype 检查。
+    # 0-dim input: ATen uses the input object itself as strides with no dtype check.
     if sizes.dim() == 0:
         return sizes, torch.empty((0,), dtype=torch.int64, device="cpu")
 
-    # ATen 先读 size(1) 再检查 dtype，所以 1 维输入无论 dtype 都抛维度错误。
+    # ATen reads size(1) before checking dtype, so 1-dim inputs raise a dimension error regardless of dtype.
     ntensors = sizes.size(0)
     orig_dim = sizes.size(1)
 
@@ -123,12 +124,12 @@ def nested_compute_contiguous_strides_offsets(
             + _ATEN_TYPE_NAMES.get(sizes.dtype, str(sizes.dtype))
         )
 
-    # (N, 0)：strides 仍是输入本身，offsets 是 iota。
+    # (N, 0): strides is still the input itself, offsets is iota.
     if orig_dim == 0:
         offsets = torch.arange(ntensors, dtype=torch.int64)
         return sizes, offsets
 
-    # (0, D>0)：ATen 会 SIGSEGV，这里返回良定义的空结果。
+    # (0, D>0): ATen SIGSEGVs, so return a well-defined empty result here.
     if ntensors == 0:
         return torch.empty_like(sizes), torch.empty((0,), dtype=torch.int64)
 

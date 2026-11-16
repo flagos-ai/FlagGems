@@ -189,7 +189,7 @@ def _scaled_dot_product_attention_math(
 ):
     """Computes scaled dot-product attention with an explicit softmax and
     returns both the attention output and the full attention weight matrix."""
-    logger.debug("GEMS _SCALED_DOT_PRODUCT_ATTENTION_MATH")
+    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_DOT_PRODUCT_ATTENTION_MATH")
 
     assert dropout_p == 0.0, "dropout_p != 0.0 is not supported"
     assert query.dim() == 4, "expected 4D (batch, heads, seq_len, head_dim) tensors"

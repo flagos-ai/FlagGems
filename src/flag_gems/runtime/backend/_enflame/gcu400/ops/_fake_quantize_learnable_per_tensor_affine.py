@@ -123,7 +123,7 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
 def _fake_quantize_learnable_per_tensor_affine(
     self, scale, zero_point, quant_min, quant_max, grad_factor=1.0
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE")
 
     x = self
     out = torch.empty_like(x)

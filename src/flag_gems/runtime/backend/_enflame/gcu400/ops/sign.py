@@ -309,18 +309,18 @@ def _sign_impl(x: torch.Tensor, out: torch.Tensor):
 
 
 def sign(x: torch.Tensor):
-    logger.debug("GEMS SIGN")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGN")
     out = torch.empty_like(x)
     return _sign_impl(x, out)
 
 
 def sign_out(x: torch.Tensor, *, out: torch.Tensor):
-    logger.debug("GEMS SIGN_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGN_OUT")
     return _sign_impl(x, out)
 
 
 def sign_(x: torch.Tensor):
-    logger.debug("GEMS SIGN_")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGN_")
     return _sign_impl(x, x)
 
 

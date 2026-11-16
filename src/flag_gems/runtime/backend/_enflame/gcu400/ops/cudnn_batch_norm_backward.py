@@ -224,7 +224,7 @@ def cudnn_batch_norm_backward(
     epsilon: float = 1e-5,
     reserveSpace: Tensor = None,
 ):
-    logger.debug("GEMS CUDNN_BATCH_NORM_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_BATCH_NORM_BACKWARD")
     _validate_backward(input, grad_output, weight, save_mean, save_var)
 
     input_3d = make_3d_for_bn(input)

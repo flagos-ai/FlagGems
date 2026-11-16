@@ -37,6 +37,7 @@ def tile_size_fwd_sm8x(
     softcap: bool = False,
     append_kv: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 TILE_SIZE_FWD_SM8X")
     if element_size == 2:  # fp16/bf16
         if headdim <= 64:
             kBlockM = 128
@@ -115,6 +116,7 @@ def tile_size_fwd_sm90(
     softcap: bool = False,
     use_one_mma_wg: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 TILE_SIZE_FWD_SM90")
     if element_size == 2:
         if headdim <= 64:
             if headdim_v == 512:
@@ -171,6 +173,7 @@ def get_optimal_block_mn(
     varlen_and_split=False,
     append_kv=False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 GET_OPTIMAL_BLOCK_MN")
     major, minor = get_device_capability()
     arch = major * 10 + minor
 
@@ -205,6 +208,7 @@ def get_optimal_block_mn(
 
 
 def round_up_headdim(headdim: int) -> int:
+    logger.debug("GEMS_ENFLAME_GCU400 ROUND_UP_HEADDIM")
     if headdim <= 64:
         return 64
     if headdim <= 96:
@@ -219,6 +223,7 @@ def round_up_headdim(headdim: int) -> int:
 
 
 def round_up_headdimv(headdim_v: int) -> int:
+    logger.debug("GEMS_ENFLAME_GCU400 ROUND_UP_HEADDIMV")
     if headdim_v <= 64:
         return 64
     if headdim_v <= 96:
@@ -248,6 +253,7 @@ def get_pagedkv_tma(
     element_size: int,
     softcap: bool,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 GET_PAGEDKV_TMA")
     if (
         arch < 90
         or (not has_page_table)
@@ -280,6 +286,7 @@ def use_one_mma_wg(
     num_heads: int,
     num_heads_k: int,
 ) -> bool:
+    logger.debug("GEMS_ENFLAME_GCU400 USE_ONE_MMA_WG")
     if arch < 90 or headdim != 128:
         return False
 
@@ -295,6 +302,7 @@ def should_pack_gqa(
     qhead_per_khead: int,
     blockM: int,
 ) -> bool:
+    logger.debug("GEMS_ENFLAME_GCU400 SHOULD_PACK_GQA")
     if varlen_q:
         return True
 
@@ -333,6 +341,7 @@ def get_num_splits(
     max_splits: int = 128,
     use_dynamic_split: bool = False,
 ) -> int:
+    logger.debug("GEMS_ENFLAME_GCU400 GET_NUM_SPLITS")
     pagedkv_tma = False
     append_kv = max_seqlen_k_new > 0
 
@@ -561,6 +570,7 @@ def get_pack_gqa(
     element_size: int,
     softcap: bool,
 ) -> bool:
+    logger.debug("GEMS_ENFLAME_GCU400 GET_PACK_GQA")
     if arch < 90 or (has_page_table and not pagedkv_tma) or num_splits > 1:
         return True
     if num_heads == num_heads_k:
@@ -605,7 +615,7 @@ def get_scheduler_metadata(
     pack_gqa: Optional[bool] = None,
     sm_margin: int = 0,
 ) -> torch.Tensor:
-    logger.debug("GEMS Get Scheduler Metadata")
+    logger.debug("GEMS_ENFLAME_GCU400 Get Scheduler Metadata")
     device = seqused_k.device
     dtype = torch.int32
 
@@ -745,7 +755,7 @@ def get_scheduler_metadata(
 
         if not (is_fp16 or is_bf16):
             raise ValueError(
-                f"不支持的数据类型: {qkv_dtype}. FlashAttention只支持: torch.float16, torch.bfloat16"
+                f"unsupported dtype: {qkv_dtype}. FlashAttention only supports: torch.float16, torch.bfloat16"
             )
 
         d_rounded = d_rounded

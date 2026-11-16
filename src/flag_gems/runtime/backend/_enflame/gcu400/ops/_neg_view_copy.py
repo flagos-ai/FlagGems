@@ -27,8 +27,9 @@ sign bit exactly as ``aten::neg`` does.  Integer dtypes use unary minus, which
 is the exact two's-complement wrap of ATen.
 """
 
-# 优化变体 R14：strided 路径 BLOCK=2048。非连续 out 路径 tile 翻倍，减少 strided 分解的逐元素除法次数。
-# 只改动 flat 路径的 tile 与 grid 划分，strided 路径及参数校验沿用基线。
+# Optimization variant R14: BLOCK=2048 on the strided path. The non-contiguous out path doubles the tile to reduce
+# per-element divisions in strided decomposition.
+# Only the flat path's tile and grid partitioning change; the strided path and argument validation follow the baseline.
 
 import logging
 
@@ -69,13 +70,13 @@ _DTYPE_TIERS = 1
 
 
 def _flat_launch(dtype, numel):
-    """按 dtype 与元素数选择 (BLOCK, num_warps, grid, 是否跨步循环)。
+    """Select (BLOCK, num_warps, grid, whether to use a stride loop) by dtype and element count.
 
-    大 shape 下把 CTA 数固定为 _FIXED_GRID，配合跨步循环覆盖全部元素；
-    小 shape 时 CTA 数取 min(_FIXED_GRID, tile 数)，避免启动空转 CTA。
+    For large shapes the CTA count is fixed at _FIXED_GRID and a stride loop covers all elements;
+    for small shapes the CTA count is min(_FIXED_GRID, tile count), avoiding idle CTAs.
     """
     if _DTYPE_TIERS:
-        # 探针显示 4 字节 dtype 在 16K tile 最优，2/1 字节 dtype 在 8K tile 最优。
+        # Probes show 4-byte dtypes are optimal at a 16K tile, while 2/1-byte dtypes are optimal at 8K.
         block = 16384 if dtype.itemsize >= 4 else 8192
     else:
         elements = _BYTES_PER_PROGRAM // dtype.itemsize
@@ -84,9 +85,10 @@ def _flat_launch(dtype, numel):
 
     tiles = (numel + block - 1) // block
     if numel >= _WIDE_LIMIT:
-        # 超大 shape 需 int64 偏移，保留基线的单 tile 路径以免跨步索引溢出 int32。
+        # Very large shapes need int64 offsets; keep the baseline single-tile path to avoid int32 overflow in stride
+        # indices.
         return block, _WARPS, (max(1, tiles),), False
-    # 小 shape（元素数不超过 64K）启动的 CTA 数单独分档，避免空转 CTA。
+    # Small shapes (<= 64K elements) use a separate CTA-count tier to avoid idle CTAs.
     effective_grid = (
         _SMALL_GRID if (0 < _SMALL_GRID and numel <= 65536) else _FIXED_GRID
     )
@@ -112,10 +114,10 @@ def _neg_flat_kernel(
 ):
     """Flat contiguous negation with optional grid-stride loop.
 
-    STRIDE_LOOP=1 时 CTA 数固定（通常 48 个），每个 CTA 以
-    ``num_programs * BLOCK`` 为步长反复处理连续 tile；这样大 shape
-    不会产生数万个 CTA，调度开销与带宽利用率都明显改善。
-    EVEN=1 表示 numel 是 BLOCK 的整数倍，所有 tile 完整，可省去 mask。
+    With STRIDE_LOOP=1 the CTA count is fixed (typically 48), and each CTA
+    repeatedly processes consecutive tiles in steps of ``num_programs * BLOCK``; large
+    shapes then avoid tens of thousands of CTAs, improving both scheduling overhead and bandwidth utilization.
+    EVEN=1 means numel is an integer multiple of BLOCK, so all tiles are complete and masks can be omitted.
     """
     pid = tl.program_id(0)
     if STRIDE_LOOP:
@@ -380,7 +382,7 @@ def _neg_view_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Ten
     """
     if out is not None:
         return _neg_view_copy_out(self, out=out)
-    logger.debug("GEMS _NEG_VIEW_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _NEG_VIEW_COPY")
     if not isinstance(self, torch.Tensor):
         raise TypeError("_neg_view_copy expects a torch.Tensor input")
     if self.dtype not in _SUPPORTED:
@@ -394,7 +396,7 @@ def _neg_view_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Ten
 
 def _neg_view_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::_neg_view_copy.out``: write ``-self`` into ``out``."""
-    logger.debug("GEMS _NEG_VIEW_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _NEG_VIEW_COPY_OUT")
     if not isinstance(self, torch.Tensor):
         raise TypeError("_neg_view_copy expects a torch.Tensor input")
     if self.dtype not in _SUPPORTED:

@@ -29,7 +29,7 @@ from flag_gems.runtime.backend._enflame.gcu400.ops.ctc_loss import (
 
 logger = logging.getLogger(__name__)
 
-# 调优开关：全部为主机侧或编译期常量，由 _ctc_loss 优化迭代确定取值。
+# Tuning switches: all host-side or compile-time constants, values chosen by the _ctc_loss optimization iterations.
 CTC_HOST_FAST_PATH = 1
 CTC_PACK_LENGTHS = 1
 CTC_FORWARD_WARPS = 1
@@ -40,7 +40,7 @@ CTC_CONTIG_IF_NEEDED = 0
 
 
 def _host_length_values(lengths, batch_size):
-    """仅对能在主机侧无损读取的长度序列返回 Python 列表，否则返回 None。"""
+    """Return a Python list only for length sequences readable losslessly on the host; otherwise return None."""
     if isinstance(lengths, (list, tuple)):
         values = [int(value) for value in lengths]
     elif torch.is_tensor(lengths) and lengths.device.type == "cpu":
@@ -53,7 +53,7 @@ def _host_length_values(lengths, batch_size):
 
 
 def _build_length_tensors(host_input, host_target, device, batch_size, pack):
-    """构造 kernel 所需的三段 int64 长度数据；pack=1 时合并为一次 H2D。"""
+    """Build the three int64 length arrays needed by the kernel; pack=1 merges them into one H2D copy."""
     running_total = 0
     host_offsets = []
     for target_length in host_target:
@@ -75,7 +75,7 @@ def _build_length_tensors(host_input, host_target, device, batch_size, pack):
 
 
 def _length_statistics(host_values):
-    """返回 (min, max, sum)，语义与原 _length_stats 的三个 reduction 一致。"""
+    """Return (min, max, sum), matching the semantics of the three reductions in the original _length_stats."""
     return min(host_values), max(host_values), sum(host_values)
 
 
@@ -112,8 +112,8 @@ def _prepare(log_probs, targets, input_lengths, target_lengths, blank):
 
     original_dtype = log_probs.dtype
     compute_dtype = _compute_dtype(original_dtype)
-    # GCU400 Triton 编译管线不支持 fp64 kernel：host 侧统一提升到 fp32 计算，
-    # 返回时按调用方 dtype 回转（见 _ctc_loss 末尾的 dtype 转换）。
+    # The GCU400 Triton compile pipeline does not support fp64 kernels: promote to fp32 on the host,
+    # then convert back to the caller's dtype on return (see the dtype conversion at the end of _ctc_loss).
     if compute_dtype == torch.float64:
         compute_dtype = torch.float32
     unbatched = log_probs.ndim == 2
@@ -140,8 +140,8 @@ def _prepare(log_probs, targets, input_lengths, target_lengths, blank):
         and host_input_values is not None
         and host_target_values is not None
     ):
-        # 长度序列本来就在主机侧：直接归约，避免一次 stats kernel 与一次 D2H 同步；
-        # 同时消除 data_ptr 复用导致的 _length_stats 缓存陈旧风险。
+        # The length sequence already lives on the host: reduce it directly, avoiding a stats kernel and a D2H sync;
+        # this also removes the risk of a stale _length_stats cache caused by data_ptr reuse.
         work_input_lengths, work_target_lengths, packed_offsets = _build_length_tensors(
             host_input_values,
             host_target_values,
@@ -154,8 +154,9 @@ def _prepare(log_probs, targets, input_lengths, target_lengths, blank):
             host_target_values
         )
     else:
-        # 设备侧 Tensor 重载：保留原有 dtype/形状校验，但每次重新读取内容计算统计，
-        # 不使用只按指针缓存的 _length_stats，保证内容变化时的正确性。
+        # Device Tensor overload: keep the original dtype/shape checks, but recompute statistics from the contents each
+        # time
+        # instead of using the pointer-keyed _length_stats cache, so content changes stay correct.
         work_input_lengths = _lengths_to_tensor(
             input_lengths, log_probs.device, "input_lengths"
         )
@@ -200,7 +201,7 @@ def _prepare(log_probs, targets, input_lengths, target_lengths, blank):
                 "sum(target_lengths)"
             )
         if CTC_HOST_FAST_PATH and packed_offsets is not None:
-            # 主机侧已算好 exclusive prefix sum，直接复用合并 H2D 的第三段。
+            # The exclusive prefix sum is already computed on the host: reuse the third segment of the merged H2D copy.
             work_target_offsets = packed_offsets
         else:
             work_target_offsets = (
@@ -237,7 +238,7 @@ def _prepare(log_probs, targets, input_lengths, target_lengths, blank):
 
 
 def _reusable_output(candidate, shape, dtype, device):
-    """out 变体优先在预分配缓冲上直接计算，省掉整块 log_alpha 的一次拷贝。"""
+    """The out variant computes directly into a preallocated buffer when possible, skipping a full log_alpha copy."""
     if (
         CTC_OUT_ZERO_COPY
         and candidate is not None
@@ -278,7 +279,7 @@ def _ctc_loss_impl(
     Returns:
         Tuple of (neg_log_likelihood, log_alpha)
     """
-    logger.debug("GEMS _CTC_LOSS")
+    logger.debug("GEMS_ENFLAME_GCU400 _CTC_LOSS")
 
     setup = _prepare(log_probs, targets, input_lengths, target_lengths, blank)
     batch_size = setup.batch_size
@@ -295,8 +296,8 @@ def _ctc_loss_impl(
     block_s = setup.block_s
 
     if CTC_MERGE_OUTPUTS and out0 is None and out1 is None:
-        # 两个输出共享一块 fp32 缓冲，省掉一次设备内存分配；
-        # out 变体必须写调用方预分配的张量，因此保持原路径。
+        # Both outputs share one fp32 buffer, saving a device memory allocation;
+        # the out variant must write the caller's preallocated tensors, so its original path is kept.
         merged_elements = batch_size * (1 + work_log_probs.shape[0] * state_count_max)
         merged_output = torch.empty(
             merged_elements, dtype=torch.float32, device=log_probs.device
@@ -361,7 +362,8 @@ def _ctc_loss(
     blank: int = 0,
     zero_infinity: bool = False,
 ):
-    """对外入口：函数签名与通用实现保持一致。"""
+    """Public entry point: the signature is identical to the generic implementation."""
+    logger.debug("GEMS_ENFLAME_GCU400 _CTC_LOSS")
     return _ctc_loss_impl(
         log_probs,
         targets,
@@ -386,7 +388,7 @@ def _ctc_loss_out(
     out1: Optional[torch.Tensor] = None,
 ):
     """Out variant of _ctc_loss."""
-    logger.debug("GEMS _CTC_LOSS_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _CTC_LOSS_OUT")
 
     neg_log_likelihood, log_alpha = _ctc_loss_impl(
         log_probs,
@@ -399,7 +401,7 @@ def _ctc_loss_out(
         out1,
     )
 
-    # fp32 且 shape 匹配时 kernel 已直接写入 out，无需再次拷贝。
+    # With fp32 and matching shapes the kernel already wrote directly into out, so no second copy is needed.
     if out0 is not None:
         if neg_log_likelihood is not out0:
             if out0.shape != neg_log_likelihood.shape:

@@ -157,7 +157,7 @@ def _output_dtype(inp, dtype):
 
 
 def linalg__powsum(inp, ord=2, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS LINALG__POWSUM")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG__POWSUM")
     compute_dtype, output_dtype = _output_dtype(inp, dtype)
     if inp.dtype != compute_dtype and not (
         inp.is_complex() and not compute_dtype.is_complex

@@ -446,7 +446,7 @@ def ormqr(input, tau, other, left=True, transpose=False):
     Returns:
         The result of the matrix multiplication.
     """
-    logger.debug("GEMS ORMQR")
+    logger.debug("GEMS_ENFLAME_GCU400 ORMQR")
     assert input.dtype in (
         torch.float32,
         torch.float64,

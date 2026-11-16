@@ -43,7 +43,7 @@ def dequantize(a):
     Returns:
         A float32 tensor with the dequantized values
     """
-    logger.debug("GEMS DEQUANTIZE")
+    logger.debug("GEMS_ENFLAME_GCU400 DEQUANTIZE")
 
     # Get quantized tensor info
     int_repr = a.int_repr().to(a.device)

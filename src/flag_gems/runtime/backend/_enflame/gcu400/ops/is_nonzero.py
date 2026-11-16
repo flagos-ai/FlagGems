@@ -40,7 +40,7 @@ def is_nonzero(A: torch.Tensor) -> bool:
         bool: True if the element is non-zero, False otherwise.
     """
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("GEMS ISNONZERO")
+        logger.debug("GEMS_ENFLAME_GCU400 ISNONZERO")
     num_elements = A.numel()
     if num_elements != 1:
         raise RuntimeError("bool value of Tensor with more than one value is ambiguous")

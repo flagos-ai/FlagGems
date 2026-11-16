@@ -32,7 +32,7 @@ def sobol_scramble_kernel(
     BLOCK: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    # 一个 CTA 处理 BLOCK_D 个维度，减少大 dimension 下的 CTA 调度开销
+    # One CTA handles BLOCK_D dimensions, reducing CTA scheduling overhead for large dimensions
     dim_offsets = tl.program_id(0) * BLOCK_D + tl.arange(0, BLOCK_D)
     dim_mask = dim_offsets < dimension
     rows = tl.arange(0, BLOCK)
@@ -66,8 +66,8 @@ def sobol_scramble_kernel(
 
 
 def _sobol_engine_scramble_(sobolstate, ltm, dimension):
-    """对 Sobol state 做 Owen 置乱（GF(2) 下三角变换，原地修改）。"""
-    logger.debug("GEMS _SOBOL_ENGINE_SCRAMBLE_")
+    """Owen scrambling of the Sobol state (lower-triangular transform over GF(2), in place)."""
+    logger.debug("GEMS_ENFLAME_GCU400 _SOBOL_ENGINE_SCRAMBLE_")
 
     assert (
         sobolstate.dtype == torch.long

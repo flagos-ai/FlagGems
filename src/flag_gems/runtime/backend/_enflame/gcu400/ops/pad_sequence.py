@@ -273,7 +273,7 @@ def _pad_sequence_flat(
 
 def pad_sequence(sequences, batch_first=False, padding_value=0.0):
     """Pad variable length tensors into a single batch tensor."""
-    logger.debug("GEMS PAD_SEQUENCE")
+    logger.debug("GEMS_ENFLAME_GCU400 PAD_SEQUENCE")
 
     batch = len(sequences)
     if batch == 0:

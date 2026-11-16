@@ -26,7 +26,8 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
-# namedtuple 类构造约 87us，逐次调用会压过小 shape 的 kernel 时间，提到模块级复用。
+# namedtuple class construction takes ~87us and would dominate small-shape kernel time per call, so reuse one at module
+# level.
 MaxOut = namedtuple("max", ["values", "indices"])
 
 
@@ -265,12 +266,12 @@ def max_dim(inp, dim=None, keepdim=False):
     if keepdim:
         shape_list[dim] = 1
     else:
-        # 两个 kernel 都按扁平的 m*K+k 布局写回，直接分配最终形状即可，
-        # 避免两次 torch.squeeze 带来的设备同步与 Python 开销。
+        # Both kernels write back in a flat m*K+k layout, so allocate the final shape directly,
+        # avoiding device sync and Python overhead from two torch.squeeze calls.
         shape_list.pop(dim)
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    # GCU400 Triton 的 int32 索引存储每个 lane 只写 4 字节，若直接写入 int64
-    # 输出张量会得到大量 0；先用 int32 缓冲承接 kernel 写回，再统一转成 int64。
+    # GCU400 Triton int32 indices store only 4 bytes per lane; writing directly into an int64
+    # output tensor yields many zeros, so use an int32 buffer for kernel writes and convert to int64 once.
     out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
 
     if K == 1:

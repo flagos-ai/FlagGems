@@ -44,8 +44,8 @@ exp2 = tl_extra_shim.exp2
 tanh = tl_extra_shim.tanh
 
 _PERSISTENT_HIDDEN_LIMIT = 256
-# 投影 / 循环 kernel 的 tile 与 warp 配置。提为模块常量便于按 shape 分档
-# 与批量配置扫描；默认值保持原实现。
+# Tile and warp config of projection / loop kernels. Module constants ease shape tiering
+# and batch config sweeps; defaults keep the original behavior.
 _PROJ_BLOCK_M_SMALL = 16
 _PROJ_BLOCK_M_LARGE = 32
 _PROJ_BLOCK_N_SMALL = 32
@@ -53,9 +53,9 @@ _PROJ_BLOCK_N_LARGE = 64
 _PROJ_BLOCK_K = 32
 _PROJ_NUM_WARPS = 4
 _RECURRENT_BLOCK_K = 32
-# 14 轮 A/B 交替复测：GCU400 上 2 warps 的 3 case 总延迟中位数 4.131 ms，
-# 比原 4 warps 的 5.566 ms 快约 26%；BLOCK_K=128 的 4.780 ms 次之。
-# （该结论基于 masked-load 旧实现；无 mask 快路径落地后超参需重扫。）
+# 14 alternating A/B rounds: on GCU400, 2 warps' 3-case total latency median is 4.131 ms,
+# ~26% faster than the original 4 warps' 5.566 ms; BLOCK_K=128's 4.780 ms is next.
+# (Based on the old masked-load implementation; hyperparameters need re-sweeping after the unmasked fast path lands.)
 _RECURRENT_NUM_WARPS = 2
 _RECURRENT_NUM_STAGES = 3
 _PARAM_CACHE_LIMIT = 64
@@ -1519,7 +1519,7 @@ def quantized_gru_input(
     bidirectional,
     batch_first,
 ):
-    logger.debug("GEMS QUANTIZED_GRU.INPUT")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_GRU.INPUT")
     _validate_common(
         input, hx, params, has_biases, num_layers, dropout, train, bidirectional
     )
@@ -1563,7 +1563,7 @@ def quantized_gru_data(
     train,
     bidirectional,
 ):
-    logger.debug("GEMS QUANTIZED_GRU.DATA")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_GRU.DATA")
     _validate_common(
         data, hx, params, has_biases, num_layers, dropout, train, bidirectional
     )

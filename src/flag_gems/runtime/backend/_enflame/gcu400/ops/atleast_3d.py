@@ -49,10 +49,14 @@ materialiser for a promoted payload (any rank, any dtype, tail-masked); the
 aliasing fast path above never calls it, because for every rank the reference
 result is a view and a copy would violate the tested storage-aliasing contract.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
 
 # 1024 elements per program mirrors the sibling FlagGems copy kernels
 # (_view_copy / _squeeze_copy) so the materialiser streams at DRAM speed.
@@ -117,6 +121,7 @@ def run(self):
     frame; subclasses and other sequence types still take the general
     ``isinstance`` path.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 RUN")
     kind = type(self)
     if kind is _Tensor:
         rank = self.ndim

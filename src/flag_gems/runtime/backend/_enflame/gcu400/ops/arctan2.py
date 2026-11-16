@@ -122,23 +122,26 @@ def arctan2(input, other):
 
 
 def arctan2_(input, other):
-    """原地计算 atan2(input, other)，按 aten 语义把结果写回 input 本身。
+    """Compute atan2(input, other) in place, writing the result back into input itself per aten semantics.
 
-    契约：返回值必须是 input 对象；other 仅提供分母，可按广播规则扩展到
-    input.shape，但不得改变输出形状。主 kernel 使用扁平索引，因此 other 必须
-    物化为与输出同形的连续张量；非连续 input 需在连续副本上计算后 copy_ 写回，
-    以保持原地别名关系且不退回公共 codegen 的多维索引分解路径。
+    Contract: the return value must be the input object; other only supplies the denominator and may broadcast to
+    input.shape, but must not change the output shape. The main kernel uses flat indices, so other must
+    be materialized as a contiguous tensor of the output shape; non-contiguous input is computed on a contiguous
+    copy and written back with copy_, preserving the in-place alias without falling back to common codegen's multi-dim
+    index decomposition.
     """
     logger.debug("GEMS_ENFLAME ARCTAN2_")
     if input.numel() == 0:
         return input
-    # aten 原地语义允许 other 广播到 input 的形状；先物化成与输出同形的连续张量，
-    # 使扁平索引 kernel 能按输出元素顺序取到对应的分子/分母。
+    # aten in-place semantics allow other to broadcast to input's shape; materialize it first as a contiguous
+    # tensor of the output shape so the flat-index kernel can fetch the matching numerator/denominator in output element
+    # order.
     broadcast_other = torch.broadcast_to(other, input.shape)
     if not broadcast_other.is_contiguous():
         broadcast_other = broadcast_other.contiguous()
     if not input.is_contiguous():
-        # 非连续输出视图：在连续副本上计算后写回，避免公共 codegen 的多维索引分解
+        # Non-contiguous output view: compute on a contiguous copy and write back, avoiding common codegen's multi-dim
+        # index decomposition
         contiguous_input = input.contiguous()
         _launch(contiguous_input, broadcast_other, contiguous_input)
         input.copy_(contiguous_input)

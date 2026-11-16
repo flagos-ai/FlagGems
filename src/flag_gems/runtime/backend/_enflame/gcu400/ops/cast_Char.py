@@ -161,7 +161,7 @@ def _cast_char_flat_launch(x, out, n):
 
 
 def cast_Char(self, non_blocking=False):
-    logger.debug("GEMS CAST_CHAR")
+    logger.debug("GEMS_ENFLAME_GCU400 CAST_CHAR")
     if self.dtype == torch.int8:
         return self
     if self.is_complex() and self.device.type == "gcu":
@@ -245,19 +245,19 @@ def cast_Char(self, non_blocking=False):
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu dispatch adaptation（aten::_cast_Char 的 complex→int8 进程 abort）
+# torch_gcu dispatch adaptation (aten::_cast_Char process abort on complex->int8)
 #
-# torch_gcu 未为 `aten::_cast_Char` 注册 PrivateUse1 kernel，GCU 张量派发到
-# CompositeImplicitAutograd 原生 composite → `_to_copy` → topsatenCopy，对
-# ComplexFloat/ComplexDouble → Char 变换返回 TOPSATEN_STATUS_NOT_SUPPORT 并
-# 由 csrc Check failed 直接终止进程（无 Python 异常可捕获，P21 档案）。
-# enable()/use_gems() 之外直接调 torch.ops.aten.* 的精度测试参考腿因此整
-# 文件崩挂。照 `flash_attention_backward.py` / `resize_as_sparse_.py` 的既
-# 定制式把 complex 窄域实现幂等注册到 device key：complex → CPU 桥；其余
-# 一律 redispatch 原生 composite（real dtype 参考腿 oracle 与 bench base
-# 腿语义保持不变）。后续 enable() 对同一 key 的重复注册被 registrar 捕获
-# 为 warning，real dtype 的 aten 调用退回 native composite 行为（与未
-# enable 时一致）。
+# torch_gcu has no PrivateUse1 kernel registered for `aten::_cast_Char`, so GCU tensors dispatch to
+# the CompositeImplicitAutograd native composite -> `_to_copy` -> topsatenCopy, which
+# returns TOPSATEN_STATUS_NOT_SUPPORT for ComplexFloat/ComplexDouble -> Char conversion and
+# csrc Check failed terminates the process directly (no catchable Python exception, P21 record).
+# Accuracy test reference legs that call torch.ops.aten.* directly outside enable()/use_gems() therefore
+# crash the whole file. Following the existing pattern in `flash_attention_backward.py` / `resize_as_sparse_.py`,
+# idempotently register the complex narrow-domain implementation on the device key: complex -> CPU bridge;
+# all other dtypes redispatch to the native composite (real dtype reference-leg oracle and bench base
+# leg semantics unchanged). Later duplicate registration of the same key by enable() is captured
+# by the registrar as a warning, and real dtype aten calls fall back to native composite behavior
+# (same as when enable is not used).
 # ---------------------------------------------------------------------------
 _CAST_CHAR_KEYS_FLAG = "_flag_gems_gcu400_cast_char_keys_registered"
 _CAST_CHAR_LIBRARY = None

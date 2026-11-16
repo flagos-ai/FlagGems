@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 margin_ranking_loss 实现。
+"""GCU400-specific margin_ranking_loss implementation.
 
-由公共实现迁移而来：保留 autograd.Function 的广播、reduction 与反向语义，
-逐元素 kernel 改为固定 grid + 核内跨步循环，减少 GCU400 上的 block 发射开销；
-反向对 mean/sum 归约的 0 维标量梯度走核内缩放广播快路径，避免 host 侧
-stride-0 广播除法张量（enflame true_divide 对该形态实测慢 22-30 倍）。
+Migrated from the common implementation: autograd.Function broadcast, reduction and backward semantics are kept,
+the elementwise kernel uses a fixed grid + in-kernel stride loop to cut block launch overhead on GCU400;
+backward's 0-dim scalar gradient for mean/sum reduction takes an in-kernel scaled broadcast fast path, avoiding a
+host-side
+stride-0 broadcast division tensor (enflame true_divide measured 22-30x slower on that shape).
 """
 
 import logging
@@ -32,7 +33,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# 固定 grid 上限取 GCU400 的 SIP 数量级，剩余 block 由核内跨步循环覆盖。
+# Fixed grid cap is set to the order of GCU400's SIP count; remaining blocks are covered by an in-kernel stride loop.
 NUM_SIPS = 48
 BLOCK = 8192
 
@@ -49,8 +50,8 @@ def _margin_ranking_loss_kernel(
     for block_id in tl.range(program_id, num_blocks, num_programs):
         offsets = block_id * BLOCK_SIZE + element_offsets
         mask = offsets < N_total
-        # 差值必须保留输入 dtype 的舍入：aten 的 fp16/bf16 参考实现先按低精度
-        # 相减，若在此处提升到 fp32 会让 max(0, ...) 边界与参考结果分歧。
+        # The difference must keep the input dtype's rounding: aten's fp16/bf16 reference subtracts in low precision
+        # first, so promoting to fp32 here would make the max(0, ...) boundary diverge from the reference.
         x1 = tl.load(x1_ptr + offsets, mask=mask, other=0.0)
         x2 = tl.load(x2_ptr + offsets, mask=mask, other=0.0)
         target = tl.load(target_ptr + offsets, mask=mask, other=0.0)
@@ -78,16 +79,17 @@ def _margin_ranking_loss_backward_kernel(
     element_offsets = tl.arange(0, BLOCK_SIZE)
     num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
     if GRAD_IS_SCALAR:
-        # mean/sum 归约下上游梯度是 0 维标量：在核内完成 1/N 缩放并广播，
-        # 避免 host 侧物化 stride-0 广播张量（enflame 上 true_divide 对
-        # stride-0 输入的 elementwise 路径实测比稠密张量慢 22-30 倍）。
-        # 数值路径与 aten 标量除法一致：fp32 相除后再舍入回梯度 dtype。
+        # Under mean/sum reduction the upstream gradient is a 0-dim scalar: do the 1/N scaling and broadcast inside the
+        # kernel,
+        # avoiding a host-side materialized stride-0 broadcast tensor (enflame's true_divide on
+        # stride-0 inputs measured 22-30x slower than on dense tensors in the elementwise path).
+        # Numeric path matches aten scalar division: divide in fp32 then round back to the gradient dtype.
         grad_scalar = tl.load(grad_output_ptr).to(tl.float32) / grad_scale
         grad_scalar = grad_scalar.to(grad_x1_ptr.dtype.element_ty)
     for block_id in tl.range(program_id, num_blocks, num_programs):
         offsets = block_id * BLOCK_SIZE + element_offsets
         mask = offsets < N_total
-        # 与前向保持相同的低精度差值判定，避免 active_mask 在边界处错位。
+        # Keep the same low-precision difference decision as forward, avoiding active_mask mismatch at the boundary.
         if GRAD_IS_SCALAR:
             grad_output = grad_scalar
         else:
@@ -118,7 +120,7 @@ def _grid(n_elements):
 
 
 class MarginRankingLossOp(torch.autograd.Function):
-    """margin ranking loss 的前向与反向，主计算路径由两个 Triton kernel 完成。"""
+    """Forward and backward of margin ranking loss; the main compute path is two Triton kernels."""
 
     @staticmethod
     def forward(ctx, x1, x2, target, margin=0.0, reduction="mean"):
@@ -153,7 +155,8 @@ class MarginRankingLossOp(torch.autograd.Function):
             and x2.is_contiguous()
             and target.is_contiguous()
         ):
-            # 同形同 dtype 的常见 case 直接展平，省去广播与 dtype 转换的 host 开销。
+            # Common same-shape same-dtype cases are flattened directly, saving host broadcast and dtype conversion
+            # overhead.
             x1_c, x2_c, tgt_c = x1.view(-1), x2.view(-1), target.view(-1)
             original_shape = x1.shape
         else:
@@ -215,8 +218,8 @@ class MarginRankingLossOp(torch.autograd.Function):
             grad_target = torch.zeros_like(target)
             return grad_x1, grad_x2, grad_target, None, None
 
-        # mean/sum 归约下上游梯度是 0 维标量：直接把标量指针与缩放因子
-        # 传给 kernel 核内广播，省掉 host 侧 stride-0 广播除法/整张拷贝。
+        # Under mean/sum reduction the upstream gradient is a 0-dim scalar: pass the scalar pointer and scaling factor
+        # directly to the kernel for in-kernel broadcast, avoiding host-side stride-0 broadcast division / full copies.
         if reduction == "mean":
             if grad_output.numel() == 1:
                 grad_output = grad_output.contiguous()
@@ -267,5 +270,6 @@ class MarginRankingLossOp(torch.autograd.Function):
 
 
 def margin_ranking_loss(x1, x2, target, margin=0.0, reduction="mean"):
-    """计算 loss = max(0, -target * (x1 - x2) + margin)，签名与公共实现一致。"""
+    """Compute loss = max(0, -target * (x1 - x2) + margin); signature matches the common implementation."""
+    logger.debug("GEMS_ENFLAME_GCU400 MARGIN_RANKING_LOSS")
     return MarginRankingLossOp.apply(x1, x2, target, margin, reduction)

@@ -26,13 +26,13 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-# GCU400 tile 扫描实测（2026-11-13，event per-launch 中位数，fp16 大 shape）：
-# 带宽随 BLOCK_M*BLOCK_DIFF 总 tile 元素数单调上升，128K 元素（DSM 768KB < 896KB
-# 硬限）达 2.05 TB/s（32K tile 仅 1.42 TB/s）。最优形态为 BLOCK_DIFF 贴满行宽、
-# BLOCK_M 补足 tile 预算：长行 (N>=4096) 选 32x4096，中行 (N~1024) 选 128x1024，
-# 短行 (N~256) 选 512x256。num_warps 不敏感（<1.5%）。DSM = tile*itemsize*3，
-# fp32/int64 下 128K tile 超 896KB 会被 OutOfResources 捕获跳过，64K 档兜底；
-# 32x16 兜底极短行。
+# GCU400 tile sweep (2026-11-13, per-launch event median, fp16 large shape):
+# bandwidth rises monotonically with BLOCK_M*BLOCK_DIFF total tile elements; 128K elements (DSM 768KB < 896KB
+# hard limit) reaches 2.05 TB/s (32K tile only 1.42 TB/s). The optimum is BLOCK_DIFF filling the row width and
+# BLOCK_M filling the tile budget: long rows (N>=4096) use 32x4096, medium rows (N~1024) use 128x1024,
+# short rows (N~256) use 512x256. num_warps is insensitive (<1.5%). DSM = tile*itemsize*3,
+# so a 128K tile exceeds 896KB for fp32/int64 and is skipped by OutOfResources, with a 64K tier as fallback;
+# 32x16 is the fallback for extremely short rows.
 _GCU400_DIFF_CONFIGS = [
     triton.Config({"BLOCK_M": 32, "BLOCK_DIFF": 16}, num_warps=2),
     triton.Config({"BLOCK_M": 128, "BLOCK_DIFF": 256}, num_warps=4),
@@ -103,7 +103,7 @@ def diff_kernel_2d(
 
 
 def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
-    logger.debug("GEMS DIFF")
+    logger.debug("GEMS_ENFLAME_GCU400 DIFF")
 
     if prepend is not None:
         input = flag_gems.cat([prepend, input], dim=dim)

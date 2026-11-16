@@ -103,7 +103,7 @@ def _index_arg(buffer, int64_layout):
 
 
 def sparse_broadcast_to_copy(self, size, out=None):
-    logger.debug("GEMS SPARSE BROADCAST TO COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE BROADCAST TO COPY")
     result = _sparse_broadcast_to_copy_impl(self, size)
     if out is not None:
         out.copy_(result)

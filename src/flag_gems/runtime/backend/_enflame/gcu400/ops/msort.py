@@ -160,7 +160,7 @@ def _msort_contiguous(inp, out):
 
 
 def msort(inp):
-    logger.debug("GEMS MSORT")
+    logger.debug("GEMS_ENFLAME_GCU400 MSORT")
     if inp.is_complex():
         raise RuntimeError('"msort" not implemented for complex dtypes')
     out = torch.empty_like(inp, memory_format=torch.preserve_format)
@@ -169,7 +169,7 @@ def msort(inp):
 
 
 def msort_out(inp, *, out):
-    logger.debug("GEMS MSORT.OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 MSORT.OUT")
     if inp.is_complex():
         raise RuntimeError('"msort" not implemented for complex dtypes')
     if out.dtype != inp.dtype:

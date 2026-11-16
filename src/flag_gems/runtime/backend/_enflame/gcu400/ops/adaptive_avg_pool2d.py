@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 POOL_BLOCK_OUT_LIMIT = 64
 POOL_TILE_ELEMENT_LIMIT = 16384
 POOL_NUM_WARPS = 4
-# 单 pass 候选：直接对矩形窗口求均值，省掉 staging buffer 与第二次 launch。
+# Single-pass candidate: average the rectangular window directly, removing the staging buffer and second launch.
 POOL_USE_SINGLE_PASS = 1
 POOL_SINGLE_BLOCK_R = 2048
 POOL_SINGLE_GRID_LIMIT = 65535
@@ -197,7 +197,7 @@ def _launch_adaptive_pool_windows(input: torch.Tensor, output: torch.Tensor):
     num_planes = n * c
     with torch_device_fn.device(input.device):
         if POOL_USE_SINGLE_PASS:
-            # 结构性候选：一次 launch 直接完成矩形窗口规约。
+            # Structural candidate: complete the rectangular window reduction in one launch.
             grid_size = min(POOL_SINGLE_GRID_LIMIT, output.numel())
             _adaptive_pool2d_single_kernel[(grid_size,)](
                 input,
@@ -250,7 +250,7 @@ def _launch_adaptive_pool_windows(input: torch.Tensor, output: torch.Tensor):
 
 
 def adaptive_avg_pool2d(input: torch.Tensor, output_size):
-    logger.debug("GEMS ADAPTIVE_AVG_POOL2D")
+    logger.debug("GEMS_ENFLAME_GCU400 ADAPTIVE_AVG_POOL2D")
     input = input.contiguous()
     oh, ow = _normalize_output_size_2d(output_size)
     n, c, ih, iw = input.shape
@@ -262,7 +262,7 @@ def adaptive_avg_pool2d(input: torch.Tensor, output_size):
 
 
 def _adaptive_avg_pool2d_out(input: torch.Tensor, output_size, *, out: torch.Tensor):
-    logger.debug("GEMS _ADAPTIVE_AVG_POOL2D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _ADAPTIVE_AVG_POOL2D_OUT")
     if out.dtype != input.dtype:
         raise RuntimeError(
             f"Expected out tensor to have dtype {input.dtype}, "

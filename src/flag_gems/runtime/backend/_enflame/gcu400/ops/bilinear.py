@@ -115,7 +115,7 @@ def bilinear(input1, input2, weight, bias=None):
     Returns:
         Output tensor of shape (N, *, out_features)
     """
-    logger.debug("GEMS BILINEAR")
+    logger.debug("GEMS_ENFLAME_GCU400 BILINEAR")
 
     # All but the last dimension of input1 and input2 must match.
     batch_dims = input1.shape[:-1]

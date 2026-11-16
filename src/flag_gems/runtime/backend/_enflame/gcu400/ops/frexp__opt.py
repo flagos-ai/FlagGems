@@ -87,7 +87,7 @@ def _frexp_body(x):
     is_sub = biased == 0
     # Special values (zero / inf / NaN) via float-domain arithmetic only:
     # integer bit compares on NaN-derived bits are untrustworthy on this
-    # backend (compiler_traps "整数域 NaN 位判谓词"), and `x != x` is folded
+    # backend (compiler_traps "integer-domain NaN bit predicate"), and `x != x` is folded
     # to False in full kernel contexts (compiler_traps retest regression,
     # generic frexp returned (~1.0, 129) for NaN on 2026-11-13).
     is_special = (x32 == 0.0) | ((x32 - x32) != 0.0)

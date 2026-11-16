@@ -499,7 +499,7 @@ def _bincount_max(input_contig, n, device):
 
 def bincount(input, weights=None, minlength=0):
     """Count the frequency of each value in an array of non-negative ints."""
-    logger.debug("GEMS BINCOUNT")
+    logger.debug("GEMS_ENFLAME_GCU400 BINCOUNT")
 
     assert input.dim() == 1, "input must be a 1-D tensor"
     assert minlength >= 0, "minlength must be non-negative"

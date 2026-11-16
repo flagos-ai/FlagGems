@@ -34,7 +34,7 @@ def float_power_func(x, exponent):
 
 
 def float_power_tensor_tensor_(A, exponent):
-    logger.debug("GEMS FLOAT_POWER_TENSOR_TENSOR_")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_TENSOR_TENSOR_")
     return float_power_func(A, exponent, out0=A)
 
 
@@ -45,7 +45,7 @@ def float_power_func_tensor_scalar(x, exponent):
 
 
 def float_power_tensor_scalar_(A, exponent):
-    logger.debug("GEMS FLOAT_POWER_TENSOR_SCALAR_")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_TENSOR_SCALAR_")
     return float_power_func_tensor_scalar(A, exponent, out0=A)
 
 
@@ -127,7 +127,7 @@ def _prepare_out(out, shape, device):
 
 
 def float_power_tensor_tensor(A, exponent):
-    logger.debug("GEMS FLOAT_POWER_TENSOR_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_TENSOR_TENSOR")
     shape = torch.broadcast_shapes(A.shape, exponent.shape)
     out = torch.empty(shape, dtype=torch.float64, device=A.device)
     return _float_power_f64_out(
@@ -136,7 +136,7 @@ def float_power_tensor_tensor(A, exponent):
 
 
 def float_power_tensor_tensor_out(A, exponent, *, out):
-    logger.debug("GEMS FLOAT_POWER_TENSOR_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_TENSOR_TENSOR_OUT")
     shape = torch.broadcast_shapes(A.shape, exponent.shape)
     _prepare_out(out, shape, A.device)
     return _float_power_f64_out(
@@ -145,7 +145,7 @@ def float_power_tensor_tensor_out(A, exponent, *, out):
 
 
 def float_power_tensor_scalar(A, exponent):
-    logger.debug("GEMS FLOAT_POWER_TENSOR_SCALAR")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_TENSOR_SCALAR")
     out = torch.empty(A.shape, dtype=torch.float64, device=A.device)
     return _float_power_f64_out(
         float_power_tensor_scalar_func, (A, exponent), out, A.shape
@@ -153,7 +153,7 @@ def float_power_tensor_scalar(A, exponent):
 
 
 def float_power_tensor_scalar_out(A, exponent, *, out):
-    logger.debug("GEMS FLOAT_POWER_TENSOR_SCALAR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_TENSOR_SCALAR_OUT")
     _prepare_out(out, A.shape, A.device)
     return _float_power_f64_out(
         float_power_tensor_scalar_func, (A, exponent), out, A.shape
@@ -161,7 +161,7 @@ def float_power_tensor_scalar_out(A, exponent, *, out):
 
 
 def float_power_scalar_tensor(A, exponent):
-    logger.debug("GEMS FLOAT_POWER_SCALAR_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_SCALAR_TENSOR")
     out = torch.empty(exponent.shape, dtype=torch.float64, device=exponent.device)
     return _float_power_f64_out(
         float_power_scalar_tensor_func, (A, exponent), out, exponent.shape
@@ -169,7 +169,7 @@ def float_power_scalar_tensor(A, exponent):
 
 
 def float_power_scalar_tensor_out(A, exponent, *, out):
-    logger.debug("GEMS FLOAT_POWER_SCALAR_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 FLOAT_POWER_SCALAR_TENSOR_OUT")
     _prepare_out(out, exponent.shape, exponent.device)
     return _float_power_f64_out(
         float_power_scalar_tensor_func, (A, exponent), out, exponent.shape

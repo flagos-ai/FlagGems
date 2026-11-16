@@ -151,7 +151,7 @@ def _fast_ok(A):
 
 
 def signbit(A):
-    logger.debug("GEMS SIGNBIT")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGNBIT")
     if _fast_ok(A):
         out = torch.empty(A.shape, dtype=torch.bool, device=A.device)
         _launch(A, out)
@@ -160,7 +160,7 @@ def signbit(A):
 
 
 def signbit_out(A, *, out=None):
-    logger.debug("GEMS SIGNBIT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGNBIT_OUT")
     if out is None:
         return signbit(A)
     if (

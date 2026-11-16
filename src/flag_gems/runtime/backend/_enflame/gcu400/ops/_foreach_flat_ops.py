@@ -11,13 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""GCU400 专属 foreach 二元实现：用一维 grid 规避 ``grid.y`` 硬件上限。
+"""GCU400-specific foreach binary implementation: use a 1D grid to avoid the ``grid.y`` hardware limit.
 
-公共 codegen 执行器以二维 ``grid=(block, tensor)`` 承载 tensor 列表，
-GCU400 的 ``grid.y`` 上限为 255，benchmark 的大 shape 会直接抛
-``out of resource: grid.y``。这里复用 ``_foreach_flat`` 的一维固定
-grid / metadata 融合 kernel 完成同类计算；非浮点、非连续、广播等
-形态仍委托公共执行器，保证 dtype policy 与异常语义不变。
+The common codegen executor carries the tensor list in a 2D ``grid=(block, tensor)``;
+GCU400's ``grid.y`` limit is 255, so large benchmark shapes raise
+``out of resource: grid.y``. This reuses the 1D fixed
+grid / metadata fused kernel from ``_foreach_flat`` for the same computation; non-float, non-contiguous
+and broadcast shapes still delegate to the common executor, keeping dtype policy and exception semantics unchanged.
 """
 
 import logging
@@ -55,11 +55,12 @@ def fused_add_scalarlist_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """ScalarList 加法的单 H2D 融合 kernel。
+    """Single-H2D fused kernel for ScalarList addition.
 
-    ``meta_ptr`` 三段依次为输入地址、各 tensor 元素数、各 float32 标量的
-    位模式（以 int64 承载）。相比通用 ``run_binary`` 少一次标量数组 H2D，
-    同步拷贝的固定开销可减半；grid.x 按 ``(tensor, part)`` 线性展开。
+    The three segments of ``meta_ptr`` are input addresses, per-tensor element counts, and the
+    bit patterns of each float32 scalar (carried as int64). Compared with generic ``run_binary`` this
+    saves one scalar-array H2D, halving the fixed cost of synchronous copies; grid.x is linearized over ``(tensor,
+    part)``.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -84,7 +85,7 @@ def fused_add_scalarlist_kernel(
 
 
 # --- TUNING PARAMS START (foreach_div_list_) ---
-# 编译期/启动期配置，按优化轮次调整，不改变算子语义。
+# Compile-time / launch-time config, adjusted per optimization round; semantics unchanged.
 FIXED_GRID_DIV = 48
 BLOCK_SIZE_DIV = 8192
 NUM_WARPS_DIV = 4
@@ -97,7 +98,7 @@ FALLBACK_TO_PUBLIC_DIV = 0
 
 
 def _foreach_div__List(self, other):
-    """原地 ``self /= other``（逐 tensor 配对），一维融合 kernel 实现。"""
+    """In-place ``self /= other`` (per-tensor pairing), implemented as a 1D fused kernel."""
     logger.debug("GEMS_GCU400 _FOREACH_DIV__LIST")
 
     def fallback():
@@ -125,7 +126,7 @@ def _foreach_div__List(self, other):
 
 
 # --- TUNING PARAMS START (foreach_add_scalar_list_) ---
-# 编译期/启动期配置，按优化轮次调整，不改变算子语义。
+# Compile-time / launch-time config, adjusted per optimization round; semantics unchanged.
 FIXED_GRID_ADD = 48
 BLOCK_SIZE_ADD = 8192
 NUM_WARPS_ADD = 4
@@ -139,8 +140,9 @@ USE_META_CACHE_ADD = 1
 META_CACHE_LIMIT_ADD = 32
 # --- TUNING PARAMS END (foreach_add_scalar_list_) ---
 
-# 只读 metadata 缓存：key 由设备、每个 tensor 的地址/元素数与标量位模式组成，
-# 不含任何张量数据；kernel 每次仍完整读取并计算，仅省去重复的 H2D 同步拷贝。
+# Read-only metadata cache: the key consists of device, each tensor's address/element count, and scalar bit patterns.
+# with no tensor data; the kernel still reads and computes everything each time, only repeated synchronous H2D copies
+# are saved.
 _META_CACHE = {}
 
 
@@ -157,7 +159,7 @@ def _get_cached_meta(values, device):
 
 
 def _run_add_scalarlist_single_h2d(self, scalars):
-    """把地址表与标量位模式合并为一次 H2D，避免两次同步拷贝。"""
+    """Merge the address table and scalar bit patterns into one H2D, avoiding two synchronous copies."""
     if not can_use_flat(self, scalars, MODE_SCALAR_LIST):
         return FALLBACK
     num_tensors = len(self)
@@ -190,7 +192,7 @@ def _run_add_scalarlist_single_h2d(self, scalars):
 
 
 def _foreach_add__ScalarList(self, scalars):
-    """原地 ``self += scalars[i]``，一维融合 kernel 承载整个标量列表。"""
+    """In-place ``self += scalars[i]``, with a 1D fused kernel carrying the whole scalar list."""
     logger.debug("GEMS_GCU400 _FOREACH_ADD__SCALARLIST")
 
     def fallback():
@@ -231,12 +233,12 @@ def fused_clamp_max_scalar_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """clamp_max 的单 H2D 融合 kernel。
+    """Single-H2D fused kernel for clamp_max.
 
-    ``meta_ptr`` 前三段依次为输入地址、各 tensor 元素数、唯一的 float32
-    标量位模式（以 int64 承载）。aten 的 clamp_max 语义是逐元素取最小值，
-    因此编译期分派到 ``tl.minimum``。地址表与标量合并为一次 H2D，并支持
-    只读 metadata 缓存以消除重复调用的同步拷贝。
+    The first three segments of ``meta_ptr`` are input addresses, per-tensor element counts, and the single
+    float32 scalar bit pattern (carried as int64). ATen's clamp_max takes the elementwise minimum,
+    so this dispatches to ``tl.minimum`` at compile time. The address table and scalar are merged into one H2D,
+    and read-only metadata caching removes synchronous copies on repeated calls.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -263,7 +265,7 @@ def fused_clamp_max_scalar_kernel(
 
 
 # --- TUNING PARAMS START (foreach_clamp_max_scalar_) ---
-# 编译期/启动期配置，按优化轮次调整，不改变算子语义。
+# Compile-time / launch-time config, adjusted per optimization round; semantics unchanged.
 FIXED_GRID_CLAMP = 48
 BLOCK_SIZE_CLAMP = 8192
 NUM_WARPS_CLAMP = 4
@@ -279,7 +281,7 @@ META_CACHE_LIMIT_CLAMP = 128
 
 
 def _run_clamp_max_scalar_single_h2d(self, scalar):
-    """地址表、元素数与唯一标量位模式合并为一次 H2D。"""
+    """Merge the address table, element counts and single scalar bit pattern into one H2D."""
     if not can_use_flat(self, scalar, MODE_SCALAR):
         return FALLBACK
     num_tensors = len(self)
@@ -316,7 +318,7 @@ def _run_clamp_max_scalar_single_h2d(self, scalar):
 
 
 def _foreach_clamp_max__Scalar(self, scalar):
-    """原地 ``self = minimum(self, scalar)``；aten 的 clamp_max 语义为取最小值。"""
+    """In-place ``self = minimum(self, scalar)``; ATen's clamp_max takes the minimum."""
     logger.debug("GEMS_GCU400 _FOREACH_CLAMP_MAX__SCALAR")
 
     def fallback():

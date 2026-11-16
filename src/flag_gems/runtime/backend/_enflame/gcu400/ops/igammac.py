@@ -31,7 +31,7 @@ _ASYM_N = 8
 
 _SUPPORTED_DTYPES = (torch.float32, torch.float64)
 
-# 固定 launch 配置（替代原 10 组 autotune 搜索）
+# Fixed launch config (replaces the original 10-config autotune search)
 _IGAMMAC_BLOCK_SIZE = 1024
 _IGAMMAC_NUM_WARPS = 4
 _IGAMMAC_SERIES_ITERS = 50
@@ -82,8 +82,8 @@ def igammac_kernel(
     # then Q = 1 - P. Converges for x < a + 1.
     term = 1.0 / a_f
     series_sum = term
-    # 注意：分母必须用 a_f + i 精确计算。改为递推累加会带来约 6e-6 的
-    # 相对误差累积，导致 test_igammac_boundary_* 的 atol=1e-5 门禁失败。
+    # Note: the denominator must be computed exactly as a_f + i. Recursive accumulation brings about 6e-6
+    # relative error accumulation, failing the atol=1e-5 gate of test_igammac_boundary_*.
     for i in range(1, SERIES_ITERS):
         term = term * x_f / (a_f + tl.cast(i, COMPUTE_DTYPE))
         series_sum = series_sum + term
@@ -96,7 +96,7 @@ def igammac_kernel(
     f_val = b0
     C_val = b0
     D_val = tl.zeros_like(x_f)
-    # 迭代下标同样使用精确 cast，避免递推累加带来的精度损失
+    # The iteration index also uses an exact cast, avoiding precision loss from recursive accumulation
     for i in range(1, CF_ITERS):
         i_f = tl.cast(i, COMPUTE_DTYPE)
         an = i_f * (a_f - i_f)
@@ -908,8 +908,8 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
     n_elements = out_contig.numel()
     if n_elements > 0:
-        # 固定 BLOCK_SIZE / num_warps：GCU 后端无 autotune 预调优缓存，
-        # 10 组配置会带来 10 倍冷编译开销，固定单配置更稳定
+        # Fixed BLOCK_SIZE / num_warps: the GCU backend has no autotune pre-tuning cache, so
+        # 10 configs bring 10x cold compile cost; a single fixed config is more stable
         block_size = _IGAMMAC_BLOCK_SIZE
         grid = (triton.cdiv(n_elements, block_size),)
         igammac_kernel[grid](
@@ -933,7 +933,7 @@ def _launch_igammac(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
 
 def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
-    logger.debug("GEMS IGAMMAC")
+    logger.debug("GEMS_ENFLAME_GCU400 IGAMMAC")
     if a.device.type != flag_gems.device:
         raise ValueError(
             f"igammac: first input tensor must be on {flag_gems.device} device"
@@ -977,5 +977,5 @@ def igammac(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
 
 
 def igammac_out(a: torch.Tensor, x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS IGAMMAC_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 IGAMMAC_OUT")
     return igammac(a, x, out=out)

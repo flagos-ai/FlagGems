@@ -137,7 +137,7 @@ def _triangular_solve(
     solver_coeff=False,
     copy_fn=_copy_matrix,
 ):
-    logger.debug("GEMS TRIANGULAR_SOLVE_IMPL")
+    logger.debug("GEMS_ENFLAME_GCU400 TRIANGULAR_SOLVE_IMPL")
     global _warned
     if B.ndim < 2 or A.ndim < 2:
         raise RuntimeError("triangular_solve: A and B must have at least 2 dimensions")
@@ -1008,7 +1008,7 @@ def _solve_dense(A, B, *, upper, unitriangular, out=None, coefficient, original)
 
 
 def triangular_solve(B, A, upper=True, transpose=False, unitriangular=False):
-    logger.debug("GEMS TRIANGULAR_SOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 TRIANGULAR_SOLVE")
     return _triangular_solve(
         B,
         A,
@@ -1024,7 +1024,7 @@ def triangular_solve(B, A, upper=True, transpose=False, unitriangular=False):
 def triangular_solve_out(
     B, A, upper=True, transpose=False, unitriangular=False, *, X, M
 ):
-    logger.debug("GEMS TRIANGULAR_SOLVE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 TRIANGULAR_SOLVE_OUT")
     return _triangular_solve(
         B,
         A,

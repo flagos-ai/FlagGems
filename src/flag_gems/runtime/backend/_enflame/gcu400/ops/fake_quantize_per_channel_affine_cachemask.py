@@ -118,7 +118,7 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
 def fake_quantize_per_channel_affine_cachemask(
     input, scale, zero_point, axis, quant_min, quant_max
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_PER_CHANNEL_AFFINE_CACHEMASK")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_CHANNEL_AFFINE_CACHEMASK")
     return _fake_quantize_per_channel_affine_cachemask_impl(
         input, scale, zero_point, axis, quant_min, quant_max
     )
@@ -127,7 +127,7 @@ def fake_quantize_per_channel_affine_cachemask(
 def fake_quantize_per_channel_affine_cachemask_out(
     input, scale, zero_point, axis, quant_min, quant_max, *, out0, out1
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_PER_CHANNEL_AFFINE_CACHEMASK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_CHANNEL_AFFINE_CACHEMASK_OUT")
     return _fake_quantize_per_channel_affine_cachemask_impl(
         input,
         scale,

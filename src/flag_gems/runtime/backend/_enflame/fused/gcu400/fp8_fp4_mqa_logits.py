@@ -149,7 +149,7 @@ def fp8_fp4_mqa_logits(
     Returns:
         logits: [M, N] fp32 output tensor.
     """
-    logger.debug("GEMS FP8_FP4_MQA_LOGITS")
+    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_MQA_LOGITS")
 
     q_values, _ = q
     k_values, k_scales = kv

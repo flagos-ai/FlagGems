@@ -109,7 +109,7 @@ def _reshape_copy(self: torch.Tensor, size):
     remaining dimensions and the input ``numel``, exactly like PyTorch's
     ``infer_size``. The requested ``size`` is validated against ``numel``.
     """
-    logger.debug("GEMS _RESHAPE_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _RESHAPE_COPY")
 
     requested = [int(s) for s in size]
     numel = self.numel()

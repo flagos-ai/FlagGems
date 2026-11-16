@@ -56,22 +56,24 @@ _ldexp = getattr(tl_extra_shim, "ldexp", _ldexp_fallback)
 
 @triton.jit
 def _pow2_scale(exponent):
-    """构造 2**exponent 的 f32 位模式，要求 -126 <= exponent <= 127（指数域不越界）。"""
+    """Build the f32 bit pattern of 2**exponent, requiring -126 <= exponent <= 127 (no exponent-domain overflow)."""
     return ((exponent + 127) << 23).to(tl.float32, bitcast=True)
 
 
 @triton.jit
 def _ldexp_pow2(x, exponent):
-    """x * 2**exponent，用三段 2 的幂乘法代替 SFU 版 ldexp。
+    """x * 2**exponent, using three power-of-two multiplications instead of the SFU version of ldexp.
 
-    GCU400 上 tl_extra_shim.ldexp 会展开成很重的标量/SFU 序列（实测单核带宽只有
-    139 GB/s），而「乘 2 的幂」在 IEEE 下是精确无舍入的，因此改用位模式构造缩放
-    因子再连乘。三段分别覆盖 [-126, 127]，合并可覆盖 [-378, 381]；int32 指数超出
-    该范围时结果必然上溢为 inf 或下溢为 0，因此先把指数钳到边界：
-      - 2**127 < |x| * 2**e 对任意 f32 x（含次正规数 2**-149）在 e > 381 时必然上溢
-      - |x| * 2**e 对任意 f32 x（最大 2**128）在 e < -378 时必然下溢为 0
-    缩放因子本身始终有限（<= 2**127），所以 x=0 / x=inf / NaN 的语义与直接乘法一致，
-    不会出现 0*inf=NaN。
+    On GCU400 tl_extra_shim.ldexp expands into a heavy scalar/SFU sequence (measured single-core bandwidth only
+    139 GB/s), while "multiply by a power of two" is exact and rounding-free under IEEE, so scale factors
+    are built as bit patterns and multiplied in sequence. The three segments each cover [-126, 127], together [-378,
+    381]; when an int32 exponent
+    leaves that range the result necessarily overflows to inf or underflows to 0, so clamp the exponent to the boundary
+    first:
+      - 2**127 < |x| * 2**e for any f32 x (including subnormal 2**-149) necessarily overflows when e > 381
+      - |x| * 2**e for any f32 x (max 2**128) necessarily underflows to 0 when e < -378
+    The scale factor itself is always finite (<= 2**127), so x=0 / x=inf / NaN behave as with direct multiplication,
+    and 0*inf=NaN cannot occur.
     """
     exponent = tl.maximum(tl.minimum(exponent, 381), -378)
     first = tl.maximum(tl.minimum(exponent, 127), -126)
@@ -304,10 +306,12 @@ def _ldexp_impl(self, other, out=None):
         out.resize_(result.shape)
         return _copy_result(out, result)
 
-    # GCU400 的 pointwise_dynamic 在两输入 stride 不一致时会对非连续操作数的尾部
-    # 索引错位（实测 (7,19)/stride(1,7) 与 (19,) 广播时，最后 3 列共 18 个元素取到
-    # 错误源元素；两个输入 stride 相同则正确），故这里把非连续操作数实体化为连续
-    # 张量。逐元素语义与结果 layout 不变，仅在非连续输入时多一次拷贝。
+    # On GCU400 pointwise_dynamic misaligns the tail indices of a non-contiguous operand when the two inputs have
+    # different strides
+    # (measured (7,19)/stride(1,7) broadcast with (19,) reads wrong source elements in the last 3 columns, 18 elements
+    # total;
+    # identical strides are correct), so non-contiguous operands are materialized contiguous here.
+    # Elementwise semantics and result layout are unchanged; only non-contiguous inputs pay one extra copy.
     if not self.is_contiguous():
         self = self.contiguous()
     if not other.is_contiguous():
@@ -337,10 +341,10 @@ def _ldexp_impl(self, other, out=None):
 
 
 def ldexp(self, other):
-    logger.debug("GEMS LDEXP")
+    logger.debug("GEMS_ENFLAME_GCU400 LDEXP")
     return _ldexp_impl(self, other)
 
 
 def ldexp_out(self, other, *, out):
-    logger.debug("GEMS LDEXP_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LDEXP_OUT")
     return _ldexp_impl(self, other, out)

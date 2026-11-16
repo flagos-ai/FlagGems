@@ -24,8 +24,8 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 MAX_BLOCK_N = 16384
-_GRID_SIZE = 48  # 固定 program 数，按 M 规模扫描后分档
-_NUM_WARPS = 1  # launch 配置，扫描后固定
+_GRID_SIZE = 48  # Fixed program count, tiered after sweeping over M sizes
+_NUM_WARPS = 1  # Launch config, fixed after sweeping
 
 
 @triton.jit(do_not_specialize=["eps", "inv_N"])
@@ -40,7 +40,7 @@ def fused_add_rms_norm_kernel(
     BLOCK_N: tl.constexpr,
     SINGLE_BLOCK: tl.constexpr,
 ):
-    # 累加恒用 fp32：fp16/bf16 输入提升到 fp32，fp32 输入本身即 fp32
+    # Accumulate always in fp32: fp16/bf16 inputs are promoted, fp32 inputs stay fp32
     cdtype = tl.float32
 
     pid = ext.program_id(0)
@@ -48,7 +48,7 @@ def fused_add_rms_norm_kernel(
 
     cols = tl.arange(0, BLOCK_N)
     mask = cols < N
-    # 单块路径的 weight 对所有行相同，循环外只加载一次
+    # In the single-block path weight is identical for all rows, so load it once outside the loop
     w_first = tl.load(w_ptr + cols, mask=mask, other=0.0)
 
     for row in tl.range(pid, M, step):
@@ -56,7 +56,7 @@ def fused_add_rms_norm_kernel(
         row_res = residual_ptr + row * N
 
         if SINGLE_BLOCK:
-            # 整行由一个 tile 覆盖：x+r 常驻寄存器，residual 与归一化共用
+            # One tile covers the whole row: x+r stays in registers, shared by residual and normalization
             x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
             r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
             t = x + r
@@ -66,7 +66,7 @@ def fused_add_rms_norm_kernel(
             y = (t * rrms * w_first).to(cdtype)
             tl.store(row_in + cols, y, mask=mask)
         else:
-            # 行宽超过单 tile 上限：分块累加方差，再从 residual 读回归一化
+            # Row wider than one tile: accumulate variance in chunks, then reread residual to normalize
             x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
             r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
             t = x + r

@@ -171,7 +171,7 @@ def _less_cmp_run(A, B):
 
 
 def less_(A, B):
-    logger.debug("GEMS LESS_")
+    logger.debug("GEMS_ENFLAME_GCU400 LESS_")
     if (
         A.numel() >= _SMALL_N
         and A.device == B.device
@@ -188,7 +188,7 @@ def less_(A, B):
 
 
 def less_scalar_(A, B):
-    logger.debug("GEMS LESS_SCALAR_")
+    logger.debug("GEMS_ENFLAME_GCU400 LESS_SCALAR_")
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         n = A.numel()
         if n >= _SMALL_N:

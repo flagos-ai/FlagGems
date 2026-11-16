@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 mv：行核（大 N）+ 1D 行流核（小 N）双臂分派，不走 autotune。
+"""GCU400-specific mv: two-arm dispatch of a row kernel (large N) + 1D row-stream kernel (small N), no autotune.
 
-GCU400 实测定档（L600/48 slot，DSM 917504B、每 block ≤448KB 才 2 block/SPC 共驻）：
-- num_warps=1（tile 内 axis=1 归约的 nw1 分水岭，nw≥2 回归 1.7~3.3×）；
-- NUM_M_ITERS constexpr 静态展开（动态 range 循环 -19%）；
-- b 以直下标寻址（可被 LICM 提出行块循环，-19%），a/b 不做 fp32 预转型
-  （原生 FMA 进 fp32 acc，DSM 流量减半，-11%）；
-- BN*BM ≤ 32768 elem（nocast dsm ≈196KB）：超限并发降级（BN64*BM1024 实测 3.6× 回归）；
-- 小 N（≤SMALL_N_MAX）行数不足以铺满 grid，改 1D 行流核（N=1 实测 1.37×）。
+GCU400 measured tiers (L600/48 slot, DSM 917504B, each block <=448KB for 2 blocks/SPC residency):
+- num_warps=1 (the nw1 watershed for in-tile axis=1 reduction, nw>=2 regresses 1.7~3.3x);
+- NUM_M_ITERS constexpr static unrolling (dynamic range loop -19%);
+- b addressed by direct index (LICM can hoist it out of the row-block loop, -19%), no fp32 pre-cast of a/b
+  (native FMA into fp32 acc halves DSM traffic, -11%);
+- BN*BM <= 32768 elem (nocast dsm ~196KB): exceeding it degrades concurrency (BN64*BM1024 measured 3.6x regression);
+- small N (<=SMALL_N_MAX) has too few rows to fill the grid, so use the 1D row-stream kernel (N=1 measured 1.37x).
 """
 
 import logging

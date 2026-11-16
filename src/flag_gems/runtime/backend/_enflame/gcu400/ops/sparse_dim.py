@@ -55,7 +55,7 @@ def sparse_dim(self: torch.Tensor) -> int:
       a layout, so the message names the layout itself rather than guessing
       a sparse backend.
     """
-    logger.debug("GEMS SPARSE_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_DIM")
     if self.is_nested:
         # Native aten::sparse_dim is not registered on the NestedTensor
         # dispatch key (verified on H20: NestedTensorCUDA for CUDA tensors,

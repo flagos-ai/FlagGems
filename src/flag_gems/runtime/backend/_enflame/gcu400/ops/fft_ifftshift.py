@@ -77,7 +77,7 @@ def fft_ifftshift_kernel(
 
 
 def fft_ifftshift(self, dim=None):
-    logger.debug("GEMS FFT_IFFTSHIFT")
+    logger.debug("GEMS_ENFLAME_GCU400 FFT_IFFTSHIFT")
 
     x = self
 

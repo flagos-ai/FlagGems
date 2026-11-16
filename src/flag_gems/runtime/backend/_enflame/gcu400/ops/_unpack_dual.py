@@ -96,5 +96,5 @@ def _unpack_dual(dual: torch.Tensor, level: int) -> tuple:
     Only the default overload exists for this operator (no ``.out`` variant),
     and the schema marks the primal output as aliasing (``Tensor(a)``).
     """
-    logger.debug("GEMS _UNPACK_DUAL")
+    logger.debug("GEMS_ENFLAME_GCU400 _UNPACK_DUAL")
     return _NATIVE_UNPACK_DUAL.redispatch(_FALLBACK_KEYSET, dual, level)

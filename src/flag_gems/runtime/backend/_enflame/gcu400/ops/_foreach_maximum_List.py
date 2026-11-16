@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_maximum_List``：逐 tensor 三输入一维 flat kernel。
+"""GCU400-specific ``_foreach_maximum_List``: per-tensor 1D flat kernel with three inputs.
 
-公共 ``foreach_ternary`` / ``foreach_binary_list`` 依赖设备侧 chunk table 与
-二维 grid，在 GCU400 上需要 int64 指针表且容易超出 grid.y 的 255 上限。
-这里改成逐 tensor 的一维固定 grid + 核内跨步，计算统一提升 fp32。
+The common ``foreach_ternary`` / ``foreach_binary_list`` rely on a device-side chunk table and
+a 2D grid, which on GCU400 needs int64 pointer tables and easily exceeds the grid.y limit of 255.
+This uses a per-tensor 1D fixed grid with in-kernel striding and fp32 computation throughout.
 """
 
 import logging
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # --- TUNING PARAMS START ---
 
 
-# 由优化迭代驱动脚本按轮次生成；编译期/启动期配置，不改变算子语义。
+# Generated per round by the optimization driver script; compile-time / launch-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 NUM_WARPS = 4
@@ -53,7 +53,7 @@ _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 def _foreach_maximum_list_flat_kernel(
     p0, p1, p2, out_ptr, N, SCALAR, BLOCK: tl.constexpr, FIXED_GRID: tl.constexpr
 ):
-    """一维固定 grid 跨步执行 _foreach_maximum_List。"""
+    """1D fixed grid with striding for _foreach_maximum_List."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -68,7 +68,7 @@ def _foreach_maximum_list_flat_kernel(
 
 
 def _can_use_flat(tensors):
-    """所有 tensor 必须是同 dtype 的连续浮点张量。"""
+    """All tensors must be contiguous float tensors of the same dtype."""
     if not tensors or len(tensors) == 0:
         return False
     first = tensors[0]
@@ -117,8 +117,8 @@ def _run_flat(self, others, thirds, scalar, inplace):
             third = thirds[index] if thirds is not None else second
             num_elems = first.numel()
             out_tensor = first if inplace else torch.empty_like(first)
-            # 空 tensor 无元素可算，跳过 kernel launch；但输出列表必须仍保留
-            # 这个空结果，保持与输入一一对应（foreach 的返回长度等于输入长度）。
+            # Empty tensors have no elements, so skip the kernel launch; but the empty result must still be kept
+            # in the output list to stay one-to-one with the input (foreach returns as many tensors as it receives).
             if num_elems == 0:
                 if not inplace:
                     outputs[index] = out_tensor

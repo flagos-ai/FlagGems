@@ -43,7 +43,7 @@ def hardtanh_kernel_(x_ptr, n_elements, min_val, max_val, BLOCK_SIZE: tl.constex
 
 
 def hardtanh_(A, min_val=-1.0, max_val=1.0):
-    logger.debug("GEMS HARDTANH_")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDTANH_")
     if not A.is_contiguous():
         raise RuntimeError(
             "hardtanh_ requires a contiguous tensor for in-place operation"

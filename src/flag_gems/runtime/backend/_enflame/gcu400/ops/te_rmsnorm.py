@@ -28,6 +28,7 @@ unchanged; the fp32 dtype is preserved so the output dtype stays correct.
 Half-precision inputs keep the generic path (their tests pass and the host
 fold would change dgamma's dtype).
 """
+import logging
 
 import torch
 
@@ -44,6 +45,7 @@ def te_rmsnorm_bwd(
     sm_margin: int = 0,
     zero_centered_gamma: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 TE_RMSNORM_BWD")
     if zero_centered_gamma and x.dtype == torch.float32:
         gamma = gamma + 1.0
         zero_centered_gamma = False
@@ -61,5 +63,8 @@ def te_rmsnorm_bwd(
 # module directly, which bypasses the backend registration.  Publish the
 # wrapper there too; it is only imported on this backend.
 import flag_gems.ops.te_rmsnorm as _common_te_rmsnorm  # noqa: E402
+
+logger = logging.getLogger(__name__)
+
 
 _common_te_rmsnorm.te_rmsnorm_bwd = te_rmsnorm_bwd

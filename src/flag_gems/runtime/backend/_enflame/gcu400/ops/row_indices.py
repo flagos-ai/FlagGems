@@ -43,7 +43,7 @@ def row_indices(self: torch.Tensor) -> torch.Tensor:
     ``aten::row_indices``. Batched CSC/BSC layouts keep their full batch shape,
     exactly as the native reader reports them.
     """
-    logger.debug("GEMS ROW_INDICES")
+    logger.debug("GEMS_ENFLAME_GCU400 ROW_INDICES")
 
     # Dispatch below autograd: the backend (SparseCsrCUDA/SparseCsrCPU) kernel
     # reads the stored buffer and returns the aliasing view. Re-entering this

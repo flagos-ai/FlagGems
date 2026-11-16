@@ -75,7 +75,7 @@ UNROLL = 4
 
 
 def bernoulli_(self, p=0.5, *, generator=None):
-    logger.debug("GEMS BERNOULLI_")
+    logger.debug("GEMS_ENFLAME_GCU400 BERNOULLI_")
     N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 

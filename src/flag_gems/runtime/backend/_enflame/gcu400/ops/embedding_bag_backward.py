@@ -26,7 +26,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；只改变平台开关与 launch options。
+# Generated per optimization round; only platform switches and launch options change.
 NUM_WARPS = 4
 NUM_STAGES = 1
 USE_DEVICE_ASSERT = 1
@@ -613,7 +613,7 @@ def _eb_backward_sparse_packed(
 
 
 def _launch_backward(kernel, packed_kernel, grid, pointers, metadata, **options):
-    # GCU400：把 num_warps / num_stages 作为可迭代 launch 参数注入。
+    # GCU400: inject num_warps / num_stages as iterable launch parameters.
     options.setdefault("num_warps", NUM_WARPS)
     options.setdefault("num_stages", NUM_STAGES)
     if USE_PACKED_META:

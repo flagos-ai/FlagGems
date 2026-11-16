@@ -119,7 +119,7 @@ def _pinverse_reconstruct_kernel(
 
 def pinverse(inp, rcond=1e-15):
     """Compute the Moore-Penrose pseudoinverse of a matrix or matrix batch."""
-    logger.debug("GEMS PINVERSE")
+    logger.debug("GEMS_ENFLAME_GCU400 PINVERSE")
 
     if inp.ndim < 2:
         raise RuntimeError("pinverse: expected a tensor with at least 2 dimensions")

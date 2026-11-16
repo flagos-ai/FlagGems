@@ -73,11 +73,11 @@ def _hardshrink_impl(x: torch.Tensor, lambd: float, out: torch.Tensor):
 
 
 def hardshrink(self: torch.Tensor, lambd: float = 0.5):
-    logger.debug("GEMS HARDSHRINK")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDSHRINK")
     out = torch.empty_like(self)
     return _hardshrink_impl(self, lambd, out)
 
 
 def hardshrink_out(self: torch.Tensor, lambd: float = 0.5, *, out: torch.Tensor):
-    logger.debug("GEMS HARDSHRINK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDSHRINK_OUT")
     return _hardshrink_impl(self, lambd, out)

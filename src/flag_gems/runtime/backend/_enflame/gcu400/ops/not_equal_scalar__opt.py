@@ -12,22 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""not_equal_scalar 候选 v1：按算子覆盖 CodeGenConfig.max_grid_size。
+"""not_equal_scalar candidate v1: override CodeGenConfig.max_grid_size per operator.
 
-沿用第 11 项 floor 验证的零分支模板：不手写 kernel，只把 ENFLAME 默认
-`max_grid_size=(12,1,1)` 放大到 `(1024,1,1)` 重新生成 pointwise_dynamic
-包装函数。codegen 内部 `num_ctas=min(grid,num_tiles)` 使小 shape 调用链
-与公共实现一致、无微秒级回归，大 shape 并行度提升。
+Following the zero-branch template validated by item 11's floor: no hand-written kernel, only enlarge ENFLAME's default
+`max_grid_size=(12,1,1)` to `(1024,1,1)` and regenerate the pointwise_dynamic
+wrapper. Codegen's internal `num_ctas=min(grid,num_tiles)` keeps the small-shape call chain
+identical to the common implementation with no microsecond regression, while large shapes gain parallelism.
 
-保持生产原有的 `is_tensor=[True, False]` 与 `ALWAYS_BOOL` promotion 语义
-（输出 bool，标量 B 以 fp32 比较）。不修改全局 CODEGEN_COFIGS。
+Keep production's `is_tensor=[True, False]` and `ALWAYS_BOOL` promotion semantics
+(bool output, scalar B compared in fp32). Global CODEGEN_COFIGS is not modified.
 """
+import logging
 
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+
+logger = logging.getLogger(__name__)
+
 
 _BASE = get_codegen_config()
 _OPT_CONFIG = CodeGenConfig(
@@ -50,4 +54,5 @@ def _not_equal_func_scalar(x, y):
 
 
 def not_equal_scalar(A, B):
+    logger.debug("GEMS_ENFLAME_GCU400 NOT_EQUAL_SCALAR")
     return _not_equal_func_scalar(A, B)

@@ -26,5 +26,5 @@ logger = logging.getLogger(__name__)
 
 
 def conj(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS CONJ")
+    logger.debug("GEMS_ENFLAME_GCU400 CONJ")
     return _conj(input)

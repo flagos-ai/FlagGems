@@ -101,7 +101,7 @@ def batch_norm_gather_stats(
     eps: float,
     count: int,
 ):
-    logger.debug("GEMS BATCH_NORM_GATHER_STATS")
+    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_GATHER_STATS")
 
     num_segments = mean.shape[0]
     C = mean.shape[1]

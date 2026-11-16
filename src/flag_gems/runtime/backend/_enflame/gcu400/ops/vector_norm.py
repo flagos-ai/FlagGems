@@ -555,9 +555,9 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
     if (not dim) or len(dim) == x.ndim:
-        # Global 归约只依赖平坦内存视图：连续输入无需 dim_compress 的
-        # permute + contiguous。keepdim=False 时直接构造 0-dim 输出，
-        # 也省掉 squeeze（small/medium shape 上可省约 6µs host 开销）。
+        # Global reduction depends only on a flat memory view: contiguous inputs need no dim_compress
+        # permute + contiguous. With keepdim=False a 0-dim output is built directly,
+        # also saving squeeze (~6us host overhead on small/medium shapes).
         if x.is_contiguous():
             inp = x
         else:

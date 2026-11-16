@@ -153,7 +153,7 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
     buffers are incompatible and must be repacked on the target device.
     """
     if not torch.compiler.is_compiling():
-        logger.debug("GEMS _DYN_QUANT_MATMUL_4BIT")
+        logger.debug("GEMS_ENFLAME_GCU400 _DYN_QUANT_MATMUL_4BIT")
     if inp.ndim != 2:
         raise RuntimeError("inp must be two-dimensional")
     if inp.dtype not in (torch.float32, torch.bfloat16):

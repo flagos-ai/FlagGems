@@ -188,7 +188,7 @@ def _make_per_tensor_quantized_tensor(
     Returns:
         torch.Tensor: Quantized tensor whose ``int_repr()`` equals ``self``.
     """
-    logger.debug("GEMS MAKE_PER_TENSOR_QUANTIZED_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 MAKE_PER_TENSOR_QUANTIZED_TENSOR")
     qdtype = _QDTYPE[self.dtype]
     out = torch._empty_affine_quantized(
         self.shape,
@@ -248,7 +248,7 @@ def _make_per_tensor_quantized_tensor_out(
     Returns:
         torch.Tensor: ``out``, holding the values of ``self``.
     """
-    logger.debug("GEMS MAKE_PER_TENSOR_QUANTIZED_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 MAKE_PER_TENSOR_QUANTIZED_TENSOR_OUT")
     n = self.numel()
     if n == 0:
         return out

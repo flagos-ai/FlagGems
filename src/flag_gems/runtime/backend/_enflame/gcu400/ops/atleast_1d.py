@@ -121,6 +121,7 @@ def run(self):
     the shortest path; subclasses and other sequence types fall through to the
     general ``isinstance`` checks.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 RUN")
     kind = type(self)
     if kind is _TensorType:
         if self.ndim == 0:

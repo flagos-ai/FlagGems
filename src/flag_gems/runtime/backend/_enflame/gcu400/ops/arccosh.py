@@ -50,7 +50,7 @@ def _out_dtype(input):
 
 
 def arccosh(A):
-    logger.debug("GEMS ARCCOSH")
+    logger.debug("GEMS_ENFLAME_GCU400 ARCCOSH")
     x = A.contiguous()
     n_elements = x.numel()
     out = torch.empty(x.shape, dtype=_out_dtype(x), device=x.device)
@@ -61,7 +61,7 @@ def arccosh(A):
 
 
 def arccosh_out(A, out):
-    logger.debug("GEMS ARCCOSH_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 ARCCOSH_OUT")
     x = A.contiguous()
     n_elements = x.numel()
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)

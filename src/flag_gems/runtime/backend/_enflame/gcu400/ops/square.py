@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""square 候选 v3：flat grid-stride 家族制式重写（rad2deg/special_exp2 同款）。
+"""square candidate v3: rewritten with the flat grid-stride family pattern (same as rad2deg/special_exp2).
 
-v1/v2 用 one-program-per-chunk（grid=cdiv(n,BLOCK)，BLOCK 16384/32768，
-nw 2/4）：512M fp16 实测 1.169ms = 1.84TB/s（native 0.719ms = 2.99TB/s），
-官方 core geomean 0.867x。消融阶梯（do_bench kernel median，warmup 1000ms/
-rep 100ms）证明 body 免费（copy 地板 680µs ≈ cast 680µs ≈ hp 682µs），
-结构付费：同 body 换 48-SIP persistent grid-stride + BLOCK 65536/131072 +
-nw2 后 512M fp16 676µs = 3.18TB/s 贴地板（1.06x native）、fp32 1348µs
-（1.11x）、16.7M fp16 27.2µs（1.09x）。hp 体（fp32 计算后窄回）与公版
-opmath 一致且 bit-exact（torch.equal 验证），DSM 实测 256KB ≤ 448KB 真
-48-way。小 shape（n<65536）/非连续/非 fp16-bf16-fp32/超 int32 域回退公共
-pointwise_dynamic 实现（v2 已验证小 shape 1.5x native）。
+v1/v2 used one-program-per-chunk (grid=cdiv(n,BLOCK), BLOCK 16384/32768,
+nw 2/4): 512M fp16 measured 1.169ms = 1.84TB/s (native 0.719ms = 2.99TB/s),
+official core geomean 0.867x. The ablation ladder (do_bench kernel median, warmup 1000ms /
+rep 100ms) shows the body is free (copy floor 680us ~ cast 680us ~ hp 682us),
+structure pays: with the same body, a 48-SIP persistent grid-stride + BLOCK 65536/131072 +
+nw2 gives 512M fp16 676us = 3.18TB/s at the floor (1.06x native), fp32 1348us
+(1.11x), 16.7M fp16 27.2us (1.09x). The hp body (fp32 compute then narrow back) matches the common
+opmath bit-exactly (verified by torch.equal), DSM measured 256KB <= 448KB, truly
+48-way. Small shapes (n<65536) / non-contiguous / non fp16-bf16-fp32 / beyond int32 domain fall back to common
+pointwise_dynamic (v2 verified small shapes at 1.5x native).
 """
 
 import logging

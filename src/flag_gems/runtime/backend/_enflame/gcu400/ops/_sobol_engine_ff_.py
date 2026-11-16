@@ -12,28 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""gcu400 sobol_engine_ff_: 闭式 Gray-code 快进实现。
+"""gcu400 sobol_engine_ff_: closed-form Gray-code fast-forward implementation.
 
-原实现（generic 基线）对每个维度做 n 步串行循环：每步用数据依赖的
-while 循环数 trailing zeros，再做一次标量 load + XOR，总工作量 O(n)，
-延迟随 n 线性放大（dim=256/n=4096 时 3.4 ms）。这里利用 Sobol 状态
-递推的望远镜恒等式把快进折叠成闭式：
+The original (generic baseline) runs a serial n-step loop per dimension: each step uses a data-dependent
+while loop to count trailing zeros, then one scalar load + XOR; total work is O(n),
+and latency grows linearly with n (3.4 ms at dim=256/n=4096). Here the telescoping identity of Sobol
+state recurrence folds the fast-forward into a closed form:
 
     quasi_new = quasi ^ (G(M + n) ^ G(M))
     G(x) = XOR_{j: gray(x)_j = 1} v_j,   gray(x) = x ^ (x >> 1)
 
-其中 ``v_j`` 是 ``sobolstate[:, j]``。逐步第 m 步 XOR 的是
-``v_{ctz(m)}``，而 Gray code 相邻两步恰好只翻转 ``ctz(m)`` 位，因此
-n 步的累加 XOR 精确等于 ``gray(M+n) ^ gray(M)`` 的置位集合（j < MAXBIT
-截断与逐步实现的 ``bit_pos < MAXBIT`` 语义一致）。
+where ``v_j`` is ``sobolstate[:, j]``. Step m XORs
+``v_{ctz(m)}``, and Gray code flips exactly bit ``ctz(m)`` between adjacent steps, so
+the accumulated XOR over n steps equals exactly the set bits of ``gray(M+n) ^ gray(M)`` (truncating j < MAXBIT
+matches the ``bit_pos < MAXBIT`` semantics of the stepwise implementation).
 
-``n`` 与 ``num_generated`` 均为 constexpr，``delta = gray(M+n) ^ gray(M)``
-在编译期折叠成常量；``tl.static_range`` 静态展开后每个 program 只剩
-popcount(delta) 次无依赖向量 load + XOR，运行期不再有任何循环。每个
-program 以 BLOCK_DIM=128 向量化覆盖多个维度，grid 收缩到
-cdiv(dimension, 128)，全档位 benchmark 落到 ~3-4 µs launch 地板。
-CPU 上 560 组 (dim, n, num_generated) 对照 ``torch._sobol_engine_ff_``
-三方全等验证。
+``n`` and ``num_generated`` are constexpr, so ``delta = gray(M+n) ^ gray(M)``
+folds into a compile-time constant; after ``tl.static_range`` unrolling each program is left with only
+popcount(delta) dependency-free vector loads + XOR, with no runtime loop at all. Each
+program vectorizes over multiple dimensions with BLOCK_DIM=128, shrinking the grid to
+cdiv(dimension, 128), so all benchmark tiers land on the ~3-4 us launch floor.
+CPU verification over 560 (dim, n, num_generated) groups against ``torch._sobol_engine_ff_``
+showed three-way equality.
 """
 
 import logging
@@ -59,18 +59,18 @@ def _sobol_engine_ff_kernel(
     The algorithm XORs direction numbers corresponding to bits that flip
     in the Gray code sequence from num_generated to num_generated + n.
     """
-    # 每个 program 向量化处理 BLOCK_DIM 个维度，收缩 grid 规模
+    # Each program vectorizes over BLOCK_DIM dimensions, shrinking the grid
     dims = tl.program_id(0) * BLOCK_DIM + tl.arange(0, BLOCK_DIM)
     dim_mask = dims < dimension
 
     # Load initial quasi value for this dimension
     quasi_val = tl.load(quasi_ptr + dims, mask=dim_mask, other=0)
 
-    # 闭式快进（与逐步 ctz 循环严格等价，见模块 docstring）：
-    #   quasi ^ XOR_{j: delta 的第 j 位为 1} sobolstate[dim, j]
+    # Closed-form fast-forward (strictly equivalent to the stepwise ctz loop, see the module docstring):
+    #   quasi ^ XOR_{j: bit j of delta is 1} sobolstate[dim, j]
     #   delta = gray(num_generated + n) ^ gray(num_generated)
-    # n / num_generated 均为 constexpr，delta 在编译期折叠成常量，
-    # static_range + 静态 if 只保留置位 bit 的 load，运行期无循环。
+    # n / num_generated are constexpr, delta folds into a compile-time constant,
+    # static_range + static if keeps only loads for set bits, with no runtime loop.
     start = num_generated
     end = num_generated + n
     delta = (end ^ (end >> 1)) ^ (start ^ (start >> 1))
@@ -100,12 +100,12 @@ def _sobol_engine_ff_(quasi, n, sobolstate, dimension, num_generated):
     Returns:
         quasi: the updated state tensor (modified in-place)
     """
-    logger.debug("GEMS _SOBOL_ENGINE_FF_")
+    logger.debug("GEMS_ENFLAME_GCU400 _SOBOL_ENGINE_FF_")
 
     # Sobol direction matrices use MAXBIT=30
     MAXBIT = 30
 
-    # 每个 program 处理 BLOCK_DIM 个维度（2 的幂）
+    # Each program handles BLOCK_DIM dimensions (a power of two)
     BLOCK_DIM = 128
     grid = (triton.cdiv(dimension, BLOCK_DIM),)
 

@@ -451,7 +451,7 @@ def _slow_conv2d_backward(
     out1=None,
     out2=None,
 ):
-    logger.debug("GEMS _SLOW_CONV2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _SLOW_CONV2D_BACKWARD")
     for t, nm in ((grad_output, "grad_output"), (self, "self"), (weight, "weight")):
         if not isinstance(t, torch.Tensor):
             raise RuntimeError(f"_slow_conv2d_backward: {nm} must be a Tensor")

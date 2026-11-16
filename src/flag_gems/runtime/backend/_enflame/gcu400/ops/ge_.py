@@ -396,7 +396,7 @@ class _GeInplace(torch.autograd.Function):
 
 
 def ge_tensor_(self, other):
-    logger.debug("GEMS GE__TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 GE__TENSOR")
     if not isinstance(self, torch.Tensor):
         raise TypeError("ge_tensor_() received a non-Tensor receiver")
     if self.dtype not in _SUPPORTED:
@@ -416,7 +416,7 @@ def ge_tensor_(self, other):
 
 
 def ge_scalar_(self, other):
-    logger.debug("GEMS GE__SCALAR")
+    logger.debug("GEMS_ENFLAME_GCU400 GE__SCALAR")
     if not isinstance(self, torch.Tensor):
         raise TypeError("ge_scalar_() received a non-Tensor receiver")
     if self.dtype not in _SUPPORTED:

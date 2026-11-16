@@ -26,8 +26,8 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# GCU400 工具链在 autotune 的多配置 do_bench 阶段会于 make_gcuir 崩溃（Aborted 134），
-# 因此固定单配置；具体 num_warps / num_stages 由批量 A/B 扫描确定。
+# On the GCU400 toolchain autotune crashes in make_gcuir (Aborted 134) during multi-config do_bench,
+# so a single config is fixed; num_warps / num_stages come from batch A/B sweeps.
 _GCU400_BN_NUM_WARPS = 2
 _GCU400_BN_NUM_STAGES = 2
 _GCU400_BN_MIN_BLOCK_N = 8
@@ -35,12 +35,12 @@ _GCU400_BN_MAX_TILE_ELEMENTS = 16384
 
 
 def _gcu400_bn_block_m(args):
-    """按 batch 维裁剪 2D tile 的行数，最多 2048 行。"""
+    """Clip the row count of a 2D tile by the batch dimension, at most 2048 rows."""
     return min(2048, triton.next_power_of_2(args["batch_dim"]))
 
 
 def _gcu400_bn_block_n(args):
-    """列数下限 8：BLOCK_N=1 会把 tile 退化成 ttg.slice 并触发 LLVM 断言。"""
+    """Column lower bound 8: BLOCK_N=1 degenerates the tile into ttg.slice and triggers an LLVM assertion."""
     block_m = _gcu400_bn_block_m(args)
     block_n = triton.next_power_of_2(args["spatial_dim"])
     return max(
@@ -246,7 +246,7 @@ def _batch_norm_with_update(
     (output, save_mean, save_invstd, reserve). running_mean and running_var
     are updated in place.
     """
-    logger.debug("GEMS _BATCH_NORM_WITH_UPDATE")
+    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_WITH_UPDATE")
 
     input_3d = make_3d_for_bn(input)
 

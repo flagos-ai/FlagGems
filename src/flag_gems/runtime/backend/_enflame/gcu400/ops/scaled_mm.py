@@ -29,9 +29,9 @@ FP8_DTYPES = tuple(
     if hasattr(torch, name)
 )
 
-# GCU400 tile：15 组扫描 + 二次复测确认 (64,128,32) 在 512³ 上比
-# (32,64,32) 快 3.4 倍，且 16³/128³ 持平、精度零失败。BLOCK_K 必须保持
-# 32：64/128 会让 GCU400 的 fp8→fp16 dot 在 512³ 上产出完全错误的结果。
+# GCU400 tile: 15 sweeps + a second retest confirm (64,128,32) is 3.4x faster than
+# (32,64,32) at 512^3, ties at 16^3/128^3, with zero accuracy failures. BLOCK_K must stay
+# 32: 64/128 makes GCU400's fp8->fp16 dot produce completely wrong results at 512^3.
 _TILE_M = 64
 _TILE_N = 128
 _TILE_K = 32
@@ -150,8 +150,8 @@ def _scaled_mm_impl(self, mat2, scale_a, scale_b, bias, scale_result, out_dtype,
     if M == 0 or N == 0:
         return out
     if K == 0:
-        # K=0 时矩阵乘恒为全零，不需要 launch FP8 kernel；GCU400 上该 kernel
-        # 会在 f32→fp8 转换处触发 llvm.fptrunc → i8 的编译错误。
+        # With K=0 matmul is all zeros, so no FP8 kernel launch is needed; on GCU400 that kernel
+        # triggers an llvm.fptrunc -> i8 compile error at the f32->fp8 conversion.
         with torch_device_fn.device(self.device):
             out.zero_()
         return out
@@ -159,15 +159,15 @@ def _scaled_mm_impl(self, mat2, scale_a, scale_b, bias, scale_result, out_dtype,
         if _can_use_cutlass_scaled_mm(self, mat2, scale_a, scale_b, bias, out):
             _csmm(out, self, mat2, scale_a, scale_b, bias)
         else:
-            # GCU400 的 Triton 后端会把 epilogue 的 store 降级成面向行主序
-            # 的矩阵写 intrinsic；当 `out` 非连续（如 scaled_mm_out 传入的
-            # 转置视图）时该 intrinsic 会写出错误结果，因此先算到连续的临时
-            # 缓冲区再拷回 `out`。
+            # GCU400's Triton backend lowers epilogue stores to a row-major
+            # matrix-write intrinsic; when `out` is non-contiguous (e.g. the
+            # transposed view passed to scaled_mm_out) it writes wrong results, so compute into a contiguous
+            # temporary buffer first and copy back to `out`.
             store_target = out
             if not out.is_contiguous():
                 store_target = torch.empty((M, N), dtype=out.dtype, device=self.device)
-            # FP8 输出的 store 会走 GCU 的 m32 矩阵写 intrinsic，BLOCK_M/BLOCK_N
-            # 必须保持 32/64；fp16/bf16/fp32 输出才可用更大的 64x128 tile。
+            # FP8 output stores use GCU's m32 matrix-write intrinsic, so BLOCK_M/BLOCK_N
+            # must stay 32/64; only fp16/bf16/fp32 outputs can use the larger 64x128 tile.
             if out.dtype in FP8_DTYPES:
                 bm, bn, bk = 32, 64, 32
             else:
@@ -208,7 +208,7 @@ def scaled_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS SCALED_MM")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_MM")
     # Match ATen GPU semantics: scale_result and the fast accumulation hint
     # do not change the mathematical result in this implementation.
     return _scaled_mm_impl(
@@ -228,7 +228,7 @@ def scaled_mm_out(
     *,
     out,
 ):
-    logger.debug("GEMS SCALED_MM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_MM_OUT")
     return _scaled_mm_impl(
         self, mat2, scale_a, scale_b, bias, scale_result, out_dtype, out
     )

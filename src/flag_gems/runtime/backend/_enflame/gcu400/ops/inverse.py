@@ -153,7 +153,7 @@ def inverse(A):
     Returns:
         A tensor of the same shape holding the inverse of every matrix.
     """
-    logger.debug("GEMS INVERSE")
+    logger.debug("GEMS_ENFLAME_GCU400 INVERSE")
 
     assert A.dim() >= 2, "inverse: input must be at least 2D"
     assert A.shape[-1] == A.shape[-2], "inverse: input must be a square matrix"

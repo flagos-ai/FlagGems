@@ -475,6 +475,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
         eps: used in RMSNorm
         cache_block_size: tokens per paged-cache block
     """
+    logger.debug("GEMS_ENFLAME_GCU400 FUSED_DEEPSEEK_V4_QNORM_ROPE_KV_ROPE_QUANT_INSERT")
     assert q.is_contiguous() and kv.is_contiguous()
     num_tokens, num_heads, head_dims = q.shape
     assert head_dims == 512

@@ -28,7 +28,8 @@ device_ = device
 @libentry()
 @triton.jit
 def eye_kernel(out_ptr, N, M, BLOCK_M: tl.constexpr):
-    # 每个 program 负责若干整行：行内连续写，对角线判定退化为 1D 标量比较
+    # Each program handles several whole rows: rows are written contiguously, so diagonal detection degenerates to a 1D
+    # scalar comparison
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     cols = tl.arange(0, BLOCK_M)

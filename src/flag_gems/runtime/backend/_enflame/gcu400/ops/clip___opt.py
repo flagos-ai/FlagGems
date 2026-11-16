@@ -12,17 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""clip_ 候选 v1：复用 clip__opt 三个已按算子覆盖 config 的 jit 对象。
+"""clip_ candidate v1: reuse the three jit objects from clip__opt that already override config per operator.
 
-生产 `clip_(A, mini, maxi)` 与 `clip()` 共用 `clip_func` /
-`clip_func_min` / `clip_func_max` 三个 pointwise_dynamic 对象，
-唯一差别是传 `out0=A` 做 in-place 写回。第 16 项已把这三个对象
-按算子覆盖 `max_grid_size=(12,1,1)->(1024,1,1)` 并验证
-（clip 纯生产 3 轮 PASS 3.178x），本项直接复用，不重复生成 jit 对象。
+Production `clip_(A, mini, maxi)` and `clip()` share the `clip_func` /
+`clip_func_min` / `clip_func_max` pointwise_dynamic objects,
+the only difference being `out0=A` for in-place write-back. Item 16 already overrode these three
+objects' `max_grid_size=(12,1,1)->(1024,1,1)` per operator and validated it
+(clip production-only 3 rounds PASS 3.178x); this item imports and reuses them directly instead of regenerating jit
+objects.
 
-host 分支与生产逐字同构（零额外 Python 判断），保留 ValueError 语义；
-`out0=A` 保证 in-place 契约（返回值就是 A 本体）。
+The host branch is word-for-word isomorphic to production (zero extra Python checks), preserving ValueError semantics;
+`out0=A` guarantees the in-place contract (the return value is A itself).
 """
+import logging
 
 from flag_gems.runtime.backend._enflame.gcu400.ops.clip__opt import (
     clip_func,
@@ -30,10 +32,14 @@ from flag_gems.runtime.backend._enflame.gcu400.ops.clip__opt import (
     clip_func_min,
 )
 
+logger = logging.getLogger(__name__)
+
+
 __all__ = ["clip_"]
 
 
 def clip_(A, mini=None, maxi=None):
+    logger.debug("GEMS_ENFLAME_GCU400 CLIP_")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:

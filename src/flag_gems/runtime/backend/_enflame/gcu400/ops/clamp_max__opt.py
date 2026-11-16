@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""clamp_max_ 候选 v1：inplace 大 BLOCK 手写 kernel。
+"""clamp_max_ candidate v1: hand-written in-place large-BLOCK kernel.
 
-生产 gcu400 实现（KernelGen）走 pointwise_dynamic，ENFLAME
-max_grid_size=(12,1,1) 让大 shape 并行度不足。沿用 square/square_out
-已验证的分档策略，n<65536 回退公共实现避免微秒级回归。
-生产语义：tl.minimum(maxi, x.to(tl.float32))，标量以 fp32 比较后写回原 dtype。
+The production gcu400 implementation (KernelGen) uses pointwise_dynamic, where ENFLAME
+max_grid_size=(12,1,1) leaves large shapes under-parallelized. Reuse the tiered strategy
+already validated by square/square_out; n<65536 falls back to the common implementation to avoid microsecond
+regressions.
+Production semantics: tl.minimum(maxi, x.to(tl.float32)); the scalar is compared in fp32 then written back in the
+original dtype.
 """
 
 import torch

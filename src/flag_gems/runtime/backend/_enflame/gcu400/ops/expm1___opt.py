@@ -12,22 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""expm1_ 候选 v1：复用 expm1__opt 已按算子覆盖 config 的 jit 对象。
+"""expm1_ candidate v1: reuse the expm1__opt jit object that already overrides config per operator.
 
-生产 `expm1_(A)` 与 `expm1(A)` 共用 `expm1_func`，唯一差别是
-`out0=A` 做 in-place 写回。第 17 项落地的 `expm1__opt.py` 已把
-`max_grid_size=(12,1,1)->(1024,1,1)` 并保持 `INT_TO_FLOAT`
-promotion（expm1 纯生产 3 轮 PASS 3.220x），本项直接 import 复用，
-不重复生成 jit 对象、零 Python 分支。
+Production `expm1_(A)` and `expm1(A)` share `expm1_func`, the only difference being
+`out0=A` for in-place write-back. `expm1__opt.py` delivered in item 17 already changed
+`max_grid_size=(12,1,1)->(1024,1,1)` and kept `INT_TO_FLOAT`
+promotion (expm1 production-only 3 rounds PASS 3.220x), so this item imports and reuses it directly,
+with no duplicate jit objects and zero Python branches.
 
-`out0=A` 保证 in-place 契约；整型输入经 promotion 输出浮点，
-与公共实现一致。
+`out0=A` guarantees the in-place contract; integral inputs are promoted to floating-point output,
+matching the common implementation.
 """
+import logging
 
 from flag_gems.runtime.backend._enflame.gcu400.ops.expm1__opt import _expm1_func
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["expm1_"]
 
 
 def expm1_(A):
+    logger.debug("GEMS_ENFLAME_GCU400 EXPM1_")
     return _expm1_func(A, out0=A)

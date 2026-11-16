@@ -226,7 +226,7 @@ def _fused_sgd_(
       update = b                              (otherwise)
     - param = param - lr * update
     """
-    logger.debug("GEMS FUSED_SGD_")
+    logger.debug("GEMS_ENFLAME_GCU400 FUSED_SGD_")
     _fused_sgd_impl(
         self,
         grads,
@@ -457,7 +457,7 @@ def _fused_sgd__tensor_lr(
     round-trip. Both overloads share one kernel, which always reads ``lr`` from a
     tensor.
     """
-    logger.debug("GEMS FUSED_SGD__TENSOR_LR")
+    logger.debug("GEMS_ENFLAME_GCU400 FUSED_SGD__TENSOR_LR")
     _fused_sgd_impl(
         self,
         grads,

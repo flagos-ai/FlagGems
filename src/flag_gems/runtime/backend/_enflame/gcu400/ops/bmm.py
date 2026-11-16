@@ -75,12 +75,13 @@ def _should_delegate_to_native(A, B):
 
 
 def _select_bmm_config(Batch, M, N, K, dtype):
-    # 按 dtype 与 shape 档位确定性选择 GEMM tile，替代 libtuner autotune。
-    # 依据同源扫描结论：BM=128/BN=256 为通用最优；fp16/bf16 偏 BK=256/w=4，
-    # fp32 偏 BK=128/w=2；超大 batch 的大方阵需增大 BM 或减小 BK 以避免
-    # grid.x 超出硬件上限并保持流水效率；极小 K / 极小 shape 用小 tile 减少浪费。
-    # 小 shape 档（委托线下唯一 Triton 档）实测：fp16/bf16 用 (128,128,128,w4)；
-    # fp32 在 (2,384^3) 上 (64,128,128,w4,ns2) 快 ~7%（16.0 -> 14.9µs，median）。
+    # Select GEMM tiles deterministically by dtype and shape tier, replacing libtuner autotune.
+    # From the same-source sweep: BM=128/BN=256 is generally optimal; fp16/bf16 prefers BK=256/w=4,
+    # fp32 prefers BK=128/w=2; very large batches of big square matrices need larger BM or smaller BK to avoid
+    # exceeding the grid.x hardware limit and keep pipeline efficiency; tiny K / tiny shapes use small tiles to reduce
+    # waste.
+    # Small-shape tier (the only Triton tier on the delegated path) measured: fp16/bf16 use (128,128,128,w4);
+    # fp32 at (2,384^3) with (64,128,128,w4,ns2) is ~7% faster (16.0 -> 14.9us, median).
     num_stages = 3
     if K < 128:
         block_m, block_n, block_k, num_warps = 64, 64, 32, 4
@@ -99,8 +100,9 @@ def _select_bmm_config(Batch, M, N, K, dtype):
     else:
         block_m, block_n, block_k, num_warps = 128, 256, 256, 4
 
-    # 精确判定：只有三个维度都能被实际选中的 tile 整除时，load/store 才无越界，
-    # 此时在编译期裁剪出无 mask 快速路径；否则回退到带 mask 的通用路径。
+    # Exact decision: only when all three dimensions are divisible by the actually selected tiles are load/store
+    # free of out-of-bounds access, in which case an unmasked fast path is compiled; otherwise use the masked generic
+    # path.
     even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
     return block_m, block_n, block_k, num_warps, num_stages, even
 
@@ -161,8 +163,8 @@ def bmm_kernel(
     )
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    # EVEN 是编译期常量，编译器据此静态裁剪为单个循环，
-    # 避免运行时分支打断 tl.dot 流水（运行时分支会令 dot 退化为标量计算）。
+    # EVEN is a compile-time constant, so the compiler statically trims it to a single loop,
+    # avoiding a runtime branch interrupting the tl.dot pipeline (a runtime branch degrades dot to scalar compute).
     if EVEN:
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = tl.load(a_ptrs)
@@ -204,7 +206,7 @@ def bmm_kernel(
 
 
 def _launch_bmm(A, B, out, Batch, M, N, K):
-    # 集中处理 config 分派与 kernel 启动，供 bmm / bmm_out 共用。
+    # Centralize config dispatch and kernel launch, shared by bmm / bmm_out.
     block_m, block_n, block_k, num_warps, num_stages, even = _select_bmm_config(
         Batch, M, N, K, A.dtype
     )
@@ -241,8 +243,8 @@ def bmm(A, B):
     logger.debug("GEMS_ENFLAME BMM")
     assert A.shape[0] == B.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
-    # 饱和段（大工作量）委托 native kernel：bit 级一致、零派发开销；
-    # 原样透传（native 自带任意 stride 支持，非连续输入免 contiguous 拷贝）。
+    # Saturation range (large workload) delegates to the native kernel: bit-identical, zero dispatch overhead;
+    # Passed through unchanged (native supports arbitrary stride, so non-contiguous inputs need no contiguous copy).
     if _should_delegate_to_native(A, B):
         return _NATIVE_BMM.call_boxed(_DEVICE_KEYSET, A, B)
     Batch, M, K = A.shape

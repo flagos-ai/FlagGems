@@ -617,7 +617,7 @@ class _MMLFunction(torch.autograd.Function):
 
 
 def multilabel_margin_loss(self, target, reduction=1, out=None):
-    logger.debug("GEMS MULTILABEL_MARGIN_LOSS")
+    logger.debug("GEMS_ENFLAME_GCU400 MULTILABEL_MARGIN_LOSS")
     if isinstance(reduction, bool) or not isinstance(reduction, int):
         raise RuntimeError(
             "multilabel_margin_loss: reduction must be an integer (0, 1 or 2)"

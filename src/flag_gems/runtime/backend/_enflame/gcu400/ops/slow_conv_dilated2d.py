@@ -558,7 +558,7 @@ def _tap_tile(is_fp32, c_out, plane, k_tot):
     return block_co, block_m, min(block_k, k_lim), 4, True
 
 
-# ===== Step 4 轮次脚本改写的调参常量 =====
+# ===== Tuning constants rewritten by the Step 4 round script =====
 BASELINE_MODE = 0
 BLOCK_M = 8
 SHARE_WEIGHT = 1
@@ -607,13 +607,14 @@ def _scd2d_fwd_elem_kernel(
     ACC_DTYPE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
 ):
-    """GCU400 可编译的 slow_conv_dilated2d 前向。
+    """GCU400-compilable slow_conv_dilated2d forward.
 
-    一个 program 负责同一 (n, co) 下 BLOCK_M 个连续输出平面位置。
-    每个输出点把 K_TOT 个 tap 展平成 1D 向量做乘加归约，再用标量 store 写回；
-    全程没有 2D gather load / 2D masked store —— 这两者会让 GCU400 的
-    GCUTritonFusionPass 报 PassManager execution failed。
-    固定 co 时权重向量相同，SHARE_WEIGHT 让它跨 BLOCK_M 个输出点只 load 一次。
+    One program handles BLOCK_M consecutive output plane positions for the same (n, co).
+    Each output point flattens K_TOT taps into a 1D vector for multiply-add reduction, then writes back with a scalar
+    store;
+    there is no 2D gather load / 2D masked store anywhere - those make GCU400's
+    GCUTritonFusionPass report PassManager execution failed.
+    With fixed co the weight vector is the same, so SHARE_WEIGHT loads it once across BLOCK_M output points.
     """
     pid_s = tl.program_id(0)
     co = tl.program_id(1)
@@ -668,7 +669,7 @@ def _scd2d_dtype_constexpr(dtype):
 
 
 def _launch(x, weight, bias, out, dims):
-    """用 1D 逐输出点 kernel 替换公共实现的三个 dot kernel。"""
+    """Replace the common implementation's three dot kernels with a 1D per-output-point kernel."""
     k_h, k_w, s_h, s_w, p_h, p_w, d_h, d_w, h_out, w_out, _unbatched = dims
     c_out = weight.shape[0]
     c_in = x.shape[1]
@@ -693,8 +694,8 @@ def _launch(x, weight, bias, out, dims):
         share_weight = bool(SHARE_WEIGHT)
         num_warps = NUM_WARPS
 
-    # 极小输出平面：多输出点循环反而损失并行度（实测 fp16 退化到 0.97x），
-    # 按规模回退到单输出点基线行为，保证 fp16 不退化。
+    # Very small output planes: the multi-output-point loop loses parallelism (measured fp16 down to 0.97x),
+    # so fall back to the single-output-point baseline by size to guarantee fp16 does not regress.
     if hw_out <= SMALL_HW_LIMIT:
         block_m = 1
         share_weight = False
@@ -819,7 +820,7 @@ def slow_conv_dilated2d(
     out=None,
 ):
     """Compute ``slow_conv_dilated2d``; see ``_run`` for the argument defaults."""
-    logger.debug("GEMS SLOW_CONV_DILATED2D")
+    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_DILATED2D")
     return _run(self, weight, kernel_size, bias, stride, padding, dilation, out)
 
 
@@ -841,7 +842,7 @@ def slow_conv_dilated2d_out(
     an extra full-size device copy.  Registering the overload lets the kernel
     write the destination directly.
     """
-    logger.debug("GEMS SLOW_CONV_DILATED2D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_DILATED2D_OUT")
     return _run(self, weight, kernel_size, bias, stride, padding, dilation, out)
 
 

@@ -160,7 +160,7 @@ def batch_norm_backward_elemt(
     Returns:
         grad_input: Gradient w.r.t. input (N, C, *)
     """
-    logger.debug("GEMS BATCH_NORM_BACKWARD_ELEMT")
+    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_BACKWARD_ELEMT")
 
     # Ensure contiguous memory layout
     grad_out = grad_out.contiguous()

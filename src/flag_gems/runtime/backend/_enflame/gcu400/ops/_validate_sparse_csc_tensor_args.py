@@ -256,7 +256,7 @@ def _validate_metadata(
 def _validate_sparse_csc_tensor_args(
     ccol_indices, row_indices, values, size, check_pinning=None
 ):
-    logger.debug("GEMS _VALIDATE_SPARSE_CSC_TENSOR_ARGS")
+    logger.debug("GEMS_ENFLAME_GCU400 _VALIDATE_SPARSE_CSC_TENSOR_ARGS")
     return _validate_metadata(
         ccol_indices, row_indices, values, size, torch.sparse_csc, check_pinning
     )

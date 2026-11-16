@@ -162,7 +162,7 @@ _MAIN_WARPS = 4
 def _fake_quantize_learnable_per_tensor_affine_backward(
     grad, self, scale, zero_point, quant_min, quant_max, grad_factor=1.0
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE_BACKWARD")
 
     if not (
         torch.is_floating_point(grad)

@@ -46,7 +46,7 @@ def hardtanh_kernel(
 
 
 def hardtanh(A, min_val=-1.0, max_val=1.0):
-    logger.debug("GEMS HARDTANH")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDTANH")
     if not A.is_contiguous():
         A = A.contiguous()
     out = torch.empty_like(A)
@@ -62,7 +62,7 @@ def hardtanh(A, min_val=-1.0, max_val=1.0):
 
 
 def hardtanh_out(A, min_val=-1.0, max_val=1.0, *, out=None):
-    logger.debug("GEMS HARDTANH_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDTANH_OUT")
     if out is None:
         return hardtanh(A, min_val, max_val)
     if not A.is_contiguous():

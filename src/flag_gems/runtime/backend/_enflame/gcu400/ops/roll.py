@@ -28,7 +28,7 @@ MAX_DIMS = 5
 
 
 def roll(inp: torch.Tensor, shifts, dims=None) -> torch.Tensor:
-    logger.debug("GEMS ROLL")
+    logger.debug("GEMS_ENFLAME_GCU400 ROLL")
 
     validate_inputs(inp, shifts, dims)
     if _can_use_triton(inp):

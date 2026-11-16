@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
-# 常驻 CTA 数与 SIP 数对齐；20 轮实测中 24 个 CTA 的整体表现不劣于
-# 2 倍超订阅的 48 个 CTA，且避免了大 shape 上的重复调度开销。
+# Resident CTA count aligned with the SIP count; across 20 rounds, 24 CTAs were no worse overall than
+# 48 CTAs at 2x oversubscription, and avoided repeated scheduling overhead on large shapes.
 NUM_CTAS = 24
 
 

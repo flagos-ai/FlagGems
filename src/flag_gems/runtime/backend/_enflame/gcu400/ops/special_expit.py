@@ -70,9 +70,10 @@ def _choose_block(N_total, itemsize):
 def special_expit(A):
     logger.debug("GEMS_ENFLAME SPECIAL_EXPIT_FORWARD")
     inp = A if A.is_contiguous() else A.contiguous()
-    # aten 的 expit 对整数 / 布尔输入返回 float32；公共实现靠 INT_TO_FLOAT
-    # promotion 保证该语义，手写 kernel 必须显式选择输出 dtype，
-    # 否则 fp32 结果会按输入 dtype 截断存回整型张量。
+    # aten's expit returns float32 for integer / bool inputs; the common implementation guarantees this with
+    # INT_TO_FLOAT
+    # promotion, so a hand-written kernel must explicitly choose the output dtype,
+    # otherwise fp32 results are truncated back into integer tensors by the input dtype.
     output_dtype = inp.dtype if inp.is_floating_point() else torch.float32
     out = torch.empty_like(inp, dtype=output_dtype)
     N_total = inp.numel()

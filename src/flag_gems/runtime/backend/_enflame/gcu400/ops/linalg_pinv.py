@@ -752,7 +752,7 @@ def linalg_pinv(
     Returns:
         Pseudoinverse of shape (*, n, m).
     """
-    logger.debug("GEMS LINALG_PINV")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_PINV")
 
     assert A.dtype in (
         torch.float32,

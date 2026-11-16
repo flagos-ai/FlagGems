@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["_aminmax", "_aminmax_out"]
 
-# GCU400 归约亲和参数：固定 grid 匹配 SIP 拓扑，核内跨步循环复用 CTA；
-# 大 BLOCK 摊薄 DTE 启动开销。取值由批量 A/B 扫描确定。
+# GCU400 reduction-friendly parameters: a fixed grid matching the SIP topology with an in-kernel stride loop reusing
+# CTAs;
+# a large BLOCK amortizes DTE launch overhead. Values come from batch A/B sweeps.
 _GCU400_AMINMAX_USE_SPECIALIZED = True
 _GCU400_AMINMAX_GRID = 24
 _GCU400_AMINMAX_BLOCK = 16384
@@ -48,12 +49,12 @@ def _gcu400_aminmax_partial_kernel(
     ACC_DTYPE: tl.constexpr,
     IS_FLOAT: tl.constexpr,
 ):
-    """第一阶段：固定数量的 CTA 跨步扫描全张量，各写出一个局部极值。"""
+    """Stage one: a fixed number of CTAs stride over the whole tensor, each writing one local extremum."""
     program_id = tl.program_id(0)
     min_fill = get_dtype_max(ACC_DTYPE)
     max_fill = get_dtype_min(ACC_DTYPE)
 
-    # 累加器恒为 fp32 / int32：GCU400 编译器无法在 bf16 上构造 inf 常量。
+    # Accumulators are always fp32 / int32: the GCU400 compiler cannot construct an inf constant in bf16.
     tile_min = tl.full((BLOCK,), min_fill, ACC_DTYPE)
     tile_max = tl.full((BLOCK,), max_fill, ACC_DTYPE)
     nan_count = tl.zeros((BLOCK,), tl.int32)
@@ -62,14 +63,15 @@ def _gcu400_aminmax_partial_kernel(
     for tile_index in range(program_id, num_tiles, GRID):
         element_offset = tile_index * BLOCK + tl.arange(0, BLOCK)
         valid_mask = element_offset < num_elements
-        # other=0 避免越界填充在窄 dtype 上触发类型转换；掩码后再补极值。
+        # other=0 avoids type conversion of out-of-range fills on narrow dtypes; the extremum is patched in after
+        # masking.
         values = tl.load(inp + element_offset, mask=valid_mask, other=0).to(ACC_DTYPE)
         values_for_min = tl.where(valid_mask, values, min_fill)
         values_for_max = tl.where(valid_mask, values, max_fill)
         tile_min = tl.minimum(tile_min, values_for_min)
         tile_max = tl.maximum(tile_max, values_for_max)
         if IS_FLOAT:
-            # tl.minimum/tl.maximum 会丢弃 NaN，需显式计数并在写出时污染结果。
+            # tl.minimum/tl.maximum discard NaN, so count NaNs explicitly and contaminate the output when writing.
             nan_count += (values != values).to(tl.int32)
 
     partial_min = tl.min(tile_min)
@@ -96,7 +98,7 @@ def _gcu400_aminmax_final_kernel(
     ACC_DTYPE: tl.constexpr,
     IS_FLOAT: tl.constexpr,
 ):
-    """第二阶段：单个 CTA 在 fp32 / int32 上归约第一阶段的部分极值。"""
+    """Stage two: a single CTA reduces the partial extrema from stage one in fp32 / int32."""
     partial_offset = tl.arange(0, BLOCK_FINAL)
     valid_mask = partial_offset < GRID
     min_fill = get_dtype_max(ACC_DTYPE)
@@ -113,7 +115,7 @@ def _gcu400_aminmax_final_kernel(
     final_min = tl.min(partial_mins)
     final_max = tl.max(partial_maxs)
     if IS_FLOAT:
-        # 任一部分结果带 NaN，两个输出都必须是 NaN（与 torch._aminmax 一致）。
+        # If any partial result is NaN, both outputs must be NaN (matching torch._aminmax).
         has_nan = (
             tl.sum((partial_mins != partial_mins).to(tl.int32))
             + tl.sum((partial_maxs != partial_maxs).to(tl.int32))
@@ -127,15 +129,15 @@ def _gcu400_aminmax_final_kernel(
 
 
 def _gcu400_aminmax_run(inp, out0=None, out1=None):
-    """GCU400 专属 driver：处理输入/view 与 ``.out`` 语义后启动两阶段归约。"""
+    """GCU400-specific driver: handles input/view and ``.out`` semantics before launching the two-stage reduction."""
     if inp.numel() == 0:
-        # ATen 对空张量拒绝归约，而不是返回正负无穷。
+        # ATen rejects reductions on empty tensors instead of returning positive/negative infinity.
         raise RuntimeError(
             "aminmax(): cannot compute aminmax over an empty dimension as the "
             "operation has no identity."
         )
 
-    # kernel 以平坦偏移索引，非连续 / expand 视图必须先物化为稠密副本。
+    # Kernels index by flat offsets, so non-contiguous / expanded views must first be materialized into dense copies.
     inp = inp.contiguous()
     num_elements = inp.numel()
     dtype = inp.dtype
@@ -156,7 +158,7 @@ def _gcu400_aminmax_run(inp, out0=None, out1=None):
                     f"Expected out tensor to have device {inp.device}, but got "
                     f"{output.device} instead"
                 )
-        # ATen 会把形状不符的输出原地 resize 成标量，并保持对象别名。
+        # ATen resizes a shape-mismatched output in place to a scalar and preserves object aliasing.
         if out0.shape != torch.Size([]):
             out0.resize_(())
         if out1.shape != torch.Size([]):
@@ -196,11 +198,12 @@ def _gcu400_aminmax_run(inp, out0=None, out1=None):
 
 
 def _aminmax(inp):
-    """gcu400 ``_aminmax``。
+    """gcu400 ``_aminmax``.
 
-    GCU 不支持 fp64：torch_gcu 已把 fp64 aten 用 float 替换，但生成的 Triton
-    kernel 中 fp64 NaN 检测无法合法化。对 fp32 视图归约后再恢复输入 dtype。
+    GCU does not support fp64: torch_gcu replaces fp64 aten with float, but fp64 NaN detection
+    in the generated Triton kernel cannot be legalized. Reduce over an fp32 view, then restore the input dtype.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _AMINMAX")
     if inp.dtype == torch.float64:
         min_out, max_out = _gcu400_aminmax_run(inp.to(torch.float32))
         return min_out.to(torch.float64), max_out.to(torch.float64)
@@ -210,6 +213,7 @@ def _aminmax(inp):
 
 
 def _aminmax_out(inp, *, out0, out1):
+    logger.debug("GEMS_ENFLAME_GCU400 _AMINMAX_OUT")
     if inp.dtype == torch.float64:
         min_out, max_out = _aminmax(inp)
         out0.resize_(())

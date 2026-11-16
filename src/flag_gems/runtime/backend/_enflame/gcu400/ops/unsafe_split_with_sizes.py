@@ -47,7 +47,7 @@ def unsafe_split_with_sizes(
     This is the "unsafe" variant of split_with_sizes that returns views
     into the original tensor without performing safety checks.
     """
-    logger.debug("GEMS UNSAFE_SPLIT_WITH_SIZES")
+    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_SPLIT_WITH_SIZES")
 
     dim = _normalize_dim(self, dim)
     split_sizes = _normalize_split_sizes(split_sizes)

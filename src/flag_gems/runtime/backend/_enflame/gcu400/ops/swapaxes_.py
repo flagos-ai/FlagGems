@@ -38,6 +38,7 @@ def swapaxes_(self: torch.Tensor, axis0: int, axis1: int) -> torch.Tensor:
     for out-of-range axes) without a Triton kernel.
     """
 
+    logger.debug("GEMS_ENFLAME_GCU400 SWAPAXES_")
     ndim = self.dim()
 
     # Normalize negative axes with aten's convention. A 0D tensor accepts only

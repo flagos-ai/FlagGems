@@ -12,28 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""scaled_dot_product_efficient_attention_backward 的 autotune 配置扩展。
+"""Autotune config extension for scaled_dot_product_efficient_attention_backward.
 
-原实现 `flash_attention_backward_gcu400.py` 的 dq/dkv 两个 kernel 只有 5 组
-BLOCK_M/BLOCK_N 配置（全部 num_warps=4, num_stages=2）。在 L600 (gcu400) 上
-补入 (128,128) 与 (64,256) 两种更宽的 tile 后，autotune 可为不同
-(seqlen_q, seqlen_k, HEAD_DIM) key 选到更快的实现，3 轮 benchmark 实测
-overall 1.159x / fp16 1.145x / 逐 case p10=1.109，且梯度数值与原配置逐位一致。
+The original `flash_attention_backward_gcu400.py` had only 5 groups of
+BLOCK_M/BLOCK_N configs for the dq/dkv kernels (all num_warps=4, num_stages=2). On L600 (gcu400),
+adding two wider tiles, (128,128) and (64,256), lets autotune pick a faster implementation for different
+(seqlen_q, seqlen_k, HEAD_DIM) keys; 3 benchmark rounds measured
+overall 1.159x / fp16 1.145x / per-case p10=1.109, with gradients bit-identical to the original configs.
 
-本模块只扩展 autotuner 的候选配置集合，不改动任何 kernel 逻辑；导出仍为
-原函数，因此 `flag_gems` 顶层与 `flag_gems.ops.*`（原文件末尾绑定）两个入口
-共享同一组已扩展的 autotuner 对象，收益对两条调用路径都生效。
+This module only extends the autotuner's candidate config set and changes no kernel logic; the export is still
+the original function, so both the `flag_gems` top level and `flag_gems.ops.*` entry points (bound at the
+end of the original file) share the same extended autotuner object, and the gain applies to both call paths.
 """
 
 import triton
 
 from . import flash_attention_backward_gcu400 as _impl
 
-# 原列表已有 (32,64)/(64,32)/(64,64)/(64,128)/(128,64)，这里只补两种更宽 tile
+# The original list already has (32,64)/(64,32)/(64,64)/(64,128)/(128,64); only two wider tiles are added here
 _EXTRA_TILES = [(128, 128), (64, 256)]
 
-# 低 warp 配置：GCU400 上 num_warps=1/2 对这两个 shape 明显快于 4 warp 的
-# 任意 tile（dq 要 (64,128)+2 warp，dkv 要 (128,64)+1 warp）。
+# Low-warp configs: on GCU400 num_warps=1/2 is clearly faster than any 4-warp
+# tile for these two shapes (dq wants (64,128)+2 warps, dkv wants (128,64)+1 warp).
 _LOW_WARP_TILES = {
     "_flash_attn_bwd_dq_fused": [(64, 128, 2)],
     "_flash_attn_bwd_dkv": [(128, 64, 1)],
@@ -41,7 +41,7 @@ _LOW_WARP_TILES = {
 
 
 def _extend_autotune_configs():
-    """给非 varlen 分支的 dq/dkv 两个 Autotuner 追加候选配置（幂等）。"""
+    """Append candidate configs to the two Autotuners of the non-varlen branch's dq/dkv (idempotent)."""
     for name in ("_flash_attn_bwd_dq_fused", "_flash_attn_bwd_dkv"):
         autotuner = getattr(_impl, name)
         existing = {

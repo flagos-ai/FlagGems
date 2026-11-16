@@ -47,7 +47,7 @@ def value_selecting_reduction_backward(
     Returns:
         Gradient with respect to the original input tensor
     """
-    logger.debug("GEMS VALUE_SELECTING_REDUCTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 VALUE_SELECTING_REDUCTION_BACKWARD")
 
     assert grad.dtype not in (
         torch.bool,

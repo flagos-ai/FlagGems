@@ -127,5 +127,5 @@ def _lu_with_info_impl(input, pivot=True, check_errors=True):
 
 
 def _lu_with_info(input, pivot=True, check_errors=True):
-    logger.debug("GEMS _LU_WITH_INFO")
+    logger.debug("GEMS_ENFLAME_GCU400 _LU_WITH_INFO")
     return _lu_with_info_impl(input, pivot, check_errors)

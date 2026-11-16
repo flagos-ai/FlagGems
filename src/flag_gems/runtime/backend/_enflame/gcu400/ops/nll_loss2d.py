@@ -259,7 +259,7 @@ class _NLLLoss2dFunction(torch.autograd.Function):
 
 
 def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL_LOSS2D")
+    logger.debug("GEMS_ENFLAME_GCU400 NLL_LOSS2D")
 
     assert self.ndim == 4, "nll_loss2d: expected 4D input (N, C, H, W)"
     assert self.dtype in (

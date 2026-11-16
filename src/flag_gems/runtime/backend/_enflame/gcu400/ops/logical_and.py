@@ -65,7 +65,8 @@ def _i32_words(t):
 
 
 def logical_and(A, B):
-    # 全局默认 64 位开关恒开后，int64 窄存储兼容分支已无触发条件，收敛为单条 kernel 调用。
+    # With the global 64-bit switch always on, the int64 narrow-storage compatibility branch has no trigger condition
+    # and converges to one kernel call.
     logger.debug("GEMS_ENFLAME LOGICAL_AND")
     return logical_and_func(A, B)
 
@@ -90,7 +91,7 @@ def logical_and_(A, B):
     logger.debug("GEMS_ENFLAME LOGICAL_AND_")
     if A.numel() == 0:
         return A
-    # 广播到 A 的形状后展开成连续张量，保证 kernel 内可用一维扁平偏移。
+    # Broadcast to A's shape and expand into a contiguous tensor so the kernel can use 1D flat offsets.
     expanded_other = B.expand_as(A)
     if not expanded_other.is_contiguous():
         expanded_other = expanded_other.contiguous()

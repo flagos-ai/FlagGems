@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 
 def subtract(A, B, *, alpha=1):
     """Subtracts `other`, scaled by `alpha`, from `input`."""
-    logger.debug("GEMS SUBTRACT")
+    logger.debug("GEMS_ENFLAME_GCU400 SUBTRACT")
     return sub(A, B, alpha=alpha)
 
 
 def subtract_(A, B, *, alpha=1):
     """In-place subtraction: A.subtract_(B, alpha=alpha) is equivalent to A -= B * alpha"""
-    logger.debug("GEMS SUBTRACT_")
+    logger.debug("GEMS_ENFLAME_GCU400 SUBTRACT_")
     return sub_(A, B, alpha=alpha)

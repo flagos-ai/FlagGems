@@ -200,7 +200,7 @@ def ccol_indices_copy(self: torch.Tensor) -> torch.Tensor:
     metadata; native accepts those inputs, so they are implemented rather than
     rejected.
     """
-    logger.debug("GEMS CCOL_INDICES_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 CCOL_INDICES_COPY")
     src = _select_src(self)
     out = torch.empty_like(src)
     _launch_ccol_copy(src, out)
@@ -219,7 +219,7 @@ def ccol_indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Ten
     staging buffer, matching the native behaviour of writing element-wise
     through the out strides.
     """
-    logger.debug("GEMS CCOL_INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 CCOL_INDICES_COPY_OUT")
     src = _select_src(self)
     if out.dtype != src.dtype:
         raise RuntimeError(

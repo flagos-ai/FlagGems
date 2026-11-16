@@ -699,7 +699,7 @@ class _ConvFunction(torch.autograd.Function):
 
 def nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1], **kwargs):
     """aten::_nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1])."""
-    logger.debug("GEMS NNPACK_SPATIAL_CONVOLUTION")
+    logger.debug("GEMS_ENFLAME_GCU400 NNPACK_SPATIAL_CONVOLUTION")
     out = kwargs.pop("out", None)
     if kwargs:
         raise TypeError(

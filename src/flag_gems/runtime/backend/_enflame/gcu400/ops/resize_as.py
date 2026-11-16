@@ -36,7 +36,7 @@ def resize_as(
     *,
     memory_format: Optional[torch.memory_format] = None,
 ):
-    logger.debug("GEMS RESIZE_AS")
+    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_AS")
 
     if memory_format is None:
         memory_format = torch.contiguous_format
@@ -74,7 +74,7 @@ def resize_as_(
     *,
     memory_format: Optional[torch.memory_format] = None,
 ):
-    logger.debug("GEMS RESIZE_AS_")
+    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_AS_")
 
     if memory_format is None:
         memory_format = torch.contiguous_format

@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_log2_``（in-place）。
+"""GCU400-specific ``_foreach_log2_`` (in-place).
 
-公共 ``foreach_unary`` 执行器用二维 grid 承载 chunk table；GCU400 的
-grid.y 硬件上限为 255，大 shape 下会报 ``out of resource: grid.y``。
-这里对浮点 tensor 列表改走一维固定 grid + 核内跨步的 log2 kernel，
-grid.x 恒为 48，既解除硬件限制也避免每条 tensor 建 metadata 的开销；
-非浮点/复数/integral 输入仍回退公共 ``apply_unary`` 以保持 dtype policy。
+The common ``foreach_unary`` executor carries the chunk table in a 2D grid; GCU400's
+grid.y hardware limit is 255, so large shapes raise ``out of resource: grid.y``.
+Float tensor lists use a 1D fixed grid + in-kernel striding log2 kernel instead,
+with grid.x fixed at 48, removing the hardware limit and the per-tensor metadata cost;
+non-float / complex / integral inputs still fall back to common ``apply_unary`` to keep dtype policy.
 """
 
 import logging
@@ -35,7 +35,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；编译期配置，不改变算子语义。
+# Generated per round by the optimization driver script; compile-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 NUM_WARPS = 4
@@ -56,7 +56,7 @@ def _foreach_log2_flat_kernel(
     BLOCK: tl.constexpr,
     FIXED_GRID: tl.constexpr,
 ):
-    """一维固定 grid 跨步写回 log2，支持任意长度 tensor。"""
+    """1D fixed grid with striding writing log2 back, supporting tensors of any length."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)

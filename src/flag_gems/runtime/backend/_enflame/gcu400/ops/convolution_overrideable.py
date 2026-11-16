@@ -41,8 +41,9 @@ def _forward_configs():
     Co tiles plus deeper software pipelining without changing the shared conv
     kernels that conv1d/conv2d/conv3d rely on.
     """
-    # GCU400 上 autotune 的多组冷编译会让 correctness / benchmark 超过时间盒；
-    # 改为确定性单配置分派，由优化迭代扫描选出最优固定档位（原则 16 换法）。
+    # On GCU400 autotune's multiple cold compilations make correctness / benchmark exceed the time box;
+    # switch to deterministic single-config dispatch, with the optimal fixed tier chosen by optimization sweeps
+    # (principle 16 swap).
     return [
         triton.Config(
             {
@@ -365,7 +366,7 @@ def convolution_overrideable(
     output_padding,
     groups,
 ):
-    logger.debug("GEMS CONVOLUTION_OVERRIDEABLE")
+    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION_OVERRIDEABLE")
     return _convolution_overrideable_impl(
         input,
         weight,
@@ -392,7 +393,7 @@ def convolution_overrideable_out(
     *,
     out,
 ):
-    logger.debug("GEMS CONVOLUTION_OVERRIDEABLE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION_OVERRIDEABLE_OUT")
     result = _convolution_overrideable_impl(
         input,
         weight,

@@ -1339,7 +1339,7 @@ def conv_transpose2d(
     groups=1,
     dilation=1,
 ):
-    logger.debug("GEMS CONV_TRANSPOSE2D")
+    logger.debug("GEMS_ENFLAME_GCU400 CONV_TRANSPOSE2D")
 
     stride_h, stride_w = _pair(stride)
     padding_h, padding_w = _pair(padding)

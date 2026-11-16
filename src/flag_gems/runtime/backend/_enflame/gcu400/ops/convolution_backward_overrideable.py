@@ -166,7 +166,7 @@ def convolution_backward_overrideable(
     groups,
     output_mask,
 ):
-    logger.debug("GEMS CONVOLUTION_BACKWARD_OVERRIDEABLE")
+    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION_BACKWARD_OVERRIDEABLE")
     if transposed:
         raise RuntimeError(
             "convolution_backward_overrideable: transposed not supported"
@@ -214,7 +214,7 @@ def convolution_backward_overrideable_out(
     out1,
     out2,
 ):
-    logger.debug("GEMS CONVOLUTION_BACKWARD_OVERRIDEABLE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION_BACKWARD_OVERRIDEABLE_OUT")
     grad_input, grad_weight, grad_bias = convolution_backward_overrideable(
         grad_output,
         input,

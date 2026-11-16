@@ -337,12 +337,12 @@ def _det_register2_kernel(A, out, N, BLOCK_N: tl.constexpr):
 
 
 def linalg_det(A):
-    logger.debug("GEMS LINALG_DET")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_DET")
     return _linalg_det_impl(A)
 
 
 def linalg_det_out(A, *, out=None):
-    logger.debug("GEMS LINALG_DET_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_DET_OUT")
     if out is None:
         raise TypeError("linalg_det(): out must be provided for out variant")
     if out.dtype != A.dtype:

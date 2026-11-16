@@ -338,7 +338,7 @@ def kthvalue(inp, k, dim=-1, keepdim=False):
     candidates beyond the register budget) fall back to the generic topk
     composition.
     """
-    logger.debug("GEMS KTHVALUE")
+    logger.debug("GEMS_ENFLAME_GCU400 KTHVALUE")
 
     original_dtype = inp.dtype
     ndim = inp.ndim

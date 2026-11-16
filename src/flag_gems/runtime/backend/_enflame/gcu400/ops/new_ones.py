@@ -38,7 +38,7 @@ def new_ones(self, size, *, dtype=None, layout=None, device=None, pin_memory=Non
     Returns:
         A tensor filled with ones
     """
-    logger.debug("GEMS NEW_ONES")
+    logger.debug("GEMS_ENFLAME_GCU400 NEW_ONES")
     if device is None:
         device = self.device
     if dtype is None:

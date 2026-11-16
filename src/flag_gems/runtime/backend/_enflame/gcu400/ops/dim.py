@@ -49,5 +49,5 @@ def dim(self: torch.Tensor) -> int:
     layout-independent. ``dim()``, ``ndim`` and ``ndimension`` are aliases
     returning the same plain ``int``.
     """
-    logger.debug("GEMS DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 DIM")
     return _NDIM_GETTER(self)

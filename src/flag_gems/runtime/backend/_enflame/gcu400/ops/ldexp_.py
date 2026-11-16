@@ -50,13 +50,13 @@ _WRAP_INTEGER_EXPONENT = tuple(map(int, torch.__version__.split(".")[:2])) >= (2
 
 @triton.jit
 def _pow2_scale(exponent):
-    """构造 2**exponent 的 f32 位模式，要求 -126 <= exponent <= 127。"""
+    """Build the f32 bit pattern of 2**exponent, requiring -126 <= exponent <= 127."""
     return ((exponent + 127) << 23).to(tl.float32, bitcast=True)
 
 
 @triton.jit
 def _ldexp_pow2(x, exponent):
-    """x * 2**exponent，用三段 2 的幂乘法代替 SFU 版 ldexp（细节见 ldexp.py）。"""
+    """x * 2**exponent, using three power-of-two multiplications instead of the SFU version of ldexp (see ldexp.py)."""
     exponent = tl.maximum(tl.minimum(exponent, 381), -378)
     first = tl.maximum(tl.minimum(exponent, 127), -126)
     rest_after_first = exponent - first
@@ -253,7 +253,7 @@ def _is_exact_alias(left, right):
 
 
 def ldexp_(self, other):
-    logger.debug("GEMS LDEXP_")
+    logger.debug("GEMS_ENFLAME_GCU400 LDEXP_")
     if has_internal_overlapping(self) == MemOverlap.Yes:
         raise RuntimeError(
             "unsupported operation: more than one element of the written-to tensor "
@@ -291,8 +291,10 @@ def ldexp_(self, other):
         )
 
     integral_exponent = not other.is_floating_point() and not other.is_complex()
-    # GCU400 的 pointwise_dynamic 在两输入 stride 不一致时会对非连续操作数的尾部
-    # 索引错位（见 ldexp.py 同名说明），先把非连续的指数张量实体化。
+    # On GCU400 pointwise_dynamic misaligns the tail indices of a non-contiguous operand when the two inputs have
+    # different strides
+    # Index misalignment (see the note with the same name in ldexp.py); materialize a non-contiguous exponent tensor
+    # first.
     if not other.is_contiguous():
         other = other.contiguous()
     if self.is_complex():

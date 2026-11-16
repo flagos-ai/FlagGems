@@ -38,18 +38,18 @@ def hspmm_kernel(
     mat2_stride_1,
     BLOCK_N: tl.constexpr,
 ):
-    """混合稀疏-稠密矩阵乘：每个 program 处理一个 nnz 条目。
+    """Mixed sparse-dense matrix multiply: one program per nnz entry.
 
-    输出 values 的第 pid 行等于 val[pid] * mat2[col[pid], :]，随后由
-    PyTorch 稀疏张量按 row_indices 累加成稠密结果。row 索引只在 host 侧
-    构造输出索引时使用，因此不再作为 kernel 指针参数传入（GCU 上稀疏
-    COO 的 _indices() 可能位于 CPU，传入会触发 launcher 指针校验失败）。
+    Row pid of output values equals val[pid] * mat2[col[pid], :], later accumulated into a dense result by
+    PyTorch's sparse tensor according to row_indices. The row index is used only on the host
+    when constructing output indices, so it is no longer passed as a kernel pointer argument (on GCU a sparse
+    COO's _indices() may live on CPU, and passing it triggers launcher pointer validation failure).
     """
     pid = tl.program_id(0)
     if pid >= nnz:
         return
 
-    # 标量值与列索引均已在 host 侧搬到 GCU 设备
+    # Scalar values and column indices have already been moved to the GCU device on the host
     val_scalar = tl.load(val_ptr + pid)
     col_idx = tl.load(col_ptr + pid)
 
@@ -87,7 +87,7 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
     Returns:
         Sparse COO tensor of shape (M, N), uncoalesced (one entry per input nnz)
     """
-    logger.debug("GEMS HSPMM")
+    logger.debug("GEMS_ENFLAME_GCU400 HSPMM")
 
     if mat1.layout != torch.sparse_coo:
         raise ValueError(f"hspmm: mat1 must be sparse COO, got {mat1.layout}")
@@ -99,17 +99,18 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
     if K != K2:
         raise ValueError(f"hspmm: mat1.shape[1]={K} must match mat2.shape[0]={K2}")
 
-    # 提取 COO 分量。注意：当前 torch_gcu 的 torch.sparse_coo_tensor 即使
-    # 传入 device=gcu 也会把稀疏张量实际存放在 CPU（mat1.device == "cpu"），
-    # 因此 kernel 需读取的列索引/值必须显式搬到稠密操作数 mat2 所在设备，
-    # 否则会触发 launcher 的 "cannot be accessed from Kurama (cpu tensor?)"。
+    # Extract COO components. Note: current torch_gcu's torch.sparse_coo_tensor places the sparse tensor
+    # on CPU even when device=gcu is given (mat1.device == "cpu"),
+    # so the column indices / values the kernel must read have to be moved explicitly to the dense operand mat2's
+    # device,
+    # otherwise the launcher raises "cannot be accessed from Kurama (cpu tensor?)".
     indices = mat1._indices()
     values = mat1._values()
     nnz = mat1._nnz()
     compute_device = mat2.device
 
     if nnz == 0:
-        # 空稀疏张量：indices/values 都放在计算设备上，保证 to_dense() 也落在设备侧
+        # Empty sparse tensor: indices/values are all placed on the compute device so to_dense() also lands on device
         out_indices = torch.zeros((1, 0), dtype=torch.long, device=compute_device)
         out_values = torch.zeros((0, N), dtype=mat2.dtype, device=compute_device)
         return torch.sparse_coo_tensor(
@@ -117,7 +118,8 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
         )
 
     # For COO, indices has shape (2, nnz) or (ndim, nnz)
-    # 行索引只用于构造输出稀疏张量（留在 CPU），列索引与值需搬到计算设备
+    # Row indices are used only to build the output sparse tensor (kept on CPU); column indices and values move to the
+    # compute device
     if indices.dim() == 1:
         # 1D sparse tensor edge case
         row_indices = torch.zeros(nnz, dtype=torch.long)
@@ -146,8 +148,8 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
         BLOCK_N=BLOCK_N,
     )
 
-    # 输出稀疏 COO：索引与值都放在计算设备上，使 to_dense() 结果也落在设备侧，
-    # 便于与设备侧参考实现比较（torch_gcu 的稀疏张量 device 字段可能仍显示 cpu）。
+    # Output sparse COO: indices and values are all on the compute device so to_dense() also lands on device,
+    # easing comparison with the device-side reference (torch_gcu's sparse tensor device field may still show cpu).
     out_indices = row_indices.to(compute_device).unsqueeze(0)
 
     return torch.sparse_coo_tensor(

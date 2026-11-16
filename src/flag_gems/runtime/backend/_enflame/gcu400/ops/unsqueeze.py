@@ -33,7 +33,7 @@ def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
     Returns:
         View of the input tensor with a dimension of size 1 inserted
     """
-    logger.debug("GEMS UNSQUEEZE")
+    logger.debug("GEMS_ENFLAME_GCU400 UNSQUEEZE")
 
     ndim = A.dim()
 
@@ -66,7 +66,7 @@ def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
     ``A`` via ``Tensor.set_`` so the metadata mutation is applied to ``A``
     in place, then ``A`` is returned.
     """
-    logger.debug("GEMS UNSQUEEZE_")
+    logger.debug("GEMS_ENFLAME_GCU400 UNSQUEEZE_")
     out = unsqueeze(A, dim)
     A.set_(out)
     return A

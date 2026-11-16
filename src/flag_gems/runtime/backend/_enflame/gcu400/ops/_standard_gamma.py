@@ -121,7 +121,7 @@ def standard_gamma_kernel(
 
 
 def standard_gamma(input, generator=None):
-    logger.debug("GEMS _STANDARD_GAMMA")
+    logger.debug("GEMS_ENFLAME_GCU400 _STANDARD_GAMMA")
 
     # ATen's gamma_cuda is only implemented for floating-point tensors and
     # raises a RuntimeError for integral/bool inputs. Reject them explicitly

@@ -100,8 +100,8 @@ def grouped_mm_kernel(
                 accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
                 for k in tl.range(0, tl.cdiv(K, BLOCK_K)):
-                    # K/N 可整除时去掉对应维度的边界检查，分支由 constexpr
-                    # 在编译期裁剪；未启用时保持与原始实现完全一致的访存语句。
+                    # When K/N divide evenly, drop that dimension's bounds check; the branch is trimmed
+                    # at compile time by constexpr; when disabled, memory statements stay exactly as in the original.
                     if EVEN_K and EVEN_N:
                         a = tl.load(
                             a_block_ptr, boundary_check=(0,), padding_option="zero"
@@ -140,8 +140,8 @@ def grouped_mm_kernel(
                         block_shape=(BLOCK_M, BLOCK_N),
                         order=(1, 0),
                     )
-                    # EVEN_N 时整块都在 C 的合法范围内，可省掉边界检查；
-                    # 否则保持原始实现的双维检查。
+                    # With EVEN_N the whole block is within C's valid range, so the bounds check can be dropped;
+                    # otherwise keep the original implementation's dual-dimension checks.
                     if EVEN_N:
                         tl.store(c_block_ptr, c)
                     else:
@@ -306,7 +306,7 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
     # below is deterministic across 60+ repeated runs per shape, so every
     # shape now goes through it.
     BLOCK_K = _select_block_k(K)
-    # 短 K 分组（G 多、N 大）在 num_warps=2 下更快，长 K 保持 1。
+    # Short-K groups (many G, large N) are faster with num_warps=2; long K keeps 1.
     NUM_WARPS = 2 if K <= 256 else 1
     NUM_STAGES = 3
     # Persistent grid: cap concurrent programs at GCU_NUM_GRID and let the
@@ -316,8 +316,8 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
     total_tiles_upper = triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)
     grid = (min(GCU_NUM_GRID, total_tiles_upper),)
 
-    # K / N 能整除时省掉边界 mask；N 很大的 shape 无 mask 路径会落入
-    # 低算力稳态，因此只对 N<=2048 启用。
+    # When K / N divide evenly, drop boundary masks; for very large N the unmasked path falls into a
+    # low-compute steady state, so it is enabled only for N<=2048.
     enable_even = N <= 2048
     even_k = enable_even and K % BLOCK_K == 0
     even_n = enable_even and N % BLOCK_N == 0

@@ -144,7 +144,7 @@ def _standard_gamma_grad_func(self_grad, output):
 
 
 def standard_gamma_grad(self_grad, output):
-    logger.debug("GEMS STANDARD_GAMMA_GRAD")
+    logger.debug("GEMS_ENFLAME_GCU400 STANDARD_GAMMA_GRAD")
     # Match the native _standard_gamma_grad dtype contract: both inputs must be
     # floating point and share the same dtype (no promotion of mixed or integer
     # inputs).

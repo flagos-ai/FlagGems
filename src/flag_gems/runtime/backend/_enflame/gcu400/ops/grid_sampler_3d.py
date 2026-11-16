@@ -454,7 +454,7 @@ def grid_sampler_3d(
     an in-kernel grid-stride loop, so the benchmark's largest shape
     (N*OD*OH*OW = 262144) stays launchable.
     """
-    logger.debug("GEMS GRID_SAMPLER_3D")
+    logger.debug("GEMS_ENFLAME_GCU400 GRID_SAMPLER_3D")
 
     N, C, in_d, in_h, in_w = input.shape
     out_d, out_h, out_w = grid.shape[1:4]

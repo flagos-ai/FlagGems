@@ -46,8 +46,8 @@ def sparse_semi_structured_mm_kernel(
     BLOCK_N: tl.constexpr,
     MERGED_LOAD: tl.constexpr,
 ):
-    # 逐 k 处理 2:4 稀疏组：每步只构造 (BLOCK_M, BLOCK_N) 的二维外积，
-    # 避免公共实现 (BM, BK, BN) 三维中间张量打爆 GCU400 DSM。
+    # Process 2:4 sparse groups one k at a time: each step builds only a (BLOCK_M, BLOCK_N) 2D outer product,
+    # avoiding the common implementation's (BM, BK, BN) 3D intermediate that blows up GCU400 DSM.
     pid = tl.program_id(0)
     num_pid_n = tl.cdiv(N, BLOCK_N)
     pid_m = pid // num_pid_n
@@ -63,7 +63,7 @@ def sparse_semi_structured_mm_kernel(
             Meta + offs_am * stride_mm + group * stride_mn, mask=mask_m, other=0
         ).to(tl.float32)
         if MERGED_LOAD:
-            # 一次 2D load 取回组内 4 个 A 值，减少独立访存指令
+            # One 2D load fetches all 4 A values of the group, reducing independent memory instructions
             pos = tl.arange(0, 4)
             a_group = tl.load(
                 A
@@ -138,7 +138,8 @@ def sparse_semi_structured_mm_kernel(
 
 
 def _sparse_semi_structured_mm(mat1, mat1_meta, mat2, *, out_dtype=None):
-    """2:4 半结构化稀疏矩阵乘：按 meta 选取每组 4 个元素中的 2 个与 mat2 对应行累加。"""
+    """2:4 semi-structured sparse matmul: pick 2 of every 4 elements by meta and accumulate with the matching mat2
+    rows."""
     logger.debug("GEMS_ENFLAME SPARSE_SEMI_STRUCTURED_MM")
     M, K4, N = mat1.shape[0], mat1_meta.shape[1], mat2.shape[1]
     assert mat1.shape == (M, 4 * K4), "mat1 shape mismatch"

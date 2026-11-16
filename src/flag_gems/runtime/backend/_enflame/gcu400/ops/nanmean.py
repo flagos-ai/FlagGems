@@ -187,20 +187,20 @@ def _dim_block_k(M, K):
     return min(8192, triton.next_power_of_2(K), triton.next_power_of_2(ideal))
 
 
-# 与 gcu400 sum.py 行归约同源的 tile / grid 参数。
-# grid 上限 48（4 波 × 12 SIP）：行归约按行数开 grid 在 M > 65535 * BLOCK_M 时
-# 撞 GCU grid.x 硬上限（65535），持久化遍历后 grid 恒 <= 48。
+# Tile / grid parameters from the same source as gcu400 sum.py's row reduction.
+# Grid cap 48 (4 waves x 12 SIP): row reduction opens grid by row count and hits GCU's
+# grid.x hard limit (65535) when M > 65535 * BLOCK_M; persistent traversal keeps grid <= 48.
 NANMEAN_MAX_GRID = 48
-# 行归约 tile 的字节预算。nanmean 每块比 sum 多驻留 valid 掩码与 where 中间值
-# （实测 32x4096 tile 即需 1.4MB DSM > 917504B 硬限），预算取 sum 的 1/4，
-# 使 tile 缓冲峰值 ~366KB，留足余量。
+# Byte budget of the row-reduction tile. nanmean keeps an extra valid mask and where temporaries per block
+# (measured 32x4096 tile needs 1.4MB DSM > 917504B limit), so take 1/4 of sum's budget,
+# giving a ~366KB tile buffer peak with comfortable headroom.
 NANMEAN_INNER_TILE_BYTES = 65536
-# 单块归约宽度上限；fp32 跨 lane 归约成本更低，允许翻倍（同 sum.py）。
+# Single-block reduction width cap; fp32 cross-lane reduction is cheaper, so allow doubling (same as sum.py).
 NANMEAN_MAX_REDUCE_WIDTH = 16384
 
 
 def _inner_blocks(element_size, M, N):
-    """行归约 tile 选型：tile 字节预算 + batch 行数上界（同 sum.py 制式）。"""
+    """Row-reduction tile selection: tile byte budget + batch row cap (same pattern as sum.py)."""
     max_width = (
         NANMEAN_MAX_REDUCE_WIDTH * 2 if element_size >= 4 else NANMEAN_MAX_REDUCE_WIDTH
     )
@@ -275,12 +275,12 @@ def nanmean_dim_inner_kernel(
     BLOCK_N: tl.constexpr,
     num_stages: tl.constexpr = 1,
 ):
-    """被归约维在最内层的行归约：行 tile 持久化遍历，grid 上限 NANMEAN_MAX_GRID。
+    """Row reduction when the reduced dim is innermost: persistent row-tile traversal, grid capped at NANMEAN_MAX_GRID.
 
-    GCU 的 grid.x 硬上限是 65535：行数大（如 (1024,1024,512) 沿 dim=-1 的
-    M=1048576）时按行数开 grid 会直接 OutOfResources。改为固定数量的
-    program 各自跨行 tile 循环，制式与 gcu400 sum.py 的 sum_dim_inner_kernel
-    一致（逐块即时行归约，累加器只驻留 [BLOCK_M]）。
+    GCU's grid.x hard limit is 65535: with many rows (e.g. (1024,1024,512) along dim=-1 gives
+    M=1048576), opening grid by row count directly raises OutOfResources. Use a fixed number of
+    programs each looping over row tiles, matching gcu400 sum.py's sum_dim_inner_kernel
+    (per-block immediate row reduction, accumulator only [BLOCK_M]).
     """
     if tl.constexpr(out.dtype.element_ty == tl.float32):
         value_dtype = tl.float32
@@ -356,7 +356,7 @@ def _squeeze_dims(result, dims):
 
 
 def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS NANMEAN_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 NANMEAN_DIM")
     if dtype is None:
         dtype = inp.dtype
 
@@ -558,7 +558,7 @@ class _NanmeanAutograd(torch.autograd.Function):
 
 
 def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS NANMEAN")
+    logger.debug("GEMS_ENFLAME_GCU400 NANMEAN")
     if not (inp.is_floating_point() or inp.is_complex()):
         raise NotImplementedError(
             "nanmean(): expected input to have floating point or complex dtype but got "
@@ -583,7 +583,7 @@ def nanmean(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def nanmean_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS NANMEAN_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 NANMEAN_OUT")
     if out is None:
         raise RuntimeError("nanmean(): missing required out tensor")
     if torch.is_grad_enabled() and (inp.requires_grad or out.requires_grad):

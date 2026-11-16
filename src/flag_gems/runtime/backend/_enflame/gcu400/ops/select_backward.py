@@ -101,7 +101,7 @@ def _next_pow2(x):
 
 
 def select_backward(grad, input_sizes, dim, index, out=None):
-    logger.debug("GEMS SELECT_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SELECT_BACKWARD")
     dim = int(dim)
     index = int(index)
     sizes = list(input_sizes)

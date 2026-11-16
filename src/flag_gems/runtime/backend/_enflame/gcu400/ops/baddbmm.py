@@ -80,13 +80,13 @@ def _should_delegate_to_native(bias, A, B):
 
 
 def _select_baddbmm_config(Batch, M, N, K, dtype):
-    # 按 dtype 与 shape 档位确定性选择 GEMM tile，替代 libtuner autotune。
-    # 依据同源扫描结论（bmm.py）：BM=128/BN=256 为通用最优；fp16/bf16 偏
-    # BK=256/w=4，fp32 偏 BK=128/w=2；超大 batch 的大方阵需增大 BM 或减小 BK
-    # 以避免 grid.x 超出硬件上限并保持流水效率；极小 K / 极小 shape 用小 tile。
-    # 小 shape 档（委托线下唯一 Triton 档）实测：fp16/bf16 用 (128,128,256,w4,ns2)
-    # （(2,384^3) 直测 12.1µs vs native 17.7µs = 1.47×，(128,128,128) 档 12.8µs）；
-    # fp32 用 (64,128,128,w4,ns2)（17.6µs vs native 24.4µs = 1.39×）。
+    # Select GEMM tiles deterministically by dtype and shape tier, replacing libtuner autotune.
+    # From the same-source sweep (bmm.py): BM=128/BN=256 is generally optimal; fp16/bf16 prefers
+    # BK=256/w=4, fp32 prefers BK=128/w=2; very large batches of big square matrices need larger BM or smaller BK
+    # to avoid exceeding the grid.x hardware limit and keep pipeline efficiency; tiny K / tiny shapes use small tiles.
+    # Small-shape tier (the only Triton tier on the delegated path) measured: fp16/bf16 use (128,128,256,w4,ns2)
+    # ((2,384^3) measured directly 12.1us vs native 17.7us = 1.47x; the (128,128,128) tier 12.8us);
+    # fp32 uses (64,128,128,w4,ns2) (17.6us vs native 24.4us = 1.39x).
     num_stages = 3
     if K < 128:
         block_m, block_n, block_k, num_warps = 64, 64, 32, 4
@@ -111,8 +111,9 @@ def _select_baddbmm_config(Batch, M, N, K, dtype):
     else:
         block_m, block_n, block_k, num_warps = 128, 256, 256, 4
 
-    # 精确判定：只有三个维度都能被实际选中的 tile 整除时，load/store 才无越界，
-    # 此时在编译期裁剪出无 mask 快速路径；否则回退到带 mask 的通用路径。
+    # Exact decision: only when all three dimensions are divisible by the actually selected tiles are load/store
+    # free of out-of-bounds access, in which case an unmasked fast path is compiled; otherwise use the masked generic
+    # path.
     even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
     return block_m, block_n, block_k, num_warps, num_stages, even
 
@@ -179,8 +180,8 @@ def baddbmm_kernel(
     )
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    # EVEN 是编译期常量，编译器据此静态裁剪为单个循环，
-    # 避免运行时分支打断 tl.dot 流水（运行时分支会令 dot 退化为标量计算）。
+    # EVEN is a compile-time constant, so the compiler statically trims it to a single loop,
+    # avoiding a runtime branch interrupting the tl.dot pipeline (a runtime branch degrades dot to scalar compute).
     if EVEN:
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = tl.load(a_ptrs)
@@ -213,8 +214,8 @@ def baddbmm_kernel(
         + offs_cm[:, None] * stride_cm
         + offs_cn[None, :] * stride_cn
     )
-    # bias 以原 stride 参与 epilogue（0-stride 即广播），免 broadcast_to+
-    # contiguous 的整张 (B,M,N) 物化拷贝。
+    # bias participates in the epilogue with its original stride (0-stride is broadcast), avoiding broadcast_to+
+    # contiguous full materialization of a whole (B,M,N) copy.
     bias_ptrs = (
         bias
         + pid_b * stride_bias_b
@@ -234,7 +235,7 @@ def baddbmm_kernel(
 
 
 def _launch_baddbmm(A, B, bias, out, Batch, M, N, K, alpha, beta):
-    # 集中处理 config 分派与 kernel 启动，供 baddbmm / baddbmm_out 共用。
+    # Centralize config dispatch and kernel launch, shared by baddbmm / baddbmm_out.
     block_m, block_n, block_k, num_warps, num_stages, even = _select_baddbmm_config(
         Batch, M, N, K, A.dtype
     )
@@ -287,9 +288,9 @@ class BaddbmmFunction(torch.autograd.Function):
         ctx.alpha = alpha
         ctx.beta = beta
 
-        # 饱和段（大工作量）委托 native kernel：bit 级一致、零派发开销；
-        # 原样透传（native 自带任意 stride / 广播 bias 支持）。forward 内
-        # autograd 已被 Function 机制隔离，call_boxed 只跑设备 kernel。
+        # Saturation range (large workload) delegates to the native kernel: bit-identical, zero dispatch overhead;
+        # passed through unchanged (native supports arbitrary stride / broadcast bias). Inside forward,
+        # autograd is isolated by the Function mechanism, so call_boxed only runs the device kernel.
         if _should_delegate_to_native(bias, A, B):
             return _NATIVE_BADDBMM.call_boxed(
                 _DEVICE_KEYSET, bias, A, B, beta=beta, alpha=alpha
@@ -375,4 +376,5 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
+    logger.debug("GEMS_ENFLAME_GCU400 BADDBMM")
     return BaddbmmFunction.apply(bias, A, B, beta, alpha)

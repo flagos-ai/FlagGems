@@ -516,13 +516,13 @@ def fused_recurrent_gated_delta_rule_fwd(
     num_accepted_tokens: torch.Tensor | None = None,
     use_qk_l2norm_in_kernel: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    logger.debug("GEMS FUSED_RECURRENT_GATED_DELTA_RULE_FWD")
+    logger.debug("GEMS_ENFLAME_GCU400 FUSED_RECURRENT_GATED_DELTA_RULE_FWD")
     B, T, H, K, V = *k.shape, v.shape[-1]
     HV = v.shape[2]
     N = B if cu_seqlens is None else len(cu_seqlens) - 1
-    # t8 批 Step 4 A10：BV 上限 32 -> 64，NV 从 4 降到 2、
-    # grid=(NK,NV,N*HV) 减半，实测 8.067ms -> 2.430ms（3.32x），
-    # A/B 共 22 轮、三次复现极稳定且 3/3 逐位一致。
+    # t8 batch Step 4 A10: BV limit 32 -> 64, NV reduced from 4 to 2,
+    # grid=(NK,NV,N*HV) halved; measured 8.067ms -> 2.430ms (3.32x),
+    # 22 A/B rounds, three reproducible runs, bit-identical in 3/3 cases.
     BK, BV = triton.next_power_of_2(K), min(triton.next_power_of_2(V), 128)
     NK, NV = triton.cdiv(K, BK), triton.cdiv(V, BV)
     assert NK == 1, "NK > 1 is not supported yet"

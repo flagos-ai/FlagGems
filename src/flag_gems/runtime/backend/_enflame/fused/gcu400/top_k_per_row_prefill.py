@@ -1018,6 +1018,7 @@ def tle_top_k_per_row_prefill(
     USE_RADIX_FINAL: tl.constexpr,
     ROW_OFFSET: tl.constexpr,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 TLE_TOP_K_PER_ROW_PREFILL")
     NUM_FILNAL_ITEMS: tl.constexpr = 2048
     NUM_BINS: tl.constexpr = 2048
     VEC: tl.constexpr = 4
@@ -1135,6 +1136,7 @@ def non_tle_top_k_per_row_prefill(
     BLOCK_SIZE: tl.constexpr,
     ROW_OFFSET: tl.constexpr,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 NON_TLE_TOP_K_PER_ROW_PREFILL")
     VEC: tl.constexpr = 4
     NUM_BINS: tl.constexpr = 2048
     NUM_FILNAL_ITEMS: tl.constexpr = 2048
@@ -1211,7 +1213,7 @@ def top_k_per_row_prefill(
     which uses per-row global scratch buffers instead of ``tle.gpu.alloc``
     shared memory and passes every accuracy shape on this device.
     """
-    logger.debug("GEMS TOP_K_PER_ROW_PREFILL")
+    logger.debug("GEMS_ENFLAME_GCU400 TOP_K_PER_ROW_PREFILL")
 
     vocab_size = logits.shape[1]
     assert num_rows == logits.shape[0]

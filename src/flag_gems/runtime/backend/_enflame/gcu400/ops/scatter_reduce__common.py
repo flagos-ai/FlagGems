@@ -1959,7 +1959,7 @@ def scatter_reduce(
     Returns:
         Output tensor with same shape and dtype as inp.
     """
-    logger.debug("GEMS SCATTER_REDUCE_TWO")
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE_TWO")
 
     assert reduce in (
         "sum",
@@ -2336,7 +2336,7 @@ def scatter_reduce(
 
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
-    logger.debug("GEMS SCATTER_REDUCE_TWO_")
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE_TWO_")
 
     rowwise_strategy = _select_rowwise_strategy(
         inp,
@@ -2367,7 +2367,7 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
 
 def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=None):
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
-    logger.debug("GEMS SCATTER_REDUCE_TWO_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE_TWO_OUT")
 
     if out is not None and out.dtype != inp.dtype:
         raise RuntimeError(

@@ -32,11 +32,11 @@ def sinc_func(x):
 
 
 def sinc(A):
-    logger.debug("GEMS SINC")
+    logger.debug("GEMS_ENFLAME_GCU400 SINC")
     return sinc_func(A)
 
 
 def sinc_(A):
-    logger.debug("GEMS SINC_")
+    logger.debug("GEMS_ENFLAME_GCU400 SINC_")
     sinc_func(A, out0=A)
     return A

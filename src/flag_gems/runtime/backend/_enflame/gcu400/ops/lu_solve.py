@@ -89,12 +89,12 @@ def _lu_solve_impl(B, LU_data, LU_pivots, out):
 
 
 def lu_solve(B, LU_data, LU_pivots, *, out=None):
-    logger.debug("GEMS LU_SOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 LU_SOLVE")
     if out is not None:
         return _lu_solve_impl(B, LU_data, LU_pivots, out)
     return _lu_solve_impl(B, LU_data, LU_pivots, None)
 
 
 def lu_solve_out(B, LU_data, LU_pivots, *, out):
-    logger.debug("GEMS LU_SOLVE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LU_SOLVE_OUT")
     return _lu_solve_impl(B, LU_data, LU_pivots, out)

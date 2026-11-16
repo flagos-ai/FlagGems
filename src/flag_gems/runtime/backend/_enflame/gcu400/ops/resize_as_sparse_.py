@@ -25,19 +25,20 @@ _STRIDED = torch.strided
 _ALLOWED_TEMPLATE_LAYOUTS = (torch.sparse_coo, torch.strided)
 
 # ---------------------------------------------------------------------------
-# torch_gcu dispatch adaptation (GCU400 无 SparseCOO TensorImpl)
+# torch_gcu dispatch adaptation (GCU400 has no SparseCOO TensorImpl)
 #
-# 本后端产出的稀疏 COO 张量组件全部落在 CPU（`_dimI.py`/`sparse_resize_.py`
-# 既定回退约定），但「CPU COO self + GCU dense template」这类混合 device 调用
-# 的 dispatch key 取并集落在 Sparse<device-key>（"Sparsegcu"）上，而 torch_gcu
-# 未给 `aten::resize_as_sparse_` 注册该 key 的 kernel——参考实现与用户代码直接
-# 走 `Tensor.resize_as_sparse_` 时抛 NotImplementedError，尽管该算子只读布局
-# 元数据、与 device 无关。照 `sparse_resize_.py` 的 `_sparse_coo_tensor_with_dims`
-# 与 `sparse_dim.py` 的 SparseCPU trampoline 同一制式，把本实现幂等注册到稀疏
-# device key 上：调用落回本 Python 实现，仅读 template 的 layout/size 元数据并
-# 转发 `sparse_resize_`（CPU self 落 native SparseCPU kernel，语义与 native
-# resize_as_sparse_ 逐项一致）。注册幂等，torch 属性 flag 防重复；enable()/
-# use_gems() 后续对同一 key 的重复注册会被 registrar 捕获为 warning，行为不变。
+# Sparse COO tensors produced on this backend have all components on CPU (`_dimI.py`/`sparse_resize_.py`
+# established fallback), but mixed-device calls like "CPU COO self + GCU dense template" have a dispatch key
+# union landing on Sparse<device-key> ("Sparsegcu"), and torch_gcu
+# has no kernel registered for `aten::resize_as_sparse_` on that key - reference implementations and user code calling
+# `Tensor.resize_as_sparse_` directly raise NotImplementedError, even though this operator reads only layout
+# metadata and is device-independent. Following `_sparse_coo_tensor_with_dims` in `sparse_resize_.py`
+# and SparseCPU trampoline in `sparse_dim.py`, idempotently register this implementation on the sparse
+# device key: calls land back in this Python implementation, which reads only template layout/size metadata and
+# forwards `sparse_resize_` (CPU self lands on native SparseCPU kernel, semantics item-for-item identical to native
+# resize_as_sparse_). Registration is idempotent with a torch attribute flag; later duplicate registration of the same
+# key by enable()/
+# use_gems() is caught by the registrar as a warning, behavior unchanged.
 # ---------------------------------------------------------------------------
 _RESIZE_AS_SPARSE_SPARSE_KEY_FLAG = (
     "_flag_gems_gcu400_resize_as_sparse_sparse_key_registered"
@@ -46,7 +47,7 @@ _RESIZE_AS_SPARSE_LIBRARY = None
 
 
 def _ensure_sparse_key_registration():
-    """幂等注册 Sparse<device-key> 的 resize_as_sparse_ 实现。"""
+    """Idempotently register the resize_as_sparse_ implementation on Sparse<device-key>."""
     global _RESIZE_AS_SPARSE_LIBRARY
     if getattr(torch, _RESIZE_AS_SPARSE_SPARSE_KEY_FLAG, False):
         return
@@ -65,14 +66,17 @@ def _ensure_sparse_key_registration():
 # ---------------------------------------------------------------------------
 # COO alias views must survive ``.detach()`` (GCU400 sparse component shim)
 #
-# ``sparse_coo_tensor.py`` 的 `_maybe_attach_alias_views` 把工厂产出的 COO 容器
-# 的 ``_indices``/``_values`` 以**实例属性**形式指回调用方的 device 张量（上游
-# 别名契约：`torch.sparse_coo_tensor` 不复制组件）。``.detach()`` 生成新 Python
-# 对象但不复制实例属性，detached 视图回落到类级解析——native 读出 CPU 组件缓冲，
-# 与原对象上的 device 视图分叉（探针实证：构造后立即 detach 即分叉，与任何
-# resize 无关）。`resize_as_sparse_` 的别名契约要求 detached 视图与本体看到同一
-# values 存储；本包装把已有的实例视图透传给 detached 结果，无视图的张量保持
-# 原生 detach 语义不变。torch 属性 flag 幂等，模块双名导入安全。
+# ``sparse_coo_tensor.py``'s `_maybe_attach_alias_views` points the factory-produced COO container's
+# ``_indices``/``_values`` back to the caller's device tensors as **instance attributes** (upstream
+# alias contract: `torch.sparse_coo_tensor` does not copy components). ``.detach()`` creates a new Python
+# object but does not copy instance attributes, so the detached view falls back to class-level resolution - native reads
+# the CPU component buffer,
+# diverging from the device view on the original object (probe confirmed: detaching immediately after construction
+# already diverges,
+# unrelated to any resize). `resize_as_sparse_`'s alias contract requires the detached view and the body to see the same
+# values storage; this wrapper passes existing instance views through to the detached result, and tensors without views
+# keep
+# native detach semantics unchanged. The torch attribute flag is idempotent and safe under dual-name module imports.
 # ---------------------------------------------------------------------------
 _DETACH_ALIAS_VIEWS_FLAG = "_flag_gems_gcu400_coo_detach_views_registered"
 _CLONE_ALIAS_VIEWS_FLAG = "_flag_gems_gcu400_coo_clone_views_registered"
@@ -81,7 +85,7 @@ _native_tensor_clone = None
 
 
 def _install_detach_alias_views():
-    """把 COO 的 ``_indices``/``_values`` 实例视图透传到 ``.detach()`` 结果。"""
+    """Pass COO ``_indices``/``_values`` instance views through to the ``.detach()`` result."""
     global _native_tensor_detach
     if getattr(torch.Tensor, _DETACH_ALIAS_VIEWS_FLAG, False):
         return
@@ -102,15 +106,15 @@ def _install_detach_alias_views():
 
 
 def _install_clone_alias_views():
-    """在组件所在 device 上克隆 COO 的实例视图并附着到 ``.clone()`` 结果。
+    """Clone COO instance views on the components' device and attach them to the ``.clone()`` result.
 
-    native ``clone`` 把张量组件复制到组件自身的设备上；本后端的 COO 容器
-    组件落在 CPU，而用户可见组件是实例视图指向的 device 张量——native
-    只复制了 CPU 侧，clone 的 ``_indices()``/``_values()`` 便从 device 视图
-    静默降级为 CPU 组件，参考侧（`inp.clone()`）与结果侧（保留视图）在
-    `torch.testing.assert_close` 的设备属性检查上分叉。与 detach 透传同一
-    制式：有视图才介入，克隆在视图自身设备上进行，无视图张量保持原生
-    clone 语义不变。torch 属性 flag 幂等，模块双名导入安全。
+    native ``clone`` copies tensor components on the components' own device; on this backend the COO container's
+    components land on CPU while the user-visible components are device tensors pointed to by instance views - native
+    copies only the CPU side, so clone's ``_indices()``/``_values()`` silently
+    degrade from device views to CPU components, and the reference side (`inp.clone()`) and result side (views retained)
+    diverge in `torch.testing.assert_close`'s device attribute check. Same pattern as detach pass-through:
+    intervene only when views exist, clone on the views' own device, tensors without views keep native
+    clone semantics unchanged. The torch attribute flag is idempotent and safe under dual-name module imports.
     """
     global _native_tensor_clone
     if getattr(torch.Tensor, _CLONE_ALIAS_VIEWS_FLAG, False):
@@ -156,7 +160,7 @@ def resize_as_sparse_(self: torch.Tensor, the_template: torch.Tensor) -> torch.T
     ``_indices().shape[0]`` — the same no-re-dispatch convention that module
     documents for its own body.
     """
-    logger.debug("GEMS RESIZE_AS_SPARSE_")
+    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_AS_SPARSE_")
     tmpl_layout = the_template.layout
     if self.layout != _SPARSE_COO or tmpl_layout not in _ALLOWED_TEMPLATE_LAYOUTS:
         raise NotImplementedError(

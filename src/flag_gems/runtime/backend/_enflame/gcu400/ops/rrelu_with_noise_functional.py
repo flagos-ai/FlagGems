@@ -48,7 +48,7 @@ def rrelu_with_noise_functional(
     training=False,
     generator=None,
 ):
-    logger.debug("GEMS RRELU_WITH_NOISE_FUNCTIONAL")
+    logger.debug("GEMS_ENFLAME_GCU400 RRELU_WITH_NOISE_FUNCTIONAL")
     return _rrelu_with_noise_impl(self, noise, lower, upper, training, generator)
 
 

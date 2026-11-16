@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``special_bessel_j1``：手写 1D flat Triton kernel。
+"""GCU400-specific ``special_bessel_j1``: hand-written 1D flat Triton kernel.
 
-公共实现使用 ``@pointwise_dynamic`` codegen；该 codegen 在 GCU 上会做多维索引
-分解，产生大量标量整除/取模。这里改为一维线性索引 + grid-stride，数值路径
-仍复用 ``tl_extra_shim.j1``（内部先升到 fp32 再计算），保持精度口径一致。
+The common implementation uses ``@pointwise_dynamic`` codegen, which on GCU does multi-dimensional index
+decomposition and produces many scalar divisions / modulos. Use 1D linear indices + grid-stride here; the numeric path
+still reuses ``tl_extra_shim.j1`` (promotes to fp32 internally), keeping the accuracy convention.
 """
 
 import logging
@@ -32,7 +32,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；编译期配置，不改变算子语义。
+# Generated per optimization round; compile-time config, semantics unchanged.
 BLOCK_SIZE = 8192
 NUM_WARPS = 4
 FIXED_GRID = 48
@@ -52,7 +52,7 @@ def _j1_flat_kernel(
     BLOCK: tl.constexpr,
     FIXED_GRID: tl.constexpr,
 ):
-    """一维线性遍历输入；bessel J1 由公共 shim 在 fp32 上计算。"""
+    """1D linear traversal of the input; bessel J1 is computed by the common shim in fp32."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     if FIXED_GRID:

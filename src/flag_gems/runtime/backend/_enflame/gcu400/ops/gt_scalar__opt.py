@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""gt_scalar_ 候选 v6：inplace 大 BLOCK 手写 kernel。
+"""gt_scalar_ candidate v6: hand-written in-place large-BLOCK kernel.
 
-生产 gt_func_scalar 走 pointwise_dynamic（ALWAYS_BOOL），x.to(tl.float32) > y
-的结果写回输入张量 A（浮点 0.0/1.0）。ENFLAME max_grid_size=(12,1,1)
-让大 shape 并行度不足。v2 增加 2^28 以上超大 shape 的 B131072/nw4 档（2^30 探针最优）。
-小 shape 也用手写小 BLOCK kernel（回退公共实现会多一层派发开销）。
+Production gt_func_scalar uses pointwise_dynamic (ALWAYS_BOOL), writing x.to(tl.float32) > y
+back into input tensor A (floating 0.0/1.0). ENFLAME max_grid_size=(12,1,1)
+leaves large shapes under-parallelized. v2 adds a B131072/nw4 tier for shapes above 2^28 (2^30 probe optimum).
+Small shapes also use a hand-written small-BLOCK kernel (falling back to the common implementation adds a dispatch
+layer).
 """
+import logging
 
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -34,15 +38,16 @@ def _gt_scalar_inplace_kernel(X, N, B: tl.constexpr, BLOCK: tl.constexpr):
 
 
 def gt_scalar_(A, B):
+    logger.debug("GEMS_ENFLAME_GCU400 GT_SCALAR_")
     n = A.numel()
     if n < 65536 or not A.is_contiguous():
-        # 小 shape 已是 launch 开销下限（约 0.0037ms），任何额外 Python 判断
-        # 都会造成 5~10% 回归；直接复用生产同一调用，保证严格 1.000x
+        # Small shapes are already at the launch overhead floor (~0.0037ms); any extra Python check
+        # causes a 5~10% regression, so reuse production's exact call to guarantee strict 1.000x
         from flag_gems.ops.gt import gt_func_scalar
 
         return gt_func_scalar(A, B, out0=A)
-    # 2^24 与 2^30 两档探针一致：B131072/nw4 最优
-    # （2^24 约 6.3x、2^30 约 8.8x 于公共实现），grid 分别为 128 / 8192
+    # Probes agree at 2^24 and 2^30: B131072/nw4 is optimal
+    # (2^24 ~6.3x, 2^30 ~8.8x over the common implementation), grids 128 / 8192 respectively
     BLOCK, num_warps = 131072, 4
     grid = (triton.cdiv(n, BLOCK),)
     if grid[0] > 65535:

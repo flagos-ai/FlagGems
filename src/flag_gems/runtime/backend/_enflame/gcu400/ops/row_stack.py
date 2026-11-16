@@ -556,7 +556,7 @@ def _prepare(tensors):
 
 
 def row_stack(tensors: list):
-    logger.debug("GEMS ROW_STACK")
+    logger.debug("GEMS_ENFLAME_GCU400 ROW_STACK")
 
     aligned = _fast_stack_eligible(tensors)
     if aligned is not None:
@@ -624,7 +624,7 @@ def _check_out(out, output_shape, dtype, memory_format, tensors):
 
 
 def row_stack_out(tensors: list, *, out: torch.Tensor):
-    logger.debug("GEMS ROW_STACK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 ROW_STACK_OUT")
 
     aligned = _fast_stack_eligible(tensors)
     if aligned is not None:

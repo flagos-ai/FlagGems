@@ -288,7 +288,7 @@ def pdist(x, p=2.0):
     Returns:
         Tensor of shape (N*(N-1)//2,) containing pairwise distances
     """
-    logger.debug("GEMS PDIST")
+    logger.debug("GEMS_ENFLAME_GCU400 PDIST")
 
     assert x.ndim == 2, "pdist only supports 2D input"
     if x.dtype != torch.float32:

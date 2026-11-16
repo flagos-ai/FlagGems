@@ -108,7 +108,7 @@ def _fake_quantize_learnable_per_channel_affine_backward(
     quant_max,
     grad_factor=1.0,
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_BACKWARD")
 
     # The aten op requires all tensors to be float32; enforce it here too.
     assert grad.dtype == torch.float32, "grad must be float32"

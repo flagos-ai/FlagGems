@@ -308,7 +308,7 @@ def _cholesky_solve_helper(
     self: torch.Tensor, A: torch.Tensor, upper: bool
 ) -> torch.Tensor:
     """Solve a positive-definite system from its Cholesky factor."""
-    logger.debug("GEMS _CHOLESKY_SOLVE_HELPER")
+    logger.debug("GEMS_ENFLAME_GCU400 _CHOLESKY_SOLVE_HELPER")
     if self.dtype not in (torch.float32, torch.float64):
         raise RuntimeError(
             "_cholesky_solve_helper currently supports float32 and float64 only"

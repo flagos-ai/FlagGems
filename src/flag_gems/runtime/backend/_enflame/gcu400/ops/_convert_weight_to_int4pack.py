@@ -81,7 +81,7 @@ def convert_weight_to_int4pack_kernel(
 
 
 def _convert_weight_to_int4pack(inp: torch.Tensor, innerKTiles: int) -> torch.Tensor:
-    logger.debug("GEMS CONVERT_WEIGHT_TO_INT4PACK")
+    logger.debug("GEMS_ENFLAME_GCU400 CONVERT_WEIGHT_TO_INT4PACK")
 
     # innerKTiles validation: PyTorch requires innerKTiles in {2, 4, 8}.
     # NOTE: The current kernel implements simple byte-pair packing (adjacent

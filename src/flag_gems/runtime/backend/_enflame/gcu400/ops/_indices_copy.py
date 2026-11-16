@@ -14,9 +14,10 @@
 
 """Triton implementation of ``aten::_indices_copy`` for sparse COO tensors.
 
-GCU400 的 sparse COO 构造当前回退 SparseCPU，``self._indices()`` 位于 CPU，
-Triton kernel 只能访问 GCU 指针。这里先把索引缓冲搬上设备、由 Triton kernel
-完成核心拷贝，再按输出张量的设备写回；设备搬运属于不可避免的前后处理。
+GCU400's sparse COO constructor currently falls back to SparseCPU, so ``self._indices()`` lives on CPU,
+while Triton kernels can only access GCU pointers. Move the index buffer to the device first, let the Triton kernel
+do the core copy, then write back according to the output tensor's device; these transfers are unavoidable
+pre/post-processing.
 """
 
 import logging
@@ -29,7 +30,8 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# 优化循环按轮次替换的可调常量；保持单份 kernel 定义，避免重复特化带来的冷编译。
+# Tunable constants replaced per optimization round; keep a single kernel definition to avoid cold recompilation from
+# repeated specialization.
 FLAT_BLOCK_SIZE = 2048
 FLAT_NUM_WARPS = 4
 FLAT_FIXED_GRID = 0
@@ -46,7 +48,7 @@ def _indices_copy_flat(
     BLOCK: tl.constexpr,
     FIXED_GRID: tl.constexpr,
 ):
-    """连续索引缓冲的一维拷贝；FIXED_GRID>0 时用固定 grid 加跨步循环。"""
+    """1D copy of a contiguous index buffer; with FIXED_GRID>0 use a fixed grid plus a stride loop."""
     lane_offsets = tl.arange(0, BLOCK)
     num_tiles = tl.cdiv(numel, BLOCK)
     if FIXED_GRID > 0:
@@ -64,7 +66,7 @@ def _indices_copy_flat(
 
 @triton.jit
 def _indices_copy_2d(src_ptr, dst_ptr, nnz, s0, s1, BLOCK: tl.constexpr):
-    """非连续索引视图的二维 strided gather，按行写回紧凑输出。"""
+    """2D strided gather for non-contiguous index views, writing rows back into a compact output."""
     row = tl.program_id(0)
     cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
     mask = cols < nnz
@@ -73,7 +75,7 @@ def _indices_copy_2d(src_ptr, dst_ptr, nnz, s0, s1, BLOCK: tl.constexpr):
 
 
 def _current_gcu_device():
-    """返回当前 GCU 设备；缺少 current_device 时退回默认设备号 0。"""
+    """Return the current GCU device; fall back to default device 0 when current_device is unavailable."""
     device_index = (
         torch.gcu.current_device() if hasattr(torch.gcu, "current_device") else 0
     )
@@ -81,11 +83,13 @@ def _current_gcu_device():
 
 
 def _indices_copy_impl(self, out=None, *, caller_out=False):
-    """把 sparse COO 的索引缓冲拷贝到新 buffer 或调用方给定的 ``out``。
+    """Copy the sparse COO index buffer into a new buffer or the caller-provided ``out``.
 
-    源索引在 CPU 时先做一次 H2D，Triton kernel 在设备上完成拷贝；若调用方
-    ``out`` 与源索引设备不一致，则在写回后把同一对象重绑到源设备 storage，
-    保证 ``out`` 变体返回对象与比较口径一致。
+    When the source index is on CPU, do one H2D first and let the Triton kernel perform the copy on device; if the
+    caller's
+    ``out`` is on a different device from the source index, rebind the same object to storage on the source device after
+    write-back,
+    so the ``out`` variant returns an object consistent with the comparison convention.
     """
     plain_indices = self._indices()
     sparse_dim, nnz = plain_indices.shape
@@ -142,16 +146,17 @@ def _indices_copy_impl(self, out=None, *, caller_out=False):
     if destination is not out:
         out.copy_(destination.to(out.device))
     elif caller_out and out.device != plain_indices.device:
-        # CPU sparse 索引 + GCU out 的环境差异：保留同一 out 对象，重绑其 storage。
-        # set_ 禁止跨设备（实测 RuntimeError），data 赋值可原地切换设备且保持对象同一性。
+        # Environment difference between CPU sparse indices and a GCU out: keep the same out object, rebind its storage.
+        # set_ rejects cross-device assignment (measured RuntimeError); assigning to .data switches device in place
+        # while preserving object identity.
         if REBIND_OUT_TO_SOURCE_DEVICE:
             out.data = destination.to(plain_indices.device)
     return out
 
 
 def _indices_copy(self: torch.Tensor) -> torch.Tensor:
-    """``aten::_indices_copy``：返回索引缓冲的独立拷贝。"""
-    logger.debug("GEMS _INDICES_COPY")
+    """``aten::_indices_copy``: return an independent copy of the index buffer."""
+    logger.debug("GEMS_ENFLAME_GCU400 _INDICES_COPY")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "_indices_copy only supports sparse coordinate (coo) tensors, "
@@ -161,8 +166,8 @@ def _indices_copy(self: torch.Tensor) -> torch.Tensor:
 
 
 def _indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
-    """``aten::_indices_copy.out``：把索引缓冲写入调用方提供的 ``out``。"""
-    logger.debug("GEMS _INDICES_COPY_OUT")
+    """``aten::_indices_copy.out``: write the index buffer into the caller-provided ``out``."""
+    logger.debug("GEMS_ENFLAME_GCU400 _INDICES_COPY_OUT")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "_indices_copy only supports sparse coordinate (coo) tensors, "

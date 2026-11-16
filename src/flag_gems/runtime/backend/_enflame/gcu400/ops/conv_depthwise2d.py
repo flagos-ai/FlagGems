@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# GCU400 专属 conv_depthwise2d：不再委托通用 conv2d。
-#   * 公版路径（ops/conv2d.py 的 im2col + tl.dot）在 GCU 上 fp32 全量错值
-#     （PAD_LANES=12 lane workaround + tune 配置缺陷，见 conv2d__opt.py 头注）；
-#   * conv2d__opt 路径虽正确，但 weight_c=1 < 16 时走 host 侧 F.pad 通道预填充
-#     （aten 计算外流 + 多次 kernel launch + 16x 输入物化）；
-#   * 2D tile (M, C) FMA 外积形态触发 gcuir PassManager legalization 崩溃
-#     （P02 家族，同 cudnn_convolution_relu_direct2d 实例签名）。
-# 此处采用已验证可编的 1D-tile 行程式（镜像 generic _direct_conv3d_kernel：
-# 每 program 单输出通道 + 标量 weight tap），host 仅分配输出后一次 launch，
-# 累加全程 fp32。
+# GCU400-specific conv_depthwise2d: no longer delegates to generic conv2d.
+#   * The common path (ops/conv2d.py im2col + tl.dot) gives fully wrong fp32 values on GCU
+#     (PAD_LANES=12 lane workaround + tune config defect, see conv2d__opt.py header);
+#   * The conv2d__opt path is correct, but weight_c=1 < 16 uses host-side F.pad channel prefill
+#     (aten compute offload + multiple kernel launches + 16x input materialization);
+#   * The 2D (M, C) FMA outer-product tile shape triggers a gcuir PassManager legalization crash
+#     (P02 family, same instance signature as cudnn_convolution_relu_direct2d).
+# This uses the verified-compilable 1D-tile row-wise form (mirroring generic _direct_conv3d_kernel:
+# one output channel per program + scalar weight tap), with the host only allocating output and launching once,
+# accumulating entirely in fp32.
 
 import logging
 
@@ -123,7 +123,7 @@ def conv_depthwise2d_kernel(
 
 
 def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):
-    logger.debug("GEMS DEPTHWISE")
+    logger.debug("GEMS_ENFLAME_GCU400 DEPTHWISE")
 
     if isinstance(stride, (list, tuple)):
         stride_height, stride_width = stride

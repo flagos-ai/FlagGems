@@ -854,7 +854,7 @@ def _slow_conv2d_forward(
     self, weight, kernel_size, bias=None, stride=None, padding=None, output=None
 ):
     """Compute ``_slow_conv2d_forward`` for the FlagGems pytest contract."""
-    logger.debug("GEMS _SLOW_CONV2D_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _SLOW_CONV2D_FORWARD")
     x = self
     # ATen's ``_slow_conv2d_forward`` schema makes stride and padding required
     # positional arguments; this wrapper accepts ``None`` as well and resolves

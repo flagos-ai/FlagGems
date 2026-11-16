@@ -13,10 +13,10 @@
 # limitations under the License.
 
 """
-GCU400 专属 log10：1D flat Triton kernel + 固定规模 grid，替代 pointwise_dynamic codegen。
+GCU400-specific log10: 1D flat Triton kernel + fixed-size grid, replacing pointwise_dynamic codegen.
 
-本变体由优化迭代渲染生成：数学模式、BLOCK 分档、grid 规模、num_warps、
-循环软件流水与访存对齐提示均为可扫描的启动期参数。
+This variant is rendered by the optimization iterations: math mode, BLOCK tiering, grid size, num_warps,
+loop software pipelining and memory-alignment hints are all scannable launch-time parameters.
 """
 
 import logging
@@ -30,7 +30,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# 固定 program 数匹配 GCU400 计算单元，核内跨步遍历全部 tile。
+# Fixed program count matches GCU400 compute units; an in-kernel stride loop covers all tiles.
 NUM_PROGRAMS = 48
 BLOCK_SIZE = 16384
 BLOCK_SMALL = 4096
@@ -53,18 +53,18 @@ def _log10_flat_kernel(
         base_offset = tl.multiple_of(block_id * BLOCK, BLOCK)
         element_offsets = base_offset + tl.arange(0, BLOCK)
         valid_mask = element_offsets < num_elements
-        # 整数/布尔输入在 fp32 中计算，输出 dtype 由 dispatch 决定。
+        # Integral / bool inputs are computed in fp32; output dtype is decided by dispatch.
         input_values = tl.load(
             input_ptr + element_offsets, mask=valid_mask, other=0
         ).to(tl.float32)
         if MATH_MODE == 0:
-            # 乘以 1/ln(10)：当前工程基线实现。
+            # Multiply by 1/ln(10): the current engineering baseline implementation.
             result_values = tl.log(input_values) * 0.4342944819032518
         elif MATH_MODE == 1:
-            # 除以 ln(10)：避免倒数常量的二次舍入，用于修复 fp32 1ulp 差异。
+            # Divide by ln(10): avoids double rounding from a reciprocal constant, fixing an fp32 1ulp difference.
             result_values = tl.log(input_values) / 2.302585092994046
         elif MATH_MODE == 2:
-            # log2 乘 log10(2)：检验后端是否存在更快的 log2 硬件路径。
+            # log2 times log10(2): tests whether the backend has a faster log2 hardware path.
             result_values = tl.log2(input_values) * 0.3010299956639812
         else:
             result_values = tl.log2(input_values) / 3.321928094887362
@@ -72,7 +72,7 @@ def _log10_flat_kernel(
 
 
 def _output_dtype(input_tensor: torch.Tensor):
-    # 与公共实现的 INT_TO_FLOAT 提升规则一致。
+    # Consistent with the common implementation's INT_TO_FLOAT promotion rules.
     if input_tensor.is_floating_point():
         return input_tensor.dtype
     return torch.float32
@@ -114,7 +114,7 @@ def log10_(A):
     logger.debug("GEMS_ENFLAME LOG10_")
     if A.is_contiguous():
         return _launch_log10(A, A)
-    # 非连续原地输入先在线性副本上计算，再按原 stride 写回。
+    # Non-contiguous in-place inputs compute on a linear copy first, then write back by the original stride.
     contiguous_copy = A.contiguous()
     _launch_log10(contiguous_copy, contiguous_copy)
     A.copy_(contiguous_copy)

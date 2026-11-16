@@ -162,6 +162,7 @@ def _flat_launch(A, out):
 
 
 def asin(A):
+    logger.debug("GEMS_ENFLAME_GCU400 ASIN")
     if _flat_ready(A):
         out = torch.empty_like(A)
         _flat_launch(A, out)
@@ -170,6 +171,7 @@ def asin(A):
 
 
 def asin_(x):
+    logger.debug("GEMS_ENFLAME_GCU400 ASIN_")
     if _flat_ready(x):
         _flat_launch(x, x)
         return x

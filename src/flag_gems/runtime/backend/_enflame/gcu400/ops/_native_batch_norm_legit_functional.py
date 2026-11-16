@@ -24,17 +24,17 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# GCU400 的向量寄存器有限，单个 tile 控制在 8K 元素；公版的 16K tile 在这里
-# 会显著增加寄存器压力，也让 autotune 反复改写 running stats。
+# GCU400 has limited vector registers, so one tile is capped at 8K elements; the common 16K tile
+# significantly increases register pressure here and makes autotune repeatedly rewrite running stats.
 MAX_TILE_ELEMS = 16384
-# t8 批 Step 4 A02：8192 让 (16,8,128,128) 的 BLOCK_N=512、每 CTA 循环 32 次；
-# 16384 把循环减半到 16 次，实测 0.2935ms -> 0.0721ms（4.07x）。
-# 32768 及以上会触发 dsm memory 硬件上限（1050624 > 917504），已排除。
-# Welford 在线累加顺序随之改变，差异为 ULP 级（float32 <=4.77e-7）。
+# t8 batch Step 4 A02: 8192 gives BLOCK_N=512 for (16,8,128,128) with 32 loop iterations per CTA;
+# 16384 halves the loop to 16 iterations, measured 0.2935ms -> 0.0721ms (4.07x).
+# 32768 and above hit the dsm memory hardware limit (1050624 > 917504) and were excluded.
+# Welford online accumulation order changes accordingly; the difference is ULP-level (float32 <=4.77e-7).
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
-    """把输入折叠成 (N, C, HxW) 视图。"""
+    """Fold the input into an (N, C, HxW) view."""
     if input.ndim == 2:
         input = input.unsqueeze(-1)
     elif input.ndim >= 4:
@@ -56,8 +56,8 @@ def _batch_norm_forward_kernel(
     momentum,
     eps,
     unbiased_scale,
-    # 维度和 stride 都做成 constexpr：GCU 在开启 int64 支持时会把运行时 int
-    # 标量提升为 i64，与 make_range 产出的 i32 混合比较会让编译器崩溃。
+    # Dimensions and strides are constexpr: when int64 support is enabled, GCU promotes runtime int
+    # scalars to i64, and comparing them with the i32 produced by make_range crashes the compiler.
     batch_dim: tl.constexpr,
     spatial_dim: tl.constexpr,
     input_batch_stride: tl.constexpr,
@@ -182,7 +182,7 @@ def _native_batch_norm_legit_functional(
     momentum=0.1,
     eps=1e-05,
 ):
-    """GCU400 的 functional batch norm，返回 output/save_mean/save_var 等五元组。"""
+    """GCU400 functional batch norm, returning the output / save_mean / save_var and other five-tuple values."""
     logger.debug("GEMS_ENFLAME _NATIVE_BATCH_NORM_LEGIT_FUNCTIONAL")
 
     input_3d = make_3d_for_bn(input)
@@ -196,7 +196,7 @@ def _native_batch_norm_legit_functional(
     has_bias = bias is not None
     has_running_stats = running_mean is not None and running_var is not None
 
-    # 可选指针用编译期 flag 隔离，这里只给 kernel 一个合法的占位 tensor。
+    # Optional pointers are isolated by compile-time flags; here the kernel only receives one valid placeholder tensor.
     weight_pointer = weight if has_weight else mean
     bias_pointer = bias if has_bias else inv_std
     if not has_running_stats:
@@ -238,7 +238,7 @@ def _native_batch_norm_legit_functional(
             num_warps=4,
         )
 
-    # PyTorch 的 save_var 其实是 inv_std = 1 / sqrt(var + eps)，不是方差。
+    # PyTorch's save_var is actually inv_std = 1 / sqrt(var + eps), not the variance.
     save_var = inv_std
     return (
         output.view_as(input),

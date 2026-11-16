@@ -98,7 +98,7 @@ def _launch_special_modified_bessel_i1(x: torch.Tensor, out: torch.Tensor):
 
 
 def special_modified_bessel_i1(self: torch.Tensor):
-    logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_I1")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MODIFIED_BESSEL_I1")
     x = self
     x_c = x.contiguous()
     out = torch.empty_like(x_c)
@@ -110,7 +110,7 @@ def special_modified_bessel_i1(self: torch.Tensor):
 
 
 def special_modified_bessel_i1_out(self: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_I1_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MODIFIED_BESSEL_I1_OUT")
     x = self
     if out.dtype != x.dtype:
         raise TypeError("out dtype must match input dtype")

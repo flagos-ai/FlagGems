@@ -12,26 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""not_equal 候选 v1：手写 flat 单调 grid kernel（替换 grid=12 的 pointwise_dynamic 路径）。
+"""not_equal candidate v1: hand-written flat monotonic-grid kernel (replaces the grid=12 pointwise_dynamic path).
 
-根因（2026-11-13 探针）：生产 not_equal 走通用 flag_gems.utils.pointwise_dynamic，
-其 ENFLAME 档 CodeGenConfig 为 max_grid_size=(12,1,1) + max_tile_size=4096 ——
-全设备 48 SP 仅起 12 个 CTA、每 CTA 21846 个 tile 的 GSL 长循环，1G fp16 实测
-13.19ms（有效带宽 379GB/s，torch 原生 1.92ms = 2.6TB/s）。
+Root cause (2026-11-13 probe): production not_equal uses generic flag_gems.utils.pointwise_dynamic,
+whose ENFLAME CodeGenConfig is max_grid_size=(12,1,1) + max_tile_size=4096 -
+only 12 CTAs on 48 SPs, each running a 21846-tile GSL long loop; 1G fp16 measured
+13.19ms (effective 379GB/s, torch native 1.92ms = 2.6TB/s).
 
-本文件改为手写 1D flat kernel（pid*BLOCK+arange、int32 偏移、原生 dtype 比较）：
-- 语义等价：fp16/bf16->fp32 为单射，!= 结果与 ALWAYS_BOOL 提升后逐位一致；
-  int8/16/32 原生比较反而修复了 fp32 cast 在 |x|>2^24 时的精度缺陷。
-- 分档（探针实测，GCU400/libra，do_bench w1000/r100 median）：
-  * n <= 8192        : BLOCK=next_pow2(n)（16..8192）、nw4、单 CTA（launch 开销主导）
-  * n <= 2^18        : BLOCK=8192、nw4（2^16 实测 4.03us vs pd 4.70us）
-  * n <= 2^20        : BLOCK=clamp(131072//es, 8192, 65536)、nw4（2^20 7.29us vs pd 16.07us）
-  * 其余             : 同 BLOCK、nw2（2^30 fp16 1.95ms vs pd 13.18ms = 6.7x；fp32
-                        BLOCK=32768 3.86ms vs pd 13.02ms = 3.4x，DSM 甜点 2 tile ~=256KB）
-  * n % BLOCK == 0   : EVEN 无 mask 快径（2^30 再省 ~1.7%）
-- 非法形态（非连续/广播/异 dtype/es>4/complex/fp8/n>=2^31/grid>65535）回退
-  生产 not_equal_func（pointwise_dynamic），保证零行为回归。
-- DSM 预算：峰值 = 2*BLOCK*es（输入）+ BLOCK*1B（bool 输出）<= 320KB < 448KB/program。
+This file uses a hand-written 1D flat kernel (pid*BLOCK+arange, int32 offsets, native dtype comparison):
+- Semantically equivalent: fp16/bf16->fp32 is injective, so != matches ALWAYS_BOOL promotion bit-for-bit;
+  native int8/16/32 comparison also fixes fp32 cast's precision defect at |x|>2^24.
+- Tiering (probe, GCU400/libra, do_bench w1000/r100 median):
+  * n <= 8192        : BLOCK=next_pow2(n) (16..8192), nw4, single CTA (launch overhead dominates)
+  * n <= 2^18        : BLOCK=8192, nw4 (2^16 measured 4.03us vs pd 4.70us)
+  * n <= 2^20        : BLOCK=clamp(131072//es, 8192, 65536), nw4 (2^20 7.29us vs pd 16.07us)
+  * others           : same BLOCK, nw2 (2^30 fp16 1.95ms vs pd 13.18ms = 6.7x; fp32
+                        BLOCK=32768 3.86ms vs pd 13.02ms = 3.4x, DSM sweet spot 2 tiles ~=256KB)
+  * n % BLOCK == 0   : EVEN unmasked fast path (2^30 saves another ~1.7%)
+- Invalid shapes (non-contiguous/broadcast/different dtype/es>4/complex/fp8/n>=2^31/grid>65535) fall back to
+  production not_equal_func (pointwise_dynamic), guaranteeing zero behavioral regression.
+- DSM budget: peak = 2*BLOCK*es (inputs) + BLOCK*1B (bool output) <= 320KB < 448KB/program.
 """
 
 import logging

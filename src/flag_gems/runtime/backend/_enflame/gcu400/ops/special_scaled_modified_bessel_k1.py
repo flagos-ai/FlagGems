@@ -238,7 +238,7 @@ def _launch_special_scaled_modified_bessel_k1(out: torch.Tensor, x: torch.Tensor
 
 
 def special_scaled_modified_bessel_k1(x: torch.Tensor):
-    logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K1")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SCALED_MODIFIED_BESSEL_K1")
     if x.device.type != flag_gems.device:
         raise ValueError(
             "special_scaled_modified_bessel_k1: input tensor must be on CUDA device"
@@ -251,7 +251,7 @@ def special_scaled_modified_bessel_k1(x: torch.Tensor):
 
 
 def special_scaled_modified_bessel_k1_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K1_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SCALED_MODIFIED_BESSEL_K1_OUT")
     if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise ValueError(
             "special_scaled_modified_bessel_k1_out: input and output tensors must be on CUDA device"

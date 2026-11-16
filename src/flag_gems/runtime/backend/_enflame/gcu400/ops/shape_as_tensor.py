@@ -21,9 +21,9 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# 该 op 全程在 host 侧完成（总耗时已压到 ~2.4us），逐次调用付一行 debug 日志
-# 的 isEnabledFor 检查要占 0.3us（~13%）；改为 import 时判定一次、调用时只读
-# 模块级 bool。日志等级在进程启动后一般不再变化，语义影响可忽略。
+# This op is entirely host-side (total time already down to ~2.4us); one debug log line per call
+# costs 0.3us for the isEnabledFor check (~13%); decide once at import and read only a
+# module-level bool at call time. Log level rarely changes after process start, so the semantic impact is negligible.
 _DEBUG_ENABLED = logger.isEnabledFor(logging.DEBUG)
 
 _CPU_DEVICE = torch.device("cpu")
@@ -31,11 +31,12 @@ _CPU_DEVICE = torch.device("cpu")
 
 @functools.lru_cache(maxsize=256)
 def _shape_template(shape: torch.Size) -> torch.Tensor:
-    """按 shape 记忆化 int64 模板张量。
+    """Memoize int64 template tensors by shape.
 
-    该张量只作为 ``clone()`` 的源，绝不直接返回给调用方，因此不会被外部改写；
-    条目数是「出现过的不同 shape」的数（单条只有 rank 个 int64），上限 256 保证
-    内存有界，LRU 淘汰后再次出现只是多构造一次。
+    The tensor is only a source for ``clone()`` and is never returned directly to callers, so it cannot be modified
+    externally;
+    the entry count is "number of distinct shapes seen" (each only `rank` int64s), capped at 256 for
+    bounded memory, and LRU eviction just means one extra construction when a shape reappears.
     """
     return torch.tensor(shape, dtype=torch.int64, device=_CPU_DEVICE)
 
@@ -84,9 +85,9 @@ def shape_as_tensor(self: torch.Tensor) -> torch.Tensor:
     ``self.shape``, which is TensorImpl metadata.
     """
     if _DEBUG_ENABLED:
-        logger.debug("GEMS _SHAPE_AS_TENSOR")
+        logger.debug("GEMS_ENFLAME_GCU400 _SHAPE_AS_TENSOR")
     # Native resolves the result device to CPU unconditionally (see above).
-    # 走「记忆化模板 + clone」而不是每次重新构造：torch.tensor(...) 的 kwargs 解析
-    # 与 factory 分派约占该 op 70% 的耗时（实测 7.6us -> 2.4us，3.2x）；
-    # clone() 保证每次返回全新张量，语义与原生一致（新存储、不共享、可 resize）。
+    # Use "memoized template + clone" instead of rebuilding each time: torch.tensor(...) kwargs parsing
+    # and factory dispatch take ~70% of this op (measured 7.6us -> 2.4us, 3.2x);
+    # clone() guarantees a fresh tensor each time, matching native semantics (new storage, not shared, resizable).
     return _shape_template(self.shape).clone()

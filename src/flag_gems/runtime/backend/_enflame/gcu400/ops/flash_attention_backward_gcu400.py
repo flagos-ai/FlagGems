@@ -1024,7 +1024,7 @@ def flash_attn_backward(
     bias_requires_grad=False,
 ):
     if is_dropout and dropout_p > 0.0 and rng_state is None:
-        raise ValueError("开启 dropout 时，必须传入 rng_state")
+        raise ValueError("rng_state must be provided when dropout is enabled")
 
     is_varlen = (cu_seq_q is not None) and (cu_seq_k is not None)
 
@@ -1039,7 +1039,7 @@ def flash_attn_backward(
         _, SeqLen_k, H_k, _ = K.shape
 
     if H_q % H_k != 0:
-        raise ValueError(f"H_q ({H_q}) 必须是 H_k ({H_k}) 的整数倍")
+        raise ValueError(f"H_q ({H_q}) must be an integer multiple of H_k ({H_k})")
     group_size = H_q // H_k
     scale = softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Head_Dim))
 
@@ -1336,7 +1336,7 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
-    logger.debug("GEMS FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_rng_state(rng_state) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
@@ -1381,7 +1381,7 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
@@ -1425,7 +1425,7 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
     query_bshd = query.permute(0, 2, 1, 3).contiguous()
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
@@ -1486,7 +1486,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
-    logger.debug("GEMS EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1496,7 +1496,7 @@ def efficient_attention_backward(
         wl = 0
         wr = max_seqlen_q + max_seqlen_k + 1
     else:
-        raise ValueError(f"未知 custom_mask_type: {custom_mask_type}")
+        raise ValueError(f"unknown custom_mask_type: {custom_mask_type}")
 
     if window_size is not None and window_size >= 0:
         wl = wr = window_size
@@ -1543,7 +1543,7 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 
     grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()
@@ -1576,7 +1576,8 @@ def scaled_dot_product_efficient_attention_backward(
         bias_requires_grad=bias_req_grad,
     )
 
-    # GCU400 特化：只对需要的梯度做布局回转，省掉随后会被 zeros_like 覆盖的整块拷贝
+    # GCU400-specific: only transpose the gradients that are needed, skipping whole-block copies that would be
+    # overwritten by zeros_like
     if need_dq:
         dQ_bhsd = dQ_bshd.permute(0, 2, 1, 3).contiguous()
     else:
@@ -1595,7 +1596,8 @@ def scaled_dot_product_efficient_attention_backward(
     return dQ_bhsd, dK_bhsd, dV_bhsd, dBias
 
 
-# 将后端特化实现同步绑定到公共 ops 命名空间，使 benchmark 的 flag_gems.ops.* 调用也走本实现
+# Bind the backend specialization into the common ops namespace so benchmark flag_gems.ops.* calls also use this
+# implementation
 import flag_gems.ops as _generic_ops  # noqa: E402
 
 _generic_ops.scaled_dot_product_efficient_attention_backward = (

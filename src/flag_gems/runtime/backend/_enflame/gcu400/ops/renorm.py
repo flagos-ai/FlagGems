@@ -116,7 +116,7 @@ def renorm_kernel_scale(
 
 
 def renorm(input, p, dim, maxnorm):
-    logger.debug("GEMS RENORM")
+    logger.debug("GEMS_ENFLAME_GCU400 RENORM")
 
     if dim < 0:
         dim = input.ndim + dim
@@ -171,7 +171,7 @@ def renorm(input, p, dim, maxnorm):
 
 
 def renorm_(input, p, dim, maxnorm):
-    logger.debug("GEMS RENORM_")
+    logger.debug("GEMS_ENFLAME_GCU400 RENORM_")
 
     if dim < 0:
         dim = input.ndim + dim

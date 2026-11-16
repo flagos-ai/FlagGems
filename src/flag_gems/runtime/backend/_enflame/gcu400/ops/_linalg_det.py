@@ -489,7 +489,7 @@ def _linalg_det(A):
         - LU is the factorized matrix in the LAPACK getrf combined layout
         - pivots is the int32 pivot buffer containing 1-indexed pivot rows
     """
-    logger.debug("GEMS _LINALG_DET")
+    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_DET")
     if A.dtype not in (torch.float32, torch.float64):
         raise ValueError(
             f"_linalg_det only supports float32 and float64, got {A.dtype}"

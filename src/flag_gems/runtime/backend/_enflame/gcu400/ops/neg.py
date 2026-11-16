@@ -79,11 +79,12 @@ def neg(A):
 def neg_(A):
     logger.debug("GEMS_ENFLAME NEG_")
     if A.is_contiguous():
-        # 连续张量可直接在自身 storage 上原地取负。
+        # A contiguous tensor can be negated in place directly on its own storage.
         _run_neg(A, A, A.numel())
     else:
-        # 非连续张量不能按扁平连续下标写回：先在连续副本上用同一 Triton
-        # kernel 计算，再按原布局拷回，保持 inplace 的 storage 别名语义。
+        # A non-contiguous tensor cannot be written back by flat contiguous indices: compute on a contiguous copy with
+        # the same Triton
+        # kernel, then copy back by the original layout, preserving in-place storage alias semantics.
         contiguous_result = neg(A)
         A.copy_(contiguous_result)
     return A

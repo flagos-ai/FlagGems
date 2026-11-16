@@ -44,7 +44,7 @@ def adjoint(self: torch.Tensor) -> torch.Tensor:
     implementation), and for 1-D inputs they raise the same
     "matrices or batches of matrices" ``RuntimeError`` as native ``adjoint``.
     """
-    logger.debug("GEMS ADJOINT")
+    logger.debug("GEMS_ENFLAME_GCU400 ADJOINT")
     if self.ndim == 0:
         # 0-D: native adjoint() emits a deprecation warning and degrades to
         # conj(). Reproduce the warning text natively (delegating to self.mH

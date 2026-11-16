@@ -12,31 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""cummaxmin_backward 候选 v1：num_warps 4→8 + 免 mask + 精简 host。
+"""cummaxmin_backward candidate v1: num_warps 4->8 + mask-free + simplified host.
 
-生产 `flag_gems.ops.cummax.cummaxmin_backward` 用 fp32 中间 buffer +
-`tl.atomic_add` scatter + `.to(dtype)`，num_warps 取 Triton 默认 4，
-且无条件 `.contiguous()` / `torch_device_fn.device` 上下文 / logger。
+Production `flag_gems.ops.cummax.cummaxmin_backward` uses an fp32 intermediate buffer +
+`tl.atomic_add` scatter + `.to(dtype)`, with Triton's default num_warps=4,
+plus unconditional `.contiguous()` / `torch_device_fn.device` context / logger.
 
-13 轮迭代（含 kernel 循环修正与容差判据）显示：
-- num_warps=8：0.277ms vs 生产 0.308ms（1.11x）；
-- reduction_size 恰为 2 的幂时去掉 mask 再省一点；
-- 直接 atomic_add 到输出 dtype 会损失 fp16/bf16 精度，丢弃；
-- num_warps 1/2、BLOCK 256/1024/2048、2D tile 均劣化。
+13 iterations (including kernel loop fixes and tolerance criteria) show:
+- num_warps=8: 0.277ms vs production 0.308ms (1.11x);
+- when reduction_size is exactly a power of two, dropping the mask saves a bit more;
+- atomic_add directly to the output dtype loses fp16/bf16 precision, so it was discarded;
+- num_warps 1/2, BLOCK 256/1024/2048 and 2D tiles all degrade.
 
-接管 inner_size==1（含 benchmark 的 2D/dim=1 与 correctness 的 dim=-1）
-以及 inner_size>1 的 interior-axis 情形；两者都用 grid-stride 内核，避免
-生产实现 "一个 program 一个 outer 行" 在 GCU 上超过 grid.x=65535。
-非连续输入就地 `.contiguous()`，不再委托生产实现（其 grid 未做上限）。
-RS==0 的空 reduction 仍委托生产。NaN 语义与生产一致（indices 来自前向，
-本算子只做 scatter-add）。
+Take over inner_size==1 (including benchmark 2D/dim=1 and correctness dim=-1)
+and inner_size>1 interior-axis cases; both use grid-stride kernels, avoiding
+production's "one program per outer row" exceeding grid.x=65535 on GCU.
+Non-contiguous inputs are made `.contiguous()` in place instead of delegating to production (its grid has no cap).
+An empty reduction with RS==0 still delegates to production. NaN semantics match production (indices come from forward,
+this operator only does scatter-add).
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.ops.cummax import cummaxmin_backward as _public
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["cummaxmin_backward"]
 
@@ -95,6 +99,7 @@ def _cmb_inner_kernel(
 
 
 def cummaxmin_backward(grad_output, input, indices, dim):
+    logger.debug("GEMS_ENFLAME_GCU400 CUMMAXMIN_BACKWARD")
     ndim = grad_output.ndim
     if dim < 0:
         dim += ndim

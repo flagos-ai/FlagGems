@@ -739,7 +739,7 @@ def grid_sampler(
         padding_mode: 0=Zeros, 1=Border, 2=Reflection.
         align_corners: If True, extrema (-1, 1) refer to the corner pixel centers.
     """
-    logger.debug("GEMS GRID_SAMPLER")
+    logger.debug("GEMS_ENFLAME_GCU400 GRID_SAMPLER")
 
     if input.ndim not in (4, 5):
         raise ValueError(

@@ -32,7 +32,7 @@ def special_log1p_func(x):
 
 
 def special_log1p(A):
-    logger.debug("GEMS SPECIAL_LOG1P")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOG1P")
     if isinstance(A, torch.Tensor):
         return special_log1p_func(A)
     else:
@@ -40,5 +40,5 @@ def special_log1p(A):
 
 
 def special_log1p_out(A, out):
-    logger.debug("GEMS SPECIAL_LOG1P_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOG1P_OUT")
     return special_log1p_func(A, out0=out)

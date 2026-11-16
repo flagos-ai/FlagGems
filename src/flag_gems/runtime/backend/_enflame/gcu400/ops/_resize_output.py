@@ -42,7 +42,7 @@ def _resize_output(inp: torch.Tensor, size: List[int], device: torch.device):
     Returns:
         Resized tensor
     """
-    logger.debug("GEMS _resize_output")
+    logger.debug("GEMS_ENFLAME_GCU400 _resize_output")
 
     # Calculate total number of elements
     old_numel = inp.numel()
@@ -82,7 +82,7 @@ def _resize_output_(inp: torch.Tensor, size: List[int], device: torch.device):
     Returns:
         Resized tensor (same object as input)
     """
-    logger.debug("GEMS _resize_output_")
+    logger.debug("GEMS_ENFLAME_GCU400 _resize_output_")
 
     # Calculate total number of elements
     old_numel = inp.numel()

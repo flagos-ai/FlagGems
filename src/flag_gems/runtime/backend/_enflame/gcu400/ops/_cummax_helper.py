@@ -31,7 +31,7 @@ def _cummax_helper(input, values, indices, dim):
     buffers are contiguous (the common case), the scan kernels write directly
     into them; otherwise a contiguous staging buffer is used and copied back.
     """
-    logger.debug("GEMS CUMMAX_HELPER")
+    logger.debug("GEMS_ENFLAME_GCU400 CUMMAX_HELPER")
     assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
     shape = input.shape
     dim = dim % input.ndim

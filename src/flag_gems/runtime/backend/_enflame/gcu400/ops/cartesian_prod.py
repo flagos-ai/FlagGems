@@ -470,6 +470,7 @@ class _CartesianProd(torch.autograd.Function):
 
 
 def run(*args, **kwargs):
+    logger.debug("GEMS_ENFLAME_GCU400 RUN")
     tensors = _normalize(args, kwargs)
     n = len(tensors)
     if n == 0:

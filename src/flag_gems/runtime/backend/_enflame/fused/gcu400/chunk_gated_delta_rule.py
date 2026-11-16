@@ -246,6 +246,7 @@ def chunk_gated_delta_rule(
 
     q/k may use fewer heads than v when the q/k head count divides the v head count.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 CHUNK_GATED_DELTA_RULE")
     if BT != 64:
         raise ValueError("chunk_gated_delta_rule currently supports only BT=64")
 

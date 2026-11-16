@@ -718,15 +718,15 @@ def values_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Tensor
     the caller buffer and that object is returned.
     """
     if out is None:
-        logger.debug("GEMS VALUES_COPY")
+        logger.debug("GEMS_ENFLAME_GCU400 VALUES_COPY")
         return _values_copy_impl(self, None)
-    logger.debug("GEMS VALUES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 VALUES_COPY_OUT")
     return _values_copy_impl(self, out)
 
 
 def values_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::values_copy.out``: write the values copy into ``out``."""
-    logger.debug("GEMS VALUES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 VALUES_COPY_OUT")
     return _values_copy_impl(self, out)
 
 

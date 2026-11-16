@@ -12,23 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""expm1 候选 v1：按算子覆盖 CodeGenConfig.max_grid_size。
+"""expm1 candidate v1: override CodeGenConfig.max_grid_size per operator.
 
-与第 15 项 expm1_out 共用同一语义，只是 outplace（省略 out0）。
-沿用零分支模板：不手写 kernel，只把 ENFLAME 默认
-`max_grid_size=(12,1,1)` 放大到 `(1024,1,1)` 重新生成 pointwise_dynamic
-包装函数，保持 `INT_TO_FLOAT` promotion 不变。
+Same semantics as item 15's expm1_out, only outplace (out0 omitted).
+Following the zero-branch template: no hand-written kernel, only enlarge ENFLAME's default
+`max_grid_size=(12,1,1)` to `(1024,1,1)` and regenerate the pointwise_dynamic
+wrapper, keeping `INT_TO_FLOAT` promotion unchanged.
 
-基线复用 `base_eoN`：与 expm1_out 同一次 pytest 进程采集、时段完全一致，
-日志里含 expm1 的 3 轮 15 case，按 op_name 过滤即可。
-不修改全局 CODEGEN_COFIGS，符合 skill「pointwise_dynamic 必须特化」要求。
+The baseline reuses `base_eoN`: collected in the same pytest process and time window as expm1_out,
+the log contains expm1's 3 rounds of 15 cases, filterable by op_name.
+Global CODEGEN_COFIGS is not modified, satisfying the skill's "pointwise_dynamic must be specialized" requirement.
 """
+import logging
 
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+
+logger = logging.getLogger(__name__)
+
 
 _BASE = get_codegen_config()
 _OPT_CONFIG = CodeGenConfig(
@@ -47,4 +51,5 @@ def _expm1_func(x):
 
 
 def expm1(A):
+    logger.debug("GEMS_ENFLAME_GCU400 EXPM1")
     return _expm1_func(A)

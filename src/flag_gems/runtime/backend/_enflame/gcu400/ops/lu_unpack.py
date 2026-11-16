@@ -374,6 +374,7 @@ def lu_unpack_out(
     Returns:
         Tuple of (P, L, U)
     """
+    logger.debug("GEMS_ENFLAME_GCU400 LU_UNPACK_OUT")
     P_result, L_result, U_result = lu_unpack(
         LU_data, LU_pivots, unpack_data, unpack_pivots
     )

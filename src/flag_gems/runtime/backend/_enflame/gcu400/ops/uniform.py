@@ -30,15 +30,15 @@ logger = logging.getLogger(__name__)
 
 UNROLL = 4
 
-# 持久化（grid-stride）路径参数：固定 program 数循环覆盖整段。
-# 实测 192 programs × BLOCK=4096 相比「一个 program 一块」的朴素 grid 在大 shape 上
-# 快 18%~24%（probe_01_uniform_kernels.py gsprog/gsprog2）；program 数取非 2 的幂的
-# 192 更贴合 GCU 的 CU 数，负载更均衡。小 shape 仍走朴素 grid（持久化的固定
-# program 开销比收益大）。
+# Persistent (grid-stride) path parameters: a fixed program count loops over the whole range.
+# Measured 192 programs x BLOCK=4096 is 18%~24% faster than a naive "one program per block" grid on large shapes
+# (probe_01_uniform_kernels.py gsprog/gsprog2); a non-power-of-two program count of
+# 192 better matches GCU's CU count with more balanced load. Small shapes still use the naive grid (a fixed
+# program count costs more than it gains).
 PERSIST_BLOCK = 4096
 PERSIST_NUM_PROG = 192
 PERSIST_NUM_WARPS = 4
-PERSIST_MIN_NUMEL = 1 << 21  # 2M 元素以下朴素 grid 更划算
+PERSIST_MIN_NUMEL = 1 << 21  # below 2M elements the naive grid is cheaper
 
 
 @triton.jit
@@ -104,12 +104,13 @@ def uniform_kernel_gcu400(
     r1 = uint_to_uniform_float(r1) * scale + from_
     r2 = uint_to_uniform_float(r2) * scale + from_
     r3 = uint_to_uniform_float(r3) * scale + from_
-    # 采样值在 float32 中算出，存入低精度 dtype 时的舍入可能正好落到排他上界
-    # ``to`` 上（fp16 / bf16 尤其明显），因此要 clamp 到 ``to`` 在输出 dtype 上的
-    # 前驱 ``hi``。clamp 统一在 float32 域完成：``hi`` 在 OUT_DT 中可精确表示且
-    # 严格小于 ``to``，float32 域取 min 后再做唯一一次 fp32->OUT_DT 转换，既保持
-    # ``[from, to)`` 语义，又避免 16 位 dtype 上多一次逐元素 dtype 转换
-    # （实测该转换是 fp16/bf16 大 shape 的主要瓶颈）。
+    # Samples are computed in float32; rounding into a low-precision dtype can land exactly on the exclusive upper bound
+    # ``to`` (especially fp16 / bf16), so clamp to ``to``'s
+    # predecessor ``hi`` in the output dtype. Clamping is done entirely in the float32 domain: ``hi`` is exactly
+    # representable in OUT_DT and
+    # strictly less than ``to``, so take min in float32 then do the single fp32->OUT_DT conversion, keeping
+    # ``[from, to)`` semantics and avoiding an extra per-element dtype conversion on 16-bit dtypes
+    # (measured as the main bottleneck for fp16/bf16 large shapes).
     OUT_DT: tl.constexpr = out_ptr.dtype.element_ty
     to_dt = to.to(OUT_DT)
     from_dt = from_.to(OUT_DT)
@@ -131,8 +132,8 @@ def uniform_kernel_gcu400(
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
-    # N 能被 BLOCK*4 整除时走无 mask 的直接 store：GCU 上 16 位 dtype 的
-    # masked store 会退化为逐元素写，实测比无 mask 慢约 6%。
+    # When N is divisible by BLOCK*4, use an unmasked direct store: on GCU a 16-bit
+    # masked store degrades to per-element writes, measured ~6% slower than unmasked.
     if EVEN:
         tl.store(out_ptr + off_0, r0)
         tl.store(out_ptr + off_1, r1)
@@ -157,11 +158,11 @@ def uniform_kernel_persist_gcu400(
     BLOCK: tl.constexpr,
     NUM_PROG: tl.constexpr,
 ):
-    """grid-stride 持久化版本：固定 NUM_PROG 个 program 循环覆盖整段。
+    """grid-stride persistent version: a fixed NUM_PROG programs loop over the whole range.
 
-    每个 program 每次处理 4*BLOCK 个元素（一次 philox 出 4 个 32 bit 随机数），
-    计数器区间 [start, start+BLOCK) 在 program 之间、循环之间都不重叠，
-    因此随机性口径与朴素版本一致。
+    Each program handles 4*BLOCK elements per iteration (one philox call yields 4 32-bit random numbers),
+    and counter intervals [start, start+BLOCK) never overlap between programs or loop iterations,
+    so the randomness convention matches the naive version.
     """
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -197,13 +198,14 @@ def uniform_kernel_persist_gcu400(
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     logger.debug("GEMS_ENFLAME UNIFORM_")
-    # aten::uniform_ 拒绝反转区间；原地版本此前缺少同一校验。
+    # aten::uniform_ rejects reversed intervals; the in-place version previously lacked the same check.
     if from_ > to:
         raise RuntimeError(
             "uniform_ expects to return a [from, to) range, but found "
             f"from={from_:g} > to={to:g}"
         )
-    # kernel 按扁平连续下标写回；非连续视图先写连续副本再按原布局拷回。
+    # The kernel writes back by flat contiguous indices; non-contiguous views write a contiguous copy then copy back by
+    # the original layout.
     if not self.is_contiguous():
         contiguous_out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
         uniform_(contiguous_out, from_, to, generator=generator)
@@ -217,9 +219,9 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
         increment, generator=generator
     )
     with torch_device_fn.device(self.device):
-        # fp64 输出在持久化核里没有 fp64 域的 clamp 路径，继续走朴素 grid。
+        # fp64 output has no fp64-domain clamp path in the persistent kernel, so it keeps the naive grid.
         if N >= PERSIST_MIN_NUMEL and dtype != torch.float64:
-            # 大 shape 走持久化 grid-stride：固定 program 数，避免 grid 过大。
+            # Large shapes use persistent grid-stride: a fixed program count avoids an oversized grid.
             uniform_kernel_persist_gcu400[(PERSIST_NUM_PROG,)](
                 self,
                 N,

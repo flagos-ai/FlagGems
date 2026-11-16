@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def _resize_output_(inp: torch.Tensor, size: List[int], device: torch.device):
-    logger.debug("GEMS _RESIZE_OUTPUT_")
+    logger.debug("GEMS_ENFLAME_GCU400 _RESIZE_OUTPUT_")
     if inp.device == device:
         inp.resize_(size)
         return inp

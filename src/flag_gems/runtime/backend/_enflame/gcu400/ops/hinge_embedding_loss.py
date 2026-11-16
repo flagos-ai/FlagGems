@@ -148,7 +148,7 @@ def _reduce_sum(input, target, margin, n_elements):
 def hinge_embedding_loss(
     input: torch.Tensor, target: torch.Tensor, margin: float = 1.0, reduction="mean"
 ):
-    logger.debug("GEMS HINGE_EMBEDDING_LOSS")
+    logger.debug("GEMS_ENFLAME_GCU400 HINGE_EMBEDDING_LOSS")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     margin = float(margin)

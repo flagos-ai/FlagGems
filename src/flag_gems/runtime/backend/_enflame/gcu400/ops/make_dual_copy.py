@@ -148,7 +148,7 @@ def _make_dual_copy(
     Returns:
         torch.Tensor: A tensor with the same shape and values as ``primal``.
     """
-    logger.debug("GEMS MAKE_DUAL_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 MAKE_DUAL_COPY")
     out = torch.empty_like(primal)
     n = primal.numel()
     if n == 0:
@@ -178,7 +178,7 @@ def _make_dual_copy_out(
     Returns:
         torch.Tensor: ``out``, holding the values of ``primal``.
     """
-    logger.debug("GEMS MAKE_DUAL_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 MAKE_DUAL_COPY_OUT")
     n = primal.numel()
     if n == 0:
         return out

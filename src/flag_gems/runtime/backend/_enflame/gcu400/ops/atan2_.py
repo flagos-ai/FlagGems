@@ -12,29 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 atan2_（aten::atan2_，in-place）flat 快路径。
+"""GCU400 atan2_ (aten::atan2_, in-place) flat fast path.
 
-本 shell 原为公版 ``atan2_kernel(A, B, out0=A)`` 直调——generic
-pointwise_dynamic codegen 在本后端把 atan2 落到 ``__ef_atan2f`` extern SIP
-调用（48-CTA 钳制 grid 下 ~30× 于访存地板：2^30 fp16 实测 419ms vs native
-12.9ms，speedup 0.028×；2026-11-10 j20261110124825 的本地重写曾达
-0.89-1.03× 并回写 bench_json 快照，但该修复未提交已丢失，本文件按同族
-先例重建）。
+This shell originally called the common ``atan2_kernel(A, B, out0=A)`` directly - generic
+pointwise_dynamic codegen lowers atan2 on this backend to a ``__ef_atan2f`` extern SIP
+call (~30x the memory floor under a 48-CTA clamped grid: 2^30 fp16 measured 419ms vs native
+12.9ms, speedup 0.028x; a local rewrite in 2026-11-10 j20261110124825 once reached
+0.89-1.03x and wrote back a bench_json snapshot, but that fix was never committed and was lost;
+this file is rebuilt following the precedent of the same operator family).
 
-kernel = ``atan2.py`` 已交付的象限规约 + K=6 minimax 奇多项式（Estrin
-展开，maxerr 1.9e-6）body，叠加 ``arctan2.py`` 的 IEEE 角点守卫
-（min==inf 时角度取 π/4（poly 后置——除法链内 select 会串行化软流水，
-fp32 4096² A/B 0.68× vs 1.11×）、显式 NaN 掩码——本后端 min/max 丢弃
-NaN 不传播；探针实证公版 extern 与 native aten 角点全对，缺守卫即语义
-回归）。原地别名 launch（per-element load 后 store 同 offset，别名安
-全；arctan2_ 同款契约：结果写回 input 本身并返回同一对象）。
+kernel = the quadrant reduction + K=6 minimax odd polynomial (Estrin
+expansion, maxerr 1.9e-6) body already delivered in ``atan2.py``, plus the IEEE corner guards
+of ``arctan2.py`` (when min==inf the angle is pi/4 (poly placed later - a select inside the
+division chain serializes software pipelining, fp32 4096^2 A/B 0.68x vs 1.11x), explicit NaN mask - this backend's
+min/max
+drops NaN instead of propagating; probes confirm the common extern and native aten are both correct at corners,
+so omitting the guards is a semantic regression). In-place alias launch (per-element load then store at the same
+offset, alias-safe; same contract as arctan2_: write the result back into input itself and return the same object).
 
-守卫与回退：标量 other 以 fp32 0-dim factory 包装后走快路径广播（公版
-pointwise_dynamic 无 scalar 档）；超 int32 安全域（numel >= 2^31，flat
-索引越界风险）/ 非 fp16-bf16-fp32 输入 → 公版包装（即改动前路径，语义
-不变）；非连续 input 在连续副本上计算后 copy_ 写回（arctan2_ 先例）；
-other 按广播规则物化为与 input 同形的连续张量。launch 带 P02 工具链
-3 次冷编译 flake 重试（sinh/rad2deg/atan2_ 先例）。
+Guards and fallbacks: scalar other is wrapped in an fp32 0-dim factory and takes the fast-path broadcast (common
+pointwise_dynamic has no scalar tier); beyond the int32 safe range (numel >= 2^31, flat
+index overflow risk) / non fp16-bf16-fp32 inputs -> common wrapper (the pre-change path, semantics
+unchanged); non-contiguous input is computed on a contiguous copy and written back with copy_ (arctan2_ precedent);
+other is materialized by broadcast rules as a contiguous tensor of input's shape. Launch carries P02 toolchain
+3-attempt cold-compile flake retries (sinh/rad2deg/atan2_ precedent).
 """
 
 import logging
@@ -159,17 +160,18 @@ _FLAT_MAX_NUMEL = 2**31 - 1 - 65536
 def atan2_(input, other):
     logger.debug("GEMS_ENFLAME ATAN2_")
     if not isinstance(other, torch.Tensor):
-        # 公版 pointwise_dynamic 无 scalar 档（直调抛 ValueError）；按 aten
-        # 弱类型标量语义以 fp32 0-dim factory 包装后走快路径广播。
+        # Common pointwise_dynamic has no scalar tier (direct call raises ValueError); wrap the weakly typed
+        # scalar in an fp32 0-dim factory per aten semantics and take the fast-path broadcast.
         other = torch.tensor(other, dtype=torch.float32, device=input.device)
     numel = input.numel()
     if numel == 0:
         return input
     if input.dtype not in _FLAT_DTYPES or numel > _FLAT_MAX_NUMEL:
         return atan2_kernel(input, other, out0=input)
-    # aten 原地语义允许 other 广播到 input 的形状；先物化成与输出同形的
-    # 连续张量，使扁平索引 kernel 能按输出元素顺序取到对应的分子/分母。
-    # 同形连续走免视图快路径（launch-bound 小 shape 的 host 开销敏感）。
+    # aten in-place semantics allow other to broadcast to input's shape; materialize it first as a
+    # contiguous tensor of the output shape so the flat-index kernel can fetch the matching numerator/denominator in
+    # output element order.
+    # Same-shape contiguous inputs take the view-free fast path (host overhead matters for launch-bound small shapes).
     if other.shape == input.shape and other.is_contiguous():
         broadcast_other = other
     else:
@@ -177,8 +179,8 @@ def atan2_(input, other):
         if not broadcast_other.is_contiguous():
             broadcast_other = broadcast_other.contiguous()
     if not input.is_contiguous():
-        # 非连续输出视图：在连续副本上计算后写回，避免 flat kernel 线性
-        # 写入破坏视图布局（arctan2_ 已交付同款契约）。
+        # Non-contiguous output view: compute on a contiguous copy and write back, avoiding flat kernel linear
+        # writes corrupting the view layout (same contract already delivered for arctan2_).
         contiguous_input = input.contiguous()
         _launch_inplace(contiguous_input, broadcast_other, contiguous_input)
         input.copy_(contiguous_input)

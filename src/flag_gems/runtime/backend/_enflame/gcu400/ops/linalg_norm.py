@@ -175,7 +175,7 @@ def linalg_norm(A, ord=None, dim=None, keepdim=False, *, dtype=None):
       (explicit dim, ord other than 2/±inf/0) run the fixed v_norm_kernel
       defined above instead of vector_norm's buggy one.
     """
-    logger.debug("GEMS LINALG_NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_NORM")
     ord = _parse_ord(ord)
     if dim is not None:
         dim = [dim] if isinstance(dim, int) else list(dim)

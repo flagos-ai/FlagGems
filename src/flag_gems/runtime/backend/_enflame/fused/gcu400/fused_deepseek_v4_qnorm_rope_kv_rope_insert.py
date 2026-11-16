@@ -137,7 +137,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_insert(
     """Fused QNorm+RoPE (Q) and RoPE+Insert (KV), BF16, GCU400 variant."""
     logger.debug("GEMS_ENFLAME_GCU400 FUSED_DEEPSEEK_V4_QNORM_ROPE_KV_ROPE_INSERT")
 
-    # 大 workload 才承担 int32 转换的两次设备拷贝；小 workload 保持原 dtype
+    # Only large workloads pay two device copies for int32 conversion; small ones keep the original dtype
     if q.shape[0] >= 512:
         if slot_mapping.dtype == torch.int64:
             slot_mapping = slot_mapping.to(torch.int32)

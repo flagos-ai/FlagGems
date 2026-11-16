@@ -29,10 +29,14 @@ the ``n(n-1)/2`` real index pairs rather than the pow2-padded ``N(N-1)/2``.
 All computation that produces the returned values happens inside the device
 kernel; the host wrapper only allocates the output, reads metadata and launches.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
 
 # Maximum number of threshold-Jacobi sweeps.  Cyclic Jacobi converges
 # quadratically, so a small bound reaches machine precision for the small ``n``
@@ -159,6 +163,7 @@ def _eigvalsh_jacobi_kernel(
 def linalg_eigvalsh(self, UPLO="L"):
     # ``aten::linalg_eigvalsh(Tensor self, str UPLO="L")`` defaults UPLO, so it
     # has to default here too or ``torch.linalg.eigvalsh(A)`` fails to bind.
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGVALSH")
     if UPLO not in ("L", "U"):
         raise RuntimeError(
             "Expected UPLO argument to be 'L' or 'U', but got " + str(UPLO)
@@ -220,6 +225,7 @@ def linalg_eigvalsh_out(self, UPLO="L", *, out):
     kernel above.  Like ATen, a mismatched ``out`` dtype is rejected instead of
     being cast, and a wrongly-shaped ``out`` is resized.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGVALSH_OUT")
     result = linalg_eigvalsh(self, UPLO)
     if out.dtype != result.dtype:
         raise RuntimeError(

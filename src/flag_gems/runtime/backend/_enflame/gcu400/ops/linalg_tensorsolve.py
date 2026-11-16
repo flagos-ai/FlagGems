@@ -42,10 +42,13 @@ fp64 system is factorised in fp64 instead of being narrowed first.  Narrower
 inputs are widened to fp32, which is what keeps the pivot divisions meaningful
 at those widths; the solution is cast to the output dtype at the final store.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -152,6 +155,7 @@ def linalg_tensorsolve(self, other, dims=None):
     # ``aten::linalg_tensorsolve(Tensor self, Tensor other, int[]? dims=None)``
     # defaults ``dims``, so it defaults here too; otherwise the public
     # ``torch.linalg.tensorsolve(A, B)`` call cannot bind.
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_TENSORSOLVE")
     A = self
     B = other
     a = A.dim()

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 acosh：contiguous 浮点输入走 1D flat kernel 快路径。"""
+"""GCU400-specific acosh: contiguous float inputs use the 1D flat kernel fast path."""
 
 import logging
 

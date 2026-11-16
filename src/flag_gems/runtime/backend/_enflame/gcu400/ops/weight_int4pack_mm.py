@@ -180,7 +180,7 @@ def weight_int4pack_mm(
     Returns:
         Output tensor of shape (M, N), dtype same as A.
     """
-    logger.debug("GEMS _WEIGHT_INT4PACK_MM")
+    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_INT4PACK_MM")
 
     M, K = A.shape
     N = mat2.shape[0]

@@ -909,7 +909,7 @@ def stft_center(
     return_complex=None,
     align_to_window=None,
 ):
-    logger.debug("GEMS STFT.CENTER")
+    logger.debug("GEMS_ENFLAME_GCU400 STFT.CENTER")
     if window is None:
         _warn_once(
             "window",
@@ -1024,7 +1024,7 @@ def stft(
     return_complex=None,
     align_to_window=None,
 ):
-    logger.debug("GEMS STFT")
+    logger.debug("GEMS_ENFLAME_GCU400 STFT")
     return stft_center(
         self,
         n_fft,

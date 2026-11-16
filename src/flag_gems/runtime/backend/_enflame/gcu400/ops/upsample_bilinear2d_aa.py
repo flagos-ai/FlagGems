@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 upsample_bilinear2d_aa 实现。
+"""GCU400-specific upsample_bilinear2d_aa implementation.
 
-公共实现使用 (cdiv(OW, BLOCK_X), cdiv(OH, BLOCK_Y)) 二维 grid；OH 较大时
-grid.y 会超过 GCU400 的 255 硬件上限并抛 OutOfResources。这里把二维 tile
-展平成一维任务队列，用固定 program 数加核内跨步循环遍历全部输出 tile，
-既解除 grid 维度限制，也让 program 数与输出规模解耦。
+The common implementation uses a 2D (cdiv(OW, BLOCK_X), cdiv(OH, BLOCK_Y)) grid; with large OH
+grid.y exceeds GCU400's 255 hardware limit and raises OutOfResources. Here the 2D tiles are
+flattened into a 1D task queue, with a fixed program count plus an in-kernel stride loop over all output tiles,
+removing the grid dimension limit and decoupling program count from output size.
 """
 
 import logging
@@ -71,7 +71,7 @@ def _upsample_bilinear2d_aa_kernel(
     range_x = tl.arange(0, BLOCK_SIZE_X)
     range_y = tl.arange(0, BLOCK_SIZE_Y)
 
-    # 每个 program 跨步领取若干输出 tile，tile 数不随输出尺寸增长。
+    # Each program strides over several output tiles; tile count does not grow with output size.
     for tile_id in tl.range(pid, num_tiles, NUM_PROGRAMS):
         tile_y = tile_id // num_tiles_x
         tile_x = tile_id % num_tiles_x
@@ -79,7 +79,7 @@ def _upsample_bilinear2d_aa_kernel(
         ow = tile_x * BLOCK_SIZE_X + range_x
         out_mask = (oh[:, None] < OH) & (ow[None, :] < OW)
 
-        # 抗锯齿双线性：支持窗口为 2x2，先按 x 再按 y 做线性插值。
+        # Antialiased bilinear: support window 2x2, linear interpolation along x first then y.
         center_w = (ow + 0.5) * reciprocal_scale_w
         center_h = (oh + 0.5) * reciprocal_scale_h
         span_start_w = tl.maximum(center_w - 0.5, 0).to(tl.int32)
@@ -112,7 +112,8 @@ def _upsample_bilinear2d_aa_kernel(
         mask_x0 = span_start_w[None, :] + 0 < IW
         mask_x1 = span_start_w[None, :] + 1 < IW
 
-        # (n, c) 与输出 tile 的二维遍历等价于一维 plane 遍历，合并循环减少嵌套与乘法。
+        # 2D traversal of (n, c) and output tiles equals 1D plane traversal; merging loops reduces nesting and
+        # multiplication.
         for plane in range(0, N * C, 1):
             offset_base = (plane * IH + span_start_h[:, None]) * IW + span_start_w[
                 None, :

@@ -23,8 +23,8 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
-# forward kernel 的确定性分派参数：BLOCK 控制每个 tile 的输出元素数，
-# NUM_WARPS 按访存型 kernel 调优，GRID_PROGRAMS=0 表示按 tile 数全量铺开。
+# Deterministic dispatch parameters of the forward kernel: BLOCK controls output elements per tile,
+# NUM_WARPS is tuned for a memory-bound kernel, GRID_PROGRAMS=0 means full expansion by tile count.
 FORWARD_BLOCK_SIZE = 1024
 FORWARD_NUM_WARPS = 4
 FORWARD_GRID_PROGRAMS = 0
@@ -57,7 +57,7 @@ def max_pool2d_forward_flat_kernel(
     input_ptr,
     output_ptr,
     indices_ptr,
-    # 输入/输出形状：用于把扁平输出下标还原为 (n, c, oh, ow)
+    # Input/output shapes: used to restore flat output indices to (n, c, oh, ow)
     in_c,
     in_h,
     in_w,
@@ -68,7 +68,7 @@ def max_pool2d_forward_flat_kernel(
     in_stride_h,
     in_stride_w,
     total_out_elements,
-    # 池化参数保持编译期常量，便于展开窗口循环并优化下标除法
+    # Pooling parameters stay compile-time constants to unroll the window loop and optimize index division
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
     stride_h: tl.constexpr,
@@ -80,9 +80,9 @@ def max_pool2d_forward_flat_kernel(
     BLOCK: tl.constexpr,
     NUM_PROGRAMS: tl.constexpr,
 ):
-    # 每个 program 处理一段连续输出元素，跨 (n, c, h, w) 扁平切分；
-    # program 数随输出元素数增长，而非随 n*c 通道数增长。NUM_PROGRAMS 小于
-    # tile 总数时由核内跨步循环复用固定数量的 program（匹配 SIP 拓扑）。
+    # Each program handles a contiguous range of output elements, split flat across (n, c, h, w);
+    # program count grows with output elements, not with n*c channels. When NUM_PROGRAMS is below
+    # the tile count, a fixed number of programs is reused by an in-kernel stride loop (matching SIP topology).
     num_tiles = tl.cdiv(total_out_elements, BLOCK)
     for tile_id in tl.range(tl.program_id(0), num_tiles, NUM_PROGRAMS):
         out_offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
@@ -306,8 +306,8 @@ def max_pool2d_with_indices(
         return output, indices
 
     total_out_elements = output.numel()
-    # 1D 扁平输出分块：BLOCK 由迭代调优确定；GRID_PROGRAMS>0 时固定 program 数
-    # 并在核内跨步循环，避免大 shape 下 program 调度开销。
+    # 1D flat output blocking: BLOCK comes from iteration tuning; GRID_PROGRAMS>0 fixes the program count
+    # and uses an in-kernel stride loop, avoiding program scheduling overhead on large shapes.
     BLOCK = FORWARD_BLOCK_SIZE
     num_tiles = triton.cdiv(total_out_elements, BLOCK)
     num_programs = (

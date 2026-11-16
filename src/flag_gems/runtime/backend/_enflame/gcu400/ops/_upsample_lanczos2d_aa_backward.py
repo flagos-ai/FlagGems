@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 _WEIGHT_CACHE_MAX_ENTRIES = 128
 sinpi = tl_extra_shim.sinpi
 
-# 定稿参数：由 Step 4 轮次扫描按 fp16 一票否决选出，见本次优化报告。
+# Final parameters: chosen by Step 4 round sweeps with fp16 veto, see this optimization report.
 PERSISTENT_GRID = 192
 BLOCK_IW_CAP = 256
 _FUSE_THRESHOLD = 1048576
@@ -112,7 +112,8 @@ def _fused_precomputed_backward_kernel(
     MAX_KSIZE_H: tl.constexpr,
     MAX_KSIZE_W: tl.constexpr,
 ):
-    """单遍输入 gather；固定规模网格 + 核内按行跨步，program 数与 problem size 解耦。"""
+    """Single-pass input gather; fixed-size grid with in-kernel row striding decouples program count from problem
+    size."""
     pid_col = tl.program_id(1)
     row_tile = tl.program_id(0)
 
@@ -193,7 +194,7 @@ def _pass1_w_gather_nchw_kernel_strided(
     MAX_OW: tl.constexpr,
     MAX_KSIZE_W: tl.constexpr,
 ):
-    """W 方向分离 gather；同样使用固定规模网格 + 核内跨行循环。"""
+    """W-direction split gather; also uses a fixed-size grid with an in-kernel cross-row loop."""
     pid_col = tl.program_id(1)
     row_tile = tl.program_id(0)
 
@@ -252,7 +253,7 @@ def _pass2_h_gather_nchw_kernel_strided(
     MAX_OH: tl.constexpr,
     MAX_KSIZE_H: tl.constexpr,
 ):
-    """H 方向分离 gather；同样使用固定规模网格 + 核内跨行循环。"""
+    """H-direction split gather; also uses a fixed-size grid with an in-kernel cross-row loop."""
     pid_col = tl.program_id(1)
     row_tile = tl.program_id(0)
 
@@ -298,7 +299,7 @@ def _pass2_h_gather_nchw_kernel_strided(
         )
 
 
-# 2-pass 路径保留原始无循环 kernel：核内动态跨行循环在 GCU400 上会造成 3.7x 劣化。
+# The 2-pass path keeps the original loop-free kernel: a dynamic in-kernel cross-row loop degrades by 3.7x on GCU400.
 @triton.jit
 def _pass1_w_gather_nchw_kernel_plain(
     grad_out_ptr,  # [NC, H_out, W_out] flat
@@ -554,7 +555,7 @@ def _should_use_fused_path(
 
 
 def _persistent_grid(total_rows, col_tiles):
-    """把 grid 行数压到 PERSISTENT_GRID 以内，核内按 GRID_ROWS 跨步覆盖全部行。"""
+    """Cap grid rows at PERSISTENT_GRID and stride over all rows in-kernel by GRID_ROWS."""
     max_rows = max(1, PERSISTENT_GRID // col_tiles)
     return min(total_rows, max_rows)
 
@@ -612,8 +613,8 @@ def _backward_impl(
         MAX_OW,
     )
 
-    # 输出 tensor 复用：out 变体直接把 kernel 结果写进调用方提供的 grad_input，
-    # 省掉一次 full-size 分配与一次全量 device-to-device 拷贝。
+    # Output tensor reuse: the out variant writes kernel results directly into the caller's grad_input,
+    # saving one full-size allocation and one full device-to-device copy.
     if out_tensor is not None and out_tensor.is_contiguous():
         grad_in_flat = out_tensor.view(NC, H_in, W_in)
     else:
@@ -734,7 +735,7 @@ def upsample_lanczos2d_aa_backward(
     scales_h=None,
     scales_w=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE_LANCZOS2D_AA_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_LANCZOS2D_AA_BACKWARD")
     if grad_output.ndim != 4:
         raise RuntimeError(
             "Expected grad_output to be a tensor of dimension 4 but got: "
@@ -777,7 +778,7 @@ def upsample_lanczos2d_aa_backward_grad_input(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE_LANCZOS2D_AA_BACKWARD_GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_LANCZOS2D_AA_BACKWARD_GRAD_INPUT")
     if grad_input.device != grad_output.device:
         raise RuntimeError(
             f"Expected grad_input on {grad_output.device}, but got {grad_input.device}"

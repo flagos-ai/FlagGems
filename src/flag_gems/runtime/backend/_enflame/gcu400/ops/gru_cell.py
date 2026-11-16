@@ -278,7 +278,7 @@ def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     Returns:
         The new hidden state of shape ``(batch, hidden_size)``.
     """
-    logger.debug("GEMS GRU_CELL")
+    logger.debug("GEMS_ENFLAME_GCU400 GRU_CELL")
     _check_cell_args("gru_cell", input, hx, w_ih, w_hh, b_ih, b_hh, 3)
 
     batch, input_size = input.shape

@@ -139,10 +139,10 @@ def _gcu_scatter_reduce_vec_kernel(
 ):
     """Blocked vector scan over the index axis.
 
-    t9 批 Step 4：原 kernel 用标量循环遍历 IDX_AXIS（最多 256 次迭代），
-    在 GCU400 / Triton 3.6 上实测 8~11ms。改为一次 tl.arange 分块加载 +
-    tl.sum / tl.max / tl.min 归约后降到 1.1~1.4ms，且与标量结果逐位一致。
-    prod 不在此 kernel 内（该 Triton 版本无 tl.prod），由 wrapper 回退标量版。
+    t9 batch Step 4: the original kernel scanned IDX_AXIS with a scalar loop (up to 256 iterations),
+    measuring 8~11ms on GCU400 / Triton 3.6. Switching to one tl.arange block load +
+    tl.sum / tl.max / tl.min reduction drops it to 1.1~1.4ms, bit-identical to the scalar result.
+    prod is not in this kernel (that Triton version lacks tl.prod); the wrapper falls back to the scalar version.
     """
     pid = tl.program_id(axis=0).to(tl.int32)
     i = pid % OUT_INNER
@@ -256,7 +256,7 @@ def scatter_reduce(
 
     with torch_device_fn.device(inp.device):
         if _REDUCE_IDS[reduce] == 1:
-            # prod: 该 Triton 版本无 tl.prod，保留原标量 scan kernel。
+            # prod: that Triton version lacks tl.prod, keep the original scalar scan kernel.
             _gcu_scatter_reduce_scan_kernel[(out_numel,)](
                 inp_f32,
                 idx_i64,
@@ -272,8 +272,8 @@ def scatter_reduce(
                 num_warps=4,
             )
         else:
-            # t9 批 Step 4 B03：IDX_BLOCK=256 / num_warps=4，
-            # sum/mean/amax/amin 实测 7.9~11.4x，逐位一致。
+            # t9 batch Step 4 B03: IDX_BLOCK=256 / num_warps=4,
+            # sum/mean/amax/amin measured 7.9~11.4x, bit-identical.
             _gcu_scatter_reduce_vec_kernel[(out_numel,)](
                 inp_f32,
                 idx_i64,

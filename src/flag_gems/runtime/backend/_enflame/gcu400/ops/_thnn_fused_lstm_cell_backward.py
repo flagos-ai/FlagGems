@@ -25,7 +25,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-# 显式暴露主反向 kernel 的 warp 数，供 GCU400 调优扫描。
+# Expose the main backward kernel's warp count explicitly for GCU400 tuning sweeps.
 NUM_WARPS_LSTM_BWD = 8
 
 
@@ -214,7 +214,7 @@ def _validate_inputs(grad_hy, grad_cy, cx, cy, workspace):
 
 def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias):
     """Compute ATen's five-output fused LSTM-cell backward wrapper."""
-    logger.debug("GEMS _THNN_FUSED_LSTM_CELL_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_LSTM_CELL_BACKWARD")
 
     if torch.is_grad_enabled():
         raise RuntimeError(

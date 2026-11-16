@@ -71,7 +71,7 @@ def fake_quantize_per_channel_affine_kernel(
 def fake_quantize_per_channel_affine(
     input, scale, zero_point, axis, quant_min, quant_max
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_PER_CHANNEL_AFFINE")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_CHANNEL_AFFINE")
 
     if not isinstance(input, torch.Tensor):
         raise TypeError("input must be a torch.Tensor")

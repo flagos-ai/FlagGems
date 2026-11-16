@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def _coalesced_(self: torch.Tensor, coalesced: bool) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 _COALESCED_")
     if self.layout != _SPARSE_COO_LAYOUT:
         raise RuntimeError(_ERROR_MESSAGE)
     # Construct the guard per call: ``_AutoDispatchBelowAutograd`` activates the

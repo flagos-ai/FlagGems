@@ -39,9 +39,9 @@ _DOT_PRECISION = tl.constexpr(
     "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
 )
 
-# packed 前向的「核内时间步循环」持久化开关。
-# 未开启时每个时间步单独 launch 一次 kernel；开启后整条时间轴在同一个 CTA 内循环，
-# 把 T 次小 kernel launch（每次 grid 只有 1 个 CTA）压缩成 1 次，权重也只加载一次。
+# When off, each time step launches its own kernel; when on, the whole time axis loops inside one CTA,
+# compressing T small kernel launches (each with a 1-CTA grid) into 1, and weights are loaded only once.
+# #
 _PERSISTENT_PACKED_FORWARD = True
 _PERSISTENT_BLOCK_B = 16
 
@@ -1559,13 +1559,13 @@ def rnn_tanh_packed_forward_persistent_kernel(
     BLOCK_I: tl.constexpr,
     BLOCK_H: tl.constexpr,
 ):
-    """packed 前向的持久化版本：一个 CTA 内循环所有时间步。
+    """Persistent version of packed forward: loop over all time steps inside one CTA.
 
-    语义与 ``rnn_tanh_packed_forward_step_dot_kernel`` 逐步调用完全等价：
-    每步先把更新前的 h 写入 ``previous``（反向 BPTT 用），再算
-    ``h_t = tanh(x_t W_ih^T + h_{t-1} W_hh^T + b)`` 写回 hidden 与 output。
-    因 active batch 随时间单调变化（正向递减 / 反向递增），未被激活的 batch 行
-    必须保留寄存器里的旧 h，不能让清零的 ``current`` 覆盖。
+    Semantics are fully equivalent to calling ``rnn_tanh_packed_forward_step_dot_kernel`` step by step:
+    each step first writes the pre-update h into ``previous`` (for backward BPTT), then computes
+    ``h_t = tanh(x_t W_ih^T + h_{t-1} W_hh^T + b)`` and writes back hidden and output.
+    Since active batch changes monotonically over time (forward decreasing / backward increasing), inactive batch rows
+    must keep their old h in registers and must not be overwritten by the zeroed ``current``.
     """
     batch_start = tl.program_id(0) * BLOCK_B
     b_offs = batch_start + tl.arange(0, BLOCK_B)
@@ -1581,7 +1581,7 @@ def rnn_tanh_packed_forward_persistent_kernel(
         mask=batch_valid[:, None] & h_mask[None, :],
         other=0.0,
     ).to(tl.float32)
-    # 权重只与 hidden/input 尺寸有关，与时间步无关：在进入时间循环前加载一次。
+    # Weights depend only on hidden/input size, not on the time step: load once before entering the time loop.
     w_ih_hoisted = tl.load(
         weight_ih_ptr
         + h_offs[:, None] * weight_ih_stride_h
@@ -1636,7 +1636,7 @@ def rnn_tanh_packed_forward_persistent_kernel(
             ).to(tl.float32)
             acc += bias[None, :]
         current = tl_extra_shim.tanh(acc)
-        # 未激活行保持旧 h：反向方向下它们稍后才会被激活。
+        # Inactive rows keep old h: in the backward direction they are activated later.
         hidden = tl.where(active_mask, current, hidden)
         tl.store(hidden_ptr + hidden_offsets, hidden, mask=active_mask)
         output_offsets = (
@@ -2958,10 +2958,11 @@ def _packed_layout(batch_sizes, rows):
 
 
 def _packed_step_metadata(batch_sizes_host, row_offsets, reference):
-    """把每步的 active batch 与 packed 行偏移搬到 device，供持久化 kernel 核内索引。
+    """Move each step's active batch and packed row offsets to the device for in-kernel indexing by the persistent
+    kernel.
 
-    batch_sizes 在 ATen schema 中是 CPU 元数据，这里只用于构造 launch 几何；
-    真正的时间步索引由 kernel 从这两个 int32 小张量读取，避免逐步 launch。
+    batch_sizes is CPU metadata in the ATen schema, used here only to build launch geometry;
+    the real time-step index is read by the kernel from these two small int32 tensors, avoiding per-step launches.
     """
     sizes = torch.tensor(batch_sizes_host, dtype=torch.int32, device=reference.device)
     offsets = torch.tensor(row_offsets, dtype=torch.int32, device=reference.device)
@@ -2989,7 +2990,7 @@ def _launch_packed_persistent_direction(
     apply_dropout,
     num_steps,
 ):
-    """单 (layer, direction) 的持久化 packed 前向：一次 launch 覆盖整条时间轴。"""
+    """Persistent packed forward of one (layer, direction): one launch covers the entire time axis."""
     weight_ih, weight_hh, bias_ih, bias_hh = params_state
     block_b = _PERSISTENT_BLOCK_B
     block_i = max(16, triton.next_power_of_2(input_size))
@@ -3065,8 +3066,8 @@ def _launch_packed_forward(
     current_input = data
     current_input_size = first_input_size
     current_strides = data.stride()
-    # 持久化路径要求整个 active batch 落在单个 batch-block 内（grid 恒为 1），
-    # 这样同一次 launch 才能在核内顺序串起所有时间步。
+    # The persistent path requires the whole active batch to fit in one batch-block (grid always 1),
+    # so one launch can chain all time steps in order inside the kernel.
     persistent_ready = _PERSISTENT_PACKED_FORWARD and (
         triton.cdiv(max_batch, _PERSISTENT_BLOCK_B) == 1
     )
@@ -3696,7 +3697,7 @@ def rnn_tanh(
     bias/no-bias, multiple layers, both directions, batch-first layout,
     training dropout, and pure-Triton backward.
     """
-    logger.debug("GEMS RNN_TANH")
+    logger.debug("GEMS_ENFLAME_GCU400 RNN_TANH")
     prefer_persistent_dot = runtime.device.vendor_name in (
         "nvidia",
         "thead",
@@ -3729,7 +3730,7 @@ def rnn_tanh_data(
     bidirectional,
 ):
     """PackedSequence overload of :func:`rnn_tanh`, implemented in Triton."""
-    logger.debug("GEMS RNN_TANH_DATA")
+    logger.debug("GEMS_ENFLAME_GCU400 RNN_TANH_DATA")
     if data.ndim != 2:
         raise RuntimeError(f"rnn_tanh.data: expected 2-D data, got {data.ndim}-D")
     params = tuple(params)

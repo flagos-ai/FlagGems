@@ -23,10 +23,13 @@ grouped channels.  Formulated as an implicit GEMM:
 
 Program grid = (cdiv(M, BLOCK_M), cdiv(C_out_pg, BLOCK_N), groups).
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -269,6 +272,7 @@ def _gv(v, i, d):
 def convolution(
     input, weight, bias, stride, padding, dilation, transposed, output_padding, groups
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION")
     x = input
     w = weight
     nd = x.dim() - 2

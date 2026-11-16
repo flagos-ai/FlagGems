@@ -150,7 +150,7 @@ def _new_full_flat(out, fill_value):
         if not (-0x80000000 <= value <= 0x7FFFFFFF):
             return full_func_scalar(out, fill_value, out0=out)
         words = out.reshape(-1).view(torch.int32)
-        # 每个 int64 元素占 2 个 int32 word，必须写满整个视图
+        # Each int64 element occupies 2 int32 words, so the whole view must be written
         n_words = 2 * n_elements
         high_word = 0 if value >= 0 else -1
         _launch_new_full_int64_words(words, n_words, value, high_word)

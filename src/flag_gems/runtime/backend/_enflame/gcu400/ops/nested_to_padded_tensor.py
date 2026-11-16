@@ -80,7 +80,7 @@ def nested_to_padded_tensor(self, padding, output_size=None):
     Returns:
         Dense padded tensor.
     """
-    logger.debug("GEMS NESTED_TO_PADDED_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 NESTED_TO_PADDED_TENSOR")
 
     # self._nested_tensor_size() is a CPU int64 tensor (aten contract), so the
     # per-component row counts and the padded shape are read straight off it.

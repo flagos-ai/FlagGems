@@ -495,7 +495,7 @@ def _convolution_double_backward(
     groups,
     output_mask,
 ):
-    logger.debug("GEMS _CONVOLUTION_DOUBLE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _CONVOLUTION_DOUBLE_BACKWARD")
 
     # Dispatch by spatial arity (matches the convention used by
     # ``_convolution_mode``: ``spatial_ndim = weight.ndim - 2``). 1D convolutions

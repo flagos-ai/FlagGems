@@ -20,7 +20,7 @@ from ._dimI import ensure_sparse_coo_gcu_fallback
 
 logger = logging.getLogger(__name__)
 
-# 与 _dimI 共用 GCU400 的 sparse COO 构造兼容层，保证单独导入本模块时同样可用。
+# Share GCU400's sparse COO constructor compatibility layer with _dimI, so importing this module alone also works.
 ensure_sparse_coo_gcu_fallback()
 
 
@@ -47,6 +47,7 @@ def _dimV(self: torch.Tensor) -> int:
       the 'CUDA'/'SparseCsrCUDA' backend"). Mirror that contract here instead
       of guessing a formula.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _DIMV")
     if self.layout == torch.sparse_coo:
         return self.dim() - self._indices().shape[0]
     raise NotImplementedError(

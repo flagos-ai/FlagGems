@@ -122,7 +122,7 @@ def _cdist_forward(
         This implementation only supports p=2.0 (L2 norm). For other p values,
         the function falls back to torch.cdist.
     """
-    logger.debug("GEMS CDIST_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 CDIST_FORWARD")
 
     assert x1.dtype in (
         torch.float32,
@@ -130,7 +130,7 @@ def _cdist_forward(
 
     # Only support p=2.0 for now
     if p != 2.0:
-        logger.debug("GEMS CDIST_FORWARD falling back to torch (p != 2.0)")
+        logger.debug("GEMS_ENFLAME_GCU400 CDIST_FORWARD falling back to torch (p != 2.0)")
         return flag_gems.cdist(x1, x2, p=p, compute_mode=compute_mode)
 
     # Handle broadcasting - get shapes
@@ -280,7 +280,7 @@ def _cdist_backward_kernel(
 
 
 def _cdist_backward(grad, x1, x2, p, cdist):
-    logger.debug("GEMS _cdist_backward")
+    logger.debug("GEMS_ENFLAME_GCU400 _cdist_backward")
     assert x1.device == x2.device == grad.device == cdist.device
     assert x1.shape[0] == x2.shape[0] == grad.shape[0] == cdist.shape[0]
     assert x1.shape[2] == x2.shape[2]  # feature dim must match
@@ -354,5 +354,5 @@ def cdist(x1: torch.Tensor, x2: torch.Tensor, p: float = 2.0, compute_mode=None)
     Returns:
         Tensor of shape (..., P, R) containing pairwise distances
     """
-    logger.debug("GEMS CDIST")
+    logger.debug("GEMS_ENFLAME_GCU400 CDIST")
     return _cdist_forward(x1, x2, p, compute_mode)

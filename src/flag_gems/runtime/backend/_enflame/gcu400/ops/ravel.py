@@ -621,7 +621,7 @@ class _RavelCopy(torch.autograd.Function):
 
 def ravel(self):
     """``aten::ravel(Tensor(a) self) -> Tensor(a)``."""
-    logger.debug("GEMS RAVEL")
+    logger.debug("GEMS_ENFLAME_GCU400 RAVEL")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "ravel(): argument 'self' must be a Tensor, not %s" % type(self).__name__

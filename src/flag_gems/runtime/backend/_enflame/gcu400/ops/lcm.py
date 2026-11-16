@@ -122,7 +122,7 @@ def lcm(self, other):
     Uses binary GCD (Stein's algorithm) for efficiency, then derives
     lcm(a, b) = |a| / gcd(a, b) * |b| to avoid intermediate overflow.
     """
-    logger.debug("GEMS LCM")
+    logger.debug("GEMS_ENFLAME_GCU400 LCM")
     lhs, rhs, promoted_dtype = _materialize_inputs(self, other)
     result = torch.empty_like(lhs, dtype=promoted_dtype)
     numel = result.numel()
@@ -144,7 +144,7 @@ def lcm(self, other):
 
 def lcm_(self, other):
     """In-place version of lcm."""
-    logger.debug("GEMS LCM_")
+    logger.debug("GEMS_ENFLAME_GCU400 LCM_")
     result = lcm(self, other)
     self.copy_(result)
     return self

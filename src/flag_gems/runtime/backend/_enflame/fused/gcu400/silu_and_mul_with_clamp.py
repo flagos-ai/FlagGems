@@ -117,6 +117,7 @@ class SiluAndMulWithClamp(torch.autograd.Function):
 
 def silu_and_mul_with_clamp(x, y, limit):
     # Inference path: avoid autograd.Function.apply graph construction.
+    logger.debug("GEMS_ENFLAME_GCU400 SILU_AND_MUL_WITH_CLAMP")
     if not torch.is_grad_enabled() or not (x.requires_grad or y.requires_grad):
         out = torch.empty_like(x)
         _launch_flat(x.contiguous(), y.contiguous(), out, limit)

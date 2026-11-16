@@ -42,12 +42,12 @@ def signbit_func(x):
 
 
 def signbit(A):
-    logger.debug("GEMS SIGNBIT")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGNBIT")
     return signbit_func(A)
 
 
 def signbit_out(A, *, out=None):
-    logger.debug("GEMS SIGNBIT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SIGNBIT_OUT")
     if out is None:
         return signbit_func(A)
     signbit_func(A, out0=out)

@@ -30,7 +30,7 @@ def lt_func(x, y):
 
 
 def lt_(A, B):
-    logger.debug("GEMS LT_")
+    logger.debug("GEMS_ENFLAME_GCU400 LT_")
     lt_func(A, B, out0=A)
     return A
 
@@ -42,6 +42,6 @@ def lt_func_scalar(x, y):
 
 
 def lt_scalar_(A, B):
-    logger.debug("GEMS LT_SCALAR_")
+    logger.debug("GEMS_ENFLAME_GCU400 LT_SCALAR_")
     lt_func_scalar(A, B, out0=A)
     return A

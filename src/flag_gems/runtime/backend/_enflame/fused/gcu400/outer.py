@@ -210,6 +210,7 @@ class Outer(torch.autograd.Function):
 def outer(inp, weight):
     # Inference / no-grad calls skip the autograd.Function.apply context
     # build (same convention as the sibling gcu400 fused ops).
+    logger.debug("GEMS_ENFLAME_GCU400 OUTER")
     if (
         not torch.is_grad_enabled() or not (inp.requires_grad or weight.requires_grad)
     ) and _fast_path_ok(inp, weight):

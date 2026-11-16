@@ -386,21 +386,22 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
 
 # ------------------------  forward  -------------------------------
-# GCU400 前向 softmax 按「行」组织：program 总数固定为 GRID_DIM_FWD，
-# 每个 program 在 kernel 内部跨步处理多行（行数不再决定 CTA 数）。
-# 行内按 BLOCK_N 分段；N 很短时把多行拼成一个 2D tile，避免每行一次启动摊销。
+# GCU400 forward softmax is organized by "row": total programs fixed at GRID_DIM_FWD,
+# each program strides over several rows in-kernel (row count no longer decides CTA count).
+# Rows are split by BLOCK_N; when N is short, pack several rows into one 2D tile to avoid one launch per row.
 GRID_DIM_FWD = 48
-# 单个 tile 的字节预算：行内连续段的长度由它反推（128 KiB 实测带宽最高）。
+# Byte budget of a single tile: the in-row contiguous segment length is derived from it (128 KiB measured best
+# bandwidth).
 FWD_TILE_BYTES = 128 << 10
-# 超过该行长度就改用 2D block tiling：整行归约宽度太大时带宽会掉到 1/3。
+# Beyond this row length switch to 2D block tiling: full-row reduction width drops bandwidth to 1/3.
 BLOCK_TILING_MIN_N = 8192
-# 2D block tiling 的块内列数：归约宽度固定在此值，避免宽归约拖慢带宽。
+# Columns per block in 2D block tiling: reduction width is fixed here to avoid wide reductions slowing bandwidth.
 BLOCK_TILING_COLS = 4096
-# block tiling 单个 tile 的元素上限：fp32 中间量占 128 KiB，再大 DSM 不足。
+# Element cap per tile in block tiling: fp32 intermediates take 128 KiB, larger exceeds DSM.
 BLOCK_TILING_TILE_ELEMS = 32768
-# 单遍 row kernel 的 tile 元素上限：超过后寄存器压力反超并行度收益。
+# Element cap of the single-pass row kernel tile: beyond it register pressure outweighs the parallelism gain.
 ROW_TILE_ELEMS = 32768
-# exp 走 exp2 需要乘的 log2(e)，须实例化为 tl.constexpr 才能在 kernel 内引用。
+# log2(e) multiplier for exp via exp2 must be a tl.constexpr to be referenced inside the kernel.
 LOG2E = tl.constexpr(1.4426950408889634)
 
 
@@ -414,7 +415,7 @@ def softmax_forward_row_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """N 能被单个 BLOCK_N 覆盖：一行（或多行）一个 tile，单遍读写。"""
+    """N fits in one BLOCK_N: one tile per row (or several rows), single-pass read/write."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     n_offsets = tl.arange(0, BLOCK_N)
@@ -441,7 +442,7 @@ def softmax_forward_row_multipass_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """行长超过 BLOCK_N：第一遍 online 求 max/sum，第二遍重算 exp 并写出。"""
+    """Row longer than BLOCK_N: pass one computes max/sum online, pass two recomputes exp and writes out."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     n_offsets = tl.arange(0, BLOCK_N)
@@ -458,7 +459,7 @@ def softmax_forward_row_multipass_kernel(
             inp = tl.load(in_ptr + offsets, mask=mask, other=-float("inf"))
             inp = inp.to(tl.float32)
             m_new = tl.maximum(row_max, tl.max(inp, 1))
-            # 整行都是 -inf 时保持原值，避免 -inf - (-inf) 产生 NaN。
+            # When a whole row is -inf keep the original value, avoiding NaN from -inf - (-inf).
             all_neg_inf = m_new == float("-inf")
             shifted = tl.sum(tl.exp2((inp - m_new[:, None]) * LOG2E), 1)
             row_sum = tl.where(
@@ -486,11 +487,11 @@ def softmax_forward_split_partial_kernel(
     N,
     BLOCK_N: tl.constexpr,
 ):
-    """M == 1 的超长行：每个 program 负责一段，产出局部 max / sum。"""
+    """M == 1 with an extremely long row: each program handles one segment, producing local max / sum."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     n_offsets = tl.arange(0, BLOCK_N)
-    # 用标量状态累加：状态大小与 BLOCK_N 无关，tile 才能放大到 128 KiB。
+    # Accumulate with scalar state: state size is independent of BLOCK_N, so tiles can grow to 128 KiB.
     acc_max = float("-inf")
     acc_sum = 0.0
     for n_start in tl.range(pid * BLOCK_N, N, num_programs * BLOCK_N):
@@ -499,7 +500,7 @@ def softmax_forward_split_partial_kernel(
         inp = tl.load(in_ptr + offsets, mask=mask, other=-float("inf")).to(tl.float32)
         seg_max = tl.max(inp, 0)
         merged_max = tl.maximum(acc_max, seg_max)
-        # 全 -inf 的段不参与累加，避免 -inf - (-inf) 产生 NaN。
+        # All -inf segments do not participate, avoiding NaN from -inf - (-inf).
         seg_sum = tl.sum(tl.exp(inp - merged_max), 0)
         acc_sum = tl.where(
             merged_max == float("-inf"),
@@ -522,7 +523,7 @@ def softmax_forward_split_final_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
-    """归约各段 max / sum 得到全局值，再重算本段输出。"""
+    """Reduce segment max / sum into global values, then recompute this segment's output."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     p_offsets = tl.arange(0, BLOCK_P)
@@ -555,7 +556,7 @@ def softmax_forward_block_partial_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """阶段一：每个 (BLOCK_M, BLOCK_N) 块产出该行这一段的局部 max / sum。"""
+    """Stage one: each (BLOCK_M, BLOCK_N) block produces local max / sum for that row segment."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     num_m_blocks = tl.cdiv(M, BLOCK_M)
@@ -590,7 +591,7 @@ def softmax_forward_block_reduce_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
-    """阶段二：把每行的 num_n 个局部值合并成全局 max / sum（数据量很小）。"""
+    """Stage two: merge each row's num_n local values into global max / sum (tiny data volume)."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     num_m_blocks = tl.cdiv(M, BLOCK_M)
@@ -601,7 +602,7 @@ def softmax_forward_block_reduce_kernel(
         row_base = m_offsets[:, None] * num_n
         g_max = tl.full([BLOCK_M], float("-inf"), tl.float32)
         g_sum = tl.zeros([BLOCK_M], tl.float32)
-        # num_n 可能远大于 BLOCK_P（超长行），按 BLOCK_P 分块滚动合并。
+        # num_n may far exceed BLOCK_P (extremely long rows), so merge in rolling BLOCK_P chunks.
         for p_start in tl.range(0, num_n, BLOCK_P):
             p_index = p_start + p_offsets
             mask = row_mask[:, None] & (p_index[None, :] < num_n)
@@ -640,7 +641,7 @@ def softmax_forward_block_output_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """阶段三：按块重算 exp((x - max)) / sum 并写出。"""
+    """Stage three: recompute exp((x - max)) / sum per block and write out."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     num_m_blocks = tl.cdiv(M, BLOCK_M)
@@ -673,11 +674,11 @@ def softmax_forward_kernel_non_inner(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    """非内层归约维（K > 1）：grid 跨步遍历 K，program 内在线归约整条 N 维。
+    """Non-inner reduction dim (K > 1): grid strides over K, each program reduces the whole N dim online.
 
-    grid.y 受 GCU 硬件上限（255）限制，因此 K 方向只用 GRID_DIM_X 个
-    program，每个 program 在 kernel 内按 `num_k_programs * BLOCK_K` 跨步，
-    与 `softmax_backward_kernel_non_inner` 一致。
+    grid.y is bounded by GCU hardware (255), so the K direction uses only GRID_DIM_X
+    programs, each striding in-kernel by `num_k_programs * BLOCK_K`,
+    consistent with `softmax_backward_kernel_non_inner`.
     """
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
@@ -696,7 +697,7 @@ def softmax_forward_kernel_non_inner(
                 tl.float32
             )
             m_new = tl.maximum(acc_max, tl.max(inp, 0))
-            # 整列都是 -inf 时保持原值，避免 -inf - (-inf) 产生 NaN。
+            # When a whole column is -inf keep the original value, avoiding NaN from -inf - (-inf).
             all_neg_inf = m_new == float("-inf")
             shifted = tl.sum(tl.exp2((inp - m_new[None, :]) * LOG2E), 0)
             acc_sum = tl.where(
@@ -721,7 +722,7 @@ def softmax_forward_kernel_non_inner(
 @libentry()
 @triton.jit(do_not_specialize=["numel"])
 def softmax_single_kernel(out_ptr, in_ptr, numel, BLOCK: tl.constexpr):
-    """归约维长度为 1：结果恒为 1；元素为 -inf 时按 0/0 语义给 NaN（同 aten）。"""
+    """Reduction dim length is 1: result is always 1; -inf elements give NaN by 0/0 semantics (same as aten)."""
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < numel
@@ -757,8 +758,8 @@ def softmax_out(self, dim, half_to_float=False, *, out):
     K = source.numel() // M // N
 
     if N == 1:
-        # 归约维长度为 1：一次 elementwise kernel 即可，
-        # 比走通用两遍实现快一个量级。
+        # Reduction dim length is 1: one elementwise kernel suffices,
+        # an order of magnitude faster than the generic two-pass implementation.
         block = 8192
         grid = (triton.cdiv(source.numel(), block),)
         with torch_device_fn.device(source.device):
@@ -789,8 +790,8 @@ def softmax_out(self, dim, half_to_float=False, *, out):
         element_size = source.element_size()
         block_n_cap = max(64, FWD_TILE_BYTES // element_size)
         if M == 1 and N > block_n_cap:
-            # 单行超长：block tiling 的行维退化为 1，tile 只剩 BLOCK_N 宽，
-            # 带宽会掉一个数量级，改用分段归约（局部 max/sum + 一次全局合并）。
+            # One extremely long row: block tiling's row dim degenerates to 1, the tile is only BLOCK_N wide,
+            # bandwidth drops an order of magnitude, so use segmented reduction (local max/sum + one global merge).
             num_programs = GRID_DIM_FWD
             split_block_n = min(
                 block_n_cap,
@@ -822,8 +823,8 @@ def softmax_out(self, dim, half_to_float=False, *, out):
                 num_warps=1,
             )
         elif M > 1 and N > BLOCK_TILING_MIN_N:
-            # 多行长行：2D block tiling。tile 覆盖 BLOCK_M 行 x BLOCK_N 列，
-            # 行归约宽度被限制在 BLOCK_N 内，跨块结果由阶段二合并。
+            # Several long rows: 2D block tiling. A tile covers BLOCK_M rows x BLOCK_N columns,
+            # row reduction width is bounded by BLOCK_N, and cross-block results are merged in stage two.
             block_n = min(BLOCK_TILING_COLS, triton.next_power_of_2(N))
             batch_rows = triton.next_power_of_2(triton.cdiv(M, GRID_DIM_FWD))
             block_m = max(1, min(BLOCK_TILING_TILE_ELEMS // block_n, batch_rows))
@@ -878,7 +879,7 @@ def softmax_out(self, dim, half_to_float=False, *, out):
             )
         elif N <= block_n_cap:
             block_n = triton.next_power_of_2(N)
-            # 行内元素少，把多行拼进一个 tile；批行数必须是 2 的幂。
+            # Few in-row elements: pack several rows into one tile; the batch row count must be a power of two.
             batch_rows = triton.next_power_of_2(triton.cdiv(M, GRID_DIM_FWD))
             block_m = max(1, min(ROW_TILE_ELEMS // block_n, batch_rows))
             grid = (min(GRID_DIM_FWD, triton.cdiv(M, block_m)),)
@@ -892,7 +893,7 @@ def softmax_out(self, dim, half_to_float=False, *, out):
                 num_warps=2,
             )
         else:
-            # 兜底：单行且行长短于 tile 上限以外的情形，按行分段两遍处理。
+            # Fallback: single row with a row length outside the tile cap, handled by segmented two-pass processing.
             grid = (min(GRID_DIM_FWD, M),)
             softmax_forward_row_multipass_kernel[grid](
                 out,
@@ -919,7 +920,7 @@ def softmax(self, dim, half_to_float=False):
     dtype = torch.float32 if half_to_float else self.dtype
     out = torch.empty_like(self, dtype=dtype)
     if self.shape[dim % self.ndim] == 1:
-        # 归约维长度为 1：直接落到专用 kernel，避免进入通用分派。
+        # Reduction dim length is 1: go directly to the dedicated kernel, avoiding generic dispatch.
         source = self.contiguous()
         block = 8192
         grid = (triton.cdiv(source.numel(), block),)

@@ -102,7 +102,7 @@ def _pad_packed_sequence(data, batch_sizes, batch_first, padding_value, total_le
     Returns:
         Tuple of (padded output tensor, lengths tensor).
     """
-    logger.debug("GEMS _PAD_PACKED_SEQUENCE")
+    logger.debug("GEMS_ENFLAME_GCU400 _PAD_PACKED_SEQUENCE")
 
     num_steps = batch_sizes.numel()
     max_batch = int(batch_sizes[0].item())

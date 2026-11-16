@@ -60,7 +60,7 @@ def _convolution_mode(input, weight, bias, stride, padding, dilation, groups):
     :func:`constant_pad_nd` op to match PyTorch's reference exactly, then the
     kernel runs with zero padding.
     """
-    logger.debug("GEMS _CONVOLUTION_MODE")
+    logger.debug("GEMS_ENFLAME_GCU400 _CONVOLUTION_MODE")
     if padding == "same":
         if any(s != 1 for s in stride):
             raise ValueError("padding='same' is not supported for strided convolutions")

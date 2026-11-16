@@ -25,5 +25,6 @@ def _unsafe_view(self: torch.Tensor, size):
     Uses PyTorch's reshape which returns a view for contiguous tensors
     and a copy for non-contiguous tensors.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _UNSAFE_VIEW")
     target_size = tuple(size) if not isinstance(size, tuple) else size
     return self.reshape(target_size)

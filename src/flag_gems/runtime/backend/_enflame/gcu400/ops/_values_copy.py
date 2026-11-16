@@ -65,7 +65,7 @@ def _values_copy_kernel_nd(
         phys += idx.to(tl.int64) * stride
         rem = rem // dim
     x = tl.load(x_ptr + phys, mask=mask)
-    # 输出按连续逻辑下标写入；输入才按 stride 换算物理偏移。
+    # Output is written by contiguous logical index; only input uses strides for physical offsets.
     tl.store(y_ptr + offs, x, mask=mask)
 
 
@@ -74,12 +74,12 @@ def _values_copy_impl(self, out=None):
     vals = self._values()
     n = vals.numel()
     if out is None:
-        # 按 shape 显式分配，避免 empty_like 保留非连续输入的 stride。
+        # Allocate explicitly by shape so empty_like does not preserve the strides of a non-contiguous input.
         out = torch.empty(vals.shape, dtype=vals.dtype, device=vals.device)
     if n == 0:
         return out
-    # torch_gcu 构造 sparse COO 时 values 可能留在 CPU，而 Triton kernel
-    # 只能访问设备内存；先搬到目标设备完成同一个 Triton 拷贝，再写回输出。
+    # When torch_gcu builds sparse COO, values may stay on CPU while Triton kernels
+    # can only access device memory; move them to the target device for the same Triton copy, then write back.
     target_device = torch.device(runtime_device.name)
     bridge_out = None
     if vals.device.type != target_device.type:
@@ -127,7 +127,7 @@ def _values_copy_impl(self, out=None):
 
 def _values_copy(self: torch.Tensor) -> torch.Tensor:
     """``aten::_values_copy``: fresh copy of a sparse COO tensor's values."""
-    logger.debug("GEMS _VALUES_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _VALUES_COPY")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "_values_copy only supports sparse coordinate (coo) tensors, "
@@ -138,7 +138,7 @@ def _values_copy(self: torch.Tensor) -> torch.Tensor:
 
 def _values_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::_values_copy.out``: write the values copy into ``out``."""
-    logger.debug("GEMS _VALUES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _VALUES_COPY_OUT")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "_values_copy only supports sparse coordinate (coo) tensors, "

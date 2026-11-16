@@ -12,26 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""concat 候选 v2：dim=0 用线性拷贝 kernel，其余回退公共 cat。
+"""concat candidate v2: dim=0 uses a linear copy kernel, others fall back to common cat.
 
-生产 KernelGen `cat_copy_func_kernel_4` 对每个元素做
+Production KernelGen `cat_copy_func_kernel_4` does, for each element,
   pre_idx = idx // (dim_size_in*dim_prod_post)
   dim_idx = (idx // dim_prod_post) % dim_size_in
   post_idx = idx % dim_prod_post
   out_idx = pre_idx*dim_size_out*dim_prod_post
             + (dim_idx+dim_offset)*dim_prod_post + post_idx
-当 dim==0 时 idx < total_elements = dim_size_in*dim_prod_post，故 pre_idx=0，
-且 (idx//P)*P + idx%P == idx，因此
-  out_idx == idx + (该输入在输出中的起始元素偏移)
-坐标分解（3 次 int64 除法 + 取模）纯属浪费。探针实测去掉后
-小 shape 2.1x、大 shape 20~27x，逐位与 torch.cat 一致。
+when dim==0, idx < total_elements = dim_size_in*dim_prod_post, so pre_idx=0,
+and (idx//P)*P + idx%P == idx, therefore
+  out_idx == idx + (the starting element offset of that input within the output)
+coordinate decomposition (3 int64 divisions + modulos) is pure waste. Probe measured 2.1x on small
+shapes and 20~27x on large shapes after removing it, bit-identical to torch.cat.
 
-安全边界（不满足则回退公共 cat，correctness 全覆盖）：
-- dim 归一化为 0；输入个数 1..4；各输入同 dtype/device 且 contiguous；
-- 非 float8（uint8 view 特殊路径）；除 cat 维外 shape 完全一致；
-- 所有输入 rank>=1。
-BLOCK 按单输入元素量分档（探针最优）：<65536 用 16384，否则 32768。
+Safety boundaries (fall back to common cat otherwise, full correctness coverage):
+- dim normalized to 0; input count 1..4; all inputs same dtype/device and contiguous;
+- not float8 (uint8 view special path); shape identical except along the cat dimension;
+- all inputs rank>=1.
+BLOCK is tiered by single-input element count (probe optimum): <65536 uses 16384, otherwise 32768.
 """
+import logging
 
 from typing import List, Tuple, Union
 
@@ -40,6 +41,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.cat import cat as _public_cat
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -121,6 +124,7 @@ def _fast_cat(A):
 def concat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 CONCAT")
     A = list(A)
     if _can_fast_path(A, dim):
         return _fast_cat(A)

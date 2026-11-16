@@ -12,25 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""expm1_out 候选 v1：按算子覆盖 CodeGenConfig.max_grid_size。
+"""expm1_out candidate v1: override CodeGenConfig.max_grid_size per operator.
 
-沿用第 11~13 项验证的零分支模板：不手写 kernel，只把 ENFLAME 默认
-`max_grid_size=(12,1,1)` 放大到 `(1024,1,1)` 重新生成 pointwise_dynamic
-包装函数。codegen 内部 `num_ctas=min(grid,num_tiles)` 使小 shape 调用链
-与公共实现一致、无微秒级回归，大 shape 并行度提升。
+Following the zero-branch template validated by items 11~13: no hand-written kernel, only enlarge ENFLAME's default
+`max_grid_size=(12,1,1)` to `(1024,1,1)` and regenerate the pointwise_dynamic
+wrapper. Codegen's internal `num_ctas=min(grid,num_tiles)` keeps the small-shape call chain
+identical to the common implementation with no microsecond regression, while large shapes gain grid parallelism.
 
-保持生产原有 `INT_TO_FLOAT` promotion 与 out 变体语义
-（`expm1_func(A, out0=out)`）。生产 `expm1_out(A, out)` 的 out 是必传参数，
-本实现与之对齐、零 Python 分支；注意不能显式传 `out0=None`
-（codegen 会取 `.dtype` 报错，省略参数才是自动分配路径）。
-不修改全局 CODEGEN_COFIGS，符合 skill「pointwise_dynamic 必须特化」要求。
+Keep production's original `INT_TO_FLOAT` promotion and out-variant semantics
+(`expm1_func(A, out0=out)`). Production `expm1_out(A, out)` requires out,
+and this implementation matches it with zero Python branches; note `out0=None` must not be passed explicitly
+(codegen would read `.dtype` and raise, so omitting the argument is the automatic allocation path).
+Global CODEGEN_COFIGS is not modified, satisfying the skill's "pointwise_dynamic must be specialized" requirement.
 """
+import logging
 
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+
+logger = logging.getLogger(__name__)
+
 
 _BASE = get_codegen_config()
 _OPT_CONFIG = CodeGenConfig(
@@ -49,4 +53,5 @@ def _expm1_func(x):
 
 
 def expm1_out(A, out):
+    logger.debug("GEMS_ENFLAME_GCU400 EXPM1_OUT")
     return _expm1_func(A, out0=out)

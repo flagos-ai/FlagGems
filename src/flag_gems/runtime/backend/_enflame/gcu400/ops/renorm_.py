@@ -240,7 +240,7 @@ def _group_stride(sizes, strides):
 
 
 def renorm_(x, p, dim, maxnorm):
-    logger.debug("GEMS RENORM")
+    logger.debug("GEMS_ENFLAME_GCU400 RENORM")
     ndim = x.dim()
     if ndim == 0:
         raise IndexError("renorm_ expects a tensor with at least one dimension")

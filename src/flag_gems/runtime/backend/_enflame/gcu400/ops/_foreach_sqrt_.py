@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_sqrt_``（in-place）。
+"""GCU400-specific ``_foreach_sqrt_`` (in-place).
 
-公共 ``foreach_unary`` 执行器用二维 grid 承载 chunk table；GCU400 的
-grid.y 硬件上限为 255，大 shape 下会 ``out of resource: grid.y``。
-这里对浮点 tensor 列表改走一维固定 grid + 核内跨步的 sqrt kernel，
-grid.x 恒为 FIXED_GRID，既解除硬件限制也省去建 chunk metadata 的开销；
-非浮点 / 复数 / 整型输入仍委托公共 ``apply_unary`` 保持 dtype policy。
+The common ``foreach_unary`` executor carries the chunk table in a 2D grid; GCU400's
+The grid.y hardware limit is 255, so large shapes raise ``out of resource: grid.y``.
+Float tensor lists use a 1D fixed grid + in-kernel striding sqrt kernel instead,
+with grid.x fixed at FIXED_GRID, removing the hardware limit and the chunk metadata cost;
+non-float / complex / integral inputs still delegate to common ``apply_unary`` to keep dtype policy.
 """
 
 import logging
@@ -35,7 +35,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；编译期配置，不改变算子语义。
+# Generated per round by the optimization driver script; compile-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 65536
 NUM_WARPS = 4
@@ -59,7 +59,7 @@ def _foreach_sqrt_flat_kernel(
     FIXED_GRID: tl.constexpr,
     FP32_ROUNDTRIP: tl.constexpr,
 ):
-    """一维固定 grid 跨步写回 sqrt，支持任意长度 tensor。"""
+    """1D fixed grid with striding writing sqrt back, supporting tensors of any length."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -68,7 +68,8 @@ def _foreach_sqrt_flat_kernel(
         mask = offs < N
         value = tl.load(data_ptr + offs, mask=mask)
         if FP32_ROUNDTRIP:
-            # 与公共实现一致：低精度先提升 fp32 再开方，store 时隐式降回。
+            # Same as the common implementation: promote low precision to fp32 before sqrt, then implicitly cast back on
+            # store.
             result = tl.sqrt(value.to(tl.float32))
         else:
             result = tl.sqrt(value)

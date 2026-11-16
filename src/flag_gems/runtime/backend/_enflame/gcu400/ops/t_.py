@@ -29,6 +29,7 @@ def t_(inp: torch.Tensor) -> torch.Tensor:
     transposed view over the original storage.
     """
     # debug-only logger removed
+    logger.debug("GEMS_ENFLAME_GCU400 T_")
     dim = inp.dim()
     if dim < 2:
         # 0D scalar / 1D tensor - no-op, same as torch.Tensor.t_

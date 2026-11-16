@@ -18,14 +18,15 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# GCU400 的压缩稀疏后端（SparseCsr/PrivateUse1）只注册了 to_sparse_* 构造算子，
-# 没有实现 col_indices / row_indices / values 等元数据 accessor：在 GCU 张量上
-# 调用会抛 RuntimeError，或报 "Could not run 'aten::_nnz' ... from the
-# 'SparseCsrgcu' backend"。_nnz 是纯元数据查询，答案只取决于索引缓冲区的形状，
-# 与存储的元素数据无关，因此沿用同目录 _dimI.py 对 COO 的处理思路：在
-# PrivateUse1 上为压缩稀疏构造算子注册 CPU 侧 fallback，把 dense 输入搬到 CPU
-# 后调用 CPU 原生构造，得到 accessor 完整、语义等价的压缩稀疏张量。
-# CPU 输入不会命中 PrivateUse1，故不存在递归。
+# GCU400's compressed sparse backend (SparseCsr/PrivateUse1) only registers to_sparse_* constructors,
+# with no metadata accessors such as col_indices / row_indices / values: calling them on GCU tensors
+# raises RuntimeError or reports "Could not run 'aten::_nnz' ... from the
+# 'SparseCsrgcu' backend". _nnz is a pure metadata query whose answer depends only on the shape of the index buffers,
+# not on stored element data, so follow the COO approach in _dimI.py in the same directory: register
+# a CPU-side fallback for compressed sparse constructors on PrivateUse1, move dense inputs to CPU,
+# then call the CPU native constructor to obtain a semantically equivalent compressed sparse tensor with complete
+# accessors.
+# CPU inputs do not hit PrivateUse1, so there is no recursion.
 _COMPRESSED_SPARSE_FALLBACK_FLAG = (
     "_flag_gems_gcu400_compressed_sparse_fallback_registered"
 )
@@ -39,7 +40,7 @@ _COMPRESSED_SPARSE_CONSTRUCTORS = (
 
 
 def ensure_compressed_sparse_gcu_fallback():
-    """幂等注册 PrivateUse1 的压缩稀疏构造 fallback，供稀疏元数据算子复用。"""
+    """Idempotently register the PrivateUse1 compressed-sparse constructor fallback for sparse metadata operators."""
     global _COMPRESSED_SPARSE_LIBRARY
     if getattr(torch, _COMPRESSED_SPARSE_FALLBACK_FLAG, False):
         return
@@ -106,7 +107,7 @@ def _nnz(self: torch.Tensor) -> int:
       'CUDA' backend"). Mirror that contract here instead of guessing a
       formula.
     """
-    logger.debug("GEMS _NNZ")
+    logger.debug("GEMS_ENFLAME_GCU400 _NNZ")
     if self.layout == torch.sparse_coo:
         # Native COO TensorImpl::nnz is values_.size(0); _values() (unlike
         # values()) is available on uncoalesced tensors.

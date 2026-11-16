@@ -71,7 +71,7 @@ def igamma_kernel_(
     # P(a,x) = x^a * e^{-x} * SUM_{n=0}INF x^n / (a*(a+1)*...*(a+n))
     small_x = x_f32 < (a_f32 + 1.0)
 
-    # 1/a 直接用除法，比 pow(a, -1) 更快且数值等价
+    # 1/a uses direct division, faster than pow(a, -1) and numerically equivalent
     series_result = 1.0 / a_f32
     series_term = series_result
     ap = a_f32
@@ -85,7 +85,7 @@ def igamma_kernel_(
     # Lentz's method for P(a,x) = 1 - Q(a,x)
     fpmin = 1e-30
     b = x_f32 + 1.0 - a_f32
-    # 注意：c 必须在循环前初始化为与 b 同形状的张量，否则 Triton 报
+    # Note: c must be initialized before the loop as a tensor of the same shape as b, otherwise Triton reports
     # "Loop-carried variable c has initial type fp32 but is re-assigned to [...]"
     c = b * 0.0 + 1.0e30
     d = 1.0 / b
@@ -100,7 +100,8 @@ def igamma_kernel_(
         d = tl.where(tl.abs(d) < fpmin, fpmin, d)
         c = b + an / c
         c = tl.where(tl.abs(c) < fpmin, fpmin, c)
-        # 循环内倒数改为除法（Lentz 迭代每次都需要，替换 pow 可显著减少超越函数调用）
+        # in-loop reciprocals are changed to division (needed on every Lentz iteration; replacing pow significantly cuts
+        # transcendental calls)
         d = 1.0 / d
         delta = c * d
         h = h * delta
@@ -126,7 +127,7 @@ def igamma_(self, other):
     Computes P(a, x) = γ(a, x) / Γ(a) where a=self and x=other.
     The result is stored in self (in-place operation).
     """
-    logger.debug("GEMS IGAMMA_")
+    logger.debug("GEMS_ENFLAME_GCU400 IGAMMA_")
 
     if not isinstance(self, torch.Tensor):
         raise TypeError("igamma_ expects a torch.Tensor as the first argument")
@@ -146,14 +147,16 @@ def igamma_(self, other):
     if n_elements == 0:
         return self
 
-    # 输入准备：形状已匹配且连续时直接复用 self，避免无谓的 expand+contiguous 拷贝
+    # Input preparation: when shape already matches and is contiguous, reuse self directly, avoiding a needless
+    # expand+contiguous copy
     if self.shape == output_shape and self.is_contiguous():
         a_tensor = self
     else:
         a_tensor = self.expand(output_shape).contiguous()
     x_tensor = other.expand(output_shape).contiguous()
 
-    # in-place 语义：当 a 与 x 存储不重叠时直接原地写回，省掉 empty_like + copy_ 两个 kernel
+    # In-place semantics: when a and x do not overlap in storage, write back in place directly, saving empty_like +
+    # copy_ kernels
     if a_tensor.is_contiguous() and a_tensor.data_ptr() != x_tensor.data_ptr():
         result = a_tensor
     else:

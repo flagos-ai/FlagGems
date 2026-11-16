@@ -33,7 +33,7 @@ def avg_pool1d(
 
     Implemented by reshaping to 2D and calling avg_pool2d with kernel_size=(1, kernel_size).
     """
-    logger.debug("GEMS AVG_POOL1D")
+    logger.debug("GEMS_ENFLAME_GCU400 AVG_POOL1D")
 
     # Input shape: (N, C, L) -> reshape to (N, C, 1, L)
     assert input.ndim == 3, f"avg_pool1d expects 3D input, got {input.ndim}D"

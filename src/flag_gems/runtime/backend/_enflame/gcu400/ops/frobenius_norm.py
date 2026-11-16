@@ -85,7 +85,7 @@ def frobenius_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.const
 
 
 def frobenius_norm(x, dim, keepdim=False):
-    logger.debug("GEMS FROBENIUS_NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 FROBENIUS_NORM")
     dtype = x.dtype
     assert dtype in (
         torch.float16,

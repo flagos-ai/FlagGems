@@ -2884,7 +2884,7 @@ def linalg_matrix_power(
     *,
     out: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS LINALG_MATRIX_POWER")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_POWER")
 
     # ---- validation ----
     shape = A.shape
@@ -3130,6 +3130,6 @@ def linalg_matrix_power_out(
     separate entry point so the ``*.out`` dispatcher key routes through flag_gems
     rather than falling back to torch's native (compute) implementation.
     """
-    logger.debug("GEMS LINALG_MATRIX_POWER_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_POWER_OUT")
     out_resolved = _resolve_linalg_matrix_power_out_args(out)
     return linalg_matrix_power(A, n, out=out_resolved)

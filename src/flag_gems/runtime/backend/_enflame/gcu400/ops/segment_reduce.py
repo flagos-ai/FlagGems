@@ -71,9 +71,9 @@ def _get_uniform_kernel_config(device, inner_size):
 def _get_uniform_backward_tile_config(device, inner_size, reduce, dtype):
     if device.type == "npu":
         return 1, 16 if inner_size > 1 else 1
-    # A/B 交替复测：GCU400 上 16 行/CTA 比原来的 4 行快约 2 倍
-    # （5 case 总延迟 17.57 ms → 8.26 ms），prod 也统一用 BLOCK_K=64，
-    # 避免 256 造成的 DSM 超限；三维 tile 总量在调用处按 BLOCK_N 再收紧。
+    # Alternating A/B retests: 16 rows/CTA is about 2x faster than the original 4 rows on GCU400
+    # (5-case total latency 17.57 ms -> 8.26 ms); prod also uses BLOCK_K=64 uniformly,
+    # avoiding 256's DSM overflow; the 3D tile total is tightened by BLOCK_N at the call site.
     return 16, 64 if inner_size > 1 else 1
 
 
@@ -220,8 +220,8 @@ def _segment_reduce_uniform_other_backward_kernel(
     data_dtype = data.dtype.element_ty
     compute_dtype = tl.float64 if data_dtype is tl.float64 else tl.float32
 
-    # 固定 grid.x = GRID_M（不超过 GCU400 的 48 个 CTA），每个 program 按步长
-    # 遍历自己负责的 row tile，避免大张量时 grid.x 超过 65535 硬件上限。
+    # Fixed grid.x = GRID_M (no more than GCU400's 48 CTAs); each program
+    # strides over its own row tiles, avoiding grid.x exceeding the 65535 hardware limit for large tensors.
     for pid_m in tl.range(tle.program_id(0), num_row_tiles, GRID_M):
         rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None, None]
         seg_offsets = tl.arange(0, BLOCK_N)[None, :, None]
@@ -435,8 +435,8 @@ def _segment_reduce_uniform_forward_kernel(
     else:
         acc = tl.zeros((BLOCK_M, BLOCK_K), dtype=compute_dtype)
 
-    # GCU400 编译器在 3D 布局上为 tl.int1 张量做 |= 时会在 make_gcuir 段错误，
-    # 改用 int32 计数作为 NaN 标记，语义不变。
+    # The GCU400 compiler segfaults in make_gcuir when doing |= on tl.int1 tensors in 3D layout,
+    # so use an int32 counter as the NaN flag, with unchanged semantics.
     has_nan = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.int32)
     nan_value = tl.zeros((BLOCK_M, BLOCK_K), dtype=compute_dtype)
 
@@ -616,9 +616,9 @@ def _segment_reduce_uniform_other_backward(
     row_tiles = triton.cdiv(total_rows, block_m)
     grid_m = min(_GRID_SIZE, row_tiles)
     block_n = min(_get_block_size(data.device), triton.next_power_of_2(segment_length))
-    # GCU400 的 DSM 上限按三维 tile 的元素数约束；实测 4096 元素安全，
-    # 16384 元素会报 out of resource: dsm memory。BLOCK_N 由 segment_length
-    # 决定，因此按实际 BLOCK_N 动态收紧 BLOCK_M。
+    # GCU400's DSM limit constrains 3D tile element count; 4096 elements measured safe,
+    # 16384 elements report out of resource: dsm memory. BLOCK_N comes from segment_length,
+    # so BLOCK_M is tightened dynamically by the actual BLOCK_N.
     while block_m > 1 and block_m * block_n * block_k > 4096:
         block_m //= 2
     row_tiles = triton.cdiv(total_rows, block_m)
@@ -982,7 +982,7 @@ def segment_reduce(
     unsafe=False,
     initial=None,
 ):
-    logger.debug("GEMS SEGMENT_REDUCE")
+    logger.debug("GEMS_ENFLAME_GCU400 SEGMENT_REDUCE")
     _check_reduce_and_dtype(data, reduce)
     axis = _wrap_axis(axis, data.dim())
     if indices is not None:
@@ -1054,7 +1054,7 @@ def segment_reduce_out(
     initial=None,
     out,
 ):
-    logger.debug("GEMS SEGMENT_REDUCE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SEGMENT_REDUCE_OUT")
     result = segment_reduce(
         data,
         reduce,
@@ -1082,7 +1082,7 @@ def _segment_reduce_backward(
     axis=0,
     initial=None,
 ):
-    logger.debug("GEMS _SEGMENT_REDUCE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _SEGMENT_REDUCE_BACKWARD")
     if (
         initial is None
         and lengths is not None
@@ -1174,7 +1174,7 @@ def _segment_reduce_backward_out(
     initial=None,
     out,
 ):
-    logger.debug("GEMS _SEGMENT_REDUCE_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _SEGMENT_REDUCE_BACKWARD_OUT")
     result = _segment_reduce_backward(
         grad,
         output,

@@ -33,6 +33,7 @@ def topk_with_k2_triton(
     BLOCK_SIZE: tl.constexpr,
     INPUT_DTYPE: tl.constexpr,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 TOPK_WITH_K2_TRITON")
     pid = tl.program_id(0)
 
     token_id = pid // n_group
@@ -103,6 +104,7 @@ def group_idx_and_topk_triton(
     INPUT_DTYPE: tl.constexpr,
     renormalize: tl.constexpr,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 GROUP_IDX_AND_TOPK_TRITON")
     pid = tl.program_id(0)
     if pid >= num_tokens:
         return
@@ -252,7 +254,7 @@ def grouped_topk(
     bias: torch.Tensor,
     scoring_func: int = 0,
 ):
-    logger.debug("GEMS GROUPED_TOPK")
+    logger.debug("GEMS_ENFLAME_GCU400 GROUPED_TOPK")
     if scores.ndim != 2:
         raise ValueError("scores must be a 2D Tensor")
     num_tokens, num_experts = scores.shape

@@ -170,7 +170,7 @@ def sparse_compressed_tensor(
     never inferred from ``values`` (the ATen factory defaults it to float32 and
     rejects a mismatch), and ``values`` is retained by reference.
     """
-    logger.debug("GEMS SPARSE_COMPRESSED_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_COMPRESSED_TENSOR")
     # Subscript rather than dict.get(): it avoids a Python-level bound-method
     # call on the hot path, and the KeyError/TypeError path is cold (only the
     # negative cases arrive here).

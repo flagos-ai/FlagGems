@@ -360,10 +360,10 @@ def _slice_copy_impl(inp, dim, start, end, step, out):
 
 
 def slice_copy(inp, dim=0, start=None, end=None, step=1):
-    logger.debug("GEMS SLICE_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 SLICE_COPY")
     return _slice_copy_impl(inp, dim, start, end, step, out=None)
 
 
 def slice_copy_out(inp, dim=0, start=None, end=None, step=1, *, out):
-    logger.debug("GEMS SLICE_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SLICE_COPY_OUT")
     return _slice_copy_impl(inp, dim, start, end, step, out=out)

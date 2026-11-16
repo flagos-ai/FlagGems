@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def _pin_memory(self: torch.Tensor, device=None) -> torch.Tensor:
     """Return a pinned-memory copy of a strided CPU tensor."""
-    logger.debug("GEMS _PIN_MEMORY")
+    logger.debug("GEMS_ENFLAME_GCU400 _PIN_MEMORY")
     if self.device.type != "cpu":
         raise RuntimeError("cannot pin a tensor that is not on the CPU")
     if device is not None:

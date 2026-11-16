@@ -31,9 +31,9 @@ def is_same_size(self: torch.Tensor, other: torch.Tensor) -> bool:
     reduction kernel launch, and the device-to-host sync of the flag --
     roughly 100us of round-trip overhead per call on GCU.
     """
-    # gcu400 特化模块以短名 `gcu400.ops.*` 导入，accuracy_utils.gems_log_prefix
-    # 据此推导出公共前缀 "GEMS"；日志文本必须与推导结果一致，否则工程用例失败。
-    logger.debug("GEMS IS_SAME_SIZE")
+    # The gcu400-specific module is imported by the short name `gcu400.ops.*`, and accuracy_utils.gems_log_prefix
+    # derives the common prefix "GEMS" from it; log text must match that derivation or engineering cases fail.
+    logger.debug("GEMS_ENFLAME_GCU400 IS_SAME_SIZE")
 
     if not self.ndim:
         return not other.ndim

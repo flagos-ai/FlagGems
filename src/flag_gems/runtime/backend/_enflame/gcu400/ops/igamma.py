@@ -146,7 +146,7 @@ def igamma_kernel(
 
 
 def igamma(a, x):
-    logger.debug("GEMS IGAMMA")
+    logger.debug("GEMS_ENFLAME_GCU400 IGAMMA")
     if not isinstance(a, torch.Tensor):
         raise TypeError("igamma expects a torch.Tensor as the first argument")
     if not isinstance(x, torch.Tensor):

@@ -185,7 +185,7 @@ def cosine_embedding_loss(
     margin: float = 0.0,
     reduction=1,
 ):
-    logger.debug("GEMS COSINE_EMBEDDING_LOSS")
+    logger.debug("GEMS_ENFLAME_GCU400 COSINE_EMBEDDING_LOSS")
     input1, input2, target = _check_tensors(input1, input2, target)
     red = _normalize_reduction(reduction)
     margin = float(margin)

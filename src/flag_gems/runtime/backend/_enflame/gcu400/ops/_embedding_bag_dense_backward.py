@@ -24,7 +24,8 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；只改变 launch 几何与频次统计方式，不改变语义。
+# Generated per round by the optimization driver script; only launch geometry and statistics method change, not
+# semantics.
 BLOCK_D_CAP = 512
 NUM_WARPS = 4
 USE_1D_GRID = 0
@@ -44,7 +45,7 @@ def _embedding_bag_freq_kernel(
     padding_idx,
     BLOCK: tl.constexpr,
 ):
-    # 每个 index 的全局出现频次；主 kernel 只需一次查表即可完成 scale_grad_by_freq。
+    # Global occurrence count of each index; the main kernel needs one lookup for scale_grad_by_freq.
     sample_offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     index_values = tl.load(
         indices_ptr + sample_offsets, sample_offsets < num_samples, other=-1
@@ -79,10 +80,10 @@ def _embedding_bag_dense_backward_kernel(
     USE_1D_GRID: tl.constexpr,
     USE_FREQ_KERNEL: tl.constexpr,
 ):
-    """按 (sample, dim tile) 累加梯度到稠密权重梯度表。
+    """Accumulate gradients into a dense weight-gradient table by (sample, dim tile).
 
-    mode=0(sum) 直接累加上游梯度；mode=1(mean) 先除以 bag_size。
-    padding_idx / 越界索引通过 mask 跳过，频次缩放来自预计算 freq 表。
+    mode=0 (sum) adds the upstream gradient directly; mode=1 (mean) divides by bag_size first.
+    padding_idx / out-of-range indices are skipped by masks; frequency scaling uses the precomputed freq table.
     """
     pid = tl.program_id(0)
     if USE_1D_GRID:
@@ -116,7 +117,7 @@ def _embedding_bag_dense_backward_kernel(
 
     if scale_grad_by_freq:
         if USE_FREQ_KERNEL:
-            # freq 表由独立 kernel 预计算，避免每个 sample 重新扫描全部 indices。
+            # The freq table is precomputed by a separate kernel, avoiding a full rescan of indices per sample.
             freq = tl.load(freq_ptr + idx, valid, other=1).to(tl.float32)
             scale = scale / tl.maximum(freq, 1.0)
         else:
@@ -167,9 +168,10 @@ def _embedding_bag_dense_backward(
 
     assert num_bags == bag_size.numel(), "num_bags must match bag_size length"
 
-    # GCU 的 aten::_embedding_bag 在 SUM 模式下可能返回空的 offset2bag。
-    # ATen 语义下只有具备 sample→bag 映射的样本才参与累加；此处把有效样本数
-    # 收敛为映射表长度，避免 kernel 对空指针越界解引用（会触发异步 abort）。
+    # GCU's aten::_embedding_bag may return an empty offset2bag in SUM mode.
+    # Under ATen semantics only samples with a sample-to-bag mapping participate in accumulation; here the number of
+    # valid samples is reduced to the mapping table length, avoiding out-of-bounds dereferences of a null pointer (async
+    # abort).
     mapped_samples = min(num_samples, offset2bag.numel())
 
     grad_weight = torch.zeros(
@@ -177,12 +179,13 @@ def _embedding_bag_dense_backward(
     ).contiguous()
 
     if mapped_samples == 0:
-        # 无映射即无可累加梯度，直接返回零梯度表（trivial case 短路）。
+        # With no mapping there is no gradient to accumulate, so return a zero gradient table directly (trivial-case
+        # short circuit).
         if grad.dtype != torch.float32:
             return grad_weight.to(grad.dtype)
         return grad_weight
 
-    # 窄 embedding_dim 使用更窄的 BLOCK_D：避免 128 lane 中大部分 mask 掉。
+    # Narrow embedding_dim uses a narrower BLOCK_D to avoid masking off most of the 128 lanes.
     block_d = min(BLOCK_D_CAP, triton.next_power_of_2(max(embedding_dim, 1)))
     num_d_tiles = triton.cdiv(embedding_dim, block_d)
     if USE_1D_GRID:
@@ -190,7 +193,7 @@ def _embedding_bag_dense_backward(
     else:
         grid = (mapped_samples, num_d_tiles)
 
-    # scale_grad_by_freq=True 时预计算频次；否则复用输出张量作占位指针。
+    # Precompute frequencies when scale_grad_by_freq=True; otherwise reuse the output tensor as a placeholder pointer.
     freq_table = grad_weight
     if USE_FREQ_KERNEL and scale_grad_by_freq:
         freq_table = torch.zeros(
@@ -208,7 +211,8 @@ def _embedding_bag_dense_backward(
     if per_sample_weights is not None:
         per_sample_weights_input = per_sample_weights.contiguous()
     elif USE_PSW_PLACEHOLDER:
-        # HAS_PSW=False 时 kernel 不解引用该指针，复用输出避免额外分配。
+        # With HAS_PSW=False the kernel does not dereference that pointer, so reusing the output avoids an extra
+        # allocation.
         per_sample_weights_input = grad_weight
     else:
         per_sample_weights_input = torch.ones(

@@ -45,7 +45,7 @@ def matrix_exp(A):
     Returns:
         Matrix exponential, same shape and dtype as the input.
     """
-    logger.debug("GEMS MATRIX_EXP")
+    logger.debug("GEMS_ENFLAME_GCU400 MATRIX_EXP")
 
     if A.ndim < 2 or A.shape[-1] != A.shape[-2]:
         raise RuntimeError("matrix_exp: expected a batch of square matrices.")

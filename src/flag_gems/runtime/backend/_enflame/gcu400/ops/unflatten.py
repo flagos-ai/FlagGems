@@ -35,7 +35,7 @@ def unflatten(A: torch.Tensor, dim: int, sizes: List[int]) -> torch.Tensor:
         torch.Tensor: A view of the input tensor with the specified
             dimension unflattened.
     """
-    logger.debug("GEMS unflatten")
+    logger.debug("GEMS_ENFLAME_GCU400 unflatten")
 
     # Handle negative dim
     if dim < 0:

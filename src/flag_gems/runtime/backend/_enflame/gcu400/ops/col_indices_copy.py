@@ -105,9 +105,9 @@ def col_indices_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.T
             + _LAYOUT_NAMES.get(layout, str(layout))
         )
     if out is None:
-        logger.debug("GEMS COL_INDICES_COPY")
+        logger.debug("GEMS_ENFLAME_GCU400 COL_INDICES_COPY")
         return _col_indices_copy_impl(self)
-    logger.debug("GEMS COL_INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 COL_INDICES_COPY_OUT")
     src = self.col_indices()
     if out.dtype != src.dtype:
         raise RuntimeError(
@@ -121,7 +121,7 @@ def col_indices_copy(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.T
 
 def col_indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::col_indices_copy.out``: write the column indices copy into ``out``."""
-    logger.debug("GEMS COL_INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 COL_INDICES_COPY_OUT")
     layout = self.layout
     if layout is not torch.sparse_csr and layout is not torch.sparse_bsr:
         if layout is torch.sparse_coo:

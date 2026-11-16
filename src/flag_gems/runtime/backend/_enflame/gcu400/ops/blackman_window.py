@@ -77,7 +77,7 @@ def blackman_window(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS BLACKMAN_WINDOW")
+    logger.debug("GEMS_ENFLAME_GCU400 BLACKMAN_WINDOW")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:
@@ -127,6 +127,7 @@ def blackman_window_periodic(
     device=None,
     pin_memory=None,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 BLACKMAN_WINDOW_PERIODIC")
     return blackman_window(
         window_length,
         periodic,

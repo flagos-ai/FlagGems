@@ -296,7 +296,7 @@ def _multi_dot_impl(arrays, out=None):
 
 
 def linalg_multi_dot(tensors):
-    logger.debug("GEMS LINALG_MULTI_DOT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MULTI_DOT")
     if _should_delegate_to_native(tensors, _NATIVE_MULTI_DOT):
         return _NATIVE_MULTI_DOT.call_boxed(_DEVICE_KEYSET, list(tensors))
     arrays, output_shape = _validate_and_prepare(tensors)
@@ -305,7 +305,7 @@ def linalg_multi_dot(tensors):
 
 
 def linalg_multi_dot_out(tensors, *, out):
-    logger.debug("GEMS LINALG_MULTI_DOT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MULTI_DOT_OUT")
     if _should_delegate_to_native(tensors, _NATIVE_MULTI_DOT_OUT):
         return _NATIVE_MULTI_DOT_OUT.call_boxed(_DEVICE_KEYSET, list(tensors), out=out)
     arrays, output_shape = _validate_and_prepare(tensors)

@@ -249,7 +249,7 @@ def _validate_args(inp, q, dim, interpolation, out):
 def _nanquantile_impl(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS NANQUANTILE")
+    logger.debug("GEMS_ENFLAME_GCU400 NANQUANTILE")
     _validate_args(inp, q, dim, interpolation, out)
 
     original_ndim = inp.ndim
@@ -385,22 +385,26 @@ def _nanquantile_impl(
 
 
 def nanquantile(inp, q, dim=None, keepdim=False, interpolation="linear") -> Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 NANQUANTILE")
     return _nanquantile_impl(inp, q, dim, keepdim, interpolation)
 
 
 def nanquantile_scalar(
     inp, q, dim=None, keepdim=False, interpolation="linear"
 ) -> Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 NANQUANTILE_SCALAR")
     return _nanquantile_impl(inp, q, dim, keepdim, interpolation)
 
 
 def nanquantile_out(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 NANQUANTILE_OUT")
     return _nanquantile_impl(inp, q, dim, keepdim, interpolation, out)
 
 
 def nanquantile_scalar_out(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 NANQUANTILE_SCALAR_OUT")
     return _nanquantile_impl(inp, q, dim, keepdim, interpolation, out)

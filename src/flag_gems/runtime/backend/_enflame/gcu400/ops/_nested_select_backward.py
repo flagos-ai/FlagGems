@@ -54,7 +54,7 @@ def _nested_select_backward(grad, self, dim, index):
     PyTorch autograd; selecting along ragged or dense dimensions is not
     supported for nested tensors.
     """
-    logger.debug("GEMS _NESTED_SELECT_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_SELECT_BACKWARD")
     if not self.is_nested:
         raise ValueError(
             "_nested_select_backward expects `self` to be a nested tensor."

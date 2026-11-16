@@ -130,7 +130,7 @@ def dswiglu_kernel(
 
 
 def swiglu(input_tensor: torch.Tensor, quantizer: Optional[Any] = None) -> torch.Tensor:
-    logger.debug("GEMS SWIGLU")
+    logger.debug("GEMS_ENFLAME_GCU400 SWIGLU")
     if input_tensor.shape[-1] % 2 != 0:
         raise ValueError(
             f"The last dimension of must be even number, got {input_tensor.shape[-1]}"
@@ -170,7 +170,7 @@ def dswiglu(
     input_tensor: torch.Tensor,
     quantizer: Optional[Any] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS DSWIGLU")
+    logger.debug("GEMS_ENFLAME_GCU400 DSWIGLU")
     shape = input_tensor.shape
     assert (
         shape[-1] % 2 == 0

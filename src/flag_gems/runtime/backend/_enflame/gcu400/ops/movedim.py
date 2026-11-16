@@ -92,6 +92,7 @@ def movedim(self: torch.Tensor, source, destination) -> torch.Tensor:
     / ``aten::movedim.intlist`` (``Tensor(a) -> Tensor(a)``).
     """
 
+    logger.debug("GEMS_ENFLAME_GCU400 MOVEDIM")
     _, _, order = _normalize_axes(self, source, destination)
     if all(order[p] == p for p in range(self.dim())):
         # Identity mapping (including the empty int[] no-op): aten still

@@ -211,7 +211,7 @@ def col2im(
     Returns:
         Output tensor of shape (N, C, output_h, output_w).
     """
-    logger.debug("GEMS COL2IM")
+    logger.debug("GEMS_ENFLAME_GCU400 COL2IM")
 
     # Parse parameters
     (

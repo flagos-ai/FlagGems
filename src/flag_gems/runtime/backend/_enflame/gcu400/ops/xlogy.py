@@ -55,34 +55,34 @@ def xlogy_func_scalar_tensor(x, y):
 
 
 def xlogy(self, other):
-    logger.debug("GEMS XLOGY")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY")
     return xlogy_func(self, other)
 
 
 def xlogy_out(self, other, out):
-    logger.debug("GEMS XLOGY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY_OUT")
     xlogy_func(self, other, out0=out)
     return out
 
 
 def xlogy_tensor_scalar(self, other):
-    logger.debug("GEMS XLOGY_TENSOR_SCALAR")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY_TENSOR_SCALAR")
     return xlogy_func_tensor_scalar(self, other)
 
 
 def xlogy_tensor_scalar_out(self, other, out):
-    logger.debug("GEMS XLOGY_TENSOR_SCALAR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY_TENSOR_SCALAR_OUT")
     xlogy_func_tensor_scalar(self, other, out0=out)
     return out
 
 
 def xlogy_scalar_tensor(self, other):
-    logger.debug("GEMS XLOGY_SCALAR_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY_SCALAR_TENSOR")
     return xlogy_func_scalar_tensor(self, other)
 
 
 def xlogy_scalar_tensor_out(self, other, out):
-    logger.debug("GEMS XLOGY_SCALAR_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 XLOGY_SCALAR_TENSOR_OUT")
     xlogy_func_scalar_tensor(self, other, out0=out)
     return out
 

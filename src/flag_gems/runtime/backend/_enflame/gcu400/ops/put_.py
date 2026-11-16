@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # view) needs the host-side offset fallback below.
 MAX_UNROLL_RANK = 8
 
-# Scatter launch 的块大小与 warp 数；提为模块常量便于按 shape 分档与回归扫描。
+# Block size and warp count of the Scatter launch; module constants ease shape tiering and regression sweeps.
 _SCATTER_BLOCK_SIZE = 1024
 _SCATTER_NUM_WARPS = 4
 
@@ -699,7 +699,7 @@ def _put_impl(inp, index, source, accumulate=False):
 
 
 def put_(inp, index, source, accumulate=False):
-    logger.debug("GEMS PUT_")
+    logger.debug("GEMS_ENFLAME_GCU400 PUT_")
 
     # Validation order mirrors ATen: device, then index dtype, then source
     # dtype, then numel, then the memory-overlap checks. Measured against

@@ -99,7 +99,7 @@ def special_gammainc_func(a, x):
 
 
 def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
-    logger.debug("GEMS SPECIAL_GAMMAINC")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_GAMMAINC")
     if out is None:
         return special_gammainc_func(a, x)
     special_gammainc_func(a, x, out0=out)

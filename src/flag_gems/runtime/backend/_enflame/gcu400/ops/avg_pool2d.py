@@ -102,7 +102,8 @@ def avg_pool2d_forward_kernel(
                         input_base_ptr + input_offset, mask=in_mask, other=0.0
                     )
 
-                    # tl.load 已用 other=0.0 把越界元素置零，无需再按 in_mask 屏蔽一次。
+                    # tl.load already zeros out-of-range elements with other=0.0, so masking by in_mask again is
+                    # unnecessary.
                     sum_acc += current_val
 
             if divisor_override != 0:
@@ -114,7 +115,8 @@ def avg_pool2d_forward_kernel(
                     (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                 )
             else:
-                # 前向的有效元素数与反向同理，用解析式替代逐窗口 count 累加。
+                # The forward valid-element count matches backward; use an analytic expression instead of accumulating a
+                # per-window count.
                 first_h_in = h_out_offsets[:, None] * stride_h - padding_h
                 first_w_in = w_out_offsets[None, :] * stride_w - padding_w
                 last_h_in = first_h_in + (kernel_h - 1) * dilation_h + 1
@@ -236,10 +238,11 @@ def avg_pool2d_backward_kernel(
                             (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                         )
                     else:
-                        # 反向里每个 (kh,kw) 都重算一次 divisor，形成 O(k^4) 比较。
-                        # dilation 恒为 1 时，窗口有效区间在 H/W 两维互相独立：
-                        # [max(0,start), min(in_size,start+(k-1)*dilation+1))，
-                        # 两维有效长度的乘积就是原来的 count，可解析求出。
+                        # Backward recomputes divisor for every (kh,kw), forming O(k^4) comparisons.
+                        # With dilation always 1, the valid window interval is independent along H/W:
+                        # [max(0,start), min(in_size,start+(k-1)*dilation+1)),
+                        # so the product of the two valid lengths is the original count and can be computed
+                        # analytically.
                         h_start = h_out * stride_h - padding_h
                         w_start = w_out * stride_w - padding_w
                         h_window_end = h_start + (kernel_h - 1) * dilation_h + 1
@@ -311,8 +314,8 @@ def avg_pool2d(
     if output.numel() == 0:
         return output
 
-    # Fixed Grid：把 grid 第一维压到 GCU400 的 SIP 量级，剩余 (n,c) 平面由
-    # NC_PER_PROGRAM 循环在同一 program 内处理，避免大 batch 产生数万个 CTA。
+    # Fixed Grid: compress the first grid dimension to the GCU400 SIP count; the remaining (n,c) plane is
+    # handled by the NC_PER_PROGRAM loop within the same program, avoiding tens of thousands of CTAs for large batches.
     total_nc = in_n * in_c
     grid_nc = min(total_nc, 48)
     NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc
@@ -381,8 +384,8 @@ def avg_pool2d_backward(
     if grad_output.numel() == 0:
         return grad_input.to(grad_output.dtype)
 
-    # Fixed Grid：把 grid 第一维压到 GCU400 的 SIP 量级，剩余 (n,c) 平面由
-    # NC_PER_PROGRAM 循环在同一 program 内处理，避免大 batch 产生数万个 CTA。
+    # Fixed Grid: compress the first grid dimension to the GCU400 SIP count; the remaining (n,c) plane is
+    # handled by the NC_PER_PROGRAM loop within the same program, avoiding tens of thousands of CTAs for large batches.
     total_nc = in_n * in_c
     grid_nc = min(total_nc, 48)
     NC_PER_PROGRAM = (total_nc + grid_nc - 1) // grid_nc

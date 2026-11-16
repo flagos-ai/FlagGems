@@ -20,13 +20,13 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# GCU400 的 grid.x 硬件上限为 65535；固定 48 路 program 覆盖
-# 4 DIE x 6 SIP x 8 sub-thread 拓扑，kernel 内用跨步循环遍历全部 tile。
+# GCU400's grid.x hardware limit is 65535; a fixed 48-way program set covers the
+# 4 DIE x 6 SIP x 8 sub-thread topology, and the kernel strides over all tiles.
 GRID_DIM_X = 48
-# 单个 tile 的元素数；迭代轮次逐档 tune。
+# Element count of a single tile; tuned tier by tier across iterations.
 BLOCK_SIZE = 4096
 NUM_WARPS = 4
-# finalize kernel 中 tl.arange 的长度必须是 2 的幂，且不小于 program 数。
+# The tl.arange length in the finalize kernel must be a power of two and no less than the program count.
 PARTIAL_BLOCK = triton.next_power_of_2(GRID_DIM_X)
 
 
@@ -42,7 +42,7 @@ def _binary_cross_entropy_elementwise_kernel(
     pid = tl.program_id(axis=0)
     num_tiles = tl.cdiv(n_elements, BLOCK_SIZE)
 
-    # 固定 grid + 跨步循环：program 数与问题规模解耦，避免大 shape 超过 grid.x 上限。
+    # Fixed grid + stride loop: program count is decoupled from problem size, avoiding the grid.x limit on large shapes.
     for tile_id in tl.range(pid, num_tiles, GRID_DIM_X):
         block_start = tile_id * BLOCK_SIZE
         offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -121,8 +121,8 @@ def _binary_cross_entropy_sum_kernel(
 ):
     pid = tl.program_id(axis=0)
     num_tiles = tl.cdiv(n_elements, BLOCK_SIZE)
-    # 每个 program 只在循环结束后做一次 atomic_add，把原来每 tile 一次的
-    # 全局原子竞争压缩为 GRID_DIM_X 次。
+    # Each program performs one atomic_add after its loop, compressing the original per-tile
+    # global atomic contention into GRID_DIM_X operations.
     acc = tl.full((), 0.0, tl.float32)
 
     for tile_id in tl.range(pid, num_tiles, GRID_DIM_X):
@@ -208,8 +208,8 @@ def _binary_cross_entropy_finalize_kernel(
     REDUCTION: tl.constexpr,
     BLOCK_PARTIALS: tl.constexpr,
 ):
-    # 单 program 合并所有 program 的部分和，并在同一次 store 中完成
-    # mean 归一化与输出 dtype 转换，避免额外的 div / cast kernel。
+    # One program merges all programs' partial sums and completes
+    # mean normalization and output dtype conversion in the same store, avoiding an extra div / cast kernel.
     partial_offsets = tl.arange(0, BLOCK_PARTIALS)
     partial_sums = tl.load(
         partial_ptr + partial_offsets,
@@ -282,12 +282,13 @@ def _prepare_weight(weight, input, n_elements):
 
 
 def _bce_grid(n_elements, block_size):
-    # program 数固定上限，同时保证每个 program 至少分到一个 tile。
+    # Program count has a fixed upper bound while guaranteeing each program gets at least one tile.
     return (min(GRID_DIM_X, triton.cdiv(n_elements, block_size)),)
 
 
 def _bce_elementwise(input, target, weight, n_elements, out=None):
-    # out 变体直接把逐元素结果写入调用方缓冲区，省去临时张量与额外 copy。
+    # The out variant writes elementwise results directly into the caller's buffer, saving a temporary tensor and an
+    # extra copy.
     result = torch.empty_like(input) if out is None else out
     if n_elements == 0:
         return result
@@ -328,8 +329,8 @@ def _bce_reduced(input, target, weight, red, n_elements, out=None):
 
     grid = _bce_grid(n_elements, BLOCK_SIZE)
     num_partials = grid[0]
-    # 未初始化的 partial buffer 由 BCE kernel 逐 program 写满有效前缀，
-    # 因此不需要先跑一次 zeros kernel。
+    # The uninitialized partial buffer is filled with valid prefixes per program by the BCE kernel,
+    # so a separate zeros kernel is unnecessary.
     partial_sums = torch.empty(
         (PARTIAL_BLOCK,), device=input.device, dtype=torch.float32
     )
@@ -377,7 +378,7 @@ def binary_cross_entropy(
     weight: torch.Tensor = None,
     reduction: str = "mean",
 ):
-    logger.debug("GEMS BINARY_CROSS_ENTROPY")
+    logger.debug("GEMS_ENFLAME_GCU400 BINARY_CROSS_ENTROPY")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
@@ -395,7 +396,7 @@ def binary_cross_entropy_out(
     reduction: str = "mean",
     out: torch.Tensor = None,
 ):
-    logger.debug("GEMS BINARY_CROSS_ENTROPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 BINARY_CROSS_ENTROPY_OUT")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     n_elements = input.numel()
@@ -425,8 +426,8 @@ def binary_cross_entropy_out(
                 "binary_cross_entropy_out: out must be on the same device as input."
             )
 
-    # Kernel 直接写入调用方 out，保持 out 变体「返回同一对象」语义，
-    # 同时省掉临时结果张量与一次额外的 copy_ kernel。
+    # The kernel writes directly into the caller's out, preserving the out variant's "return the same object" semantics
+    # while saving a temporary result tensor and an extra copy_ kernel.
     if red == 0:
         _bce_elementwise(input, target, weight, n_elements, out=out)
     else:

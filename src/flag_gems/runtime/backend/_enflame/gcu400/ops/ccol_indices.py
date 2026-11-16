@@ -101,7 +101,7 @@ def ccol_indices(self: torch.Tensor) -> torch.Tensor:
     shape, and the stored buffer's dtype (int64 or int32) is preserved, both
     exactly as the native reader reports them.
     """
-    logger.debug("GEMS CCOL_INDICES")
+    logger.debug("GEMS_ENFLAME_GCU400 CCOL_INDICES")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             f"ccol_indices: input must be a Tensor, got {type(self).__name__}"

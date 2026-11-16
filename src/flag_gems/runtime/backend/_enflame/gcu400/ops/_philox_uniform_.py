@@ -239,7 +239,7 @@ def _batched_key_plan(out, key):
 
 
 def _philox_uniform_(self, key, low=0.0, high=1.0):
-    logger.debug("GEMS _PHILOX_UNIFORM_")
+    logger.debug("GEMS_ENFLAME_GCU400 _PHILOX_UNIFORM_")
     _check_args(self, key)
     if self.numel() == 0:
         return self

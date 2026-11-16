@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# 线性拷贝的 tile 与发射配置，按数据规模扫描确定最优值。
+# Tile and launch config of the linear copy, with the optimum determined by a data-size sweep.
 _BLOCK_SIZE = 8192
 _NUM_WARPS = 4
 
@@ -43,7 +43,7 @@ def squeeze_copy(x: torch.Tensor):
 
     Returns a copy of the input tensor with all dimensions of size 1 removed.
     """
-    logger.debug("GEMS SQUEEZE_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 SQUEEZE_COPY")
     # Compute squeezed shape: all dims != 1, or empty if all dims were 1
     squeezed_shape = [s for s in x.shape if s != 1]
 

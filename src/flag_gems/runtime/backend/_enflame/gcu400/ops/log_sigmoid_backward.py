@@ -156,7 +156,7 @@ def _launch_contiguous_kernel(grad_output, self, buffer, grad_input):
 
 
 def log_sigmoid_backward(grad_output, self, buffer):
-    logger.debug("GEMS LOG_SIGMOID_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 LOG_SIGMOID_BACKWARD")
 
     if (
         buffer.shape == self.shape
@@ -169,7 +169,7 @@ def log_sigmoid_backward(grad_output, self, buffer):
 
 
 def log_sigmoid_backward_out(grad_output, self, buffer, *, grad_input):
-    logger.debug("GEMS LOG_SIGMOID_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LOG_SIGMOID_BACKWARD_OUT")
 
     if _can_use_contiguous_kernel(grad_output, self, grad_input):
         return _launch_contiguous_kernel(grad_output, self, buffer, grad_input)

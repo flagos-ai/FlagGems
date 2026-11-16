@@ -66,7 +66,7 @@ def launch_conj_physical(src: torch.Tensor, output: torch.Tensor) -> None:
 
 
 def conj_physical(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS CONJ_PHYSICAL")
+    logger.debug("GEMS_ENFLAME_GCU400 CONJ_PHYSICAL")
     if not input.is_complex():
         return input
 

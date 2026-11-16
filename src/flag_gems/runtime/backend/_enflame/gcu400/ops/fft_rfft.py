@@ -27,10 +27,13 @@ tiles of BLOCK_J samples; phases are formed as ``m = (j * k) mod n`` so the trig
 argument stays in ``[0, 2*pi)`` and never loses precision to huge intermediate
 angles; DC and (even length) Nyquist imaginary parts are forced to exactly zero.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit(do_not_specialize=["n"])
@@ -252,6 +255,7 @@ def fft_rfft(self, n=None, dim=-1, norm=None):
     # ``aten::fft_rfft(Tensor self, SymInt? n=None, int dim=-1, str? norm=None)``
     # defaults every argument but ``self``, so ``torch.fft.rfft(x)`` only binds
     # if the defaults are mirrored here.
+    logger.debug("GEMS_ENFLAME_GCU400 FFT_RFFT")
     x = self
     if not isinstance(x, torch.Tensor):
         x = torch.as_tensor(x)

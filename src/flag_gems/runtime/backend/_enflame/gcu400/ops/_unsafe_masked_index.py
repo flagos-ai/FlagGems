@@ -20,7 +20,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# 提为模块常量，便于按 shape 分档与批量配置扫描；默认值保持原实现。
+# Promoted to a module constant for shape-tiered and batch config sweeps; default keeps the original behavior.
 _UNSAFE_MASKED_INDEX_BLOCK_SIZE = 512
 _UNSAFE_MASKED_INDEX_NUM_WARPS = 4
 
@@ -57,7 +57,7 @@ def _unsafe_masked_index_kernel(
 
 
 def _unsafe_masked_index(self, mask, indices, fill):
-    logger.debug("GEMS _UNSAFE_MASKED_INDEX")
+    logger.debug("GEMS_ENFLAME_GCU400 _UNSAFE_MASKED_INDEX")
 
     # Validate inputs
     if not indices or indices[0] is None:

@@ -113,7 +113,7 @@ def vander_complex_kernel(
 
 
 def linalg_vander(x, N=None):
-    logger.debug("GEMS LINALG_VANDER")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_VANDER")
 
     # fmt: off
     assert x.dtype.is_floating_point or x.dtype.is_complex, f"Unsupported dtype {x.dtype}"

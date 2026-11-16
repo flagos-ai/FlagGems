@@ -90,7 +90,7 @@ def histogramdd_from_bin_tensors_kernel(
         # and the counts are accumulated. Padding edges are +inf so they never
         # satisfy ``edges <= coord`` and do not affect le_count.
         le_count = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-        # slab 数量由 host 侧定为 constexpr，循环完全展开，消除动态边界。
+        # The slab count is a constexpr fixed on the host, so the loop is fully unrolled and dynamic bounds are removed.
         for slab_index in tl.static_range(NUM_SLABS):
             e_offs = slab_index * EDGE_CHUNK + tl.arange(0, EDGE_CHUNK)
             e_mask = e_offs < bin_count_d
@@ -276,9 +276,9 @@ def _run_histogram(self, bins, weight, density, out):
     # (BLOCK_SIZE x EDGE_CHUNK) comparison tile needs ~8 bytes per element:
     # BLOCK_SIZE=256 with a 1024-wide slab asks for 2.1 MiB and fails to
     # compile ("out of resource: dsm memory"). 256 x 256 stays around 540 KiB.
-    # 依据实际 edge 数选择 2 的幂宽比较块：固定 256 宽会让 11 条 edge
-    # 产生 245 个纯 padding lane；同时受 DSM 917504B（每元素约 8B）
-    # 与 Triton 单张量 2**20 元素上限约束。
+    # Choose a power-of-two comparison block by the actual edge count: a fixed width of 256 leaves 245
+    # pure padding lanes for 11 edges; also bounded by DSM 917504B (~8B per element)
+    # and the Triton per-tensor limit of 2**20 elements.
     max_edge_count = max(bin_counts)
     adaptive_chunk = triton.next_power_of_2(max_edge_count)
     dsm_budget_chunk = 1 << ((917504 // (8 * BLOCK_SIZE)).bit_length() - 1)
@@ -292,7 +292,7 @@ def _run_histogram(self, bins, weight, density, out):
         edge_offsets = [0] * D
         for d in range(1, D):
             edge_offsets[d] = edge_offsets[d - 1] + bin_counts[d - 1]
-        # edge 偏移 / edge 数 / 输出 stride 合并为一次 H2D 拷贝。
+        # Merge edge offsets / edge counts / output strides into one H2D copy.
         geometry_t = torch.tensor(
             [edge_offsets, bin_counts, list(acc.stride())],
             dtype=torch.int64,
@@ -339,7 +339,7 @@ def _histogramdd_from_bin_tensors(self, bins, *, weight=None, density=False):
     Returns:
         Tensor: the histogram, shaped ``(len(bins[0])-1, ..., len(bins[D-1])-1)``.
     """
-    logger.debug("GEMS _HISTOGRAMDD_FROM_BIN_TENSORS")
+    logger.debug("GEMS_ENFLAME_GCU400 _HISTOGRAMDD_FROM_BIN_TENSORS")
     return _run_histogram(self, bins, weight, density, None)
 
 
@@ -347,7 +347,7 @@ def _histogramdd_from_bin_tensors_out(
     self, bins, *, weight=None, density=False, out=None
 ):
     """Out variant of :func:`_histogramdd_from_bin_tensors`."""
-    logger.debug("GEMS _HISTOGRAMDD_FROM_BIN_TENSORS_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _HISTOGRAMDD_FROM_BIN_TENSORS_OUT")
     if out is None:
         raise RuntimeError(
             "_histogramdd_from_bin_tensors.out: 'out' argument is required"

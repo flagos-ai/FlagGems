@@ -55,7 +55,7 @@ except Exception:  # pragma: no cover - fallback for older layouts
 _GAMMA = tl.constexpr(0.577215664901532860606512090082402431)
 _MAX_DIMS = 8
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；只改变 launch 几何，不改变算法语义。
+# Generated per optimization round; only launch geometry changes, not algorithmic semantics.
 BLOCK_SMALL = 4096
 BLOCK_LARGE = 4096
 NUM_WARPS = 4
@@ -484,10 +484,10 @@ def special_scaled_modified_bessel_k0(x, *, out=None):
         )
 
         return public_impl(x, out=out)
-    logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K0")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SCALED_MODIFIED_BESSEL_K0")
     if not isinstance(x, torch.Tensor):
         raise TypeError("special_scaled_modified_bessel_k0: x must be a Tensor")
-    # GCU400：不做 CUDA 设备限制，kernel 本身是设备无关的 Triton 实现。
+    # GCU400: no CUDA device restriction, the kernel itself is a device-independent Triton implementation.
     if x.dtype not in _SUPPORTED_INPUT_DTYPES:
         # Unsupported half / bfloat16 / float8 / complex inputs are rejected
         # with the same message the native kernel raises.
@@ -521,5 +521,5 @@ def special_scaled_modified_bessel_k0(x, *, out=None):
 
 def special_scaled_modified_bessel_k0_out(x, out):
     """``aten::special_scaled_modified_bessel_k0.out``: write into ``out``."""
-    logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K0_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SCALED_MODIFIED_BESSEL_K0_OUT")
     return special_scaled_modified_bessel_k0(x, out=out)

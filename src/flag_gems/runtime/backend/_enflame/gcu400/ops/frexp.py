@@ -108,7 +108,7 @@ def _frexp_func(x):
 
 
 def frexp(A):
-    logger.debug("GEMS FREXP")
+    logger.debug("GEMS_ENFLAME_GCU400 FREXP")
 
     if not A.is_floating_point():
         raise RuntimeError(

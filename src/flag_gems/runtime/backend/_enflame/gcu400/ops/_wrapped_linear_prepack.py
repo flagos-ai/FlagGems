@@ -157,7 +157,7 @@ def unpack_linear_weight(packed_weight, out_channel, in_channel=None):
 
 
 def _wrapped_linear_prepack(weight, weight_scale, weight_zero_point, bias):
-    logger.debug("GEMS _WRAPPED_LINEAR_PREPACK")
+    logger.debug("GEMS_ENFLAME_GCU400 _WRAPPED_LINEAR_PREPACK")
     if weight.dtype != torch.float32:
         raise RuntimeError(f"Quantize only works on Float Tensor, got {weight.dtype}")
     if weight.ndim != 2:

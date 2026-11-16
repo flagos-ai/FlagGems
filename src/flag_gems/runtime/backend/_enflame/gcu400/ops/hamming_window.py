@@ -77,7 +77,7 @@ def hamming_window(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS HAMMING_WINDOW")
+    logger.debug("GEMS_ENFLAME_GCU400 HAMMING_WINDOW")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:
@@ -144,6 +144,7 @@ def hamming_window_periodic(
     device=None,
     pin_memory=None,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 HAMMING_WINDOW_PERIODIC")
     return hamming_window(
         window_length,
         periodic,
@@ -164,7 +165,7 @@ def hamming_window_periodic_alpha(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS HAMMING_WINDOW_PERIODIC_ALPHA")
+    logger.debug("GEMS_ENFLAME_GCU400 HAMMING_WINDOW_PERIODIC_ALPHA")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:
@@ -232,7 +233,7 @@ def hamming_window_periodic_alpha_beta(
     device=None,
     pin_memory=None,
 ):
-    logger.debug("GEMS HAMMING_WINDOW_PERIODIC_ALPHA_BETA")
+    logger.debug("GEMS_ENFLAME_GCU400 HAMMING_WINDOW_PERIODIC_ALPHA_BETA")
     assert window_length >= 0, "window_length must be non-negative"
 
     if dtype is None:

@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 foreach ScalarList 最大值类算子。
+"""GCU400-specific foreach ScalarList maximum-family operators.
 
-``_foreach_clamp_min_.ScalarList`` 与 ``_foreach_maximum.ScalarList`` 在公共
-codegen 执行器里用二维 grid 承载列表，GCU400 的 ``grid.y <= 255`` 在
-16×(1024×1024) 上直接 ``OutOfResources``，benchmark 无任何读数。本文件把
-输入地址、元素数与每个 float32 标量位模式打包进同一张 int64 metadata，
-用一维固定 grid 的 ``@triton.jit`` kernel 一次 launch 完成整个列表。
+``_foreach_clamp_min_.ScalarList`` and ``_foreach_maximum.ScalarList`` share the same handling in the common
+in the common codegen executor, and GCU400's ``grid.y <= 255`` throws ``OutOfResources``
+on 16x(1024x1024), so the benchmark produces no readings. This file packs
+input addresses, element counts and each float32 scalar bit pattern into one int64 metadata array,
+and uses a 1D fixed-grid ``@triton.jit`` kernel to process the whole list in one launch.
 
-原地 overload 的 metadata 完全只读且不含张量数据，可以安全按
-``(device, 地址, numel, 标量位模式)`` 缓存，消除重复的同步 H2D；
-out-of-place 的输出地址每次分配不同，单独用一张小表传入，静态表仍命中缓存。
-非浮点、非连续、标量个数不匹配等形态回退公共执行器，dtype policy 与
-异常语义不变。
+The in-place overload's metadata is fully read-only and contains no tensor data, so it can safely be cached
+by ``(device, address, numel, scalar bit pattern)``, removing repeated synchronous H2D copies;
+out-of-place output addresses differ per allocation and are passed in a separate small table, so the static table still
+hits the cache.
+Non-float, non-contiguous and scalar-count-mismatch shapes fall back to the common executor, with dtype policy
+and exception semantics unchanged.
 """
 
 import logging
@@ -49,7 +50,7 @@ from ._foreach_flat import (
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 编译期/启动期配置，按优化轮次调整，不改变算子语义。
+# Compile-time / launch-time config, adjusted per optimization round; semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 NUM_WARPS = 4
@@ -74,11 +75,11 @@ def fused_max_scalarlist_kernel(
     BLOCK: tl.constexpr,
     HAS_OUT: tl.constexpr,
 ):
-    """一次 launch 对整个列表做 ``max(tensor, scalar_i)``。
+    """Compute ``max(tensor, scalar_i)`` for the whole list in one launch.
 
-    ``meta_ptr`` 三段依次为输入地址、各元素数、各 fp32 标量的位模式；
-    ``HAS_OUT=1`` 时从 ``out_ptr_meta`` 读取输出地址，否则原地写回输入。
-    grid.x 按 ``(tensor, part)`` 线性展开，规避 ``grid.y <= 255`` 限制。
+    The three segments of ``meta_ptr`` are input addresses, element counts, and each fp32 scalar bit pattern;
+    with ``HAS_OUT=1`` output addresses are read from ``out_ptr_meta``, otherwise input is written in place.
+    grid.x is linearized over ``(tensor, part)`` to avoid the ``grid.y <= 255`` limit.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -109,8 +110,10 @@ def fused_max_scalarlist_kernel(
         tl.store(out_ptr + offs, result, mask=mask)
 
 
-# 只读 metadata 缓存：key 只含设备、地址、元素数与标量位模式，不含张量数据；
-# kernel 每次仍完整读取输入并重新计算，地址复用或内容被原地修改都不影响正确性。
+# Read-only metadata cache: the key contains only device, addresses, element counts and scalar bit patterns, no tensor
+# data;
+# the kernel still reads input fully and recomputes each time, so address reuse or in-place content changes stay
+# correct.
 _META_CACHE = {}
 
 
@@ -127,7 +130,7 @@ def _get_cached_meta(values, device):
 
 
 def _run_max_scalarlist(self, scalars, inplace):
-    """单 H2D 快路径；不适用形态返回 FALLBACK 交给公共执行器。"""
+    """Single-H2D fast path; unsupported shapes return FALLBACK to the common executor."""
     if not can_use_flat(self, scalars, MODE_SCALAR_LIST):
         return FALLBACK
     num_tensors = len(self)
@@ -174,7 +177,7 @@ def _run_max_scalarlist(self, scalars, inplace):
 
 
 def _dispatch(self, scalars, inplace, name):
-    """按 tuning 开关在公共执行器、通用融合与单 H2D 快路径之间分派。"""
+    """Dispatch between the common executor, generic fusion and the single-H2D fast path by tuning switches."""
     if FALLBACK_TO_PUBLIC:
         return _apply_scalar(name, self, scalars, inplace=inplace)
     if USE_SINGLE_H2D:

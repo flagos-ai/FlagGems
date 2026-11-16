@@ -82,7 +82,7 @@ def _indices(self: torch.Tensor) -> torch.Tensor:
     coalesced and uncoalesced inputs (only the public ``indices`` checks
     coalescence).
     """
-    logger.debug("GEMS _INDICES")
+    logger.debug("GEMS_ENFLAME_GCU400 _INDICES")
     if not isinstance(self, torch.Tensor):
         raise TypeError(f"_indices: input must be a Tensor, got {type(self).__name__}")
     if self.layout != torch.sparse_coo:

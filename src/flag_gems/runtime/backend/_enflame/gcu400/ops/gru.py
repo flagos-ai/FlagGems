@@ -1214,7 +1214,7 @@ def gru(
     bidirectional=False,
     batch_first=False,
 ):
-    logger.debug("GEMS GRU")
+    logger.debug("GEMS_ENFLAME_GCU400 GRU")
     _validate_args(input, hx, params, has_biases, num_layers, dropout, bidirectional)
 
     if batch_first:
@@ -1271,7 +1271,7 @@ def gru_data(
     train=False,
     bidirectional=False,
 ):
-    logger.debug("GEMS GRU_DATA")
+    logger.debug("GEMS_ENFLAME_GCU400 GRU_DATA")
     if data.dim() != 2:
         raise RuntimeError("gru.data: packed data must have 2 dimensions")
     if batch_sizes.dim() != 1:

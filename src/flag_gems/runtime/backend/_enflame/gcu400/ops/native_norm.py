@@ -146,7 +146,7 @@ def native_norm(self, p=2):
     Returns:
         A scalar tensor containing the p-norm
     """
-    logger.debug("GEMS NATIVE_NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 NATIVE_NORM")
 
     # Validate dtype
     if self.dtype not in [torch.float16, torch.float32, torch.bfloat16, torch.float64]:

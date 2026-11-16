@@ -57,12 +57,12 @@ from triton.language.extra import libdevice
 
 logger = logging.getLogger(__name__)
 
-# GCU400 的 grid 轴上限：x 为 65535，y/z 只有 255（CUDA 的 x 轴 2**31
-# 假设在此不成立）。
+# GCU400 grid axis limits: x is 65535, y/z only 255 (CUDA's x-axis 2**31
+# assumption does not hold here).
 _GRID_X_HARD_LIMIT = 65535
 _GRID_Y_HARD_LIMIT = 255
-# 触发 2D 拆分的阈值，同时也是 grid.x 的块大小。A/B 交替复测（6 个代表
-# case）显示 1024 比 65535 快约 22%（28.74 ms vs 36.85 ms），4096 为 29.10 ms。
+# Threshold that triggers 2D splitting, also the grid.x block size. Alternating A/B retests (6 representative
+# cases) show 1024 is ~22% faster than 65535 (28.74 ms vs 36.85 ms), with 4096 at 29.10 ms.
 _GRID_AXIS_LIMIT = 1024
 
 _RANK = 5
@@ -166,8 +166,8 @@ def _glu_bwd_jvp_kernel(
     jb = 0
     rb = 0
     if GRID1D:
-        # GCU400 每个 grid 轴上限 65535，把扁平 tile 编号拆到 (x, y) 两轴；
-        # 多余的 pid 由下面 msk 中的 pid < TOTAL_TILES 屏蔽，不产生访存。
+        # Each GCU400 grid axis caps at 65535, so flat tile ids are split across (x, y);
+        # excess pids are masked by pid < TOTAL_TILES in msk below and perform no memory access.
         pid = tl.program_id(0) + tl.program_id(1) * GRID_STRIDE
         rb = pid % NRB
         t = pid // NRB
@@ -202,7 +202,7 @@ def _glu_bwd_jvp_kernel(
     r = rb * BLOCK_R + tl.arange(0, BLOCK_R)
     msk = (j < K)[:, None] & (r < R1)[None, :]
     if GRID1D:
-        # 2D 拆分的最后一组 program 可能越过 total_tiles，整体屏蔽其访存。
+        # The last program group of a 2D split may exceed total_tiles; mask off all its memory accesses.
         msk = msk & (pid < TOTAL_TILES)
     jv = j[:, None]
 
@@ -422,7 +422,7 @@ def _out_dtype_of(tensors):
 
 
 def glu_backward_jvp(grad_x, grad_glu, x, dgrad_glu, dx, dim, out=None):
-    logger.debug("GEMS GLU_BACKWARD_JVP")
+    logger.debug("GEMS_ENFLAME_GCU400 GLU_BACKWARD_JVP")
 
     tensors = (grad_x, grad_glu, x, dgrad_glu, dx)
     for t in tensors:
@@ -511,9 +511,9 @@ def glu_backward_jvp(grad_x, grad_glu, x, dgrad_glu, dx, dim, out=None):
     # 64 lanes (2 lanes per thread) and keep 4 warps for the large 2-D tiles.
     nw = min(4, max(1, (BJ * BR + 63) // 64))
 
-    # GCU400 的 x 轴上限 65535、y/z 轴只有 255（不同于 CUDA 的假设）。
-    # 任一轴越界（或为性能主动拆分）时改用 (x, y) 两轴承载扁平 tile 编号，
-    # kernel 内解码；stride 取性能最优值与「保证 y 轴 ≤255」中的较大者。
+    # GCU400's x axis caps at 65535 and y/z at only 255 (unlike CUDA's assumption).
+    # When any axis overflows (or splitting is chosen for performance), carry flat tile ids on (x, y),
+    # decoding them inside the kernel; stride is the larger of the performance optimum and "keep y <= 255".
     total_tiles = A * njb * nrb
     exts = sorted((("a", A), ("j", njb), ("r", nrb)), key=lambda kv: -kv[1])
     needs_split = (

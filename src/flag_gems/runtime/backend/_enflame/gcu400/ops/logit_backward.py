@@ -110,5 +110,5 @@ def _logit_backward_impl(grad_output: torch.Tensor, self: torch.Tensor, eps=None
 
 
 def logit_backward(grad_output, self, eps=None):
-    logger.debug("GEMS LOGIT_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 LOGIT_BACKWARD")
     return _logit_backward_impl(grad_output, self, eps=eps)

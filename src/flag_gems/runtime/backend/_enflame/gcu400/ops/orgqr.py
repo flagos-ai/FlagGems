@@ -261,7 +261,7 @@ def orgqr(input, tau):
 
     Complex inputs are intentionally unsupported by this Triton implementation.
     """
-    logger.debug("GEMS ORGQR")
+    logger.debug("GEMS_ENFLAME_GCU400 ORGQR")
     _validate_orgqr(input, tau)
     # Contiguous output matches the ATen convention and, for the transposed
     # geqrf inputs this backend produces, skips a strided write-back copy.
@@ -271,5 +271,5 @@ def orgqr(input, tau):
 
 def orgqr_out(input, tau, *, out):
     """Write Q into ``out``, preserving its storage and arbitrary batch strides."""
-    logger.debug("GEMS ORGQR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 ORGQR_OUT")
     return _orgqr_impl(input, tau, out)

@@ -306,7 +306,7 @@ def lstm_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     Returns:
         A ``(hy, cy)`` tuple, each of shape ``(batch, hidden_size)``.
     """
-    logger.debug("GEMS LSTM_CELL")
+    logger.debug("GEMS_ENFLAME_GCU400 LSTM_CELL")
     if len(hx) != 2:
         raise RuntimeError("lstm_cell expects two hidden states")
     h_prev, c_prev = hx[0], hx[1]

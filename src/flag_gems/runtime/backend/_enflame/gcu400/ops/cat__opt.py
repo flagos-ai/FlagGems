@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""cat 的 dim=0 线性快速路径（纯 helper，不做任何模块绑定）。
+"""dim=0 linear fast path for cat (pure helper, no module binding).
 
-KernelGen `cat_copy_func_kernel_4` 对每个元素做 3 次 int64 除法/取模。
-dim==0 时 pre_idx 恒为 0 且 (idx//P)*P + idx%P == idx，故
-    out_idx == idx + 该输入在输出中的起始元素偏移
-可完全去掉坐标分解。探针实测 2.1x(小)~26.7x(大)，逐位与 torch.cat 一致。
+KernelGen `cat_copy_func_kernel_4` performs 3 int64 divisions / modulos per element.
+With dim==0, pre_idx is always 0 and (idx//P)*P + idx%P == idx, so
+    out_idx == idx + the starting element offset of that input within the output
+can drop coordinate decomposition entirely. Probe measured 2.1x (small) ~ 26.7x (large), bit-identical to torch.cat.
 
-由 `cat.py` 的 `cat()` 在函数体内调用；不满足严格边界时返回 None，
-由调用方回退原有完整逻辑（float8 / 非 0 dim / >4 输入 / dtype 不一致 /
-非连续 / 除 cat 维外 shape 不一致）。
+Called from `cat()` in `cat.py` inside the function body; returns None when the strict boundaries are not met,
+so the caller falls back to the original full logic (float8 / non-zero dim / >4 inputs / dtype mismatch /
+non-contiguous / shape mismatch outside the cat dimension).
 """
 
 import torch
@@ -90,7 +90,7 @@ def _can_fast_path(A, dim):
 
 
 def try_fast_cat(A, dim):
-    """返回拼接结果；不适用快速路径时返回 None。"""
+    """Return the concatenation result; return None when the fast path does not apply."""
     if not _can_fast_path(A, dim):
         return None
     n = len(A)
@@ -111,11 +111,11 @@ def try_fast_cat(A, dim):
 
 
 def try_fast_cat_out(A, dim, out):
-    """cat.out 的 dim=0 线性快速路径：直接写进传入的 out。
+    """dim=0 linear fast path for cat.out: write directly into the passed-in out.
 
-    不适用时返回 False，由 `cat.py::cat_out` 回退原有完整逻辑
-    （非 0 dim / >4 输入 / float8 / dtype 不一致 / 非连续输入 /
-    out 非连续 / dtype 不符 / shape 不符 / 与输入别名）。
+    Returns False when not applicable, so `cat.py::cat_out` falls back to the original full logic
+    (non-zero dim / >4 inputs / float8 / dtype mismatch / non-contiguous input /
+    non-contiguous out / dtype mismatch / shape mismatch / aliasing with input).
     """
     if not _can_fast_path(A, dim):
         return False

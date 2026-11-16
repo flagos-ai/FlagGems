@@ -25,7 +25,7 @@ from .copy import copy_
 
 logger = logging.getLogger(__name__)
 
-# 显式暴露 warp 数，供 GCU400 调优扫描（编译期常量，不改语义）。
+# Expose the warp count explicitly for GCU400 tuning sweeps (compile-time constant, semantics unchanged).
 NUM_WARPS_GRU = 8
 
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
@@ -287,7 +287,7 @@ def _thnn_fused_gru_cell(
     input_bias: torch.Tensor = None,
     hidden_bias: torch.Tensor = None,
 ):
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL")
     batch_size, hidden_size = _validate_inputs(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
@@ -316,7 +316,7 @@ def _thnn_fused_gru_cell_out(
     out0: torch.Tensor,
     out1: torch.Tensor,
 ):
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL.OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL.OUT")
     batch_size, hidden_size = _validate_inputs(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )

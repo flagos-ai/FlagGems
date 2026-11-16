@@ -27,7 +27,7 @@ def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
     This is a zero-copy view operation that broadcasts dimensions with size 1
     by setting their stride to 0.
     """
-    logger.debug("GEMS EXPAND")
+    logger.debug("GEMS_ENFLAME_GCU400 EXPAND")
 
     # Normalize sizes to be a list
     input_shape = list(inp.shape)
@@ -87,4 +87,5 @@ def expand(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
 
 def expand_(inp: torch.Tensor, size: Sequence[int]) -> torch.Tensor:
     """In-place expand (for compatibility, returns view)."""
+    logger.debug("GEMS_ENFLAME_GCU400 EXPAND_")
     return expand(inp, size)

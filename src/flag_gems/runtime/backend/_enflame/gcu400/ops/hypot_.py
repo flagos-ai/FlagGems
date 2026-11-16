@@ -24,8 +24,8 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# GCU400 的 grid.x 上限远小于大 shape 所需的 block 数。把 CTA 数限制在
-# 2 倍 SIP，并用 grid-stride loop 覆盖剩余 block，避免 out of resource。
+# GCU400's grid.x limit is far below the block count needed for large shapes. Cap CTA count at
+# 2x SIP and cover the remaining blocks with a grid-stride loop to avoid out of resource.
 NUM_SIPS = 24
 GRID_CAP = NUM_SIPS * 2
 SMALL_TILE_THRESHOLD = 262144
@@ -55,7 +55,7 @@ def _hypot_inplace_kernel(
     OUT_DTYPE: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
 ):
-    """原地 hypot：每个 CTA 跨步处理若干连续 block，结果按输入 dtype 写回。"""
+    """In-place hypot: each CTA strides over several contiguous blocks and writes results back in the input dtype."""
     pid = tl.program_id(axis=0)
     num_pids = tl.num_programs(axis=0)
     element_offsets = tl.arange(0, BLOCK_SIZE)
@@ -72,16 +72,17 @@ def _hypot_inplace_kernel(
 
 
 def _launch_config(n_elements):
-    """小 shape 用单波小 tile，大 shape 用大 tile 减少 CTA 调度开销。"""
+    """Small shapes use a single-wave small tile; large shapes use a large tile to cut CTA scheduling overhead."""
     if n_elements <= SMALL_TILE_THRESHOLD:
         return max(triton.next_power_of_2(32 * math.isqrt(n_elements)), 32), SMALL_WARPS
     return LARGE_BLOCK_SIZE, LARGE_WARPS
 
 
 def hypot_(self: torch.Tensor, other):
-    logger.debug("GEMS HYPOT_")
+    logger.debug("GEMS_ENFLAME_GCU400 HYPOT_")
 
-    # 原地算子保持 self 的 dtype；标量或张量 other 都先对齐 dtype 再广播成连续视图。
+    # In-place operators keep self's dtype; scalar or tensor other is dtype-aligned first, then broadcast to a
+    # contiguous view.
     if isinstance(other, torch.Tensor):
         other_t = other.to(device=self.device, dtype=self.dtype)
     else:

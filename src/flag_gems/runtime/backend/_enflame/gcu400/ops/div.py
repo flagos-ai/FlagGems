@@ -64,7 +64,7 @@ def true_div_func_scalar_tensor(x, y):
 
 
 def true_divide(A, B):
-    logger.debug("GEMS TRUE_DIVIDE")
+    logger.debug("GEMS_ENFLAME_GCU400 TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -77,7 +77,7 @@ def true_divide(A, B):
 
 
 def true_divide_(A, B):
-    logger.debug("GEMS TRUE_DIVIDE_")
+    logger.debug("GEMS_ENFLAME_GCU400 TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=A)
     else:
@@ -574,6 +574,7 @@ def floor_divide_(A, B):
 def div_mode(A, B, rounding_mode=None):
     # trunc and floor both need the gcu400-specific IEEE arithmetic above;
     # only None (plain true division) keeps the generic implementation.
+    logger.debug("GEMS_ENFLAME_GCU400 DIV_MODE")
     if rounding_mode == "trunc":
         return trunc_divide(A, B)
     if rounding_mode == "floor":
@@ -584,6 +585,7 @@ def div_mode(A, B, rounding_mode=None):
 
 
 def div_mode_(A, B, rounding_mode=None):
+    logger.debug("GEMS_ENFLAME_GCU400 DIV_MODE_")
     if rounding_mode == "trunc":
         return trunc_divide_(A, B)
     if rounding_mode == "floor":

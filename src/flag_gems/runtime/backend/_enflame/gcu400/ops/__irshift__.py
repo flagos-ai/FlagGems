@@ -17,7 +17,7 @@ def irshift_kernel(a, b):
 
 def __irshift__(self, other):
     """In-place right shift: self >>= other."""
-    logger.debug("GEMS IRSHIFT")
+    logger.debug("GEMS_ENFLAME_GCU400 IRSHIFT")
 
     # Handle scalar other
     if not torch.is_tensor(other):

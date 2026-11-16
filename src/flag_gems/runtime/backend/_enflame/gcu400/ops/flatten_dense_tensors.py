@@ -611,7 +611,7 @@ def _launch_group(out, group, group_offsets, tl_dt):
 
 def flatten_dense_tensors(tensors):
     """``aten::flatten_dense_tensors(Tensor[] tensors) -> Tensor``."""
-    logger.debug("GEMS FLATTEN_DENSE_TENSORS")
+    logger.debug("GEMS_ENFLAME_GCU400 FLATTEN_DENSE_TENSORS")
     # Iterating a bare Tensor yields its rows and would silently flatten only
     # the first dimensions, so reject the same inputs the reference rejects.
     if isinstance(tensors, torch.Tensor):

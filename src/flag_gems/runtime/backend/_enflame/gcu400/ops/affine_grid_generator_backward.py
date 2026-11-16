@@ -614,6 +614,7 @@ def affine_grid_generator_backward(grad_output, size, align_corners):
             2D: [N, 2, 3]
             3D: [N, 3, 4]
     """
+    logger.debug("GEMS_ENFLAME_GCU400 AFFINE_GRID_GENERATOR_BACKWARD")
     assert grad_output.dtype in (
         torch.float16,
         torch.bfloat16,

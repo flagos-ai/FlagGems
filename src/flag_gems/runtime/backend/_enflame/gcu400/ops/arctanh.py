@@ -11,12 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import device
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -67,11 +70,13 @@ def _launch_arctanh(x: torch.Tensor, out: torch.Tensor):
 
 
 def arctanh(x: torch.Tensor):
+    logger.debug("GEMS_ENFLAME_GCU400 ARCTANH")
     out = torch.empty_like(x)
     _launch_arctanh(x, out)
     return out
 
 
 def arctanh_out(x: torch.Tensor, out: torch.Tensor):
+    logger.debug("GEMS_ENFLAME_GCU400 ARCTANH_OUT")
     _launch_arctanh(x, out)
     return out

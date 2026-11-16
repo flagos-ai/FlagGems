@@ -130,10 +130,10 @@ def sigmoid(self):
 
 
 def _choose_block_backward(N_total, itemsize):
-    # backward 有 3 次访存（读 dy / 读 y / 写 dx），最优 tile 与 forward 不同：
-    #   fp16: 16.7M B32768 = 44.0us（B65536 44.8us），536M B65536 = 1138.8us；
-    #   fp32: 16.7M B32768 = 74.9us（B65536 75.5us，codegen 81.8us），
-    #         536M B32768 = 2174.9us（B65536 2248.1us，native 2274.6us）。
+    # Backward has 3 memory accesses (read dy / read y / write dx), so its optimal tile differs from forward:
+    #   fp16: 16.7M B32768 = 44.0us (B65536 44.8us), 536M B65536 = 1138.8us;
+    #   fp32: 16.7M B32768 = 74.9us (B65536 75.5us, codegen 81.8us),
+    #         536M B32768 = 2174.9us (B65536 2248.1us, native 2274.6us).
     if N_total <= 8192:
         return max(256, triton.next_power_of_2(N_total))
     if N_total <= 65536:
@@ -148,9 +148,9 @@ def _choose_block_backward(N_total, itemsize):
 def sigmoid_backward(grad_output, output):
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("GEMS_ENFLAME SIGMOID_BACKWARD")
-    # 浮点类型用手写 flat kernel（fp32 codegen 路径在 (64,64) 上 31.9us vs flat
-    # 3.7us——pointwise_dynamic Python 开销主导；fp64 / 整数、混合 dtype/device
-    # 保留 codegen）。
+    # Floating types use a hand-written flat kernel (fp32 codegen at (64,64) is 31.9us vs flat
+    # 3.7us - pointwise_dynamic Python overhead dominates; fp64 / integer / mixed dtype/device
+    # keep codegen).
     if (
         output.dtype != grad_output.dtype
         or output.device != grad_output.device
@@ -187,11 +187,13 @@ def sigmoid_(A):
         logger.debug("GEMS_ENFLAME SIGMOID_")
     inp = A.contiguous()
     N_total = inp.numel()
-    # 空张量没有可启动的 CTA，直接返回，避免 0-CTA grid
+    # Empty tensors have no CTA to launch; return directly to avoid a 0-CTA grid
     if N_total == 0:
         return A
-    # kernel 按线性偏移写连续缓冲区；非连续输入的 contiguous 副本与原张量
-    # 布局不同，必须写临时缓冲区再按原 stride 拷回，才能保持原地语义
+    # The kernel writes a contiguous buffer by linear offsets; a contiguous copy of a non-contiguous input has a
+    # different
+    # layout from the original, so write a temporary buffer and copy back by the original stride to preserve in-place
+    # semantics
     output = A if inp.data_ptr() == A.data_ptr() else torch.empty_like(inp)
 
     BLOCK = _choose_block(N_total, inp.element_size())

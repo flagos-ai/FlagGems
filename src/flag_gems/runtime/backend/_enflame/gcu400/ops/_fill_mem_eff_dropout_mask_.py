@@ -70,15 +70,15 @@ def _fill_mem_eff_dropout_mask_kernel(
 
 
 def _fill_mem_eff_dropout_mask_(self, dropout_p, seed, offset):
-    logger.debug("GEMS FILL_MEM_EFF_DROPOUT_MASK")
+    logger.debug("GEMS_ENFLAME_GCU400 FILL_MEM_EFF_DROPOUT_MASK")
     assert self.is_contiguous(), "self must be contiguous"
     assert self.dim() == 4, "_fill_mem_eff_dropout_mask_ expects a 4D tensor"
     assert self.dtype == torch.float32, "self must be a float32 tensor"
 
     numel = self.numel()
-    # 经 12 轮同口径 A/B 扫描，BLOCK=2048 在 4 档 shape 上平均延迟最低
-    # （0.0477 ms → 0.0207 ms）；num_warps 固定为 4 以避免重复特化编译。
-    # 每个 program 负责 BLOCK 个完整 Philox 块（每块生成 4 个 float）。
+    # 12 rounds of same-method A/B sweeps show BLOCK=2048 has the lowest average latency across 4 shapes
+    # (0.0477 ms -> 0.0207 ms); num_warps is fixed at 4 to avoid repeated specialized compilation.
+    # Each program handles BLOCK complete Philox blocks (each block generates 4 floats).
     BLOCK = 2048
     grid = (triton.cdiv(numel, BLOCK * 4),)
     with torch_device_fn.device(self.device):

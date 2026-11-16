@@ -32,7 +32,7 @@ def swapdims(self: torch.Tensor, dim0: int, dim1: int) -> torch.Tensor:
     tracks the view, and the original strides are kept exactly (including
     the degenerate no-op cases).
     """
-    logger.debug("GEMS SWAPDIMS")
+    logger.debug("GEMS_ENFLAME_GCU400 SWAPDIMS")
 
     ndim = self.dim()
 

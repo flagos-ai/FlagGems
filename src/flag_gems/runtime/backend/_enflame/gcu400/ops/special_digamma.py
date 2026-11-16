@@ -8,5 +8,5 @@ logger = logging.getLogger(__name__)
 
 def special_digamma(A):
     """Computes the digamma function (alias for torch.special.digamma)."""
-    logger.debug("GEMS SPECIAL_DIGAMMA")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_DIGAMMA")
     return digamma(A)

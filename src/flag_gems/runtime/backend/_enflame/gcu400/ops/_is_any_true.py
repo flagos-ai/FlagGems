@@ -23,10 +23,10 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 # One reduction program handles moderate inputs; large inputs stream tiles
 # into an int32 atomic OR accumulator, whose low byte is the scalar bool.
-# 阈值取 16384：更大的单 program BLOCK 会让非连续视图的逐元素 gather 退化，
-# 超过阈值后拆成多 program 分块归约，能同时降低延迟并提高并行度。
+# Threshold set to 16384: a larger single-program BLOCK degrades elementwise gather of non-contiguous views,
+# so above the threshold split into multiple programs for a chunked reduction, lowering latency and raising parallelism.
 _SINGLE_MAX = 16384
-# 流式 tile 与阈值对齐，兼顾单遍带宽与每 program 的寄存器占用。
+# Streaming tiles align with the threshold, balancing single-pass bandwidth against per-program register usage.
 _BLOCK = 16384
 
 
@@ -47,10 +47,11 @@ def _any_kernel(
     if CONTIG:
         offset = idx
     elif ZERO_STRIDE:
-        # 标量/expand 视图所有元素共享同一地址，避免整块重复 gather。
+        # All elements of a scalar / expanded view share one address, avoiding repeated gather of a whole block.
         offset = tl.full((BLOCK,), 0, tl.int64)
     elif ONE_DIM:
-        # 一维 strided 视图按首维 stride 线性缩放，避免逐元素 int64 除法/取模。
+        # For a 1D strided view, scale linearly by the first dimension's stride, avoiding per-element int64 division /
+        # modulo.
         offset = idx * STRIDES[0]
     else:
         rem = idx
@@ -70,7 +71,7 @@ def _any_kernel(
 
 def _is_any_true(self):
     """Reduce every logical boolean element, including arbitrary-rank views."""
-    logger.debug("GEMS _IS_ANY_TRUE")
+    logger.debug("GEMS_ENFLAME_GCU400 _IS_ANY_TRUE")
     if not isinstance(self, torch.Tensor):
         raise TypeError("_is_any_true: self must be a Tensor")
     if self.dtype != torch.bool:

@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# index_add / index_add_ 的 GCU400 特化实现（零原子版本）。
+# GCU400-specific implementation of index_add / index_add_ (zero-atomic version).
 #
-# 原始实现用标量原子累加把每个 src 元素累加到 out[index[j]]，而 GCU400 标量
-# 原子吞吐只有约 0.39 G elem/s（随机普通写 21.5 G elem/s，相差 55 倍），实测
-# core benchmark 仅 0.03~0.07x。本实现彻底移除数据路径上的原子写：
+# The original uses scalar atomic accumulation to add each src element into out[index[j]], but GCU400 scalar
+# atomic throughput is only ~0.39 G elem/s (random plain writes 21.5 G elem/s, 55x difference), measured
+# core benchmark at only 0.03~0.07x. This implementation completely removes atomic writes from the data path:
 #
-# 1. 无重复情形（benchmark 的 randperm 全部命中）走 1D/2D scatter：重复检测
-#    在设备上完成（inv[d]=j 的 inverse map + 比较 j 是否等于 inv[d]），确认
-#    无重复后每个输出地址只有一个写者，用 load + add + store 替代原子累加
-#    （条目 30 ① 地址独占写，零额外流量、零原子）。
-# 2. 有重复且规模较小走 index_add_reduce_small_kernel：输出驱动的 one-hot
-#    加权 reduce_sum，每个输出地址由唯一 program 写，天然支持任意重复模式。
-# 3. 通用重复情形走 index_add_reduce_kernel：由 inv[d] 指定的 owner program
-#    用 tl.sum 在 j 维做 reduce_sum 规约再单次写入，全程零原子。
-# 4. 检测全程不用 torch.sort（实测设备侧 sort + 同步会把 2048 元素 case 拖到
-#    2.6 秒），只读两个 int32 标量做一次 host 同步，同时完成边界校验；
-#    J <= 4096 时单 program 检测并自己清零 flags，省一次 zeros launch。
-# 5. 静态 1D / 2D kernel（无运行期 codegen），(outer, j, i) 展平到单维 grid，
-#    grid.x 超 65535 时由 kernel 内 grid-stride 循环兜底。
+# 1. No-duplicate cases (all benchmark randperm hits) use 1D/2D scatter: duplicate detection
+#    happens on device (inverse map inv[d]=j + comparing j with inv[d]); once
+# duplicates are ruled out each output address has a single writer, so load + add + store replaces atomic accumulation
+#    (item 30 (1) exclusive address writes, zero extra traffic, zero atomics).
+# 2. Duplicates with small scale use index_add_reduce_small_kernel: output-driven one-hot
+# weighted reduce_sum, with each output address written by a unique program, naturally supporting any duplicate pattern.
+# 3. General duplicate cases use index_add_reduce_kernel: the owner program designated by inv[d]
+#    reduces all contributions for that target with tl.sum over j and writes once, zero atomics throughout.
+# 4. Detection never uses torch.sort (measured device-side sort + sync drags the 2048-element case to
+#    2.6 seconds); only two int32 scalars are read for one host sync, which also completes bounds validation;
+#    with J <= 4096 a single program detects and clears flags itself, saving a zeros launch.
+# 5. Static 1D / 2D kernels (no runtime codegen), (outer, j, i) flattened into a 1D grid,
+#    with an in-kernel grid-stride loop as fallback when grid.x exceeds 65535.
 import logging
 
 import torch
@@ -44,23 +44,23 @@ logger = logging.getLogger(__name__)
 
 _INT32_OFFSET_LIMIT = 1 << 31
 
-_BLOCK_J = 2048  # 1D kernel 每 program 处理的 index 元素数
-_BLOCK_J_2D = 4  # 2D kernel 在 index 维上的 tile
-_BLOCK_I_2D = 256  # 2D kernel 在 inner 维上的 tile
+_BLOCK_J = 2048  # index elements handled per program by the 1D kernel
+_BLOCK_J_2D = 4  # tile along the index dimension for the 2D kernel
+_BLOCK_I_2D = 256  # tile along the inner dimension for the 2D kernel
 
-# GCU400 硬件限制：grid.x <= 65535
+# GCU400 hardware limit: grid.x <= 65535
 _MAX_GRID_X = 65535
 _MAX_BLOCK_J = 16384
-_MAX_2D_TILE_ELEMENTS = 4096  # 2D tile 的 DSM 预算上限
+_MAX_2D_TILE_ELEMENTS = 4096  # DSM budget cap for a 2D tile
 
-_BLOCK_PROBE = 2048  # 大 J 探测 kernel 的 j tile
-_SINGLE_CHECK_MAX_J = 4096  # 单 program 能覆盖的最大 index 长度
-_MAX_REDUCE_TILE = 32768  # reduce_small 的 (BLOCK_D * BLOCK_J) 元素上限
-# 有重复 index 且规模不大时，输出驱动 reduce_sum 比 owner 扫描更快
+_BLOCK_PROBE = 2048  # j tile of the large-J probe kernel
+_SINGLE_CHECK_MAX_J = 4096  # maximum index length a single program can cover
+_MAX_REDUCE_TILE = 32768  # (BLOCK_D * BLOCK_J) element cap of reduce_small
+# With duplicate indices and modest scale, output-driven reduce_sum is faster than owner scanning
 _REDUCE_BUDGET = 1 << 25
-_BLOCK_P_REDUCE = 256  # owner reduce_sum 扫描 j 的 tile
-_BLOCK_I_REDUCE = 32  # owner reduce_sum 的 inner 维 tile
-_NUM_WARPS = 4  # 统一 launch 参数，便于按 shape 扫描最优 warp 数
+_BLOCK_P_REDUCE = 256  # j tile for owner reduce_sum scanning
+_BLOCK_I_REDUCE = 32  # inner-dimension tile for owner reduce_sum
+_NUM_WARPS = 4  # uniform launch parameter, convenient for sweeping the optimal warp count by shape
 
 
 def _next_pow2(value):
@@ -80,14 +80,14 @@ def index_add_check_kernel(
     D,
     BLOCK_J: tl.constexpr,
 ):
-    """单 program 覆盖全部 index：建 inverse map、查边界、查重复。
+    """A single program covers all indices: build the inverse map, check bounds, check duplicates.
 
-    debug_barrier 保证同 program 内 inv 的 store 对后续 load 可见（GCU400 上
-    该语义在 sort 算子里已验证成立）。flags 由 host 侧 zeros 初始化，这里只写 1。
+    debug_barrier guarantees that inv stores are visible to later loads within the same program (on GCU400
+    this semantics was verified in the sort operator). flags is zero-initialized on the host; only 1 is written here.
     """
     rj = tl.arange(0, BLOCK_J)
     mask = rj < J
-    # 单 program 独占 flags，可直接清零，省掉一次 torch.zeros launch
+    # A single program owns flags exclusively, so it can clear them directly, saving a torch.zeros launch
     tl.store(flags_ptr, 0)
     tl.store(flags_ptr + 1, 0)
     tl.debug_barrier()
@@ -114,7 +114,7 @@ def index_add_probe_kernel(
     BLOCK_J: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """大 J 的 probe：inv[index[j]] = j，并检查边界。"""
+    """Large-J probe: inv[index[j]] = j, with bounds checking."""
     pid = tl.program_id(0)
     for tile_id in tl.range(pid, total_tiles, GRID_SIZE):
         rj = tile_id * BLOCK_J + tl.arange(0, BLOCK_J)
@@ -138,7 +138,7 @@ def index_add_dup_kernel(
     BLOCK_J: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """大 J 的重复检测：多个 j 指向同一 d 时 inv[d] 只能保留其中一个。"""
+    """Large-J duplicate detection: when several j point to the same d, inv[d] keeps only one of them."""
     pid = tl.program_id(0)
     for tile_id in tl.range(pid, total_tiles, GRID_SIZE):
         rj = tile_id * BLOCK_J + tl.arange(0, BLOCK_J)
@@ -152,11 +152,11 @@ def index_add_dup_kernel(
 
 
 def _inspect_index(index, D, flags, device):
-    """判定重复模式并校验边界，返回 (need_reduce, inv)。
+    """Determine the duplicate pattern and validate bounds, returning (need_reduce, inv).
 
-    小 J 用一个 program 覆盖全部 index（1 次 launch）；大 J 用 probe + dup
-    两个 kernel。flags[0]=越界、flags[1]=重复，一次 tolist() 读两个标量，
-    是整条路径里唯一的 host 同步。
+    Small J is covered by one program over all indices (1 launch); large J uses probe + dup
+    two kernels. flags[0]=out-of-bounds, flags[1]=duplicate; one tolist() reads both scalars,
+    the only host sync in the whole path.
     """
     J = index.numel()
     inv = torch.empty((D,), dtype=torch.int32, device=device)
@@ -202,7 +202,7 @@ def _inspect_index(index, D, flags, device):
 
 
 def _tile_layout(J, inner, outer):
-    """按 grid.x 上限选 tile，返回 (block_j, block_i, total_tiles, grid_size)。"""
+    """Choose tiles by the grid.x limit, returning (block_j, block_i, total_tiles, grid_size)."""
     if inner == 1:
         block_i = 1
         block_j = min(_BLOCK_J, _next_pow2(J))
@@ -237,10 +237,10 @@ def index_add_reduce_small_kernel(
     BLOCK_J: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """小 shape 的输出驱动 reduce_sum：每个输出地址由唯一 program 写。
+    """Small-shape output-driven reduce_sum: each output address is written by a unique program.
 
-    match[d, j] = (index[j] == d)，对 j 维用 tl.sum 加权归约，天然支持
-    任意重复模式；边界合法性已由 _inspect_index 校验。
+    match[d, j] = (index[j] == d), reduced with weighted tl.sum over j, naturally supporting
+    any duplicate pattern; bounds validity is already checked by _inspect_index.
     """
     pid = tl.program_id(0)
     blocks_d = tl.cdiv(D, BLOCK_D)
@@ -282,10 +282,10 @@ def index_add_1d_kernel(
     BLOCK_J: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """dim 为最后一维（inner == 1）的快速路径。
+    """Fast path when dim is the last dimension (inner == 1).
 
-    index 无重复时每个 out[o, index[j]] 只有一个写者，用 load-add-store
-    完全替代标量原子累加；fp32 累加后再 cast，避免 fp16 二次舍入。
+    With no duplicate indices each out[o, index[j]] has a single writer, so load-add-store
+    fully replaces scalar atomic accumulation; accumulate in fp32 then cast to avoid a second fp16 rounding.
     """
     pid = tl.program_id(0)
     blocks_j = tl.cdiv(J, BLOCK_J)
@@ -333,7 +333,7 @@ def index_add_kernel(
     BLOCK_I: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """通用路径：(outer, j, i) 展平到单维 grid，地址独占写。"""
+    """Generic path: (outer, j, i) flattened into a 1D grid with exclusive address writes."""
     pid = tl.program_id(0)
     blocks_i = tl.cdiv(inner, BLOCK_I)
     blocks_j = tl.cdiv(J, BLOCK_J)
@@ -388,10 +388,10 @@ def index_add_reduce_kernel(
     BLOCK_I: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """有重复 index 时的 reduce_sum 规约路径（全程零原子）。
+    """reduce_sum path for duplicate indices (zero atomics throughout).
 
-    每个 program 对应一个 (o, j, i_tile)；只有 j == inv[index[j]] 的 owner
-    用 tl.sum 在 j 维规约该目标的所有贡献并单次写入，保证写者唯一。
+    Each program corresponds to one (o, j, i_tile); only the owner with j == inv[index[j]]
+    reduces all contributions for that target with tl.sum over j and writes once, guaranteeing a unique writer.
     """
     pid = tl.program_id(0)
     blocks_i = tl.cdiv(inner, BLOCK_I)
@@ -451,7 +451,7 @@ def _check_args(inp, dim, index, src):
 
 
 def _index_add_impl(out, index, src, dim, alpha):
-    """把 index_add 的加和写进 out（out 已是 inp 的副本或 in-place 目标）。"""
+    """Write index_add's sum into out (out is already a copy of inp or the in-place target)."""
     dim = dim % out.ndim
     shape = out.shape
     D = shape[dim]
@@ -465,8 +465,8 @@ def _index_add_impl(out, index, src, dim, alpha):
     if J == 0 or inner == 0 or outer == 0:
         return
 
-    # (outer, D, inner) 三段展平要求行主序连续；非连续时做一次拷贝，
-    # in-place 场景结束后再拷回（保证对调用方可见的仍是同一个张量）
+    # Flattening (outer, D, inner) requires row-major contiguity; non-contiguous inputs get one copy,
+    # and in-place cases copy back at the end (so the caller still sees the same tensor)
     out_work = out if out.is_contiguous() else out.contiguous()
     src_work = src if src.is_contiguous() else src.contiguous()
 
@@ -478,8 +478,8 @@ def _index_add_impl(out, index, src, dim, alpha):
     out_oo = D * inner
     out_od = inner
 
-    # 单 program 检测可自己清零 flags（省一次 zeros launch）；大 J 的多
-    # program 检测必须先把 flags 初始化为 0
+    # Single-program detection can clear flags itself (saving a zeros launch); large-J multi-
+    # program detection must initialize flags to 0 first
     if J <= _SINGLE_CHECK_MAX_J:
         flags = torch.empty((2,), dtype=torch.int32, device=out.device)
     else:
@@ -488,7 +488,7 @@ def _index_add_impl(out, index, src, dim, alpha):
     with torch_device_fn.device(out.device):
         need_reduce, inv = _inspect_index(idx, D, flags, out.device)
         if need_reduce and inner == 1 and outer * D * J <= _REDUCE_BUDGET:
-            # 有重复且规模小：输出驱动 reduce_sum，每个 d 由唯一 program 写
+            # Duplicates with small scale: output-driven reduce_sum, each d written by a unique program
             block_j = _next_pow2(J)
             block_d = min(_next_pow2(D), max(1, _MAX_REDUCE_TILE // block_j))
             total = outer * triton.cdiv(D, block_d)
@@ -509,7 +509,7 @@ def _index_add_impl(out, index, src, dim, alpha):
                 num_warps=_NUM_WARPS,
             )
         elif need_reduce:
-            # 通用重复路径：owner program 用 tl.sum 规约后独占写
+            # General duplicate path: the owner program reduces with tl.sum then writes exclusively
             block_i = min(_BLOCK_I_REDUCE, _next_pow2(inner))
             total = outer * J * triton.cdiv(inner, block_i)
             grid = min(total, _MAX_GRID_X)

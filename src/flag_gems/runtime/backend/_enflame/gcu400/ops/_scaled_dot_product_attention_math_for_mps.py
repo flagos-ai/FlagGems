@@ -205,7 +205,7 @@ def _scaled_dot_product_attention_math_for_mps(
         softmax attention-weight matrix of shape (batch, num_heads, seq_len_q,
         seq_len_kv).
     """
-    logger.debug("GEMS _SCALED_DOT_PRODUCT_ATTENTION_MATH_FOR_MPS")
+    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_DOT_PRODUCT_ATTENTION_MATH_FOR_MPS")
 
     assert dropout_p == 0.0, "Only dropout_p=0.0 is supported"
     assert attn_mask is None, "attn_mask is not supported"

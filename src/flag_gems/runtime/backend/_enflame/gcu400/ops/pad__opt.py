@@ -12,22 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""pad 候选 v4：1D/2D/3D constant 各自的显式 flat kernel。
+"""pad candidate v4: explicit flat kernels for 1D/2D/3D constant each.
 
-v2 用 constexpr tuple + tl.static_range 按维分解，实测 2D 会把输出 stride
-误取成输入 stride（输出 (69,69) 却按 64 分解），导致拷贝错位；3D 巧合通过。
-v3 改为每个 rank 一份显式标量 constexpr 参数的 kernel，不依赖 tuple 索引。
-v4 补回生产实现里对负源坐标的钳位：GCU 的 masked load 要求指针合法。
+v2 used constexpr tuple + tl.static_range decomposition by dimension; measured 2D took the output stride
+as the input stride (output (69,69) decomposed by 64), causing misaligned copies; 3D passed by chance.
+v3 uses one kernel per rank with explicit scalar constexpr parameters, no tuple indexing.
+v4 restores production's clamping of negative source coordinates: GCU masked load requires legal pointers.
 
-生产 codegen kernel 对每个元素构造 if_pad 向量、逐维 tl.where clamp、
-重复累积 load_cond；constant 模式下这些可归约为一个 valid 掩码，
-一次 masked load 完成「拷贝或填 value」。
-非 constant、非连续、rank>3 回退生产实现。
+The production codegen kernel builds an if_pad vector per element, per-dimension tl.where clamps,
+and repeatedly accumulates load_cond; in constant mode these reduce to one valid mask,
+so a single masked load does "copy or fill value".
+Non-constant, non-contiguous and rank>3 fall back to production.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -74,7 +77,7 @@ def _pad_rank2_kernel(
         & (src1 < IN_D1)
     )
     src_offset = src0 * IN_S0 + src1
-    # GCU 后端的 masked load 仍要求指针落在合法区间，负偏移需先钳位
+    # GCU backend masked load still requires pointers in a legal range; negative offsets must be clamped first
     safe_src_offset = tl.where(valid, src_offset, 0)
     value_or_input = tl.load(X + safe_src_offset, mask=valid, other=VALUE)
     tl.store(Out + out_offset, value_or_input, mask=out_offset < N_OUT)
@@ -189,7 +192,8 @@ def _launch(A, pad_before, pad_after, value):
 
 
 def pad(self, pad, mode="constant", value=None):
-    """与生产入口同签名：self 为输入张量，pad 为长度 2*ndim 的列表。"""
+    """Same signature as the production entry: self is the input tensor, pad is a list of length 2*ndim."""
+    logger.debug("GEMS_ENFLAME_GCU400 PAD")
     if value is None:
         value = 0.0
     rank = self.ndim
@@ -199,7 +203,7 @@ def pad(self, pad, mode="constant", value=None):
         and rank <= 3
         and len(pad) == 2 * rank
     ):
-        # F.pad 约定：pad 从最内维开始成对给出 (left, right)
+        # #
         pad_before = [0] * rank
         pad_after = [0] * rank
         for dim_from_last in range(rank):

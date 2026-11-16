@@ -25,12 +25,12 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(__name__)
 
-# 提为模块常量，便于按 shape 分档与批量配置扫描；默认值保持原实现。
+# Promoted to a module constant for shape tiering and batch config sweeps; default keeps the original behavior.
 _RANDINT_BLOCK_SIZE = 4096
 _RANDINT_UNROLL = 4
 _RANDINT_MAX_GRID_X = 65535
 _RANDINT_NUM_WARPS = 4
-# 32 位取模比 64 位除法便宜得多；high < 2**32 时启用，否则保持原 64 位路径。
+# 32-bit modulo is much cheaper than 64-bit division; enable when high < 2**32, otherwise keep the 64-bit path.
 _RANDINT_U32_HIGH_LIMIT = 1 << 32
 
 

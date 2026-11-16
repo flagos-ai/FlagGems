@@ -197,7 +197,7 @@ def cov(
     internally and the result is cast back to the input dtype, matching the
     precision behaviour expected from a stable Triton implementation.
     """
-    logger.debug("GEMS COV")
+    logger.debug("GEMS_ENFLAME_GCU400 COV")
 
     if input.dim() > 2:
         raise ValueError(

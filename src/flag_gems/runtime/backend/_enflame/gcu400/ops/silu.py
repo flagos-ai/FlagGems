@@ -95,8 +95,8 @@ def _choose_block(N_total):
     if N_total <= 524288:
         return 32768
     if N_total > (1 << 28):
-        # 超大 shape 上 65536 元素/tile 的寄存器压力导致明显劣化，
-        # 实测 536M 元素 fp32 1633us -> 1412us、fp16 1489us -> 929us
+        # On very large shapes 65536 elements/tile causes noticeable register-pressure degradation,
+        # measured 536M fp32 1633us -> 1412us, fp16 1489us -> 929us
         return 32768
     return 65536
 
@@ -172,8 +172,8 @@ def silu_(A):
             BLOCK=BLOCK,
             num_warps=nw,
         )
-    # 非连续输入时 contiguous() 会生成副本，须把结果按 A 的 stride 拷回，
-    # 否则按 flat 偏移写 A 会落到错误的存储位置。
+    # For non-contiguous inputs contiguous() creates a copy, so the result must be copied back by A's stride,
+    # otherwise writing A by flat offsets lands at wrong storage positions.
     if inp is not A:
         A.copy_(inp)
 

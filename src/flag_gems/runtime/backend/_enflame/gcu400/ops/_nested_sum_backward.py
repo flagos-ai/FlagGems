@@ -64,7 +64,7 @@ def _nested_sum_backward(grad, self, dim=None, keepdim=False):
     Returns:
         Tensor: the gradient broadcast back to the shape of `self`.
     """
-    logger.debug("GEMS _NESTED_SUM_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_SUM_BACKWARD")
 
     shape = list(self.shape)
     ndim = self.dim()

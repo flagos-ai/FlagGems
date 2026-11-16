@@ -505,7 +505,7 @@ def _linalg_solve_ex(A, B, *, left=True, check_errors=False):
         - pivots: (*, n) int32 LAPACK-style 1-based row pivots of A
         - info: (*,) int32 tensor, 0 = success, >0 = singular at that pivot
     """
-    logger.debug("GEMS _LINALG_SOLVE_EX")
+    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_SOLVE_EX")
     vector_rhs, B_mat = _check_solve_ex_args(A, B, left)
 
     n = A.shape[-1]

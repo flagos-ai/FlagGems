@@ -226,7 +226,7 @@ def masked_scatter_backward(grad_output, mask, sizes):
     non-contiguous inputs, N beyond the int32 fast-path domain) falls back
     to ``masked_select``.
     """
-    logger.debug("GEMS MASKED_SCATTER_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 MASKED_SCATTER_BACKWARD")
 
     sizes = list(sizes)
     numel = 1

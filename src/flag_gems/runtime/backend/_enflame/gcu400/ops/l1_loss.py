@@ -90,7 +90,7 @@ class Reduction:
 
 
 def l1_loss(input: torch.Tensor, target: torch.Tensor, reduction=Reduction.MEAN):
-    logger.debug("GEMS L1_LOSS")
+    logger.debug("GEMS_ENFLAME_GCU400 L1_LOSS")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target)
     n_elements = input.numel()

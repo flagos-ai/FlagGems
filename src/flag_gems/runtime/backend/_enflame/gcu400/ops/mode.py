@@ -437,7 +437,7 @@ def mode_kernel_i64(
 
 
 def mode(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS MODE")
+    logger.debug("GEMS_ENFLAME_GCU400 MODE")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
 
     shape = list(inp.shape)

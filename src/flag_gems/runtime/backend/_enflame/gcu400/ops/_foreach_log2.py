@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_log2``（out-of-place）。
+"""GCU400-specific ``_foreach_log2`` (out-of-place).
 
-公共 ``foreach_unary`` 执行器用二维 grid 承载 chunk table，在 GCU400 上会撞
-grid.y≤255 限制且 metadata 依赖 64 位偏移。这里提供两条 Triton 路径：
+The common ``foreach_unary`` executor carries the chunk table in a 2D grid, which on GCU400 hits the
+grid.y<=255 limit and needs 64-bit offsets in metadata. Two Triton paths are provided here:
 
-* ``FUSED_LAUNCH=1``：把 tensor 列表的 (输入指针, 输出指针, 元素数) 打包成
-  int64 metadata，一维 grid 一次 launch 处理全部 tensor，消除逐 tensor 的
-  launch 固定开销；这是 GCU400 上该算子的主路径。
-* ``FUSED_LAUNCH=0``：逐 tensor launch 的一维固定 grid 跨步 kernel，作为
-  回退与性能对照。
+* ``FUSED_LAUNCH=1``: pack the tensor list's (input pointer, output pointer, element count) into
+  int64 metadata and process all tensors in one launch with a 1D grid, removing per-tensor
+  launch overhead; this is the main path for this operator on GCU400.
+* ``FUSED_LAUNCH=0``: per-tensor launches of a 1D fixed-grid striding kernel, kept as
+  a fallback and performance reference.
 
-非浮点、复数或混合 dtype 的输入回退公共 ``apply_unary``，以维持 ATen 的
-dtype 提升策略（整型/布尔提升为 float32）。
+Non-float, complex or mixed dtype inputs fall back to common ``apply_unary`` to preserve ATen's
+dtype promotion policy (integral / bool promoted to float32).
 """
 
 import logging
@@ -41,7 +41,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 编译期配置，由优化迭代按轮次调整，不改变算子语义。
+# Compile-time config, adjusted per optimization round; semantics unchanged.
 FUSED_LAUNCH = 1
 BLOCK_SIZE = 16384
 FIXED_GRID = 48
@@ -69,7 +69,7 @@ def _foreach_log2_out_kernel(
     BLOCK: tl.constexpr,
     FIXED_GRID: tl.constexpr,
 ):
-    """逐 tensor launch：一维固定 grid 跨步读取输入并写出 log2。"""
+    """Per-tensor launch: 1D fixed-grid striding that reads input and writes log2."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -90,10 +90,10 @@ def _foreach_log2_fused_kernel(
     BLOCK: tl.constexpr,
     USE_MULTIPLE_OF: tl.constexpr,
 ):
-    """单次 launch：metadata 布局为 [输入指针×NT, 输出指针×NT, 元素数×NT]。
+    """Single launch: metadata layout is [input pointers x NT, output pointers x NT, element counts x NT].
 
-    一维 grid 把 ``(tensor_id, chunk_id)`` 扁平化，避免 GCU400 的 grid.y
-    上限；超出各 tensor 自身元素数的 program 由 mask 全屏蔽。
+    The 1D grid flattens ``(tensor_id, chunk_id)`` to avoid GCU400's grid.y
+    limit; programs beyond a tensor's element count are fully masked off.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -123,16 +123,17 @@ def _foreach_log2(self):
             for tensor in self
         )
         homogeneous = len({tensor.dtype for tensor in self}) == 1
-        # 融合 kernel 用 data_ptr()/numel() 平坦寻址，非连续视图会写错位置。
+        # The fused kernel addresses memory flat via data_ptr()/numel(), so non-contiguous views would write to wrong
+        # locations.
         contiguous = all(tensor.is_contiguous() for tensor in self)
     except AttributeError:
-        # 非 Tensor 元素：回退公共执行器，对齐 ATen 的 TypeError/RuntimeError。
+        # Non-Tensor elements: fall back to the common executor to match ATen's TypeError/RuntimeError.
         return apply_unary("log2", self, inplace=False)
     if FALLBACK_TO_PUBLIC or not (all_float and homogeneous and contiguous):
         return apply_unary("log2", self, inplace=False)
 
-    # out-of-place 需要为每条输入 tensor 单独分配同 dtype/同形状的输出；
-    # 输出列表顺序必须与 self 一致。
+    # Out-of-place needs a separate same-dtype / same-shape output for each input tensor;
+    # the output list order must match self.
     outputs = [torch.empty_like(tensor) for tensor in self]
     device = self[0].device
     device_context = (
@@ -141,8 +142,8 @@ def _foreach_log2(self):
 
     if FUSED_LAUNCH:
         tensor_count = len(self)
-        # metadata 用 int64 保存设备指针，必须开启 GCU 64 位支持，否则
-        # torch_gcu 会把 int64 降级成 int32 导致指针被截断。
+        # Metadata stores device pointers as int64, so GCU 64-bit support must be enabled, otherwise
+        # torch_gcu downgrades int64 to int32 and truncates the pointers.
         metadata = torch.empty(3 * tensor_count, dtype=torch.int64)
         for index, (src_tensor, dst_tensor) in enumerate(zip(self, outputs)):
             metadata[index] = src_tensor.data_ptr()

@@ -37,7 +37,7 @@ def _resize_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def resize(inp: torch.Tensor, size, memory_format=None):
-    logger.debug("GEMS RESIZE")
+    logger.debug("GEMS_ENFLAME_GCU400 RESIZE")
 
     # Convert size to tuple if it's not already
     if not isinstance(size, tuple):
@@ -64,6 +64,7 @@ def resize(inp: torch.Tensor, size, memory_format=None):
 
 
 def resize_(inp: torch.Tensor, size, memory_format=None):
+    logger.debug("GEMS_ENFLAME_GCU400 RESIZE_")
     if not isinstance(size, tuple):
         size = tuple(size)
 

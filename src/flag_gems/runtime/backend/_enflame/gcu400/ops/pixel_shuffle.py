@@ -80,7 +80,7 @@ def pixel_shuffle_kernel(
 
 
 def pixel_shuffle(input, upscale_factor):
-    logger.debug("GEMS PIXEL_SHUFFLE")
+    logger.debug("GEMS_ENFLAME_GCU400 PIXEL_SHUFFLE")
     r = int(upscale_factor)
     assert input.ndim == 4
     N, C, H, W = input.shape

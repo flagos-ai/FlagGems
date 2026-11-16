@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 # --- TUNING PARAMS START (CONJ_COPY_TUNING) ---
-# 共轭 kernel 的启动期配置：block/grid/warps 由实测扫描确定，均为编译期常量
-# 或 launch 参数，不参与数值语义。
+# Launch config for the conjugation kernel: block/grid/warps come from measured sweeps and are compile-time constants
+# or launch arguments; they do not affect numerical semantics.
 CONJ_COPY_TUNING = {
     "block_size": 4096,
     "num_warps": 4,
@@ -47,13 +47,14 @@ def _conj_copy_flat_kernel(
     GRID_STRIDE: tl.constexpr,
     NEGATE_MODE: tl.constexpr,
 ):
-    # 固定 grid + 核内跨步：grid 与问题规模解耦，大 shape 不产生海量 CTA。
+    # Fixed grid + in-kernel striding: grid is decoupled from problem size, so large shapes do not spawn huge numbers of
+    # CTAs.
     tile_count = tl.cdiv(n_floats, BLOCK_SIZE)
     for tile_id in tl.range(tl.program_id(0), tile_count, GRID_STRIDE):
         offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_floats
         values = tl.load(in_ptr + offsets, mask=mask, other=0)
-        # 交错布局 (real, imag, ...)：奇数下标为虚部，位与代替取模。
+        # Interleaved layout (real, imag, ...): odd indices are imaginary parts; use bitwise AND instead of modulo.
         is_imaginary = (offsets & 1) == 1
         if NEGATE_MODE == "multiply":
             sign = tl.where(is_imaginary, -1.0, 1.0).to(values.dtype)
@@ -64,11 +65,11 @@ def _conj_copy_flat_kernel(
 
 
 def _flat_real_stream(tensor: torch.Tensor) -> torch.Tensor:
-    """把 complex 张量 reinterpret 成平坦实数流。
+    """Reinterpret a complex tensor as a flat stream of real values.
 
-    GCU 上 resolve_conj() 之后仍可能留下 unresolved conj view，
-    .view(real_dtype) 会被 PyTorch 拒绝；此时从 real/imag 逻辑值
-    重建普通 complex 张量，保证 reinterpret 一定能进行。
+    After resolve_conj() an unresolved conj view may remain on GCU, and PyTorch rejects
+    .view(real_dtype); in that case rebuild an ordinary complex tensor from real/imag logical
+    values so the reinterpret always succeeds.
     """
     float_dtype = _float_dtype(tensor)
     try:
@@ -79,7 +80,7 @@ def _flat_real_stream(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _launch_conj_flat(src: torch.Tensor, dst: torch.Tensor, tuning: dict) -> None:
-    """把 contiguous complex 张量按平坦实数流共轭写入 dst。"""
+    """Write a contiguous complex tensor conjugated into dst as a flat stream of real values."""
     n_floats = src.numel() * 2
     if n_floats == 0:
         return
@@ -104,7 +105,7 @@ def _launch_conj_flat(src: torch.Tensor, dst: torch.Tensor, tuning: dict) -> Non
 
 
 def _float_dtype(x: torch.Tensor) -> torch.dtype:
-    # complex32 / complex64 / complex128 各自对应的实数成分 dtype。
+    # Real-component dtype corresponding to complex32 / complex64 / complex128.
     if x.dtype == torch.complex32:
         return torch.float16
     if x.dtype == torch.complex64:
@@ -115,7 +116,7 @@ def _float_dtype(x: torch.Tensor) -> torch.dtype:
 
 
 def _conj_copy(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS _CONJ_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _CONJ_COPY")
     if not input.is_complex():
         raise RuntimeError("_conj_copy only supports complex tensors")
 
@@ -129,7 +130,7 @@ def _conj_copy(input: torch.Tensor) -> torch.Tensor:
 
 
 def _conj_copy_out(input: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS _CONJ_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _CONJ_COPY_OUT")
     if not input.is_complex():
         raise RuntimeError("_conj_copy only supports complex tensors")
     if out.dtype != input.dtype:

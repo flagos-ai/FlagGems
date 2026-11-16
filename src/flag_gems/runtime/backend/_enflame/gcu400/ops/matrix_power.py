@@ -24,19 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 def _select_bmm_config(Batch, M, N, K, dtype):
-    # gcu400: matrix_power_bmm 在 gcu400 tune_configs.yaml 中无条目，libtuner
-    # autotune 会回退到 nvidia 默认小 tile（TILE<=128x128x32、num_stages=2、
-    # 每次迭代带 mask），方阵 GEMM 实测比原生慢 3.5~11.7x。这里改为确定性
-    # tile 分派，按 libra L600 do_bench(200ms/100ms median) 逐档扫描定标：
-    #   fp16/bf16 大方阵 (128,256,512,w2)：m=1024/2048/4096 全面最优；
-    #   fp32 大方阵 (256,128,128,w2)：比 (128,256,128,w2) 快 ~10%；
-    #   m<=512 小方阵 (64,64,256,w4)：48 SP 占用优先（m=384 时 36 vs 6 个
-    #   program，fp32 达 0.60x 原生）；fp64 操作数 8 字节，维持小 tile。
+    # gcu400: matrix_power_bmm has no entry in gcu400 tune_configs.yaml, so libtuner
+    # autotune falls back to nvidia's default small tile (TILE<=128x128x32, num_stages=2,
+    # mask on every iteration), measured 3.5~11.7x slower than native for square GEMM. Switch to deterministic
+    # tile dispatch, calibrated tier by tier with libra L600 do_bench(200ms/100ms median):
+    #   fp16/bf16 large square (128,256,512,w2): best across m=1024/2048/4096;
+    #   fp32 large square (256,128,128,w2): ~10% faster than (128,256,128,w2);
+    #   m<=512 small square (64,64,256,w4): 48 SP occupancy priority (m=384 gives 36 vs 6
+    #   programs, fp32 0.60x native); fp64 operands are 8 bytes, keep small tiles.
     if dtype == torch.float64:
         block_m, block_n, block_k, num_warps, num_stages = 64, 64, 32, 4, 3
     elif K < 128:
-        # num_stages 必须为 3：ns=2 与 bf16 组合会触发 gcu 编译器 llvm-link
-        # 段错误（tops_matrix_store_bf16_fp32_m32 序列化崩溃，rc=139）。
+        # num_stages must be 3: ns=2 with bf16 triggers a gcu compiler llvm-link
+        # segfault (tops_matrix_store_bf16_fp32_m32 serialization crash, rc=139).
         block_m, block_n, block_k, num_warps, num_stages = 64, 64, 32, 4, 3
     elif M <= 512 and N <= 512 and K <= 512:
         block_m, block_n, block_k, num_warps, num_stages = 64, 64, 256, 4, 3
@@ -45,7 +45,7 @@ def _select_bmm_config(Batch, M, N, K, dtype):
     else:
         block_m, block_n, block_k, num_warps, num_stages = 128, 256, 512, 2, 2
 
-    # 精确判定：三个维度都能被选中 tile 整除时，编译期裁剪出无 mask 快速路径。
+    # Exact decision: when all three dimensions are divisible by the selected tile, compile an unmasked fast path.
     even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
     return block_m, block_n, block_k, num_warps, num_stages, even
 
@@ -106,7 +106,8 @@ def bmm_kernel(
     )
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    # EVEN 是编译期常量：运行时分支会令 dot 退化为标量计算，必须静态裁剪。
+    # EVEN is a compile-time constant: a runtime branch degrades dot to scalar compute, so it must be trimmed
+    # statically.
     if EVEN:
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = tl.load(a_ptrs)
@@ -273,7 +274,7 @@ def _dest_writable(out, A):
 
 
 def matrix_power(A, n):
-    logger.debug("GEMS MATRIX_POWER")
+    logger.debug("GEMS_ENFLAME_GCU400 MATRIX_POWER")
     _validate_matrix_power_args(A)
 
     M = A.shape[-1]
@@ -285,7 +286,7 @@ def matrix_power(A, n):
 
 
 def matrix_power_out(A, n, *, out):
-    logger.debug("GEMS MATRIX_POWER_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 MATRIX_POWER_OUT")
     _validate_matrix_power_args(A)
 
     if _dest_writable(out, A):

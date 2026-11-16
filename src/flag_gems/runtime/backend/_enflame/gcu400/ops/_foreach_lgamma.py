@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_lgamma``：逐 tensor 一维 flat kernel + 纯 Triton Lanczos。
+"""GCU400-specific ``_foreach_lgamma``: per-tensor 1D flat kernel + pure Triton Lanczos.
 
-公共 ``foreach_unary`` 执行器的 lgamma 行落到 GCU libdevice ``lgamma`` extern。
-该例程体量大（级数 + 反射 + 本地内存操作），在共享 executor 的大形状 launch
-形态下（16×(1024,1024)，≥512 并发 CTA）触发设备级 Sip exception → KMD abort
-（P16，见 compiler_problems/P16_flat_reshape_longloop_sip_abort/sources/
-flaggems_enflame_foreach_lgamma_extern_concurrency_sip.md）；128 CTA 以内可跑。
-这里改成逐 tensor 的一维固定 grid + 核内跨步（每 launch ≤ FIXED_GRID 个 CTA），
-函数体换成带反射的 Lanczos 近似（只用 ``tl.log``/``tl.sin``，无 extern），
-计算统一提升 fp32。整型/bool/非连续输入回退公共 ``apply_unary``（小形状下
-extern 并发安全，且语义/异常行为与公共实现完全一致）。
+The lgamma row of the common ``foreach_unary`` executor falls through to the GCU libdevice ``lgamma`` extern.
+That routine is large (series + reflection + local memory operations) and under the shared executor's
+large-shape launch (16x(1024,1024), >=512 concurrent CTAs) triggers a device-level Sip exception -> KMD abort
+(P16, see compiler_problems/P16_flat_reshape_longloop_sip_abort/sources/
+flaggems_enflame_foreach_lgamma_extern_concurrency_sip.md); up to 128 CTAs works.
+This uses a per-tensor 1D fixed grid with in-kernel striding (<= FIXED_GRID CTAs per launch),
+and replaces the body with a reflected Lanczos approximation (only ``tl.log``/``tl.sin``, no extern),
+with fp32 computation throughout. Integral / bool / non-contiguous inputs fall back to common ``apply_unary``
+(the extern is concurrency-safe for small shapes, with identical semantics and exception behavior).
 """
 
 import logging
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # --- TUNING PARAMS START ---
 
 
-# 由优化迭代驱动脚本按轮次生成；编译期/启动期配置，不改变算子语义。
+# Generated per round by the optimization driver script; compile-time / launch-time config, semantics unchanged.
 FIXED_GRID = 384
 BLOCK_SIZE = 1024
 NUM_WARPS = 4
@@ -56,10 +56,10 @@ _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
 @triton.jit
 def _lgamma_pos_lanczos(y):
-    """``lgamma(y)`` for ``y >= 0.5``：Lanczos g=7/N=9（mvlgamma_ 的 fallback 体）。
+    """``lgamma(y)`` for ``y >= 0.5``: Lanczos g=7/N=9 (body of the mvlgamma_ fallback).
 
-    系数与 ``gcu400/ops/mvlgamma_.py`` 的 ``_fallback_lgamma`` 相同；只在
-    ``y >= 0.5`` 上调用，``y < 0.5`` 由外层反射公式处理。
+    Coefficients match ``_fallback_lgamma`` in ``gcu400/ops/mvlgamma_.py``; called only for
+    ``y >= 0.5``; ``y < 0.5`` is handled by the outer reflection formula.
     """
     z = y - 1.0
     a = 0.9999999999998099
@@ -77,17 +77,17 @@ def _lgamma_pos_lanczos(y):
 
 @triton.jit
 def _lgamma_full(x):
-    """全定义域 ``lgamma``：``x < 0.5`` 走反射，非正整数极点与 ±inf 给 +inf。
+    """Full-domain ``lgamma``: ``x < 0.5`` uses reflection, non-positive integer poles and +/-inf give +inf.
 
-    ``lgamma(x) = log(pi/|sin(pi x)|) - lgamma(1-x)``（x < 0.5，含负数）。
-    两支共用同一个 Lanczos 参数：``y = where(x < 0.5, 1-x, x)`` 恒落在
-    ``>= 0.5``——反射支要算的正是 ``lgamma(1-x)``，正支要算 ``lgamma(x)``，
-    一次求值两个分支都够用（避免 where 双侧求值把 Lanczos 的 9 个除法
-    付两遍）。``sin(pi*x)`` 的参数先归约到 ``[-0.5, 0.5]`` 再乘 pi——直接
-    乘时大 ``|x|`` 的参数舍入误差随 ``|x|`` 无界增长；``|reduced| < 1e-7``
-    时 ``sin(z) == z`` 到 fp32 以下，线性分支精确（与公共
-    ``_approx_lgamma_func`` 同构）。NaN 经比较全 False 走正支后自然传播；
-    0 与负整数是极点（+inf），与 ATen 的 gammaln 语义一致。
+    ``lgamma(x) = log(pi/|sin(pi x)|) - lgamma(1-x)`` (x < 0.5, including negative values).
+    Both branches share one Lanczos parameter: ``y = where(x < 0.5, 1-x, x)`` always lands in
+    ``>= 0.5`` - the reflection branch needs ``lgamma(1-x)`` and the positive branch needs ``lgamma(x)``,
+    so one evaluation serves both branches (avoiding evaluating both sides of where and paying for the
+    9 Lanczos divisions twice). The argument of ``sin(pi*x)`` is reduced to ``[-0.5, 0.5]`` before multiplying
+    by pi - direct multiplication makes the rounding error grow unboundedly with large ``|x|``. For
+    ``|reduced| < 1e-7``, ``sin(z) == z`` to below fp32 precision, so the linear branch is exact (isomorphic
+    to the common ``_approx_lgamma_func``). NaN fails all comparisons, takes the positive branch and propagates;
+    0 and negative integers are poles (+inf), matching ATen's gammaln semantics.
     """
     small = x < 0.5
     y = tl.where(small, 1.0 - x, x)
@@ -106,7 +106,7 @@ def _lgamma_full(x):
 def _foreach_lgamma_flat_kernel(
     in_ptr, out_ptr, N, BLOCK: tl.constexpr, FIXED_GRID: tl.constexpr
 ):
-    """一维固定 grid 跨步执行逐元素 lgamma（纯 Triton 函数体，无 extern）。"""
+    """1D fixed grid with striding for elementwise lgamma (pure Triton body, no extern)."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -119,7 +119,7 @@ def _foreach_lgamma_flat_kernel(
 
 
 def _can_use_flat_kernel(self):
-    """仅接受非空的连续浮点 tensor 列表。"""
+    """Accept only non-empty lists of contiguous float tensors."""
     if len(self) == 0:
         return False
     try:
@@ -129,7 +129,7 @@ def _can_use_flat_kernel(self):
             if not tensor.is_contiguous():
                 return False
     except AttributeError:
-        # 非 Tensor 元素：返回 False 让调用方回退公共 apply_unary 对齐异常。
+        # Non-Tensor elements: return False so the caller falls back to the common apply_unary for matching exceptions.
         return False
     return True
 
@@ -141,7 +141,7 @@ def _run_flat_kernel(self, inplace):
     if not tensors:
         return [] if not inplace else None
 
-    # 反序只改变 launch 次序，out-of-place 的输出必须保持与原列表一致。
+    # Reversing only changes launch order; out-of-place outputs must keep the same order as the original list.
     launch_indices = list(range(len(tensors)))
     if REVERSE_LAUNCH_ORDER:
         launch_indices.reverse()
@@ -156,8 +156,8 @@ def _run_flat_kernel(self, inplace):
             tensor = tensors[index]
             num_elems = tensor.numel()
             out_tensor = tensor if inplace else torch.empty_like(tensor)
-            # 空 tensor 无元素可算，跳过 kernel launch；但输出列表必须仍保留
-            # 这个空结果，保持与输入一一对应（foreach 的返回长度等于输入长度）。
+            # Empty tensors have no elements, so skip the kernel launch; but the empty result must still be kept
+            # in the output list to stay one-to-one with the input (foreach returns as many tensors as it receives).
             if num_elems == 0:
                 if not inplace:
                     outputs[index] = out_tensor

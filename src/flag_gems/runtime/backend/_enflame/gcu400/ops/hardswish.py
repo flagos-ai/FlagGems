@@ -43,7 +43,7 @@ def hardswish_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def hardswish(x: torch.Tensor):
-    logger.debug("GEMS HARDSWISH")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDSWISH")
     x_contig = x.contiguous()
     out = torch.empty_like(x_contig)
     n_elements = out.numel()
@@ -54,7 +54,7 @@ def hardswish(x: torch.Tensor):
 
 
 def hardswish_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS HARDSWISH_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 HARDSWISH_OUT")
     assert x.numel() == out.numel()
     x_contig = x.contiguous()
     n_elements = out.numel()

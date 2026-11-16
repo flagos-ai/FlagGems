@@ -546,8 +546,9 @@ from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_
 from .cudnn_rnn_backward import cudnn_rnn_backward
 from .thnn_fused_gru_cell_backward import _thnn_fused_gru_cell_backward_out
 
-# 以下算子原本只有公共实现，已复制到 gcu400 后端作为专用实现，
-# 后续优化只需改动本目录文件，不再原地修改公共代码。
+# These operators originally had only common implementations; they have been copied into the gcu400 backend as dedicated
+# implementations,
+# so future optimizations only need to change files in this directory, without modifying common code in place.
 from ._dirichlet_grad import _dirichlet_grad
 from ._fused_sgd_ import _fused_sgd_, _fused_sgd__tensor_lr
 from ._histogramdd_from_bin_cts import (
@@ -582,8 +583,8 @@ from .scaled_mm import scaled_mm, scaled_mm_out
 from .slogdet import slogdet
 from .trapz import trapz
 
-# foreach 系列的公共实现位于 codegen 共享模块，这里只导出本批目标函数，
-# 避免覆盖 gcu400 上已有的其它 foreach 专用实现。
+# The common foreach implementations live in a shared codegen module; export only this batch of targets here
+# to avoid overwriting other foreach-specific implementations already present on gcu400.
 from ._addmm_activation import _addmm_activation, _addmm_activation_out
 from ._foreach_addcmul_scalarlist import _foreach_addcmul__ScalarList
 from ._foreach_binary import _foreach_addcdiv__Tensor
@@ -592,8 +593,8 @@ from ._foreach_unary import _foreach_round, _foreach_trunc
 from .as_strided_scatter import as_strided_scatter
 from .ctc_loss import ctc_loss
 
-# 以下算子在 _FULL_CONFIG 中仍指向公共实现，已把公共实现复制到本目录，
-# 逐一注册为 gcu400 专属实现；后续优化只改动本目录文件，不原地修改公共代码。
+# These operators still point to common implementations in _FULL_CONFIG; the common implementations were copied here
+# and registered one by one as gcu400-specific; future optimizations only change files in this directory.
 from .__ilshift__ import __ilshift__
 from .__rshift__ import __rshift__
 from .__xor__ import xor, xor_, xor_scalar, xor_scalar_, xor_scalar_tensor
@@ -743,11 +744,11 @@ from ._foreach_unary import (
     _foreach_trunc_,
 )
 
-# floor 使用独立的一维融合 kernel，覆盖公共 unary 执行器的同名函数。
+# floor uses a standalone 1D fused kernel, overriding the same-named function of the common unary executor.
 from ._foreach_floor_opt import _foreach_floor, _foreach_floor_  # noqa: F811
 
-# lgamma 的 libdevice extern 在大形状高并发下触发设备 SIP abort（P16），
-# 换独立的纯 Triton Lanczos flat kernel，覆盖公共 unary 执行器的同名函数。
+# The libdevice extern for lgamma triggers device SIP abort (P16) under large shapes and high concurrency;
+# replaced by a standalone pure-Triton Lanczos flat kernel, overriding the common unary executor's same-named function.
 from ._foreach_lgamma import _foreach_lgamma, _foreach_lgamma_  # noqa: F811
 from ._fused_adamw_ import _fused_adamw_, _fused_adamw__tensor_lr
 from ._fused_rms_norm import _fused_rms_norm, _fused_rms_norm_backward
@@ -3308,27 +3309,30 @@ __all__ = [
     "zeros_like",
 ]
 
-# 算子导出名与同名子模块冲突时，Python 会把子模块对象绑定到包属性并覆盖此前
-# 导入的函数，注册机制只收集函数对象就会漏掉这些专用实现；在所有 import 结束后
-# 重新绑定，使它们恢复为 gcu400 专用函数。
+# When an operator export name collides with a same-named submodule, Python binds the submodule object to the package
+# attribute
+# and overwrites the previously imported function; the registration mechanism only collects function objects and would
+# miss
+# these dedicated implementations, so rebind after all imports finish to restore the gcu400-specific functions.
 from .div import true_divide, true_divide_  # noqa: F811
 from .signbit__opt import signbit  # noqa: F811
 
-# 公共 foreach codegen 实现使用二维 grid，大 shape 下 ``grid.y`` 会超过
-# GCU400 的 255 硬件上限；等所有 import 结束后重新绑定为专属一维实现。
+# The common foreach codegen implementation uses a 2D grid; on large shapes ``grid.y`` exceeds
+# the GCU400 hardware limit of 255; rebind to the dedicated 1D implementation after all imports finish.
 from ._foreach_flat_ops import (  # noqa: F811
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
     _foreach_div__List,
 )
 
-# foreach ScalarList 最大值类算子的公共二维 grid 越界，统一覆盖为一维融合实现。
+# The common 2D grid for foreach ScalarList maximum-family operators overflows, so uniformly override with 1D fused
+# implementations.
 from ._foreach_scalarlist_opt import (  # noqa: F811
     _foreach_clamp_min_ScalarList,
     _foreach_clamp_min__ScalarList,
 )
 
-# maximum 的 ScalarList overload 同样规避公共二维 grid 越界。
+# The ScalarList overload of maximum also avoids the common 2D grid overflow.
 from ._foreach_maximum_scalarlist_opt import (  # noqa: F811
     _foreach_maximum_ScalarList,
     _foreach_maximum__ScalarList,
@@ -3347,12 +3351,13 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 _install_enflame_fft()
 del _install_enflame_fft
 
-# CTC 内部入口的测试 / benchmark 直接调用 flag_gems.ops.<name>，而
-# SpecOpRegistrar 只把后端特化写进 flag_gems 顶层 globals，ops 模块属性仍指向
-# 公共实现（fp64 走通用 kernel 会在 GCU 上触发 PassManager 编译失败）。
-# 仿照上面 stft 的既有做法，在后端加载时把 4 个 gcu400 特化实现同步到
-# flag_gems.ops，使直接调用路径与 aten dispatch 路径使用同一份实现；
-# 不修改任何公共算子源码，也不改测试文件。
+# CTC internal test / benchmark entry points call flag_gems.ops.<name> directly, while
+# SpecOpRegistrar only writes backend specializations into flag_gems top-level globals; the ops module attributes still
+# point to
+# common implementations (fp64 on the generic kernel triggers a PassManager compilation failure on GCU).
+# Following the existing stft approach above, sync the 4 gcu400 specializations to
+# flag_gems.ops at backend load time so direct calls and aten dispatch use the same implementation;
+# no common operator source or test file is modified.
 import flag_gems.ops as _flag_gems_ops_for_ctc  # noqa: E402
 
 _flag_gems_ops_for_ctc._ctc_loss = _ctc_loss
@@ -3361,11 +3366,11 @@ _flag_gems_ops_for_ctc._ctc_loss_backward = _ctc_loss_backward
 _flag_gems_ops_for_ctc._ctc_loss_backward_out = _ctc_loss_backward_out
 del _flag_gems_ops_for_ctc
 
-# histogram 的测试 / benchmark 直接 `from flag_gems.ops.histogram import ...`
-# 调用子模块属性，公共实现是 torch.bucketize host 管线（topsaten bucketize 在
-# GCU 上 hard abort，且违反 host 隔离红线）。同样在后端加载时把 gcu400 特化
-# 同步到子模块与包属性，使直调路径与 aten dispatch 路径使用同一份实现；
-# 不修改任何公共算子源码，也不改测试文件。
+# histogram tests / benchmarks call the submodule attribute directly via `from flag_gems.ops.histogram import ...`
+# The common implementation is a torch.bucketize host pipeline (topsaten bucketize hard-aborts on
+# GCU and violates the host-isolation rule). Likewise sync the gcu400 specialization to the submodule
+# and package attributes at backend load time so direct calls and aten dispatch use the same implementation;
+# no common operator source or test file is modified.
 import flag_gems.ops as _flag_gems_ops_for_histogram  # noqa: E402
 import flag_gems.ops.histogram as _flag_gems_histogram_module  # noqa: E402
 
@@ -3375,10 +3380,11 @@ _flag_gems_ops_for_histogram.histogram_bin_ct = histogram_bin_ct
 _flag_gems_ops_for_histogram.histogram_bins_tensor = histogram_bins_tensor
 del _flag_gems_histogram_module
 del _flag_gems_ops_for_histogram
-# tests/test_upsample_bilinear2d_backward.py 也直接调用 flag_gems.ops.<name>，
-# 若不在此同步，该文件中的 nonfinite（0 * Inf -> NaN）与 disjoint 用例会绕过
-# gcu400 实现、继续跑公共路径。做法与上面的 CTC 一致：只改后端加载行为，
-# 不修改公共算子源码，也不改测试文件。
+# tests/test_upsample_bilinear2d_backward.py also calls flag_gems.ops.<name> directly,
+# and without this sync its nonfinite (0 * Inf -> NaN) and disjoint cases bypass
+# the gcu400 implementation and keep running the common path. Same approach as CTC above: only backend load behavior
+# changes,
+# no common operator source or test file is modified.
 import flag_gems.ops as _flag_gems_ops_for_upsample  # noqa: E402
 
 _flag_gems_ops_for_upsample.upsample_bilinear2d_backward = upsample_bilinear2d_backward

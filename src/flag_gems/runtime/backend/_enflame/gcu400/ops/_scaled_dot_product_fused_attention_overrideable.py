@@ -21,7 +21,7 @@ from .attention import scaled_dot_product_attention_forward
 logger = logging.getLogger(__name__)
 
 
-# cum_seq / philox / debug-mask 等只读 metadata 按 shape 与 device 复用。
+# read-only metadata such as cum_seq / philox / debug-mask is reused by shape and device.
 _METADATA_CACHE = {}
 
 

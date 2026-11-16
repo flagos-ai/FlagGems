@@ -11,23 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""GCU400 专属 ``_foreach_*`` 执行层。
+"""GCU400-specific ``_foreach_*`` execution layer.
 
-结构参照 ``_kunlunxin/utils/foreach.py``：后端在 ``utils/foreach.py`` 里自带
-kernel / executor / launcher，公共 ``flag_gems.utils.foreach`` 一行不改。
+Structure follows ``_kunlunxin/utils/foreach.py``: the backend ships its own
+kernel / executor / launcher in ``utils/foreach.py``, leaving common ``flag_gems.utils.foreach`` untouched.
 
-公共 scalar kernel 把 ``.Scalar`` 的标量声明为 ``scalar_value: tl.float64``，
-GCU400 没有 f64 ABI，这个签名在后端无法 lowering。这里像昆仑芯那样完全取消
-by-value 标量参数：所有标量统一放进 device 侧 ``scalar_ptr`` 数组（``.Scalar``
-在 host 侧广播成每个 tensor 一份），kernel 签名里不出现任何 f64。
+The common scalar kernel declares the ``.Scalar`` scalar as ``scalar_value: tl.float64``,
+and GCU400 has no f64 ABI, so that signature cannot be lowered on this backend. Like Kunlunxin, completely remove
+by-value scalar arguments: all scalars go into a device-side ``scalar_ptr`` array (``.Scalar``
+is broadcast to one per tensor on the host), and no f64 appears anywhere in the kernel signature.
 
-公共执行器的 ``grid=(nt, cdiv(max_numel, BLOCK))`` 在大 shape 下还会越过
-GCU400 ``grid.y <= 255`` 的硬件上限；这里沿用昆仑芯的 grid-stride：第二维
-封顶到 ``MAX_GRID_DIM``，核内按该步长跨过剩余 tile。
+The common executor's ``grid=(nt, cdiv(max_numel, BLOCK))`` also exceeds
+GCU400's ``grid.y <= 255`` hardware limit on large shapes; use Kunlunxin's grid-stride: cap the second dimension
+to ``MAX_GRID_DIM`` and stride over remaining tiles in-kernel.
 
-dtype policy / 异常语义不从公共模块复制，只以只读方式复用其纯 helper
-（promotion、校验、metadata、分配、launch 计数），未改动的公共执行器则显式
-转发，使本模块成为 GCU400 foreach 的单一导入点。
+dtype policy / exception semantics are not copied from the common module; only its pure helpers are reused read-only
+(promotion, validation, metadata, allocation, launch counting), while unmodified common executors are explicitly
+forwarded, making this module the single import point for GCU400 foreach.
 """
 
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -40,7 +40,8 @@ from flag_gems.utils import foreach as _common
 
 from .config_utils import MAX_GRID_DIM
 
-# 公共执行器中与后端无关的部分；以绑定而非属性链的形式引用，便于静态检查。
+# Backend-independent parts of the common executor; referenced as bindings rather than attribute chains for static
+# checks.
 check_tensor_list = _common.check_tensor_list
 check_dtype_supported = _common.check_dtype_supported
 has_internal_overlap = _common.has_internal_overlap
@@ -55,7 +56,7 @@ _NUMEL = _common._NUMEL
 _DATA_PTR = _common._DATA_PTR
 _STATS = _common._STATS
 
-# 未做后端适配的公共执行器 / 常量，转发后 ops 层只需 import 本模块。
+# Common executors / constants without backend adaptation are forwarded, so the ops layer only imports this module.
 _FAST_MATH = _common._FAST_MATH
 _promote_dtypes = _common._promote_dtypes
 foreach_binary_list = _common.foreach_binary_list

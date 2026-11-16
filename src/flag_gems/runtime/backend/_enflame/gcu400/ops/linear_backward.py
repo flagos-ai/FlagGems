@@ -44,7 +44,7 @@ def linear_backward(
         Tuple of (grad_input, grad_weight, grad_bias), where each element is None
         if the corresponding mask is False
     """
-    logger.debug("GEMS LINEAR_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 LINEAR_BACKWARD")
 
     # Validate inputs
     assert (

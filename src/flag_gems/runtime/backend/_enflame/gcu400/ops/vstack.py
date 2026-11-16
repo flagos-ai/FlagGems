@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 def vstack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
-    # 常量日志已关闭（v7 等价改写）
+    # Constant logging is disabled (v7 equivalent rewrite)
 
     n = len(tensors)
     if n == 0:

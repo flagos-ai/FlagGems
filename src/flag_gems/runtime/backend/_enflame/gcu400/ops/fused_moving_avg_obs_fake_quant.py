@@ -103,7 +103,7 @@ def fused_moving_avg_obs_fake_quant(
       Host: EMA update + scale/zp computation (scalar math)
       Phase 2: Triton kernel for parallel fake quantization
     """
-    logger.debug("GEMS FUSED_MOVING_AVG_OBS_FAKE_QUANT")
+    logger.debug("GEMS_ENFLAME_GCU400 FUSED_MOVING_AVG_OBS_FAKE_QUANT")
 
     obs = (
         bool(observer_on.item()) if torch.is_tensor(observer_on) else bool(observer_on)

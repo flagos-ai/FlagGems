@@ -61,27 +61,27 @@ _BLOCK = 1024
 _NUM_WARPS = 1
 _MAX_GRID = 65535
 _BIG_TOTAL = 1 << 20
-# 大 shape 用 8192 的 fat tile 打满 DTE；中小 shape 保持 1024（同族
-# special_chebyshev_polynomial_w 的实测结论：更细的 tile 会让动态递推
-# miscompile，16384 配 num_warps=1 编译失败，故上限取 8192）。
+# Large shapes use an 8192 fat tile to saturate DTE; small/medium shapes keep 1024 (same family
+# special_chebyshev_polynomial_w measurement: finer tiles miscompile the dynamic recurrence,
+# 16384 with num_warps=1 fails to compile, so cap at 8192).
 _TILE_BIG = 8192
-# GCU400 的 SIP 拓扑对应 24 个物理 SIP；48 个 CTA 是持久网格的经验上限，
-# 更多 CTA 只会增加调度成本，核内用跨步循环补齐 tile。
+# GCU400's SIP topology corresponds to 24 physical SIPs; 48 CTAs is the empirical persistent-grid cap,
+# More CTAs only add scheduling cost; an in-kernel stride loop covers remaining tiles.
 _GRID_SIPS = 48
 
 # Baseline parity: the generic kernel unrolls degrees 2..255, so degrees are
 # clamped to P_255 here as well.
 _MAX_STEPS = tl.constexpr(255)
-# 常见阶数编译期展开：degree 是运行期标量时循环上界无法静态展开，
-# 固定展开 _UNROLL_ORDER 步，用掩码屏蔽多余的递推。
+# Common orders unrolled at compile time: a runtime-scalar degree cannot be statically unrolled,
+# so unroll _UNROLL_ORDER steps fixed and mask out extra recurrences.
 _UNROLL_ORDER = tl.constexpr(3)
 
 
 def _pick(numel):
     """(BLOCK, grid.x) for a launch over `numel` elements.
 
-    仅大 shape 换用 fat tile；grid 固定不超过 _GRID_SIPS，剩余 tile 由 kernel
-    内的跨步循环消费，num_programs 只影响运行时跨步长度。
+    Only large shapes switch to a fat tile; grid stays within _GRID_SIPS and remaining tiles are
+    consumed by the in-kernel stride loop, while num_programs only affects runtime stride length.
     """
     block = _BLOCK if numel < _BIG_TOTAL else _TILE_BIG
     grid = min((numel + block - 1) // block, _GRID_SIPS)
@@ -124,8 +124,8 @@ def _p_flat_kernel(
                 active = m >= k
                 p_prev2 = tl.where(active, p_prev1, p_prev2)
                 p_prev1 = tl.where(active, p_curr, p_prev1)
-            # 超过展开上限的阶数仍按动态循环补齐；零行程循环在本工具链上有
-            # miscompile 前科，必须用 if 守卫（laguerre 教训）。
+            # Orders beyond the unroll cap still use a dynamic loop; zero-trip loops have a
+            # miscompile history on this toolchain, so guard them with if (laguerre lesson).
             if steps > _UNROLL_ORDER:
                 for kk in range(_UNROLL_ORDER + 1, steps + 1):
                     p_curr = (
@@ -213,8 +213,8 @@ def _p_strided_kernel(
         rem = offs
         xoff = tl.zeros((BLOCK,), tl.int32)
         noff = tl.zeros((BLOCK,), tl.int32)
-        # 静态展开保证 i 是编译期下标（运行期下标无法索引 python 元组），
-        # 维度在 host 侧已消毒为 >= 1，无需标量 tl.where。
+        # Static unrolling guarantees i is a compile-time index (a runtime index cannot index a python tuple);
+        # dimensions are sanitized to >= 1 on the host, so no scalar tl.where is needed.
         for i in tl.static_range(7, -1, -1):
             d = dims[i]
             cc = rem % d
@@ -282,7 +282,7 @@ def _strided_launch(x, n, out, numel, degree, n_mode, block, warps):
     if nd > _DIMS:
         raise ValueError("special_legendre_polynomial_p: too many dimensions")
     pad = _DIMS - nd
-    # 维度消毒为 >= 1（0 元输入早已提前返回），kernel 内免做标量 where。
+    # Dimensions sanitized to >= 1 (0-element inputs already returned early), no scalar where inside the kernel.
     dims = [1] * pad + [max(1, int(s)) for s in shape]
     xs = [0] * pad + [int(s) for s in x.stride()]
     ns = [0] * pad + [int(s) for s in n.stride()]
@@ -381,5 +381,5 @@ def _run(x, n, out=None):
 
 
 def special_legendre_polynomial_p(x: torch.Tensor, n) -> torch.Tensor:
-    logger.debug("GEMS SPECIAL_LEGENDRE_POLYNOMIAL_P")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LEGENDRE_POLYNOMIAL_P")
     return _run(x, n)

@@ -111,7 +111,7 @@ def select_copy(self: torch.Tensor, dim: int, index: int):
     PyTorch; 0-dim inputs, empty slices and out-of-range indices are rejected
     with the same error messages PyTorch raises.
     """
-    logger.debug("GEMS SELECT_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 SELECT_COPY")
 
     if self.dim() == 0:
         raise RuntimeError("select() cannot be applied to a 0-dim tensor.")

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import os
 from typing import Optional, Tuple
@@ -20,6 +21,9 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils.triton_version_utils import has_triton_tle
+
+logger = logging.getLogger(__name__)
+
 
 if has_triton_tle(3, 6, 0):
     try:
@@ -43,7 +47,7 @@ _FLASH_MLA_SPARSE_CONFIGS = [
     triton.Config({"BK": 32, "BH": 64}, num_warps=8, num_stages=1),
 ]
 
-# GCU400 专属：单档 DSM 安全配置，避免公共实现 995328B > 917504B 超限
+# GCU400-specific: single-tier DSM-safe config, avoids the common 995328B > 917504B limit
 
 
 @triton.autotune(
@@ -1081,6 +1085,7 @@ def flash_mla_sparse_fwd(
         - max_logits:  [s_q, h_q], float
         - lse: [s_q, h_q], float, log-sum-exp of attention scores
     """
+    logger.debug("GEMS_ENFLAME_GCU400 FLASH_MLA_SPARSE_FWD")
     assert q.is_contiguous() and kv.is_contiguous() and indices.is_contiguous()
     assert (
         q.dtype == torch.bfloat16

@@ -74,7 +74,7 @@ def _fw_primal(self: torch.Tensor, level: int) -> torch.Tensor:
     Only the default overload is implemented; the package variant implemented
     only the default overload, and the ``.out`` overload is left native.
     """
-    logger.debug("GEMS _FW_PRIMAL")
+    logger.debug("GEMS_ENFLAME_GCU400 _FW_PRIMAL")
     if self.is_contiguous():
         return self.view(self.shape)
     return self.as_strided(self.shape, self.stride(), self.storage_offset())

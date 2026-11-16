@@ -11,12 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+
+logger = logging.getLogger(__name__)
+
 
 # MXFP4: 32 elements per block, packed 2 nibbles per byte, ue8m0 block scale.
 MXFP4_BLOCK_SIZE = 32
@@ -373,6 +377,7 @@ def fused_indexer_q_rope_quant(
     a (values, scales) tuple (MXFP4). This matches the union type accepted
     by `SparseAttnIndexer.forward_*`.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 FUSED_INDEXER_Q_ROPE_QUANT")
     assert positions.ndim == 1
     assert index_q.ndim == 3
     assert index_q_cos_sin_cache.ndim == 2

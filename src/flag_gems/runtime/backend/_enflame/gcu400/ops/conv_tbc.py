@@ -146,10 +146,10 @@ def _conv_tbc(input, weight, bias, pad, out=None):
 
 
 def conv_tbc(input, weight, bias, pad=0):
-    logger.debug("GEMS CONV_TBC")
+    logger.debug("GEMS_ENFLAME_GCU400 CONV_TBC")
     return _conv_tbc(input, weight, bias, pad)
 
 
 def conv_tbc_out(input, weight, bias, pad=0, *, out):
-    logger.debug("GEMS CONV_TBC_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 CONV_TBC_OUT")
     return _conv_tbc(input, weight, bias, pad, out=out)

@@ -133,7 +133,7 @@ def istft(
     length=None,
     return_complex=False,
 ):
-    logger.debug("GEMS ISTFT")
+    logger.debug("GEMS_ENFLAME_GCU400 ISTFT")
     if hop_length is None:
         hop_length = n_fft // 4
     if win_length is None:

@@ -63,7 +63,7 @@ def _launch_take(input, index, out_flat):
 
 
 def take(input, index):
-    logger.debug("GEMS TAKE")
+    logger.debug("GEMS_ENFLAME_GCU400 TAKE")
     if input.device != index.device:
         raise RuntimeError("input and index must be on the same device")
     out_flat = torch.empty(index.numel(), device=input.device, dtype=input.dtype)
@@ -72,7 +72,7 @@ def take(input, index):
 
 
 def take_out(input, index, *, out):
-    logger.debug("GEMS TAKE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 TAKE_OUT")
     if not (input.device == index.device == out.device):
         raise RuntimeError("input, index and out must be on the same device")
     if out.dtype != input.dtype:

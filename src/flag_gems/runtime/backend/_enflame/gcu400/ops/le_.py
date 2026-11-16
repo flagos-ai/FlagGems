@@ -29,7 +29,7 @@ def le_func(x, y):
 
 
 def le_(A, B):
-    logger.debug("GEMS LE_")
+    logger.debug("GEMS_ENFLAME_GCU400 LE_")
     le_func(A, B, out0=A)
     return A
 
@@ -41,6 +41,6 @@ def le_func_scalar(x, y):
 
 
 def le_scalar_(A, B):
-    logger.debug("GEMS LE_SCALAR_")
+    logger.debug("GEMS_ENFLAME_GCU400 LE_SCALAR_")
     le_func_scalar(A, B, out0=A)
     return A

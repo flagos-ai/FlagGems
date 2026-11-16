@@ -996,7 +996,7 @@ def upsample_bilinear2d_backward(
     *,
     grad_input=None,
 ):
-    logger.debug("GEMS UPSAMPLE_BILINEAR2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BILINEAR2D_BACKWARD")
     if len(output_size) != 2 or len(input_size) != 4:
         raise RuntimeError(
             "output_size must have 2 elements and input_size must have 4 elements"
@@ -1627,6 +1627,7 @@ def upsample_bilinear2d_backward_grad_input(
     *,
     grad_input,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BILINEAR2D_BACKWARD_GRAD_INPUT")
     return upsample_bilinear2d_backward(
         grad_output,
         output_size,

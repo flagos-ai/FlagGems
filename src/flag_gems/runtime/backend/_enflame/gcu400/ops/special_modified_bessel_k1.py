@@ -95,7 +95,7 @@ def special_modified_bessel_k1_func(x):
 
 
 def special_modified_bessel_k1(A):
-    logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_K1")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MODIFIED_BESSEL_K1")
     assert A.dtype in (
         torch.float32,
         torch.float64,
@@ -104,7 +104,7 @@ def special_modified_bessel_k1(A):
 
 
 def special_modified_bessel_k1_out(A, out):
-    logger.debug("GEMS SPECIAL_MODIFIED_BESSEL_K1_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MODIFIED_BESSEL_K1_OUT")
     assert A.dtype in (
         torch.float32,
         torch.float64,

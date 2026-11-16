@@ -183,10 +183,10 @@ def _batch_metadata(crow, col, nd):
 
 
 def _launch(crow, col, out_int32, transpose, out):
-    # GCU400 gcu-compiler 对 int8/uint8/int16 索引做向量化 si64 转换时会触发
-    # `relocation R_DTU_ADDR16_LO_ICALL ... tops_cvt_v2_si64_to_v8_si64` 链接
-    # 错误。这里在 host 侧把窄整数索引统一提升到 int32 再进 Triton kernel：
-    # 索引值域受 aten 语义约束，提升不改变数值，且避开该编译器缺陷。
+    # The GCU400 gcu-compiler triggers a `relocation R_DTU_ADDR16_LO_ICALL ... tops_cvt_v2_si64_to_v8_si64`
+    # link error when vectorizing si64 conversions for int8/uint8/int16 indices. Here the host promotes
+    # narrow integer indices uniformly to int32 before the Triton kernel: the value range is constrained by
+    # aten semantics, so promotion does not change values and avoids this compiler defect.
     _narrow_index_dtypes = (torch.int8, torch.uint8, torch.int16)
     if crow.dtype in _narrow_index_dtypes:
         crow = crow.to(torch.int32)
@@ -263,7 +263,7 @@ def _convert_indices_from_csr_to_coo(
     -> Tensor``. The result has shape ``(nd + 2, N * nnz)`` and is int64
     unless ``out_int32=True``.
     """
-    logger.debug("GEMS _CONVERT_INDICES_FROM_CSR_TO_COO")
+    logger.debug("GEMS_ENFLAME_GCU400 _CONVERT_INDICES_FROM_CSR_TO_COO")
     if not isinstance(out_int32, bool):
         raise TypeError(f"out_int32 must be a bool, got {type(out_int32).__name__}")
     if not isinstance(transpose, bool):
@@ -306,7 +306,7 @@ def _convert_indices_from_csr_to_coo_out(
     crow_indices, col_indices, *, out_int32=False, transpose=False, out
 ):
     """``aten::_convert_indices_from_csr_to_coo.out``: write into ``out``."""
-    logger.debug("GEMS _CONVERT_INDICES_FROM_CSR_TO_COO_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _CONVERT_INDICES_FROM_CSR_TO_COO_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError(
             "_convert_indices_from_csr_to_coo.out: out must be a Tensor, got "

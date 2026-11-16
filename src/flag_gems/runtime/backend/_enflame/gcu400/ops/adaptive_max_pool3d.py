@@ -537,7 +537,7 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
         return_indices = True  # aten 2-arg schema: real indices required
     want_indices = bool(return_indices)
 
-    logger.debug("GEMS ENFLAME ADAPTIVE_MAX_POOL3D")
+    logger.debug("GEMS_ENFLAME_GCU400 ENFLAME ADAPTIVE_MAX_POOL3D")
 
     input = input.contiguous()
     if isinstance(output_size, int):

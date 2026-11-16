@@ -328,7 +328,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def norm(x, p=2, dim=None, keepdim=False):
-    logger.debug("GEMS NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 NORM")
     dtype = x.dtype
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"norm not implemented for {dtype}")
@@ -397,10 +397,10 @@ def norm(x, p=2, dim=None, keepdim=False):
 
 
 def norm_scalaropt_dim(x, p, dim, keepdim=False):
-    logger.debug("GEMS NORM_SCALAR_OPT_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 NORM_SCALAR_OPT_DIM")
     return norm(x, p=p, dim=dim, keepdim=keepdim)
 
 
 def norm_scalar(x, p=2):
-    logger.debug("GEMS NORM_SCALAR")
+    logger.debug("GEMS_ENFLAME_GCU400 NORM_SCALAR")
     return norm(x, p=p, dim=None, keepdim=False)

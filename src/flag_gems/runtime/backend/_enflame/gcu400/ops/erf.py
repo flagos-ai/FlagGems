@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""erf / erf_ 的 GCU400 专属实现。
+"""GCU400-specific implementation of erf / erf_.
 
-非原地 erf 保留后端 pointwise_dynamic codegen 语义；in-place erf_ 走固定规模
-CTA + 网格跨步的 1D flat kernel，消除 codegen 的 Python 侧调度与索引分解开销。
-输入输出共用同一块显存，每元素只读一次、只写一次。
+Non-in-place erf keeps the backend's pointwise_dynamic codegen semantics; in-place erf_ uses a fixed number of
+CTAs + grid-stride 1D flat kernel, removing codegen's Python-side dispatch and index decomposition overhead.
+Input and output share one memory block, with one read and one write per element.
 """
 
 import logging
@@ -32,9 +32,9 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-# 与 GCU400 SIP 拓扑对齐的常驻 CTA 数，kernel 内以跨步循环复用
+# Resident CTA count aligned with GCU400 SIP topology, reused by an in-kernel stride loop
 NUM_CTAS = 24
-# 大 shape 下按元素字节数区分的 tile 元素数
+# Tile element count tiered by element bytes for large shapes
 BLOCK_LARGE_16BIT = 8192
 BLOCK_LARGE_32BIT = 65536
 NUM_WARPS = 4
@@ -67,13 +67,13 @@ def _erf_inplace_kernel(
         mask = offsets < num_elements
         value = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         if MATH_MODE == 0:
-            # Triton 内置 erf，与公共 codegen 完全同语义
+            # Triton built-in erf, fully equivalent in semantics to the common codegen
             result = tl.math.erf(value)
         elif MATH_MODE == 1:
-            # 设备端 extern __ef_erff
+            # Device-side extern __ef_erff
             result = _extern_erf(value)
         elif MATH_MODE == 2:
-            # Abramowitz-Stegun 7.1.26：单 exp + 5 次 Horner 乘加，最大误差约 1.5e-7
+            # Abramowitz-Stegun 7.1.26: one exp + 5 Horner multiply-adds, max error about 1.5e-7
             sign = tl.where(value >= 0.0, 1.0, -1.0)
             abs_value = tl.abs(value)
             reciprocal = 1.0 / (1.0 + 0.3275911 * abs_value)
@@ -84,7 +84,7 @@ def _erf_inplace_kernel(
             poly = poly * reciprocal
             result = sign * (1.0 - poly * tl.exp(-abs_value * abs_value))
         else:
-            # 与 mode 2 同式，改用 exp2 减少超越函数开销
+            # Same formula as mode 2, using exp2 to reduce transcendental overhead
             sign = tl.where(value >= 0.0, 1.0, -1.0)
             abs_value = tl.abs(value)
             reciprocal = 1.0 / (1.0 + 0.3275911 * abs_value)
@@ -99,7 +99,7 @@ def _erf_inplace_kernel(
 
 
 def _select_block_size(num_elements, is_fp32):
-    """小 shape 回落到 1024；中 shape 取 2 次幂；大 shape 按 dtype 字节数分档。"""
+    """Small shapes fall back to 1024; medium shapes use a power of two; large shapes are tiered by dtype bytes."""
     if num_elements <= 1024:
         return 1024
     if num_elements <= 32768:
@@ -113,7 +113,7 @@ def erf_(A):
     if num_elements == 0:
         return A
     supported_dtypes = (torch.float16, torch.bfloat16, torch.float32)
-    # 非浮点 / 非连续输入沿用 codegen 路径，保持 promotion 与 stride 语义
+    # Non-float / non-contiguous inputs keep the codegen path, preserving promotion and stride semantics
     if A.dtype not in supported_dtypes or not A.is_contiguous():
         return erf_func(A, out0=A)
     block_size = _select_block_size(num_elements, A.dtype == torch.float32)

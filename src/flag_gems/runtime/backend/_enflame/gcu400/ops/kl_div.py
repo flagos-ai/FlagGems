@@ -117,7 +117,7 @@ def kl_div(
     *,
     log_target=False,
 ) -> torch.Tensor:
-    logger.debug("GEMS KL_DIV")
+    logger.debug("GEMS_ENFLAME_GCU400 KL_DIV")
     input, target = _check_tensors(input, target)
     n_elements = input.numel()
     log_target = bool(log_target)

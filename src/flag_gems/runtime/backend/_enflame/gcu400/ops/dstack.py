@@ -55,16 +55,16 @@ _BLOCK_NARROW = 2048
 _WARPS = 4
 _MAX_GROUP = 4
 
-# 大 shape 的单 token 交织：每个输入一次连续 load + stride-P store，
-# 避免 2D gather 与 constexpr 除法；实测 4096x4096x3 从 15.09ms 降到 0.27ms。
+# Large-shape single-token interleaving: one contiguous load + stride-P store per input,
+# avoiding 2D gather and constexpr division; measured 4096x4096x3 from 15.09ms down to 0.27ms.
 _STRIDE_BLOCK = 8192
 _STRIDE_GRID_CAP = 512
-# 小 shape 的单 token 交织：单次 launch 的 1D 扁平交织，省掉多次 launch。
+# Small-shape single-token interleaving: 1D flat interleaving in one launch, saving multiple launches.
 _FLAT_BLOCK = 512
 _FLAT_GRID_CAP = 512
-# 两条交织路径按提升后的 outer 行数分档。
+# The two interleaving paths are tiered by the promoted outer row count.
 _TOKEN_LARGE_OUTER = 1 << 20
-# 块拷贝路径的二维 tile 上限；元素数 × 字节数不得超过 GCU400 的 DSM 限制。
+# 2D tile cap of the block-copy path; element count x bytes must stay within GCU400's DSM limit.
 _COPY_ROWS = 512
 _COPY_SLOTS = 256
 _DSM_LIMIT_BYTES = 900000
@@ -87,8 +87,8 @@ _MULTI_SELECT_UNSUPPORTED = {
     torch.float8_e8m0fnu,
 }
 
-# 二维 tile 的 masked load/store 在 i1 指针与 64 位整数上会失败或读出未定义值，
-# 这些 dtype 回退到原有的 1D 扁平拷贝 kernel（该路径已通过全量 correctness）。
+# 2D tile masked load/store fails or reads undefined values with i1 pointers and 64-bit integers,
+# so these dtypes fall back to the original 1D flat copy kernel (already validated by full correctness).
 _COPY_2D_EXCLUDED = _MULTI_SELECT_UNSUPPORTED | {torch.int64, torch.uint64}
 
 
@@ -131,10 +131,10 @@ def _dstack_copy2d_kernel(
     BR: tl.constexpr,
     BT: tl.constexpr,
 ):
-    """块拷贝路径：二维 tile 直接给出 outer 行号与 slot 号。
+    """Block-copy path: a 2D tile directly gives the outer row and slot numbers.
 
-    SEG 作为 constexpr 传入，编译器可把行偏移计算中的除法消掉；原 1D
-    kernel 的 ``g // seg`` 是运行时 int64 软件除法，是主要瓶颈。
+    SEG is passed as constexpr so the compiler can eliminate division in row-offset computation; the original 1D
+    kernel's ``g // seg`` is a runtime int64 software division and the main bottleneck.
     """
     row_index = (tl.program_id(0) * BR + tl.arange(0, BR)).to(tl.int64)
     slot_index = (tl.program_id(1) * BT + tl.arange(0, BT)).to(tl.int64)
@@ -155,10 +155,10 @@ def _dstack_interleave_flat_kernel(
     P: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """小 shape 单 token 交织：一次 launch，输出按 1D 连续索引写出。
+    """Small-shape single-token interleaving: one launch, output written by 1D contiguous index.
 
-    ``sid = offset % P`` 决定来源输入，``row = offset // P`` 是输入内行号；
-    P 为 constexpr 且不超过 4，编译器用定点乘法代替通用除法。
+    ``sid = offset % P`` selects the source input, ``row = offset // P`` is the in-input row number;
+    P is constexpr and at most 4, so the compiler replaces general division with fixed-point multiplication.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -198,10 +198,11 @@ def _dstack_strided_copy_kernel(
     SID: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """大 shape 单 token 交织：每个输入一次连续 load + stride-P store。
+    """Large-shape single-token interleaving: one contiguous load + stride-P store per input.
 
-    相比 2D gather 或 1D 除法交织，本 kernel 只做一次连续读和一次等步长写，
-    GCU400 上的实测带宽高出一个数量级；代价是每个输入一次 launch。
+    Compared with 2D gather or 1D division interleaving, this kernel does only one contiguous read and one equal-stride
+    write,
+    measuring an order of magnitude higher bandwidth on GCU400; the cost is one launch per input.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -249,6 +250,7 @@ def _as_copy_tensor(tensor, real_dtype):
 
 def run(tensors, out=None, **kwargs):
     """``aten::dstack(Tensor[] tensors) -> Tensor``, plus the ``out=`` overload."""
+    logger.debug("GEMS_ENFLAME_GCU400 RUN")
     del kwargs
     items = [tensors] if isinstance(tensors, torch.Tensor) else list(tensors)
     if len(items) == 0:
@@ -297,9 +299,9 @@ def run(tensors, out=None, **kwargs):
 
     out_view = _as_copy_tensor(result, real_dtype)
 
-    # 单 token 输入：每个 outer 行由 P 个输入的元素交织而成。
-    # 小 shape 用单次 launch 的 1D 扁平交织；大 shape 用每个输入一次
-    # stride-P 连续拷贝，避开 2D gather 与运行时 int64 除法。
+    # Single-token input: every outer row is formed by interleaving elements from P inputs.
+    # Small shapes use 1D flat interleaving in one launch; large shapes use one
+    # stride-P contiguous copy per input, avoiding 2D gather and runtime int64 division.
     if (
         inner == 1
         and unit == 1
@@ -349,8 +351,8 @@ def run(tensors, out=None, **kwargs):
             seg = depth_i * inner * unit
             count = outer * seg
             if count > 0:
-                # 二维 tile 直接给出行号与 slot 号，消除运行时 int64 除法；
-                # tile 形状按 shape 和元素宽度收敛，避免 DSM / grid 越界。
+                # A 2D tile directly gives row and slot numbers, eliminating runtime int64 division;
+                # tile shape is narrowed by shape and element width to avoid DSM / grid overflow.
                 rows_per_block = min(_COPY_ROWS, max(32, _next_pow2(outer)))
                 slots_per_block = min(_COPY_SLOTS, max(32, _next_pow2(seg)))
                 while (
@@ -381,7 +383,7 @@ def run(tensors, out=None, **kwargs):
                         num_warps=_WARPS,
                     )
                 else:
-                    # 极端 shape 回退到 1D 扁平拷贝，保证可用性。
+                    # Extreme shapes fall back to the 1D flat copy for availability.
                     block = _BLOCK_WIDE if seg <= 4 else _BLOCK_NARROW
                     _dstack_copy_kernel[(triton.cdiv(count, block),)](
                         out_view,

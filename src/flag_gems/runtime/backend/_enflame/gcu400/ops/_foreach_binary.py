@@ -766,7 +766,7 @@ BINARY_OPS: Dict[str, BinaryOp] = {
 
 
 def _log(name: str, overload: str, inplace: bool) -> None:
-    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else "")
     del overload
 
 
@@ -925,8 +925,8 @@ def _apply_ternary(name: str, self, tensor1, tensor2, scalars, inplace: bool):
     """``addcmul`` / ``addcdiv``: three tensor lists and a value."""
     op = BINARY_OPS[name]
     _log(name, "Ternary", inplace)
-    # GCU400 专属快路径：公共 foreach_ternary 的二维 grid 在大 shape 下会
-    # 越过 grid.y<=255 硬件上限；不满足快路径前提时原样回退公共执行器。
+    # GCU400-specific fast path: the common foreach_ternary 2D grid exceeds the grid.y<=255 limit on large shapes;
+    # when the fast-path prerequisites are not met, fall back to the common executor unchanged.
     if name == "addcdiv" and isinstance(scalars, torch.Tensor):
         fast_result = run_addcdiv_tensor(self, tensor1, tensor2, scalars, inplace)
         if fast_result is not _ADDC_DIV_FLAT_FALLBACK:
@@ -1101,8 +1101,8 @@ def _apply_lerp(self, tensors1, weight, inplace: bool):
                 allowed_dtypes=op.allowed,
             )
     else:
-        # GCU400 专属快路径：公共 foreach_ternary 的二维 grid 在大 shape 下会
-        # 越过 grid.y<=255 硬件上限；不满足快路径前提时原样回退公共执行器。
+        # GCU400-specific fast path: the common foreach_ternary 2D grid exceeds the grid.y<=255 limit on large shapes;
+        # when the fast-path prerequisites are not met, fall back to the common executor unchanged.
         fast_result = run_lerp_scalar_list(self, tensors1, weight, inplace)
         if fast_result is not _LERP_FLAT_FALLBACK:
             return fast_result
@@ -1146,6 +1146,7 @@ for _inplace in (False, True):
 
 
 def _foreach_copy(self, src, non_blocking=False):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COPY")
     del non_blocking
     _log("copy", "copy", False)
     res = _flat_binary_list(
@@ -1168,6 +1169,7 @@ def _foreach_copy(self, src, non_blocking=False):
 
 
 def _foreach_copy_(self, src, non_blocking=False):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COPY_")
     del non_blocking
     _log("copy", "copy", True)
     res = _flat_binary_list(
@@ -1195,6 +1197,7 @@ def _foreach_pow_ScalarAndTensor(self, exponent):
     The argument order is reversed relative to every other overload in this
     family, which is why it cannot share the generated wrappers.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_POW_SCALARANDTENSOR")
     _log("pow", "ScalarAndTensor", False)
     op = BINARY_OPS["pow"]
     for t in exponent:

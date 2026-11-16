@@ -175,7 +175,7 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         tuple: (hist, bin_edges) where hist has shape (bins[0], bins[1], ..., bins[D-1])
                and bin_edges is a list of D edge tensors
     """
-    logger.debug("GEMS HISTOGRAMDD")
+    logger.debug("GEMS_ENFLAME_GCU400 HISTOGRAMDD")
 
     if input.dtype not in [torch.float32, torch.float64]:
         raise NotImplementedError(
@@ -308,7 +308,7 @@ def histogramdd(input, bins, range=None, weight=None, density=False):
         hist = hist.sum(dim=0)
     if fp64_input:
         hist = hist.to(input.dtype)
-        # 只做一次 dtype 转换，再从结果上切 view；逐维 .to() 会多出 D 次 launch。
+        # Do one dtype conversion, then take views from the result; per-dimension .to() adds D launches.
         edges_out = edges_buf.to(input.dtype)
         bin_edges = [edges_out[d, : bins[d] + 1] for d in builtins.range(D)]
     else:

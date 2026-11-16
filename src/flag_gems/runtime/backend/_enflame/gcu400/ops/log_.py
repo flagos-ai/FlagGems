@@ -41,7 +41,7 @@ def log_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def log_(*args, **kwargs):
-    logger.debug("GEMS LOG_")
+    logger.debug("GEMS_ENFLAME_GCU400 LOG_")
     x = args[0] if len(args) > 0 else kwargs.get("input", None)
 
     if x is None:

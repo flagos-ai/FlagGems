@@ -61,7 +61,7 @@ _BIG_THRESH = 2_500_000
 
 
 def copy_sparse_to_sparse_(self, src, non_blocking=False):
-    logger.debug("GEMS COPY_SPARSE_TO_SPARSE_")
+    logger.debug("GEMS_ENFLAME_GCU400 COPY_SPARSE_TO_SPARSE_")
     if self.layout != torch.sparse_coo or src.layout != torch.sparse_coo:
         raise RuntimeError("copy_sparse_to_sparse_ expects sparse COO tensors")
     if self.device != src.device:

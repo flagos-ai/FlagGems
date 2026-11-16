@@ -108,8 +108,8 @@ from flag_gems.utils.foreach import (
 logger = logging.getLogger(__name__)
 
 
-# GCU 的 libdevice 不导出 fast_dividef；退回普通除法（精度更高，仅略慢），
-# 与 gcu400/ops/polygamma.py 的做法一致。
+# GCU's libdevice does not export fast_dividef; fall back to ordinary division (more accurate, slightly slower),
+# consistent with gcu400/ops/polygamma.py.
 if hasattr(tl_extra_shim, "fast_dividef"):
     _fast_dividef = tl_extra_shim.fast_dividef
 else:
@@ -740,25 +740,26 @@ UNARY_OPS: Dict[str, UnaryOp] = {
 }
 
 
-# GCU400 的 2D grid 第二维硬件上限为 255，而公共 executor 的 grid 是
-# (张量数, cdiv(最大元素数, BLOCK))，BLOCK 最小 1024。单张量元素数超过
-# 255*1024 时公共实现会抛 OutOfResources；此处按该上限切分连续张量。
+# GCU400's 2D grid has a 255 hardware limit on the second dimension, while the common executor's grid is
+# (tensor count, cdiv(max element count, BLOCK)) with BLOCK >= 1024. A single tensor with more than
+# 255*1024 elements makes the common implementation raise OutOfResources; here contiguous tensors are split by that
+# limit.
 GCU400_GRID_Y_LIMIT = 255
 FOREACH_MIN_BLOCK = 1024
 CHUNK_ELEMENTS = GCU400_GRID_Y_LIMIT * FOREACH_MIN_BLOCK
-# 大张量路径：1=按 grid 上限切分并拼接，2=放大 BLOCK 单次 launch。
+# Large-tensor path: 1 = split by the grid limit and concatenate, 2 = increase BLOCK for a single launch.
 FOREACH_LARGE_TENSOR_STRATEGY = 2
-# 放大 BLOCK 的起点；实际 BLOCK 会按 grid.y 上限继续倍增。
+# Starting point for increasing BLOCK; the actual BLOCK keeps doubling per the grid.y limit.
 FOREACH_LARGE_BLOCK_START = 32768
 
-# 逐算子的大张量调优表。表项只影响本算子的 launch 参数，缺省时完全沿用
-# 上面的全局默认值，因此不会波及其它 unary 算子。
-#   block_start      : 放大 BLOCK 的起点，必须是 2 的幂且 >= 1024；
-#   block_start_16bit: 可选项，16-bit 输入单独指定 BLOCK 起点；
-#   force_scalar     : 1 表示强制使用标量 kernel，绕开 16-bit 的 p4 打包 kernel；
-#   num_warps        : 仅在 != 4 时绕开公共 launch replay，直接以该值发射；
-#   route_min_numel  : 可选项，把不小于该 numel 的连续浮点张量也交给单次 launch
-#                      路径（仅适用于不需要 dtype/complex 策略的浮点输入）。
+# Per-operator large-tensor tuning table. Entries affect only this operator's launch parameters; missing entries
+# fall back entirely to the global defaults above, so other unary operators are unaffected.
+#   block_start      : starting point for increasing BLOCK, must be a power of two >= 1024;
+#   block_start_16bit: optional, separate BLOCK starting point for 16-bit inputs;
+#   force_scalar     : 1 forces the scalar kernel, bypassing the p4 packing kernel for 16-bit inputs;
+#   num_warps        : when != 4, bypass common launch replay and launch directly with this value;
+#   route_min_numel  : optional, send contiguous float tensors with numel >= this to the single-launch
+#                      path (only for float inputs that need no dtype / complex policy).
 UNARY_LARGE_TENSOR_TUNING: Dict[str, Dict[str, int]] = {
     "asin": {"block_start": 16384, "force_scalar": 1, "num_warps": 4},
     "abs": {
@@ -789,12 +790,12 @@ UNARY_LARGE_TENSOR_TUNING: Dict[str, Dict[str, int]] = {
 
 
 def _launch_large_block_group(op, tensors, inplace: bool):
-    """放大 BLOCK 使 grid.y <= 255，一次 launch 完成全部张量。
+    """Increase BLOCK so grid.y <= 255 and all tensors are handled in one launch.
 
-    公共 executor 的 grid 是 (张量数, cdiv(最大元素数, BLOCK))；把 BLOCK
-    按 2 的幂放大即可把第二维压回硬件上限内，避免切分带来的多次 launch
-    与 torch.cat 拼接。元数据布局与公共 executor 完全一致，因此仍复用同一
-    套 ``@triton.jit`` kernel，主计算路径保持 Triton。
+    The common executor's grid is (tensor count, cdiv(max element count, BLOCK)); increasing BLOCK
+    by powers of two pushes the second dimension back within the hardware limit, avoiding multiple launches
+    and torch.cat concatenation from splitting. The metadata layout is identical to the common executor,
+    so the same ``@triton.jit`` kernels are reused and the main compute path remains Triton.
     """
     dtype = tensors[0].dtype
     out_dtype = op.out_dtype_fn(dtype)
@@ -837,7 +838,7 @@ def _launch_large_block_group(op, tensors, inplace: bool):
             kernel, grid, tensor_count, meta, op.fn, in_dtype, out_dtype, block
         )
     else:
-        # 公共 launch replay 固定 num_warps=4；调优表指定其它档位时直接发射。
+        # Common launch replay fixes num_warps=4; other values from the tuning table are launched directly.
         kernel[grid](
             meta,
             op.fn,
@@ -851,18 +852,18 @@ def _launch_large_block_group(op, tensors, inplace: bool):
 
 
 def _needs_chunking(tensors) -> bool:
-    """判断是否存在会超出 grid.y 上限的大张量（仅连续张量可安全切片）。"""
+    """Check whether any large tensor would exceed the grid.y limit (only contiguous tensors can be sliced safely)."""
     return any(t.numel() > CHUNK_ELEMENTS for t in tensors) and all(
         t.is_contiguous() for t in tensors
     )
 
 
 def _apply_unary_chunked(op, tensors, inplace: bool):
-    """把大张量按 grid.y 上限切段，逐段走公共 Triton executor。
+    """Split large tensors into segments by the grid.y limit and run the common Triton executor per segment.
 
-    每段仍是同一套 ``@triton.jit`` kernel，只是把 grid 的第二维压到 255 以内；
-    out-of-place 结果按原始顺序拼接后 reshape 回输入形状，in-place 直接写回
-    原张量的切片视图，不产生额外拼接。
+    Each segment still uses the same ``@triton.jit`` kernel, with the grid's second dimension kept <= 255;
+    out-of-place results are concatenated in original order and reshaped back to the input shape, while in-place
+    writes directly into slice views of the original tensor with no extra concatenation.
     """
     flat_views = [t.reshape(-1) for t in tensors]
     max_numel = max(t.numel() for t in flat_views)
@@ -911,11 +912,11 @@ def _apply_unary_chunked(op, tensors, inplace: bool):
 def apply_unary(name: str, self, inplace: bool):
     """Dispatch one table row through the shared executor."""
     op = UNARY_OPS[name]
-    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_%s%s", name.upper(), "_" if inplace else "")
     route_min_numel = UNARY_LARGE_TENSOR_TUNING.get(op.name, {}).get("route_min_numel")
-    # ATen 对空 TensorList 与非 Tensor 元素都抛 RuntimeError，而路由探测里的
-    # numel() / is_contiguous() 会先抛 AttributeError。把整段路由判定包进异常
-    # 转换以对齐错误语义；正常 TensorList 路径不增加任何 Python 开销。
+    # ATen raises RuntimeError for both empty TensorLists and non-Tensor elements, while numel() /
+    # is_contiguous() in route probing would raise AttributeError first. Wrap the whole routing decision
+    # in exception translation to match error semantics; the normal TensorList path adds no Python overhead.
     try:
         route_all_float = (
             route_min_numel is not None
@@ -987,34 +988,42 @@ def apply_unary(name: str, self, inplace: bool):
 
 
 def _foreach_abs(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ABS")
     return apply_unary("abs", self, inplace=False)
 
 
 def _foreach_abs_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ABS_")
     return apply_unary("abs", self, inplace=True)
 
 
 def _foreach_acos(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ACOS")
     return apply_unary("acos", self, inplace=False)
 
 
 def _foreach_acos_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ACOS_")
     return apply_unary("acos", self, inplace=True)
 
 
 def _foreach_asin(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ASIN")
     return apply_unary("asin", self, inplace=False)
 
 
 def _foreach_asin_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ASIN_")
     return apply_unary("asin", self, inplace=True)
 
 
 def _foreach_atan(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ATAN")
     return apply_unary("atan", self, inplace=False)
 
 
 def _foreach_atan_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ATAN_")
     return apply_unary("atan", self, inplace=True)
 
 
@@ -1027,6 +1036,7 @@ def _foreach_ceil_(self):
 
 
 def _foreach_cos(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COS")
     return apply_unary("cos", self, inplace=False)
 
 
@@ -1035,26 +1045,32 @@ def _foreach_cos_(self):
 
 
 def _foreach_cosh(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COSH")
     return apply_unary("cosh", self, inplace=False)
 
 
 def _foreach_cosh_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_COSH_")
     return apply_unary("cosh", self, inplace=True)
 
 
 def _foreach_erf(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERF")
     return apply_unary("erf", self, inplace=False)
 
 
 def _foreach_erf_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERF_")
     return apply_unary("erf", self, inplace=True)
 
 
 def _foreach_erfc(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERFC")
     return apply_unary("erfc", self, inplace=False)
 
 
 def _foreach_erfc_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ERFC_")
     return apply_unary("erfc", self, inplace=True)
 
 
@@ -1067,42 +1083,52 @@ def _foreach_exp_(self):
 
 
 def _foreach_expm1(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_EXPM1")
     return apply_unary("expm1", self, inplace=False)
 
 
 def _foreach_expm1_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_EXPM1_")
     return apply_unary("expm1", self, inplace=True)
 
 
 def _foreach_floor(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FLOOR")
     return apply_unary("floor", self, inplace=False)
 
 
 def _foreach_floor_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FLOOR_")
     return apply_unary("floor", self, inplace=True)
 
 
 def _foreach_frac(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FRAC")
     return apply_unary("frac", self, inplace=False)
 
 
 def _foreach_frac_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_FRAC_")
     return apply_unary("frac", self, inplace=True)
 
 
 def _foreach_lgamma(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LGAMMA")
     return apply_unary("lgamma", self, inplace=False)
 
 
 def _foreach_lgamma_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LGAMMA_")
     return apply_unary("lgamma", self, inplace=True)
 
 
 def _foreach_log(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG")
     return apply_unary("log", self, inplace=False)
 
 
 def _foreach_log_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG_")
     return apply_unary("log", self, inplace=True)
 
 
@@ -1111,14 +1137,17 @@ def _foreach_log10(self):
 
 
 def _foreach_log10_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG10_")
     return apply_unary("log10", self, inplace=True)
 
 
 def _foreach_log1p(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG1P")
     return apply_unary("log1p", self, inplace=False)
 
 
 def _foreach_log1p_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_LOG1P_")
     return apply_unary("log1p", self, inplace=True)
 
 
@@ -1135,38 +1164,47 @@ def _foreach_neg(self):
 
 
 def _foreach_neg_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_NEG_")
     return apply_unary("neg", self, inplace=True)
 
 
 def _foreach_reciprocal(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RECIPROCAL")
     return apply_unary("reciprocal", self, inplace=False)
 
 
 def _foreach_reciprocal_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RECIPROCAL_")
     return apply_unary("reciprocal", self, inplace=True)
 
 
 def _foreach_round(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ROUND")
     return apply_unary("round", self, inplace=False)
 
 
 def _foreach_round_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ROUND_")
     return apply_unary("round", self, inplace=True)
 
 
 def _foreach_rsqrt(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RSQRT")
     return apply_unary("rsqrt", self, inplace=False)
 
 
 def _foreach_rsqrt_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_RSQRT_")
     return apply_unary("rsqrt", self, inplace=True)
 
 
 def _foreach_sigmoid(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SIGMOID")
     return apply_unary("sigmoid", self, inplace=False)
 
 
 def _foreach_sigmoid_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SIGMOID_")
     return apply_unary("sigmoid", self, inplace=True)
 
 
@@ -1183,14 +1221,17 @@ def _foreach_sin(self):
 
 
 def _foreach_sin_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SIN_")
     return apply_unary("sin", self, inplace=True)
 
 
 def _foreach_sinh(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SINH")
     return apply_unary("sinh", self, inplace=False)
 
 
 def _foreach_sinh_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_SINH_")
     return apply_unary("sinh", self, inplace=True)
 
 
@@ -1207,46 +1248,51 @@ def _foreach_tan(self):
 
 
 def _foreach_tan_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TAN_")
     return apply_unary("tan", self, inplace=True)
 
 
 def _foreach_tanh(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TANH")
     return apply_unary("tanh", self, inplace=False)
 
 
 def _foreach_tanh_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TANH_")
     return apply_unary("tanh", self, inplace=True)
 
 
 def _foreach_trunc(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TRUNC")
     return apply_unary("trunc", self, inplace=False)
 
 
 def _foreach_trunc_(self):
+    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_TRUNC_")
     return apply_unary("trunc", self, inplace=True)
 
 
 # ---------------------------------------------------------------------------
 # torch._foreach_* reference-arm proxy (torch_gcu P21)
 #
-# torch_gcu 的原生 ``_foreach_*`` 把整型/bool/complex TensorList 直接交给
-# topsaten 元素算子，后者的 dtype 矩阵按算子零散缺失：sigmoid/tanh 连
-# int16/int32 都拒（TOPSATEN_STATUS_NOT_SUPPORT），acos/asin/atan/cosh/
-# exp/expm1/lgamma/log10/log1p/log2/rsqrt/sign/sinh/sqrt/tan/erf/erfc 只拒
-# int64，bool 几乎全拒，complex64 除小值 abs 外全 abort；``_foreach_abs``
-# 的 complex64 朴素模 ``sqrt(re^2+im^2)`` 在 ±1e20 处 fp32 上溢为 inf（CPU
-# 参考有限值）。csrc 对 NOT_SUPPORT 走 ``Check failed: 0`` 直接终止进程而
-# 非抛 Python 异常——精度门禁的参考腿（测试默认口径 ref on device）在这
-# 些组合上先于 FlagGems 候选挂死。逐 (op, dtype, variant) 子进程探针实证
-# 68 个测试相关组合全部为 torch_gcu 侧缺陷，FlagGems op 本体全部正确。
+# torch_gcu's native ``_foreach_*`` sends integral / bool / complex TensorLists straight to
+# topsaten elementwise operators, whose dtype matrix is patchy: sigmoid/tanh reject even
+# int16/int32 (TOPSATEN_STATUS_NOT_SUPPORT), acos/asin/atan/cosh/
+# exp/expm1/lgamma/log10/log1p/log2/rsqrt/sign/sinh/sqrt/tan/erf/erfc reject only
+# int64, bool is rejected almost everywhere, and complex64 aborts for everything except small-value abs;
+# the naive complex64 modulus ``sqrt(re^2+im^2)`` in ``_foreach_abs`` overflows fp32 to inf at +/-1e20
+# (the CPU reference stays finite). csrc handles NOT_SUPPORT with ``Check failed: 0``, terminating the process
+# instead of raising a Python exception - so the accuracy gate's reference leg (ref on device by default)
+# hangs before the FlagGems candidate on these combinations. A per-(op, dtype, variant) subprocess probe
+# confirmed all 68 test-relevant combinations are torch_gcu-side defects; the FlagGems op itself is correct.
 #
-# 这里按 ``gcu400/ops/flipud.py`` 的 P21 reference-arm proxy 先例安装
-# python 级窄域代理：凡命中下表的 GCU TensorList 走 CPU aten 独立参考
-# （bool 的 abs 按 harness 自身口径 ``abs(int32).to(bool)`` 逐 tensor 计算）
-# 后搬回原设备；其余调用形态（float 全列、bench/native 臂、非 Tensor、
-# 非 GCU 设备、空列表）全部直通原生实现。torch_gcu 补齐 dtype 矩阵后
-# 可整体删除。见 P21 sources/flaggems_foreach_unary_topsaten_int_bool_
-# complex_abort.md。
+# Following the P21 reference-arm proxy precedent in ``gcu400/ops/flipud.py``, install a
+# narrow python-level proxy: GCU TensorLists hitting the table below run an independent CPU aten reference
+# (bool abs follows the harness's own ``abs(int32).to(bool)`` per tensor)
+# and are moved back to the original device; all other call shapes (all-float, bench/native arm, non-Tensor,
+# non-GCU device, empty list) pass straight through to the native implementation. This can be removed
+# wholesale once torch_gcu completes its dtype matrix. See P21 sources/flaggems_foreach_unary_topsaten_int_bool_
+# complex_abort.md.
 # ---------------------------------------------------------------------------
 
 _IBC = frozenset((torch.int64, torch.bool, torch.complex64))
@@ -1304,7 +1350,7 @@ def _install_aten_foreach_ref_arm_proxies():
                 return _current(self)
             host = [t.cpu() for t in self]
             if _name == "abs":
-                # CPU abs 没有 Bool 档；按 harness 自身口径走 int32 往返。
+                # CPU abs has no Bool variant; use an int32 round-trip following the harness's own convention.
                 out = [
                     (
                         torch.abs(t.to(torch.int32)).to(torch.bool)

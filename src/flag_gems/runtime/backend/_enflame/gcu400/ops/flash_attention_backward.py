@@ -1083,7 +1083,7 @@ def flash_attn_backward(
     bias_requires_grad=False,
 ):
     if is_dropout and dropout_p > 0.0 and rng_state is None:
-        raise ValueError("开启 dropout 时，必须传入 rng_state")
+        raise ValueError("rng_state must be provided when dropout is enabled")
 
     is_varlen = (cu_seq_q is not None) and (cu_seq_k is not None)
 
@@ -1098,7 +1098,7 @@ def flash_attn_backward(
         _, SeqLen_k, H_k, _ = K.shape
 
     if H_q % H_k != 0:
-        raise ValueError(f"H_q ({H_q}) 必须是 H_k ({H_k}) 的整数倍")
+        raise ValueError(f"H_q ({H_q}) must be an integer multiple of H_k ({H_k})")
     group_size = H_q // H_k
     scale = softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Head_Dim))
 
@@ -1395,7 +1395,7 @@ def flash_attention_backward(
     window_size_left=None,
     window_size_right=None,
 ):
-    logger.debug("GEMS FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_rng_state(rng_state, unused) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
@@ -1440,7 +1440,7 @@ def scaled_dot_product_flash_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
@@ -1504,7 +1504,7 @@ def scaled_dot_product_cudnn_attention_backward(
     scale=None,
     bias_requires_grad=False,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_CUDNN_ATTENTION_BACKWARD")
     grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
     query_bshd = query.permute(0, 2, 1, 3).contiguous()
     key_bshd = key.permute(0, 2, 1, 3).contiguous()
@@ -1565,7 +1565,7 @@ def efficient_attention_backward(
     window_size=None,
     shared_storage_dqdkdv=False,
 ):
-    logger.debug("GEMS EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 EFFICIENT_ATTENTION_BACKWARD")
     if custom_mask_type == 0:
         is_causal, wl, wr = False, -1, -1
     elif custom_mask_type == 1:
@@ -1575,7 +1575,7 @@ def efficient_attention_backward(
         wl = 0
         wr = max_seqlen_q + max_seqlen_k + 1
     else:
-        raise ValueError(f"未知 custom_mask_type: {custom_mask_type}")
+        raise ValueError(f"unknown custom_mask_type: {custom_mask_type}")
 
     if window_size is not None and window_size >= 0:
         wl = wr = window_size
@@ -1622,7 +1622,7 @@ def scaled_dot_product_efficient_attention_backward(
     *,
     scale=None,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION_BACKWARD")
     need_dq, need_dk, need_dv, need_dbias = grad_input_mask
 
     grad_out_bshd = grad_out_.permute(0, 2, 1, 3).contiguous()
@@ -1672,19 +1672,19 @@ def scaled_dot_product_efficient_attention_backward(
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu dispatch adaptation（attention backward 家族 aten 入口无 GCU kernel）
+# torch_gcu dispatch adaptation (attention backward family aten entries have no GCU kernel)
 #
-# 本 torch_gcu 构建只为 `aten::_flash_attention_backward` /
+# This torch_gcu build only registers CPU fallbacks for `aten::_flash_attention_backward` /
 # `aten::_scaled_dot_product_cudnn_attention_backward` /
-# `aten::_efficient_attention_backward` 注册了 CPU 回退
-# （aten_cpu_fallback.cpp [backend fallback]），GCU 张量调用会被搬到 CPU 再撞上
-# 「无 CPU kernel」直接 NotImplementedError——FlagGems 侧 enable()/use_gems()
-# 之外的进程（精度测试框架与 benchmark 的参考腿不经 enable 直接调
-# torch.ops.aten.*）因此全灭。照 `resize_as_sparse_.py` /
-# `_flash_attention_forward.py` 的既定制式，把本实现幂等注册到 device key 上：
-# 显式 kernel 优先级高于 backend fallback，import flag_gems 即生效。
-# enable()/use_gems() 后续对同一 key 的重复注册被 registrar 捕获为 warning，
-# 注册的又是同一函数（_FULL_CONFIG 经 SpecOpRegistrar 解析到本文件），行为不变。
+# `aten::_efficient_attention_backward`
+# (aten_cpu_fallback.cpp [backend fallback]); calling with GCU tensors moves them to CPU and then hits
+# "no CPU kernel" with NotImplementedError - processes outside FlagGems enable()/use_gems()
+# (accuracy framework and benchmark reference legs that call torch.ops.aten.* directly without enable)
+# therefore all fail. Following the existing pattern in `resize_as_sparse_.py` /
+# `_flash_attention_forward.py`, register this implementation idempotently on the device key:
+# an explicit kernel outranks the backend fallback and takes effect on import flag_gems.
+# Later duplicate registration of the same key by enable()/use_gems() is caught by the registrar as a warning;
+# it registers the same function (_FULL_CONFIG resolves to this file via SpecOpRegistrar), so behavior is unchanged.
 # ---------------------------------------------------------------------------
 _FLASH_ATTN_BWD_KEY_FLAG = "_flag_gems_gcu400_flash_attn_bwd_keys_registered"
 _FLASH_ATTN_BWD_LIBRARY = None
@@ -1722,28 +1722,30 @@ _ensure_flash_attn_bwd_key_registrations()
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu SDPA composite steering（fp32 flash-SDPA autograd abort 规避）
+# torch_gcu SDPA composite steering (avoid fp32 flash-SDPA autograd abort)
 #
-# torch_gcu 把 `aten::scaled_dot_product_attention` 组合 op 以 catch-all 方式注册
-# 在全部 dispatch key 上（RegisterSPDA.cpp，含 PrivateUse1/AutogradPrivateUse1），
-# `_scaled_dot_product_flash_attention(_backward)` 的 PrivateUse1 也被其
-# RegisterGCU 占据、AutogradPrivateUse1 被原生 VariableType 占据——dispatcher
-# 层没有任何可介入的空闲键。fp32 张量经组合 op 做 autograd 时（如
-# tests/test_flash_attention_backward.py 的 flash-SDPA 族参考腿
-# `F.scaled_dot_product_attention(...)` + `torch.autograd.grad`），其后端选择
-# 会路由到 AOT flash backward，撞上 topsop op_aten_sdp_attention_bwd_gcu400.h:308
-# 「SDP Backward, data type not support.」硬 CHECK 直接 SIGABRT 整个进程（P21，
-# abort 无法被 try/except 捕获，--ref cpu 之外门禁命令无法绕过）。
+# torch_gcu registers `aten::scaled_dot_product_attention` as a catch-all composite op
+# on every dispatch key (RegisterSPDA.cpp, including PrivateUse1/AutogradPrivateUse1),
+# and `_scaled_dot_product_flash_attention(_backward)`'s PrivateUse1 is also taken by
+# RegisterGCU, with AutogradPrivateUse1 taken by native VariableType - the dispatcher
+# layer has no free key to intercept. When fp32 tensors go through the composite op with autograd
+# (e.g. the flash-SDPA family reference legs in
+# tests/test_flash_attention_backward.py, `F.scaled_dot_product_attention(...)` + `torch.autograd.grad`),
+# backend selection routes to AOT flash backward and hits the hard CHECK at
+# topsop op_aten_sdp_attention_bwd_gcu400.h:308 "SDP Backward, data type not support." which SIGABRTs
+# the whole process (P21; abort cannot be caught by try/except and gate commands cannot bypass it except with --ref
+# cpu).
 #
-# 唯一剩余的干预点是组合 op 内部的 sdp 后端选择旗标：关闭 flash /
-# mem-efficient / cudnn 后，组合 op 分解为纯 aten math 路径（matmul/softmax +
-# 完整 autograd），fp32 梯度对 CPU 参考逐位级一致（dQ/dK ≤3e-10、dV ≤3e-6，
-# 含 causal），fp16 亦在既有容差内。直接调用 `torch.ops.aten.
-# _scaled_dot_product_*` / `_flash_attention_*` 子 op 的路径（本家族精度测试
-# 与 bench 的全部其余入口）不受这些旗标影响；FlagGems 自有
-# `scaled_dot_product_attention`（ScaleDotProductAttention.apply）同样不走
-# 组合 op。需要原生 flash/efficient/cudnn SDPA 的调用方可随时通过
-# `torch.backends.cuda.enable_*_sdp` / `torch._C._set_sdp_use_*` 重新开启。
+# The only remaining intervention point is the sdp backend selection flags inside the composite op: after disabling
+# flash /
+# mem-efficient / cudnn, the composite op decomposes into a pure aten math path (matmul/softmax +
+# full autograd), and fp32 gradients match the CPU reference bit-for-bit (dQ/dK <=3e-10, dV <=3e-6,
+# including causal), while fp16 stays within existing tolerances. Paths that directly call `torch.ops.aten.
+# _scaled_dot_product_*` / `_flash_attention_*` sub-ops (all other entry points of this family's accuracy
+# tests and bench) are unaffected by these flags; FlagGems' own
+# `scaled_dot_product_attention` (ScaleDotProductAttention.apply) also does not use
+# the composite op. Callers needing native flash/efficient/cudnn SDPA can re-enable them at any time via
+# `torch.backends.cuda.enable_*_sdp` / `torch._C._set_sdp_use_*`.
 # ---------------------------------------------------------------------------
 def _force_math_sdp_backend_for_gcu():
     for setter_name in (
@@ -1764,15 +1766,15 @@ _force_math_sdp_backend_for_gcu()
 
 
 # ---------------------------------------------------------------------------
-# flag_gems.ops 入口回绑（同 slow_conv_dilated2d / upsample_bilinear2d_backward
-# 制式）
+# flag_gems.ops entry rebinding (same pattern as slow_conv_dilated2d / upsample_bilinear2d_backward
+# style)
 #
-# `flag_gems.ops.*` 的 Python 属性在包导入期即绑定为通用（公版）实现——本
-# 文件的 aten device-key 注册只接管 `torch.ops.aten.*` 调用链，benchmark 的
-# gems 腿（`flag_gems.ops.flash_attention_backward` 直调）与精度测试的 result
-# 腿因此仍落在公版 kernel 上。本副本与公版 kernel 逐字节同源，仅 autotune
-# 配置表按 GCU400 (L600) 实测扩展，把上述入口幂等绑回本副本，使两条调用链
-# 共享同一组（已扩展的）autotuner；对公版语义零改变。
+# Python attributes of `flag_gems.ops.*` are bound to the common (public) implementations at package import time -
+# this file's aten device-key registration only takes over the `torch.ops.aten.*` call chain, so the benchmark's
+# gems leg (direct `flag_gems.ops.flash_attention_backward` call) and the accuracy test's result
+# leg still land on the common kernel. This copy is byte-for-byte the same source as the common kernel, with only the
+# autotune config table extended by GCU400 (L600) measurements; idempotently rebind those entries to this copy so both
+# call chains share the same (extended) autotuner; zero change to common semantics.
 # ---------------------------------------------------------------------------
 def _rebind_generic_entry_points():
     for entry_point in (

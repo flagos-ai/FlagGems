@@ -99,7 +99,7 @@ def _embedding_bag_per_sample_weights_backward(
     Returns:
         Gradient w.r.t. per_sample_weights of shape (num_samples,)
     """
-    logger.debug("GEMS: _embedding_bag_per_sample_weights_backward")
+    logger.debug("GEMS_ENFLAME_GCU400: _embedding_bag_per_sample_weights_backward")
 
     assert indices.dtype in (
         torch.int32,

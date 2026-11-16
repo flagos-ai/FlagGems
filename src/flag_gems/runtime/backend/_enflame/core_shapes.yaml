@@ -547,9 +547,9 @@ ReshapeAndCacheFlashBenchmark:
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
 
-# foreach 列表算子每次调用构造 16 个 tensor，若回落到含 1024**3 元素的
-# DEFAULT_SHAPES，float32 会在 144 GiB 设备上 OOM。这里显式给出与公共
-# benchmark/core_shapes.yaml 一致的中等规模 shape。
+# The foreach list operators build 16 tensors per call; falling back to shapes with
+# 1024**3 elements in DEFAULT_SHAPES would OOM in float32 on a 144 GiB device.
+# Explicitly use medium-sized shapes consistent with the common benchmark/core_shapes.yaml.
 ForeachOpsBenchmark:
   shapes:
     - [256, 256]
@@ -564,10 +564,10 @@ ForeachUnaryBenchmark:
     - [1024, 1024]
   shape_desc: "M, N (per tensor, list of 16)"
 
-# GCU400 专属：matrix_norm 的参考实现要求输入至少 2 维。
-# 公共 core_shapes.yaml 有该条目，但 enflame 后端的 shape 文件缺失，
-# 导致 set_shapes 回退到 1 维 DEFAULT_SHAPES 并在参考侧抛
-# "A must have at least 2 dimensions"。此处补齐 2D/3D/4D 合法 shape。
+# GCU400-specific: the matrix_norm reference requires at least 2 dimensions.
+# The common core_shapes.yaml has this entry, but the enflame backend shape file is missing,
+# so set_shapes falls back to 1D DEFAULT_SHAPES and the reference side raises
+# "A must have at least 2 dimensions". Add valid 2D/3D/4D shapes here.
 linalg_matrix_norm_out:
   shapes:
     - [256, 512]

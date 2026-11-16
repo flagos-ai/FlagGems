@@ -31,12 +31,12 @@ from flag_gems.runtime.backend._enflame.gcu400.ops.addmm import (  # noqa: E402
 
 
 def _select_addmm_inplace_config(M, N, K, dtype):
-    """addmm_ 原地路径的 tile 分派：16-bit 中尺寸补一档深 K 单段 tile。
+    """Tile dispatch for the addmm_ in-place path: an extra deep-K single-segment tier for 16-bit medium sizes.
 
-    _select_addmm_config 对 (64, 512] 区间沿用大矩阵分档；libtuner 在 384³
-    实测最优为 (128,128,512,ns1)（fp16 9.76µs vs 128³ 分档 13.3µs，深 K 单段
-    免循环流水开销），该档已列于 enflame tune_configs.yaml。其余区间沿用
-    gcu400 调优 addmm 的选型。
+    _select_addmm_config keeps the large-matrix tiers for the (64, 512] range; libtuner measured
+    (128,128,512,ns1) as optimal at 384^3 (fp16 9.76us vs 13.3us for the 128^3 tier; deep-K single segment
+    avoids loop pipeline overhead). That tier is listed in enflame tune_configs.yaml. Other ranges keep
+    the selections of the gcu400 tuned addmm.
     """
     if K <= 64 or M <= 64 or N <= 64:
         return _select_addmm_config(M, N, K, dtype)
@@ -46,10 +46,10 @@ def _select_addmm_inplace_config(M, N, K, dtype):
 
 
 def _addmm_inplace(self, mat1, mat2, alpha, beta):
-    """单 kernel 原地写：self 同时充当 bias 输入与输出。
+    """Single-kernel in-place write: self serves as both bias input and output.
 
-    kernel 在 K 循环结束后才加载 bias tile 并立即写回同一 tile，
-    程序间无交叉读写，因此 self 同为输入/输出是安全的。
+    The kernel loads the bias tile only after the K loop finishes and immediately writes the same tile back,
+    so there is no cross-program read/write and using self as both input and output is safe.
     """
     M, K = mat1.shape
     N = mat2.shape[1]
@@ -105,13 +105,13 @@ def addmm_(self, mat1, mat2, *, beta=1, alpha=1):
     M, K = mat1.shape
     N = mat2.shape[1]
 
-    # 原地快路径：self 恰为 (M, N) 且连续、与 mat1/mat2 无别名时，复用 gcu400 调优
-    # GEMM kernel 直接写回 self，省去中间缓冲分配与 copy_ kernel。
-    # 非连续 self（转置视图等）走回退路径：dot 循环后 masked 列主序 store 在
-    # GCU400 上静默错值（compiler_issues/enflame_addmm__colmajor_masked_store_after_dotloop.md）；
-    # K=0 时该 kernel 零迭代 K 循环读到未初始化垃圾
-    # （compiler_issues/enflame_addmm_k0_zerotrip_dot_garbage.md），broadcast bias /
-    # dtype 混合等罕见布局同走 out-of-place 老路径。
+    # In-place fast path: when self is exactly (M, N), contiguous, and does not alias mat1/mat2, reuse the gcu400 tuned
+    # GEMM kernel to write directly back into self, saving an intermediate buffer allocation and a copy_ kernel.
+    # Non-contiguous self (e.g. transposed views) takes the fallback: masked column-major store after the dot loop
+    # silently produces wrong values on GCU400 (compiler_issues/enflame_addmm__colmajor_masked_store_after_dotloop.md);
+    # with K=0 that kernel reads uninitialized garbage from a zero-iteration K loop
+    # (compiler_issues/enflame_addmm_k0_zerotrip_dot_garbage.md), and broadcast bias /
+    # mixed dtype and other rare layouts also use the old out-of-place path.
     if (
         self.shape == (M, N)
         and M > 0
@@ -122,9 +122,9 @@ def addmm_(self, mat1, mat2, *, beta=1, alpha=1):
         and self.data_ptr() != mat1.data_ptr()
         and self.data_ptr() != mat2.data_ptr()
     ):
-        logger.debug("GEMS ADDMM_ (inplace)")
+        logger.debug("GEMS_ENFLAME_GCU400 ADDMM_ (inplace)")
         return _addmm_inplace(self, mat1, mat2, alpha, beta)
 
-    logger.debug("GEMS ADDMM_")
+    logger.debug("GEMS_ENFLAME_GCU400 ADDMM_")
     result = addmm(self, mat1, mat2, beta=beta, alpha=alpha)
     return self.copy_(result)

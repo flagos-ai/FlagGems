@@ -45,21 +45,21 @@ _SUPPORTED_INPUT_DTYPES = (
 _IS_ASCEND = runtime_device.vendor_name == "ascend"
 _IS_ILUVATAR = runtime_device.vendor_name == "iluvatar"
 _IS_ENFLAME = runtime_device.vendor_name == "enflame"
-# target 方向的 tile 宽度。BLOCK_T=8 时一个 (BLOCK_C=128, BLOCK_T=8) tile 只有
-# 1024 元素、target 循环要迭代 C/8 次。L600 实测扫描（BLOCK_T 8/16/32/64/128 ×
-# BLOCK_C 128/256，core shapes 总延迟）：5.64 / 4.20 / 3.65 / 3.48 / 3.50 ms，
-# 32~128 已进入平台区，取最小值 64 作为默认值。
+# Tile width along target. With BLOCK_T=8 a (BLOCK_C=128, BLOCK_T=8) tile has only
+# 1024 elements and the target loop iterates C/8 times. L600 sweep (BLOCK_T 8/16/32/64/128 x
+# BLOCK_C 128/256, core shapes total latency): 5.64 / 4.20 / 3.65 / 3.48 / 3.50 ms,
+# 32~128 is already a plateau, so take the minimum 64 as default.
 _ENFLAME_LOSS_TARGET_BLOCK = 64
 _BACKEND_LOSS_TARGET_BLOCK = (
     _ILUVATAR_LOSS_TARGET_BLOCK
     if _IS_ILUVATAR
     else (_ENFLAME_LOSS_TARGET_BLOCK if _IS_ENFLAME else _LOSS_TARGET_BLOCK)
 )
-# 返回最大 target 长度让 host 侧能把 target 方向的 tile / 循环截断到
-# ``max_target_length``：所有 ``target_offsets >= target_length`` 的 pair 都被
-# ``active_target`` 掩掉、贡献恒为 0，遍历它们纯属浪费。enflame 走同一套
-# `_reduce_invalid_flags_kernel`，额外代价只是读 n_rows 个 int64，因此这里
-# 一并打开（原先只有 ascend 打开，enflame 只能按完整 C 遍历）。
+# Return the maximum target length so the host can truncate target-direction tiles / loops to
+# ``max_target_length``: all pairs with ``target_offsets >= target_length`` are
+# masked by ``active_target`` and contribute exactly 0, so traversing them is pure waste. enflame uses the same
+# `_reduce_invalid_flags_kernel`, with only the extra cost of reading n_rows int64s, so it is
+# enabled here too (previously only ascend enabled it, forcing enflame to traverse the full C).
 _RETURN_MAX_TARGET_LENGTH = _IS_ASCEND or _IS_ENFLAME
 _INVALID_RESULT_DTYPE = torch.int64 if _RETURN_MAX_TARGET_LENGTH else torch.int32
 _ascend_vector_cores = None
@@ -100,8 +100,8 @@ def _build_is_target_kernel(
 ):
     """Validate every target value and build the active-prefix membership mask.
 
-    ``is_target_ptr`` 既是输出也是 scratch：调用前已由 `_fill_zero_kernel` 清零，
-    这里只在命中位置写 1，因此无需单独的 int32 membership 暂存缓冲。
+    ``is_target_ptr`` is both output and scratch: `_fill_zero_kernel` already cleared it before the call,
+    so only 1s are written at hit positions, with no separate int32 membership staging buffer.
     """
     pid = tl.program_id(0)
     n_programs = tl.num_programs(0)
@@ -227,7 +227,7 @@ def _fill_zero_kernel(
     n_elements,
     BLOCK: tl.constexpr,
 ):
-    """把任意 dtype 的输出缓冲清零（store 会按指针类型隐式转换）。"""
+    """Zero an output buffer of any dtype (store implicitly converts by pointer type)."""
     pid = tl.program_id(0)
     n_programs = tl.num_programs(0)
     for block_start in range(pid * BLOCK, n_elements, n_programs * BLOCK):
@@ -268,7 +268,7 @@ def _fused_row_loss_kernel(
     n_rows,
     n_classes,
     divisor,
-    target_bound,  # 所有行的最大有效 target 长度；超出部分恒不参与比较
+    target_bound,  # maximum valid target length across all rows; beyond it nothing participates in comparison
     ACC_FP64: tl.constexpr,
     ATOMIC_REDUCE: tl.constexpr,
     SKIP_EMPTY_CLASS_TILE: tl.constexpr,
@@ -321,8 +321,8 @@ def _fused_row_loss_kernel(
                 class_has_non_target = tl.sum(non_target.to(tl.int32), axis=0) != 0
 
             if class_has_non_target:
-                # ``target_bound`` 是全局最大有效 target 长度，超过它的 offset
-                # 在所有行都是 padding，贡献恒为 0，因此可以安全截断循环。
+                # ``target_bound`` is the global maximum valid target length; offsets beyond it
+                # are padding for all rows and contribute exactly 0, so the loop can be safely truncated.
                 for target_start in range(0, target_bound, BLOCK_T):
                     target_offsets = target_start + tl.arange(0, BLOCK_T)[:, None]
                     active_target = target_offsets < target_length
@@ -416,10 +416,10 @@ def _tiled_loss_kernel(
         else:
             partial = tl.zeros((), dtype=tl.float32)
 
-        # 两类 tile 的贡献恒为 0，提前退出可省掉整块 (BLOCK_C x BLOCK_T) 运算：
-        # 1) 该 target tile 整块落在 target_length 之外（active_target 全为 false）；
-        # 2) 该 class tile 的所有 class 都是 target（non_target_weight 全为 0），
-        #    例如 benchmark 输入 target=arange(C) 的前半段对应的 class tile。
+        # Two kinds of tiles contribute exactly 0, so exiting early skips a whole (BLOCK_C x BLOCK_T) operation:
+        # 1) the entire target tile lies outside target_length (active_target all false);
+        # 2) all classes in the class tile are targets (non_target_weight all 0),
+        #    e.g. the class tile for the first half of benchmark input target=arange(C).
         tile_non_target_weight = tl.sum(tl.sum(non_target_weight, axis=1), axis=0)
         if (target_tile * BLOCK_T < target_length) and (tile_non_target_weight != 0.0):
             target_ids = tl.load(
@@ -689,7 +689,7 @@ def _empty_batch_result(input, n_classes, reduction):
 def multilabel_margin_loss_forward(
     input: torch.Tensor, target: torch.Tensor, reduction=1
 ):
-    logger.debug("GEMS MULTILABEL_MARGIN_LOSS_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 MULTILABEL_MARGIN_LOSS_FORWARD")
     reduction = _normalize_reduction(reduction)
     n_rows, n_classes = _check_inputs(input, target)
 
@@ -772,9 +772,9 @@ def multilabel_margin_loss_forward(
             invalid_flags = torch.empty(
                 (validation_grid,), dtype=torch.int32, device=input.device
             )
-            # 直接把 is_target 当作 scratch 缓冲：先清零整块，再由校验 kernel 在
-            # 命中的位置上写 1。这样省掉了 N*C 的 int32 暂存缓冲、它的一次读写
-            # 以及一次额外的 kernel 发射（原来需要 clear + build + convert 三次）。
+            # Use is_target directly as scratch: clear the whole block first, then let the validation kernel
+            # write 1s at hit positions. This saves an N*C int32 staging buffer, one read/write of it
+            # and one extra kernel launch (previously clear + build + convert, three launches).
             _fill_zero_kernel[(membership_grid,)](
                 is_target,
                 n_rows * n_classes,
@@ -838,10 +838,10 @@ def multilabel_margin_loss_forward(
         else:
             class_tiles = triton.cdiv(n_classes, _LOSS_CLASS_BLOCK)
             full_target_tiles = triton.cdiv(n_classes, _BACKEND_LOSS_TARGET_BLOCK)
-            # target 方向的 tile 数按全局最大有效 target 长度精确截断：任何
-            # ``target_offsets >= target_length`` 的 pair 都被 active_target
-            # 掩掉、贡献恒为 0，遍历它们纯属浪费。benchmark 输入 target_length
-            # 为 C/2，这一条即可省掉一半 target tile。
+            # Truncate the number of target-direction tiles exactly by the global maximum valid target length: any
+            # pair with ``target_offsets >= target_length`` is
+            # masked by active_target and contributes exactly 0, so traversing it is pure waste. Benchmark inputs have
+            # target_length = C/2, so this alone removes half the target tiles.
             active_target_tiles = triton.cdiv(
                 max_target_length, _BACKEND_LOSS_TARGET_BLOCK
             )

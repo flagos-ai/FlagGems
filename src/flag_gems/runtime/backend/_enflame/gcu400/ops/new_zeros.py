@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``new_zeros`` host 侧分派。
+"""GCU400-specific ``new_zeros`` host-side dispatch.
 
-公共通用实现只把 ``device.type == "cuda"`` 视为可被 Triton kernel 直接写，
-GCU 上因此改走 ``scratch = torch.empty(..., device="cuda")`` + ``copy_`` 的
-中转路径，额外付出一次分配、一遍写零和一遍拷贝。这里保留公共实现里已经
-编译缓存过的 ``_zero_bytes`` / ``_zero_strided`` Triton kernel，仅修正 host
-侧设备判定，直接在目标 buffer 上发射 kernel；算子语义与函数签名不变。
+The common implementation only treats ``device.type == "cuda"`` as directly writable by a Triton kernel,
+so on GCU it takes a detour of ``scratch = torch.empty(..., device="cuda")`` + ``copy_``,
+paying an extra allocation, one zeroing pass and one copy. Keep the common implementation's already
+compile-cached ``_zero_bytes`` / ``_zero_strided`` Triton kernels and only fix the host
+device decision, launching directly on the target buffer; operator semantics and signature are unchanged.
 """
 
 import logging
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def _zero_words(p, N, BLOCK: tl.constexpr):
-    """按 32-bit word 粒度清零：相比 uint8 store 减少 4 倍写指令。"""
+    """Zero at 32-bit word granularity: 4x fewer write instructions than uint8 stores."""
     offs = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     tl.store(p + offs, tl.zeros([BLOCK], p.dtype.element_ty), mask=offs < N)
 
@@ -54,7 +54,7 @@ SKIP_PINNED_CHECK = 1
 
 
 def _as_size(size):
-    """把 ``size`` 归一化为 int 元组，语义与通用实现一致。"""
+    """Normalize ``size`` to an int tuple, semantics identical to the common implementation."""
     if isinstance(size, torch.Size):
         return tuple(int(e) for e in size)
     if isinstance(size, (list, tuple)):
@@ -83,7 +83,7 @@ def _empty(size_t, dtype, layout, device, pin_memory):
 
 
 def _fill_contiguous(buf):
-    """连续 buffer：优先按 32-bit word 发射，字节数非 4 倍数时回退字节路径。"""
+    """Contiguous buffer: prefer 32-bit word launches; fall back to the byte path when bytes are not a multiple of 4."""
     flat = buf.reshape(-1)
     byte_view = flat.view(torch.uint8)
     num_bytes = byte_view.numel()
@@ -133,17 +133,18 @@ def _fill_device(buf):
 
 
 def _fill_any(t):
-    """清零一个 dense buffer（GCU 设备 / UVA pinned / CPU 回退）。"""
+    """Zero a dense buffer (GCU device / UVA pinned / CPU fallback)."""
     if t.numel() == 0 or t.device.type == "meta":
         return
     if (DIRECT_DEVICE and t.device.type == "gcu") or t.device.type == "cuda":
-        # GCU 设备内存可直接被 Triton kernel 寻址，无需中转 scratch。
+        # GCU device memory is directly addressable by Triton kernels, no scratch detour needed.
         _fill_device(t)
     elif not SKIP_PINNED_CHECK and t.is_pinned():
         _fill_device(t)
     else:
-        # pageable host 存储无法被设备 kernel 直接写；零值仍由设备 kernel 产生，
-        # 这里只是把已算好的零 buffer 搬回 host 结果。
+        # Pageable host storage cannot be written directly by a device kernel; zeros are still produced by a device
+        # kernel,
+        # and here the already-computed zero buffer is simply moved back to the host result.
         scratch = torch.empty(tuple(t.shape), dtype=t.dtype, device="cuda")
         _fill_device(scratch)
         t.copy_(scratch)
@@ -193,7 +194,7 @@ def new_zeros(
 def new_zeros_out(
     self, size, *, dtype=None, layout=None, device=None, pin_memory=None, out=None
 ):
-    """``aten::new_zeros.out``：清零调用方的 buffer 并返回其别名。"""
+    """``aten::new_zeros.out``: zero the caller's buffer and return its alias."""
     logger.debug("GEMS_GCU400 NEW_ZEROS_OUT")
     return new_zeros(
         self,

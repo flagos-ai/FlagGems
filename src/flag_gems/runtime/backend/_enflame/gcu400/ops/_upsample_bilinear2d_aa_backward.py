@@ -503,7 +503,7 @@ def _upsample_bilinear2d_aa_backward(
     scales_h=None,
     scales_w=None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE_BILINEAR2D_AA_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_BILINEAR2D_AA_BACKWARD")
     N, C, H_in, W_in = input_size
     H_out, W_out = output_size
 

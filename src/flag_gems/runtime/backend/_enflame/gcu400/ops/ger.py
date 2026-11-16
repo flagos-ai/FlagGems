@@ -431,7 +431,7 @@ class _Ger(torch.autograd.Function):
 
 
 def run(self, vec2, out=None):
-    logger.debug("GEMS GER")
+    logger.debug("GEMS_ENFLAME_GCU400 GER")
     if not isinstance(self, torch.Tensor) or not isinstance(vec2, torch.Tensor):
         raise TypeError("ger: expected Tensor arguments")
     if self.dim() != 1:

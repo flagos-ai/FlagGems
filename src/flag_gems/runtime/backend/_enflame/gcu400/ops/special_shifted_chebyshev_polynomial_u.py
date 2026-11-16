@@ -35,7 +35,7 @@ _I64_NARROWED = None
 
 
 def _int64_narrowed(sample):
-    """探测传输层是否把 int64 窄化为 int32 word 布局（P17，进程内缓存一次）。"""
+    """Detect whether the transport narrows int64 into an int32 word layout (P17, cached once per process)."""
     global _I64_NARROWED
     if _I64_NARROWED is None:
         probe = torch.tensor([(1 << 32) + 1], dtype=torch.int64, device="cpu")
@@ -44,7 +44,7 @@ def _int64_narrowed(sample):
 
 
 def _narrowed_i32_alias(t):
-    """窄化布局的 int64 张量 -> 同形 int32 视图（元素 i 即物理 word i）。"""
+    """Narrowed-layout int64 tensor -> same-shape int32 view (element i is physical word i)."""
     alias = torch.empty(0, dtype=torch.int32, device=t.device)
     alias.set_(t.untyped_storage(), t.storage_offset(), t.shape, t.stride())
     return alias
@@ -138,7 +138,7 @@ def shifted_chebyshev_polynomial_u_kernel_scalar_n(x, n):
 
 
 def special_shifted_chebyshev_polynomial_u(x, n):
-    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U")
     # shifted_chebyshev_polynomial_u_cuda only supports float32
     if x.dtype not in (torch.float32,):
         raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")
@@ -151,7 +151,7 @@ def special_shifted_chebyshev_polynomial_u(x, n):
 
 
 def special_shifted_chebyshev_polynomial_u_(x, n):
-    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U_")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U_")
     # shifted_chebyshev_polynomial_u_cuda only supports float32
     if x.dtype not in (torch.float32,):
         raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")

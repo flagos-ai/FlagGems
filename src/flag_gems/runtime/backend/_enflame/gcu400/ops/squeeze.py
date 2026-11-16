@@ -88,7 +88,7 @@ def squeeze(self: torch.Tensor, dim=None) -> torch.Tensor:
         torch.Tensor: A view of ``self`` with the selected size-1 dimensions
         removed, which is 0-d when every dimension was dropped.
     """
-    logger.debug("GEMS SQUEEZE")
+    logger.debug("GEMS_ENFLAME_GCU400 SQUEEZE")
 
     if dim is None:
         kept = [i for i, size in enumerate(self.shape) if size != 1]

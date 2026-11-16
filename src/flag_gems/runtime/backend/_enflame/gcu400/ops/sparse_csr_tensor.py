@@ -124,7 +124,7 @@ def sparse_csr_tensor(
     never inferred from ``values`` (the ATen factory defaults it to float32
     and rejects a mismatch), and ``values`` is retained by reference.
     """
-    logger.debug("GEMS SPARSE_CSR_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_CSR_TENSOR")
     # dtype is never inferred from values: the factory defaults to float32 and
     # requires values.dtype to match the requested dtype exactly.
     requested = _FLOAT32 if dtype is None else dtype

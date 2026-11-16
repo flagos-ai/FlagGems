@@ -119,7 +119,7 @@ UNROLL = 4
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS UNIFORM")
+    logger.debug("GEMS_ENFLAME_GCU400 UNIFORM")
     N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
@@ -133,7 +133,7 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
 
 
 def uniform(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS UNIFORM")
+    logger.debug("GEMS_ENFLAME_GCU400 UNIFORM")
     # aten::uniform rejects an empty interval before launch; mirror that so
     # from > to raises instead of silently producing out-of-range values.
     if from_ > to:

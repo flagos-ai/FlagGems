@@ -349,7 +349,7 @@ def _compact_order(strides):
 
 
 def to_sparse_semi_structured(dense):
-    logger.debug("GEMS TO_SPARSE_SEMI_STRUCTURED")
+    logger.debug("GEMS_ENFLAME_GCU400 TO_SPARSE_SEMI_STRUCTURED")
     if not isinstance(dense, torch.Tensor):
         raise RuntimeError(
             "_to_sparse_semi_structured: dense argument must be a Tensor"

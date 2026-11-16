@@ -135,10 +135,11 @@ def _mixed_dtypes_linear_kernel(
 
 
 def mixed_dtypes_linear(input, weight, scale, bias=None, activation=None):
-    # 常量日志已关闭（fix4 等价改写）
+    # Constant logging is disabled (fix4 equivalent rewrite)
 
-    # kernel 的 stride 按连续布局硬编码（stride_xm=K / stride_wn=ncols）；
-    # 非连续视图先物化为连续副本，避免按错误地址读取 input / weight / scale。
+    # Kernel strides are hardcoded for contiguous layout (stride_xm=K / stride_wn=ncols);
+    # non-contiguous views are materialized contiguous first, avoiding wrong addresses for input / weight / scale.
+    logger.debug("GEMS_ENFLAME_GCU400 MIXED_DTYPES_LINEAR")
     if not input.is_contiguous():
         input = input.contiguous()
     if not weight.is_contiguous():

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 from typing import Optional
 
@@ -20,6 +21,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -211,6 +214,7 @@ def apply_rotary_pos_emb(
     rotary_interleaved: bool = False,
     inplace: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 APPLY_ROTARY_POS_EMB")
     assert k.shape[-1] == q.shape[-1]
     assert cos.shape[-1] == sin.shape[-1]
     assert cos.shape[-1] * 2 == q.shape[-1]

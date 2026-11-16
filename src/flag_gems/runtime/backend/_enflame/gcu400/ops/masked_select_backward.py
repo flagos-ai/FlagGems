@@ -19,6 +19,7 @@ backend ("Pipeline run failed: PassManager execution failed").  Both dtypes
 have a native composite implementation that is exact, so route them there;
 complex64 and the real dtypes stay on the Triton path.
 """
+import logging
 
 import torch
 
@@ -27,6 +28,9 @@ from flag_gems.ops.masked_select_backward import (
     masked_select_backward as _generic_masked_select_backward,
 )
 from flag_gems.runtime.backend._enflame.gcu400.ops.copy import copy_ as _gcu_copy_
+
+logger = logging.getLogger(__name__)
+
 
 # The generic implementation restores non-contiguous results through the shared
 # copy_, whose strided store mis-addresses the tail on this backend (transposed
@@ -41,6 +45,7 @@ _NATIVE_DTYPES = (torch.float64, torch.complex128)
 
 
 def masked_select_backward(grad, input, mask):
+    logger.debug("GEMS_ENFLAME_GCU400 MASKED_SELECT_BACKWARD")
     if (
         grad.dtype in _NATIVE_DTYPES
         # Non-contiguous inputs take the op's broadcast/as_strided route, whose

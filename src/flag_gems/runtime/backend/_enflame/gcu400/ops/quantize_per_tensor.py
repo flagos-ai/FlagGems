@@ -1091,14 +1091,14 @@ def _make_per_tensor_from_int(int_repr, scale, zero_point):
 
 
 def quantize_per_tensor(a, scale, zero_point, dtype):
-    logger.debug("GEMS QUANTIZE_PER_TENSOR")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZE_PER_TENSOR")
     _check_zero_point_range(zero_point, dtype)
     int_repr = _quantize_per_tensor_impl(a, scale, zero_point, dtype)
     return _make_per_tensor_from_int(int_repr, float(scale), int(zero_point))
 
 
 def quantize_per_tensor_out(a, scale, zero_point, dtype, *, out=None):
-    logger.debug("GEMS QUANTIZE_PER_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZE_PER_TENSOR_OUT")
     _check_zero_point_range(zero_point, dtype)
     if out is None:
         raise RuntimeError("quantize_per_tensor.out: argument 'out' is required")

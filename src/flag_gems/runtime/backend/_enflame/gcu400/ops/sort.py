@@ -124,16 +124,16 @@ def compute_global_hist_kernel(
     descending: tl.constexpr,
 ):
     # arr_ptr: (m, n)
-    # out_ptr: per-CTA partial 直方图 (grid_n, m, num_passes, r)
+    # out_ptr: per-CTA partial histogram (grid_n, m, num_passes, r)
     #
-    # start_pass: 本次统计的起始 pass 号。LSD radix 每个 pass 都会重排元素，
-    # 块内各 bin 的计数随排列变化，因此直方图必须针对当前排列、逐 pass 重算，
-    # 不能一次算完所有 pass 复用。num_passes=1 时即为单 pass 直方图。
+    # start_pass: first pass number of this statistics run. LSD radix reorders elements every pass,
+    # so per-bin counts inside a block change with the permutation, so the histogram must be recomputed
+    # per pass for the current permutation, not computed once for all passes. num_passes=1 is a single-pass histogram.
     #
-    # 无原子化说明：cur_m 由 pid_m_base 按 grid_y_m 步进遍历，行与行天然互斥，
-    # 因此同一 (cur_m, p, bin) 的写者只可能来自 pid_n 维度。每个 pid_n 写自己的
-    # partial 槽位即可，跨 CTA 的累加改用 reduce_sum（在 sweep 内对 partial 求和，
-    # 替代 atomic_add）。
+    # No-atomics explanation: cur_m steps from pid_m_base by grid_y_m, so rows are naturally exclusive,
+    # therefore writers of the same (cur_m, p, bin) can only come from the pid_n dimension. Each pid_n writes its own
+    # partial slot, and cross-CTA accumulation uses reduce_sum (summing partials inside sweep,
+    # replacing atomic_add).
     pid_n = tl.program_id(0)
     pid_m_base = tl.program_id(1)
     grid_y_m = tl.num_programs(1)
@@ -149,7 +149,7 @@ def compute_global_hist_kernel(
             bit_offset = (p + start_pass) * num_bits_per_pass
             for r_start in range(0, r, TILE_R):  # parallel
                 bin_indices = r_start + tl.arange(0, TILE_R)
-                # int32 计数即可（count <= n < 2**30），比 int64 省一半 DSM
+                # int32 counts suffice (count <= n < 2**30), halving DSM versus int64
                 acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int32)
                 for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
                     n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
@@ -168,26 +168,27 @@ def compute_global_hist_kernel(
 def block_base_kernel(
     hist_ptr, base_ptr, m, r: tl.constexpr, grid_n, GRID_P: tl.constexpr
 ):
-    # hist_ptr: (grid_n, m, 1, r) 展平后元素 (g, row, bin) 下标为 (g * m + row) * r + bin
-    # base_ptr: 同 shape，写出每个 (块, 行, bin) 在输出中的全局起始位置：
+    # hist_ptr: (grid_n, m, 1, r) flattened; element (g, row, bin) index is (g * m + row) * r + bin
+    # base_ptr: same shape, writes each (block, row, bin)'s global start position in the output:
     #           base[g, row, b] = sum_{b' < b} total(row, b')
     #                           + sum_{g' < g} hist[g', row, b]
     #
-    # 跨 CTA 归约用 reduce_sum（对 partial 直方图按块求和）替代 atomic_add；
-    # 与"每行只算一次"的向量化实现：row_total 以 (r,) 向量一次归约整行全部 bin，
-    # 各行之间无依赖，天然并行。不使用 torch.cumsum（flag_gems 的 cumsum 在
-    # M=1、K > 255 时会以 grid.z = K 启动而超硬件上限，见 Section 9 条目 31）。
+    # cross-CTA reduction uses reduce_sum (summing partial histograms by block) instead of atomic_add;
+    # with the "each row computed once" vectorized implementation: row_total reduces all bins of a row at once as an
+    # (r,) vector,
+    # rows are independent and naturally parallel. torch.cumsum is not used (flag_gems cumsum
+    # launches with grid.z = K at M=1, K > 255, exceeding the hardware limit, see Section 9 item 31).
     pid = tl.program_id(0)
     bin_all = tl.arange(0, r)
 
     for row in range(pid, m, GRID_P):
-        # reduce_sum：整行每 bin 的总数 = 所有 CTA 块 partial 之和
+        # reduce_sum: each bin's whole-row total = sum of all CTA blocks' partials
         row_total = tl.zeros((r,), dtype=tl.int32)
         for g in range(0, grid_n):
             row_total += tl.load(hist_ptr + (g * m + row) * r + bin_all)
-        bin_prefix = tl.cumsum(row_total, axis=0) - row_total  # 跨 bin 排他前缀
+        bin_prefix = tl.cumsum(row_total, axis=0) - row_total  # exclusive prefix across bins
 
-        # 跨 CTA 块的排他前缀（同一 (row, bin) 在 pid_n 方向上的累计）
+        # Exclusive prefix across CTA blocks (accumulation of the same (row, bin) along pid_n)
         running = tl.zeros((r,), dtype=tl.int32)
         for g in range(0, grid_n):
             hist_row = tl.load(hist_ptr + (g * m + row) * r + bin_all)
@@ -201,7 +202,7 @@ def sweep(
     associate_arr_ptr,  # inputs: (key & value)
     out_ptr,
     associate_out_ptr,  # outputs: (key & value)
-    block_base_ptr,  # (grid_n, m, 1, r)：每 (CTA 块, 行, bin) 的全局起始位置；SINGLE_BLOCK 时为 None
+    block_base_ptr,  # (grid_n, m, 1, r): global start of each (CTA block, row, bin); None for SINGLE_BLOCK
     bit_offset,
     m,
     N,
@@ -215,17 +216,18 @@ def sweep(
 
     # arr_ptr: (m, N)
     # out_ptr: (m, N)
-    # block_base_ptr: (grid_n, m, 1, r)，由 block_base_kernel 预计算
+    # block_base_ptr: (grid_n, m, 1, r), precomputed by block_base_kernel
 
     # grid: (grid_n, grid_y_m, grid_r)
     #
-    # 原实现的 decoupled lookback 会让所有 CTA 沿 pid_n 串行等待，实测是大 shape 的
-    # 主要瓶颈；原子累加又被标量原子 0.39 G elem/s 卡死。本实现彻底去掉这两者：
-    #   - 跨 CTA 计数归约用 reduce_sum（partial 直方图 + block_base_kernel 求和）
-    #     替代 atomic_add
-    #   - block_base 由 block_base_kernel 预计算，kernel 内只做块内排他前缀 + scatter
-    #   - SINGLE_BLOCK（grid_n == 1）时块内计数即全局计数，边计数边排前缀，
-    #     连 hist kernel 都不需要，每 pass 只剩一次 launch
+    # The original decoupled lookback made all CTAs wait serially along pid_n, measured as the main
+    # bottleneck on large shapes; atomic accumulation was capped by scalar atomics at 0.39 G elem/s. This implementation
+    # removes both:
+    #   - cross-CTA count reduction uses reduce_sum (partial histogram + block_base_kernel sum)
+    #     instead of atomic_add
+    #   - block_base is precomputed by block_base_kernel; the kernel only does in-block exclusive prefix + scatter
+    #   - with SINGLE_BLOCK (grid_n == 1) in-block counts are global counts, prefix is computed while counting,
+    #     no hist kernel is needed, leaving one launch per pass
 
     pid_n = tl.program_id(0)
     pid_m_base = tl.program_id(1)
@@ -252,7 +254,7 @@ def sweep(
             )
 
         if SINGLE_BLOCK:
-            # 整行只属于本 CTA：按 bin 递增顺序累计即可得到排他前缀
+            # A whole row belongs to this CTA: accumulate bins in increasing order for the exclusive prefix
             running_prefix = tl.zeros((), dtype=tl.int32)
 
         # since triton can only use scalar as condition, loop by bin_index
@@ -261,7 +263,7 @@ def sweep(
             matches_i = matches.to(tl.int32)
             local_ex_cumsum = tl.cumsum(matches_i, axis=0) - matches_i  # (TILE_N, )
 
-            # 本 (CTA 块, 行, bin) 在输出中的全局起始位置
+            # Global start position in the output for this (CTA block, row, bin)
             if SINGLE_BLOCK:
                 block_base = running_prefix
                 running_prefix += tl.sum(matches_i, axis=0)
@@ -281,12 +283,12 @@ def sweep(
 
 @triton.jit
 def sort_small_kernel(
-    arr_ptr,  # (m, N) 初始输入，同时作为 ping-pong 的 buffer A
-    idx_ptr,  # (m, N) 初始索引，buffer A
+    arr_ptr,  # (m, N) initial input, also ping-pong buffer A
+    idx_ptr,  # (m, N) initial indices, buffer A
     tmp_arr_ptr,  # (m, N) ping-pong buffer B
     tmp_idx_ptr,  # (m, N) ping-pong buffer B
-    out_ptr,  # (m, N) 最终结果
-    out_idx_ptr,  # (m, N) 最终索引
+    out_ptr,  # (m, N) final result
+    out_idx_ptr,  # (m, N) final indices
     m,
     N,
     n_passes: tl.constexpr,
@@ -294,13 +296,13 @@ def sort_small_kernel(
     descending: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
-    # SINGLE_BLOCK（grid_n == 1，整行由一个 CTA 独占）专用：把 LSD radix 的
-    # n_passes 轮全部融合进一次 launch，消除 8 次 kernel 启动开销。
+    # SINGLE_BLOCK (grid_n == 1, one CTA owns a whole row) dedicated: fuse all
+    # n_passes rounds of LSD radix into one launch, removing 8 kernel launches.
     #
-    # 每 pass 用两个全局 buffer 做 ping-pong：src 读、dst 写（按 bin 排他前缀
-    # scatter），下一个 pass 交换。整个过程仍是纯 Triton kernel，tmp buffer 只是
-    # 算子内部的暂存（与 R6 的 arr_in/arr_out/indices_in/indices_out 同量）。
-    # tl.debug_barrier() 保证同一 CTA 内上一 pass 的 store 对下一 pass 的 load 可见。
+    # Each pass ping-pongs two global buffers: src read, dst write (scatter by bin exclusive
+    # prefix), swapped for the next pass. The whole process is still a pure Triton kernel; tmp buffers are only
+    # operator-internal staging (same amount as R6's arr_in/arr_out/indices_in/indices_out).
+    # tl.debug_barrier() guarantees the previous pass's store is visible to the next pass's load within one CTA.
     r: tl.constexpr = 2**k_bits
     bfe_mask: tl.constexpr = (1 << k_bits) - 1
     offs = tl.arange(0, TILE_N)
@@ -328,7 +330,8 @@ def sort_small_kernel(
             arr_u = convert_to_uint_preverse_order(arr, descending)
             key = (arr_u >> (p * k_bits)) & bfe_mask  # (TILE_N, )
 
-            # 块内计数即全局计数（整行只有一个 CTA），按 bin 递增累计得到排他前缀
+            # In-block counts are global counts (one CTA per row), accumulate bins in increasing order for the exclusive
+            # prefix
             running = tl.zeros((), dtype=tl.int32)
             for b in tl.static_range(0, r):
                 matches = mask & (key == b)
@@ -348,8 +351,8 @@ def radix_sort(arr, k_bits=8, descending=False):
     dtype = arr.dtype
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
 
-    # hist 与 sweep 必须使用相同的 CTA 块边界 CTA_TILE_N，sweep 内 reduce_sum
-    # 归约出的 block_base 才能与 sweep 的 pid_n 一一对应。
+    # hist and sweep must use the same CTA block boundary CTA_TILE_N, so sweep's reduce_sum
+    # block_base corresponds one-to-one with sweep's pid_n.
     TILE_N_HIST = 1024
     TILE_N_SWEEP = 2048
     while triton.cdiv(n, TILE_N_SWEEP) > 65535:
@@ -359,24 +362,24 @@ def radix_sort(arr, k_bits=8, descending=False):
 
     num_bins = 2**k_bits
     n_passes = triton.cdiv(num_bits, k_bits)
-    # hist kernel 的 bin 维必须与实际 num_bins 一致：k_bits=2 时若仍用固定 16，
-    # bin_indices 会写出 (r=16) 而 buffer 只有 r=4 宽，造成越界写。
+    # The hist kernel's bin dimension must match the actual num_bins: with k_bits=2, keeping a fixed 16
+    # writes bin_indices of (r=16) into a buffer only r=4 wide, causing out-of-bounds writes.
     TILE_R_HIST = num_bins
     TILE_R_SWEEP = 8
 
     grid_n = triton.cdiv(n, CTA_TILE_N)
     grid_y_m = min(m, 255)
-    # grid_n == 1 时整行都在一个 CTA 内，走 sort_small_kernel 一次 launch 完成全部 pass
+    # With grid_n == 1 a whole row is in one CTA, so sort_small_kernel finishes all passes in one launch
     single_block = grid_n == 1
     tile_r_sweep = TILE_R_SWEEP
 
     with torch_device_fn.device(arr.device):
         # sort
         arr_in = torch.clone(arr)
-        # NOTE: indices 必须用 int32 传给 kernel。GCU400 上 kernel 参数为 int64 Tensor 时
-        # 需要 TORCH_GCU_ENABLE_INT64_AND_UINT64=1 才能正确按 int64 寻址，否则索引错乱
-        # (实测 idx_match_ratio 仅 0.4%)。n < 2**30 已由上方 assert 保证，故用 int32 传输，
-        # 最终结果再转回 int64。同时也把 associate 的每 pass 访存流量减半。
+        # NOTE: indices must be passed to the kernel as int32. On GCU400 an int64 Tensor kernel argument
+        # needs TORCH_GCU_ENABLE_INT64_AND_UINT64=1 for correct int64 addressing, otherwise indices are scrambled
+        # (measured idx_match_ratio only 0.4%). n < 2**30 is guaranteed by the assert above, so use int32 transfer,
+        # then convert the final result back to int64. This also halves per-pass memory traffic of associate.
         indices_in = (
             torch.arange(0, n, dtype=torch.int32, device=arr_in.device)
             .broadcast_to(arr.shape)
@@ -386,8 +389,8 @@ def radix_sort(arr, k_bits=8, descending=False):
         indices_out = torch.empty_like(indices_in)
 
         if single_block:
-            # 整行一个 CTA：一次 kernel 内 ping-pong 完成全部 n_passes 轮，
-            # 把 8 次 kernel 启动压缩成 1 次（小 shape 由 launch 开销主导）。
+            # One CTA per row: ping-pong all n_passes rounds inside one kernel,
+            # compressing 8 kernel launches into 1 (small shapes are launch-overhead dominated).
             sorted_arr = torch.empty_like(arr)
             sorted_idx = torch.empty_like(indices_in)
             sort_small_kernel[(min(m, 1024),)](
@@ -406,7 +409,7 @@ def radix_sort(arr, k_bits=8, descending=False):
             )
             return sorted_arr, sorted_idx.to(torch.int64)
 
-        # 多块路径：每 pass = hist(独占写) + reduce_sum 前缀 + sweep scatter
+        # Multi-block path: each pass = hist (exclusive writes) + reduce_sum prefix + sweep scatter
         hist_blocks = torch.empty(
             (grid_n, m, 1, num_bins), device=arr.device, dtype=torch.int32
         )
@@ -418,9 +421,10 @@ def radix_sort(arr, k_bits=8, descending=False):
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
-            # 1) 用当前排列重算单 pass 的 per-CTA 直方图（每块独占写，无 atomic_add）。
-            #    不能一次算完所有 pass 再复用：元素在每个 pass 后都会被重排，
-            #    块内各 bin 的计数随之变化，复用会导致后续 pass 的 block_base 错位。
+            # 1) Recompute the single-pass per-CTA histogram for the current permutation (each block writes exclusively,
+            # no atomic_add).
+            #    Cannot compute all passes once and reuse: every pass reorders elements,
+            #    so per-bin counts inside a block change; reuse would misalign later passes' block_base.
             compute_global_hist_kernel[(grid_n, grid_y_m, 1)](
                 arr_in,
                 hist_blocks,
@@ -434,12 +438,12 @@ def radix_sort(arr, k_bits=8, descending=False):
                 k_bits,
                 descending,
             )
-            # 2) reduce_sum 归约 partial 直方图 + 排他前缀，得到每 (块, 行, bin)
-            #    的全局起始位置（替代 atomic_add 与 decoupled lookback）
+            # 2) reduce_sum the partial histogram + exclusive prefix to get each (block, row, bin)'s
+            #    global start position (replacing atomic_add and decoupled lookback)
             block_base_kernel[(min(m, 1024),)](
                 hist_blocks, block_base_buf, m, num_bins, grid_n, 1024
             )
-            # 3) sweep：块内排他前缀 + scatter
+            # 3) sweep: in-block exclusive prefix + scatter
             sweep[grid_for_sweep](
                 arr_in,
                 indices_in,
@@ -526,20 +530,20 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
         out, out_index32 = _sort_mradix.sort_mradix(inp, inp.shape, descending)
         out_index = out_index32.to(torch.int64)
     else:
-        # radix 每 pass 的成本 ∝ num_bins（逐 bin 比较 + cumsum），总计算量 ∝
-        # 2**k * num_bits/k：k=4 → 128 单位，k=2 → 64 单位（计算减半），代价是
-        # pass 数翻倍。
-        #   - n <= 2048 走 single_block 融合 kernel：多 pass 全在 1 次 launch 内完成，
-        #     计算减半是净收益（实测 2.11x）。
-        #   - n > 2048 走 multi-block：pass 翻倍意味着 hist 每 pass 重读全数组、
-        #     launch 翻倍，实测反而劣化 0.76x，故保持 k=4。
+        # Per-pass radix cost scales with num_bins (per-bin compare + cumsum); total compute scales as
+        # 2**k * num_bits/k: k=4 -> 128 units, k=2 -> 64 units (half the compute), at the cost of
+        # doubling passes.
+        #   - n <= 2048 uses the single_block fused kernel: all passes in 1 launch,
+        #     halving compute is a net gain (measured 2.11x).
+        #   - n > 2048 uses multi-block: doubled passes mean hist rereads the whole array per pass and
+        #     doubled launches, measured 0.76x worse, so keep k=4.
         if dtype == torch.bool:
             num_bits_per_pass = 1
         elif sort_elem_cnt <= 2048:
             num_bits_per_pass = 2
         else:
-            # k=3（r=8, 11 passes）实测大 shape 劣化 0.38x：pass 数增加带来的
-            # hist 全数组重读 + launch 增加，远超每 pass 计算减半的收益，已否决。
+            # k=3 (r=8, 11 passes) measured 0.38x worse on large shapes: extra passes bring
+            # hist full-array rereads + more launches, far exceeding the halved per-pass compute; rejected.
             num_bits_per_pass = 4
         out, out_index = radix_sort(inp, num_bits_per_pass, descending)
 

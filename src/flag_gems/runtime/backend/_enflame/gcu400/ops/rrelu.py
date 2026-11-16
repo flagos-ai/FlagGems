@@ -49,7 +49,7 @@ def _check_args(lower, upper, generator):
 # aten::rrelu(Tensor self, Scalar lower=0.125, Scalar upper=0.33333333333333331,
 #             bool training=False, Generator? generator=None) -> Tensor
 def rrelu(self, lower=0.125, upper=0.33333333333333331, training=False, generator=None):
-    logger.debug("GEMS RRELU")
+    logger.debug("GEMS_ENFLAME_GCU400 RRELU")
     _check_args(lower, upper, generator)
     if training:
         # noise is auxiliary random sampling in [lower, upper]; the rrelu
@@ -65,7 +65,7 @@ def rrelu(self, lower=0.125, upper=0.33333333333333331, training=False, generato
 def rrelu_(
     self, lower=0.125, upper=0.33333333333333331, training=False, generator=None
 ):
-    logger.debug("GEMS RRELU_")
+    logger.debug("GEMS_ENFLAME_GCU400 RRELU_")
     _check_args(lower, upper, generator)
     if training:
         noise = torch.rand_like(self) * (upper - lower) + lower

@@ -33,7 +33,7 @@ def _nested_view_from_buffer_copy(
         _nested_view_from_buffer_copy as _metax_nested_view_from_buffer_copy,
     )
 
-    logger.debug("GEMS _NESTED_VIEW_FROM_BUFFER_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_VIEW_FROM_BUFFER_COPY")
     return _metax_nested_view_from_buffer_copy(
         self, nested_size, nested_strides, offsets
     )

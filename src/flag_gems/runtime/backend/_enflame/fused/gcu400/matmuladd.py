@@ -207,5 +207,5 @@ def matmuladd(input, other, bias):
     """
     Matrix multiplication with addition: output = matmul(input, other) + bias
     """
-    logger.debug("GEMS MATMULADD")
+    logger.debug("GEMS_ENFLAME_GCU400 MATMULADD")
     return _matmuladd(input, other, bias)

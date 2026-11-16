@@ -27,17 +27,19 @@ GCU_MAX_GRID_Y = 255
 
 
 def _select_addmm_config(M, N, K, dtype):
-    """按 shape 与 dtype 确定性选择 GEMM tile；避免 autotune 的跨 dtype 误判。"""
+    """Select GEMM tiles deterministically by shape and dtype; avoid autotune's cross-dtype misjudgment."""
     if K <= 64 or M <= 64 or N <= 64:
-        # 小矩阵只需小 tile，避免大量被 mask 掉的无效计算
+        # Small matrices need small tiles to avoid large amounts of masked-out work
         block_m, block_n, block_k = 32, 64, 32 if K <= 32 else 64
         num_warps = 4
     else:
-        # 大 M 路径统一 128 行块：GCU400 实测优于按 M/dtype 分到 256，且避免跨 dtype 抖动
+        # Large-M path uses a uniform 128-row block: measured better than splitting to 256 by M/dtype on GCU400, and
+        # avoids cross-dtype jitter
         block_m = 128
-        # N 在 512 以内时 128 的列块可整除常见 shape，让 EVEN 快速路径生效
+        # For N <= 512 a 128-column block divides common shapes evenly, enabling the EVEN fast path
         block_n = 128 if N <= 512 else 256
-        # 16-bit 的 256 深 K 块把循环次数减半；仅当 K 可整除时才启用，避免失去 EVEN 路径
+        # For 16-bit, a 256-deep K block halves the loop count; enabled only when K divides evenly, to keep the EVEN
+        # path
         block_k = 256 if dtype != torch.float32 and K % 256 == 0 else 128
         num_warps = 2 if dtype == torch.float32 or M >= 1024 else 4
 
@@ -74,13 +76,14 @@ def _classify_bias(bias, m, n):
 
 
 def _select_addmm_out_config(M, N, K, dtype):
-    """addmm_out 的独立 tile 分派；out 由调用方提供，单独调优不影响 addmm 路径。"""
+    """Independent tile dispatch for addmm_out; out is caller-provided, so tuning it does not affect the addmm path."""
     block_m, block_n, block_k, num_warps, num_stages = _select_addmm_config(
         M, N, K, dtype
     )
-    # out 变体把大 M 行块回落到 128，减少 DSM 压力
+    # The out variant drops large-M row blocks back to 128 to reduce DSM pressure
     block_m = 128 if M >= 1024 else block_m
-    # out 变体统一 256 列块；该档位实测 fp16 加速比与 fp16 gems 延迟均为最优
+    # The out variant uses a uniform 256-column block; this tier measured best in both fp16 speedup and fp16 gems
+    # latency
     block_n = 256 if N > 64 else block_n
     num_stages = 2
     return block_m, block_n, block_k, num_warps, num_stages
@@ -136,7 +139,8 @@ def addmm_kernel(
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         if EVEN:
-            # 三个维度都能被 tile 整除时越界元素不存在，编译期只保留无 mask 的点积流水
+            # When all three dimensions are divisible by the tile, no out-of-bounds elements exist, so compile time
+            # keeps only the unmasked dot pipeline
             a = tl.load(a_ptrs)
             b = tl.load(b_ptrs)
         else:

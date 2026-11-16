@@ -138,7 +138,7 @@ def detach_copy(self: torch.Tensor) -> torch.Tensor:
     reassembled with ``torch.view_as_complex`` (Triton has no complex dtype
     mapping, so the kernels themselves stay real-valued).
     """
-    logger.debug("GEMS DETACH_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 DETACH_COPY")
     # Lazy conjugate/negative bits must be materialized before the kernels
     # read raw storage (no-op views are returned untouched).
     self = _resolve_lazy_bits(self)

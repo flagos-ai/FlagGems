@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 einsum 特化：在 use_gems() 上下文内把常见 equation 分派到 Triton 路径。
+"""GCU400 einsum specialization: dispatch common equations to Triton paths inside the use_gems() context.
 
-aten 的通用 einsum 在 enflame 后端会拆成一串 pointwise + 通用归约，
-`i,i->` 在 65536 元素上编译出的单块归约 kernel 需要 2.6MB DSM（硬件上限
-917504B），直接 OutOfResources；`i,j->ij` 落到广播 mul 的 gather 路径。
-本模块只在 FlagGems 注册上下文内接管，native 参考仍走原始 aten 实现。
+aten's generic einsum is split into a chain of pointwise + generic reductions on the enflame backend;
+`i,i->` on 65536 elements compiles a single-block reduction kernel needing 2.6MB DSM (hardware limit
+917504B), which directly raises OutOfResources; `i,j->ij` lands on the broadcast-mul gather path.
+This module takes over only within the FlagGems registration context; the native reference still uses the original aten
+implementation.
 """
 
 import logging
@@ -34,7 +35,7 @@ _DOT_BLOCK = 1024
 
 @triton.jit
 def _einsum_dot_partial(x_ptr, y_ptr, partial_ptr, N, BLOCK: tl.constexpr):
-    # 每个 program 归约一个 BLOCK 段，块内状态向量长度固定，DSM 与 N 解耦
+    # Each program reduces one BLOCK segment; the in-block state vector has fixed length, so DSM is decoupled from N
     pid = tl.program_id(0)
     offsets = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < N
@@ -51,7 +52,8 @@ def _einsum_dot_final(partial_ptr, out_ptr, M, BLOCK_M: tl.constexpr):
 
 
 def _einsum_dot(x, y):
-    # 延迟导入避免 flag_gems 初始化期的循环依赖；两阶段分块归约与 N 解耦 DSM 占用
+    # Deferred import avoids circular dependencies during flag_gems initialization; two-stage tiled reduction decouples
+    # DSM from N
     from flag_gems.runtime import torch_device_fn
 
     num_elements = x.numel()
@@ -74,7 +76,7 @@ def _einsum_dot(x, y):
 
 
 def _gems_is_active():
-    # use_gems().__enter__ 通过 enable() 设置该全局，退出时删除
+    # use_gems().__enter__ sets this global via enable() and deletes it on exit
     try:
         import flag_gems
 
@@ -88,7 +90,7 @@ def _dispatch(equation, operands):
     if eq == "i,i->":
         return _einsum_dot(operands[0], operands[1])
     if eq == "i,j->ij":
-        # 直接调用 enflame 的 row-streaming Triton kernel，避免 aten 广播 mul 路径
+        # Call enflame's row-streaming Triton kernel directly, avoiding aten's broadcast-mul path
         import flag_gems
 
         return flag_gems.outer(operands[0], operands[1])
@@ -104,7 +106,7 @@ def _dispatch(equation, operands):
         return operands[0].sum()
     if eq == "ijk->j":
         return operands[0].sum(dim=(0, 2))
-    # 未覆盖的 equation 保持 aten 原生行为，避免影响其它算子
+    # Uncovered equations keep native aten behavior to avoid affecting other operators
     return _ORIGINAL_EINSUM(equation, *operands)
 
 

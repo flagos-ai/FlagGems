@@ -135,7 +135,7 @@ def _fake_quantize_learnable_per_channel_affine_inner(
 def _fake_quantize_learnable_per_channel_affine(
     self, scale, zero_point, axis, quant_min, quant_max, grad_factor=1.0
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE")
     if self.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
         raise TypeError(
             f"unsupported dtype {self.dtype}; only floating-point dtypes are supported"
@@ -157,7 +157,7 @@ def _fake_quantize_learnable_per_channel_affine_out_impl(
     *,
     out=None,
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE_OUT")
     zero_point_rounded = _prepare_zero_point(zero_point, quant_min, quant_max)
     return _fake_quantize_learnable_per_channel_affine_inner(
         self, scale, zero_point_rounded, axis, quant_min, quant_max, out=out

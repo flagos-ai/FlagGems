@@ -2679,7 +2679,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     Returns:
         X: solution tensor of shape (*, N, nrhs)
     """
-    logger.debug("GEMS CHOLESKY_SOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY_SOLVE")
     assert L.dtype in (
         torch.float32,
         torch.float64,
@@ -2924,7 +2924,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
 
 def cholesky_solve_out(B, L, upper=False, *, out):
     """Out variant with direct writes for the common compatible case."""
-    logger.debug("GEMS CHOLESKY_SOLVE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 CHOLESKY_SOLVE_OUT")
     _check_cholesky_solve_out(B, out)
     if _can_write_cholesky_solve_out_direct(B, L, out):
         return cholesky_solve(B, L, upper=upper, _out=out)

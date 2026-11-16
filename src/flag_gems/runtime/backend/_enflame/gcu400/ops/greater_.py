@@ -80,7 +80,7 @@ def _can_use_fast_path(A, B):
 
 
 def greater_(A, B):
-    logger.debug("GEMS GREATER_")
+    logger.debug("GEMS_ENFLAME_GCU400 GREATER_")
     if _can_use_fast_path(A, B):
         n = A.numel()
         if n == 0:

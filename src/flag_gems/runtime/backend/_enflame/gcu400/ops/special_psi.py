@@ -388,10 +388,10 @@ def _strided_args(x, out):
 
 
 def _psi_launch(x, out):
-    # GCU 上 kernel 内的 int64 -> float32 转换会整片产出 NaN（实测 int64 输入
-    # psi(1) 得 NaN，参考实现得 -0.577216），而 ATen 的 integral 路径本来就在
-    # float32 上计算并输出 float32，所以在 host 侧先把 bool/int 输入提升成
-    # float32，数值语义与参考完全一致。
+    # On GCU an in-kernel int64 -> float32 conversion produces NaNs wholesale (measured int64 input
+    # psi(1) gives NaN, reference gives -0.577216), while ATen's integral path already computes in
+    # float32 and outputs float32, so promote bool/int inputs to
+    # float32 on the host; numeric semantics then match the reference exactly.
     if not x.is_floating_point():
         x = x.to(torch.float32)
     n = x.numel()
@@ -471,7 +471,7 @@ class _PsiFunction(torch.autograd.Function):
 
 def special_psi(self, out=None):
     """Elementwise digamma (psi), matching aten::special_psi semantics."""
-    logger.debug("GEMS SPECIAL_PSI")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_PSI")
     if not isinstance(self, torch.Tensor):
         raise TypeError("special_psi expects a torch.Tensor as the first argument")
 
@@ -509,5 +509,5 @@ def special_psi(self, out=None):
 
 def special_psi_out(self, out):
     """``aten::special_psi.out``: write the result into ``out`` and return it."""
-    logger.debug("GEMS SPECIAL_PSI_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_PSI_OUT")
     return special_psi(self, out=out)

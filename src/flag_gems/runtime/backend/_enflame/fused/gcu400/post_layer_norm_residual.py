@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import math
 
@@ -22,6 +23,9 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
+
 
 _ONE_PASS_HEURISTICS = runtime.get_heuristic_config("post_layer_norm_residual")
 
@@ -352,6 +356,7 @@ def post_layer_norm_residual(
     https://github.com/NVIDIA/physicsnemo/blob/65ec388929884436051203bca9dfb912eabd4c18/physicsnemo/nn/module/gnn_layers/mesh_graph_mlp.py#L120-L171
     https://github.com/NVIDIA/physicsnemo/blob/65ec388929884436051203bca9dfb912eabd4c18/physicsnemo/nn/module/gnn_layers/mesh_node_block.py#L70-L91
     """
+    logger.debug("GEMS_ENFLAME_GCU400 POST_LAYER_NORM_RESIDUAL")
     normalized_shape = _normalize_shape(normalized_shape)
     _validate_inputs(input, residual, normalized_shape, weight, bias)
 

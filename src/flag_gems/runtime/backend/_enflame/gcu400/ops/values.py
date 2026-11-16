@@ -58,8 +58,9 @@ def _values(self: torch.Tensor) -> torch.Tensor:
     ``torch._C._AutoDispatchBelowAutograd()``; calling the operator again
     without that context would recurse once registered on the autograd key.
     """
-    # 常量日志已关闭（v7 等价改写）
+    # Constant logging is disabled (v7 equivalent rewrite)
 
+    logger.debug("GEMS_ENFLAME_GCU400 _VALUES")
     if self.layout != torch.sparse_coo:
         backend_names = _NON_COO_BACKEND_NAME.get(self.layout)
         if backend_names is None:

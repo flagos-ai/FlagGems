@@ -11,12 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 def _install_gcu_fp8e4nv_capability_shim():
@@ -176,6 +179,7 @@ def act_quant_triton(
             - The quantized tensor with dtype `torch.float8_e4m3fn`.
             - A tensor of scaling factors with dtype `torch.float32`.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 ACT_QUANT_TRITON")
     assert x.is_contiguous(), "Input tensor must be contiguous"
     assert (
         x.size(-1) % block_size == 0

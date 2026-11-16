@@ -27,7 +27,7 @@ def multiply(A, B):
 
     This is an alias for mul that follows the PyTorch multiply API.
     """
-    logger.debug("GEMS MULTIPLY")
+    logger.debug("GEMS_ENFLAME_GCU400 MULTIPLY")
     if not isinstance(A, torch.Tensor):
         raise ValueError("Unreachable.")
     return mul(A, B)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 addmv：与 mv.py 一致，固定 tile/grid + 核内跨步，不走 autotune。"""
+"""GCU400-specific addmv: like mv.py, fixed tile/grid with in-kernel striding, no autotune."""
 
 import logging
 
@@ -25,7 +25,8 @@ from flag_gems.utils import broadcastable_to, libentry
 
 logger = logging.getLogger(__name__)
 
-# 固定 grid 上限取 GCU400 的计算单元数量级，剩余行块由核内跨步循环覆盖。
+# The fixed grid cap is set to the order of GCU400 compute units; remaining row blocks are covered by an in-kernel
+# stride loop.
 NUM_SIPS = 48
 BLOCK_N = 16
 BLOCK_M = 1024
@@ -82,12 +83,12 @@ def addmv_kernel(
 
 
 def _launch_addmv(self, mat, vec, out, beta, alpha):
-    """addmv / addmv_out 共用的 launch，两者只有 out 的获取方式不同。"""
+    """Launch shared by addmv / addmv_out; the two differ only in how out is obtained."""
     N, M = mat.shape
     bias_is_scalar = self.numel() == 1
     self = self.broadcast_to(out.shape)
-    # t8 批 Step 4 B02：N>=512 时 BLOCK_N 16->32，中/大 shape 提速 1.25~1.43x；
-    # 小 shape 保持 16，避免 (256,256) 约 7~9% 回归。
+    # t8 batch Step 4 B02: with N>=512, BLOCK_N 16->32, mid/large shapes 1.25~1.43x faster;
+    # small shapes keep 16 to avoid a ~7~9% regression at (256,256).
     block_n = 32 if N >= 512 else BLOCK_N
     grid = (min(NUM_SIPS, triton.cdiv(N, block_n)),)
     with torch_device_fn.device(mat.device):

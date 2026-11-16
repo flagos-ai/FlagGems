@@ -23,12 +23,12 @@ from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
-# 三条 unique 路径的 tile / CTA 配置；提为模块常量便于按 shape 分档与
-# 批量扫描。默认值保持原实现，其中 SIMPLE_TILE_FLOOR 是 GCU400 修复项。
+# Tile / CTA config of the three unique paths; module constants ease shape tiering and
+# batch sweeps. Defaults keep the original behavior, with SIMPLE_TILE_FLOOR as a GCU400 fix.
 _UNIQUE_TILE_CAP = 8192
-# 15 轮扫描 + 14 轮 A/B 交替复测：tile floor 64 的 3 case 总延迟中位数
-# 7.929 ms，比 32 的 8.297 ms 快约 4.4%；同时把 0-d/1 元素输入的
-# tile_size=1 编译器断言一并消除（下限须 ≥32）。
+# 15 sweeps + 14 alternating A/B rounds: a tile floor of 64 gives a 3-case total latency median of
+# 7.929 ms, ~4.4% faster than 32's 8.297 ms; it also removes the
+# tile_size=1 compiler assertion for 0-d/1-element inputs (the floor must be >=32).
 _UNIQUE_TILE_FLOOR = 64
 _UNIQUE_CTA_HARD_LIMIT = 65536
 _UNIQUE_CTA_FALLBACK = 2048
@@ -384,6 +384,7 @@ def global_quick_unique_flat_kernel(
 def sorted_quick_unique_flat(
     sorted_data: torch.Tensor, return_counts: bool, nan_as_unique: bool = False
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 SORTED_QUICK_UNIQUE_FLAT")
     num_tasks = sorted_data.numel()
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
     tile_size = min(_UNIQUE_TILE_CAP, next_power_num_tasks)
@@ -620,6 +621,7 @@ def sorted_indices_unique_flat(
     return_counts: bool,
     nan_as_unique: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 SORTED_INDICES_UNIQUE_FLAT")
     num_tasks = sorted_data.numel()
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
     tile_size = min(_UNIQUE_TILE_CAP, next_power_num_tasks)
@@ -708,6 +710,7 @@ def simple_unique_flat(
     return_counts: bool,
     nan_as_unique: bool = False,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 SIMPLE_UNIQUE_FLAT")
     num_tasks = sorted_data.numel()
     grid = (1, 1, 1)
 
@@ -735,9 +738,9 @@ def simple_unique_flat(
             return_inverse,
             return_counts,
             num_tasks,
-            # 0-d / 1 元素输入会让 tile_size=1，GCU400 编译器在
-            # tl.cumsum(1 元素张量) 上触发 MLIR TypeRange 断言并 abort(134)；
-            # 下限 32 不改变语义（越界元素被 mask 屏蔽，cumsum 保持）。
+            # 0-d / 1-element inputs make tile_size=1, and the GCU400 compiler triggers an MLIR TypeRange assertion
+            # on tl.cumsum(1-element tensor) and abort(134);
+            # a floor of 32 does not change semantics (out-of-range elements are masked, cumsum is preserved).
             tile_size=max(_UNIQUE_TILE_FLOOR, triton.next_power_of_2(num_tasks)),
             num_warps=_UNIQUE_NUM_WARPS,
             NAN_AS_UNIQUE=nan_as_unique,

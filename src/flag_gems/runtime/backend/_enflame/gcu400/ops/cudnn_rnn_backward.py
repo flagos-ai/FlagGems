@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``cudnn_rnn_backward``（单层单向 LSTM BPTT）。
+"""GCU400-specific ``cudnn_rnn_backward`` (single-layer unidirectional LSTM BPTT).
 
-公共实现按时间步逐步调度：每步 1 次 forward Triton kernel、1 次 backward
-Triton kernel、6 次 BLAS、7 次张量分配。在 GCU 上这些 launch / alloc 的固定
-开销远大于小 shape 的实际计算量。本实现保留两个 Triton kernel 作为核心计算
-路径，同时在 host 侧压缩调度次数：
+The common implementation schedules step by step: per step 1 forward Triton kernel, 1 backward
+Triton kernel, 6 BLAS calls, 7 tensor allocations. On GCU the fixed cost of these launches / allocs
+far exceeds the actual compute for small shapes. This implementation keeps the two Triton kernels as the core
+compute path while compressing scheduling on the host:
 
-* 预分配整段 gate 缓存（FUSED_CACHE），每步用 view 传入 kernel，消除逐步 alloc；
-* 预计算 input projection（PRECOMPUTE_INPUT_PROJ），把 T 次小 GEMM 合成 1 次；
-* 把每步的 weight / bias / input 梯度累加合并为循环结束后的一次批量 BLAS
-  （BATCHED_BLAS），只保留逐步递推必需的 ``grad_gates @ w_hh``。
+* preallocate the whole gate cache (FUSED_CACHE), passing a view to the kernel each step to remove per-step alloc;
+* precompute the input projection (PRECOMPUTE_INPUT_PROJ), merging T small GEMMs into 1;
+* merge per-step weight / bias / input gradient accumulation into one batched BLAS after the loop
+  (BATCHED_BLAS), keeping only ``grad_gates @ w_hh`` required by stepwise recurrence.
 
-``BASELINE_MODE=1`` 直接转发到公共实现，用于采集等价基线；优化后主路径为
-上述融合调度版本。
+``BASELINE_MODE=1`` forwards directly to the common implementation for collecting an equivalent baseline; after
+optimization the main path is the fused scheduling version above.
 """
 
 import logging
@@ -41,7 +41,7 @@ from flag_gems.utils.libentry import libentry
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 编译期配置，由优化迭代按轮次调整，不改变算子语义。
+# Compile-time config, adjusted per optimization round; semantics unchanged.
 BASELINE_MODE = 0
 BATCHED_BLAS = 1
 PRECOMPUTE_INPUT_PROJ = 1
@@ -68,7 +68,8 @@ def _lstm_cell_forward_kernel(
     hidden_size: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """单步前向：把 pre-activation 四门转成激活值并写出 c/h，一个 program 处理一行。"""
+    """Single-step forward: convert the four pre-activation gates into activations and write c/h; one program per
+    row."""
     batch_idx = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_SIZE)
     mask = offsets < hidden_size
@@ -123,7 +124,8 @@ def _lstm_cell_backward_kernel(
     hidden_size: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """单步反向：按链式法则算四门梯度并写回 dc，供上一时间步继续递推。"""
+    """Single-step backward: compute the four gate gradients by the chain rule and write back dc for the previous
+    time step."""
     batch_idx = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_SIZE)
     mask = offsets < hidden_size
@@ -157,7 +159,7 @@ def _lstm_cell_backward_kernel(
 
 
 def _lstm_block_size(hidden_size: int) -> int:
-    """BLOCK_SIZE 覆盖整行 hidden；按 scale 调大可改变线程束工作量。"""
+    """BLOCK_SIZE covers a whole hidden row; increasing it by scale changes per-warp work."""
     block = triton.next_power_of_2(hidden_size) * BLOCK_SIZE_SCALE
     return max(32, min(triton.next_power_of_2(block), 4096))
 
@@ -192,8 +194,8 @@ def cudnn_rnn_backward(
     reserve: torch.Tensor,
     output_mask: list,
 ):
-    """单层单向 LSTM 的 BPTT 梯度，签名与公共实现一致。"""
-    logger.debug("GEMS CUDNN_RNN_BACKWARD")
+    """BPTT gradients of a single-layer unidirectional LSTM; signature matches the common implementation."""
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_RNN_BACKWARD")
     if BASELINE_MODE == 1:
         return _public_baseline(
             input,
@@ -247,8 +249,8 @@ def cudnn_rnn_backward(
 
     block_size = _lstm_block_size(hidden_size)
     grid = (batch_size,)
-    # 一次性分配整段缓存；每步只取 view，不在循环里创建 tensor。
-    # 批量 BLAS 依赖整段 grad_gates 缓存，故两种模式共用同一份缓存。
+    # Allocate the whole cache once; each step only takes a view, no tensor is created inside the loop.
+    # Batched BLAS depends on the whole grad_gates cache, so both modes share the same cache.
     fused_cache = FUSED_CACHE or BATCHED_BLAS
     if fused_cache:
         caches = [
@@ -262,7 +264,7 @@ def cudnn_rnn_backward(
             (seq_len, batch_size, 4 * hidden_size), device=device, dtype=compute_dtype
         )
 
-    # input projection 与时间无关，T 次小 GEMM 合并为 1 次 3D matmul。
+    # The input projection is time-independent, so T small GEMMs are merged into one 3D matmul.
     input_proj = inp_c @ w_ih_c.t() + b_ih_c if PRECOMPUTE_INPUT_PROJ else None
 
     h_prev_list = []
@@ -329,7 +331,7 @@ def cudnn_rnn_backward(
         if grad_hy_in is not None
         else torch.zeros((batch_size, hidden_size), device=device, dtype=compute_dtype)
     )
-    # dc 会被 backward kernel 原地写回；clone 避免污染调用方的 grad_cy 输入。
+    # dc is written back in place by the backward kernel; clone avoids polluting the caller's grad_cy input.
     dc = (
         grad_cy_in.squeeze(0).to(compute_dtype).contiguous()
         if grad_cy_in is not None
@@ -343,7 +345,8 @@ def cudnn_rnn_backward(
         grad_out_seq = go.to(compute_dtype).contiguous()
     zero_go = torch.empty(0, device=device, dtype=compute_dtype)
     has_grad_out = grad_out_seq is not None
-    # 仅当既不做批量 BLAS 又不使用整段缓存时，才需要在循环里逐步写 grad_input。
+    # Only when neither batched BLAS nor the whole-segment cache is used must grad_input be written stepwise in the
+    # loop.
     grad_input_seq = (
         torch.zeros_like(inp_c)
         if output_mask[0] and not (BATCHED_BLAS or fused_cache)
@@ -383,7 +386,7 @@ def cudnn_rnn_backward(
         dh = grad_gates @ w_hh_c
 
     if BATCHED_BLAS:
-        # 所有时间步的 weight / bias / input 梯度一次性批量计算。
+        # Weight / bias / input gradients of all time steps are computed in one batched pass.
         h_prev_stack = flag_gems.stack(h_prev_list, dim=0)
         grad_w_ih_acc = torch.einsum("tbi,tbj->ij", grad_gates_all, inp_c)
         grad_w_hh_acc = torch.einsum("tbi,tbj->ij", grad_gates_all, h_prev_stack)

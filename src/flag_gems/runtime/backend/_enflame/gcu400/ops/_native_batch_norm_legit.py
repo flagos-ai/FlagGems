@@ -70,10 +70,10 @@ def _nbn_no_stats_out_kernel(
     LOOP_STAGES: tl.constexpr,
     WELFORD_MODE: tl.constexpr,
 ):
-    """单 channel 单 CTA：第一遍统计均值方差，第二遍归一化写出。
+    """One channel per CTA: first pass computes mean / variance, second pass normalizes and writes out.
 
-    no_stats_out 没有持久化 running stats，因此专用 kernel 不需要训练分支里的
-    running_mean/running_var 读写与动量更新；统计量始终以 fp32 累积。
+    no_stats_out has no persistent running stats, so the dedicated kernel needs no
+    running_mean/running_var reads or momentum updates from the training branch; statistics always accumulate in fp32.
     """
     feat_pid = tl.program_id(axis=0)
     first_moment = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
@@ -177,7 +177,8 @@ def _nbn_no_stats_out_kernel(
 
 
 def _choose_tile(batch_dim, spatial_dim):
-    """按 2 的幂与元素预算选 tile；两条轴都至少 2 宽，避免 1 维切片布局崩溃。"""
+    """Pick a tile by powers of two and the element budget; both axes are at least 2 wide to avoid 1D slice-layout
+    crashes."""
     block_m = max(2, min(BLOCK_M_CAP, triton.next_power_of_2(batch_dim)))
     max_block_n = max(1, TILE_BUDGET // block_m)
     block_n = max(2, min(triton.next_power_of_2(spatial_dim), max_block_n))
@@ -195,7 +196,7 @@ def _native_batch_norm_legit(
     eps: float,
 ):
     """Batch normalization with in-place running statistics updates."""
-    logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT")
+    logger.debug("GEMS_ENFLAME_GCU400 _NATIVE_BATCH_NORM_LEGIT")
     output, save_mean, save_invstd = batch_norm(
         input,
         weight=weight,
@@ -218,7 +219,7 @@ def _native_batch_norm_legit_no_stats(
     eps: float,
 ):
     """Batch normalization without persistent running statistics."""
-    logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT_NO_STATS")
+    logger.debug("GEMS_ENFLAME_GCU400 _NATIVE_BATCH_NORM_LEGIT_NO_STATS")
     if not training:
         raise RuntimeError("Expected has_running_mean to be true, but got false.")
     channels = input.shape[1]
@@ -258,7 +259,7 @@ def _native_batch_norm_legit_out(
     save_mean: Tensor,
     save_invstd: Tensor,
 ):
-    logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _NATIVE_BATCH_NORM_LEGIT_OUT")
     result = _native_batch_norm_legit(
         input,
         weight,
@@ -284,7 +285,7 @@ def _native_batch_norm_legit_no_stats_out(
     save_mean: Tensor,
     save_invstd: Tensor,
 ):
-    logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT_NO_STATS_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _NATIVE_BATCH_NORM_LEGIT_NO_STATS_OUT")
     if not training:
         raise RuntimeError("Expected has_running_mean to be true, but got false.")
 
@@ -297,7 +298,7 @@ def _native_batch_norm_legit_no_stats_out(
     output_3d = make_3d_for_bn(output_value)
     batch_dim, feat_dim, spatial_dim = input_3d.shape
 
-    # aten 的 out 语义允许输出形状不匹配；此处只调整张量元信息，不做数值拷贝。
+    # ATen's out semantics allow mismatched output shapes; here only tensor metadata is adjusted, with no numeric copy.
     if SHAPE_CHECK:
         if output_3d.shape != input_3d.shape:
             out.resize_as_(input)
@@ -336,7 +337,8 @@ def _native_batch_norm_legit_no_stats_out(
                 num_stages=LAUNCH_STAGES,
             )
         else:
-            # 复用 gcu400 BN kernel 直写三个输出，仍需一组临时 running stats 缓冲。
+            # Write the three outputs directly with the gcu400 BN kernel; a temporary running-stats buffer is still
+            # needed.
             if ALLOC_MODE == 0:
                 running_mean = torch.zeros(
                     feat_dim, dtype=input.dtype, device=input.device
@@ -384,9 +386,9 @@ def _native_batch_norm_legit_no_stats_out(
     return out, save_mean, save_invstd
 
 
-# benchmark 通过 `from flag_gems.ops._native_batch_norm_legit import ...`
-# 直接绑定公共子模块的函数对象，绕过了 SpecOpRegistrar 的顶层属性覆盖。
-# 后端加载完成后把本算子的 gcu400 特化同步发布到该子模块。
+# The benchmark binds the function object of the common submodule directly via
+# `from flag_gems.ops._native_batch_norm_legit import ...`, bypassing SpecOpRegistrar's top-level attribute override.
+# Publish the gcu400 specialization of this operator to that submodule once backend loading finishes.
 _common_nbn_module = sys.modules.get("flag_gems.ops._native_batch_norm_legit")
 if _common_nbn_module is not None:
     _common_nbn_module._native_batch_norm_legit_no_stats_out = (

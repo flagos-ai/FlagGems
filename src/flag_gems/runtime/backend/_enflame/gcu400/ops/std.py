@@ -239,7 +239,7 @@ def _std_dim_kernel_non_inner(
 
 
 def std(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS STD")
+    logger.debug("GEMS_ENFLAME_GCU400 STD")
     effective_correction = 1.0 if correction is None else float(correction)
     original_shape = x.shape
     input_ndim = x.ndim

@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``fractional_max_pool3d_backward``。
+"""GCU400-specific ``fractional_max_pool3d_backward``.
 
-算子语义：把 ``grad_output`` 按 ``indices`` scatter 回输入位置，同一输入位置
-可能被多个输出命中，因此参考实现是累加。本文件提供三条同语义的执行路径：
+Operator semantics: scatter ``grad_output`` back to input positions by ``indices``; the same input position
+may be hit by several outputs, so the reference implementation accumulates. This file provides three
 
-* 2D tile + 标量原子累加（原始实现形态，作为安全 fallback）；
-* 1D flat + 标量原子累加（把每 CTA 负责的元素数放大，压调度开销）；
-* 零原子路径：先用探测 kernel 建 inverse map 判定「每个目标地址是否只有一个
-  写者」，无重复时用普通 ``tl.store`` 直接写；探测到重复或越界则回退到原子
-  路径，保证任意合法 indices 都与参考实现一致。
+semantically equivalent execution paths:
+* 2D tile + scalar atomic accumulation (original shape, kept as a safe fallback);
+* 1D flat + scalar atomic accumulation (enlarge the per-CTA element count to compress scheduling overhead);
+  * zero-atomic path: first build an inverse map with a probe kernel to decide "whether each target address has only one
+  writer"; when there are no duplicates, write directly with plain ``tl.store``; on duplicates or out-of-bounds indices
 
-grad_input 的累加 dtype、tile 形状、launch 参数均由下方 TUNING PARAMS 驱动，
-便于按 shape / dtype 分档，同时避免 autotune 在 GCU 上的多组冷编译。
-公共实现文件未修改。
+fall back to the atomic path, guaranteeing any legal indices match the reference.
+grad_input's accumulation dtype, tile shape and launch parameters are all driven by the TUNING PARAMS below,
+making shape / dtype tiering easy while avoiding autotune's multiple cold compilations on GCU.
 """
 
 import logging
@@ -81,7 +81,7 @@ def _fmp3d_bwd_tile_kernel(
     IS_FP32_ACC: tl.constexpr,
     USE_ATOMIC: tl.constexpr,
 ):
-    """按 (nc 平面, d*h块*w块) 二维 grid 把梯度 scatter 回输入位置。"""
+    """Scatter gradients back to input positions with a 2D (nc plane, d*h*w blocks) grid."""
     pid_plane = tl.program_id(0)
     pid_dhw = tl.program_id(1)
 
@@ -131,7 +131,7 @@ def _fmp3d_bwd_flat_kernel(
     IS_FP32_ACC: tl.constexpr,
     USE_ATOMIC: tl.constexpr,
 ):
-    """按 (nc 平面, 输出空间块) 二维 grid 展平处理，避免 2D tile 的整数分解。"""
+    """Flatten with a 2D (nc plane, output spatial blocks) grid, avoiding 2D tile integer decomposition."""
     pid_plane = tl.program_id(0)
     pid_block = tl.program_id(1)
 
@@ -169,7 +169,7 @@ def _fmp3d_bwd_flat_fixed_kernel(
     IS_FP32_ACC: tl.constexpr,
     USE_ATOMIC: tl.constexpr,
 ):
-    """固定 grid + 核内跨步：program 数与问题规模解耦，匹配 SIP 拓扑。"""
+    """Fixed grid + in-kernel striding: program count is decoupled from problem size and matches the SIP topology."""
     pid = tl.program_id(0)
     blocks_per_plane = tl.cdiv(out_spatial, BLOCK)
     for tile_id in tl.range(pid, total_tiles, GRID_SIZE):
@@ -207,14 +207,15 @@ def _fmp3d_bwd_probe_kernel(
     BLOCK: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """建 inverse map：inv[目标地址] = 写该地址的最大输出序号 + 1。
+    """Build an inverse map: inv[target address] = largest output index writing that address + 1.
 
-    这里必须用 atomic_max 而不是普通 store：同一目标地址可能被多个 program
-    并发写入，普通 store 的最终值是未定义的（既不保证有 lane 写入，也不保证
-    读回与写入一致），会让重复检测偶发漏判，进而让零原子 store 路径覆盖掉
-    本应累加的梯度。atomic_max 是确定性的：重复组里只有序号最大的输出能读到
-    自己，其余输出必然读到不同的值而被判定为重复，从而安全回退到原子路径。
-    同时用 flags[0] 记录越界索引；越界时统一回退到原子路径，由参考语义处理。
+    atomic_max is required here instead of a plain store: several programs may
+    write the same target address concurrently, and a plain store's final value is undefined (neither
+    guaranteeing any lane wrote nor that read-back matches the write), which would make duplicate detection
+    occasionally miss and let the zero-atomic store path overwrite gradients that should have been accumulated.
+    atomic_max is deterministic: in a duplicate group only the largest-index output reads back itself; the rest
+    read a different value and are flagged as duplicates, so the atomic path is used; flags[0] records out-of-bounds
+    indices.
     """
     pid = tl.program_id(0)
     num_blocks = tl.cdiv(total_out, BLOCK)
@@ -244,7 +245,7 @@ def _fmp3d_bwd_dup_kernel(
     BLOCK: tl.constexpr,
     GRID_SIZE: tl.constexpr,
 ):
-    """检查重复：若某输出的 owner 不是自己，说明同一目标地址有多个写者。"""
+    """Check duplicates: if an output's owner is not itself, the same target address has multiple writers."""
     pid = tl.program_id(0)
     num_blocks = tl.cdiv(total_out, BLOCK)
     for block_id in tl.range(pid, num_blocks, GRID_SIZE):
@@ -254,8 +255,8 @@ def _fmp3d_bwd_dup_kernel(
         plane = out_offsets // out_spatial
         target_offsets = plane * in_spatial + idx_vals
         valid_mask = out_mask & (idx_vals >= 0) & (idx_vals < in_spatial)
-        # inv 中存的是「最大输出序号 + 1」，0 表示该目标地址没有被任何输出写过；
-        # 两种情况都说明不能走零原子 store 路径，必须由原子累加兜底。
+        # inv stores "largest output index + 1"; 0 means no output wrote that target address;
+        # both cases forbid the zero-atomic store path, so atomic accumulation must handle them.
         owner = tl.load(inv_ptr + target_offsets, mask=valid_mask, other=0)
         has_dup = (
             tl.sum(
@@ -270,14 +271,15 @@ def _fmp3d_bwd_dup_kernel(
 def _can_use_store_path(
     indices, in_spatial, out_spatial, total_out, device, kernel_mode
 ):
-    """判定是否可以走零原子 store；重复/越界时返回 False 由原子路径兜底。"""
+    """Decide whether zero-atomic store is allowed; return False on duplicates / overflow for the atomic fallback."""
     if kernel_mode not in STORE_MODES:
         return False
     if total_out < STORE_MIN_OUT_ELEMENTS:
         return False
 
     flags = torch.zeros(2, dtype=torch.int32, device=device)
-    # 必须零初始化：0 表示「该目标地址未被写入」，未写的地址一律按重复处理。
+    # Must be zero-initialized: 0 means "that target address was not written", and unwritten addresses are treated as
+    # duplicates.
     inv_map = torch.zeros(
         (in_spatial * (total_out // out_spatial),), dtype=torch.int32, device=device
     )
@@ -332,8 +334,8 @@ def fractional_max_pool3d_backward(
         grad_output = grad_output.contiguous()
         indices = indices.contiguous()
 
-    # 按输出规模分档：大 shape 用零原子 store 路径，小 shape 用大 tile 原子路径，
-    # 避免探测同步与固定 grid 在小 shape 上摊薄不掉固定开销。
+    # Tier by output size: large shapes use zero-atomic store, small shapes use the large-tile atomic path,
+    # so probe synchronization and a fixed grid cannot amortize their cost on small shapes.
     effective_mode = KERNEL_MODE
     if USE_SHAPE_TIER and total_out < TIER_THRESHOLD:
         effective_mode = TIER_SMALL_MODE
@@ -352,7 +354,7 @@ def fractional_max_pool3d_backward(
     if grad_input.numel() == 0:
         return grad_input.to(grad_output.dtype)
 
-    # 零原子路径下每个目标地址只有一个写者；否则沿用标量原子累加语义
+    # Under zero-atomic store each target address has one writer; otherwise keep scalar atomic accumulation semantics
     use_atomic = not use_store_path
     is_fp32_acc = acc_dtype == torch.float32
 

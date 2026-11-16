@@ -12,16 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""floor_out 候选 v1：1D 手写 kernel，大 shape 用 B131072/nw4。
+"""floor_out candidate v1: hand-written 1D kernel, large shapes use B131072/nw4.
 
-生产 floor_func 走 pointwise_dynamic：tl.floor(x.to(tl.float32)).to(x.dtype)，
-ENFLAME max_grid_size=(12,1,1) 让大 shape 并行度不足。
-gt_scalar_ 上已验证 2^24/2^30 档 B131072/nw4 显著优于 B32768/nw4；
-微秒级小 shape 复用生产同一底层调用，避免额外 Python 判断造成回归。
+Production floor_func uses pointwise_dynamic: tl.floor(x.to(tl.float32)).to(x.dtype),
+and ENFLAME max_grid_size=(12,1,1) leaves large shapes under-parallelized.
+On gt_scalar_, B131072/nw4 was verified clearly better than B32768/nw4 at the 2^24/2^30 tiers;
+microsecond small shapes reuse production's same underlying call to avoid regressions from extra Python checks.
 """
+import logging
 
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -34,6 +37,7 @@ def _floor_out_kernel(X, Out, N, BLOCK: tl.constexpr):
 
 
 def floor_out(A, *, out=None):
+    logger.debug("GEMS_ENFLAME_GCU400 FLOOR_OUT")
     if out is None:
         from flag_gems.ops.floor import floor_out as _public
 

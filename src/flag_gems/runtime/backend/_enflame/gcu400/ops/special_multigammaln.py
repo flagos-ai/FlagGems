@@ -28,5 +28,5 @@ def special_multigammaln(self, p):
 
     The reused kernel unrolls the lgamma sum, which limits `p` to at most 12.
     """
-    logger.debug("GEMS SPECIAL_MULTIGAMMALN")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_MULTIGAMMALN")
     return mvlgamma_(self.clone(), p)

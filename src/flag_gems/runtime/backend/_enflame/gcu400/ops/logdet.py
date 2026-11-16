@@ -29,15 +29,16 @@ from .contiguous import contiguous
 logger = logging.getLogger(__name__)
 
 _REGISTER_TILE_LIMIT = 32
-# 批量版单个 program 的 (batch, n, n) tile 元素上限，以及期望的 CTA 数（12 SIP * 4）
+# Per-program (batch, n, n) tile element cap for the batched version, and the desired CTA count (12 SIP * 4)
 _BATCH_TILE_ELEMENTS = 8192
 _TARGET_CTA_COUNT = 48
 _MIN_BATCH_FOR_BATCHED_KERNEL = 256
 
 
 def _pick_block_batch(block_n: int, batch_count: int) -> int:
-    """选择每个 program 处理的矩阵数：batch 太小则退回单矩阵 kernel（避免 tile 里
-    全是 mask 掉的空矩阵），否则在 tile 容量与 CTA 数量之间取折中。"""
+    """Choose how many matrices each program handles: too-small batch falls back to the single-matrix kernel (avoiding
+    tiles
+    full of masked-out empty matrices), otherwise trade tile capacity against CTA count."""
     if batch_count < _MIN_BATCH_FOR_BATCHED_KERNEL:
         return 1
     capacity = max(1, _BATCH_TILE_ELEMENTS // (block_n * block_n))
@@ -114,9 +115,9 @@ def _logdet_batch_register_kernel(
     block_n: tl.constexpr,
     block_batch: tl.constexpr,
 ):
-    """一次处理 block_batch 个矩阵：把 batch 轴并入 tile，使小矩阵（n<=16）也能把
-    向量宽度铺满。消元步骤与单矩阵版本完全一致，只是所有行/列抽取都退化成沿
-    axis=1 / axis=2 的规约，并在 batch 轴上并行。"""
+    """Process block_batch matrices at once: fold the batch axis into the tile so small matrices (n<=16) can also
+    fill the vector width. Elimination steps are identical to the single-matrix version, except all row/column
+    extractions degenerate into reductions along axis=1 / axis=2, parallel over the batch axis."""
     pid = tle.program_id(0)
     rows = tl.arange(0, block_n)
     cols = tl.arange(0, block_n)
@@ -139,7 +140,7 @@ def _logdet_batch_register_kernel(
     singular = tl.zeros((block_batch,), dtype=tl.int1)
 
     for k in range(n):
-        # 依次：取第 k 列 -> 选主元行 -> 交换 -> 计算消元乘子 -> 秩 1 更新
+        # In order: take column k -> select pivot row -> swap -> compute elimination multipliers -> rank-1 update
         column = tl.sum(tl.where(cols[None, None, :] == k, work, 0.0), axis=2)
         abs_column = tl.where(
             (rows[None, :] >= k) & (rows[None, :] < n), tl.abs(column), -float("inf")
@@ -165,7 +166,7 @@ def _logdet_batch_register_kernel(
         safe_pivot = tl.where(pivot == 0.0, 1.0, pivot)
         multiplier = tl.where(rows[None, :] > k, column / safe_pivot[:, None], 0.0)
         update_mask = (rows[None, :, None] > k) & (cols[None, None, :] > k)
-        # 乘子为 0 的行显式置 0，避免 0*inf/NaN 污染整行
+        # Rows with a zero multiplier are explicitly zeroed to avoid 0*inf/NaN polluting the whole row
         update = tl.where(
             multiplier[:, :, None] == 0.0,
             0.0,
@@ -188,7 +189,7 @@ def _logdet_batch_register_kernel(
 
 
 def logdet(inp):
-    logger.debug("GEMS LOGDET")
+    logger.debug("GEMS_ENFLAME_GCU400 LOGDET")
 
     if inp.dim() < 2 or inp.shape[-1] != inp.shape[-2]:
         raise RuntimeError("logdet: input must be batches of square matrices")
@@ -221,7 +222,7 @@ def logdet(inp):
 
     with torch_device_fn.device(inp.device):
         if block_batch > 1:
-            # 批量版：每个 program 吃掉 block_batch 个矩阵，让小矩阵也能铺满向量宽度
+            # Batched version: each program consumes block_batch matrices so small matrices also fill the vector width
             num_warps = min(
                 8,
                 max(1, (block_batch * block_n * block_n * inp.element_size()) // 4096),

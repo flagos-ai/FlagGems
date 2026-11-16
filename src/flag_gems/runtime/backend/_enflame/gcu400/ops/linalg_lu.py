@@ -403,7 +403,7 @@ def _linalg_lu_impl(input, *, pivot=True, P=None, L=None, U=None):
 
 
 def linalg_lu(input, *, pivot=True):
-    logger.debug("GEMS LINALG_LU")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU")
     _linalg_lu_check(input, pivot)
     return _linalg_lu_impl(input, pivot=pivot)
 
@@ -423,7 +423,7 @@ def _resolve_linalg_lu_out_args(P, L, U, out):
 
 
 def linalg_lu_out(input, *, pivot=True, P=None, L=None, U=None, out=None):
-    logger.debug("GEMS LINALG_LU_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU_OUT")
     _linalg_lu_check(input, pivot)
     p_out, l_out, u_out = _resolve_linalg_lu_out_args(P, L, U, out)
     return _linalg_lu_impl(input, pivot=pivot, P=p_out, L=l_out, U=u_out)

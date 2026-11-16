@@ -200,7 +200,7 @@ def _is_uniform(lead, outer, row_step):
 
 
 def glu_jvp(glu, x, dx, dim, out=None):
-    logger.debug("GEMS GLU_JVP")
+    logger.debug("GEMS_ENFLAME_GCU400 GLU_JVP")
     # The op is float-only, and only the four real float types are supported:
     # torch reports fp8 dtypes as floating point, so membership in this explicit
     # set (rather than ``is_floating_point``) is what rejects them along with

@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``upsample_nearest1d_backward``：可调一维 launch 配置。
+"""GCU400-specific ``upsample_nearest1d_backward``: tunable 1D launch config.
 
-公共实现把 ``block_size`` 硬编码为 256 并固定 ``num_warps=4``。GCU400 的
-SIP 数量与向量宽度和其它后端不同，这里把这两个 launch 参数提取为编译期
-可调常量，由迭代探针按本后端实测选出，计算逻辑与 dtype/stride 处理完全
-沿用公共 Triton kernel，不改变算子语义。
+The common implementation hardcodes ``block_size`` to 256 and ``num_warps=4``. GCU400's
+SIP count and vector width differ from other backends, so these two launch parameters are exposed as compile-time
+tunable constants chosen by iteration probes on this backend; the compute logic and dtype/stride handling fully
+follow the common Triton kernel, with unchanged operator semantics.
 """
 
 import importlib
@@ -30,13 +30,13 @@ import triton
 
 from flag_gems.runtime import torch_device_fn
 
-# flag_gems.ops 的 __init__ 用同名函数遮蔽了子模块，按完整路径取模块。
+# flag_gems.ops's __init__ shadows the submodule with a same-named function, so fetch the module by full path.
 _public = importlib.import_module("flag_gems.ops.upsample_nearest1d_backward")
 
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；仅影响 kernel 的 launch 形态。
+# Generated per optimization round; affects only the kernel's launch shape.
 BLOCK_SIZE = 256
 NUM_WARPS = 4
 FORCE_PUBLIC = 0

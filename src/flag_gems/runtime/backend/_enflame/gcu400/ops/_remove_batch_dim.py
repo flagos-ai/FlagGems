@@ -61,6 +61,6 @@ def _remove_batch_dim(
     ``aten::_remove_batch_dim``; since this module registers only
     ``_remove_batch_dim``, the call cannot re-enter this implementation.
     """
-    logger.debug("GEMS _REMOVE_BATCH_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 _REMOVE_BATCH_DIM")
     shape = self.shape[:out_dim] + (batch_size,) + self.shape[out_dim:]
     return self.expand(shape)

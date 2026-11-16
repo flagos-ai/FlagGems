@@ -37,8 +37,8 @@ def logcumsumexp_chunk_kernel(
     GRID_DIM: tl.constexpr,
     USE_EXP2: tl.constexpr,
 ):
-    # 固定网格 + 行跨步；每行按 BLOCK 分块做 log-sum-exp 前缀扫描，
-    # 用标量 running_max / running_sum 在块间传递，避免 next_pow2(N) 超大 tile 打爆 DSM。
+    # Fixed grid + row striding; each row does a blocked log-sum-exp prefix scan with BLOCK chunks,
+    # carrying scalar running_max / running_sum between blocks to avoid a huge next_pow2(N) tile blowing DSM.
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     offsets = tl.arange(0, BLOCK)
@@ -79,7 +79,8 @@ def logcumsumexp_chunk_kernel(
 
 
 def logcumsumexp_out(inp, dim=1, *, dtype=None, out):
-    """GCU400 专属实现：按维度把输入规整为 (M, N, K)，沿 N 做分块前缀 log-sum-exp。"""
+    """GCU400-specific implementation: reshape input to (M, N, K) by dimension, doing blocked prefix log-sum-exp
+    along N."""
     logger.debug("GEMS_ENFLAME LOGCUMSUMEXP_OUT")
     dim = dim % inp.ndim
     shape = inp.shape

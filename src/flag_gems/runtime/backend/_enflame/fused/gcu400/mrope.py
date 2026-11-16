@@ -25,12 +25,13 @@ logger = logging.getLogger(__name__)
 
 DECODE_GROUP = 8
 PREFILL_GROUP = 64
-# rotary_dim=64 时 BLOCK 只有 32，过大的 head tile 有一半被 mask 掉，改用较小 tile。
+# With rotary_dim=64 BLOCK is only 32, so half of a large head tile is masked off; use a smaller tile.
 PREFILL_GROUP_SMALL_ROTARY = 32
 DECODE_WARPS = 4
 SMALL_WARPS = 1
 LARGE_WARPS = 1
-# 实测大 tile 下逐 head_group 的 cache gather 成本已被摊薄，两阶段预计算无收益，禁用。
+# Measurements show per-head_group cache gather cost is already amortized with large tiles, so two-stage precompute
+# gives no benefit and is disabled.
 SCRATCH_MIN_TOKENS = 1 << 30
 GCU_NUM_GRID = 96
 
@@ -100,8 +101,8 @@ def _mrope_pair_kernel(
     BLOCK: tl.constexpr,
     ROW_STRIDE: tl.constexpr,
 ):
-    # 固定行方向网格为 ROW_STRIDE（匹配 GCU400 SIP 拓扑），核内跨步处理所有 token，
-    # 避免 prefill 大 batch 时启动 n_tokens 个 program 带来的调度开销。
+    # Fix the row-direction grid to ROW_STRIDE (matching GCU400 SIP topology) and stride over all tokens in the kernel,
+    # avoiding the scheduling overhead of launching n_tokens programs for large prefill batches.
     row_start = tl.program_id(0)
     head_group = tl.program_id(1) * GROUP
     heads = head_group + tl.arange(0, GROUP)
@@ -168,7 +169,7 @@ def _select_cache_kernel(
     BLOCK: tl.constexpr,
     ROW_STRIDE: tl.constexpr,
 ):
-    # 每个 token 只做一次 cache gather，结果写成连续 scratch；同样用固定网格跨步。
+    # Each token performs one cache gather, written to contiguous scratch; the same fixed grid is used with striding.
     row_start = tl.program_id(0)
     offs = tl.arange(0, BLOCK)
     half = rotary_dim // 2
@@ -199,7 +200,7 @@ def _mrope_pair_cached_kernel(
     BLOCK: tl.constexpr,
     ROW_STRIDE: tl.constexpr,
 ):
-    # 从连续 scratch 读 cos/sin，避免每个 head_group 重复做一次 cache gather。
+    # Read cos/sin from contiguous scratch instead of repeating a cache gather per head_group.
     row_start = tl.program_id(0)
     head_group = tl.program_id(1) * GROUP
     heads = head_group + tl.arange(0, GROUP)

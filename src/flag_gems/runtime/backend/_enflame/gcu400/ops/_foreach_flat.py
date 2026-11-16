@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 ``foreach`` 系列的一维 flat kernel 内部工具。
+"""Internal helpers for the 1D flat kernels of the GCU400 ``foreach`` family.
 
-公共 ``foreach`` 执行器把 tensor 列表编码成 metadata table，并用二维
-``grid=(block, tensor)`` 启动；GCU400 的 ``grid.y`` 硬件上限为 255，
-大 shape 下会直接 ``OutOfResources``。这里提供两类替代路径：
+The common ``foreach`` executor encodes the tensor list into a metadata table and launches a 2D
+``grid=(block, tensor)``; GCU400 has a ``grid.y`` hardware limit of 255,
+which causes ``OutOfResources`` on large shapes. Two alternative paths are provided here:
 
-* 逐 tensor 的一维固定 grid + 核内跨步 kernel（朴素迁移基线）；
-* 把整个列表的地址/元素数打包进 int64 metadata，用一维 grid 一次 launch
-  完成全部 tensor，``grid.x`` 按 ``(tensor, part)`` 线性展开，避免
-  16 次独立 launch 的固定开销。
+* a per-tensor 1D fixed grid + in-kernel striding kernel (plain migration baseline);
+* packing the whole list's addresses / element counts into int64 metadata and processing all tensors
+  in one launch with a 1D grid, with ``grid.x`` linearized over ``(tensor, part)`` to avoid
+  the fixed overhead of 16 separate launches.
 
-只有「浮点、连续、同 dtype、标准广播形态」的列表走快路径；其余情形
-由调用方回退到公共执行器，保证 dtype policy / 异常语义完全不变。
+Only lists that are "float, contiguous, same dtype, standard broadcast shape" take the fast path; all other cases
+are delegated by the caller to the common executor, keeping dtype policy / exception semantics completely unchanged.
 """
 
 import logging
@@ -37,14 +37,14 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
-# Triton 3.6 的 tl tensor 没有 __pow__；复用公共实现同款 GCU libdevice powf。
+# Triton 3.6 tl tensors have no __pow__; reuse the same GCU libdevice powf as the common implementation.
 _pow = tl_extra_shim.pow
 
 logger = logging.getLogger(__name__)
 
 FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
-# 编译期分派的二元运算编码，避免为每个算子复制一份 kernel。
+# Compile-time dispatch code for binary operations, avoiding a copy of the kernel per operator.
 OP_ADD = 0
 OP_SUB = 1
 OP_MUL = 2
@@ -53,20 +53,20 @@ OP_MIN = 4
 OP_MAX = 5
 OP_POW = 6
 
-# 一元运算编码。
+# Unary operation code.
 UNARY_EXP = 0
 UNARY_CEIL = 1
 
-# 第二操作数的形态编码。
+# Shape code for the second operand.
 MODE_LIST = 0
 MODE_SCALAR = 1
 MODE_SCALAR_LIST = 2
 MODE_TENSOR = 3
 
-# ``run_binary`` / ``run_unary`` 用它表示「本次输入不适合快路径」。
+# ``run_binary`` / ``run_unary`` use it to mean "this input is not suitable for the fast path".
 FALLBACK = object()
 
-# host dtype → Triton dtype，用于把 metadata 里的裸地址还原成带类型的指针。
+# host dtype -> Triton dtype, used to turn raw addresses in metadata back into typed pointers.
 _TL_DTYPES = {
     torch.float16: tl.float16,
     torch.float32: tl.float32,
@@ -89,7 +89,7 @@ def binary_flat_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """单个 tensor 的一维跨步计算；标量/广播操作数在编译期分派。"""
+    """1D strided computation for a single tensor; scalar / broadcast operands are dispatched at compile time."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -99,7 +99,7 @@ def binary_flat_kernel(
         a = tl.load(a_ptr + offs, mask=mask)
         if HAS_B_TENSOR:
             if B_BROADCAST:
-                # 0-d / 单元素操作数只读一次，避免整块重复加载。
+                # 0-d / single-element operands are read once, avoiding repeated loads of a whole block.
                 b = tl.load(b_ptr)
             else:
                 b = tl.load(b_ptr + offs, mask=mask)
@@ -110,7 +110,7 @@ def binary_flat_kernel(
         else:
             b = B_SCALAR
         if FP32_PROMOTE:
-            # 与公共执行器一致：低精度先提升 fp32 计算，store 时隐式降回。
+            # Same as the common executor: promote low precision to fp32, then implicitly cast back on store.
             a = a.to(tl.float32)
         if ALPHA != 1:
             b = b * ALPHA
@@ -127,7 +127,7 @@ def binary_flat_kernel(
         elif OP == 5:
             result = tl.maximum(a, b)
         else:
-            # powf 需要 fp32 操作数，与公共 _pow_fn 的提升保持一致。
+            # powf needs fp32 operands, consistent with the promotion in the common _pow_fn.
             result = _pow(a.to(tl.float32), b.to(tl.float32))
         tl.store(out_ptr + offs, result, mask=mask)
 
@@ -142,10 +142,10 @@ def fused_binary_list_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """``.List``：一次 launch 处理整个配对 tensor 列表。
+    """``.List``: process the whole paired tensor list in one launch.
 
-    ``meta_ptr`` 依次存放输入指针、输出指针、第二操作数指针、元素数
-    （各 NT 项，int64）。grid.x 按 ``(tensor, part)`` 线性展开。
+    ``meta_ptr`` holds input pointers, output pointers, second-operand pointers and element counts
+    (NT entries each, int64). grid.x is linearized over ``(tensor, part)``.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -184,7 +184,7 @@ def fused_binary_list_kernel(
         elif OP == 5:
             result = tl.maximum(a, b)
         else:
-            # powf 需要 fp32 操作数，与公共 _pow_fn 的提升保持一致。
+            # powf needs fp32 operands, consistent with the promotion in the common _pow_fn.
             result = _pow(a.to(tl.float32), b.to(tl.float32))
         tl.store(out_ptr + offs, result, mask=mask)
 
@@ -204,10 +204,10 @@ def fused_binary_scalar_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """``.Scalar`` / ``.ScalarList`` / ``.Tensor``：一次 launch 处理整个列表。
+    """``.Scalar`` / ``.ScalarList`` / ``.Tensor``: process the whole list in one launch.
 
-    ``HAS_B_TENSOR`` 对应 0-d tensor 广播；``SCALAR_PER_TENSOR`` 对应
-    ScalarList 的逐 tensor 标量数组；其余情况用编译期常量 ``B_SCALAR``。
+    ``HAS_B_TENSOR`` corresponds to 0-d tensor broadcast; ``SCALAR_PER_TENSOR`` corresponds to
+    the per-tensor scalar array of ScalarList; other cases use the compile-time constant ``B_SCALAR``.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -254,7 +254,7 @@ def fused_binary_scalar_kernel(
         elif OP == 5:
             result = tl.maximum(a, b)
         else:
-            # powf 需要 fp32 操作数，与公共 _pow_fn 的提升保持一致。
+            # powf needs fp32 operands, consistent with the promotion in the common _pow_fn.
             result = _pow(a.to(tl.float32), b.to(tl.float32))
         tl.store(out_ptr + offs, result, mask=mask)
 
@@ -268,7 +268,7 @@ def unary_flat_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """单个 tensor 的原地一元运算，一维跨步写回。"""
+    """In-place unary operation on a single tensor, written back with 1D striding."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -276,8 +276,8 @@ def unary_flat_kernel(
         offs = block_id * BLOCK + arange
         mask = offs < N
         value = tl.load(data_ptr + offs, mask=mask)
-        # GCU 后端的 exp/ceil 只接受 fp32/fp64，低精度必须先提升；
-        # store 时会隐式降回输出 tensor 的 dtype。
+        # The GCU backend's exp/ceil accept only fp32/fp64, so low precision must be promoted first;
+        # store implicitly casts back to the output tensor's dtype.
         value = value.to(tl.float32)
         if OP == 0:
             result = tl.exp(value)
@@ -296,7 +296,7 @@ def fused_unary_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """一次 launch 对整个 tensor 列表做原地一元运算。"""
+    """In-place unary operation over the whole tensor list in one launch."""
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
     tensor_id = pid % NT
@@ -312,8 +312,8 @@ def fused_unary_kernel(
         offs = block_id * BLOCK + arange
         mask = offs < num_elems
         value = tl.load(data_ptr + offs, mask=mask)
-        # GCU 后端的 exp/ceil 只接受 fp32/fp64，低精度必须先提升；
-        # store 时会隐式降回输出 tensor 的 dtype。
+        # The GCU backend's exp/ceil accept only fp32/fp64, so low precision must be promoted first;
+        # store implicitly casts back to the output tensor's dtype.
         value = value.to(tl.float32)
         if OP == 0:
             result = tl.exp(value)
@@ -323,11 +323,11 @@ def fused_unary_kernel(
 
 
 def can_use_flat(self, operand, mode):
-    """判断列表是否属于快路径可安全处理的形态。"""
+    """Check whether a list has a shape the fast path can handle safely."""
     if not self:
         return False
     if not all(isinstance(tensor, torch.Tensor) for tensor in self):
-        # 非 Tensor 元素：返回 False 让调用方回退公共执行器对齐异常。
+        # Non-Tensor elements: return False so the caller falls back to the common executor for matching exceptions.
         return False
     dtype = self[0].dtype
     if dtype not in FLOAT_DTYPES or dtype.is_complex:
@@ -336,7 +336,7 @@ def can_use_flat(self, operand, mode):
         if tensor.dtype != dtype or not tensor.is_contiguous() or tensor.numel() == 0:
             return False
     if mode is None:
-        # 一元运算没有第二操作数，列表自身检查通过即可。
+        # Unary operations have no second operand, so checking the list itself is enough.
         return True
     if mode == MODE_LIST:
         if not isinstance(operand, (list, tuple)) or len(operand) != len(self):
@@ -362,7 +362,7 @@ def can_use_flat(self, operand, mode):
 
 
 def _operand_for(tensor, operand, mode, index):
-    """把四种操作数形态归一成 (指针实参, 是否张量, 是否广播, 标量值)。"""
+    """Normalize the four operand shapes into (pointer arg, is_tensor, is_broadcast, scalar value)."""
     if mode == MODE_LIST:
         other = operand[index]
         return other, 1, int(other.numel() == 1), 0.0
@@ -374,14 +374,14 @@ def _operand_for(tensor, operand, mode, index):
 
 
 def _fused_grid(self, fixed_grid, block_size):
-    """小列表只需 NT 个 program；大 shape 让每个 tensor 分到多个 program。"""
+    """Small lists need only NT programs; large shapes give each tensor multiple programs."""
     num_tensors = len(self)
     blocks_per_tensor = triton.cdiv(max(t.numel() for t in self), block_size)
     return max(1, min(fixed_grid, num_tensors * blocks_per_tensor))
 
 
 def _fused_meta(self, outputs, inplace, b_pointers):
-    """构造四段 int64 metadata：输入/输出/第二操作数地址 + 各元素数。"""
+    """Build four int64 metadata segments: input/output/second-operand addresses + element counts."""
     out_tensors = self if inplace else outputs
     pointers = (
         [tensor.data_ptr() for tensor in self]
@@ -406,7 +406,7 @@ def _run_fused(
     use_device_context,
     fp32_promote,
 ):
-    """按操作数形态选择融合 kernel，一次 launch 完成整个列表。"""
+    """Select a fused kernel by operand shape and process the whole list in one launch."""
     num_tensors = len(self)
     dtype = self[0].dtype
     triton_dtype = _TL_DTYPES[dtype]
@@ -414,14 +414,14 @@ def _run_fused(
 
     if mode == MODE_LIST:
         b_pointers = [other.data_ptr() for other in operand]
-        scalar_tensor = self[0]  # 占位，不会在该 kernel 中读取
+        scalar_tensor = self[0]  # Placeholder, never read in this kernel
         kernel = fused_binary_list_kernel
         extra = ()
     elif mode == MODE_TENSOR:
         b_pointers = [operand.data_ptr()] * num_tensors
         scalar_tensor = self[0]
         kernel = fused_binary_scalar_kernel
-        # 0-d tensor 常为 fp32，必须按它自己的 dtype 读取，不能沿用列表 dtype。
+        # 0-d tensors are usually fp32 and must be read with their own dtype, not the list dtype.
         b_dtype = _TL_DTYPES.get(operand.dtype, triton_dtype)
         extra = (1, b_dtype, 0.0, 0)
     elif mode == MODE_SCALAR_LIST:
@@ -485,12 +485,12 @@ def run_binary(
     fp32_promote=1,
     fused=1,
 ):
-    """执行二元 foreach；不适合快路径时返回 ``FALLBACK`` 哨兵。"""
+    """Execute binary foreach; return the ``FALLBACK`` sentinel when the fast path does not apply."""
     if alpha != 1 or not can_use_flat(self, operand, mode):
         return FALLBACK
 
     outputs = None if inplace else [torch.empty_like(tensor) for tensor in self]
-    # ``.List`` 的第二操作数若需广播，不能与输入共用同一平坦索引。
+    # For ``.List``, if the second operand needs broadcasting it cannot share the input's flat index.
     fused_ready = fused and (
         mode != MODE_LIST
         or all(other.numel() == tensor.numel() for tensor, other in zip(self, operand))
@@ -551,7 +551,7 @@ def _run_fused_unary(
     use_device_context,
     fp32_promote,
 ):
-    """一次 launch 对整个列表做一元运算。"""
+    """Unary operation over the whole list in one launch."""
     num_tensors = len(self)
     out_tensors = self if inplace else [torch.empty_like(t) for t in self]
     if not inplace:
@@ -590,7 +590,7 @@ def run_unary(
     fp32_promote=1,
     fused=1,
 ):
-    """执行一元 foreach；不适合快路径时返回 ``FALLBACK`` 哨兵。"""
+    """Execute unary foreach; return the ``FALLBACK`` sentinel when the fast path does not apply."""
     if not can_use_flat(self, None, None):
         return FALLBACK
     if fused:
@@ -615,7 +615,7 @@ def run_unary(
             num_elems = tensor.numel()
             out = tensor if inplace else outputs[index]
             if not inplace:
-                # 非原地形式必须先复制输入，再对新 tensor 做原地计算。
+                # Non-in-place forms must copy the input first, then compute in place on the new tensor.
                 out.copy_(tensor)
             grid = (min(triton.cdiv(num_elems, block_size), fixed_grid),)
             unary_flat_kernel[grid](

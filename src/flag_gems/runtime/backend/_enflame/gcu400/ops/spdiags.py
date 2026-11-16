@@ -116,7 +116,7 @@ def spdiags(diagonals, offsets, shape, layout=None):
     Returns:
         Sparse tensor in the requested layout.
     """
-    logger.debug("GEMS SPDIAGS")
+    logger.debug("GEMS_ENFLAME_GCU400 SPDIAGS")
 
     # Promote 1-D diagonals and scalar offsets to the native 2-D/1-D forms.
     diagonals_2d = diagonals.unsqueeze(0) if diagonals.dim() == 1 else diagonals

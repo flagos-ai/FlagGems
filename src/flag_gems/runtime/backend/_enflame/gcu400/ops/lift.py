@@ -41,7 +41,7 @@ def lift(A):
         For compiled-graph use cases that only need tensor identity semantics,
         this implementation is sufficient.
     """
-    logger.debug("GEMS LIFT")
+    logger.debug("GEMS_ENFLAME_GCU400 LIFT")
     return A
 
 
@@ -52,7 +52,7 @@ def lift_out(A, *, out=None):
     Uses PyTorch's optimized copy_() instead of a Triton kernel for
     cross-backend compatibility and better performance.
     """
-    logger.debug("GEMS LIFT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LIFT_OUT")
     if out is None:
         out = torch.empty_like(A, memory_format=torch.contiguous_format)
     _COPY(out, A)

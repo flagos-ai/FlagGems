@@ -107,7 +107,7 @@ def mvlgamma_kernel(
 
 
 def mvlgamma(*args, **kwargs):
-    logger.debug("GEMS MVLGAMMA")
+    logger.debug("GEMS_ENFLAME_GCU400 MVLGAMMA")
     A = args[0]
     p = args[1] if len(args) > 1 else kwargs.get("p", 1)
 

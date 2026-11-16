@@ -46,7 +46,7 @@ def _glu_flat(
     BLOCK: tl.constexpr,
     STRIDE: tl.constexpr,
 ):
-    """单 kernel 直接从原 contiguous 张量读 a/b，省掉 torch.chunk 两次拷贝。"""
+    """Single kernel reads a/b directly from the original contiguous tensor, removing two torch.chunk copies."""
     pid = tl.program_id(0)
     if STRIDE > 0:
         for base in range(pid * BLOCK, N, STRIDE * BLOCK):
@@ -74,9 +74,9 @@ def glu(self, dim=-1):
     logger.debug("GEMS_ENFLAME GLU")
     last_dim = self.dim() - 1
     if (dim == -1 or dim == last_dim) and self.is_contiguous():
-        # t8 批 Step 4：原实现 torch.chunk + 两次 .contiguous() 全量拷贝
-        # + codegen wrapper 使 12 个 case 恒定 ~0.05ms；单 kernel 直接
-        # 按 stride 读 a/b，实测 ~9.8x，12/12 逐位一致。
+        # t8 batch Step 4: the original torch.chunk + two .contiguous() full copies
+        # + codegen wrapper pinned all 12 cases at ~0.05ms; the single kernel
+        # reads a/b by stride, measured ~9.8x with 12/12 bit-identical results.
         full = self.shape[-1]
         half = full // 2
         n = self.numel() // 2
@@ -87,7 +87,7 @@ def glu(self, dim=-1):
         grid = (triton.cdiv(n, BLOCK),) if STRIDE == 0 else (STRIDE,)
         _glu_flat[grid](self, out, n, half, full, BLOCK, STRIDE, num_warps=NW)
         return out
-    # 非末维 dim / 非连续输入回退原实现，保证语义不变
+    # Non-last dim / non-contiguous inputs fall back to the original implementation, keeping semantics unchanged
     a, b = torch.chunk(self, 2, dim=dim)
     a = a.contiguous()
     b = b.contiguous()

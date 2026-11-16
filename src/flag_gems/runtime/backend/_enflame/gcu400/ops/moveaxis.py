@@ -92,7 +92,7 @@ def moveaxis(self: torch.Tensor, source, destination) -> torch.Tensor:
     :func:`torch.as_strided`, matching the semantics of ``aten::moveaxis.int``
     / ``aten::moveaxis.intlist`` (``Tensor(a) -> Tensor(a)``).
     """
-    logger.debug("GEMS MOVEAXIS")
+    logger.debug("GEMS_ENFLAME_GCU400 MOVEAXIS")
 
     order = _normalize_moveaxis_axes(self, source, destination)
     if all(order[p] == p for p in range(self.dim())):

@@ -77,8 +77,8 @@ def _atan2_kernel(X, Y, Out, N, BLOCK: tl.constexpr):
 
 
 def _choose_block(N, itemsize):
-    # 按 dtype 分档：半精度保持 8192、fp32 放大到 65536，
-    # 宽 tile 只缩短 fp32 的 grid-stride 循环，不影响半精度既有最优宽度。
+    # Tiered by dtype: half precision keeps 8192, fp32 grows to 65536,
+    # the wide tile only shortens fp32's grid-stride loop and does not change half precision's existing optimal width.
     if N <= 16384:
         return triton.next_power_of_2(max(N, 1))
     return 8192 if itemsize <= 2 else 65536

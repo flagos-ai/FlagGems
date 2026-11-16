@@ -36,7 +36,7 @@ def nuclear_norm(A: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
     Returns:
         Nuclear norm. If keepdim=False, shape is (*,); if keepdim=True, shape is (*, 1, 1).
     """
-    logger.debug("GEMS NUCLEAR_NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 NUCLEAR_NORM")
     # Only float32 is supported for SVD on CUDA
     assert A.dtype == torch.float32, f"Expected float32, got {A.dtype}"
     if not A.is_contiguous():

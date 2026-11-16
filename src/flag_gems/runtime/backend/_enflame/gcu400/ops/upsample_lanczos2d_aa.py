@@ -610,7 +610,7 @@ def _upsample_lanczos2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE_LANCZOS2D_AA")
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_LANCZOS2D_AA")
     output_size = _validate(input, output_size)
     channels_last = input.is_contiguous(memory_format=torch.channels_last)
     if input.shape[0] == 0:
@@ -639,6 +639,7 @@ def _upsample_lanczos2d_aa_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_LANCZOS2D_AA_OUT")
     if out.device != input.device:
         raise RuntimeError(
             f"Expected out tensor on {input.device}, but got {out.device}"
@@ -661,6 +662,7 @@ def _upsample_lanczos2d_aa_vec(
     align_corners: bool,
     scale_factors: Optional[Sequence[float]],
 ) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_LANCZOS2D_AA_VEC")
     if (output_size is None) == (scale_factors is None):
         raise RuntimeError("Must specify exactly one of output_size and scale_factors")
     if output_size is not None:

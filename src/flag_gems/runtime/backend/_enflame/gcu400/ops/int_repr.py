@@ -244,7 +244,7 @@ def int_repr(self, out=None):
     Implements both ``aten::int_repr(Tensor self) -> Tensor`` and
     ``aten::int_repr.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)``.
     """
-    logger.debug("GEMS INT_REPR")
+    logger.debug("GEMS_ENFLAME_GCU400 INT_REPR")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "int_repr(): argument 'self' must be a Tensor, not "

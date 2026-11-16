@@ -163,7 +163,7 @@ def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None
         memory_format: The desired memory format of the returned tensor.
             Default is torch.preserve_format.
     """
-    logger.debug("GEMS CLONE")
+    logger.debug("GEMS_ENFLAME_GCU400 CLONE")
 
     if memory_format is None:
         memory_format = torch.preserve_format

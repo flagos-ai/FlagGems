@@ -579,7 +579,7 @@ def _restore_dim(out, inp, dim):
 
 
 def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
-    logger.debug("GEMS INDEX_REDUCE_")
+    logger.debug("GEMS_ENFLAME_GCU400 INDEX_REDUCE_")
     return _index_reduce_impl(
         inp,
         dim,
@@ -851,14 +851,14 @@ def _index_reduce_out(
 
 
 def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
-    logger.debug("GEMS INDEX_REDUCE")
+    logger.debug("GEMS_ENFLAME_GCU400 INDEX_REDUCE")
     return _index_reduce_functional(
         index_reduce_, inp, dim, index, source, reduce, include_self=include_self
     )
 
 
 def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
-    logger.debug("GEMS INDEX_REDUCE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 INDEX_REDUCE_OUT")
     return _index_reduce_out(
         index_reduce_,
         inp,

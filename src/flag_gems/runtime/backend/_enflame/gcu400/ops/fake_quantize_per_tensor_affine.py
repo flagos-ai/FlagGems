@@ -100,7 +100,7 @@ def _num_warps(block, grid):
 
 
 def fake_quantize_per_tensor_affine(input, scale, zero_point, quant_min, quant_max):
-    logger.debug("GEMS FAKE_QUANTIZE_PER_TENSOR_AFFINE")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE")
 
     if type(scale) is not float:
         scale = scale.item() if isinstance(scale, torch.Tensor) else float(scale)

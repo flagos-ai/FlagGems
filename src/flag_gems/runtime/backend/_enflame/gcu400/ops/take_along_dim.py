@@ -166,7 +166,7 @@ def _prepare(input, indices, dim):
 
 
 def take_along_dim(input, indices, dim=None):
-    logger.debug("GEMS TAKE_ALONG_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 TAKE_ALONG_DIM")
     if input.device != indices.device:
         raise RuntimeError("input and indices must be on the same device")
     inp2d, idx2d, out_shape, restore = _prepare(input, indices, dim)
@@ -176,7 +176,7 @@ def take_along_dim(input, indices, dim=None):
 
 
 def take_along_dim_out(input, indices, dim=None, *, out):
-    logger.debug("GEMS TAKE_ALONG_DIM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 TAKE_ALONG_DIM_OUT")
     if not (input.device == indices.device == out.device):
         raise RuntimeError("input, indices and out must be on the same device")
     if out.dtype != input.dtype:

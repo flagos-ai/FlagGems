@@ -90,7 +90,7 @@ def reshape_and_cache(
     k_scale,
     v_scale,
 ):
-    logger.debug("GEMS RESHAPE_AND_CACHE")
+    logger.debug("GEMS_ENFLAME_GCU400 RESHAPE_AND_CACHE")
     num_tokens = slot_mapping.size(0)
     num_heads = key.size(1)
     head_size = key.size(2)

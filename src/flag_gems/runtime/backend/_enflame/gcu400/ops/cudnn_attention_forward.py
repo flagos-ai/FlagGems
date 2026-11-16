@@ -22,14 +22,14 @@ from flag_gems.ops.attention import scaled_dot_product_attention_forward
 
 logger = logging.getLogger(__name__)
 
-# 常量在模块加载时求值，避免每次调用重复解析版本号与超越函数。
+# Constants are evaluated at module load, avoiding repeated version parsing and transcendental calls per invocation.
 _LN2 = math.log(2)
 _TORCH_GE_29 = version.parse(torch.__version__.split("+")[0]).release[:2] >= (2, 9)
 _METADATA_CACHE = {}
 
 
 def _metadata_tensor(device, dtype, shape):
-    """按 (device, dtype, shape) 复用只读的零值 metadata 张量。"""
+    """Reuse a read-only zero-valued metadata tensor by (device, dtype, shape)."""
     key = (str(device), dtype, tuple(shape))
     cached = _METADATA_CACHE.get(key)
     if cached is None:
@@ -66,6 +66,7 @@ def cudnn_attention_forward(
     used in earlier versions is eliminated.
     """
 
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_ATTENTION_FORWARD")
     if dropout_p > 0.0:
         raise NotImplementedError(
             "cudnn_attention_forward: dropout > 0 is not yet supported"

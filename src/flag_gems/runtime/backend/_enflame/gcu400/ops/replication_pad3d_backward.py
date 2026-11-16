@@ -213,5 +213,5 @@ def _launch(grad_output: torch.Tensor, self: torch.Tensor, padding):
 def replication_pad3d_backward(
     grad_output: torch.Tensor, self: torch.Tensor, padding
 ) -> torch.Tensor:
-    logger.debug("GEMS REPLICATION_PAD3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 REPLICATION_PAD3D_BACKWARD")
     return _launch(grad_output, self, padding)

@@ -121,7 +121,7 @@ def _check_batch_contiguous(tensor, allow_zero_stride=True):
 
 
 def triu(A, diagonal=0):
-    logger.debug("GEMS TRIU")
+    logger.debug("GEMS_ENFLAME_GCU400 TRIU")
 
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
 
@@ -151,7 +151,7 @@ def triu(A, diagonal=0):
 
 
 def triu_(A, diagonal=0):
-    logger.debug("GEMS TRIU_ (inplace)")
+    logger.debug("GEMS_ENFLAME_GCU400 TRIU_ (inplace)")
 
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     diagonal = int(diagonal)

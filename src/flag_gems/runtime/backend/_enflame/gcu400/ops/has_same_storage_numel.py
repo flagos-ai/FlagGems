@@ -39,7 +39,7 @@ def _has_same_storage_numel(self: torch.Tensor, other: torch.Tensor) -> bool:
     match, while any two views of one storage also compare equal even when
     their shapes differ. Verified against native ATen on H20.
     """
-    logger.debug("GEMS _HAS_SAME_STORAGE_NUMEL")
+    logger.debug("GEMS_ENFLAME_GCU400 _HAS_SAME_STORAGE_NUMEL")
     return (self.untyped_storage().nbytes() // self.element_size()) == (
         other.untyped_storage().nbytes() // other.element_size()
     )

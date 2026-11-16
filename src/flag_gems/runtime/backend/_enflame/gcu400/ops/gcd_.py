@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def gcd_(A: torch.Tensor, B: torch.Tensor):
     """In-place GCD: A = gcd(A, B), reusing the optimized Binary GCD kernel."""
-    logger.debug("GEMS GCD_")
+    logger.debug("GEMS_ENFLAME_GCU400 GCD_")
     lhs, rhs, promoted_dtype = _materialize_inputs(A, B)
     # Compute GCD into a flat buffer, then copy back in-place
     flat_out = torch.empty(lhs.numel(), dtype=promoted_dtype, device=A.device)

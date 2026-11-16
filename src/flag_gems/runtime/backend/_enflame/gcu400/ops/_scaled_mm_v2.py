@@ -271,7 +271,7 @@ def _scaled_mm_v2(
     contraction_dim=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS _SCALED_MM_V2")
+    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_MM_V2")
     if contraction_dim:
         raise ValueError(_CONTRACTION_DIM_ERROR)
 

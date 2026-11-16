@@ -205,10 +205,10 @@ def launch_reflection_pad3d(input: torch.Tensor, padding, out: torch.Tensor = No
 
 
 def reflection_pad3d(input: torch.Tensor, padding, *, out: torch.Tensor = None):
-    logger.debug("GEMS REFLECTION_PAD3D")
+    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD3D")
     return launch_reflection_pad3d(input, padding, out=out)
 
 
 def reflection_pad3d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    logger.debug("GEMS REFLECTION_PAD3D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD3D_OUT")
     return reflection_pad3d(input, padding, out=out)

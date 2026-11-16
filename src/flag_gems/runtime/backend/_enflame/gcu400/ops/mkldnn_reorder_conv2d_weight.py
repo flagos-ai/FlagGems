@@ -263,7 +263,7 @@ def mkldnn_reorder_conv2d_weight(
     out_shape = _infer_geometry(shape, input_size)
 
     if out is not None:
-        logger.debug("GEMS MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
+        logger.debug("GEMS_ENFLAME_GCU400 MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
         if not isinstance(out, torch.Tensor) or not out.is_mkldnn:
             raise RuntimeError(
                 "mkldnn_reorder_conv2d_weight.out expects an MkldnnCPU output buffer"
@@ -277,7 +277,7 @@ def mkldnn_reorder_conv2d_weight(
         out.copy_(self.reshape(out_shape))
         return out
 
-    logger.debug("GEMS MKLDNN_REORDER_CONV2D_WEIGHT")
+    logger.debug("GEMS_ENFLAME_GCU400 MKLDNN_REORDER_CONV2D_WEIGHT")
     if self.requires_grad:
         _check_geometry(self, out_shape)
         return _MkldnnReorderConv2dWeight.apply(self, out_shape)
@@ -295,7 +295,7 @@ def mkldnn_reorder_conv2d_weight_out(
     out,
 ):
     """``aten::mkldnn_reorder_conv2d_weight.out``: fill the caller's mkldnn buffer."""
-    logger.debug("GEMS MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 MKLDNN_REORDER_CONV2D_WEIGHT_OUT")
     return mkldnn_reorder_conv2d_weight(
         self, padding, stride, dilation, groups, input_size, out=out
     )

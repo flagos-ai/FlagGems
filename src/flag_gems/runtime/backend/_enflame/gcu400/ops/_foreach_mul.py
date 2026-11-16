@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 _foreach_mul / _foreach_mul_（全部 4 种 overload）。
+"""GCU400-specific _foreach_mul / _foreach_mul_ (all 4 overloads).
 
-公共 foreach 执行器用二维 grid 承载 tensor 列表，GCU400 的 ``grid.y``
-上限 255 在大 shape 下会 ``out of resource``。浮点连续列表改走
-``_foreach_flat`` 的一维固定 grid / metadata 融合 kernel；非浮点、
-非连续或广播等形态仍委托公共执行器保持 dtype policy 与异常语义。
+The common foreach executor carries the tensor list in a 2D grid, and GCU400's ``grid.y``
+limit of 255 causes ``out of resource`` on large shapes. Contiguous float lists use the
+1D fixed grid / metadata fused kernel from ``_foreach_flat``; non-float,
+non-contiguous or broadcast shapes still delegate to the common executor to keep dtype policy and exception semantics.
 """
 
 import logging
@@ -46,7 +46,7 @@ from ._foreach_flat import (
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；均为编译期/启动期配置，不改变算子语义。
+# Generated per round by the optimization driver script; all compile-time / launch-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 8192
 NUM_WARPS = 4
@@ -55,19 +55,19 @@ USE_DEVICE_CONTEXT = 0
 FP32_PROMOTE = 0
 FUSED_LAUNCH = 1
 FALLBACK_TO_PUBLIC = 0
-# .List 专用：用公共 _device_meta 缓存替代每次重建 int64 metadata。
+# .List specific: reuse the common _device_meta cache instead of rebuilding int64 metadata each time.
 USE_CACHED_META = 1
-# 小 shape 走公共 binary 执行器（其二维 grid 未越界且缓存更完整）。
+# Small shapes use the common binary executor (its 2D grid stays in bounds and its cache is more complete).
 PUBLIC_SMALL_SHAPE = 0
 SMALL_SHAPE_MAX_NUMEL = 261120
 # --- TUNING PARAMS END ---
 
 
 def _run_mul_list_cached(self, other, outputs):
-    """复用公共 _device_meta 缓存构造 int64 metadata，避免每次同步 H2D。
+    """Build int64 metadata using the common _device_meta cache, avoiding a synchronous H2D per call.
 
-    metadata 的四段布局（输入/输出/第二操作数地址 + 各元素数）必须与
-    _foreach_flat._fused_meta 完全一致，否则融合 kernel 会读错指针。
+    The four-segment layout (input/output/second-operand addresses + element counts) must exactly match
+    _foreach_flat._fused_meta, otherwise the fused kernel reads wrong pointers.
     """
     num_tensors = len(self)
     pointers = (

@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 _MAX_GRID = 65535
 _MIN_PROGRAMS = 256
 _TARGET_ITERS = 16
-# 实测：BLOCK/num_warps 在本算子上与耗时无关（512M 元素 fp16 下
-# BLOCK=32768/w4、8192/w8、4096/w4 均为 13.2ms），说明瓶颈不在区块配置，
-# 而在 fp16/bf16 的 fp32 升降转换路径（同规模 fp32 只要 7.4ms），因此保留
-# 原配置不做无收益改动。
+# Measured: BLOCK/num_warps are unrelated to runtime on this operator (512M fp16:
+# BLOCK=32768/w4, 8192/w8, 4096/w4 all 13.2ms), so the bottleneck is not block config
+# but the fp16/bf16 fp32 up/down conversion path (same-size fp32 takes only 7.4ms), so keep
+# the original config instead of making a pointless change.
 _BLOCK = 32768
 _WARPS = 4
 

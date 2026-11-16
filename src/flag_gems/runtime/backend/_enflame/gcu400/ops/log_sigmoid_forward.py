@@ -47,7 +47,7 @@ def log_sigmoid_forward_kernel(
 
 
 def log_sigmoid_forward(A):
-    logger.debug("GEMS LOG_SIGMOID_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 LOG_SIGMOID_FORWARD")
     output = torch.empty_like(A)
     buffer = torch.empty_like(A)
 

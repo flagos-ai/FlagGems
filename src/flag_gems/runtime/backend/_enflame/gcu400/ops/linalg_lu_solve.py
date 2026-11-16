@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def _row_at(w, index):
-    """取寄存器张量 w 的第 index 行。
+    """Take row `index` of the register tensor w.
 
-    GCU400 把 tt.gather 标记为非法 op，改用与行号比较的 one-hot 加权归约，
-    语义与 tl.gather(w, [index], axis=0) 等价，且只依赖 tl.where / tl.sum。
+    GCU400 marks tt.gather as an illegal op, so use a one-hot weighted reduction comparing against the row number;
+    semantics equal tl.gather(w, [index], axis=0), depending only on tl.where / tl.sum.
     """
     row_indices = tl.arange(0, w.shape[0])
     return tl.sum(tl.where(row_indices[:, None] == index, w, 0.0), 0)[None, :]
@@ -478,7 +478,7 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
     Returns:
         X: (*, n, k) solution matrix
     """
-    logger.debug("GEMS LINALG_LU_SOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU_SOLVE")
 
     if LU.ndim < 2 or B.ndim < 2:
         raise ValueError("LU and B must be at least 2D")

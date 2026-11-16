@@ -132,7 +132,7 @@ def reflection_pad3d_backward(grad_output, self, padding):
     Returns:
         Gradient with respect to self. Shape: (N, C, D, H, W)
     """
-    logger.debug("GEMS REFLECTION_PAD3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD3D_BACKWARD")
 
     if isinstance(padding, int):
         pad_d0 = pad_d1 = pad_h0 = pad_h1 = pad_w0 = pad_w1 = padding

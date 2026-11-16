@@ -47,25 +47,25 @@ _BLOCK = 1024
 _NUM_WARPS = 1
 _MAX_GRID = 65535
 _BIG_TOTAL = 1 << 20
-# 大 shape 用 8192 的 fat tile 打满 DTE；中小 shape 保持 1024：
-# 实测更细的 256 tile 会让高阶动态递推 miscompile，2048 tile 令 96k shape 劣化 36%。
-# 16384 配 num_warps=1 在本工具链会编译失败（PassManager），故上限取 8192。
+# Large shapes use an 8192 fat tile to saturate DTE; small/medium shapes keep 1024:
+# measured finer 256 tiles miscompile high-order dynamic recurrences, and 2048 tiles degrade 96k shapes by 36%.
+# 16384 with num_warps=1 fails to compile on this toolchain (PassManager), so cap at 8192.
 _TILE_BIG = 8192
-# GCU400 的 SIP 拓扑对应 24 个物理 SIP；48 个 CTA 是持久网格的经验上限，
-# 更多 CTA 只会增加调度成本（每个 CTA 约 0.46us），核内用跨步循环补齐 tile。
+# GCU400's SIP topology corresponds to 24 physical SIPs; 48 CTAs is the empirical persistent-grid cap,
+# more CTAs only add scheduling cost (~0.46us each), with an in-kernel stride loop covering remaining tiles.
 _GRID_SIPS = 48
 
 # Safety cap for data-dependent loop bounds (tested degrees are tiny).
 _MAX_STEPS = tl.constexpr(1024)
-# 常见阶数在编译期展开：避免 degree 来自设备标量时循环上界无法静态展开。
+# Common orders are unrolled at compile time: a device-scalar degree would make the loop bound non-static.
 _UNROLL_ORDER = tl.constexpr(3)
 
 
 def _pick(numel):
     """(BLOCK, grid.x) for a launch over `numel` elements.
 
-    仅大 shape 换用 fat tile；grid 固定不超过 _GRID_SIPS，剩余 tile 由 kernel
-    内的跨步循环消费，num_programs 只影响运行时跨步长度。
+    Only large shapes switch to a fat tile; grid stays within _GRID_SIPS and remaining tiles are
+    consumed by the in-kernel stride loop, while num_programs only affects runtime stride length.
     """
     block = _BLOCK if numel < _BIG_TOTAL else _TILE_BIG
     grid = min((numel + block - 1) // block, _GRID_SIPS)
@@ -92,7 +92,7 @@ def _w_flat_kernel(
         offs = start0 + c * step + rng
         mask = offs < numel
         x = tl.load(X + offs, mask=mask, other=0.0)
-        # 0 与 2 用标量常量直接广播，只保留递推初值所需的向量 1。
+        # 0 and 2 are broadcast as scalar constants, keeping only vector 1 needed by the recurrence initial value.
         zero = 0.0
         one = tl.full((BLOCK,), 1.0, x.dtype)
         two = 2.0
@@ -121,14 +121,14 @@ def _w_flat_kernel(
             steps = tl.minimum(tl.maximum(m, 0), _MAX_STEPS)
             w0 = one
             w1 = two * x + one
-            # 常见阶数编译期展开：degree 是设备标量时循环上界无法静态展开，
-            # 这里固定展开 _UNROLL_ORDER 步，用 active 掩码屏蔽多余的递推。
+            # Common orders unrolled at compile time: a device-scalar degree cannot be statically unrolled,
+            # so unroll _UNROLL_ORDER steps fixed and mask out extra recurrences with active.
             for k in tl.static_range(2, _UNROLL_ORDER + 1):
                 w2 = two * x * w1 - w0
                 active = steps >= k
                 w0 = tl.where(active, w1, w0)
                 w1 = tl.where(active, w2, w1)
-            # 超过展开上限的阶数仍按动态循环补齐，保持任意阶语义。
+            # Orders beyond the unroll cap still use a dynamic loop, preserving arbitrary-order semantics.
             for k in range(_UNROLL_ORDER + 1, steps + 1):
                 w2 = two * x * w1 - w0
                 w0 = w1
@@ -197,7 +197,7 @@ def _w_strided_kernel(
             noff += cc * nstr[i]
 
         x = tl.load(X + xoff, mask=mask, other=0.0)
-        # 0 与 2 用标量常量直接广播，只保留递推初值所需的向量 1。
+        # 0 and 2 are broadcast as scalar constants, keeping only vector 1 needed by the recurrence initial value.
         zero = 0.0
         one = tl.full((BLOCK,), 1.0, x.dtype)
         two = 2.0
@@ -337,7 +337,7 @@ def _run(x, n, out=None):
 
 
 def special_chebyshev_polynomial_w(x, n):
-    logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_W")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_CHEBYSHEV_POLYNOMIAL_W")
     return _run(x, n)
 
 
@@ -346,5 +346,5 @@ def special_chebyshev_polynomial_w_out(x, n, out):
 
     ATen wrapper: special_chebyshev_polynomial_w.out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
     """
-    logger.debug("GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_W_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_CHEBYSHEV_POLYNOMIAL_W_OUT")
     return _run(x, n, out)

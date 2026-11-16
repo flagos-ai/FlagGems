@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 cumulative_trapezoid。
+"""GCU400-specific cumulative_trapezoid.
 
-公共实现是「一个 program 处理一行、沿积分维做 tl.cumsum」的单 kernel。
-本实现保留该路径作为基线开关，并增加两条优化：
+The common implementation is a single kernel with "one program per row, tl.cumsum along the integration dimension".
+This implementation keeps that path as a baseline switch and adds two optimizations:
 
-* ``KERNEL_MODE=1``：把积分维与 inner 维组成 2D tile，一次处理多行相邻
-  inner 元素，使访存在 inner 维连续，并减少 program 数量；
-* ``FUSE_DX=1``：把 dx 缩放并入 scan 的梯形项，省掉公共实现在 dx != 1 时
-  额外的一次逐元素乘法 launch。``DX_QUANTIZE`` 用于复现公共实现
-  「先按输出 dtype 量化、再乘 dx」的两段舍入，保证逐元素等价。
+* ``KERNEL_MODE=1``: combine the integration dimension and the inner dimension into a 2D tile, processing several rows
+of adjacent
+  inner elements at once so memory access is contiguous along inner and program count is reduced;
+* ``FUSE_DX=1``: fold dx scaling into the scan's trapezoid term, removing the common implementation's extra
+  elementwise multiply launch when dx != 1. ``DX_QUANTIZE`` reproduces the common implementation's
+  "quantize to output dtype first, then multiply by dx" two-step rounding for elementwise equivalence.
 
-所有调参开关都是模块级常量，由 Step 4 轮次脚本改写。
+All tuning switches are module-level constants rewritten by the Step 4 round script.
 """
 
 import logging
@@ -34,7 +35,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# ===== Step 4 轮次脚本改写的调参常量 =====
+# ===== Tuning constants rewritten by the Step 4 round script =====
 BASELINE_MODE = 0
 KERNEL_MODE = 2
 BLOCK_I = 32
@@ -63,7 +64,7 @@ def _cumtrapz_baseline_kernel(
     stride_row_out,
     BLOCK: tl.constexpr,
 ):
-    """公共实现的逐行 scan，作为可比基线。"""
+    """Per-row scan of the common implementation, used as a comparable baseline."""
     pid = tl.program_id(0)
     o = pid // inner
     i = pid % inner
@@ -93,7 +94,7 @@ def _cumtrapz_1d_kernel(
     OUT_DTYPE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """逐行 scan，可选把 dx 融合进 kernel（含量化模拟）。"""
+    """Per-row scan, optionally folding dx into the kernel (including quantization emulation)."""
     pid = tl.program_id(0)
     o = pid // inner
     i = pid % inner
@@ -107,8 +108,9 @@ def _cumtrapz_1d_kernel(
     cs = tl.cumsum((a + b) * 0.5, axis=0)
     if FUSE:
         if QUANTIZE:
-            # 公共实现先把 cumsum 结果写入输出 dtype 的张量，再做一次逐元素乘 dx；
-            # 这里在寄存器内复现这两次舍入，避免融合改变低精度数值语义。
+            # The common implementation first writes the cumsum result into an output-dtype tensor, then does one
+            # elementwise multiply by dx;
+            # here both roundings are reproduced in registers so fusion does not change low-precision numeric semantics.
             cs = cs.to(OUT_DTYPE).to(tl.float32)
         cs = cs * DX
     tl.store(out_ptr + out_base + k * inner, cs, mask=mask)
@@ -129,10 +131,10 @@ def _cumtrapz_2d_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_I: tl.constexpr,
 ):
-    """2D tile：行方向为积分维 k，列方向为连续的 inner 元素。
+    """2D tile: rows are the integration dimension k, columns are contiguous inner elements.
 
-    一个 program 覆盖 ``BLOCK_N * BLOCK_I`` 个输出元素；积分维的 cumsum
-    按列独立进行（axis=0），因此与逐行 scan 数学等价。
+    One program covers ``BLOCK_N * BLOCK_I`` output elements; the cumsum along the integration dimension
+    is independent per column (axis=0), so it is mathematically equivalent to the per-row scan.
     """
     pid_o = tl.program_id(0)
     pid_i = tl.program_id(1)
@@ -141,7 +143,7 @@ def _cumtrapz_2d_kernel(
     i = pid_i * BLOCK_I + tl.arange(0, BLOCK_I)
     valid = (k[:, None] < (N - 1)) & (i[None, :] < inner)
 
-    # 输入与输出在 inner 维都是连续的，行步长由积分长度决定。
+    # Input and output are both contiguous along inner; the row stride is determined by the integration length.
     in_base = y_ptr + pid_o * stride_row_in
     out_base = out_ptr + pid_o * stride_row_out
     in_ptrs = in_base + k[:, None] * inner + i[None, :]
@@ -172,13 +174,14 @@ def _cumtrapz_rows_kernel(
     BLOCK: tl.constexpr,
     INNER_EQ1: tl.constexpr,
 ):
-    """多行合并 scan：一个 program 处理 ROWS 条逻辑行。
+    """Merged multi-row scan: one program handles ROWS logical rows.
 
-    公共实现每条逻辑行（一个 outer 与 inner 的组合）一个 program，N 较小时
-    会产生大量只算十几个元素的 program，调度开销占主导。这里把 ROWS 行展平成
-    1D 向量一次性 load，reshape 成 [ROWS, BLOCK] 后沿行方向独立 cumsum，再写回。
-    全程只使用 1D masked load/store，规避 GCU400 对 2D gather 的编译限制。
-    ``INNER_EQ1`` 把常见的「积分维在最后」特化为无除法的地址计算。
+    The common implementation uses one program per logical row (one outer and inner combination), so small N
+    creates many programs computing only a dozen elements each, with scheduling overhead dominating. Here ROWS rows are
+    flattened into
+    one 1D vector loaded at once, reshaped to [ROWS, BLOCK] for independent per-row cumsum, then written back.
+    Only 1D masked load/store is used throughout, avoiding GCU400's 2D gather compilation limits.
+    ``INNER_EQ1`` specializes the common "integration dimension last" case to division-free address computation.
     """
     pid = tl.program_id(0)
     idx = tl.arange(0, ROWS * BLOCK)
@@ -198,7 +201,8 @@ def _cumtrapz_rows_kernel(
         step = inner
 
     a = tl.load(y_ptr + in_off, mask=valid, other=0.0).to(tl.float32)
-    # k <= N-2 时 in_off+step 仍是当前逻辑行的最后一个输入元素，不串到下一行。
+    # With k <= N-2, in_off+step is still the last input element of the current logical row and does not spill into the
+    # next row.
     b = tl.load(y_ptr + in_off + step, mask=valid, other=0.0).to(tl.float32)
     t = (a + b) * 0.5
 
@@ -223,7 +227,7 @@ def _dtype_constexpr(dtype):
 
 
 def cumulative_trapezoid(y, *, dx=1, dim=-1):
-    logger.debug("GEMS CUMULATIVE_TRAPEZOID")
+    logger.debug("GEMS_ENFLAME_GCU400 CUMULATIVE_TRAPEZOID")
 
     assert y.dtype in (
         torch.float16,
@@ -272,8 +276,9 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
     quantize = bool(DX_QUANTIZE)
     out_dtype = _dtype_constexpr(y.dtype)
 
-    # 短积分维用 1 warp 可显著降低调度开销；长积分维（BLOCK >= 128）在
-    # 1 warp 下会因单 program 串行元素过多而劣化，必须回到多 warp。
+    # Short integration dimensions benefit significantly from 1 warp by reducing scheduling overhead; long integration
+    # dimensions (BLOCK >= 128)
+    # degrade under 1 warp because a single program processes too many serial elements, so multiple warps are required.
     if WARPS_MODE == 1:
         warps_rows = WARPS_SMALL if block_n <= WARPS_SPLIT else WARPS_LARGE
         warps_other = WARPS_1D
@@ -282,9 +287,9 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
         warps_other = NUM_WARPS
 
     if KERNEL_MODE == 2 and block_n <= BLOCK_LIMIT:
-        # 逻辑行总数 = outer * inner；自适应行数先按目标 program 数收缩，
-        # 再用 MAX_VECTOR 限制单个 program 的 1D 向量长度，避免大 N 时
-        # ROWS*BLOCK 过大引发寄存器溢出（实测 N=1024 且 ROWS=4 会慢 10 倍）。
+        # Total logical rows = outer * inner; the adaptive row count first shrinks by the target program count,
+        # then MAX_VECTOR caps the 1D vector length per program to avoid
+        # register spilling when ROWS*BLOCK is too large at big N (measured N=1024 with ROWS=4 is 10x slower).
         rows_total = outer * inner
         if ROWS_MODE == 1:
             rows_eff = max(1, min(ROWS, rows_total // 256))

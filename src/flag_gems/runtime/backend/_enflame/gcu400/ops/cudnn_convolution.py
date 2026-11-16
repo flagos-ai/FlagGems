@@ -19,19 +19,19 @@ import torch
 import triton
 import triton.language as tl
 
-# GCU400 专属派生（追加式落地，原文件不改）：
-#   1. conv1d/conv2d/conv3d 改指本 backend 的本地实现（conv1d__opt/conv2d__opt/
-#      conv3d）。通用 flag_gems.ops.conv2d 在 GCU 上因 PAD_LANES=12 lane
-#      workaround + 公共 tune 配置缺陷产生约 50% 错值元素（见 conv2d__opt.py
-#      头注），本 op 的 C_in >= 16 回退路径全部中招；公共入口
-#      flag_gems.conv{1,2,3}d 在本 backend 本就解析到本地实现，组合复用应与
-#      之一致。
-#   2. _direct_conv2d_kernel 由 (BLOCK_OC, BLOCK_SP) 外积 FMA tile 重写为
-#      1D-tile 行程式（每 program 单输出通道 + 标量 weight tap）：外积形态在
-#      GCU 上触发 gcuir PassManager legalization 崩溃（P02 家族，同
-#      cudnn_convolution_relu_direct2d / conv_depthwise2d_direct 实例签名），
-#      且能编过的形状（单像素）也错值（oc >= 1 通道全零）。1D-tile 形态为本
-#      backend 已验证可编可算（_direct_conv3d_kernel / conv_depthwise2d）。
+# GCU400-specific derivation (additive delivery, original file untouched):
+#   1. conv1d/conv2d/conv3d are redirected to this backend's local implementations (conv1d__opt/conv2d__opt/
+#      conv3d). Common flag_gems.ops.conv2d produces ~50% wrong elements on GCU due to the PAD_LANES=12 lane
+#      workaround + common tune config defect (see conv2d__opt.py
+#      header); all C_in >= 16 fallback paths of this op are affected; the common entry
+#      flag_gems.conv{1,2,3}d already resolves to local implementations on this backend, so composed reuse should
+#      match one of them.
+#   2. _direct_conv2d_kernel was rewritten from the (BLOCK_OC, BLOCK_SP) FMA outer-product tile to
+#      a 1D-tile row-wise form (one output channel per program + scalar weight tap): the outer-product shape
+#      triggers a gcuir PassManager legalization crash on GCU (P02 family, same
+#      instance signature as cudnn_convolution_relu_direct2d / conv_depthwise2d_direct),
+#      and the shapes that do compile (single pixel) are also wrong (oc >= 1 channels all zero). The 1D-tile form is
+#      verified compilable and correct on this backend (_direct_conv3d_kernel / conv_depthwise2d).
 from .conv1d__opt import conv1d
 from .conv2d__opt import conv2d
 from .conv3d import conv3d
@@ -905,7 +905,7 @@ def cudnn_convolution(
     Returns:
         Output tensor after convolution
     """
-    logger.debug("GEMS CUDNN_CONVOLUTION")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION")
 
     ndim = input.ndim - 2
     if ndim not in (1, 2, 3):

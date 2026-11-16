@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 SORTING_ALGORITHM_THRESHOLD = 12288
 SPLIT_WORK_THRESHOLD = 200 * 1000
 NUM_THREADS_PER_BLOCK = 2048
-# num_warps 与 BLOCK_SIZE 解耦，便于按 GCU400 的 SIP 拓扑单独调参。
+# num_warps is decoupled from BLOCK_SIZE so it can be tuned separately for GCU400's SIP topology.
 NUM_WARPS = 64
 MULTIPLE_BLOCKS_PER_ROW_CONFIG = 10
 NUM_THREADS_PER_BLOCK_MERGE = 1024
@@ -108,14 +108,14 @@ def _distribute_to_bins(
         logit_pattern,
         STEP=STEP,
     )
-    # 逐元素 shared atomic 在 enflame 后端是标量串行路径，整行 129280 次原子
-    # 是主要瓶颈。改用块内 tl.histogram 先聚合一个 tile，再对 2048 个 bin 做一次
-    # 向量读改写，把原子次数从「每元素一次」降到「每 tile 零次」。
-    # STEP3 的低 10 位只需 1024 个 bin；其余 pass 用 11 位 / 2048 个 bin。
-    # 缩窄直方图可减少每 tile 的 2048 宽向量读改写。
+    # Per-element shared atomics are a scalar serial path on the enflame backend, and 129280 atomics per row
+    # are the main bottleneck. Use in-block tl.histogram to aggregate one tile first, then one
+    # vector read-modify-write over 2048 bins, dropping atomics from "once per element" to "zero per tile".
+    # STEP3's low 10 bits need only 1024 bins; other passes use 11 bits / 2048 bins.
+    # Narrowing the histogram reduces the 2048-wide vector read-modify-write per tile.
     NUM_BINS_LOCAL: tl.constexpr = 1024 if STEP == 3 else 2048
     valid_mask = tl.full(bin_idx.shape, True, tl.int1) & is_partial_match
-    # tl.histogram 只接受 1D 输入；向量化路径的 [BLOCK_SIZE, VEC] tile 先展平。
+    # tl.histogram accepts only 1D input; the vectorized [BLOCK_SIZE, VEC] tile is flattened first.
     if len(bin_idx.shape) > 1:
         FLAT_SIZE: tl.constexpr = bin_idx.shape[0] * bin_idx.shape[1]
         flat_bin_idx = tl.reshape(bin_idx, (FLAT_SIZE,))
@@ -128,8 +128,8 @@ def _distribute_to_bins(
     )
     bin_offsets = tl.arange(0, NUM_BINS_LOCAL)
     bin_counts = tl.load(s_histogram_ptr + bin_offsets)
-    # 同一 CTA 内 load→add→store 有数据依赖，编译器不会跨迭代重排；
-    # 去掉每 tile 的 CTA 屏障，只在全部 tile 累加完成后统一同步。
+    # load->add->store within one CTA has a data dependency, so the compiler will not reorder across iterations;
+    # drop the per-tile CTA barrier and synchronize once after all tiles finish accumulating.
     tl.store(s_histogram_ptr + bin_offsets, bin_counts + tile_histogram)
 
 
@@ -316,8 +316,8 @@ def _process_histogram_step(
     zeros = tl.zeros([BLOCK_SIZE], dtype=tl.int32)
     zeros_vec_2d = tl.zeros([BLOCK_SIZE, VEC], dtype=tl.int32)
 
-    # BLOCK_SIZE 可大于单个 radix pass 的 bin 数（例如 2048 > 1024），
-    # 用向上取整保证至少执行一轮阈值搜索，否则 STEP3 会留下 -1 阈值。
+    # BLOCK_SIZE may exceed one radix pass's bin count (e.g. 2048 > 1024),
+    # so round up to guarantee at least one threshold search round, otherwise STEP3 leaves a -1 threshold.
     num_threshold_bins: tl.constexpr = RADIX10_SIZE if STEP == 3 else RADIX11_SIZE
     threshold_rounds: tl.constexpr = (num_threshold_bins + BLOCK_SIZE - 1) // BLOCK_SIZE
     for clear_round in tl.static_range(0, threshold_rounds):

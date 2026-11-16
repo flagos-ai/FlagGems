@@ -121,7 +121,7 @@ def batch_norm_update_stats(
     running_var,
     momentum: float,
 ):
-    logger.debug("GEMS BATCH_NORM_UPDATE_STATS")
+    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_UPDATE_STATS")
     if _MATCH_ATEN_BATCH_NORM:
         # The aten call returns the input dtype when no running stats are
         # passed (fp16/bf16), while the suite asserts float32 outputs; cast the

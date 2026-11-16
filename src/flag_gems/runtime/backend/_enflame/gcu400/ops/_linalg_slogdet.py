@@ -130,7 +130,7 @@ def _linalg_slogdet(A):
         - LU is the in-place LU factorization produced by the kernel
         - pivots is the int32 pivot buffer (kept for schema parity)
     """
-    logger.debug("GEMS _LINALG_SLOGDET")
+    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_SLOGDET")
     assert A.dim() >= 2, "Input must be at least 2D"
     assert A.shape[-1] == A.shape[-2], "Input must be square"
     # The generated slogdet kernel uses float32 arithmetic; reject unsupported dtypes explicitly.

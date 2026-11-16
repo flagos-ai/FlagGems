@@ -786,7 +786,7 @@ def linalg_cond(A, p=None):
     Returns:
         Tensor containing the condition number(s).
     """
-    logger.debug("GEMS LINALG_COND")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_COND")
 
     assert A.dtype == torch.float32, f"linalg_cond only supports float32, got {A.dtype}"
 
@@ -861,6 +861,7 @@ def linalg_cond(A, p=None):
 
 def linalg_cond_p_str(A, p: str):
     """Dispatch wrapper for aten::linalg_cond.p_str (string p values like 'fro', 'nuc')."""
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_COND_P_STR")
     if _NATIVE_COND_P_STR is not None:
         return _NATIVE_COND_P_STR.call_boxed(_DEVICE_KEYSET, A, p)
     return linalg_cond(A, p)

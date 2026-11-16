@@ -521,7 +521,7 @@ def _histogramdd_from_bin_cts_impl(
     self, bins, *, range=None, weight=None, density=False, out=None
 ):
     """Shared implementation for the base and ``.out`` ATen variants."""
-    logger.debug("GEMS _HISTOGRAMDD_FROM_BIN_CTS")
+    logger.debug("GEMS_ENFLAME_GCU400 _HISTOGRAMDD_FROM_BIN_CTS")
 
     if self.ndim < 2:
         raise RuntimeError(
@@ -789,6 +789,7 @@ def _histogramdd_from_bin_cts(self, bins, *, range=None, weight=None, density=Fa
     """aten::_histogramdd_from_bin_cts(Tensor self, int[] bins, *, float[]? range=None,
     Tensor? weight=None, bool density=False) -> Tensor
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _HISTOGRAMDD_FROM_BIN_CTS")
     return _histogramdd_from_bin_cts_impl(
         self, bins, range=range, weight=weight, density=density, out=None
     )
@@ -800,6 +801,7 @@ def _histogramdd_from_bin_cts_out(
     """aten::_histogramdd_from_bin_cts.out(Tensor self, int[] bins, *, float[]? range=None,
     Tensor? weight=None, bool density=False, Tensor(a!) out) -> Tensor(a!)
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _HISTOGRAMDD_FROM_BIN_CTS_OUT")
     return _histogramdd_from_bin_cts_impl(
         self, bins, range=range, weight=weight, density=density, out=out
     )

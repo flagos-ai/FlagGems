@@ -30,5 +30,5 @@ def _prelu_kernel_func(x, weight):
 
 
 def _prelu_kernel(A, B):
-    logger.debug("GEMS _PRELU_KERNEL")
+    logger.debug("GEMS_ENFLAME_GCU400 _PRELU_KERNEL")
     return _prelu_kernel_func(A, B)

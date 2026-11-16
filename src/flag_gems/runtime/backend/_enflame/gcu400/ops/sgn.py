@@ -30,18 +30,18 @@ logger = logging.getLogger(__name__)
 NUM_SIPS = 24
 _SGN_GRID_CAP = NUM_SIPS * 2
 
-# BLOCK 分档（2026-11-15 实测，MACHINE=local，A084P50610002，do_bench 3 轮交替采样）：
-# 原实现固定 BLOCK=1024，配合持久网格（grid 上限 48）时每个 program 要循环
-# n/1024/48 次，循环与掩码的标量开销完全压过数据搬运 —— 536M 元素 fp16 实测
-# 5.23ms，换成大 tile 后 0.80ms（6.5x）；fp32 5.61ms→1.40ms、bf16 5.02ms→1.39ms；
-# 16.7M 元素 fp16 0.167ms→0.029ms。
-#   * <=8192：launch 开销支配，2048 优于 16384（3.42us vs 4.75us），单独一档；
-#   * fp16/int16 等 2 字节：16384 全面最优（16.7M: 28.6us vs 65536 的 32.0us）；
-#   * bf16：65536 明显更优（16.7M: 29.8~38.9us vs 16384 的 43.4~50.7us，
-#     53M: 128us vs 180us），536M 两者在噪声内相当，故统一走大 tile；
-#   * fp32/int32：n>=1M 时 65536 更优（16.7M: 49.4us vs 60.2us），
-#     小规模反过来（262144: 6.46us vs 5.79us），因此带规模门槛；
-#   * 8 字节 dtype 未实测大 tile，保守沿用 16384，避免寄存器溢出。
+# BLOCK tiering (measured 2026-11-15, MACHINE=local, A084P50610002, do_bench 3 alternating rounds):
+# The original fixed BLOCK=1024; with a persistent grid (cap 48) each program loops
+# n/1024/48 times, and loop + mask scalar overhead completely dominates data movement - 536M fp16 measured
+# 5.23ms, dropping to 0.80ms (6.5x) with a large tile; fp32 5.61ms->1.40ms, bf16 5.02ms->1.39ms;
+# 16.7M fp16 0.167ms->0.029ms.
+#   * <=8192: launch overhead dominates, 2048 beats 16384 (3.42us vs 4.75us), a separate tier;
+#   * 2-byte fp16/int16 etc.: 16384 is best everywhere (16.7M: 28.6us vs 65536's 32.0us);
+#   * bf16: 65536 is clearly better (16.7M: 29.8~38.9us vs 16384's 43.4~50.7us,
+#     53M: 128us vs 180us), at 536M both tie within noise, so use the large tile uniformly;
+#   * fp32/int32: 65536 is better for n>=1M (16.7M: 49.4us vs 60.2us),
+#     small scale is the opposite (262144: 6.46us vs 5.79us), so add a size threshold;
+#   * 8-byte dtypes were not measured with large tiles, conservatively keep 16384 to avoid register spilling.
 _SGN_SMALL_ELEMENTS = 8192
 _SGN_SMALL_BLOCK = 2048
 _SGN_DEFAULT_BLOCK = 16384
@@ -50,7 +50,7 @@ _SGN_WIDE_MIN_ELEMENTS = 1 << 20
 
 
 def _select_block(n_elements: int, dtype: torch.dtype) -> int:
-    """按元素规模与 dtype 宽度选 tile，摊薄持久循环的标量开销。"""
+    """Choose tiles by element scale and dtype width to amortize the persistent loop's scalar overhead."""
     if n_elements <= _SGN_SMALL_ELEMENTS:
         return _SGN_SMALL_BLOCK
     if n_elements >= _SGN_WIDE_MIN_ELEMENTS and (
@@ -193,13 +193,13 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
 
 
 def sgn(x: torch.Tensor):
-    logger.debug("GEMS SGN")
+    logger.debug("GEMS_ENFLAME_GCU400 SGN")
     out = torch.empty_like(x)
     return _sgn_impl(x, out)
 
 
 def sgn_out(x: torch.Tensor, *, out: torch.Tensor):
-    logger.debug("GEMS SGN_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SGN_OUT")
     return _sgn_impl(x, out)
 
 

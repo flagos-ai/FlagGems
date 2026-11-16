@@ -461,14 +461,14 @@ def sparse_sampled_addmm_kernel_aligned(
     K_BLOCKS: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    # 边界完全对齐时的快速路径（M/N/K 都是 tile 的整数倍，且 batch 上 grid.y）：
-    # 没有任何边界掩码，gcu400 上比通用 kernel 少约 20% 的 DSM 占用，因此可以用
-    # 更宽的 BLOCK_K；实测 b=16,m=n=k=4096 fp16 从 40.9ms 降到 32.1ms。
+    # Fast path when boundaries align exactly (M/N/K all integer multiples of the tile, plus batch grid.y):
+    # no boundary masks, about 20% less DSM usage than the generic kernel on gcu400, so a
+    # wider BLOCK_K is possible; measured b=16,m=n=k=4096 fp16 from 40.9ms down to 32.1ms.
     pid = tl.program_id(0)
     b = tl.program_id(1)
     num_pid_m = tl.cdiv(M, BLOCK_M)
     num_pid_n = tl.cdiv(N, BLOCK_N)
-    # L2 友好的 swizzle：GROUP_M 个行 tile 按列优先走，连续 program 复用同一段 mat2
+    # L2-friendly swizzle: GROUP_M row tiles walk column-first, so consecutive programs reuse the same mat2 segment
     group_width = GROUP_M * num_pid_n
     group_id = pid // group_width
     first_pid_m = group_id * GROUP_M
@@ -537,7 +537,7 @@ _MANUAL_DOT_CONFIG = (16, 16, 16, 1, 4, 2)
 
 
 def _pick_gemm_config(M, N, K, element_size, manual_dot):
-    """返回 (config, aligned)；aligned 为 True 表示可走无掩码快速 kernel。"""
+    """Return (config, aligned); aligned=True means the unmasked fast kernel can be used."""
     work = M * N * K
     if manual_dot:
         return _MANUAL_DOT_CONFIG, False
@@ -545,7 +545,7 @@ def _pick_gemm_config(M, N, K, element_size, manual_dot):
     if tiers is not None:
         _, config = next((min_work, cfg) for min_work, cfg in tiers if work >= min_work)
         block_m, block_n, block_k = config[0], config[1], config[2]
-        # aligned kernel 用 grid=(tiles, batch)，两维都不能超过 GCU 的 65535 上限
+        # The aligned kernel uses grid=(tiles, batch); neither dimension may exceed GCU's 65535 limit
         if (
             M % block_m == 0
             and N % block_n == 0
@@ -707,7 +707,7 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
             BLOCK=256,
         )
         if aligned:
-            # grid.y 承载 batch 维，grid.x 承载 (m, n) tile；两者都已确认不超过上限
+            # grid.y carries the batch dim, grid.x carries (m, n) tiles; both are confirmed within the limit
             sparse_sampled_addmm_kernel_aligned[grid_aligned](
                 mat1_f,
                 mat2_f,
@@ -769,12 +769,12 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
 
 
 def sparse_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0):
-    logger.debug("GEMS SPARSE_SAMPLED_ADDMM")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_SAMPLED_ADDMM")
     return _sparse_sampled_addmm_impl(input, mat1, mat2, beta=beta, alpha=alpha)
 
 
 def sparse_sampled_addmm_out(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
-    logger.debug("GEMS SPARSE_SAMPLED_ADDMM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_SAMPLED_ADDMM_OUT")
     if out is None:
         raise TypeError("sparse_sampled_addmm(): out must be provided for out variant")
     return _sparse_sampled_addmm_impl(

@@ -77,13 +77,14 @@ def _digamma_body(x_f32):
 def _trigamma_body(x_f32):
     pi = 3.1415926535897932384626433832795028841971
     reflect_mask = x_f32 < 0.5
-    # 反射项保持 eager sin：tile 级 tl.max 分支跳过 sin 的写法在 GCU400 实测
-    # 全 dtype 净劣化（randn 域 fp16/bf16 @1024 +23%/@2048 +27.6%、fp32 @1024
-    # +10.8%；x>=1 域 else 臂真跳过 sin 仍 +5~15%——tl.max 归约+分支开销大于
-    # 省下的 sin 成本，sin 本身仅占 16-25%）。也不可换多项式/sinpi：
-    # wide-domain 近整数车道 1/sin^2 放大要求与 reference 的 torch.sin 逐位
-    # 一致（2026-11-11 探针；分支 fp32@2048 偶有 -10.8% 调度偶得，机制不明
-    # 不保留）。
+    # F.pad convention: pad is given in (left, right) pairs starting from the innermost dimension
+    # Keep eager sin for the reflection term: the tile-level tl.max branch skipping sin measured
+    # a net regression for all dtypes on GCU400 (randn domain fp16/bf16 @1024 +23%/@2048 +27.6%, fp32 @1024
+    # +10.8%; in x>=1 domain the else arm truly skips sin and still +5~15% - the tl.max reduction + branch
+    # costs more than the saved sin, which is only 16-25%). Polynomial / sinpi replacements are also impossible:
+    # the wide-domain near-integer-lane 1/sin^2 amplification requires bit-for-bit agreement with reference torch.sin
+    # (2026-11-11 probe; a branch at fp32@2048 occasionally got -10.8% from scheduling luck, mechanism unknown, not
+    # kept).
     sin_pi_x = tl.sin(pi * x_f32)
     result = tl.where(reflect_mask, -_fast_dividef(pi * pi, sin_pi_x * sin_pi_x), 0.0)
     y = tl.where(reflect_mask, 1.0 - x_f32, x_f32)
@@ -227,8 +228,8 @@ def polygamma_zeta_func(x, s, scale):
     # polygamma(n, x) = (-1)^(n+1) * n! * zeta(n + 1, x) for n >= 2, with
     # s = n + 1 and scale = (-1)^(n+1) * n!. Cephes Euler-Maclaurin Hurwitz
     # zeta in float32, the same algorithm PyTorch's CPU/CUDA kernels use.
-    # n! 因子由 host 侧预计算后作为标量传入：GCU400 后端把 lgamma 的
-    # tt.extern_elementwise 标记为非法，不能在 kernel 内调用。
+    # The n! factor is precomputed on the host and passed as a scalar: the GCU400 backend marks lgamma's
+    # tt.extern_elementwise as illegal, so it cannot be called inside the kernel.
     q = x.to(tl.float32)
     s = s.to(tl.float32)
     total = _pow(q, -s)
@@ -284,9 +285,9 @@ def polygamma_zeta_func(x, s, scale):
 
 
 def _polygamma_zeta_args(n):
-    # s = n + 1；scale = (-1)^(n+1) * n! = ±exp(lgamma(n+1))。
-    # 在 host 侧用 double 精度预计算常量因子，避免 GCU400 上非法的
-    # lgamma extern_elementwise，并保持 kernel 内只做 Triton 主计算。
+    # s = n + 1; scale = (-1)^(n+1) * n! = +/-exp(lgamma(n+1)).
+    # Precompute constants in double precision on the host, avoiding GCU400's illegal
+    # lgamma extern_elementwise and keeping only Triton main compute inside the kernel.
     order = float(n + 1)
     magnitude = math.exp(math.lgamma(order))
     return order, (magnitude if n % 2 == 1 else -magnitude)
@@ -298,7 +299,7 @@ def _polygamma_zeta_args(n):
 
 
 def polygamma(n, A):
-    logger.debug("GEMS POLYGAMMA")
+    logger.debug("GEMS_ENFLAME_GCU400 POLYGAMMA")
     if n < 0:
         raise RuntimeError("polygamma(n, x) does not support negative n.")
     if n == 0:
@@ -318,7 +319,7 @@ def polygamma(n, A):
 
 
 def polygamma_(A, n):
-    logger.debug("GEMS POLYGAMMA_")
+    logger.debug("GEMS_ENFLAME_GCU400 POLYGAMMA_")
     if n < 0:
         raise RuntimeError("polygamma(n, x) does not support negative n.")
     if n == 0:
@@ -336,7 +337,7 @@ def polygamma_(A, n):
 
 
 def polygamma_out(n, A, out):
-    logger.debug("GEMS POLYGAMMA_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 POLYGAMMA_OUT")
     if n < 0:
         raise RuntimeError("polygamma(n, x) does not support negative n.")
     if n == 0:

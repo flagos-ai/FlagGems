@@ -12,31 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 特化的 prod 系列实现。
+"""GCU400-specific prod family implementation.
 
-结构对齐同目录 sum.py 的 persistent 固定网格 + tile 字节预算体系，并针对
-乘法归约做了三处关键替换：
+Structurally aligned with sum.py's persistent fixed grid + tile byte budget in the same directory, with three key
+changes for multiplicative reduction:
 
-1. 乘法没有 atomic 原语（atomic_add 归并不了 partial 积），跨 program
-   归并改用「last-block 收尾」单 launch 模式：各 program 写 partial 后
-   acq_rel 自增计数器，最后一个 program 在同一 launch 内归并全部
-   partial（对齐 masked_scatter_backward 的 barrier 先例）。
-2. 乘法归约树的成本远高于元素级向量乘（实测约一个数量级），主路全部
-   采用 2D 元素级累加器：被归约维按 chunk 展开成向量乘 acc *= x，树只
-   在每 program 收尾做一次（inner/global），或退化为按 chunk 的窄树
-   （non-inner，树深 = BI 沿被归约维）。
-3. 主循环免 mask（尾块用 constexpr 分离），power-of-2 形状零谓词开销。
+1. Multiplication has no atomic primitive (atomic_add cannot merge partial products), so cross-program
+   merging uses a "last-block finish" single-launch mode: each program writes a partial then
+   increments an acq_rel counter, and the last program merges all partials within the same launch
+   (following the barrier precedent in masked_scatter_backward).
+2. A multiplicative reduction tree costs far more than elementwise vector multiply (~an order of magnitude), so main
+paths
+   use 2D elementwise accumulators: the reduced dimension is expanded into vector multiply acc *= x by chunk, and the
+   tree
+   runs only once at each program's finish (inner/global), or degenerates into a narrow per-chunk tree
+   (non-inner, tree depth = BI along the reduced dimension).
+3. The main loop is mask-free (tail block separated by constexpr), so power-of-2 shapes have zero predicate cost.
 
-实测（L600/48SP，官方 bench core 形状 kernel 模式 median w1000/r100，
-job j20261111113840_b395bdf9，两轮 fresh geomean 1.355/1.309×，改前
-0.405×）：
-- inner (4096,4096): 233→37µs(fp16)/233→42µs(fp32)；
-- non-inner (1024,1024,512): 2224→440µs(fp16)/2393→965µs(fp32)；
-- global (1048576,): 61→15µs（单 launch + per-call zeros 计数器）。
+Measured (L600/48SP, official bench core shapes kernel mode median w1000/r100,
+job j20261111113840_b395bdf9, two fresh rounds geomean 1.355/1.309x, before change
+0.405x):
+- inner (4096,4096): 233->37us(fp16)/233->42us(fp32);
+- non-inner (1024,1024,512): 2224->440us(fp16)/2393->965us(fp32);
+- global (1048576,): 61->15us (single launch + per-call zeros counter).
 
-单维求和按 (M, N, K) 展开选路：N==1 走拷贝；K==1 且 M==1 退化为全局
-归约；K==1 且行数极少再沿 N 切一刀；K==1 走行归约；K>1 走 (行, 尾块)
-任务切分。
+Single-dimension reduction is routed by an (M, N, K) expansion: N==1 uses copy; K==1 and M==1 degenerates to global
+reduction; K==1 with very few rows splits once more along N; K==1 uses row reduction; K>1 uses (row, tail-block)
+task partitioning.
 """
 
 import builtins
@@ -55,27 +57,27 @@ logger = logging.getLogger("flag_gems.ops.prod")
 _min = builtins.min
 _max = builtins.max
 
-# GCU400 有 48 个计算单元；固定网格 + 核内跨步可让 SP 占满。
+# GCU400 has 48 compute units; a fixed grid + in-kernel stride keeps SPs saturated.
 MAX_GRID = 48
 
-# 全局归约：小规模单 program 一趟出结果（对齐 sum.py 的实测阈值）。
+# Global reduction: small scale uses one program in one pass (matching sum.py's measured threshold).
 GLOBAL_TILE_ELEMS = 65536
 
-# persistent 全局归约的 tile / 累加器形状：元素级 acc 跨 tile 累乘，
-# 归约树只在收尾做一次。
+# Tile / accumulator shape of persistent global reduction: elementwise acc multiplies across tiles,
+# with the reduction tree run only once at the finish.
 GLOBAL_R = 8
 GLOBAL_W = 1024
 
-# 行归约 acc2d 的元素预算：fp32 下 128KB，控制 DSM 占用（实测最优档）。
+# Element budget of row-reduction acc2d: 128KB under fp32, controlling DSM usage (measured optimum).
 INNER_ACC_ELEMS = 32768
 INNER_MAX_BN = 4096
 
-# 非行归约 tile：BI 沿被归约维（树深），BK 沿内存连续维。
+# Non-row-reduction tile: BI along the reduced dimension (tree depth), BK along the contiguous memory dimension.
 NON_INNER_BI = 128
 NON_INNER_BK = 512
 NON_INNER_ACC_ELEMS = 65536
 
-# 行数很少而行长极长时，沿 N 维再切一刀分摊到 48 个 program。
+# When rows are few but rows are very long, split once more along N across 48 programs.
 ROW_SPLIT_MAX_ROWS = 8
 ROW_SPLIT_MIN_N = 65536
 ROW_SPLIT_BN = 4096
@@ -89,7 +91,7 @@ def _reduce_mul(a, b):
 @libentry()
 @triton.jit(do_not_specialize=["n_elem"])
 def prod_copy_kernel(Out, X, n_elem, BLOCK: tl.constexpr):
-    """被归约维长度为 1：输出就是输入本身，走一遍 elementwise 拷贝。"""
+    """Reduced dimension length is 1: output is the input itself, done with one elementwise copy."""
     pid = tl.program_id(0)
     step = tl.num_programs(0)
     num_tile = (n_elem + BLOCK - 1) // BLOCK
@@ -103,7 +105,7 @@ def prod_copy_kernel(Out, X, n_elem, BLOCK: tl.constexpr):
 @libentry()
 @triton.jit(do_not_specialize=["n_elem"])
 def prod_global_single_kernel(X, Out, n_elem, BLOCK: tl.constexpr):
-    """小规模全局乘积：单 program 一趟归约，无 partial 无计数器。"""
+    """Small-scale global product: one program reduces in one pass, no partials and no counter."""
     if (
         tl.constexpr(X.dtype.element_ty == tl.float16)
         | tl.constexpr(X.dtype.element_ty == tl.bfloat16)
@@ -130,11 +132,11 @@ def prod_global_kernel(
     W: tl.constexpr,
     NP_BLOCK: tl.constexpr,
 ):
-    """persistent 流式全局乘积：元素级 acc [R, W] 跨 tile 累乘，收尾树一次；
-    last-block（acq_rel barrier）在同一 launch 内归并全部 partial。
+    """Persistent streaming global product: elementwise acc [R, W] multiplies across tiles, one final tree;
+    last-block (acq_rel barrier) merges all partials within the same launch.
 
-    Counter 是 fp32 标量（与 Part 同一块 buffer 的尾元素），计数到 48 之内
-    在 fp32 上精确；Out 由最后一个 program 独占写出。
+    Counter is an fp32 scalar (the tail element of the same buffer as Part), exact in fp32 up to 48;
+    Out is written exclusively by the last program.
     """
     BLOCK: tl.constexpr = R * W
     if (
@@ -176,8 +178,8 @@ def prod_dim_inner_kernel(
     EVEN_M: tl.constexpr,
     EVEN_N: tl.constexpr,
 ):
-    """被归约维在最内层：persistent 行批 tile [BM, BN]，acc2d 元素级累乘，
-    每个行 tile 收尾树一次；主循环免 mask（尾块 constexpr 分离）。"""
+    """Reduced dimension is innermost: persistent row-batch tile [BM, BN], acc2d elementwise multiply,
+    one tree at each row tile's finish; main loop is mask-free (tail block separated by constexpr)."""
     if (
         tl.constexpr(X.dtype.element_ty == tl.float16)
         | tl.constexpr(X.dtype.element_ty == tl.bfloat16)
@@ -238,10 +240,10 @@ def prod_dim_row_split_partial_kernel(
     BM: tl.constexpr,
     BN: tl.constexpr,
 ):
-    """行数很少的场合：把行内 N 维也切给多个 program，各产出一份 partial。
+    """When rows are few: split the in-row N dimension across programs, each producing one partial.
 
-    acc2d [BM, BN] 元素级累乘跨 chunk，每 program 收尾树一次；
-    partial 布局为 [n_part, BM]，第 i 个 program 写第 i 行。
+    acc2d [BM, BN] multiplies elementwise across chunks, one tree at each program's finish;
+    partial layout is [n_part, BM], program i writes row i.
     """
     if (
         tl.constexpr(X.dtype.element_ty == tl.float16)
@@ -278,7 +280,7 @@ def prod_dim_row_split_final_kernel(
     BLOCK_P: tl.constexpr,
     BM: tl.constexpr,
 ):
-    """把 [n_part, BM] 的 partial 按行归并（乘法）。"""
+    """Merge [n_part, BM] partials by row (multiplication)."""
     if tl.constexpr(Part.dtype.element_ty == tl.float16) | tl.constexpr(
         Part.dtype.element_ty == tl.bfloat16
     ):
@@ -308,11 +310,11 @@ def prod_dim_non_inner_kernel(
     EVEN_I: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    """被归约维后面还有 K 个元素：任务 = (行 m, 尾块 k)，沿被归约维累乘。
+    """K elements follow the reduced dimension: task = (row m, tail block k), multiplying along the reduced dimension.
 
-    tile 取 (BI, BK)，BK 沿尾维（内存连续维）保证 load 是若干段连续访存；
-    每 chunk 一次 BI 深的窄树（列方向全并行），acc [BK] 沿尾维保留。
-    注意：树必须在 fp32（或宽整型）上做，cast 要在 reduce 之前。"""
+    Tile is (BI, BK), with BK along the tail (memory-contiguous) dimension so loads are several contiguous segments;
+    each chunk runs one BI-deep narrow tree (columns fully parallel), acc [BK] retained along the tail dimension.
+    Note: the tree must be in fp32 (or a wide integer type), so cast before reduce."""
     if (
         tl.constexpr(X.dtype.element_ty == tl.float16)
         | tl.constexpr(X.dtype.element_ty == tl.bfloat16)
@@ -369,10 +371,10 @@ def prod_dim_non_inner_kernel(
 
 
 def _launch_global_prod(inp, out, n_elem):
-    """全局乘积：小规模单 program；其余 persistent 流式 + last-block 单 launch。
+    """Global product: small scale uses one program; otherwise persistent streaming + last-block single launch.
 
-    Counter 与 Part 合并进同一块 zeros buffer（计数器占尾元素），一次
-    memset 完成 partial 清零与计数器清零。"""
+    Counter and Part share one zeros buffer (counter occupies the tail element), so one
+    memset clears both partials and the counter."""
     with torch_device_fn.device(inp.device):
         if n_elem <= GLOBAL_TILE_ELEMS:
             block = triton.next_power_of_2(n_elem)
@@ -397,13 +399,13 @@ def _launch_global_prod(inp, out, n_elem):
 
 
 def _launch_dim_prod(inp, out, M, N, K):
-    """单维乘积：按 (M, N, K) 形态选路。
+    """Single-dimension product: routed by (M, N, K) shape.
 
-    N == 1           → 输出即输入，走 elementwise 拷贝；
-    K == 1 且 M == 1 → 退化为全局乘积（复用单 launch 全局路径）；
-    K == 1 且行数极少 → 再沿 N 维切一刀，否则只有 1 个 program 串行整行；
-    K == 1           → 行归约（persistent [BM, BN] acc2d tile）；
-    K > 1            → (行, 尾块) 任务切分，沿被归约维窄树累乘。
+    N == 1           -> output is input, elementwise copy;
+    K == 1 and M == 1 -> degenerates to global product (reuse the single-launch global path);
+    K == 1 with very few rows -> split once more along N, otherwise 1 program serializes the whole row;
+    K == 1           -> row reduction (persistent [BM, BN] acc2d tile);
+    K > 1            -> (row, tail-block) partitioning, narrow-tree multiply along the reduced dimension.
     """
     with torch_device_fn.device(inp.device):
         if N == 1:
@@ -449,7 +451,7 @@ def _launch_dim_prod(inp, out, M, N, K):
                 )
                 return
 
-            # 行归约：acc2d 元素预算封顶，行批随行数摊到 48 个 program。
+            # Row reduction: acc2d element budget capped, row batches spread across 48 programs by row count.
             block_n = _min(triton.next_power_of_2(N), INNER_MAX_BN)
             block_m = _max(
                 1,
@@ -472,10 +474,10 @@ def _launch_dim_prod(inp, out, M, N, K):
             )
             return
 
-        # 尾块宽度固定 512：实测 [BI, BK] tile 的 tl.reduce(axis=0) 在
-        # BK <= 128 时落入 ~55 Melem/s 的慢路径（30×）、BK = 256 间歇性
-        # 病态，只有 BK >= 512 稳定在快路径；宁可任务数少于 48 也不再
-        # 向下折半（折半只会制造病态档位）。
+        # Tail-block width fixed at 512: measured [BI, BK] tile tl.reduce(axis=0) falls into a ~55 Melem/s
+        # slow path when BK <= 128 (30x), BK = 256 is intermittently
+        # pathological, and only BK >= 512 stays on the fast path; prefer fewer than 48 tasks over
+        # halving again (halving only creates pathological tiers).
         block_k = _min(triton.next_power_of_2(K), NON_INNER_BK)
         block_i = _max(
             1,
@@ -502,7 +504,7 @@ def _launch_dim_prod(inp, out, M, N, K):
 
 
 def _normalize_dtype(inp, dtype):
-    """保持与 sum.py 一致的 dtype 归一（bool 走整型）。"""
+    """Keep dtype normalization consistent with sum.py (bool goes through integer)."""
     if dtype is None:
         dtype = inp.dtype
         if dtype == torch.bool:

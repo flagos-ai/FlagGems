@@ -116,12 +116,12 @@ def nextafter_func(input, other):
 
 
 def nextafter(input, other, *, out=None):
-    logger.debug("GEMS NEXTAFTER")
+    logger.debug("GEMS_ENFLAME_GCU400 NEXTAFTER")
     if out is not None:
         return nextafter_func(input, other, out0=out)
     return nextafter_func(input, other)
 
 
 def nextafter_(input, other):
-    logger.debug("GEMS NEXTAFTER_")
+    logger.debug("GEMS_ENFLAME_GCU400 NEXTAFTER_")
     return nextafter_func(input, other, out0=input)

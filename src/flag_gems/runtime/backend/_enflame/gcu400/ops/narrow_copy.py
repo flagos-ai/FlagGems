@@ -108,7 +108,7 @@ def _launch_grid(num_programs):
 
 
 def narrow_copy(inp, dim, start, length):
-    logger.debug("GEMS NARROW_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 NARROW_COPY")
     assert (
         dim >= -inp.ndim and dim < inp.ndim
     ), f"Invalid dim: {dim} for tensor with {inp.ndim} dimensions"

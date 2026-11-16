@@ -23,10 +23,10 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# fixed grid 匹配 GCU400 的 SIP 拓扑，核内跨步循环覆盖大 shape
+# Fixed grid matches GCU400's SIP topology; an in-kernel stride loop covers large shapes
 NUM_SIPS = 24
 GRID_MULT = 2
-# 按元素字节数反比选 tile：16-bit 与 32-bit 分别取块大小
+# Choose tiles inversely by element bytes: separate block sizes for 16-bit and 32-bit
 BLOCK_16 = 16384
 BLOCK_32 = 65536
 NUM_WARPS = 4
@@ -48,7 +48,7 @@ def exp_kernel(
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + tl.arange(0, BLOCK)
         if EVEN_PATH:
-            # 满块路径：去掉边界掩码与 other 填充，减少谓词计算
+            # Full-block path: drop boundary masks and other padding to reduce predicate computation
             x = tl.load(x_ptr + off).to(tl.float32)
             if USE_EXP2:
                 y = tl.exp2(x * 1.4426950408889634)
@@ -80,7 +80,7 @@ def _launch(inp, out):
     is_fp32 = inp.dtype == torch.float32
     BLOCK = _choose_block(N, is_fp32)
     grid_size = min(triton.cdiv(N, BLOCK), NUM_SIPS * GRID_MULT)
-    # 仅当 N 恰好被整数个 BLOCK 覆盖时才能安全去掉掩码
+    # Masks can be safely dropped only when N is exactly covered by an integer number of BLOCKs
     even_path = False and (N % BLOCK == 0)
     with torch_device_fn.device(inp.device):
         exp_kernel[(grid_size,)](

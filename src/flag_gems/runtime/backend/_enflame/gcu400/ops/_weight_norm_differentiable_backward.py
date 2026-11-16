@@ -136,7 +136,7 @@ def _block_sizes(reduce_size):
 
 
 def weight_norm_differentiable_backward(grad_w, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS _WEIGHT_NORM_DIFFERENTIABLE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_NORM_DIFFERENTIABLE_BACKWARD")
 
     for name, tensor in (
         ("grad_w", grad_w),

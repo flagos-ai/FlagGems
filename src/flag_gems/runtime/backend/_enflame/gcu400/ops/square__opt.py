@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""square_ 候选 v2：inplace 1D 手写 kernel。
+"""square_ candidate v2: in-place 1D hand-written kernel.
 
-生产 square_ 是 `_kernel_for(A.dtype)(A, out0=A)`：fp16/bf16 升 fp32 相乘
-再回写窄 dtype，fp32 直接相乘。pointwise_dynamic 的 ENFLAME
-max_grid_size=(12,1,1) 让大 shape 并行度不足（实测约 6ms vs torch 0.76ms）。
-三档 BLOCK 沿用 square/square_out 已验证的策略。
+Production square_ is `_kernel_for(A.dtype)(A, out0=A)`: fp16/bf16 promote to fp32, multiply
+then write back to the narrow dtype; fp32 multiplies directly. pointwise_dynamic's ENFLAME
+max_grid_size=(12,1,1) leaves large shapes under-parallelized (measured ~6ms vs torch 0.76ms).
+Three BLOCK tiers reuse the strategy validated by square/square_out.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -39,9 +42,10 @@ def _square_inplace_kernel(X, N, BLOCK: tl.constexpr, HP: tl.constexpr):
 
 
 def square_(A):
+    logger.debug("GEMS_ENFLAME_GCU400 SQUARE_")
     n = A.numel()
     if n < 65536 or not A.is_contiguous():
-        # 小 shape 是 launch 开销下限，复用生产同一底层调用保证严格 1.000x
+        # Small shapes are at the launch overhead floor, so reuse production's exact call for strict 1.000x
         from flag_gems.ops.square import _kernel_for
 
         _kernel_for(A.dtype)(A, out0=A)

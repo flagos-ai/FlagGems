@@ -28,12 +28,15 @@ rank-1 updates.  Every floating point operation that contributes to the
 returned factor happens inside the Triton kernel; the host wrapper only
 allocates outputs, computes a few scalars and launches the kernel.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
 
 import flag_gems
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -123,6 +126,7 @@ _MAX_N = 64
 def linalg_cholesky_ex(self, upper=False, check_errors=False):
     # ``aten::linalg_cholesky_ex`` defaults both flags, so they default here as
     # well; otherwise ``torch.linalg.cholesky_ex(A)`` cannot bind.
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_CHOLESKY_EX")
     a = self
     if a.dim() < 2:
         raise RuntimeError(

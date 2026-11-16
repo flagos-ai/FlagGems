@@ -23,7 +23,7 @@ import flag_gems
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# 由优化迭代驱动脚本按轮次生成；只影响稀疏输出落盘设备，不影响数值语义。
+# Generated per optimization round; only affects the device where sparse output is materialized, not numeric semantics.
 USE_CPU_SPARSE = 1
 # --- TUNING PARAMS END ---
 
@@ -49,8 +49,8 @@ def _masked_copy_rows_kernel(
     offs_d = tl.arange(0, BLOCK_D)
     mask_d = offs_d < EMBED_DIM
 
-    # P17: 索引 load 后归一到 i32（host 已归一传入；防御两种 env 布局差异），
-    # 对齐 embedding.py / embedding_dense_backward.py 惯用法。
+    # P17: normalize indices to i32 after load (host already normalizes; guards both env layout differences),
+    # following the convention in embedding.py / embedding_dense_backward.py.
     row_idx = tl.load(indices_ptr + pid_n).to(tl.int32)
     go = tl.load(grad_output_ptr + pid_n * EMBED_DIM + offs_d, mask=mask_d, other=0)
     keep = row_idx != padding_idx
@@ -65,7 +65,7 @@ def embedding_sparse_backward(
     padding_idx: int,
     scale_grad_by_freq: bool,
 ):
-    logger.debug("GEMS EMBEDDING_SPARSE_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 EMBEDDING_SPARSE_BACKWARD")
     assert indices.dtype in (
         torch.int32,
         torch.int64,
@@ -92,9 +92,12 @@ def embedding_sparse_backward(
     D = grad_output.shape[-1]
     go = grad_output.contiguous().view(-1, D)  # (N, D)
     idx = indices.contiguous().view(-1)  # (N,)
-    # P17: int64 索引 host 侧归一 int32——无 env 时 torch_gcu 把 int64 张量静默替换为
-    # 紧凑 4B 存储，kernel 按声称 dtype 的 8B 步长 load 会交错错值；`.to(torch.int32)`
-    # 走 torch_gcu 拷贝机能正确读紧凑布局，产出真 int32 张量（两种 env 布局均正确）。
+    # P17: host-side normalization of int64 indices to int32 - without env torch_gcu silently replaces int64 tensors
+    # with
+    # compact 4B storage, and loading with the claimed 8B dtype stride gives interleaved wrong values;
+    # `.to(torch.int32)`
+    # goes through torch_gcu's copy path, reads the compact layout correctly, and produces a real int32 tensor (correct
+    # under both env layouts).
     if idx.dtype == torch.int64:
         idx = idx.to(torch.int32)
     N = idx.numel()
@@ -128,8 +131,9 @@ def embedding_sparse_backward(
         sparse_indices = idx.view(1, -1)
         values = go
 
-    # P21: GCU 无稀疏后端——values 仍在 GCU kernel 算好后，把 indices/values 搬回
-    # CPU 构造 COO，输出设备与 aten 参考腿（CPU fallback）对齐，避免半残张量。
+    # P21: GCU has no sparse backend - after values are computed by the GCU kernel, move indices/values back to
+    # CPU to build COO, aligning the output device with the aten reference leg (CPU fallback) and avoiding half-built
+    # tensors.
     if USE_CPU_SPARSE and device.type != "cpu":
         sparse_indices = sparse_indices.detach().cpu().contiguous()
         values = values.detach().cpu().contiguous()

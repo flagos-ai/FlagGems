@@ -23,5 +23,5 @@ logger = logging.getLogger(__name__)
 
 def __lshift__(self, other):
     if logger.getEffectiveLevel() <= 10:
-        logger.debug("GEMS LSHIFT")
+        logger.debug("GEMS_ENFLAME_GCU400 LSHIFT")
     return bitwise_left_shift(self, other)

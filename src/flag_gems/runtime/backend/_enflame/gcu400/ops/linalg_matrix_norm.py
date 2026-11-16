@@ -114,8 +114,8 @@ def _use_fp64_acc(input_dtype):
       backends; the per-vendor backend files apply their own fp64 policy)
     - bf16/f16 → fp32 accumulator (fp64 is overkill for half precision)
     """
-    # GCU400 编译器把 fp32->fp64 的 arith.extf 标记为非法 op，编译期直接段错误；
-    # 该后端统一使用 fp32 累加，避免生成 fp64 扩展指令。
+    # The GCU400 compiler marks fp32->fp64 arith.extf as an illegal op and segfaults at compile time;
+    # this backend uniformly accumulates in fp32 to avoid generating fp64 extension instructions.
     return False
 
 
@@ -965,7 +965,7 @@ def linalg_matrix_norm(
     provided, writes the result into it and returns the same (aliased) tensor
     (out variant); otherwise returns a freshly-allocated result.
     """
-    logger.debug("GEMS LINALG_MATRIX_NORM")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_NORM")
     return _linalg_matrix_norm_impl(
         A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
     )
@@ -980,7 +980,7 @@ def linalg_matrix_norm_out(
     performs the validation / resize / direct write and returns the aliased
     ``out``.  Pattern follows ``linalg_lu_factor_out``.
     """
-    logger.debug("GEMS LINALG_MATRIX_NORM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_NORM_OUT")
     if out is None:
         raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
     return _linalg_matrix_norm_impl(

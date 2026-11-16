@@ -312,7 +312,7 @@ def _coalesce_finalize(
 
 def coalesce(self):
     """Coalesce a COO sparse tensor, matching ``aten::coalesce`` semantics."""
-    logger.debug("GEMS COALESCE")
+    logger.debug("GEMS_ENFLAME_GCU400 COALESCE")
     if self.layout != torch.sparse_coo:
         raise RuntimeError(
             "coalesce expected sparse coordinate tensor layout but got "

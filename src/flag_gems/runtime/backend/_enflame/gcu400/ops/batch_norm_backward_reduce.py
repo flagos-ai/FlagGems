@@ -145,7 +145,7 @@ def _bn_reduce_partial_kernel(
     COMPUTE_GRAD_WEIGHT: tl.constexpr,
     COMPUTE_GRAD_BIAS: tl.constexpr,
 ):
-    # 第一阶段：每个 program 负责一个 (channel, chunk)，求 4 个部分和
+    # Stage one: each program handles one (channel, chunk), computing 4 partial sums
     channel_id = tl.program_id(0)
     chunk_id = tl.program_id(1)
     chunk_size = tl.cdiv(elements_per_channel, NUM_CHUNKS)
@@ -205,7 +205,7 @@ def _bn_reduce_combine_kernel(
     COMPUTE_GRAD_WEIGHT: tl.constexpr,
     COMPUTE_GRAD_BIAS: tl.constexpr,
 ):
-    # 第二阶段：沿 chunk 维合并部分和，得到每 channel 的最终 4 个输出
+    # Stage two: merge partial sums along the chunk dimension into the final 4 outputs per channel
     channel_id = tl.program_id(0)
     chunk_offs = tl.arange(0, CHUNK_BLOCK)
     mask = chunk_offs < NUM_CHUNKS
@@ -299,7 +299,8 @@ def batch_norm_backward_reduce(
     if grad_bias is None:
         grad_bias = torch.empty(0, dtype=grad_out.dtype, device=grad_out.device)
 
-    # 确定性分档：按每通道元素数选 tile 与 warp 数，替代 libtuner 运行时 autotune
+    # Deterministic tiering: choose tile and warp count by per-channel element count, replacing libtuner runtime
+    # autotune
     if elements_per_channel <= 1024:
         block_size, num_warps, num_stages = 512, 4, 2
     elif elements_per_channel <= 8192:
@@ -310,9 +311,9 @@ def batch_norm_backward_reduce(
     total_elements = C * elements_per_channel
     with torch_device_fn.device(input.device):
         if total_elements >= 1_000_000:
-            # 大 workload：两阶段归约把 6 个 program 扩成 C×48 个，打满 SIP
+            # Large workload: two-stage reduction expands 6 programs into Cx48, saturating the SIPs
             num_chunks = 48
-            # 2 字节 dtype 用中等 tile、4 字节 dtype 用大 tile，匹配各自的访存粒度
+            # 2-byte dtypes use a medium tile, 4-byte dtypes a large tile, matching their memory access granularity
             partial_block_size = 2048 if grad_out.element_size() == 2 else 4096
             partials = torch.empty(
                 (4, C, num_chunks), dtype=torch.float32, device=grad_out.device
@@ -349,7 +350,7 @@ def batch_norm_backward_reduce(
                 num_warps=4,
             )
         else:
-            # 小 workload 单 kernel，避免额外 launch 与 partials 分配
+            # Small workload uses a single kernel, avoiding an extra launch and partials allocation
             batch_norm_backward_reduce_kernel[(C,)](
                 grad_out,
                 input,

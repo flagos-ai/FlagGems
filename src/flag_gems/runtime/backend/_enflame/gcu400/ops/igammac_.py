@@ -163,7 +163,7 @@ def igammac_func(a, x):
 
 
 def igammac_(A, B):
-    logger.debug("GEMS IGAMMAC_")
+    logger.debug("GEMS_ENFLAME_GCU400 IGAMMAC_")
     # igammac_cuda (and thus this kernel) only supports floating point dtypes;
     # Half/BFloat16 are not supported. Reject them explicitly.
     supported_dtypes = (torch.float32, torch.float64)

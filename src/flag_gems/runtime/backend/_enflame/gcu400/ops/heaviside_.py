@@ -46,7 +46,7 @@ def _heaviside_inplace_kernel(x_ptr, v_ptr, n_elements, BLOCK_SIZE: tl.constexpr
 
 
 def heaviside_(self: torch.Tensor, values: torch.Tensor):
-    logger.debug("GEMS HEAVISIDE_")
+    logger.debug("GEMS_ENFLAME_GCU400 HEAVISIDE_")
 
     if not torch.is_tensor(values):
         v_tensor = torch.as_tensor(values, device=self.device, dtype=self.dtype)

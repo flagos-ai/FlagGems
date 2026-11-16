@@ -141,14 +141,14 @@ _ASSEMBLE_TN = 32
 # the dominant cost of Q assembly on large matrices.
 _ASSEMBLE_PAIR = True
 _ASSEMBLE_PAIR_WARPS = 8
-# GCU400 上 fused 单发射 Q 组装依赖 tl.debug_barrier() 保证「identity 写入 →
-# 同一 CTA 读回」的顺序；实测该同步不生效，complete 模式 Q 出现 ~1e12 量级
-# 数值。关闭后走多次 launch 的 identity + per-panel larfb，kernel 间顺序由
-# driver 保证，代价是更多 launch，但结果正确。
+# On GCU400 fused single-launch Q assembly relies on tl.debug_barrier() for "identity write ->
+# read-back in the same CTA"; measured synchronization is ineffective and complete-mode Q shows ~1e12
+# magnitudes. Disabling it uses multiple launches of identity + per-panel larfb, with kernel order guaranteed
+# by the driver; more launches, but correct results.
 _ASSEMBLE_FUSED_ON_GCU400 = False
-# compact-WY 的 T 矩阵在 fp32 下由 _larft_kernel 的 Neumann 级数求逆得到；
-# GCU400 上该级数的 tl.dot 链会发散（实测 T 元素达 1e13），使 complete
-# 模式 Q 完全失效。关闭后改存 M = T^{-1}，由 larfb 在 kernel 内三角求解。
+# compact-WY's T matrix comes from inverting the Neumann series in _larft_kernel under fp32;
+# on GCU400 that series' tl.dot chain diverges (measured T elements up to 1e13), completely breaking
+# complete-mode Q. When disabled, store M = T^{-1} instead and let larfb solve triangular systems inside the kernel.
 _LARFT_INVERT_ON_GCU400 = False
 # num_stages for the load->dot pipelining in the larfb / assemble tile loops
 # (None = Triton default; swept on H20).
@@ -1513,8 +1513,8 @@ def _assemble_q_single_panel_kernel(
 def _triu_copy_kernel(
     W, ROUT, rm, n, grid_e, sWb, sWm, sWn, sRb, sRm, sRn, BLOCK: tl.constexpr
 ):
-    # GCU400 的 grid.y 上限只有 255：2D (B, grid_e) 在 512x512 上会给出
-    # grid_e=256。与 _identity_kernel 一致改用 1D grid 并在 kernel 内解码。
+    # GCU400's grid.y limit is only 255: 2D (B, grid_e) gives
+    # grid_e=256 at 512x512. Like _identity_kernel, switch to a 1D grid and decode inside the kernel.
     pid = tle.program_id(0)
     pid_b = pid // grid_e
     pid_e = pid % grid_e
@@ -2293,7 +2293,7 @@ def _validate_out(out, dtype, batch_shape, m, n, mode):
 
 
 def linalg_qr(A, mode="reduced", *, out=None):
-    logger.debug("GEMS LINALG_QR")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_QR")
     return _linalg_qr(A, mode, out=out)
 
 
@@ -2447,7 +2447,7 @@ def _linalg_qr(A, mode="reduced", *, out=None):
 
 
 def linalg_qr_out(A, mode="reduced", *, Q, R):
-    logger.debug("GEMS LINALG_QR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_QR_OUT")
     return _linalg_qr(A, mode, out=(Q, R))
 
 

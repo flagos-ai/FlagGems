@@ -155,26 +155,26 @@ def _launch_xlogy_flat(A, B, out):
     return out
 
 
-# GCU400 默认的 65536 元素 tile 只配 48 个 CTA，单 CTA 寄存器压力过大；
-# libdevice 的 extern __ef_logf 又比 Triton 核心 tl.log 慢很多。按实测定制
-# 本算子的 codegen 配置，不改动全局 CODEGEN_COFIGS。
-# 注意：不能在本模块 import codegen_config_utils，pointwise_dynamic 会把模块的
-# import 原样复制进生成代码，而相对导入在生成的 gcu400.ops.* 路径下无法解析。
+# GCU400's default 65536-element tile with only 48 CTAs puts too much register pressure on one CTA;
+# libdevice's extern __ef_logf is also much slower than Triton's core tl.log. Customize
+# this operator's codegen config by measurement, leaving global CODEGEN_COFIGS untouched.
+# Note: codegen_config_utils must not be imported in this module; pointwise_dynamic copies the module's
+# imports verbatim into generated code, and relative imports cannot resolve under the generated gcu400.ops.* path.
 _XLOGY_CONFIG = CodeGenConfig(4096, (1024, 1, 1), 4, True, prefer_1d_tile=False)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=_XLOGY_CONFIG)
 @triton.jit
 def special_xlogy_func(x, y):
-    # xlogy(x, y) = x * log(y)，但 x == 0 时必须返回 0（y 为 0/负数/inf 都一样），
-    # 唯一的例外是 y 为 NaN：此时无论 x 取值都要返回 NaN。
+    # xlogy(x, y) = x * log(y), but x == 0 must return 0 (for y of 0/negative/inf alike),
+    # the only exception being y = NaN: then NaN is returned regardless of x.
     x_fp32 = x.to(tl.float32)
     y_fp32 = y.to(tl.float32)
     y_is_nan = y_fp32 != y_fp32
     x_is_zero = x_fp32 == 0.0
-    # 把「x 为 0 且 y 非 NaN」的输入换成 1：log(1) = 0，乘积自然是 0；
-    # 既省掉末尾两层 tl.where，也避免对 0/负数走 log 的慢速异常分支。
-    # y 为 NaN 时保留 NaN，0 * NaN 仍是 NaN，语义不变。
+    # Replace "x is 0 and y is not NaN" inputs with 1: log(1) = 0, so the product is naturally 0;
+    # this removes two trailing tl.where layers and avoids log's slow exceptional branch for 0/negative values.
+    # Keep NaN when y is NaN; 0 * NaN is still NaN, semantics unchanged.
     safe_y = tl.where(x_is_zero & ~y_is_nan, 1.0, y_fp32)
     return x_fp32 * tl.log(safe_y)
 

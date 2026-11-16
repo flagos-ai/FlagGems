@@ -151,7 +151,7 @@ def _empty_strides(shape):
 
 
 def _new_zeros_with_same_feature_meta(self, other, *, self_num_batch_dims=0):
-    logger.debug("GEMS _NEW_ZEROS_WITH_SAME_FEATURE_META")
+    logger.debug("GEMS_ENFLAME_GCU400 _NEW_ZEROS_WITH_SAME_FEATURE_META")
     if not (isinstance(self, torch.Tensor) and isinstance(other, torch.Tensor)):
         raise TypeError("self and other must be torch.Tensor")
     if isinstance(self_num_batch_dims, bool) or not isinstance(

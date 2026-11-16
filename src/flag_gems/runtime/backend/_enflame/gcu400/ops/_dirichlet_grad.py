@@ -178,8 +178,9 @@ def _digamma_one(x):
     # ``tt.map_elementwise``.
     PSI_10: tl.constexpr = 2.25175258906672110764
 
-    # 本算子只对正的浓度参数 alpha / beta / total 求 digamma：反射公式与
-    # 负整数极点分支恒不触发，整段省去 tan / floor 的 libdevice 外函数调用。
+    # This operator only evaluates digamma for positive concentration parameters alpha / beta / total: the reflection
+    # formula and the negative-integer pole branch are never reached, so the whole tan / floor libdevice call is
+    # dropped.
     y = x
 
     # Push y to be >= 10 (matches the C++ ``while (y < 10)``).  After the
@@ -476,7 +477,7 @@ def _dirichlet_grad_func(x, alpha, total):
 
 
 def _dirichlet_grad(x, alpha, total):
-    logger.debug("GEMS DIRICHLET_GRAD")
+    logger.debug("GEMS_ENFLAME_GCU400 DIRICHLET_GRAD")
     # The ATen reference only implements the AT_DISPATCH_FLOATING_TYPES path
     # (float32 / float64); reject other dtypes explicitly to match the CUDA
     # dispatcher behaviour.
@@ -484,9 +485,9 @@ def _dirichlet_grad(x, alpha, total):
         torch.float32,
         torch.float64,
     ), f"_dirichlet_grad only supports float32/float64, got {x.dtype}"
-    # GCU400 的 libdevice 外函数没有 float64 版本（floor/tan 会抛
-    # KeyError(triton.language.float64)），而设备上的 double 张量本就以 fp32
-    # 存储。统一在 fp32 中完成 Triton 计算，再把结果还原成输入 dtype。
+    # GCU400's libdevice extern has no float64 variant (floor/tan raise
+    # KeyError(triton.language.float64)), while double tensors on the device are actually stored as fp32.
+    # Do all Triton computation in fp32, then restore the input dtype.
     if x.dtype == torch.float64:
         result_f32 = _dirichlet_grad_func(x.float(), alpha.float(), total.float())
         return result_f32.to(torch.float64)
@@ -494,13 +495,14 @@ def _dirichlet_grad(x, alpha, total):
 
 
 def _dirichlet_grad_into(x, alpha, total, *, out):
-    logger.debug("GEMS DIRICHLET_GRAD_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 DIRICHLET_GRAD_OUT")
     assert x.dtype in (
         torch.float32,
         torch.float64,
     ), f"_dirichlet_grad only supports float32/float64, got {x.dtype}"
     if x.dtype == torch.float64:
-        # out= 重载同样需要 fp32 计算；临时缓冲区避免向 fp64 输出直接写 kernel。
+        # The out= overload also needs fp32 computation; a temporary buffer avoids kernel writes directly to fp64
+        # output.
         result_f32 = torch.empty(out.shape, dtype=torch.float32, device=out.device)
         _dirichlet_grad_func(x.float(), alpha.float(), total.float(), out0=result_f32)
         out.copy_(result_f32)

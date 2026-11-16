@@ -12,26 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""vstack 候选 v1：大 shape 用 BLOCK=65536 的线性拼接 kernel。
+"""vstack candidate v1: linear concat kernel with BLOCK=65536 for large shapes.
 
-生产 `vstack` 只是 `cat(aligned, dim=0)` 的包装；第 21 项落地的
-`cat__opt.try_fast_cat` 用 `BLOCK = 16384 if max_n<65536 else 32768`。
-30 组扫描（BLOCK × num_warps × 2D/1D grid，与 torch.cat 逐位一致）显示：
-单输入元素量 >= 2^24 时 `BLOCK=65536 / nw4` 稳定优于 32768：
+Production `vstack` is just a wrapper around `cat(aligned, dim=0)`; item 21's
+`cat__opt.try_fast_cat` uses `BLOCK = 16384 if max_n<65536 else 32768`.
+A 30-config sweep (BLOCK x num_warps x 2D/1D grid, bit-identical to torch.cat) shows:
+with single-input element count >= 2^24, `BLOCK=65536 / nw4` is steadily better than 32768:
 
     fp16/bf16 (4096,4096) / (64,512,512)  0.1128 -> 0.0891  1.27x
-    fp32      同 shape                     0.1728 -> 0.1577  1.10x
+    fp32 same shape 0.1728 -> 0.1577 1.10x
 
-小 shape (64,64) 各配置只有 0.0037~0.0044ms 的微秒级差异（1.05~1.19x，
-抖动量级），故**只接管大 shape**，小 shape 与所有边界
-（输入数 >4、非连续、dtype/device 不一致、float8、t0.ndim<2、
-非 cat 维 shape 不同）全部委托生产 `vstack`，保证 correctness 全覆盖
-且不引入 p10 抖动回归。
+small shapes (64,64) differ by only 0.0037~0.0044ms across configs (1.05~1.19x,
+noise level), so **take over only large shapes**; small shapes and all boundaries
+(>4 inputs, non-contiguous, dtype/device mismatch, float8, t0.ndim<2,
+shape differs outside cat dim) delegate to production `vstack`, guaranteeing full correctness coverage
+without introducing p10 jitter regressions.
 
-复用 `cat__opt` 的 `_can_fast_path` 边界判据与 `_linear_cat_kernel`，
-不改 cat.py / cat__opt.py（避免影响已闭环的第 21 项 concat 与
-第 30 项 cat_out），只按算子选择更大的 BLOCK。
+Reuse `cat__opt`'s `_can_fast_path` boundary checks and `_linear_cat_kernel`,
+without changing cat.py / cat__opt.py (to avoid affecting the closed item 21 concat and
+item 30 cat_out), only choosing a larger BLOCK per operator.
 """
+import logging
 
 from typing import List, Tuple, Union
 
@@ -44,6 +45,9 @@ from flag_gems.runtime.backend._enflame.gcu400.ops.cat__opt import (
     _linear_cat_kernel,
 )
 
+logger = logging.getLogger(__name__)
+
+
 __all__ = ["vstack"]
 
 _LARGE = 1 << 20
@@ -52,6 +56,7 @@ _LARGE = 1 << 20
 def vstack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
 ) -> torch.Tensor:
+    logger.debug("GEMS_ENFLAME_GCU400 VSTACK")
     n = len(tensors)
     if n == 0:
         raise RuntimeError("vstack expected a non-empty TensorList")
@@ -63,9 +68,9 @@ def vstack(
         aligned = list(tensors) if not isinstance(tensors, list) else tensors
 
     A = list(aligned)
-    # 只接管「大 shape + 严格满足 cat fast path 边界」的情形
+    # Take over only "large shape + strictly satisfying cat fast path boundaries"
     if A[0].numel() < _LARGE or t0.ndim < 2 or not _can_fast_path(A, 0):
-        # 与生产 vstack 逐字同构的直接调用，零额外转发开销
+        # Word-for-word isomorphic direct call of production vstack, zero extra forwarding overhead
         return _cat(aligned, dim=0)
 
     ns = [A[j].numel() if j < n else 0 for j in range(4)]

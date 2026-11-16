@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""gcu400 sobol_engine_draw: 闭式 Gray-code 并行实现。
+"""gcu400 sobol_engine_draw: closed-form Gray-code parallel implementation.
 
-原实现对样本维做 n 次串行循环、每次再扫描 30 个 bit，且 ``n`` 是
-``tl.constexpr``，fp64 输出的 kernel 在 GCU400 的 ``make_gcuir`` 阶段会
-稳定触发编译器段错误。这里把递推改成闭式：
+The original runs n serial loops over the sample dimension, each scanning 30 bits, and ``n`` is
+``tl.constexpr``; the fp64-output kernel stably triggers a compiler segfault in GCU400's
+``make_gcuir`` stage. Here the recurrence becomes closed-form:
 
     Q(k) = Q0 ^ (G(num_generated + k) ^ G(num_generated))
     G(k) = XOR_{j: gray(k)_j = 1} v_j
 
-其中 ``v_j`` 是 ``sobolstate[:, j]``，``gray(k) = k ^ (k >> 1)``。
-这样每个样本可在各自的 program 中独立计算，样本维与维度维都能并行；
-输出统一以 fp32 计算，fp64 请求在 host 侧做一次 dtype 转换，避开
-设备上不被支持的 fp64 store。
+where ``v_j`` is ``sobolstate[:, j]`` and ``gray(k) = k ^ (k >> 1)``.
+Each sample can then be computed independently in its own program, with both sample and dimension dimensions parallel;
+outputs are computed uniformly in fp32, and fp64 requests do one dtype conversion on the host, avoiding
+unsupported fp64 stores on the device.
 """
 
 import logging
@@ -52,11 +52,11 @@ def sobol_draw_parallel_kernel(
     BLOCK_SAMPLES: tl.constexpr,
     BLOCK_DIM: tl.constexpr,
 ):
-    """按 (样本块, 维度块) 二维网格并行生成 Sobol 点。
+    """Generate Sobol points in parallel with a 2D (sample block, dimension block) grid.
 
     ``delta_bits = gray(num_generated + sample + 1) ^ gray(num_generated)``
-    的每个置位对应一个需要 XOR 的方向向量；30 轮 ``static_range`` 在编译期
-    展开，运行期不再有样本间的数据依赖。
+    each set bit corresponds to a direction vector to XOR; 30 rounds of ``static_range`` are
+    unrolled at compile time, so there is no cross-sample data dependency at runtime.
     """
     samples = tl.program_id(0) * BLOCK_SAMPLES + tl.arange(0, BLOCK_SAMPLES)
     dims = tl.program_id(1) * BLOCK_DIM + tl.arange(0, BLOCK_DIM)
@@ -90,7 +90,7 @@ def sobol_draw_parallel_kernel(
         mask=sample_mask[:, None] & dim_mask[None, :],
     )
 
-    # 最后一个样本块顺带写回最终状态：Q(n) 正是最后一个样本所在行。
+    # The last sample block also writes back the final state: Q(n) is exactly the last sample's row.
     is_last_sample = samples == (n - 1)
     final_quasi = tl.sum(tl.where(is_last_sample[:, None], quasi, 0), axis=0)
     if tl.program_id(0) == tl.num_programs(0) - 1:
@@ -98,12 +98,12 @@ def sobol_draw_parallel_kernel(
 
 
 def _select_sobol_config(n, dimension):
-    """返回 (样本块、维度块、num_warps)，10 轮扫描后的定稿配置。
+    """Return (sample block, dimension block, num_warps), the final config after 10 sweep rounds.
 
-    32 样本 × 4 维度 × 4 warps 在 4 档 benchmark 上合计 2.855 ms，优于
-    32×8（4.866 ms）、128×8（2.905 ms）与按 n 动态分档（3.074 ms）。维度块
-    取 4 让 grid.y 覆盖更多 SIP；样本块继续放大会受 dsm 内存限制，16 维度块、
-    8 warps 以及更小的样本块都会明显劣化。
+    32 samples x 4 dimensions x 4 warps totals 2.855 ms across 4 benchmark tiers, better than
+    32x8 (4.866 ms), 128x8 (2.905 ms) and dynamic tiering by n (3.074 ms). A dimension block of
+    4 lets grid.y cover more SIPs; larger sample blocks hit dsm memory limits, while 16-dimension blocks,
+    8 warps and smaller sample blocks all degrade noticeably.
     """
     return 128, 4, 4
 
@@ -111,12 +111,12 @@ def _select_sobol_config(n, dimension):
 def underscore_sobol_engine_draw(
     quasi, n, sobolstate, dimension, num_generated, *, dtype=torch.float32
 ):
-    """生成 n 个 Sobol 序列点，返回 (结果, 更新后的 quasi 状态)。"""
-    logger.debug("GEMS UNDERSCORE_SOBOL_ENGINE_DRAW")
+    """Generate n Sobol sequence points, returning (result, updated quasi state)."""
+    logger.debug("GEMS_ENFLAME_GCU400 UNDERSCORE_SOBOL_ENGINE_DRAW")
 
     MAXBIT = 30
     recipd = 1.0 / (2**MAXBIT)
-    # GCU400 不支持 fp64 store；fp64 请求先按 fp32 计算再做一次 dtype 转换。
+    # GCU400 does not support fp64 stores; fp64 requests compute in fp32 first and do one dtype conversion.
     compute_dtype = torch.float32 if dtype == torch.float64 else dtype
     result = torch.empty((n, dimension), dtype=compute_dtype, device=quasi.device)
     quasi_out = torch.empty_like(quasi)

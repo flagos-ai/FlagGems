@@ -44,7 +44,7 @@ def atleast_2d(self: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A 2-D (or higher) tensor viewing the same data.
     """
-    logger.debug("GEMS ATLEAST_2D")
+    logger.debug("GEMS_ENFLAME_GCU400 ATLEAST_2D")
     if not self.dim() < 2:
         # Native atleast_2d is an identity for tensors that are already 2-D
         # or higher: it hands back the input object itself, so no view

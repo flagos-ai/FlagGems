@@ -103,7 +103,7 @@ def soft_margin_loss_backward(
     target: torch.Tensor,
     reduction="mean",
 ):
-    logger.debug("GEMS SOFT_MARGIN_LOSS_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 SOFT_MARGIN_LOSS_BACKWARD")
     grad_output, self_tensor, target = _check_tensors(grad_output, self_tensor, target)
 
     n_elements = self_tensor.numel()

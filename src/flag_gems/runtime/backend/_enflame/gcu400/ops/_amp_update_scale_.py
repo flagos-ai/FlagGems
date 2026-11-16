@@ -83,7 +83,7 @@ def _amp_update_scale_(
       ``growth_interval`` the scale is multiplied by ``scale_growth_factor``
       and the tracker is reset to 0.
     """
-    logger.debug("GEMS _AMP_UPDATE_SCALE_")
+    logger.debug("GEMS_ENFLAME_GCU400 _AMP_UPDATE_SCALE_")
 
     if not self.is_floating_point():
         raise RuntimeError("current_scale must be a float tensor.")

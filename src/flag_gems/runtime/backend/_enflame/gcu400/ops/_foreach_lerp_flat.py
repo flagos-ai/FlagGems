@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_lerp_.ScalarList`` 一维融合实现。
+"""GCU400-specific 1D fused implementation of ``_foreach_lerp_.ScalarList``.
 
-公共 ``foreach_ternary`` 执行器把 tensor 列表编码成 metadata 并以二维
-``grid=(block, tensor)`` 启动；GCU400 的 ``grid.y`` 硬件上限为 255，
-16 个 512x512 张量就需要 ``grid.y=256``，benchmark 直接
-``OutOfResources``。这里把 ``grid.x`` 按 ``(tensor, part)`` 线性展开，
-一次 launch 完成整个列表；非浮点、非连续、混合 dtype、广播等形态
-仍由调用方回退公共执行器，保证 dtype policy 与异常语义不变。
+The common ``foreach_ternary`` executor encodes the tensor list into metadata and launches a 2D
+``grid=(block, tensor)``; GCU400 has a ``grid.y`` hardware limit of 255,
+so 16 tensors of 512x512 need ``grid.y=256`` and the benchmark fails with
+``OutOfResources``. Here ``grid.x`` is linearized over ``(tensor, part)`` and
+the whole list is processed in one launch; non-float, non-contiguous, mixed dtype and broadcast
+shapes still fall back to the common executor, keeping dtype policy and exception semantics unchanged.
 """
 
 import logging
@@ -41,11 +41,11 @@ _TL_DTYPES = {
     torch.bfloat16: tl.bfloat16,
 }
 
-# 不适合快路径时返回该哨兵，由调用方委托公共执行器。
+# Returned when the fast path is not applicable, so the caller delegates to the common executor.
 FALLBACK = object()
 
 # --- TUNING PARAMS START (foreach_lerp_scalar_list_) ---
-# 由优化迭代扫描逐轮注入；均为编译期/启动期配置，不改变算子语义。
+# Injected per round by the optimization sweep; all compile-time / launch-time config, semantics unchanged.
 LERP_SCALAR_LIST_TUNING = {
     "enabled": 1,
     "fused": 1,
@@ -58,15 +58,15 @@ LERP_SCALAR_LIST_TUNING = {
 }
 # --- TUNING PARAMS END (foreach_lerp_scalar_list_) ---
 
-# do_bench 会反复调用同一组 tensor，metadata 只与地址 / numel / 权重有关。
-# 命中缓存即可省掉两次 host→device 小张量构造；键包含全部地址，地址复用时
-# 内容仍然正确，缓存上限避免长期驻留。
+# do_bench repeatedly calls the same group of tensors; metadata depends only on addresses / numel / weights.
+# A cache hit avoids two host-to-device small-tensor constructions; the key includes all addresses, so
+# reused addresses with changed contents stay correct, and the cache cap avoids long-term residency.
 _META_CACHE: Dict[Tuple, Tuple[torch.Tensor, torch.Tensor]] = {}
 _META_CACHE_MAX = 64
 
 
 def _build_launch_data(self, tensors1, out_tensors, weight):
-    """返回 (int64 metadata, fp32 权重)；命中缓存时复用 device 侧张量。"""
+    """Return (int64 metadata, fp32 weights); reuse device-side tensors on a cache hit."""
     key = (
         tuple(tensor.data_ptr() for tensor in self),
         tuple(tensor.data_ptr() for tensor in out_tensors),
@@ -109,7 +109,7 @@ def lerp_flat_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """逐 tensor 的一维跨步 lerp，作为非融合路径的对照实现。"""
+    """Per-tensor 1D strided lerp, kept as a reference implementation for the non-fused path."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -119,7 +119,7 @@ def lerp_flat_kernel(
         a = tl.load(a_ptr + offs, mask=mask)
         b = tl.load(b_ptr + offs, mask=mask)
         if FP32_PROMOTE:
-            # 低精度先提升 fp32 再算，store 时隐式降回输出 dtype。
+            # Promote low precision to fp32 for computation, then implicitly cast back to the output dtype on store.
             a = a.to(tl.float32)
             b = b.to(tl.float32)
         tl.store(out_ptr + offs, a + weight * (b - a), mask=mask)
@@ -135,11 +135,11 @@ def fused_lerp_scalar_list_kernel(
     FP32_PROMOTE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """一次 launch 处理整个列表的 lerp。
+    """Lerp over the whole list in one launch.
 
-    ``meta_ptr`` 依次存放输入指针、输出指针、第二操作数指针、元素数
-    （各 NT 项，int64）；``weight_ptr`` 存放每个 tensor 的 fp32 权重。
-    ``grid.x`` 按 ``(tensor, part)`` 线性展开，绕开 grid.y 的 255 上限。
+    ``meta_ptr`` holds input pointers, output pointers, second-operand pointers and element counts
+    (NT entries each, int64); ``weight_ptr`` holds one fp32 weight per tensor.
+    ``grid.x`` is linearized over ``(tensor, part)`` to bypass the grid.y limit of 255.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -170,7 +170,7 @@ def fused_lerp_scalar_list_kernel(
 
 
 def can_use_flat(self, tensors1, weight) -> bool:
-    """只有同 dtype、连续、等长、逐 tensor 数值标量的列表才走快路径。"""
+    """Use the fast path only for same-dtype, contiguous, equal-length lists with per-tensor numeric scalars."""
     if not self:
         return False
     if not isinstance(weight, (list, tuple)) or len(weight) != len(self):
@@ -193,7 +193,7 @@ def can_use_flat(self, tensors1, weight) -> bool:
 
 
 def run_lerp_scalar_list(self, tensors1, weight, inplace: bool):
-    """执行 lerp ScalarList；不适合快路径时返回 ``FALLBACK`` 哨兵。"""
+    """Execute lerp ScalarList; return the ``FALLBACK`` sentinel when the fast path does not apply."""
     config = LERP_SCALAR_LIST_TUNING
     if not config["enabled"] or not can_use_flat(self, tensors1, weight):
         return FALLBACK

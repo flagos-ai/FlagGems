@@ -262,7 +262,7 @@ def _launch_byte_as_strided_copy(view: torch.Tensor, out: torch.Tensor):
 
 
 def as_strided_copy(input, size, stride, storage_offset=None):
-    logger.debug("GEMS AS_STRIDED_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 AS_STRIDED_COPY")
     if input.device.type != "cuda":
         view = _make_as_strided_view(input, size, stride, storage_offset)
         return view.clone(memory_format=torch.contiguous_format)
@@ -281,7 +281,7 @@ def as_strided_copy(input, size, stride, storage_offset=None):
 
 
 def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
-    logger.debug("GEMS AS_STRIDED_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 AS_STRIDED_COPY_OUT")
     if out.dtype != input.dtype:
         # Match PyTorch's strict out-dtype contract without measuring native fallback.
         raise RuntimeError(

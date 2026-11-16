@@ -1017,7 +1017,7 @@ def cudnn_attention_backward(
     layout additionally provides 4x better memory coalescing for Q/K/V
     seq-dim loads (stride=D vs stride=H*D in BSHD).
     """
-    logger.debug("GEMS CUDNN_ATTENTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_ATTENTION_BACKWARD")
 
     lse = logsumexp.float()
     if lse.ndim == 4 and lse.shape[-1] == 1:

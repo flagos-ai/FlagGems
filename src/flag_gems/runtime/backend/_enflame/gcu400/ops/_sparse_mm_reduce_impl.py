@@ -201,7 +201,7 @@ def _sparse_mm_reduce_impl(self, other, reduce="sum"):
     backend specific (tie-breaking over equal products), which is why they are
     not reproduced.
     """
-    logger.debug("GEMS _SPARSE_MM_REDUCE_IMPL")
+    logger.debug("GEMS_ENFLAME_GCU400 _SPARSE_MM_REDUCE_IMPL")
 
     if self.layout == torch.strided:
         raise NotImplementedError(

@@ -22,18 +22,20 @@ logger = logging.getLogger(__name__)
 
 _BLOCK = 1024
 
-# GCU400 没有 SparseCOO TensorImpl：size-only 的 ``torch.sparse_coo_tensor(size=...)``
-# 经 BackendSelect 落到 ``aten::_sparse_coo_tensor_with_dims`` 后在 Sparsegcu 上抛
-# NotImplementedError，sparse_resize_ 的空张量用例在构造输入阶段即失败。与
-# ``_dimI.py`` 已注册的 ``_sparse_coo_tensor_with_dims_and_tensors`` 同一约定：
-# 空张量无数据可搬，直接在 CPU 构造等价 COO（indices/values 均落在 CPU，空 COO
-# 的 coalesced 状态为 True，与 native 一致）。注册幂等，同类稀疏算子可复用。
+# GCU400 has no SparseCOO TensorImpl: size-only ``torch.sparse_coo_tensor(size=...)``
+# goes through BackendSelect to ``aten::_sparse_coo_tensor_with_dims`` and raises
+# NotImplementedError on Sparsegcu, so sparse_resize_'s empty-tensor cases fail while building inputs. Same convention
+# as
+# ``_dimI.py``'s registered ``_sparse_coo_tensor_with_dims_and_tensors``:
+# empty tensors have no data to move, so build an equivalent COO directly on CPU (indices/values both on CPU, an empty
+# COO's
+# coalesced state is True, matching native). Registration is idempotent and reusable by similar sparse operators.
 _SPARSE_COO_DIMS_FALLBACK_FLAG = "_flag_gems_gcu400_sparse_coo_dims_fallback_registered"
 _SPARSE_COO_DIMS_LIBRARY = None
 
 
 def ensure_sparse_coo_dims_gcu_fallback():
-    """幂等注册 SparsePrivateUse1 的空 COO 构造实现，供稀疏元数据算子复用。"""
+    """Idempotently register SparsePrivateUse1's empty COO constructor for sparse metadata operators."""
     global _SPARSE_COO_DIMS_LIBRARY
     if getattr(torch, _SPARSE_COO_DIMS_FALLBACK_FLAG, False):
         return
@@ -48,8 +50,9 @@ def ensure_sparse_coo_dims_gcu_fallback():
         device=None,
         pin_memory=False,
     ):
-        # 空张量无数据可搬：values 形状 (0,) + 稠密尾部、indices 形状
-        # (sparse_dim, 0) 即唯一结构信息（与 native Meta 实现逐项对齐）。
+        # Empty tensors have no data to move: values shape (0,) + dense tail and indices shape
+        # (sparse_dim, 0) are the only structural information (item-for-item aligned with the native Meta
+        # implementation).
         if layout is not None and layout != torch.sparse_coo:
             raise RuntimeError(f"expected sparse layout, but got layout {layout}")
         cpu_indices = torch.empty((sparse_dim, 0), dtype=torch.long)
@@ -136,7 +139,7 @@ def sparse_resize_(
     registered FlagGems implementations, which are pure metadata readers and do
     not call back into this operator, so there is no re-entry here.
     """
-    logger.debug("GEMS SPARSE_RESIZE_")
+    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_RESIZE_")
     if self.layout != torch.sparse_coo:
         raise NotImplementedError("sparse_resize_ supports a sparse COO tensor")
 

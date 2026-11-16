@@ -154,7 +154,7 @@ def rot90(input, k=1, dims=[0, 1]):
     Returns:
         Rotated tensor
     """
-    logger.debug("GEMS ROT90")
+    logger.debug("GEMS_ENFLAME_GCU400 ROT90")
     x = input
     if not x.is_contiguous():
         x = x.contiguous()

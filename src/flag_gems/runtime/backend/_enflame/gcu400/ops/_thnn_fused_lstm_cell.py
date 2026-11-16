@@ -179,7 +179,7 @@ def _thnn_fused_lstm_cell(
         cy: New cell state of shape (batch, hidden_size)
         workspace: Workspace tensor for backward of shape (batch, 4 * hidden_size)
     """
-    logger.debug("GEMS _THNN_FUSED_LSTM_CELL")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_LSTM_CELL")
 
     batch_size, gates_dim = input_gates.shape
     assert gates_dim % 4 == 0, "gates_dim must be divisible by 4"

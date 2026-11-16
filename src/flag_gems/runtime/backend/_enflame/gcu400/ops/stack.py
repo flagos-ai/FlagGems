@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``aten::stack`` 实现。
+"""GCU400-specific ``aten::stack`` implementation.
 
-原生 ATen 的 ``stack`` 就是 ``_stack`` 的薄封装（组合分解），本模块沿用
-同一分解：直接组合复用 GCU400 已优化的 ``_stack``（乘法寻址三路径拷贝，
-legacy int64 除法交织 kernel 仅作受限 dtype 回退）。此前 ``stack`` 自带
-一份与 ``_stack`` 旧版逐字节相同的 legacy kernel，在新工具链上 16.7M 元素
-档位退化到 ~4ms（vs aten ~0.07ms），复用后与 ``_stack`` 同性能；同时继承
-``empty_strided`` 分配（省掉 GEMS ``empty`` override 的 zero-init 额外
-launch）、复数搬运、零体积早退与无条件的 dim 越界校验。
+Native ATen's ``stack`` is a thin wrapper over ``_stack`` (composite decomposition); this module keeps
+the same decomposition: directly compose and reuse GCU400's optimized ``_stack`` (multiplicative-addressing three-path
+copy,
+legacy int64 division interleaving kernel only as a restricted-dtype fallback). Previously ``stack`` carried
+a legacy kernel byte-for-byte identical to old ``_stack``, which degraded to ~4ms at 16.7M elements
+on the new toolchain (vs aten ~0.07ms); reuse gives the same performance as ``_stack``; it also inherits
+``empty_strided`` allocation (saving the extra zero-init launch of GEMS's ``empty`` override),
+complex handling, zero-volume early return and unconditional dim range validation.
 """
 
 import logging

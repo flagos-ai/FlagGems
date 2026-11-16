@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""C05 多档候选 v3：bitwise_or_scalar_ grid-stride-loop。
+"""C05 multi-tier candidate v3: bitwise_or_scalar_ grid-stride-loop.
 
-按 dtype + 元素数分档，配置来自 t4b_bor_tune.py 的 12 档扫描：
-- n <= 8192                 -> 回退原 pointwise_dynamic（手写 kernel 实测劣化）
-- bool 且 n <= 2^20        -> 回退（该档 GSL 劣化 0.906x）
+Tiered by dtype + element count; configs come from the 12-tier sweep in t4b_bor_tune.py:
+- n <= 8192                 -> fall back to original pointwise_dynamic (hand-written kernel measured worse)
+- bool and n <= 2^20        -> fall back (this tier degrades GSL by 0.906x)
 - int16 n > 2^16           -> BLOCK=16384 / SIPS=48 / nw4
 - int16 n <= 2^16          -> BLOCK=8192  / SIPS=48 / nw4
 - int32 n <= 2^16          -> BLOCK=8192  / SIPS=48 / nw8
-- 其余（含 int32 大 shape） -> BLOCK=8192  / SIPS=48 / nw4
-- 非连续输入               -> 回退原实现
+- others (incl. large int32) -> BLOCK=8192 / SIPS=48 / nw4
+- non-contiguous input       -> fall back to the original implementation
 """
 
 import logging

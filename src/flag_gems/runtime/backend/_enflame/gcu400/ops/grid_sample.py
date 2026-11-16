@@ -4750,9 +4750,9 @@ def grid_sample(
             target_total_blocks = (
                 300  # Target: aim for ~300 blocks across all batches/channels
             )
-            # t8 批 Step 4 B02：原值 50 会把大 N*C 档的 target_blocks_per_nc
-            # 钳死在 50，产生 1024 个 CTA；实测 (2,32,64,64) 0.1389ms -> 0.0398ms，
-            # A+B 共 22 轮扫描 9/9 逐位一致，候选 3 轮 overall 2.4005x / p10 0.9989。
+            # t8 batch Step 4 B02: the original value 50 clamped large-N*C target_blocks_per_nc
+            # at 50, producing 1024 CTAs; measured (2,32,64,64) 0.1389ms -> 0.0398ms,
+            # 22 A+B scan rounds with 9/9 bit-identical, candidate 3 rounds overall 2.4005x / p10 0.9989.
             min_blocks_per_nc = 8  # Minimum: ensure enough parallelism
             max_blocks_per_nc = 1000  # Maximum: avoid too many blocks
 

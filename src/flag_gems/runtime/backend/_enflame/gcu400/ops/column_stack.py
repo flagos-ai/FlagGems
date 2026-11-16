@@ -318,7 +318,7 @@ def column_stack(
     *,
     out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS COLUMN_STACK")
+    logger.debug("GEMS_ENFLAME_GCU400 COLUMN_STACK")
 
     if len(tensors) == 0:
         raise RuntimeError("column_stack expected a non-empty TensorList")
@@ -453,5 +453,5 @@ def column_stack_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS COLUMN_STACK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 COLUMN_STACK_OUT")
     return column_stack(tensors, out=out)

@@ -93,7 +93,7 @@ def _jagged_to_padded_dense_forward(values, offsets, max_lengths, padding_value=
     Returns:
         Padded dense tensor
     """
-    logger.debug("GEMS JAGGED_TO_PADDED_DENSE_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 JAGGED_TO_PADDED_DENSE_FORWARD")
 
     # Currently only supports single batch dimension
     if not isinstance(offsets, (list, tuple)):

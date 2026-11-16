@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""rsub_scalar 候选 v1：手写 1D kernel，按 shape 分档。
+"""rsub_scalar candidate v1: hand-written 1D kernel tiered by shape.
 
-生产（公共 + gcu400）走 pointwise_dynamic rsub_func_tensor_scalar:
-    return y - x * alpha   (x=张量 A, y=标量 B, alpha=标量)
-ENFLAME max_grid_size=(12,1,1) 让大 shape 并行度不足。
-沿用 square/square_out/clamp_max_ 已验证的分档策略。
+Production (common + gcu400) uses pointwise_dynamic rsub_func_tensor_scalar:
+    return y - x * alpha   (x=tensor A, y=scalar B, alpha=scalar)
+ENFLAME max_grid_size=(12,1,1) leaves large shapes under-parallelized.
+Reuse the tiered strategy validated by square/square_out/clamp_max_.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -38,9 +41,10 @@ def _rsub_scalar_kernel(
 
 
 def rsub_scalar(A, B, alpha=1):
+    logger.debug("GEMS_ENFLAME_GCU400 RSUB_SCALAR")
     n = A.numel()
-    # 只有非连续输入才回退；小 shape 用手写小 BLOCK kernel，
-    # 避免「回退公共实现」在生产路径多一层 Python 转发开销。
+    # Only non-contiguous inputs fall back; small shapes use a hand-written small-BLOCK kernel,
+    # avoiding the extra Python forwarding overhead of "fall back to the common implementation" on the production path.
     if not A.is_contiguous():
         from flag_gems.ops.rsub import rsub_scalar as _public
 

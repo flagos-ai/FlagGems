@@ -320,10 +320,10 @@ def _row_indices_copy_impl(self: torch.Tensor, *, out=None):
 
 
 def row_indices_copy(self: torch.Tensor):
-    logger.debug("GEMS ROW_INDICES_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 ROW_INDICES_COPY")
     return _row_indices_copy_impl(self)
 
 
 def row_indices_copy_out(self: torch.Tensor, *, out: torch.Tensor):
-    logger.debug("GEMS ROW_INDICES_COPY_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 ROW_INDICES_COPY_OUT")
     return _row_indices_copy_impl(self, out=out)

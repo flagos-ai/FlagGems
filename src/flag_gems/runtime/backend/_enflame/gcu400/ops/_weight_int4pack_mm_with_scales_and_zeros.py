@@ -319,7 +319,7 @@ def _weight_int4pack_mm_with_scales_and_zeros(
     Returns:
         Output tensor of shape (M, N), dtype matching A.
     """
-    logger.debug("GEMS _WEIGHT_INT4PACK_MM_WITH_SCALES_AND_ZEROS")
+    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_INT4PACK_MM_WITH_SCALES_AND_ZEROS")
 
     M, K = A.shape
     N = mat2.shape[0]

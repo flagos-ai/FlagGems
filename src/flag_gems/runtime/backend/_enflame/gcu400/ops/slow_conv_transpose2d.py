@@ -752,7 +752,7 @@ def slow_conv_transpose2d(
     dilation=(1, 1),
     out=None,
 ):
-    logger.debug("GEMS SLOW_CONV_TRANSPOSE2D")
+    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_TRANSPOSE2D")
     if not isinstance(input, torch.Tensor) or not isinstance(weight, torch.Tensor):
         raise TypeError("slow_conv_transpose2d(): input and weight must be Tensors")
 

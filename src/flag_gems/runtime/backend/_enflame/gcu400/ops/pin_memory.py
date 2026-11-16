@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 def pin_memory(self: torch.Tensor, device=None) -> torch.Tensor:
     """Public ATen entry for pinning a strided CPU tensor into page-locked memory."""
+    logger.debug("GEMS_ENFLAME_GCU400 PIN_MEMORY")
     if self.device.type != "cpu":
         raise RuntimeError("cannot pin a tensor that is not on the CPU")
     if device is not None and torch.device(device).type not in ("cuda", "gcu"):

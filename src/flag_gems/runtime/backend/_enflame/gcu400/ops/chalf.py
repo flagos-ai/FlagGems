@@ -72,7 +72,7 @@ def chalf_complex_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def chalf(input: torch.Tensor, memory_format=None) -> torch.Tensor:
-    logger.debug("GEMS CHALF")
+    logger.debug("GEMS_ENFLAME_GCU400 CHALF")
 
     if input.is_complex():
         # Resolve conj bit so view_as_real reflects the logical values.

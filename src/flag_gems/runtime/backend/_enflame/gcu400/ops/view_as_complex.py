@@ -31,7 +31,7 @@ def view_as_complex(A: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A complex tensor view.
     """
-    logger.debug("GEMS VIEW_AS_COMPLEX")
+    logger.debug("GEMS_ENFLAME_GCU400 VIEW_AS_COMPLEX")
 
     # Validate input - support float16, float32, and float64
     # float16 -> complex32, float32 -> complex64, float64 -> complex128

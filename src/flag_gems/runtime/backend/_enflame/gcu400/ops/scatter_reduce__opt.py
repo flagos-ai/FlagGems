@@ -152,10 +152,10 @@ def _gcu_scatter_reduce_vec_kernel(
 ):
     """Blocked vector scan over the index axis.
 
-    t9 批 Step 4：原 kernel 用标量循环遍历 IDX_AXIS（最多 256 次迭代），
-    在 GCU400 / Triton 3.6 上实测 8~11ms。改为一次 tl.arange 分块加载 +
-    tl.sum / tl.max / tl.min 归约后降到 1.1~1.4ms，且与标量结果逐位一致。
-    prod 不在此 kernel 内（该 Triton 版本无 tl.prod），由 wrapper 回退标量版。
+    t9 batch Step 4: the original kernel scanned IDX_AXIS with a scalar loop (up to 256 iterations),
+    measuring 8~11ms on GCU400 / Triton 3.6. Switching to one tl.arange block load +
+    tl.sum / tl.max / tl.min reduction drops it to 1.1~1.4ms, bit-identical to the scalar result.
+    prod is not in this kernel (that Triton version lacks tl.prod); the wrapper falls back to the scalar version.
     """
     pid = tl.program_id(axis=0).to(tl.int32)
     i = pid % OUT_INNER
@@ -242,7 +242,7 @@ def _gcu_scatter_reduce_general_kernel(
     output and index share the (outer, axis, inner) decomposition and every
     (o, t, i) output element scans the matching index row in IDX_BLOCK vector
     blocks, reducing the hits in fp32 without atomics. Programs stride over
-    the outputs (grid capped at 65535), so out_numel is unbounded; ``t9 批泛化``
+    the outputs (grid capped at 65535), so out_numel is unbounded; ``t9 batch generalization``
     adds grid-stride, the prod branch (tl.reduce multiply) and independent
     OUT/IDX strides relative to the aligned-only fast-path kernels.
     """
@@ -420,6 +420,7 @@ def scatter_reduce(
     _use_product_lock=False,
     _product_grid_limit=None,
 ):
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_REDUCE")
     candidate = _scan_candidate(inp, dim, index, src, reduce, include_self)
     if candidate is None:
         general = _general_candidate(inp, dim, index, src, reduce)
@@ -443,10 +444,10 @@ def scatter_reduce(
     out_inner = _prod(inp.shape[dim + 1 :])
     out_axis = int(inp.shape[dim])
 
-    # t9 批 5/5：fp32 + 全连续输入时省掉 4 次 dtype 转换/拷贝
-    # （ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops 口径下这些
-    #  .to()/.contiguous() 的固定开销占主导），并用 num_warps=1。
-    # bf16/fp16/fp64 保持 1/5 的向量化实现不变，避免低精度路径回归。
+    # t9 batch 5/5: fp32 + all-contiguous inputs skip 4 dtype conversions / copies
+    # (under ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops the fixed cost of those
+    #  .to()/.contiguous() dominates), and use num_warps=1.
+    # bf16/fp16/fp64 keep the 1/5 vectorized implementation unchanged to avoid low-precision regressions.
     if (
         inp.dtype in (torch.float16, torch.float32, torch.bfloat16)
         and src.dtype == inp.dtype
@@ -482,7 +483,7 @@ def scatter_reduce(
 
     with torch_device_fn.device(inp.device):
         if _REDUCE_IDS[reduce] == 1:
-            # prod: 该 Triton 版本无 tl.prod，保留原标量 scan kernel。
+            # prod: that Triton version lacks tl.prod, keep the original scalar scan kernel.
             _gcu_scatter_reduce_scan_kernel[(out_numel,)](
                 inp_f32,
                 idx_i64,
@@ -498,8 +499,8 @@ def scatter_reduce(
                 num_warps=4,
             )
         else:
-            # t9 批 Step 4 B03：IDX_BLOCK=256 / num_warps=4，
-            # sum/mean/amax/amin 实测 7.9~11.4x，逐位一致。
+            # t9 batch Step 4 B03: IDX_BLOCK=256 / num_warps=4,
+            # sum/mean/amax/amin measured 7.9~11.4x, bit-identical.
             _gcu_scatter_reduce_vec_kernel[(out_numel,)](
                 inp_f32,
                 idx_i64,

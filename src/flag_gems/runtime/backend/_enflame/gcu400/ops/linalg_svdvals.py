@@ -36,7 +36,7 @@ def linalg_svdvals(A: torch.Tensor, driver: str = None) -> torch.Tensor:
     Returns:
         Singular values in descending order, shape (*, min(m, n)).
     """
-    logger.debug("GEMS LINALG_SVDVALS")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SVDVALS")
     # Only float32 is supported for SVD on CUDA
     assert A.dtype == torch.float32, f"Expected float32, got {A.dtype}"
     if not A.is_contiguous():

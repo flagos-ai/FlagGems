@@ -68,7 +68,7 @@ def index_select_backward(grad, self_sizes, dim, index):
 
     Returns the gradient w.r.t. the original `self`, of shape `self_sizes`.
     """
-    logger.debug("GEMS INDEX_SELECT_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 INDEX_SELECT_BACKWARD")
 
     if index.ndim == 0:
         index = index.unsqueeze(0)

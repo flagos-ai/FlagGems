@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""atanh / atanh_ 的 GCU400 专属实现：1D flat Triton kernel。
+"""GCU400-specific implementation of atanh / atanh_: 1D flat Triton kernel.
 
-输入与输出可共用同一块显存（in-place），也可写入独立输出（out-of-place）；
-按元素字节数选择大 shape tile，常驻 CTA 数以网格跨步循环复用。
+Input and output may share one memory block (in-place) or use a separate output (out-of-place);
+large-shape tiles are chosen by element bytes, and resident CTAs are reused with a grid-stride loop.
 """
 
 import logging
@@ -29,7 +29,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# 常驻 CTA 数与 GCU400 SIP 拓扑对齐；大 shape tile 按元素字节数分档
+# Resident CTA count matches GCU400 SIP topology; large-shape tiles are tiered by element bytes
 NUM_CTAS = 48
 BLOCK_LARGE_16BIT = 8192
 BLOCK_LARGE_32BIT = 8192
@@ -63,22 +63,22 @@ def atanh_kernel(
         else:
             value = x
         if FORMULA_MODE == 0:
-            # 原始定义：atanh(x) = 0.5 * log((1+x)/(1-x))
+            # Original definition: atanh(x) = 0.5 * log((1+x)/(1-x))
             result = 0.5 * tl.log((1.0 + value) / (1.0 - value))
         elif FORMULA_MODE == 1:
-            # 两 log 相减：近 ±1 处避免除法商舍入放大误差
+            # Subtract two logs: near +/-1 this avoids error amplification from rounding the division quotient
             result = 0.5 * (tl.log(1.0 + value) - tl.log(1.0 - value))
         elif FORMULA_MODE == 2:
-            # log2 等价改写，log(x) = log2(x) * ln(2)
+            # log2 equivalent rewrite, log(x) = log2(x) * ln(2)
             result = 0.34657359027997264 * tl.log2((1.0 + value) / (1.0 - value))
         else:
-            # 单次除法：atanh(x) = 0.5 * log(1 + 2x/(1-x))
+            # Single division: atanh(x) = 0.5 * log(1 + 2x/(1-x))
             result = 0.5 * tl.log(1.0 + 2.0 * value / (1.0 - value))
         tl.store(out_ptr + offsets, result, mask=offsets < num_elements)
 
 
 def _choose_block(num_elements, is_fp32):
-    """小 shape 用 1024，中 shape 取最接近的 2 次幂，大 shape 按 dtype 分档。"""
+    """Small shapes use 1024, medium shapes the nearest power of two, large shapes are tiered by dtype."""
     if num_elements <= 1024:
         return 1024
     if num_elements <= 32768:

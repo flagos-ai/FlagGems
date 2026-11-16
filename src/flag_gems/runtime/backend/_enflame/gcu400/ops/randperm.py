@@ -58,11 +58,15 @@ def _rand_key(seed, offset, idx):
     return x
 
 
-# 单 kernel 伪随机置换：先用与 n 互质的线性同余映射打散全局顺序，再叠加若干层
-# 「块内旋转」。LCG 与每层旋转都是 [0, n) 上的双射，叠加后仍是双射，因此输出
-# 天然是 0..n-1 的排列，不需要排序、直方图、前缀和或跨 kernel 同步。每个元素
-# 只依赖自己的下标与 seed，可完全并行；块大小取 2 的幂以便用位运算定位，尾块
-# 用编译期常量单独旋转，避免越界或改变双射性。
+# Single-kernel pseudorandom permutation: first scatter global order with a linear congruential map coprime to n, then
+# add several
+# layers of "in-block rotation". The LCG and every rotation are bijections on [0, n), so the composition is still a
+# bijection,
+# and the output is naturally a permutation of 0..n-1 without sorting, histograms, prefix sums or cross-kernel sync.
+# Each element
+# depends only on its own index and the seed, fully parallel; block size is a power of two for bit-math locating, and
+# the tail block
+# is rotated separately with a compile-time constant to avoid out-of-bounds or breaking bijectivity.
 
 
 @libentry()
@@ -110,7 +114,7 @@ def randperm_prp_kernel(
 
 
 def _prp_params(n, seed, offset):
-    """由 philox seed/offset 导出与 n 互质的奇数斜率与任意偏置。"""
+    """Derive an odd slope coprime to n and an arbitrary offset from the philox seed/offset."""
     mixed = (int(seed) ^ (int(offset) * 0x9E3779B97F4A7C15)) & 0xFFFFFFFF
     slope = (mixed % max(n - 1, 1)) + 1
     if slope % 2 == 0:
@@ -145,7 +149,7 @@ def randperm(
 ):
     logger.debug("GEMS_ENFLAME RANDPERM")
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
-    # 元素 id 在 int32 域内解码，输出 dtype 只影响最终 store
+    # Element ids decode in the int32 domain; output dtype only affects the final store
     assert n <= 2**31, "n exceeds maximum int32"
     if device is None:
         device = torch.device(device_.name)
@@ -154,7 +158,7 @@ def randperm(
 
     seed, offset = philox_backend_seed_offset(max(n, 1), generator=generator)
     slope, bias = _prp_params(n, seed, offset)
-    # 直接按目标 dtype 分配并写出，省去 int32 结果再转换的一次 kernel launch
+    # Allocate and write directly in the target dtype, saving one kernel launch for converting int32 results
     result = torch.empty(n, dtype=dtype, device=device)
     block = 1024
     num_ctas = min(96, triton.cdiv(n, block))

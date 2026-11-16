@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_pack_padded_sequence``：降低主机元数据与 H2D 开销。
+"""GCU400-specific ``_pack_padded_sequence``: reduce host metadata and H2D overhead.
 
-打包行按时间步主序排列，``row -> (t, b)`` 的映射由 lengths 派生。原始实现
-在主机侧生成两张等长索引表并各做一次 H2D（同步拷贝），小 shape 的固定开销
-占主导。本实现提供三条可切换路径：二维 grid 双表（原始）、一维 grid 合并
-双表（一次 H2D）、以及只传 ``batch_sizes`` 前缀和的小表并在 kernel 内还原
-行索引。小 shape 走合并/小表路径，大 shape 保留向量化主机构造。
+Packed rows are ordered time-step major, and the ``row -> (t, b)`` mapping is derived from lengths. The original
+implementation builds two equal-length index tables on the host with one H2D each (synchronous copy), whose fixed
+overhead dominates for small shapes. This implementation offers three switchable paths: the original 2D grid with two
+tables, a 1D grid with merged tables (one H2D), and a small table carrying only ``batch_sizes`` prefix sums whose
+row indices are reconstructed inside the kernel. Small shapes use the merged / small-table path; large shapes keep
 """
 
 import logging
@@ -31,14 +31,14 @@ import flag_gems
 
 logger = logging.getLogger(__name__)
 
-# 按 lengths 内容缓存只读的累计行数表；表内容完全由 CPU lengths 决定，
-# 不含任何输入张量数据，因此地址复用与原地修改都不会影响正确性。
+# the vectorized host construction.
+# Cache the read-only cumulative row-count table by lengths contents; the table depends entirely on CPU lengths,
 _TABLE_CACHE = {}
 _TABLE_CACHE_CAP = 64
 
 
 def _get_cumsum_table(lengths_cpu, cumsum, device):
-    """命中缓存时省掉一次同步 H2D，未命中时才构造并上传小表。"""
+    """A cache hit saves one synchronous H2D; the small table is built and uploaded only on a miss."""
     cache_key = (str(device), tuple(lengths_cpu.tolist()))
     cached_table = _TABLE_CACHE.get(cache_key)
     if cached_table is None:
@@ -50,7 +50,7 @@ def _get_cumsum_table(lengths_cpu, cumsum, device):
 
 
 # --- TUNING PARAMS START ---
-# 编译期 / 启动期配置，由优化迭代按轮次调整，不改变算子语义。
+# Compile-time / launch-time config, adjusted per optimization round; semantics unchanged.
 META_MODE = 2
 GRID_MODE = 1
 BLOCK_FEAT_CAP = 1024
@@ -74,7 +74,7 @@ def _pack_copy_kernel(
     feat_size,
     BLOCK_FEAT: tl.constexpr,
 ):
-    """二维 grid 原始实现：一行一个 program，从两张索引表读取 (t, b)。"""
+    """Original 2D-grid implementation: one program per row, reading (t, b) from two index tables."""
     row = tl.program_id(0)
     feat_block = tl.program_id(1)
 
@@ -102,7 +102,7 @@ def _pack_copy_kernel_1d(
     NUM_FEAT_BLOCKS: tl.constexpr,
     BLOCK_FEAT: tl.constexpr,
 ):
-    """一维 grid：合并后的 [total_len, 2] 索引表一次 H2D，pid 线性展开 (row, feat_block)。"""
+    """1D grid: one H2D of the merged [total_len, 2] index table; pid is linearized over (row, feat_block)."""
     pid = tl.program_id(0)
     row = pid // NUM_FEAT_BLOCKS
     feat_block = pid % NUM_FEAT_BLOCKS
@@ -132,17 +132,17 @@ def _pack_copy_kernel_table(
     BLOCK_FEAT: tl.constexpr,
     LOG_STEPS: tl.constexpr,
 ):
-    """一维 grid：只传各时间步累计行数，kernel 内由 row 反解 (t, b)。
+    """1D grid: pass only per-time-step cumulative row counts and reconstruct (t, b) from row inside the kernel.
 
-    ``cumsum[t]`` 是前 t+1 个时间步的打包行总数；满足 ``row < cumsum[t]``
-    的最小 t 即时间步，行内序号为 ``row - cumsum[t-1]``。表长只有 max_len，
-    显著小于 total_len，小 shape 可省去大索引表的 H2D 同步。
+    ``cumsum[t]`` is the total number of packed rows in the first t+1 time steps; the smallest t satisfying
+    ``cumsum[t]`` is the total number of packed rows in the first t+1 time steps; the smallest t satisfying
+    ``row < cumsum[t]`` is the time step, and the within-row index is ``row - cumsum[t-1]``. The table length is
     """
     pid = tl.program_id(0)
     row = pid // NUM_FEAT_BLOCKS
     feat_block = pid % NUM_FEAT_BLOCKS
 
-    # cumsum 严格递增，二分反解时间步比 BLOCK_STEPS 元素向量归约更省指令。
+    # only max_len, far below total_len, so small shapes avoid the H2D sync of a large index table.
     low_step = 0
     high_step = max_len
     for _ in tl.static_range(LOG_STEPS):
@@ -167,7 +167,7 @@ def _pack_copy_kernel_table(
 
 
 def _pack_padded_sequence(input, lengths, batch_first):
-    logger.debug("GEMS _PACK_PADDED_SEQUENCE")
+    logger.debug("GEMS_ENFLAME_GCU400 _PACK_PADDED_SEQUENCE")
 
     if batch_first:
         batch_size = input.shape[0]
@@ -181,8 +181,9 @@ def _pack_padded_sequence(input, lengths, batch_first):
     for size in feat_shape:
         feat_size *= size
 
-    # aten 保证 lengths 是 CPU int64 且降序；元数据计算全部留在主机侧，
-    # 避免为每个打包行额外发起设备侧查询。
+    # Since cumsum is strictly increasing, binary search for the time step uses fewer instructions than a
+    # BLOCK_STEPS-element vector reduction.
+    # ATen guarantees lengths is CPU int64 and non-increasing; all metadata computation stays on the host,
     lengths_cpu = lengths.to(torch.int64).cpu()
     if batch_size == 0:
         data = torch.empty(0, *feat_shape, dtype=input.dtype, device=input.device)
@@ -202,12 +203,13 @@ def _pack_padded_sequence(input, lengths, batch_first):
         block_feat = min(triton.next_power_of_2(feat_size), BLOCK_FEAT_CAP)
         num_feat_blocks = triton.cdiv(feat_size, block_feat)
         meta_mode = META_MODE
-        # 小表路径需要 kernel 内对 max_len 做一次归约，过大的 max_len 不划算。
+        # avoiding an extra device-side query per packed row.
         if meta_mode == 2 and max_len > TABLE_CAP:
             meta_mode = 1
 
         if meta_mode == 0:
-            # 原始路径：两张独立索引表 + 二维 grid。
+            # The small-table path needs one reduction over max_len in the kernel, so a very large max_len is not
+            # worthwhile.
             step_ids = torch.arange(max_len, dtype=torch.int64)
             time_index = torch.repeat_interleave(step_ids, batch_sizes)
             run_starts = torch.repeat_interleave(cumsum - batch_sizes, batch_sizes)
@@ -228,7 +230,7 @@ def _pack_padded_sequence(input, lengths, batch_first):
                 num_stages=NUM_STAGES,
             )
         elif meta_mode == 1:
-            # 合并索引表：一次 H2D 完成 (t, b) 两列。
+            # Original path: two independent index tables + 2D grid.
             if FAST_HOST_META and total_len <= FAST_META_LIMIT:
                 pairs = []
                 for time_step, count in enumerate(batch_sizes.tolist()):
@@ -260,7 +262,7 @@ def _pack_padded_sequence(input, lengths, batch_first):
                     num_stages=NUM_STAGES,
                 )
             else:
-                # 合并表同样可以按二维 grid 由两个独立视图读取。
+                # Merged index table: one H2D for both (t, b) columns.
                 row2t = meta[:, 0]
                 row2b = meta[:, 1]
                 grid = (total_len, num_feat_blocks)
@@ -277,7 +279,7 @@ def _pack_padded_sequence(input, lengths, batch_first):
                     num_stages=NUM_STAGES,
                 )
         else:
-            # 小表路径：只传累计行数，kernel 内反解时间步与批内序号。
+            # The merged table can also be read as two independent views under a 2D grid.
             table = _get_cumsum_table(lengths_cpu, cumsum, input.device)
             grid = (total_len * num_feat_blocks,)
             _pack_copy_kernel_table[grid](

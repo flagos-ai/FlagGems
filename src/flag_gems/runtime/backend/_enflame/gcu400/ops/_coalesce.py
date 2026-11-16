@@ -503,13 +503,13 @@ def _coalesce(self: torch.Tensor, *, out: torch.Tensor = None) -> torch.Tensor:
     written into the caller buffer and that object is returned.
     """
     if out is None:
-        logger.debug("GEMS _COALESCE")
+        logger.debug("GEMS_ENFLAME_GCU400 _COALESCE")
         return _coalesce_impl(self)
-    logger.debug("GEMS _COALESCE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _COALESCE_OUT")
     return _coalesce_impl(self, out=out)
 
 
 def _coalesce_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::_coalesce.out``: coalesce ``self`` into ``out``."""
-    logger.debug("GEMS _COALESCE_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _COALESCE_OUT")
     return _coalesce_impl(self, out=out)

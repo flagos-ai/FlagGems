@@ -222,7 +222,7 @@ def fft_irfftn(input: torch.Tensor, s=None, dim=None, norm="backward"):
     Returns:
         Real tensor.
     """
-    logger.debug("GEMS FFT_IRFFTN")
+    logger.debug("GEMS_ENFLAME_GCU400 FFT_IRFFTN")
 
     if not input.is_complex():
         raise ValueError("Input must be a complex tensor")

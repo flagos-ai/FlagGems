@@ -139,7 +139,7 @@ def _wrapped_quantized_linear_prepacked(
     output_zero_point,
     out_channel,
 ):
-    logger.debug("GEMS _WRAPPED_QUANTIZED_LINEAR_PREPACKED")
+    logger.debug("GEMS_ENFLAME_GCU400 _WRAPPED_QUANTIZED_LINEAR_PREPACKED")
     if input.dtype != torch.float32:
         raise RuntimeError(f"Quantize only works on Float Tensor, got {input.dtype}")
     if input.ndim < 2:

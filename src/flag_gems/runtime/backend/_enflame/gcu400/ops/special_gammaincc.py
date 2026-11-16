@@ -45,10 +45,10 @@ def special_gammaincc_func(a, x):
     # so P = exp(-x) * x^a * sum / Gamma(a), and Q = 1 - P. In the series
     # region x < a + 1, Q(a, x) >= ~0.4, so the subtraction loses no
     # significant digits beyond fp32 rounding of P itself.
-    # 迭代次数由 200 收敛到 48：项比值 x/(a+n) 在 n 较大时迅速衰减，
-    # fp32 下最坏情形（x≈1.1, a≈0.1）第 20 项量级已低于 1e-18，
-    # 48 项对 fp32 精度有充足余量。
-    # 分母改为递推，避免每次 tl.cast(i, float32) 的标量转换开销。
+    # Iteration count converged from 200 to 48: the term ratio x/(a+n) decays quickly for large n,
+    # in fp32 the worst case (x~1.1, a~0.1) has term 20 below 1e-18,
+    # so 48 terms give ample margin for fp32 accuracy.
+    # The denominator uses a recurrence, avoiding a scalar tl.cast(i, float32) per iteration.
     term = 1.0 / a_f32
     series_sum = term
     denom = a_f32 + 1.0
@@ -74,7 +74,7 @@ def special_gammaincc_func(a, x):
     f_val = b0
     C_val = b0
     D_val = 0.0 * x_f32
-    # 迭代次数由 300 收敛到 128，并把 i 改为递推，避免每次 tl.cast 开销
+    # Iteration count converged from 300 to 128, and i became a recurrence to avoid per-iteration tl.cast cost
     i_f = 1.0
     for _ in range(1, 128):
         an = i_f * (a_f32 - i_f)
@@ -113,7 +113,7 @@ def special_gammaincc(self, other):
     Q can be tiny). Both regimes run in float32; broadcasting follows the
     pointwise_dynamic promotion machinery.
     """
-    logger.debug("GEMS SPECIAL_GAMMAINCC")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_GAMMAINCC")
     # The kernel only supports floating point dtypes; igammac_cuda does
     # not support Half/BFloat16 either. Reject them explicitly.
     supported_dtypes = (torch.float32, torch.float64)

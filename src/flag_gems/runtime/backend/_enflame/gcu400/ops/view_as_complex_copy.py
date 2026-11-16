@@ -143,7 +143,7 @@ def view_as_complex_copy(self: torch.Tensor) -> torch.Tensor:
     inputs, a wrong last-dimension size or stride, and unsupported dtypes
     (bfloat16 and every non-float type).
     """
-    logger.debug("GEMS VIEW_AS_COMPLEX_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 VIEW_AS_COMPLEX_COPY")
 
     if self.dim() == 0:
         raise RuntimeError("Input tensor must have one or more dimensions")

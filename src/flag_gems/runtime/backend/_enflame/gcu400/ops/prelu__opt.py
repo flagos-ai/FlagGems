@@ -12,26 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""prelu 候选 v3：按 weight/channel 结构四路分派，消除逐元素 weight gather。
+"""prelu candidate v3: four-way dispatch by weight/channel structure, removing per-element weight gather.
 
-生产 v2 的唯一热路径是逐元素 ``tl.load(w_ptr + channel)``：当块内 channel
-地址恒定或跨步重复（S=512/1024 的 core 形状）时，GCU 后端把 gather 标量化，
-(64,512,512) 只有 0.13x、(1024,1024,1024) 只有 0.049x（do_bench 口径，
-去掉 w-load 的消融地板分别是 27.3us / 1389.5us）。
+Production v2's only hot path is per-element ``tl.load(w_ptr + channel)``: when channel
+addresses are constant within a block or repeat with a stride (S=512/1024 core shapes), the GCU backend scalarizes the
+gather,
+giving only 0.13x at (64,512,512) and 0.049x at (1024,1024,1024) (do_bench numbers,
+the ablation floor without w-load is 27.3us / 1389.5us respectively).
 
-v3 分派（n >= 65536 才进新路径，小形状沿用 gather 保持 1.39x）：
-1. scalar weight：平铺免 mask 全块 + 单尾块（v1s，b131072/w4 → 1.00-1.04x）；
-2. S >= 2 per-channel：行块 tile [BLOCK_R, BLOCK_S]，alpha = w[rows % C]
-   一次 [BLOCK_R] gather + 行广播（fp16/bf16 tile 131072/nw2、fp32 tile
-   65536/nw2 → (64,512,512) 2.52x/2.19x/1.70x，1024^3 1.02x/0.84x/0.81x）；
-3. S == 1 per-channel：通道 tile [BLOCK_R, BLOCK_C]，alpha = w[cols] 连续
-   向量 + 列广播（(4096,4096) 0.87x/0.81x——2D 寻址税地板 37.3us）；
-4. 其余（n < 65536、grid 超限）：v2 gather 路径原样兜底（pow2 走位移）。
+v3 dispatch (n >= 65536 to enter new paths, small shapes keep gather at 1.39x):
+1. scalar weight: flat unmasked full blocks + one tail block (v1s, b131072/w4 -> 1.00-1.04x);
+2. S >= 2 per-channel: row-block tile [BLOCK_R, BLOCK_S], alpha = w[rows % C]
+   one [BLOCK_R] gather + row broadcast (fp16/bf16 tile 131072/nw2, fp32 tile
+   65536/nw2 -> (64,512,512) 2.52x/2.19x/1.70x, 1024^3 1.02x/0.84x/0.81x);
+3. S == 1 per-channel: channel tile [BLOCK_R, BLOCK_C], alpha = w[cols] contiguous
+   vector + column broadcast ((4096,4096) 0.87x/0.81x - 2D addressing tax floor 37.3us);
+4. others (n < 65536, grid overflow): v2 gather path unchanged as fallback (pow2 uses shifts).
 
-已否决（本轮实测）：循环平铺 v5 0.22-0.33x（深循环小 tile 无流水）、
-reshape 广播 v6 0.61x + fp32 DSM 三倍物化 OOR、每行平铺 v9 0.15x
-（w 向量逐 program 重载不命中缓存）。alpha 行广播物化第 3 个 DSM tile，
-故 tile 上限 131072 (fp16/bf16) / 65536 (fp32)，防 OutOfResources。
+Rejected (measured this round): loop tiling v5 0.22-0.33x (deep loop small tile without pipelining),
+reshape broadcast v6 0.61x + fp32 DSM triple materialization OOR, per-row tiling v9 0.15x
+(w vector reloaded per program, no cache hits). alpha row broadcast materializes a 3rd DSM tile,
+so cap the tile at 131072 (fp16/bf16) / 65536 (fp32) to prevent OutOfResources.
 """
 
 import logging

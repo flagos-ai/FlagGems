@@ -393,6 +393,7 @@ def _triton_fallback(k, v):
 
 
 def rwkv_mm_sparsity(k: torch.Tensor, v: torch.Tensor):
+    logger.debug("GEMS_ENFLAME_GCU400 RWKV_MM_SPARSITY")
     assert k.dim() == 1 and v.dim() == 2
     assert k.size(0) == v.size(0)
 

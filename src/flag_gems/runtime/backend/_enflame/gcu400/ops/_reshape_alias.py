@@ -27,5 +27,5 @@ def _reshape_alias(self: torch.Tensor, size, stride):
     ``self`` (reusing ``self``'s storage offset), mirroring
     ``aten::_reshape_alias``.
     """
-    logger.debug("GEMS _RESHAPE_ALIAS")
+    logger.debug("GEMS_ENFLAME_GCU400 _RESHAPE_ALIAS")
     return torch.Tensor.as_strided(self, size, stride, self.storage_offset())

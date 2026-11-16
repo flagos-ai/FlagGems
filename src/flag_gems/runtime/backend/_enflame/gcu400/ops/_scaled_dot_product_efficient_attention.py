@@ -385,7 +385,7 @@ def _scaled_dot_product_efficient_attention(
         philox_seed: random seed for dropout (placeholder until dropout is supported)
         philox_offset: random offset for dropout (placeholder until dropout is supported)
     """
-    logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
+    logger.debug("GEMS_ENFLAME_GCU400 SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
 
     assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
 
@@ -587,7 +587,7 @@ def _efficient_attention_forward(
     logsumexp contract is (B, H, Sq) in the natural-log base, which the
     efficient forward already emits.
     """
-    logger.debug("GEMS _EFFICIENT_ATTENTION_FORWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 _EFFICIENT_ATTENTION_FORWARD")
 
     if cu_seqlens_q is not None or cu_seqlens_k is not None:
         raise NotImplementedError(
@@ -630,16 +630,16 @@ def _efficient_attention_forward(
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu dispatch adaptation（aten::_efficient_attention_forward 无 GCU kernel）
+# torch_gcu dispatch adaptation (aten::_efficient_attention_forward has no GCU kernel)
 #
-# torch_gcu 只为该 op 注册了 CPU 回退（aten_cpu_fallback [backend fallback]），
-# GCU 张量调用被搬到 CPU 后直接 NotImplementedError——精度测试框架与
-# benchmark 的参考腿不经 enable()/use_gems() 直接调 torch.ops.aten.*，efficient
-# 家族的 forward 参考腿（tests/test_flash_attention_backward.py 等）因此全灭。
-# 照 `resize_as_sparse_.py` / `_flash_attention_forward.py` 的既定制式，把本
-# 实现幂等注册到 device key 上：显式 kernel 优先级高于 backend fallback，
-# import flag_gems 即生效；enable()/use_gems() 后续对同一 key 的重复注册被
-# registrar 捕获为 warning，注册的又是同一函数，行为不变。
+# torch_gcu only registers a CPU fallback for this op (aten_cpu_fallback [backend fallback]);
+# calling with GCU tensors moves them to CPU and then raises NotImplementedError - the accuracy framework and
+# The benchmark reference leg calls torch.ops.aten.* directly without enable()/use_gems(); efficient
+# family's forward reference legs (tests/test_flash_attention_backward.py etc.) all fail.
+# Following the existing pattern in `resize_as_sparse_.py` / `_flash_attention_forward.py`, register this
+# implementation idempotently on the device key: an explicit kernel outranks the backend fallback and
+# takes effect on import flag_gems; later duplicate registration of the same key by enable()/use_gems() is
+# caught by the registrar as a warning and registers the same function, so behavior is unchanged.
 # ---------------------------------------------------------------------------
 _EFF_ATTN_FWD_KEY_FLAG = "_flag_gems_gcu400_eff_attn_fwd_key_registered"
 _EFF_ATTN_FWD_LIBRARY = None

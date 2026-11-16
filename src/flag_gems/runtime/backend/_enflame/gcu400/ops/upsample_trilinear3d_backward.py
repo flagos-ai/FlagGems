@@ -150,7 +150,7 @@ def upsample_trilinear3d_backward(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE_TRILINEAR3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_TRILINEAR3D_BACKWARD")
 
     N, C, ID, IH, IW = input_size
     OD, OH, OW = output_size

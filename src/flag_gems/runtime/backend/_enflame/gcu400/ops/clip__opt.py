@@ -12,22 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""clip 候选 v1：三个 jit 对象统一按算子覆盖 CodeGenConfig.max_grid_size。
+"""clip candidate v1: override CodeGenConfig.max_grid_size uniformly for the three jit objects.
 
-生产 `clip()` 按 mini/maxi 是否为 None 分派到三个不同的
-pointwise_dynamic 对象（clip_func / clip_func_min / clip_func_max），
-三者都受 ENFLAME 默认 `max_grid_size=(12,1,1)` 限制。
-本版保持 host 分支结构与生产逐字同构，只把三个 jit 对象的 config
-换成 `(1024,1,1)`，不引入任何额外 Python 判断。
+Production `clip()` dispatches by whether mini/maxi are None to three different
+pointwise_dynamic objects (clip_func / clip_func_min / clip_func_max),
+all limited by ENFLAME's default `max_grid_size=(12,1,1)`.
+This version keeps the host branch structure word-for-word isomorphic to production and only swaps
+the three jit objects' config to `(1024,1,1)`, adding no extra Python checks.
 
-不修改全局 CODEGEN_COFIGS，符合 skill「pointwise_dynamic 必须特化」要求。
+Global CODEGEN_COFIGS is not modified, satisfying the skill's "pointwise_dynamic must be specialized" requirement.
 """
+import logging
 
 import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+
+logger = logging.getLogger(__name__)
+
 
 _BASE = get_codegen_config()
 _OPT_CONFIG = CodeGenConfig(
@@ -70,6 +74,7 @@ def clip_func_max(x, maxi):
 
 
 def clip(A, mini=None, maxi=None):
+    logger.debug("GEMS_ENFLAME_GCU400 CLIP")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:

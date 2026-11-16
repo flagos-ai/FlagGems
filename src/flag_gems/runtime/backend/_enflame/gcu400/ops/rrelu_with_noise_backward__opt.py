@@ -12,22 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""rrelu_with_noise_backward 候选 v1：精简 host 包装 + constexpr TRAINING 分支。
+"""rrelu_with_noise_backward candidate v1: simplified host wrapper + constexpr TRAINING branch.
 
-生产 gcu400 实现（TRACKED）的 host 层无条件做 4 次 `.contiguous()`、
-`torch_device_fn.device()` 上下文、`out_t is out` 判断与潜在 `copy_`。
-本候选：
-- 只在张量确实非连续时才 contiguous；
-- 去掉 device 上下文（Triton launch 的设备由张量决定）；
-- kernel 用 constexpr TRAINING 分支，training=True 时不再 load `input`
-  也不再计算 grad_eval（生产版两个分支都算）；
-- 保留 grid-stride 循环，任意 N 都正确；数值路径与生产一致（f32 中间）。
-不修改 TRACKED 文件，通过重绑 import 追加式落地。
+The production gcu400 implementation (TRACKED) unconditionally does 4 `.contiguous()` calls, a
+`torch_device_fn.device()` context, an `out_t is out` check and a possible `copy_` in the host layer.
+This candidate:
+- makes tensors contiguous only when they actually are not;
+- drops the device context (Triton launch device is determined by the tensors);
+- uses a constexpr TRAINING branch in the kernel, so training=True no longer loads `input`
+  or computes grad_eval (production computes both branches);
+- keeps the grid-stride loop, correct for any N; numeric path matches production (f32 intermediates).
+TRACKED files are untouched; delivered additively by rebinding imports.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["rrelu_with_noise_backward"]
 
@@ -75,8 +79,9 @@ def rrelu_with_noise_backward(
     training: bool,
     self_is_result: bool = False,
 ):
-    # 显式连续输出：empty_like 会 preserve 非连续 strides，
-    # 而 kernel 按线性 off 写入，非连续 out 会导致值错乱。
+    # Explicit contiguous output: empty_like preserves non-contiguous strides,
+    # while the kernel writes by linear offsets, so a non-contiguous out would scramble values.
+    logger.debug("GEMS_ENFLAME_GCU400 RRELU_WITH_NOISE_BACKWARD")
     out = torch.empty(
         grad_output.shape, dtype=grad_output.dtype, device=grad_output.device
     )

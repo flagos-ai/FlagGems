@@ -102,14 +102,14 @@ def log_softmax_backward_kernel(
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    # 只保留每行一个标量累加器，避免为整块 BLOCK_M×BLOCK_N 常驻寄存器。
+    # Keep only one scalar accumulator per row, avoiding a whole BLOCK_M x BLOCK_N resident register block.
     scale = tl.zeros((BLOCK_M,), dtype=tl.float32)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         out_grad_ptrs = out_grad_ptr + offsets
-        # 屏蔽区必须补 0，否则未定义值会随行和累加污染整行结果。
+        # Masked regions must be filled with 0, or undefined values pollute the whole row through the row sum.
         out_grad = tl.load(out_grad_ptrs, mask=mask, other=0.0).to(tl.float32)
         scale += tl.sum(out_grad, 1)
 
@@ -158,11 +158,11 @@ def log_softmax_backward_fused_kernel(
 
 
 def log_softmax_out(self, dim, half_to_float=False, *, out):
-    """K=1 时复用 gcu400 online-softmax kernel 直写 out；K>1 保留公共 non_inner。
+    """K=1 reuses the gcu400 online-softmax kernel writing directly to out; K>1 keeps the common non_inner.
 
-    公共 pointwise 的 2D tiled kernel 在 K=1 上比 gcu400 kernel 慢 2.3~4.5x
-    （4096² 598.8µs vs 173.3µs）；但 K>1（非 inner dim 归约）时公共的非 inner
-    kernel 反过来快 7.6~14x，因此按 K 分档而不是一刀切。
+    The common pointwise 2D tiled kernel is 2.3~4.5x slower than the gcu400 kernel at K=1
+    (4096^2 598.8us vs 173.3us); but for K>1 (non-inner dim reduction) the common non-inner
+    kernel is instead 7.6~14x faster, so dispatch by K rather than using one path everywhere.
     """
     logger.debug("GEMS_ENFLAME LOG_SOFTMAX_OUT")
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
@@ -239,7 +239,7 @@ def log_softmax(self, dim, half_to_float=False):
 
 # === LAUNCH_CONFIG_BEGIN ===
 def select_fused_launch(N):
-    """按归约宽度选择单遍 kernel 的每 program 行数、warp 数与列 tile。"""
+    """Choose rows per program, warp count and column tile for the single-pass kernel by reduction width."""
     if N <= 256:
         return 32, 2, triton.next_power_of_2(N)
     if N <= 1024:
@@ -248,7 +248,7 @@ def select_fused_launch(N):
 
 
 def select_twopass_launch(N, dtype):
-    """按归约宽度与 dtype 选择两遍 kernel 的行/列 tile 与 warp 数。"""
+    """Choose row/column tile and warp count for the two-pass kernel by reduction width and dtype."""
     block_m = 8 if dtype == torch.float32 else 16
     return block_m, min(triton.next_power_of_2(N), 8192), 4
 
@@ -257,7 +257,7 @@ def select_twopass_launch(N, dtype):
 
 
 def _copy_back_if_needed(out, kernel_out):
-    """把写入连续临时张量的结果拷回可能是非连续视图的 out。"""
+    """Copy the result from a contiguous temporary tensor back into a possibly non-contiguous out view."""
     if kernel_out is not out:
         out.copy_(kernel_out)
     return out
@@ -278,12 +278,12 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
         raise RuntimeError(
             f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
         )
-    # 空张量没有归约元素，直接返回，避免 K = numel // M // N 触发除零。
+    # Empty tensors have no reduction elements; return directly to avoid division by zero in K = numel // M // N.
     if output.numel() == 0:
         return out
 
-    # kernel 按连续内存布局计算 offset：非连续输入转成连续副本，
-    # 非连续 out 先写连续临时张量再拷回，Triton 仍是唯一计算路径。
+    # The kernel computes offsets by contiguous layout: non-contiguous inputs become contiguous copies,
+    # non-contiguous out is written via a contiguous temporary then copied back; Triton remains the only compute path.
     grad_output = grad_output.contiguous()
     output = output.contiguous()
     kernel_out = (

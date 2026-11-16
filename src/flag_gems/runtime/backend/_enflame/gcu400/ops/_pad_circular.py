@@ -491,7 +491,7 @@ def _next_pow2(n, cap):
 
 
 def _pad_circular(x: torch.Tensor, pad):
-    logger.debug("GEMS _PAD_CIRCULAR")
+    logger.debug("GEMS_ENFLAME_GCU400 _PAD_CIRCULAR")
 
     ndim = x.dim()
     if len(pad) % 2 != 0:

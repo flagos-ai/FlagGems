@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 # --- TUNING PARAMS START ---
-# out 变体的编译期/启动期配置，按优化轮次单变量调整，不改变算子语义。
-# 默认入口是否复用 out 变体的确定性 kernel；@libtuner autotune 在 GCU400 上
-# 的 do_bench 会触发设备级 abort，打开后可完全绕开该路径。
+# Compile-time / launch-time config for the out variant, tuned one variable at a time; semantics unchanged.
+# Whether the default entry reuses the deterministic kernel of the out variant; @libtuner autotune
+# triggers a device-level abort in do_bench on GCU400, and enabling this bypasses that path entirely.
 USE_DETERMINISTIC_FOR_DEFAULT = 1
 FALLBACK_TO_ORIGINAL = 0
 GROUP_M = 8
@@ -41,11 +41,11 @@ USE_FAST_GELU = 1
 USE_FAST_RELU = 0
 USE_FAST_SCALE = 1
 USE_FAST_TANH = 1
-# 默认直接使用 bias 的广播视图，不再物化成 M×N 连续张量。
-# 物化是早期为规避 @libtuner autotune 的 do_bench 设备级 abort 引入的
-# workaround；当前确定性 tile 分派已绕开 autotune，stride=0 广播视图在
-# GCU400 上可正常执行（全量 72 case 与多轮微基准均验证无 abort），
-# 省去每次调用一次 M×N 分配与整块拷贝。
+# The default entry uses a broadcast view of bias directly instead of materializing an M×N contiguous tensor.
+# Materialization was an early workaround for the device-level abort in @libtuner autotune's do_bench;
+# the current deterministic tile dispatch bypasses autotune, and the stride=0 broadcast view runs fine
+# on GCU400 (verified by 72 cases and multiple microbenchmark rounds with no abort),
+# saving one M×N allocation and a full copy per call.
 BIAS_CONTIGUOUS = 0
 BLOCK_M_OVERRIDE = 0
 BLOCK_N_OVERRIDE = 0
@@ -165,8 +165,8 @@ def _addmm_activation_original(
     _, N = mat2.shape
 
     if USE_DETERMINISTIC_FOR_DEFAULT:
-        # 复用 out 变体的确定性 Triton kernel，避免 @libtuner 的 autotune
-        # 在 GCU400 上执行 do_bench 时触发设备级 abort；语义与 tile 精度一致。
+        # Reuse the deterministic Triton kernel of the out variant to avoid the device-level abort caused by
+        # @libtuner autotune running do_bench on GCU400; semantics and tile accuracy are identical.
         if out is None:
             out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
         return _addmm_activation_out(
@@ -225,6 +225,7 @@ def _addmm_activation(bias, mat1, mat2, *, beta=1, alpha=1, use_gelu=False, out=
     non-out entry point reuses the deterministic dispatcher.  The old kernel
     stays reachable through ``FALLBACK_TO_ORIGINAL``.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 _ADDMM_ACTIVATION")
     if FALLBACK_TO_ORIGINAL:
         return _addmm_activation_original(
             bias, mat1, mat2, beta=beta, alpha=alpha, use_gelu=use_gelu, out=out
@@ -242,9 +243,9 @@ GCU_MAX_GRID_Y = 255
 
 
 def _select_activation_out_config(M, N, K, dtype):
-    """按 shape 与 dtype 确定性选择 GEMM tile，规避 autotune 在 GCU 上的设备级 abort。"""
+    """Select GEMM tiles deterministically by shape and dtype, avoiding the device-level autotune abort on GCU."""
     if K <= 64 or M <= 64 or N <= 64:
-        # 小矩阵用浅 tile，避免大量被 mask 掉的无效计算。
+        # Small matrices use shallow tiles to avoid large amounts of masked-out work.
         block_m, block_n = 32, 64
         block_k = 32 if K <= 32 else 64
         num_warps = 4
@@ -254,7 +255,7 @@ def _select_activation_out_config(M, N, K, dtype):
         block_k = 256 if dtype != torch.float32 and K % 256 == 0 else 128
         num_warps = 2 if dtype == torch.float32 or M >= 1024 else 4
 
-    # GCU400 GEMM 的两条硬约束：K 不对齐时 BK 必须 <=64；N 不对齐时 BN 不能取 256。
+    # Two hard constraints of GCU400 GEMM: BK must be <=64 when K is unaligned; BN cannot be 256 when N is unaligned.
     if K % block_k != 0 and block_k > 64:
         block_k = 64
     if N % block_n != 0 and block_n > 128:
@@ -306,7 +307,7 @@ def addmm_activation_out_kernel(
     USE_FAST_SCALE_VALUE: tl.constexpr,
     USE_FAST_TANH_VALUE: tl.constexpr,
 ):
-    """确定性 tile 的 addmm + bias + activation 融合 kernel，一维 grouped grid。"""
+    """Deterministic-tile addmm + bias + activation fused kernel with a 1D grouped grid."""
     pid = tl.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
     grid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -334,7 +335,8 @@ def addmm_activation_out_kernel(
         accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         if EVEN:
-            # 三维都能整除时编译期去掉所有越界 mask，只保留点积流水。
+            # When all three dimensions divide evenly, drop every bounds mask at compile time and keep only the dot
+            # pipeline.
             a = tl.load(a_ptrs)
             b = tl.load(b_ptrs)
         else:
@@ -374,7 +376,7 @@ def addmm_activation_out_kernel(
         bias = tl.where(c_mask, bias, 0.0)
 
     if USE_FAST_SCALE_VALUE:
-        # alpha 与 beta 都为 1 时，两次标量乘法可安全化简为一次加法。
+        # When alpha and beta are both 1, two scalar multiplies safely collapse into one add.
         accumulator = accumulator + bias
     else:
         accumulator = accumulator * alpha + bias * beta
@@ -385,7 +387,7 @@ def addmm_activation_out_kernel(
         else:
             acc_gelu = accumulator.to(tl.float32)
         if USE_FAST_GELU_VALUE:
-            # pow(x, 2) 与 x*x 在 IEEE 语义下逐点一致，省掉 libdevice powf。
+            # pow(x, 2) matches x*x point-by-point under IEEE semantics, avoiding a libdevice powf call.
             square = acc_gelu * acc_gelu
         else:
             square = pow(acc_gelu, 2)
@@ -409,7 +411,8 @@ def addmm_activation_out_kernel(
 
 
 def _addmm_activation_out(bias, mat1, mat2, *, beta=1, alpha=1, use_gelu=False, out):
-    """out 变体走确定性分派；原 autotune 路径仅在 FALLBACK_TO_ORIGINAL 时使用。"""
+    """The out variant uses deterministic dispatch; the original autotune path is used only with
+    FALLBACK_TO_ORIGINAL."""
     logger.debug("GEMS_ADDMM_ACTIVATION_OUT")
     if FALLBACK_TO_ORIGINAL:
         return _addmm_activation_original(
@@ -429,7 +432,8 @@ def _addmm_activation_out(bias, mat1, mat2, *, beta=1, alpha=1, use_gelu=False, 
         mat2 = mat2.contiguous()
     bias_view = bias.broadcast_to((M, N))
     if BIAS_CONTIGUOUS:
-        # 仅在显式要求连续布局（或需要回退到旧 workaround）时才物化广播视图。
+        # Materialize the broadcast view only when a contiguous layout is explicitly required (or the old workaround is
+        # needed).
         bias_view = bias_view.contiguous()
 
     block_m, block_n, block_k, num_warps, num_stages = _select_activation_out_config(

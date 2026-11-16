@@ -257,7 +257,7 @@ def dist_min_kernel_2(Mid, Out, MID_SIZE, BLOCK_SIZE: tl.constexpr):
 
 
 def dist(input, other, p=2):
-    logger.debug("GEMS DIST")
+    logger.debug("GEMS_ENFLAME_GCU400 DIST")
     if input.shape != other.shape:
         input, other = torch.broadcast_tensors(input, other)
     if not input.is_contiguous():

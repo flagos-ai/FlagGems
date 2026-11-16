@@ -218,7 +218,7 @@ def fp8_fp4_paged_mqa_logits(
     Returns:
         Logits tensor [total_rows, max_model_len] float32.
     """
-    logger.debug("GEMS FP8_FP4_PAGED_MQA_LOGITS")
+    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_PAGED_MQA_LOGITS")
 
     q_values, q_scale = q
 

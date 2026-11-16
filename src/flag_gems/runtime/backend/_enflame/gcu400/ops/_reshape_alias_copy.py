@@ -102,7 +102,7 @@ def _reshape_alias_copy(self: torch.Tensor, size, stride):
     requested ``size``/``stride`` are applied verbatim and are not validated
     against ``self.numel()``.
     """
-    logger.debug("GEMS _RESHAPE_ALIAS_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 _RESHAPE_ALIAS_COPY")
     sizes = [int(s) for s in size]
     strides = [int(s) for s in stride]
 

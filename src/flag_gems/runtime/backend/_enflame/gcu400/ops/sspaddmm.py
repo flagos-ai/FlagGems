@@ -232,12 +232,12 @@ def _sspaddmm_impl(input, mat1, mat2, beta=1.0, alpha=1.0, out=None):
 
 
 def sspaddmm(input, mat1, mat2, *, beta=1.0, alpha=1.0):
-    logger.debug("GEMS SSPADDMM")
+    logger.debug("GEMS_ENFLAME_GCU400 SSPADDMM")
     return _sspaddmm_impl(input, mat1, mat2, beta=beta, alpha=alpha)
 
 
 def sspaddmm_out(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
-    logger.debug("GEMS SSPADDMM_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 SSPADDMM_OUT")
     if out is None:
         raise TypeError("sspaddmm(): out must be provided for the out variant")
     return _sspaddmm_impl(input, mat1, mat2, beta=beta, alpha=alpha, out=out)

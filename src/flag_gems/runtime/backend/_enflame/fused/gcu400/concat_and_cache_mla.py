@@ -68,8 +68,8 @@ def concat_and_cache_mla_kernel(
         scale_val = tl.load(scale_ptr)
 
     if kv_dtype == FP8_KV_CACHE_DATA_TYPE_AUTO:
-        # auto 路径把 kv_c 与 k_pe 拼成一条 entry 向量：两段 load 后择一，
-        # 单次 store 写回，避免两个独立循环与两次写回的调度开销。
+        # The auto path packs kv_c and k_pe into one entry vector: select after two loads,
+        # write back with a single store, avoiding two separate loops and two write-backs.
         idx = tl.arange(0, BLOCK_SIZE)
         kv_mask = idx < kv_lora_rank
         pe_offset = idx - kv_lora_rank
@@ -83,7 +83,7 @@ def concat_and_cache_mla_kernel(
         entry_val = tl.where(kv_mask, kv_val, pe_val)
         tl.store(kv_cache_ptr + cache_base + idx, entry_val, mask=kv_mask | pe_mask)
     else:
-        # FP8 量化路径需要逐段转换，保留原有两遍循环。
+        # The FP8 quantization path needs per-segment conversion, so keep the original two-pass loop.
         # Process kv_c section
         for i in range(0, kv_lora_rank, BLOCK_SIZE):
             idx = i + tl.arange(0, BLOCK_SIZE)

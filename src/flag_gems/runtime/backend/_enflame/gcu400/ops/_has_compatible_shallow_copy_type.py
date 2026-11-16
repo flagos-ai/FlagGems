@@ -100,7 +100,7 @@ def _has_compatible_shallow_copy_type(self: torch.Tensor, from_: torch.Tensor) -
     Returns:
         bool: True when the two TensorImpls are shallow-copy compatible.
     """
-    logger.debug("GEMS _HAS_COMPATIBLE_SHALLOW_COPY_TYPE")
+    logger.debug("GEMS_ENFLAME_GCU400 _HAS_COMPATIBLE_SHALLOW_COPY_TYPE")
 
     self_keys = torch._C._dispatch_keys(self)
     from_keys = torch._C._dispatch_keys(from_)

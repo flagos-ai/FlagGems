@@ -370,6 +370,7 @@ class _DiagFlat(torch.autograd.Function):
 
 
 def run(self, offset=0):
+    logger.debug("GEMS_ENFLAME_GCU400 RUN")
     if not isinstance(self, torch.Tensor):
         raise TypeError("diagflat(): argument 'self' must be a Tensor")
     if not isinstance(offset, int):

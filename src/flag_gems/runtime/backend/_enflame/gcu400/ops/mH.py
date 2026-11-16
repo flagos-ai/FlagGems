@@ -87,6 +87,7 @@ _DIM = torch.Tensor.dim
 
 def mH(self):
     """Return the zero-copy conjugate-transpose view of ``self``."""
+    logger.debug("GEMS_ENFLAME_GCU400 MH")
     ndim = _DIM(self)
     if ndim < 2:
         if ndim == 1:

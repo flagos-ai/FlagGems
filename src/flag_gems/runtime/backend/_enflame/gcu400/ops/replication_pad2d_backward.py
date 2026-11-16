@@ -12,34 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""replication_pad2d 反向（Enflame GCU400）：单 launch、无原子、行网格跨步实现。
+"""replication_pad2d backward (Enflame GCU400): single launch, no atomics, row-grid striding implementation.
 
-2026-11-15 修复 + 优化
+2026-11-15 fix + optimization
 =====================
-1) **grid.x 溢出崩溃（功能缺陷）**
-   旧实现有两条路径：interior_elements ≤ 16384 时走「一行一 program 的融合 kernel」，
-   否则回退到「interior copy + 边缘 atomic add」双 kernel。回退路径的 grid 是
-   `nc_total * H * cdiv(W, INTERIOR_BLOCK)` / `cdiv(interior_elements, BLOCK)`，
-   (4,64,256,512) 需要 131072、(8,128,1024,1024) 更多，超过硬件 grid.x ≤ 65535，
-   直接 `OutOfResources: out of resource: grid.x`（tests 里 4x64x256x512 的 18 个
-   用例全挂）。新实现把「输入行」循环放进 kernel 做 grid-stride
-   （`for row in range(pid, ROWS, G)`），grid 只由行数与调参上限决定，任何 shape
-   都不会溢出；同时删掉了双 kernel 回退路径（其精度缺陷见第 2 点）。
-2) **fp16/bf16 边缘精度**
-   旧边缘 kernel 用 `tl.atomic_add` 直接在低精度输出上逐次累加，每个 pad 元素都会
-   舍入一次（用随机 grad_output 与 CPU float64 参考比对，边界 0.1% 元素差到
-   0.047）。新实现每个输入元素在寄存器里用 fp32 累加所有映射到它的输出元素，
-   最后一次 cast，且完全不需要 atomic。
-3) **ph 维度改成顺序累加（主要性能来源）**
-   `[BLOCK_PH, BLOCK_W]` 2D tile 再 `tl.sum(axis=0)` 在 GCU 上会变成跨 lane 归约，
-   是这条 kernel 的最大开销；改成 `tl.static_range(BLOCK_PH)` 顺序累加到 1D 寄存器
-   向量后，同一组用例 geomean 17.19× → 37.59×（+2.2×，见报告）。列方向按
-   `ELEM_CAP` 分块，超宽行（W > BLOCK_W）不会寄存器爆炸。
+1) **grid.x overflow crash (functional defect)**
+   The old implementation had two paths: with interior_elements <= 16384 a "one program per row" fused kernel,
+   otherwise a fallback of "interior copy + edge atomic add" two kernels. The fallback grid is
+   `nc_total * H * cdiv(W, INTERIOR_BLOCK)` / `cdiv(interior_elements, BLOCK)`,
+   which needs 131072 for (4,64,256,512) and more for (8,128,1024,1024), exceeding the hardware grid.x <= 65535,
+   directly raising `OutOfResources: out of resource: grid.x` (all 18 cases of 4x64x256x512 in tests
+   failed). The new implementation puts the "input row" loop inside the kernel as grid-stride
+   (`for row in range(pid, ROWS, G)`), so grid depends only on row count and tuning caps and no shape
+   can overflow; the two-kernel fallback is also removed (its accuracy defect is point 2).
+2) **fp16/bf16 edge accuracy**
+   The old edge kernel used `tl.atomic_add` to accumulate directly into low-precision output, rounding once per pad
+   element
+   (comparing random grad_output with a CPU float64 reference, 0.1% of boundary elements differ by
+   0.047). The new implementation accumulates all output elements mapping to one input element in fp32 in registers,
+   casts once at the end, and needs no atomics at all.
+3) **ph dimension changed to sequential accumulation (main performance source)**
+   A `[BLOCK_PH, BLOCK_W]` 2D tile followed by `tl.sum(axis=0)` becomes a cross-lane reduction on GCU,
+   the biggest cost of this kernel; switching to `tl.static_range(BLOCK_PH)` sequential accumulation into a 1D register
+   vector raised the same case group's geomean from 17.19x to 37.59x (+2.2x, see report). Column direction is blocked by
+   `ELEM_CAP`, so extra-wide rows (W > BLOCK_W) do not blow up registers.
 
-映射语义（replication 反向）：输入行 (nc, ih) 承接的输出行闭区间为
-[oh_lo, oh_hi] = [ih == 0 ? 0 : PT + ih, ih == H-1 ? OH-1 : PT+ih]；列方向上左 pad
-列折叠到 iw = 0、右 pad 列折叠到 iw = W-1。每个 grad_output 元素只被读一次，
-读写流量即 OH*OW 读 + H*W 写（最优）。
+Mapping semantics (replication backward): input row (nc, ih) receives output rows in the closed interval
+[oh_lo, oh_hi] = [ih == 0 ? 0 : PT + ih, ih == H-1 ? OH-1 : PT+ih]; in the column direction left pad
+columns fold to iw = 0 and right pad columns fold to iw = W-1. Each grad_output element is read once,
+so read/write traffic is OH*OW reads + H*W writes (optimal).
 """
 
 import logging
@@ -52,16 +53,16 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# ===== 调参常量（2026-11-15 交错 A/B 实测标定，min-of-3 轮）=====
-# grid = min(行数, SPC * GRID_MULT, 65535)：GRID_MULT=1（48 个 program）最优，
-# 2/4/8 倍分别 -2.7%/-5.8%/-11.9%。
+# ===== Tuning constants (2026-11-15 interleaved A/B calibration, min-of-3 rounds) =====
+# grid = min(rows, SPC * GRID_MULT, 65535): GRID_MULT=1 (48 programs) is optimal,
+# 2/4/8x give -2.7%/-5.8%/-11.9% respectively.
 GRID_MULT = 1
 SPC = 48
 MAX_GRID = 65535
-# 单次 load 的元素预算：8192 与 16384/32768 等价（受 next_pow2(W) 约束），
-# 1024/2048 分别 -31%/-11%。
+# Element budget of a single load: 8192 ties 16384/32768 (bounded by next_pow2(W)),
+# 1024/2048 give -31%/-11% respectively.
 ELEM_CAP = 8192
-# num_warps：1 最优，2 时 -26%。
+# num_warps: 1 is optimal, 2 gives -26%.
 WARPS = 1
 # ==============================================================
 
@@ -97,7 +98,7 @@ def replication_pad2d_backward_kernel(
     for row in range(pid, ROWS, G):
         nc = row // H
         ih = row - nc * H
-        # 该输入行承接的输出行闭区间（H == 1 时两个 where 合并后覆盖整个 OH）
+        # Closed interval of output rows received by this input row (H == 1 merges both where branches to cover all OH)
         oh_lo = tl.where(ih == 0, 0, PT + ih)
         oh_hi = tl.where(ih == H - 1, OH - 1, PT + ih)
         go_nc = grad_output_ptr + nc * GO_NC
@@ -107,14 +108,14 @@ def replication_pad2d_backward_kernel(
             iw = chunk * BLOCK_W + iw0
             iwv = iw < W
             total = tl.zeros([BLOCK_W], dtype=tl.float32)
-            # ph 维度顺序累加（避免 2D tile 的跨 lane 归约）
+            # Sequential accumulation along ph (avoiding the 2D tile's cross-lane reduction)
             for p in tl.static_range(BLOCK_PH):
                 oh = oh_lo + p
                 if oh <= oh_hi:
                     total += tl.load(
                         go_nc + oh * GO_ROW + (PL + iw), mask=iwv, other=0.0
                     ).to(tl.float32)
-            # 左右 pad 列：整行只有 iw=0 / iw=W-1 两个位置承接
+            # Left/right pad columns: only iw=0 / iw=W-1 of the whole row receive them
             if PL > 0:
                 if chunk == 0:
                     left_sum = 0.0
@@ -208,7 +209,7 @@ def _replication_pad2d_backward_impl(
             f"expected shape {expected_grad_shape}"
         )
 
-    # 无 padding 时反向就是恒等拷贝
+    # Without padding, backward is an identity copy
     if pad_left == 0 and pad_right == 0 and pad_top == 0 and pad_bottom == 0:
         result = grad_output_4d.contiguous().to(self.dtype)
         if is_3d:
@@ -224,7 +225,8 @@ def _replication_pad2d_backward_impl(
             return out
         return torch.empty((N, C, H, W), device=self.device, dtype=self.dtype)
 
-    # kernel 用常量 stride 直接写连续缓冲；out 非连续时先算到连续缓冲再拷回
+    # Kernel writes the contiguous buffer directly with constant strides; non-contiguous out is computed into a
+    # contiguous buffer then copied back
     write_back = None
     if out is None:
         target = torch.empty((N, C, H, W), device=self.device, dtype=self.dtype)

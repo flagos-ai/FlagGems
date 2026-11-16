@@ -259,7 +259,7 @@ def _fused_dropout(self, p, generator=None):
     If it cannot be built, Python-serialized reservations support eager replay
     but must not share a Generator with concurrent native/other RNG operations.
     """
-    logger.debug("GEMS _FUSED_DROPOUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _FUSED_DROPOUT")
     if self.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
         raise RuntimeError("_fused_dropout supports floating-point inputs only")
     if self.dtype == torch.float64 and flag_gems.vendor_name in (

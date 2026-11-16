@@ -42,7 +42,7 @@ def dense_dim(self: torch.Tensor) -> int:
       for every compressed layout (verified on H20: a batched CSR tensor
       with shape [B, M, N] reports ``dense_dim() == 0`` natively).
     """
-    logger.debug("GEMS DENSE_DIM")
+    logger.debug("GEMS_ENFLAME_GCU400 DENSE_DIM")
     if self.layout == torch.strided:
         return self.dim()
     if self.layout == torch.sparse_coo:

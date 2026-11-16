@@ -50,12 +50,16 @@ kernel only when check_errors=True, mirroring the generic
 implementation); the host only allocates outputs (torch.empty) and never
 calls aten compute ops.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.ops.linalg_inv_ex import LinalgInvExResult
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["linalg_inv_ex"]
 
@@ -201,6 +205,7 @@ def linalg_inv_ex(A, *, check_errors=False):
         `info` is an int32 tensor of shape A.shape[:-2] holding 0 on
         success or k+1 (LAPACK order) when the k-th pivot is exactly zero.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_INV_EX")
     if A.dim() < 2:
         raise RuntimeError(
             "linalg_inv_ex: The input tensor A must have at least 2 dimensions."

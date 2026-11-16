@@ -329,7 +329,7 @@ def smm(self, mat):
     product and writes the COO output (indices + values) directly, avoiding
     any separate dense-to-sparse conversion pass.
     """
-    logger.debug("GEMS SMM")
+    logger.debug("GEMS_ENFLAME_GCU400 SMM")
 
     if not self.is_sparse:
         raise RuntimeError("tensor.sspaddmm(...) can only be called on sparse tensors")

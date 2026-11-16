@@ -449,7 +449,7 @@ def quantized_max_pool3d(
     An omitted or empty ``stride`` falls back to ``kernel_size``, matching the
     ``int[3] stride=[]`` schema default of ``aten::quantized_max_pool3d``.
     """
-    logger.debug("GEMS QUANTIZED_MAX_POOL3D")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL3D")
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
     _check_quantized_input(input)
@@ -547,7 +547,7 @@ def quantized_max_pool3d_out(
     and finally the pooled values *and* the input's quantization parameters are
     written into it.
     """
-    logger.debug("GEMS QUANTIZED_MAX_POOL3D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_MAX_POOL3D_OUT")
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
     _check_quantized_input(input)

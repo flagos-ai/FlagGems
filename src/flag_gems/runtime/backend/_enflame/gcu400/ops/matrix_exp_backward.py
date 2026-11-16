@@ -186,7 +186,7 @@ def _matrix_exp(X, num_terms=None):
 
 
 def matrix_exp_backward(self, grad):
-    logger.debug("GEMS MATRIX_EXP_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 MATRIX_EXP_BACKWARD")
     assert self.shape == grad.shape, "self and grad must have the same shape"
     assert (
         self.ndim >= 2 and self.shape[-1] == self.shape[-2]

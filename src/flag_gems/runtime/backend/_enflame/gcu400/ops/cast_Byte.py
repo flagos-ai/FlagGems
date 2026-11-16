@@ -31,8 +31,9 @@ _NATIVE_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CompositeImplicitA
 
 
 def _cast_byte_complex_bridge(self, non_blocking=False):
-    # 硬件不支持 complex -> uint8 的 native 转换：按 ATen 语义在 CPU 上取实部
-    # 并收窄到 uint8，再搬回设备；其余 dtype 仍由下方 Triton kernel 做主计算。
+    # Hardware does not support native complex -> uint8 conversion: take the real part on CPU per ATen semantics
+    # and narrow to uint8, then move back to the device; other dtypes still use the Triton kernel below for main
+    # compute.
     cpu_out = torch.ops.aten._to_copy.default.redispatch(
         _FALLBACK_KEYSET, self.cpu(), dtype=torch.uint8, non_blocking=non_blocking
     )
@@ -81,7 +82,7 @@ def _cast_byte_kernel(X, Y, N, BLOCK: tl.constexpr):
 
 
 def cast_Byte(self, non_blocking=False):
-    logger.debug("GEMS CAST_BYTE")
+    logger.debug("GEMS_ENFLAME_GCU400 CAST_BYTE")
     if self.is_complex():
         return _cast_byte_complex_bridge(self, non_blocking=non_blocking)
     if self.dtype == torch.uint8:
@@ -133,14 +134,15 @@ def cast_Byte(self, non_blocking=False):
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu dispatch 适配：aten::_cast_Byte 处理 complex 输入会触发进程 abort。
+# torch_gcu dispatch adaptation: aten::_cast_Byte aborts the process on complex inputs.
 #
-# 与 cast_Char 同因：torch_gcu 未为 aten::_cast_Byte 注册 PrivateUse1 kernel，
-# GCU complex 张量派发到 CompositeImplicitAutograd → _to_copy → topsatenCopy，
-# 返回 TOPSATEN_STATUS_NOT_SUPPORT 后由 csrc Check 直接终止进程（无 Python 异常）。
-# 精度测试参考腿直接调用 torch.ops.aten._cast_Byte(x)，因此只修 flag_gems 实现侧
-# 仍会崩挂；这里按 cast_Char 的既有模式把 complex 窄域幂等注册到 device dispatch
-# key，其余 dtype 一律 redispatch 回原生 composite，保持 oracle 语义不变。
+# Same cause as cast_Char: torch_gcu has no PrivateUse1 kernel registered for aten::_cast_Byte,
+# so GCU complex tensors dispatch to CompositeImplicitAutograd -> _to_copy -> topsatenCopy,
+# which returns TOPSATEN_STATUS_NOT_SUPPORT and csrc Check terminates the process (no Python exception).
+# The accuracy test reference leg calls torch.ops.aten._cast_Byte(x) directly, so fixing only the flag_gems side
+# still crashes; following the existing cast_Char pattern, idempotently register the complex narrow domain on the device
+# dispatch
+# key and redispatch all other dtypes back to the native composite, keeping oracle semantics unchanged.
 # ---------------------------------------------------------------------------
 _CAST_BYTE_KEYS_FLAG = "_flag_gems_gcu400_cast_byte_keys_registered"
 _CAST_BYTE_LIBRARY = None

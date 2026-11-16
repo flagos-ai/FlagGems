@@ -169,7 +169,7 @@ def batch_norm_stats(input, eps):
     Returns:
         Tuple of (mean, invstd), each of shape (C,)
     """
-    logger.debug("GEMS BATCH_NORM_STATS")
+    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_STATS")
 
     assert input.ndim >= 2, "Input must have at least 2 dimensions (N, C, ...)"
 

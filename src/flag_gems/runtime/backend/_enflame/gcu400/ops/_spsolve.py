@@ -30,7 +30,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# 两个 Triton kernel 的 launch 参数集中在此，便于按 shape 分档调优。
+# Launch parameters of the two Triton kernels are grouped here for shape-tiered tuning.
 _CSR_SCATTER_BLOCK = 64
 _CSR_SCATTER_WARPS = 4
 _LU_BLOCK_K = 4
@@ -75,11 +75,11 @@ def _csr_to_dense_kernel(
 
 
 def _csr_to_dense(A, compute_device):
-    """把稀疏 CSR 矩阵散射到 ``compute_device`` 上的预清零 dense buffer。
+    """Scatter a sparse CSR matrix into a pre-zeroed dense buffer on ``compute_device``.
 
-    GCU 后端不支持稀疏 CSR 存储，torch_gcu 会把 CSR 构造回落到 CPU；因此三个
-    组件（crow / col / val）必须显式搬到 GCU 后才能被 Triton kernel 读写，
-    dense buffer 也同样创建在计算设备上。
+    The GCU backend does not support sparse CSR storage, so torch_gcu falls back to CPU for CSR construction; the three
+    components (crow / col / val) must therefore be moved to GCU explicitly before Triton kernels can read them,
+    and the dense buffer is also created on the compute device.
     """
     n_rows, n_cols = A.shape
     crow = A.crow_indices().contiguous().to(compute_device)
@@ -107,16 +107,16 @@ def _csr_to_dense(A, compute_device):
 
 
 def _solve_dense_system(A_dense, B_solve):
-    """用固定 ``num_warps=1`` 的 Triton LU kernel 求解单右端项的稠密系统。
+    """Solve a dense system with a single right-hand side using a Triton LU kernel with fixed ``num_warps=1``.
 
-    ``linalg_solve`` 的 autotune 会在 GCU400 上选中 ``num_warps=2`` 的 config，
-    该 config 的 pivot 标量控制流给出错误解（实测误差 1e-3~1e-2）；直接 launch
-    原始 JITFunction 并固定 ``num_warps=1`` 时误差约 1e-7，同时省去 autotune
-    的 warmup / 计时与包装开销。
+    ``linalg_solve``'s autotune picks a ``num_warps=2`` config on GCU400, whose pivot scalar control flow
+    gives a wrong solution (measured error 1e-3~1e-2); directly launching the original JITFunction with
+    ``num_warps=1`` gives an error of about 1e-7 and also removes autotune
+    warmup / timing and wrapper overhead.
     """
     n = A_dense.shape[0]
-    # LU kernel 按 (batch, row, col) 三段 stride 寻址，必须保持 3D batch 布局，
-    # 否则 2D 的 stride(1)=1 会被当成行跨度，读到的矩阵内容完全错位。
+    # The LU kernel addresses memory by three strides (batch, row, col) and must keep the 3D batch layout,
+    # otherwise 2D stride(1)=1 is mistaken for the row span and the matrix contents are read completely out of place.
     A_work = A_dense.reshape(1, n, n).contiguous()
     B_work = B_solve.reshape(1, n, 1).contiguous()
     LU_workspace = torch.empty_like(A_work)
@@ -165,7 +165,7 @@ def spsolve(A, B, *, left=True):
     Returns:
         The dense solution vector ``X`` of shape (n,).
     """
-    logger.debug("GEMS SPSOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 SPSOLVE")
 
     if A.layout != torch.sparse_csr:
         raise RuntimeError(
@@ -186,9 +186,9 @@ def spsolve(A, B, *, left=True):
             f"spsolve: linear system size mismatch: A is {tuple(A.shape)}, "
             f"B is {tuple(B.shape)}"
         )
-    # torch_gcu 把 GCU 上的 sparse CSR 构造回落到 CPU，所以 A 常驻 CPU 是正常输入；
-    # 计算设备取 B 所在设备，并要求它确实是 GCU，避免 CPU 侧 B 进入 Triton launch
-    # 时抛 ValueError（对外契约要求的是干净的 RuntimeError）。
+    # torch_gcu falls back to CPU for sparse CSR construction on GCU, so A residing on CPU is a normal input;
+    # the compute device is taken from B, and B must indeed be on GCU to avoid a ValueError from a CPU-side B
+    # entering the Triton launch (the public contract requires a clean RuntimeError).
     compute_device = B.device
     if compute_device.type != "gcu":
         raise RuntimeError(
@@ -211,8 +211,8 @@ def spsolve(A, B, *, left=True):
     A_solve = A_dense.to(compute_dtype)
     B_solve = B.to(compute_dtype)
 
-    # 求解 A @ X = B：走固定 num_warps=1 的 Triton LU kernel，避开 autotune 在
-    # GCU400 上选出的错误 config；AABS 关闭也由该 launch 内部统一处理。
+    # Solve A @ X = B with the Triton LU kernel fixed at num_warps=1, avoiding the wrong config chosen by
+    # autotune on GCU400; disabling AABS is also handled uniformly inside that launch.
     X = _solve_dense_system(A_solve, B_solve)
     return X.to(out_dtype)
 

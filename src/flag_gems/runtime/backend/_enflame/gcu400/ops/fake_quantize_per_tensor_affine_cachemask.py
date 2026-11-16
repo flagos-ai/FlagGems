@@ -464,7 +464,7 @@ def _run(x, scale, zero_point, quant_min, quant_max, out0=None, out1=None):
 def fake_quantize_per_tensor_affine_cachemask(
     input, scale, zero_point, quant_min, quant_max
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK")
     return _run(input, scale, zero_point, quant_min, quant_max)
 
 
@@ -478,5 +478,5 @@ def fake_quantize_per_tensor_affine_cachemask_out(
     out0,
     out1,
 ):
-    logger.debug("GEMS FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_OUT")
     return _run(input, scale, zero_point, quant_min, quant_max, out0, out1)

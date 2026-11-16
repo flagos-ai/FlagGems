@@ -539,10 +539,11 @@ def get_default_config(
     # Measured 1.17~1.29x on fused_experts_impl small shapes. Gated so that
     # fp8 blockwise quantization and large-token prefill keep their original
     # heuristics (those paths were not part of the measured shape set).
-    # 量化路径（尤其是 per-tensor fp8 w8a8）的 tl.dot 对 K tile 与 warp 数有硬件约束，
-    # 这组小 shape 调优只在普通半精度路径实测过。若把 BLOCK_SIZE_K 改成 64、
-    # num_warps 改成 8 后用于 fp8，kernel 会触发 SIP ADDR INVALID 并使 GCU reset，
-    # 表现为 correctness 进程被 SIGKILL、精度测试像是卡住超时。此处排除走量化 tl.dot 的 dtype。
+    # tl.dot in the quantized path (especially per-tensor fp8 w8a8) has hardware constraints on K tile and warp count;
+    # this small-shape tuning was only measured on the plain half-precision path. Setting BLOCK_SIZE_K to 64
+    # and num_warps to 8 for fp8 triggers SIP ADDR INVALID and resets the GCU,
+    # showing up as the correctness process being SIGKILLed and accuracy tests appearing to hang. Exclude dtypes that
+    # use quantized tl.dot.
     quantized_dot_dtypes = ("fp8_w8a8", "int8_w8a8")
     is_quantized_config = dtype in quantized_dot_dtypes
     if (
@@ -1713,6 +1714,7 @@ def invoke_fused_moe_triton_kernel(
     out_top_k: int = 1,
 ) -> None:
     """Launch the fused_moe_kernel Triton kernel."""
+    logger.debug("GEMS_ENFLAME_GCU400 INVOKE_FUSED_MOE_TRITON_KERNEL")
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids is None or sorted_token_ids.stride(0) == 1
@@ -1842,6 +1844,7 @@ def dispatch_fused_moe_kernel(
     out_top_k: int = 1,
 ) -> None:
     """Dispatch to the appropriate fused MoE kernel based on quantization flags."""
+    logger.debug("GEMS_ENFLAME_GCU400 DISPATCH_FUSED_MOE_KERNEL")
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids is None or sorted_token_ids.stride(0) == 1
@@ -2001,10 +2004,12 @@ def fused_experts_impl(
         ocp_mx_scheme=ocp_mx_scheme,
     )
 
-    # int8 w8a8 与 fp8 一样走量化 tl.dot，对 K tile / warp 数有硬件约束；
-    # 但 _get_config_dtype_str 不识别该标志，会返回 bf16 使上面的小 shape 调优误生效，
-    # 在 16x8x256x512x2 上触发 SIP ADDR INVALID 并 reset 设备。这里仅在配置选择处
-    # 用专用 dtype 标记量化 kernel，config_dtype 本身及其余分派（含 direct_sum）保持不变。
+    # int8 w8a8 also uses quantized tl.dot with the same K tile / warp count constraints;
+    # but _get_config_dtype_str does not recognize the flag and returns bf16, wrongly enabling the small-shape tuning
+    # above,
+    # triggering SIP ADDR INVALID and a device reset on 16x8x256x512x2. Here only mark the quantized kernel
+    # with a dedicated dtype at config selection; config_dtype itself and other dispatches (including direct_sum) are
+    # unchanged.
     kernel_config_dtype = "int8_w8a8" if use_int8_w8a8 else config_dtype
     get_moe_config = functools.partial(
         try_get_optimal_moe_config,
@@ -2315,6 +2320,7 @@ def inplace_fused_experts(
     Same semantics as ``fused_experts_impl(..., inplace=True)``.
     Returns None (the result is stored in ``hidden_states``).
     """
+    logger.debug("GEMS_ENFLAME_GCU400 INPLACE_FUSED_EXPERTS")
     fused_experts_impl(
         hidden_states,
         w1,
@@ -2340,17 +2346,19 @@ def inplace_fused_experts(
     )
 
 
-# GCU400 的 MoE Triton kernel 用 32 位索引计算 expert 权重偏移。
-# 当 expert_stride * num_experts 超过 int32 上限（例如 E=256、w1.stride(0)=29360128、
-# expert_id=200 时偏移约 5.9e9）时，后端会把指针偏移截断，kernel 读到无效地址
-# 并产出 NaN。按 expert 分块运行同一 Triton GEMM 即可让每次 launch 的偏移保持在 32 位内。
+# The GCU400 MoE Triton kernel uses 32-bit indices for expert weight offsets.
+# When expert_stride * num_experts exceeds the int32 limit (e.g. E=256, w1.stride(0)=29360128,
+# expert_id=200 gives an offset of ~5.9e9), the backend truncates the pointer offset and the kernel reads invalid
+# addresses,
+# producing NaNs. Running the same Triton GEMM in expert blocks keeps each launch's offset within 32 bits.
 _MOE_INT32_INDEX_LIMIT = 2**31 - 1
 
 
 def _safe_experts_per_launch(
     w1: torch.Tensor, w2: torch.Tensor, num_experts: int
 ) -> int:
-    """计算单次 GEMM launch 可安全寻址的 expert 数；等于 num_experts 表示无需分块。"""
+    """Compute the number of experts a single GEMM launch can address safely; equal to num_experts means no blocking
+    is needed."""
     expert_stride = max(w1.stride(0), w2.stride(0))
     safe_experts = max(1, _MOE_INT32_INDEX_LIMIT // expert_stride)
     return min(num_experts, safe_experts)
@@ -2365,13 +2373,13 @@ def _outplace_fused_experts_chunked(
     experts_per_launch: int,
     kernel_kwargs: dict,
 ) -> torch.Tensor:
-    """逐 expert 块运行 Triton GEMM，再把各块部分输出相加得到完整 outplace 结果。"""
+    """Run the Triton GEMM per expert block, then sum the partial outputs into the full out-of-place result."""
     num_experts = w1.size(0)
     partial_outputs = []
     for expert_start in range(0, num_experts, experts_per_launch):
         expert_end = min(num_experts, expert_start + experts_per_launch)
         belongs_to_chunk = (topk_ids >= expert_start) & (topk_ids < expert_end)
-        # 块外 expert 的路由权重置零，其 GEMM 结果对最终输出没有贡献。
+        # Routing weights of experts outside the block are zeroed, so their GEMM results do not contribute.
         chunk_topk_ids = torch.where(belongs_to_chunk, topk_ids - expert_start, 0)
         chunk_topk_weights = torch.where(belongs_to_chunk, topk_weights, 0)
         partial_outputs.append(
@@ -2415,6 +2423,7 @@ def outplace_fused_experts(
 
     Same semantics as ``fused_experts_impl(..., inplace=False)``.
     """
+    logger.debug("GEMS_ENFLAME_GCU400 OUTPLACE_FUSED_EXPERTS")
     kernel_kwargs = dict(
         activation=activation,
         apply_router_weight_on_input=apply_router_weight_on_input,
@@ -2435,8 +2444,9 @@ def outplace_fused_experts(
 
     num_experts = w1.size(0)
     experts_per_launch = _safe_experts_per_launch(w1, w2, num_experts)
-    # 分块只用于未量化、无 bias、无 expert_map 的普通半精度路径：
-    # 这些场景的权重切片与路由掩码可以直接按 expert 维对齐，其余场景保持原路径。
+    # Blocking is only used on the plain half-precision path without quantization, bias, or expert_map:
+    # there the weight slices and routing masks align directly along the expert dimension; other cases keep the original
+    # path.
     can_chunk_experts = (
         experts_per_launch < num_experts
         and not apply_router_weight_on_input
@@ -2465,7 +2475,8 @@ def outplace_fused_experts(
     )
     if can_chunk_experts:
         chunk_kwargs = dict(kernel_kwargs)
-        # 每块的专家数由该块 w1.size(0) 推断，避免沿用全局 expert 数造成对齐错误。
+        # The expert count per block is inferred from that block's w1.size(0), avoiding misalignment from the global
+        # expert count.
         chunk_kwargs["global_num_experts"] = -1
         return _outplace_fused_experts_chunked(
             hidden_states,

@@ -108,6 +108,6 @@ def _launch(x, out):
 
 
 def special_erf(x):
-    logger.debug("GEMS SPECIAL_ERF")
+    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERF")
     inp = x if x.is_contiguous() else x.contiguous()
     return _launch(inp, torch.empty_like(inp))

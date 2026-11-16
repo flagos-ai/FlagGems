@@ -45,10 +45,13 @@ latency bound on the per-step dependency chain, not bandwidth or issue bound):
 No tl.dot is used anywhere, so the TF32 hazard of the default fp32 dot path is
 irrelevant here.  Everything runs in fp64 when the input is fp64.
 """
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -190,6 +193,7 @@ def linalg_inv(A):
     # batch reshape and produces a finite but meaningless result, where ATen
     # raises.  Low-precision dtypes are rejected for the same reason ATen
     # rejects them: the pivoted elimination cannot hold accuracy in half.
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_INV")
     if A.dim() < 2:
         raise RuntimeError(
             "linalg.inv: The input tensor A must have at least 2 dimensions."

@@ -115,7 +115,7 @@ def block_diag_varlen_general_kernel(
 
 def block_diag(*tensors):
     """Block diagonal matrix construction using Triton kernel."""
-    logger.debug("GEMS BLOCK_DIAG")
+    logger.debug("GEMS_ENFLAME_GCU400 BLOCK_DIAG")
 
     # Handle case where tensors is passed as a single list/tuple
     if len(tensors) == 1 and isinstance(tensors[0], (list, tuple)):

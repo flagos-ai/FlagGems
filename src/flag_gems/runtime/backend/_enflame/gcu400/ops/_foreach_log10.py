@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GCU400 专属 ``_foreach_log10``：逐 tensor 一维 flat kernel。
+"""GCU400-specific ``_foreach_log10``: per-tensor 1D flat kernel.
 
-公共 ``foreach_unary`` 执行器依赖设备侧 chunk table 与二维 grid，在 GCU400
-上既需要 int64 指针表又容易超出 grid.y 的 255 上限。这里改成逐 tensor 的
-一维固定 grid + 核内跨步，计算统一提升 fp32 保证与公共实现的精度一致。
+The common ``foreach_unary`` executor relies on a device-side chunk table and a 2D grid, which on GCU400
+needs int64 pointer tables and easily exceeds the grid.y limit of 255. This uses a per-tensor
+1D fixed grid with in-kernel striding and fp32 computation for accuracy consistent with the common implementation.
 """
 
 import logging
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
 
-# 由优化迭代驱动脚本按轮次生成；编译期/启动期配置，不改变算子语义。
+# Generated per round by the optimization driver script; compile-time / launch-time config, semantics unchanged.
 FIXED_GRID = 48
 BLOCK_SIZE = 65536
 NUM_WARPS = 2
@@ -52,10 +52,10 @@ _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 def _foreach_log10_flat_kernel(
     in_ptr, out_ptr, N, BLOCK: tl.constexpr, FIXED_GRID: tl.constexpr
 ):
-    """一维固定 grid 跨步执行逐元素 log10。
+    """1D fixed grid with striding for elementwise log10.
 
-    in_ptr 与 out_ptr 只在 out-of-place 变体下不同；避免 host 侧 clone 在
-    超大 tensor 上触发 torch_gcu copy kernel 的 grid.x 上限。
+    in_ptr and out_ptr differ only in the out-of-place variant; avoiding a host-side clone prevents
+    hitting the grid.x limit of the torch_gcu copy kernel on very large tensors.
     """
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
@@ -69,7 +69,7 @@ def _foreach_log10_flat_kernel(
 
 
 def _can_use_flat_kernel(self):
-    """仅接受非空的连续浮点 tensor 列表。"""
+    """Accept only non-empty lists of contiguous float tensors."""
     if len(self) == 0:
         return False
     try:
@@ -79,7 +79,7 @@ def _can_use_flat_kernel(self):
             if not tensor.is_contiguous():
                 return False
     except AttributeError:
-        # 非 Tensor 元素：返回 False 让调用方回退公共 apply_unary 对齐异常。
+        # Non-Tensor elements: return False so the caller falls back to the common apply_unary for matching exceptions.
         return False
     return True
 
@@ -91,7 +91,7 @@ def _run_flat_kernel(self, inplace):
     if not tensors:
         return [] if not inplace else None
 
-    # 反序只改变 launch 次序，out-of-place 的输出必须保持与原列表一致。
+    # Reversing only changes launch order; out-of-place outputs must keep the same order as the original list.
     launch_indices = list(range(len(tensors)))
     if REVERSE_LAUNCH_ORDER:
         launch_indices.reverse()
@@ -106,8 +106,8 @@ def _run_flat_kernel(self, inplace):
             tensor = tensors[index]
             num_elems = tensor.numel()
             out_tensor = tensor if inplace else torch.empty_like(tensor)
-            # 空 tensor 无元素可算，跳过 kernel launch；但输出列表必须仍保留
-            # 这个空结果，保持与输入一一对应（foreach 的返回长度等于输入长度）。
+            # Empty tensors have no elements, so skip the kernel launch; but the empty result must still be kept
+            # in the output list to stay one-to-one with the input (foreach returns as many tensors as it receives).
             if num_elems == 0:
                 if not inplace:
                     outputs[index] = out_tensor

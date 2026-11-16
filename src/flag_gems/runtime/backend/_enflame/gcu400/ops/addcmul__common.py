@@ -31,7 +31,7 @@ def _addcmul_kernel(x, t1, t2, value):
 
 
 def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
-    logger.debug("GEMS ADDCMUL_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 ADDCMUL_OUT")
     broadcast_shape = torch.broadcast_shapes(inp.shape, tensor1.shape, tensor2.shape)
     if list(out.shape) != list(broadcast_shape):
         out.resize_(broadcast_shape)
@@ -41,7 +41,7 @@ def addcmul_out(inp, tensor1, tensor2, *, value=1.0, out):
 
 def addcmul(inp, tensor1, tensor2, *, value=1.0):
     """Functional entry; keep alongside ``addcmul.out`` for dispatch coverage."""
-    logger.debug("GEMS ADDCMUL")
+    logger.debug("GEMS_ENFLAME_GCU400 ADDCMUL")
     broadcast_shape = torch.broadcast_shapes(inp.shape, tensor1.shape, tensor2.shape)
     dtype = torch.promote_types(
         inp.dtype, torch.promote_types(tensor1.dtype, tensor2.dtype)
@@ -51,6 +51,6 @@ def addcmul(inp, tensor1, tensor2, *, value=1.0):
 
 
 def addcmul_(inp, tensor1, tensor2, *, value=1.0):
-    logger.debug("GEMS ADDCMUL_")
+    logger.debug("GEMS_ENFLAME_GCU400 ADDCMUL_")
     _addcmul_kernel(inp, tensor1, tensor2, value, out0=inp)
     return inp

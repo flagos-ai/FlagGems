@@ -215,13 +215,13 @@ def binomial(count, prob, generator=None):
     Draws samples from a binomial distribution with the number of trials given
     by ``count`` and the success probability given by ``prob`` (elementwise).
     """
-    logger.debug("GEMS BINOMIAL")
+    logger.debug("GEMS_ENFLAME_GCU400 BINOMIAL")
     count, prob, shape = _prepare_inputs(count, prob)
     out = torch.empty(shape, dtype=count.dtype, device=count.device)
     return _binomial_launch(count, prob, out, generator=generator)
 
 
 def binomial_out(count, prob, generator=None, *, out):
-    logger.debug("GEMS BINOMIAL_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 BINOMIAL_OUT")
     count, prob, shape = _prepare_inputs(count, prob)
     return _binomial_launch(count, prob, out, generator=generator)

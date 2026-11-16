@@ -121,7 +121,7 @@ def matmul_backward(
     returns ``(grad_self, grad_other)``. Each is ``None`` when the
     corresponding entry of ``mask`` is False.
     """
-    logger.debug("GEMS MATMUL_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 MATMUL_BACKWARD")
 
     need_self, need_other = bool(mask[0]), bool(mask[1])
 

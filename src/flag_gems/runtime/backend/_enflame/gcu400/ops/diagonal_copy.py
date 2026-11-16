@@ -34,7 +34,7 @@ def diagonal_copy(
     """
     Performs the same operation as torch.diagonal, but returns a copy instead of a view.
     """
-    logger.debug("GEMS DIAGONAL_COPY")
+    logger.debug("GEMS_ENFLAME_GCU400 DIAGONAL_COPY")
 
     # Validate dimensions
     ndim = self.ndim
