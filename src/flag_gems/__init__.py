@@ -65,6 +65,10 @@ aten_lib = torch.library.Library("aten", "IMPL")
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
 SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 
+logaddexp2._flag_gems_extra_dispatch = (
+    ("Autograd" + backend_info.dispatch_key, logaddexp2),
+)
+
 registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
@@ -1646,17 +1650,7 @@ _FULL_CONFIG = (
     ("log_sigmoid_forward", log_sigmoid_forward),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
-    # logaddexp2 has no standalone ``aten::logaddexp2_backward`` schema: ATen
-    # generates the backward from derivatives.yaml. The extra Autograd entry
-    # keeps that generated dispatch slot for FlagGems-dispatched calls while
-    # routing it through the Triton gradient kernel; the device entry stays for
-    # calls made with grad mode disabled.
-    (
-        "logaddexp2",
-        logaddexp2,
-        None,
-        (("Autograd" + backend_info.dispatch_key, logaddexp2),),
-    ),
+    ("logaddexp2", logaddexp2),
     ("logaddexp2.out", logaddexp2_out),
     ("logcumsumexp", logcumsumexp),
     ("logcumsumexp.out", logcumsumexp_out),

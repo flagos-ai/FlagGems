@@ -1153,7 +1153,8 @@ from flag_gems.ops.log_softmax import (
     log_softmax_out,
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
-from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_backward, logaddexp2_out
+from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
+from flag_gems.ops.logaddexp2_backward import logaddexp2_backward
 from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
 from flag_gems.ops.logdet import logdet
 from flag_gems.ops.logical_and import logical_and, logical_and_
