@@ -79,8 +79,27 @@ _BOUNDARY_ROWS = tu.selected_cases(
 _CASES = _MATRIX_ROWS + _BOUNDARY_ROWS
 
 
+def _musa_cpu_reference(inp):
+    return flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu"
+
+
+def _reference_inv(inp, *, out=None):
+    if not _musa_cpu_reference(inp):
+        if out is None:
+            return torch.ops.aten.linalg_inv(inp)
+        return torch.ops.aten.linalg_inv.out(inp, out=out)
+
+    # The MUSA PyTorch distribution builds CPU ATen without LAPACK.
+    import numpy as np
+
+    inverse = torch.from_numpy(np.linalg.inv(inp.detach().resolve_conj().resolve_neg().numpy()))
+    if out is None:
+        return inverse
+    return out.copy_(inverse)
+
+
 def _assert_result_close(actual, expected, **kwargs):
-    if flag_gems.vendor_name == "musa" and actual.is_complex():
+    if flag_gems.vendor_name == "mthreads" and actual.is_complex():
         assert actual.dtype == expected.dtype and actual.shape == expected.shape
         assert actual.device.type == "musa"
         assert expected.device == (torch.device("cpu") if utils.TO_CPU else actual.device)
@@ -144,7 +163,7 @@ def test_linalg_inv_matches_reference(dtype, case):
     inp = _make_matrix(dtype, shape, value_range, family)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.linalg_inv(ref_inp)
+    ref_out = _reference_inv(ref_inp)
     res_out = flag_gems.linalg_inv(inp)
 
     # The shared assertion transfers to the CPU, so the output device contract
@@ -194,7 +213,7 @@ def test_linalg_inv_out_overload(dtype, case):
     inp = _make_matrix(dtype, shape, ("-1", "1"), "moderate")
     ref_inp = tu.to_reference(inp)
     ref_buf = torch.empty(shape, dtype=ref_inp.dtype, device=ref_inp.device)
-    ref_out = torch.ops.aten.linalg_inv.out(ref_inp, out=ref_buf)
+    ref_out = _reference_inv(ref_inp, out=ref_buf)
 
     out = _out_buffer(layout, shape, dtype)
     stride_before = tuple(out.stride())
@@ -220,11 +239,17 @@ def test_linalg_inv_backward(dtype, shape):
     ref_inp = tu.to_reference(inp)
     upstream = tu.make_input(dtype, shape, ("-1", "1"))
 
-    ref_out = torch.ops.aten.linalg_inv(ref_inp)
+    ref_out = _reference_inv(ref_inp)
     res_out = flag_gems.linalg_inv(inp)
     _assert_result_close(res_out, ref_out)
 
-    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, tu.to_reference(upstream))
+    ref_upstream = tu.to_reference(upstream)
+    if _musa_cpu_reference(ref_inp):
+        # d(A^-1) = -A^-1 (dA) A^-1; the reverse-mode adjoint uses A^-H.
+        inverse_adjoint = ref_out.mH
+        ref_grad = -inverse_adjoint @ ref_upstream @ inverse_adjoint
+    else:
+        (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_upstream)
     (res_grad,) = torch.autograd.grad(res_out, inp, upstream)
     _assert_result_close(res_grad, ref_grad)
 
@@ -310,7 +335,7 @@ def test_linalg_inv_nonfinite_input(dtype, scenario, placement):
     inp = _special_matrix(dtype, scenario, placement)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.linalg_inv(ref_inp)
+    ref_out = _reference_inv(ref_inp)
     res_out = flag_gems.linalg_inv(inp)
 
     _assert_result_close(res_out, ref_out)
@@ -443,7 +468,7 @@ def test_linalg_inv_master_cases(case):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
     inputs = _inputs(case)
-    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inputs))
+    ref = _reference_inv(tu.to_reference(inputs, upcast=True))
     res = flag_gems.linalg_inv(inputs)
     utils.gems_assert_close(res, ref.to(dtype), dtype, reduce_dim=case[1] * case[1])
 
@@ -462,8 +487,9 @@ def _well_conditioned(n, batch=(), dtype=torch.float32):
 def test_linalg_inv_master_empty(shape):
     """Zero-sized inputs invert to zero-sized outputs without a launch."""
     inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
-    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    ref = _reference_inv(tu.to_reference(inp, upcast=True))
     res = flag_gems.linalg_inv(inp)
+    assert res.device == inp.device
     assert res.shape == ref.shape
     assert res.dtype == inp.dtype
 
@@ -474,7 +500,7 @@ def test_linalg_inv_master_noncontiguous():
     base = _well_conditioned(5, batch=(2,))
     view = base.transpose(-1, -2)
     assert not view.is_contiguous()
-    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(view))
+    ref = _reference_inv(tu.to_reference(view, upcast=True))
     res = flag_gems.linalg_inv(view)
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=25)
 
@@ -485,7 +511,8 @@ def test_linalg_inv_master_round_trip(n):
     """``A @ inv(A)`` is the identity, which pins down pivoting end to end."""
     inp = _well_conditioned(n)
     res = flag_gems.linalg_inv(inp)
-    prod = tu.to_reference(inp) @ utils.to_reference(res, True)
+    assert res.device == inp.device
+    prod = utils.to_reference(inp, True) @ utils.to_reference(res, True)
     eye = torch.eye(n, dtype=prod.dtype, device=prod.device)
     utils.gems_assert_close(
         prod.to(torch.float32), eye.to(torch.float32), torch.float32, reduce_dim=n
@@ -496,7 +523,7 @@ def test_linalg_inv_master_round_trip(n):
 def test_linalg_inv_master_row_swap_pivoting():
     """A zero leading pivot forces a row interchange, which must still invert."""
     inp = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32, device=flag_gems.device)
-    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    ref = _reference_inv(tu.to_reference(inp, upcast=True))
     res = flag_gems.linalg_inv(inp)
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=2)
 
@@ -518,7 +545,7 @@ def test_linalg_inv_master_batch_independence():
 def test_linalg_inv_master_binds_single_argument():
     """``aten::linalg_inv`` takes only ``A``, so the wrapper must too."""
     inp = _well_conditioned(4)
-    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    ref = _reference_inv(tu.to_reference(inp, upcast=True))
     res = flag_gems.linalg_inv(A=inp)
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=16)
 
@@ -563,5 +590,5 @@ def test_linalg_inv_master_fp64_preserved():
     inp = _well_conditioned(4, dtype=torch.float64)
     res = flag_gems.linalg_inv(inp)
     assert res.dtype == torch.float64
-    ref = torch.ops.aten.linalg_inv.default(tu.to_reference(inp))
+    ref = _reference_inv(tu.to_reference(inp, upcast=True))
     utils.gems_assert_close(res, ref, torch.float64, reduce_dim=16)
