@@ -67,6 +67,18 @@ def _cast_byte_kernel(X, Y, N, MULT: tl.constexpr, BLOCK: tl.constexpr):
 
 @libentry()
 @triton.jit
+def _cast_byte_kernel_nomask(X, Y, MULT: tl.constexpr, BLOCK: tl.constexpr):
+    # Full-block copy with no boundary check: on XPU3 the always-true mask still
+    # routes the store through the masked-memory path, which is slower than a
+    # plain contiguous DMA. Only used for non-bool dtypes (an unmasked load of a
+    # bool/i1 tensor advances by bits, not bytes).
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(X + offsets * MULT)
+    tl.store(Y + offsets, _cast_byte_value(x))
+
+
+@libentry()
+@triton.jit
 def _cast_byte_row_kernel(
     X,
     Y,
@@ -238,7 +250,26 @@ def cast_Byte(self, non_blocking=False):
             out = torch.empty_strided(
                 self.size(), self.stride(), dtype=torch.uint8, device=self.device
             )
-            _cast_byte_kernel[(triton.cdiv(n, 1024),)](src, out, n, 1, BLOCK=1024)
+            # Larger block amortizes launch overhead; an unmasked bulk + masked
+            # tail avoids the masked-memory path for contiguous non-bool dtypes.
+            block = 8192 if n >= 8192 else 1024
+            if self.is_contiguous() and self.dtype != torch.bool:
+                # Flatten to 1-D so the bulk/tail split is a physical slice.
+                src_flat = src.view(-1)
+                out_flat = out.view(-1)
+                num_full, tail = divmod(n, block)
+                if num_full:
+                    _cast_byte_kernel_nomask[(num_full,)](
+                        src_flat, out_flat, 1, BLOCK=block
+                    )
+                if tail:
+                    s = src_flat[num_full * block :] if num_full else src_flat
+                    o = out_flat[num_full * block :] if num_full else out_flat
+                    _cast_byte_kernel[(1,)](s, o, tail, 1, BLOCK=block)
+            else:
+                # Non-contiguous or bool: simple masked kernel with the large
+                # block (the transpose case was 0.19x at BLOCK=1024).
+                _cast_byte_kernel[(triton.cdiv(n, block),)](src, out, n, 1, BLOCK=block)
         else:
             # Match the reference _cast_Byte output layout (infer_dense_strides).
             strides = _infer_dense_strides(tuple(self.size()), self.stride())
