@@ -48,6 +48,7 @@ from .fused_rms_norm_backward import _fused_rms_norm_backward
 from .gcd_ import gcd, gcd_
 from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .gru import gru
 from .igamma import igamma
 from .index_copy_ import index_copy, index_copy_
@@ -150,6 +151,7 @@ __all__ = [
     "gcd_",
     "greater_",
     "grid_sampler_3d_backward",
+    "grouped_gemm_w8a8",
     "gru",
     "igamma",
     "index_copy",
