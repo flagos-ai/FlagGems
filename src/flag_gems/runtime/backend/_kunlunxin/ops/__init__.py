@@ -484,10 +484,10 @@ from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_tensor_scalar,
     float_power_tensor_scalar_,
     float_power_tensor_scalar_out,
-    float_power_tensor_tensor,
     float_power_tensor_tensor_,
     float_power_tensor_tensor_out,
 )
+from .float_power_tensor_tensor import float_power_tensor_tensor
 from .floor import floor, floor_, floor_out
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
@@ -1452,6 +1452,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "fliplr",
+    "float_power_tensor_tensor",
     "floor",
     "floor_",
     "floor_divide",
