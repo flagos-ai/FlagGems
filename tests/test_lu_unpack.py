@@ -200,8 +200,7 @@ LU_BACKWARD_GRADS = ["both", "L", "U"]
 
 def _gems_lu_unpack_autograd(LU_data, LU_pivots, **kwargs):
     """The real differentiable entry: `torch.lu_unpack` under Gems dispatch."""
-    with flag_gems.use_gems():
-        return flag_gems.lu_unpack(LU_data, LU_pivots, **kwargs)
+    return flag_gems.lu_unpack(LU_data, LU_pivots, **kwargs)
 
 
 def _reference_lu_unpack_backward(grad_L, grad_U, m, n):
@@ -424,11 +423,10 @@ def test_lu_unpack_backward_dispatch(dtype):
     )
 
     LU = LU.clone().requires_grad_(True)
-    with flag_gems.use_gems():
-        P, L, U = flag_gems.lu_unpack(LU, pivots)
-        grad_L = ref_grad_L.to(dtype=dtype, device=flag_gems.device)
-        grad_U = ref_grad_U.to(dtype=dtype, device=flag_gems.device)
-        (res_grad,) = torch.autograd.grad((L, U), (LU,), (grad_L, grad_U))
+    P, L, U = flag_gems.lu_unpack(LU, pivots)
+    grad_L = ref_grad_L.to(dtype=dtype, device=flag_gems.device)
+    grad_U = ref_grad_U.to(dtype=dtype, device=flag_gems.device)
+    (res_grad,) = torch.autograd.grad((L, U), (LU,), (grad_L, grad_U))
 
     assert "LuUnpackFunction" in type(L.grad_fn).__name__
     assert P.grad_fn is None
