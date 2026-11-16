@@ -1,5 +1,7 @@
+import builtins
 import logging
 import math
+import os
 from collections import namedtuple
 
 import torch
@@ -14,6 +16,253 @@ from flag_gems.utils.limits import get_dtype_max
 from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# tle.raw fast path (P800 xpu3, cluster C payloads in min_raw.xpu) -- mirrors
+# amin.py's layered dispatch: every contiguous inner-dim (K == 1) reduction and
+# the full reduction try the hand-written payload first (per-core GM2LM DMA +
+# vvmin vector accumulate + SM cluster reduce), the compiler paths are the
+# fallback.  min_raw.xpu is the max_raw.xpu mirror with min semantics (running
+# min init +inf, strict '<' keeps the FIRST index on ties).
+try:
+    import triton.experimental.tle as tle
+
+    _TLE_OK = True
+except Exception:  # pragma: no cover - environment without tle
+    tle = None
+    _TLE_OK = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# Precompiled, secrecy-hardened device object (packed from min_raw.xpu +
+# min_flat_sm.xpu + min_full_sm.xpu via docs/xpu3/how_to_pack_payload/
+# pack_payload.py then relocatably linked with `ld.lld -r *.o -o min.o`). We
+# ship the .o (not the .xpu source); the stub names below MUST equal the entry
+# symbols and their signatures must match the C++ ABI (object= mode skips the
+# merge-time signature check, so a mismatch fails at runtime, not compile).
+# Re-pack after editing any .xpu -- the compile-cache key is the .o content
+# digest, so a stale .o silently keeps the old code.
+_MIN_OBJ = os.path.join(os.path.dirname(_HERE), "payload", "obj", "min.o")
+_NCLUSTER = 12  # P800 (xpu3): one Triton program == one cluster of 64 cores
+# Payload scalars are i32 (do_not_specialize); guard the byte range.
+_RAW_MIN_ELEMS = 2**31 - 1
+
+_RAW_TYPE_CODE = {
+    torch.float32: 0,
+    torch.float16: 1,
+    torch.bfloat16: 2,
+    torch.int32: 3,
+    torch.int64: 4,
+    torch.int16: 5,
+    torch.int8: 6,
+    torch.uint8: 7,
+    torch.bool: 7,
+    torch.float64: 8,
+}
+
+# The hand-written min payloads are loaded via tle.raw's object= loader, which
+# only exists on newer tle builds.  On older/other environments the decorator
+# raises at import time (e.g. tle.raw missing, or
+# "RawJITFunction.__init__() got an unexpected keyword argument 'object'").
+# Guard the whole declaration so an unsupported tle leaves _HAS_RAW False and
+# the pure-Triton reduction kernels below run instead -- a failure here must
+# never crash the vendor-lib import.
+_HAS_RAW = False
+if _TLE_OK:
+    try:
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_row_raw(
+            in_, out_val, out_idx, M, N, esz, type_code, rows_start, rows_count, rpc
+        ): ...
+
+        @triton.jit(do_not_specialize=["M", "N", "esz", "type_code", "per", "rpc"])
+        def min_dim_raw_kernel(In, OutV, OutI, M, N, esz, type_code, per, rpc):
+            pid = tl.program_id(0)
+            tle.raw.call(
+                min_row_raw, (In, OutV, OutI, M, N, esz, type_code, pid * per, per, rpc)
+            )
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_full_raw(in_, mid, M, esz, type_code, per, slot): ...
+
+        @triton.jit(do_not_specialize=["M", "esz", "type_code", "per"])
+        def min_full_raw_kernel(In, Mid, M, esz, type_code, per):
+            pid = tl.program_id(0)
+            tle.raw.call(min_full_raw, (In, Mid, M, esz, type_code, per, pid))
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_combine_raw(mid, out, n, esz, type_code): ...
+
+        @triton.jit(do_not_specialize=["n", "esz", "type_code"])
+        def min_full_combine_kernel(Mid, Out, n, esz, type_code):
+            tle.raw.call(min_combine_raw, (Mid, Out, n, esz, type_code))
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_flat_idx_raw(in_, mid, M, esz, type_code, per, slot): ...
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_flat_idx_combine_raw(mid, out_val, out_idx, n, esz, type_code): ...
+
+        @triton.jit(do_not_specialize=["M", "esz", "type_code", "per"])
+        def min_flat_idx_kernel(In, Mid, M, esz, type_code, per):
+            pid = tl.program_id(0)
+            tle.raw.call(min_flat_idx_raw, (In, Mid, M, esz, type_code, per, pid))
+
+        @triton.jit(do_not_specialize=["n", "esz", "type_code"])
+        def min_flat_idx_combine_kernel(Mid, OutV, OutI, n, esz, type_code):
+            tle.raw.call(min_flat_idx_combine_raw, (Mid, OutV, OutI, n, esz, type_code))
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_flat_sm_raw(in_, mid, M, esz, type_code, per, slot): ...
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_flat_sm_combine_raw(mid, out_val, out_idx, n, esz, type_code): ...
+
+        @triton.jit(do_not_specialize=["M", "esz", "type_code", "per"])
+        def min_flat_sm_kernel(In, Mid, M, esz, type_code, per):
+            pid = tl.program_id(0)
+            tle.raw.call(min_flat_sm_raw, (In, Mid, M, esz, type_code, per, pid))
+
+        @triton.jit(do_not_specialize=["n", "esz", "type_code"])
+        def min_flat_sm_combine_kernel(Mid, OutV, OutI, n, esz, type_code):
+            tle.raw.call(min_flat_sm_combine_raw, (Mid, OutV, OutI, n, esz, type_code))
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_full_sm_raw(in_, mid, M, esz, type_code, per, slot): ...
+
+        @tle.raw.dialect("xpu3", object=_MIN_OBJ, arch=3)
+        def min_full_sm_combine_raw(mid, out, n, esz, type_code): ...
+
+        @triton.jit(do_not_specialize=["M", "esz", "type_code", "per"])
+        def min_full_sm_kernel(In, Mid, M, esz, type_code, per):
+            pid = tl.program_id(0)
+            tle.raw.call(min_full_sm_raw, (In, Mid, M, esz, type_code, per, pid))
+
+        @triton.jit(do_not_specialize=["n", "esz", "type_code"])
+        def min_full_sm_combine_kernel(Mid, Out, n, esz, type_code):
+            tle.raw.call(min_full_sm_combine_raw, (Mid, Out, n, esz, type_code))
+
+        _HAS_RAW = True
+    except Exception:  # pragma: no cover - environment without tle.raw object= support
+        _HAS_RAW = False
+
+
+def _view_u8(t):
+    """Byte view of a tensor; works for 0-dim tensors too."""
+    if t.dim() == 0:
+        return t.view(1).view(torch.uint8)
+    return t.view(torch.uint8)
+
+
+def _raw_min_dim(inp, dim, keepdim):
+    """min.dim along the innermost (contiguous) dim via the raw payload.
+
+    Returns (values, indices) or None when the raw path does not apply.
+    """
+    if not _HAS_RAW:
+        return None
+    type_code = _RAW_TYPE_CODE.get(inp.dtype)
+    if type_code is None:
+        return None
+    shape = inp.shape
+    N = shape[dim]
+    M = shape[:dim] and math.prod(shape[:dim]) or 1
+    K = inp.numel() // M // N
+    if K != 1:  # payload assumes contiguous rows of length N
+        return None
+    M = inp.numel() // N  # total rows (M * K with K == 1)
+    if M * N > _RAW_MIN_ELEMS:
+        return None
+    esz = inp.element_size()
+
+    shape_list = list(shape)
+    shape_list[dim] = 1
+    out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
+    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+    if not keepdim:
+        out_value = torch.squeeze(out_value, dim)
+        out_index = torch.squeeze(out_index, dim)
+
+    if M == 1:
+        # Single row: 1D argmin spread over all 768 cores.  Each cluster SM-
+        # reduces its 64 cores' (value, column) pairs (sync_all) and writes one
+        # 16-byte slot; the combine reduces 12 slots in a single 192B GM2LM.
+        ncores = _NCLUSTER * 64
+        nused = builtins.min(ncores, N)
+        if nused < ncores:
+            # Fewer elements than payload cores: the empty clusters' mid slots
+            # stay uninitialized, which makes the 12-slot combine result
+            # environment-dependent (same class as the _raw_min_full M <
+            # _NCLUSTER * 64 guard; test_min (1,2) hit this on the kunlunxin
+            # CI).  The compiler single-row kernel handles these tiny rows
+            # correctly, so keep the raw payload off the sub-core-count range.
+            return None
+        per = (N + nused - 1) // nused
+        mid = torch.empty(_NCLUSTER * 16, dtype=torch.uint8, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            min_flat_sm_kernel[(_NCLUSTER,)](_view_u8(inp), mid, N, esz, type_code, per)
+            min_flat_sm_combine_kernel[(1,)](
+                mid, _view_u8(out_value), out_index, _NCLUSTER, esz, type_code
+            )
+        return out_value, out_index
+
+    # Rows per core: each core's output block must be >= 8 bytes (narrow <8B
+    # global stores are pathologically slow on this device). For large M the
+    # default 12-cluster split already yields >=8B blocks; for small M we
+    # consolidate into fewer clusters so every active core writes a full rpc
+    # block (e.g. [64,64] fp16: rpc=4 -> 16 active cores, 8B stores).
+    per_core_default = (math.ceil(M / _NCLUSTER) + 63) // 64
+    rpc = builtins.max(per_core_default, (8 + esz - 1) // esz)
+    if per_core_default * esz < 8:
+        grid_n = builtins.max(
+            1, builtins.min(_NCLUSTER, (M + rpc * 64 - 1) // (rpc * 64))
+        )
+    else:
+        grid_n = _NCLUSTER
+    per = (M + grid_n - 1) // grid_n
+    with torch_device_fn.device(inp.device):
+        min_dim_raw_kernel[(grid_n,)](
+            _view_u8(inp),
+            _view_u8(out_value),
+            out_index,
+            M,
+            N,
+            esz,
+            type_code,
+            per,
+            rpc,
+        )
+    return out_value, out_index
+
+
+def _raw_min_full(inp):
+    """Full-tensor min via per-core partials + a tiny combine kernel.
+
+    Returns the scalar result tensor, or None when not applicable.
+    """
+    if not _HAS_RAW:
+        return None
+    type_code = _RAW_TYPE_CODE.get(inp.dtype)
+    if type_code is None:
+        return None
+    M = inp.numel()
+    if M < _NCLUSTER * 64 or M > _RAW_MIN_ELEMS:
+        # Fewer elements than payload cores (12 clusters x 64): the empty
+        # cores' SM-reduce and the uninitialized mid slots make the combine
+        # result environment-dependent (NaN / +inf / fp16-max instead of the
+        # true min; test_min shape0 (1,2) hit this on the kunlunxin CI).  The
+        # compiler flat path (padded with +inf) handles these tiny tensors
+        # correctly, so keep the raw payload off the sub-core-count range.
+        return None
+    esz = inp.element_size()
+
+    per = (M + _NCLUSTER * 64 - 1) // (_NCLUSTER * 64)
+    mid = torch.empty(_NCLUSTER * 8, dtype=torch.uint8, device=inp.device)
+    out = torch.empty([], dtype=inp.dtype, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        min_full_sm_kernel[(_NCLUSTER,)](_view_u8(inp), mid, M, esz, type_code, per)
+        min_full_sm_combine_kernel[(1,)](mid, _view_u8(out), _NCLUSTER, esz, type_code)
+    return out
 
 
 _FULL_REDUCTION_BLOCK_SIZE = 8192
@@ -291,7 +540,7 @@ def _pad_buffer(src, pad_to, device):
     buf = torch.full((pad_to,), _pad_value(src.dtype), dtype=src.dtype, device=device)
     if n:
         if not tle_copy(src, buf[:n]):
-            torch.ops.aten._copy_from(src, buf[:n], False)
+            buf[:n].copy_(src)
     return buf
 
 
@@ -341,7 +590,7 @@ def _min_flat(inp, out, device):
     if numel <= block:
         buf = torch.full((block,), pad_val, dtype=inp.dtype, device=device)
         if not tle_copy(inp, buf[:numel]):
-            torch.ops.aten._copy_from(inp, buf[:numel], False)
+            buf[:numel].copy_(inp)
         min_kernel_1[(1, 1)](
             buf,
             out,
@@ -388,11 +637,7 @@ def _min_flat(inp, out, device):
             )
             src_tail = inp[rows_exact * block : rows * block]
             if not tle_copy(src_tail, tail_buf[: tail_rows * block]):
-                torch.ops.aten._copy_from(
-                    src_tail,
-                    tail_buf[: tail_rows * block],
-                    False,
-                )
+                tail_buf[: tail_rows * block].copy_(src_tail)
             tail_mid = torch.empty((bm,), dtype=inp.dtype, device=device)
             min_kernel_2d[(1, 1)](
                 tail_buf,
@@ -407,12 +652,12 @@ def _min_flat(inp, out, device):
             src_h1 = tail_mid[:tail_rows]
             dst_h1 = mid[rows_exact : rows_exact + tail_rows]
             if not tle_copy(src_h1, dst_h1):
-                torch.ops.aten._copy_from(src_h1, dst_h1, False)
+                dst_h1.copy_(src_h1)
         if res:
             res_buf = torch.full((block,), pad_val, dtype=inp.dtype, device=device)
             src_res = inp[rows * block :]
             if not tle_copy(src_res, res_buf[:res]):
-                torch.ops.aten._copy_from(src_res, res_buf[:res], False)
+                res_buf[:res].copy_(src_res)
             min_kernel_1[(1, 1)](
                 res_buf,
                 mid[rows:],
@@ -428,6 +673,11 @@ def min(inp):
     logger.debug("GEMS_KUNLUNXIN MIN")
     dtype = inp.dtype
     out = torch.empty([], dtype=dtype, device=inp.device)
+    # tle.raw fast path first (per-cluster SM min, 12-slot combine), compiler
+    # flat as fallback
+    raw_out = _raw_min_full(inp)
+    if raw_out is not None:
+        return raw_out
     with torch_device_fn.device(inp.device):
         _min_flat(inp, out, inp.device)
     return out
@@ -520,11 +770,72 @@ def min_scan_kernel(
     tl.store(out_idx + rows.to(tl.int64), pos, mask=row_mask)
 
 
+# ---------------------------------------------------------------------------
+# Pure-Triton inner-dim min_dim (K == 1), the min mirror of max.py's
+# max_dim_triton_kernel: one 2D tile [BM, next_pow2(N)] per program, per-row
+# tl.min reduce, and the FIRST index recovered with the eq -> min(where) trick
+# instead of tl.min's return_indices (whose codegen overflows uni_sram on this
+# backend). Used as the K == 1 fallback when the tle.raw payload does not apply;
+# wide-N stays slow (CoreTiling serializes wide-row reductions) so tle.raw is
+# still preferred, but this keeps correctness without routing every shape/dtype
+# through the raw payload.
+@triton.jit
+def min_dim_triton_kernel(
+    inp,
+    out_value,
+    out_index,
+    M,
+    N: tl.constexpr,
+    BN: tl.constexpr,
+    BM: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    rows = pid * BM + tl.arange(0, BM)
+    ncols = tl.arange(0, BN)
+    ncmask = ncols < N
+    if NEED_MASK:
+        rmask = rows < M
+        m2d = rmask[:, None] & ncmask[None, :]
+        x = tl.load(
+            inp + rows[:, None] * N + ncols[None, :], mask=m2d, other=float("inf")
+        )
+    else:
+        x = tl.load(inp + rows[:, None] * N + ncols[None, :])
+    min_val = tl.min(x, axis=1)
+    eq = (x == min_val[:, None]) & ncmask[None, :]
+    min_idx = tl.min(tl.where(eq, ncols[None, :], N), axis=1)
+    if NEED_MASK:
+        tl.store(out_value + rows, min_val, mask=rmask)
+        tl.store(out_index + rows, min_idx.to(tl.int64), mask=rmask)
+    else:
+        tl.store(out_value + rows, min_val)
+        tl.store(out_index + rows, min_idx.to(tl.int64))
+
+
+def _triton_dim_bm(M):
+    """Rows per program: keep the grid <= ~128 programs; small M prefers a
+    smaller BM (mirror of max.py)."""
+    return builtins.min(
+        128, builtins.max(16, triton.next_power_of_2(triton.cdiv(M, 128)))
+    )
+
+
 def min_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
+    Min_out = namedtuple("min", ["values", "indices"])
+
+    # Mirror of max.py's max_dim dispatch: contiguous inner-dim reductions
+    # (K == 1) try the tle.raw payload first and fall back to the pure-Triton
+    # min_dim_triton_kernel; other dims (K > 1) use the generic compiler kernel.
+    # This keeps the raw payload off the shapes/dtypes it does not apply to
+    # (non-float dtypes, K > 1, huge tensors) instead of routing everything
+    # through tle.raw.
+    inp = inp.contiguous()
     dim = dim % inp.ndim
+
+    shape = inp.shape
     N = shape[dim]
     M = math.prod(shape[:dim])
     K = inp.numel() // M // N
@@ -535,168 +846,48 @@ def min_dim(inp, dim=None, keepdim=False):
     out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
 
     if N == 1:
+        # The reduced dim has size 1: values are the identity and indices all 0.
+        # Native strided copy avoids the [BLOCK_M, N=1] reduction tile (uni_sram
+        # OOM in TritonXPUCoreTiling).
         with torch_device_fn.device(inp.device):
             if not tle_copy(inp, out_value):
-                torch.ops.aten._copy_from(inp, out_value, False)
+                out_value.copy_(inp)
         out_index.zero_()
         if not keepdim:
             out_value = torch.squeeze(out_value, dim)
             out_index = torch.squeeze(out_index, dim)
-        Min_out = namedtuple("min", ["values", "indices"])
         return Min_out(values=out_value, indices=out_index)
 
-    if N >= _FAST_MIN_N and _is_fast_dtype(inp.dtype):
-        CHUNK = (
-            1024
-            if N % 1024 == 0
-            else (
-                512
-                if N % 512 == 0
-                else (
-                    256
-                    if N % 256 == 0
-                    else (128 if N % 128 == 0 else 64 if N % 64 == 0 else 0)
-                )
+    if not keepdim:
+        out_value = torch.squeeze(out_value, dim)
+        out_index = torch.squeeze(out_index, dim)
+
+    if K == 1 and inp.numel() > 0 and N > 0:
+        # tle.raw fast path (per-core GM2LM pipeline + vvmin accumulate + SM
+        # cluster reduce); the compiler row-reduce is structurally capped on
+        # wide N (CoreTiling serializes). Fall back to the pure-Triton kernel
+        # when the payload does not apply (non-float dtypes, massive tensors).
+        raw = _raw_min_dim(inp, dim, keepdim) if _HAS_RAW else None
+        if raw is not None:
+            return Min_out(values=raw[0], indices=raw[1])
+        BM = _triton_dim_bm(M)
+        BN = builtins.min(triton.next_power_of_2(N), 4096)
+        NEED_MASK = M % BM != 0
+        grid = (triton.cdiv(M, BM),)
+        with torch_device_fn.device(inp.device):
+            min_dim_triton_kernel[grid](
+                inp,
+                out_value,
+                out_index,
+                M,
+                N=N,
+                BN=BN,
+                BM=BM,
+                NEED_MASK=NEED_MASK,
             )
-        )
-        M2 = M * K
-        is_fp32 = inp.dtype == torch.float32
-        if CHUNK:
-            nc = N // CHUNK
-            VR = M2 * nc
-            if M2 >= 8 and nc <= 1024 and VR >= _NEW_MIN_VR:
-                tile = _pick_chunk_tile(VR, CHUNK, is_fp32)
-                if tile is not None:
-                    block_m, block_n = tile
-                    perm = [d for d in range(inp.dim()) if d != dim] + [dim]
-                    view = inp.permute(perm)
-                    if view.is_contiguous():
-                        src = view
-                    else:
-                        src = torch.empty(
-                            list(view.shape), dtype=inp.dtype, device=inp.device
-                        )
-                        with torch_device_fn.device(inp.device):
-                            if not tle_copy(view, src):
-                                torch.ops.aten._copy_from(view, src, False)
-                    part_val = torch.empty(VR, dtype=torch.float32, device=inp.device)
-                    best_c = torch.empty((M2,), dtype=torch.int32, device=inp.device)
-                    out_flat = out_value.reshape(-1)
-                    out_idx_flat = out_index.reshape(-1)
-                    bm2 = (
-                        32
-                        if M2 % 32 == 0
-                        else (
-                            16
-                            if M2 % 16 == 0
-                            else (
-                                8
-                                if M2 % 8 == 0
-                                else (4 if M2 % 4 == 0 else 2 if M2 % 2 == 0 else 1)
-                            )
-                        )
-                    )
-                    bm3 = (
-                        8
-                        if M2 % 8 == 0
-                        else (4 if M2 % 4 == 0 else (2 if M2 % 2 == 0 else 1))
-                    )
-                    with torch_device_fn.device(inp.device):
-                        min_chunk_val_kernel[(VR // block_m,)](
-                            src,
-                            part_val,
-                            VR,
-                            CHUNK,
-                            block_m,
-                            block_n,
-                            buffer_size_limit=2048,
-                        )
-                        min_chunk_kernel[(M2 // bm2,)](
-                            part_val,
-                            best_c,
-                            M2,
-                            nc,
-                            bm2,
-                            triton.next_power_of_2(nc),
-                            buffer_size_limit=2048,
-                        )
-                        min_scan_kernel[(M2 // bm3,)](
-                            src,
-                            part_val,
-                            best_c,
-                            out_flat,
-                            out_idx_flat,
-                            M2,
-                            N,
-                            bm3,
-                            CHUNK,
-                            buffer_size_limit=2048,
-                        )
-                    if not keepdim:
-                        out_value = torch.squeeze(out_value, dim)
-                        out_index = torch.squeeze(out_index, dim)
-                    Min_out = namedtuple("min", ["values", "indices"])
-                    return Min_out(values=out_value, indices=out_index)
+        return Min_out(values=out_value, indices=out_index)
 
-        tile = _pick_fast_tile(M2, N, is_fp32)
-        if tile is not None:
-            block_m, block_n = tile
-            grid_m = M2 // block_m
-            need_mask = False
-            perm = [d for d in range(inp.dim()) if d != dim] + [dim]
-            view = inp.permute(perm)
-            if view.is_contiguous():
-                src = view
-            else:
-                src = torch.empty(list(view.shape), dtype=inp.dtype, device=inp.device)
-                with torch_device_fn.device(inp.device):
-                    if not tle_copy(view, src):
-                        torch.ops.aten._copy_from(view, src, False)
-            nc = triton.cdiv(N, block_n)
-            part_val = torch.empty((M2, nc), dtype=torch.float32, device=inp.device)
-            best_c = torch.empty((M2,), dtype=torch.int32, device=inp.device)
-            out_flat = out_value.reshape(-1)
-            out_idx_flat = out_index.reshape(-1)
-            with torch_device_fn.device(inp.device):
-                min_split_kernel[(grid_m,)](
-                    src,
-                    part_val,
-                    M2,
-                    N,
-                    block_m,
-                    block_n,
-                    need_mask,
-                    buffer_size_limit=2048,
-                )
-                min_chunk_kernel_col[(grid_m,)](
-                    part_val,
-                    best_c,
-                    M2,
-                    nc,
-                    block_m,
-                    triton.next_power_of_2(nc),
-                    buffer_size_limit=2048,
-                )
-                min_scan_kernel_col[(grid_m,)](
-                    src,
-                    part_val,
-                    best_c,
-                    out_flat,
-                    out_idx_flat,
-                    M2,
-                    N,
-                    block_m,
-                    block_n,
-                    buffer_size_limit=2048,
-                )
-            if not keepdim:
-                out_value = torch.squeeze(out_value, dim)
-                out_index = torch.squeeze(out_index, dim)
-            Min_out = namedtuple("min", ["values", "indices"])
-            return Min_out(values=out_value, indices=out_index)
-
-    inp = inp.contiguous()
-
+    # K > 1: generic compiler kernel over the native [M, N, K] layout.
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
@@ -706,9 +897,4 @@ def min_dim(inp, dim=None, keepdim=False):
         min_kernel[grid](
             inp, out_value, out_index, M, N, K, isCloseCoreTiling=isCloseCoreTiling
         )
-    if not keepdim:
-        out_value = torch.squeeze(out_value, dim)
-        out_index = torch.squeeze(out_index, dim)
-    Min_out = namedtuple("min", ["values", "indices"])
-    out = Min_out(values=out_value, indices=out_index)
-    return out
+    return Min_out(values=out_value, indices=out_index)

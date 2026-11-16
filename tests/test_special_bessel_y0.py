@@ -6,8 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # torch.special.bessel_y0 supports float32 and float64
-FLOAT_DTYPES = [torch.float32, torch.float64]
-
+FLOAT_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 # Pointwise shapes covering small, medium, and batched 2D tensors
 POINTWISE_SHAPES = [(128,), (512, 256), (2, 128, 128)]
 
@@ -16,6 +15,8 @@ POINTWISE_SHAPES = [(128,), (512, 256), (2, 128, 128)]
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_bessel_y0(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     # bessel_y0 requires positive inputs (returns NaN for negative values)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device).abs() + 0.1
     ref_inp = utils.to_reference(inp)

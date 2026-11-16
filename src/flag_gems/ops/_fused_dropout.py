@@ -60,20 +60,63 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
 """
 
 
+class _PythonRngBridge:
+    # This lock only coordinates this operator's Python fallback calls. Native
+    # random operations do not acquire it, even when they share the Generator.
+    uses_native_mutex = False
+
+    @staticmethod
+    def reserve(generator, device, words):
+        if generator.device != device:
+            raise RuntimeError(
+                "_fused_dropout generator device does not match input device"
+            )
+        limit = (1 << 64) - 1
+        if words < 0 or words > limit - 3:
+            raise RuntimeError("_fused_dropout RNG increment overflow")
+        increment = (words + 3) // 4 * 4
+        with _rng_bridge_lock:
+            seed = generator.initial_seed()
+            offset = generator.get_offset()
+            if offset % 4:
+                raise RuntimeError(
+                    "_fused_dropout requires a word-aligned Philox offset"
+                )
+            if increment > limit - offset:
+                raise RuntimeError("_fused_dropout RNG offset overflow")
+            generator.set_offset(offset + increment)
+        return seed, offset
+
+
 def _get_rng_bridge():
     global _rng_bridge
     if _rng_bridge is None:
         with _rng_bridge_lock:
             if _rng_bridge is None:
-                from torch.utils.cpp_extension import load_inline
-
-                _rng_bridge = load_inline(
+                build_options = dict(
                     name="flag_gems_fused_dropout_rng",
                     cpp_sources=_RNG_SOURCE,
                     extra_cflags=["-O2"],
                     with_cuda=False,
                     verbose=False,
                 )
+                try:
+                    from torch.utils.cpp_extension import load_inline
+
+                    _rng_bridge = load_inline(**build_options)
+                except (RuntimeError, OSError, ImportError) as error:
+                    logger.warning(
+                        "_fused_dropout RNG bridge unavailable (%s); using Triton "
+                        "with Python-serialized Generator offsets. Do not share "
+                        "this Generator with concurrent native random operations "
+                        "or other RNG helpers: the native mutex is unavailable.",
+                        (
+                            str(error).splitlines()[0]
+                            if str(error)
+                            else type(error).__name__
+                        ),
+                    )
+                    _rng_bridge = _PythonRngBridge()
     return _rng_bridge
 
 
@@ -205,14 +248,16 @@ def _fused_dropout_kernel_ascend_32(
 
 @torch.compiler.disable
 def _fused_dropout(self, p, generator=None):
-    """Dropout with keep probability and an atomically reserved Philox stream.
+    """Dropout with keep probability and a Generator-backed Philox stream.
 
     Eager replay uses the backend Generator. Default-generator checkpoint
     replay also requires a working backend checkpoint adapter; explicit
     generators require caller-managed state restoration. CUDA graph capture
     is rejected; device graph replay is unsupported.
     CUDA bitwise equivalence and its launch-dependent counter consumption are
-    not promised. The bridge requires a C++ compiler and Ninja on first use.
+    not promised. The native mutex bridge requires a C++ compiler and Ninja.
+    If it cannot be built, Python-serialized reservations support eager replay
+    but must not share a Generator with concurrent native/other RNG operations.
     """
     logger.debug("GEMS _FUSED_DROPOUT")
     if self.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):

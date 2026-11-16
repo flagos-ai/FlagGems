@@ -30,8 +30,7 @@ def test_frexp(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_mantissa, ref_exponent = torch.frexp(ref_inp)
-    with flag_gems.use_gems():
-        res_mantissa, res_exponent = torch.frexp(inp)
+    res_mantissa, res_exponent = flag_gems.frexp(inp)
 
     utils.gems_assert_close(res_mantissa, ref_mantissa, dtype)
     utils.gems_assert_equal(res_exponent, ref_exponent)

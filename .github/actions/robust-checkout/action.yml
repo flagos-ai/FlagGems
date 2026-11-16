@@ -33,6 +33,12 @@ inputs:
     description: "Ref/SHA to fetch and checkout; defaults to the PR head SHA or github.sha"
     required: false
     default: ""
+  base-ref:
+    description: >-
+      Extra ref/SHA to fetch alongside ref (e.g. the PR base SHA), so that
+      base...head diffs in tools/ci_checks/*.py can resolve both endpoints.
+    required: false
+    default: ""
   connect-seconds:
     description: >-
       Hard timeout for the connect probe (git ls-remote). A link that can't even
@@ -41,7 +47,7 @@ inputs:
       connect-stage hang (TLS / proxy-CONNECT stall), where no bytes flow and the
       low-speed check never triggers.
     required: false
-    default: "10"
+    default: "60"
   probe-seconds:
     description: >-
       low-speed window for the transfer stage: git aborts a fetch that stays below
@@ -69,6 +75,7 @@ runs:
       env:
         RC_REPO: ${{ github.repository }}
         RC_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+        RC_BASE_REF: ${{ inputs.base-ref }}
         RC_DEPTH: ${{ inputs.fetch-depth }}
         RC_SSH_KEY: ${{ inputs.ssh-key }}
         RC_CONNECT: ${{ inputs.connect-seconds }}
@@ -174,5 +181,16 @@ runs:
           exit 1
         fi
 
-        git checkout -q --force FETCH_HEAD
+        # Fetch the base SHA too (separately — merging it into the head fetch as
+        # a second ref makes FETCH_HEAD multi-line and `git checkout FETCH_HEAD`
+        # ambiguous). Without this the base commit object is absent and
+        # base...head diffs in tools/ci_checks/*.py fail with git's misleading
+        # "Invalid symmetric difference expression".
+        if [ -n "${RC_BASE_REF:-}" ]; then
+          git fetch -q --no-tags $depth_arg origin "$RC_BASE_REF" \
+            || echo "::warning::robust-checkout: could not fetch base $RC_BASE_REF; base...head diffs may fail"
+        fi
+        # Check out the head SHA directly as a detached commit — more robust than
+        # relying on FETCH_HEAD, and makes the two fetches above order-independent.
+        git checkout -q --force "${RC_REF}"
         echo "robust-checkout: done ($(git rev-parse --short HEAD))"

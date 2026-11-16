@@ -4,21 +4,13 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from ..utils.tle_copy import tle_copy
+from .copy import copy_ as _copy_into
 
-def _pick_copy_block(n_elements):
-    if n_elements >= 1 << 19:
-        return 65536
-    if n_elements >= 1 << 16:
-        return 32768
-    if n_elements >= 1 << 13:
-        return 8192
-    if n_elements >= 1 << 10:
-        return 4096
-    return 1024
-
-
-def _copy_num_warps(block):
-    return 32 if block >= 32768 else (16 if block >= 8192 else 4)
+_TRANS_MIN_ELEMENTS = 1 << 16  # fewer elements cannot pay for 3 extra launches
+_TRANS_MAX_INNER = 16  # above this the flat scatter already has wide runs
+_TRANS_MIN_STRIP = 64  # a shorter strip cannot be padded profitably
+_STRIP_ALIGN = 64
 
 
 def _pick_scatter_block(n_elements):
@@ -31,40 +23,6 @@ def _pick_scatter_block(n_elements):
     if n_elements <= 1 << 21:
         return 8192
     return 16384
-
-
-def _scatter_num_warps(block):
-    if block <= 1024:
-        return 4
-    if block <= 2048:
-        return 8
-    if block <= 4096:
-        return 16
-    return 32
-
-
-@libentry()
-@triton.jit
-def _oob_flag_kernel(index, n, size_dim, flag, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n
-    values = tl.load(index + offsets, mask=mask, other=0)
-    bad = tl.where(mask & ((values < 0) | (values >= size_dim)), 1, 0)
-    tl.store(flag + pid, tl.minimum(tl.sum(bad, axis=0), 1))
-
-
-def _has_out_of_bounds(index, size_dim):
-    n = index.numel()
-    if n == 0:
-        return False
-    block = 2048
-    grid = (triton.cdiv(n, block),)
-    flag = torch.empty(grid[0], dtype=torch.int32, device=index.device)
-    _oob_flag_kernel[grid](index, n, size_dim, flag, BLOCK=block)
-    if grid[0] == 1:
-        return int(flag[0].item()) > 0
-    return int(flag.max().item()) > 0
 
 
 @libentry()
@@ -128,22 +86,6 @@ def _index_copy_rank2(
 
 @libentry()
 @triton.jit
-def _clone_contig(inp, out, n_elements, BLOCK: tl.constexpr):
-    """Bounded-tile flat block-DMA copy for contiguous same-dtype tensors.
-
-    Backs the out-of-place ``index_copy`` (``torch.index_copy``) clone step:
-    the original input must be copied to a fresh output before indexing.  One
-    large bounded tile per program keeps every access a contiguous block DMA
-    (same pattern as ``_copy_flat_kernel`` in ``ops/copy.py``); the historical
-    fixed ``BLOCK=256`` grid was launch-bound.
-    """
-    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n_elements
-    tl.store(out + offsets, tl.load(inp + offsets, mask=mask), mask=mask)
-
-
-@libentry()
-@triton.jit
 def _index_copy_flat(
     inp,
     index,
@@ -155,26 +97,6 @@ def _index_copy_flat(
     NEED_MASK: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Flat scatter for *contiguous* ``inp``/``src`` (any rank, any dim).
-
-    ``src`` is contiguous, so the gather side collapses to ``src + e``.  The
-    destination is rebuilt from the flat element id:
-    ``e = (o * LENGTH + j) * INNER + c`` and the write lands at
-    ``(o * OUT_DIM + index[j]) * INNER + c``.
-
-    Two TritonXPU-specific decisions matter here:
-
-    * The three shape parameters are ``tl.constexpr``: integer division is
-      expensive on XPU3 and only a compile-time divisor lets the backend
-      replace ``//``/``%`` with multiply-shift sequences (measured ~35x on the
-      (64, 512, 512) rank-3 case versus passing them as runtime args).
-    * The tail is handled with a **mask**, never by clamping the lane index
-      with ``tl.minimum(e, total - 1)``.  Clamping introduces a non-affine
-      value into the index chain and destroys the backend's contiguity
-      analysis, falling back to per-lane scalar DMA: 30.5 ms versus 0.18 ms on
-      (64, 512, 512).  When ``total % BLOCK == 0`` the mask is compiled out
-      entirely (``NEED_MASK=False``) and the whole tile becomes one block DMA.
-    """
     e = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     li = LENGTH * INNER
     o = e // li
@@ -247,10 +169,73 @@ def _validate(inp, dim, index, src):
     assert all(
         (inp.size(i) == src.size(i)) or i == dim for i in range(inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
-    if index.numel() > 0:
-        assert not _has_out_of_bounds(
-            index, inp.size(dim)
-        ), "0 <= index < self.size(dim)"
+
+
+def _strided_rows(buf, perm_shape, strip, row_stride):
+    """View ``buf`` (rows x row_stride) as ``perm_shape`` (rows x *tail)."""
+    if row_stride == strip:
+        return buf.view(perm_shape)
+    strides = [row_stride]
+    acc = 1
+    for size in reversed(perm_shape[1:]):
+        strides.insert(1, acc)
+        acc *= size
+    return buf.as_strided(perm_shape, strides)
+
+
+def _copy_permuted(src_view, dst_view):
+    """Move a permuted view through the vendor DMA engine.
+
+    False means tle cannot express the layout; the caller then abandons the
+    transposed pipeline (without touching ``dst``) and uses the flat scatter.
+    """
+    return tle_copy(src_view, dst_view)
+
+
+def _scatter_rows(dst_rows, index, src_rows, length, out_dim, strip, block):
+    n_elements = src_rows.numel()
+    _index_copy_flat[(triton.cdiv(n_elements, block),)](
+        dst_rows,
+        index,
+        src_rows,
+        n_elements,
+        INNER=strip,
+        LENGTH=length,
+        OUT_DIM=out_dim,
+        NEED_MASK=(n_elements % block) != 0,
+        BLOCK=block,
+        num_warps=8,
+    )
+
+
+def _index_copy_transposed(dst, dim, index, src):
+    """Scatter with ``dim`` moved to the front so each index owns one strip.
+
+    Returns False -- without touching ``dst`` -- when the copy engine cannot
+    express one of the transposes; the caller then falls back to the flat
+    scatter.
+    """
+    rank = dst.ndim
+    perm = [dim] + [i for i in range(rank) if i != dim]
+    length = src.shape[dim]
+    out_dim = dst.shape[dim]
+    strip = src.numel() // length
+    strip_pad = (strip + _STRIP_ALIGN - 1) // _STRIP_ALIGN * _STRIP_ALIGN
+    src_perm = src.permute(perm)
+    dst_perm = dst.permute(perm)
+
+    src_buf = torch.empty((length, strip_pad), dtype=src.dtype, device=src.device)
+    dst_buf = torch.empty((out_dim, strip_pad), dtype=dst.dtype, device=dst.device)
+    src_view = _strided_rows(src_buf, src_perm.shape, strip, strip_pad)
+    dst_view = _strided_rows(dst_buf, dst_perm.shape, strip, strip_pad)
+    if not _copy_permuted(src_perm, src_view):
+        return False
+    if not _copy_permuted(dst_perm, dst_view):
+        return False
+
+    block = 8192 if strip_pad <= 4096 else 16384
+    _scatter_rows(dst_buf, index, src_buf, length, out_dim, strip_pad, block)
+    return _copy_permuted(dst_view, dst_perm)
 
 
 def _index_copy_impl(inp, dim, index, src):
@@ -264,20 +249,27 @@ def _index_copy_impl(inp, dim, index, src):
         inner = 1
         for size in inp.shape[dim + 1 :]:
             inner *= size
+        outer = 1
+        for size in inp.shape[:dim]:
+            outer *= size
+
+        if (
+            n_elements >= _TRANS_MIN_ELEMENTS
+            and inner < _TRANS_MAX_INNER
+            and outer * inner >= _TRANS_MIN_STRIP
+            and _index_copy_transposed(inp, dim, index, src)
+        ):
+            return inp
+
         block = _pick_scatter_block(n_elements)
-        need_mask = (n_elements % block) != 0
-        grid = (triton.cdiv(n_elements, block),)
-        _index_copy_flat[grid](
+        _scatter_rows(
             inp,
             index,
             src,
-            n_elements,
-            INNER=inner,
-            LENGTH=src.shape[dim],
-            OUT_DIM=inp.shape[dim],
-            NEED_MASK=need_mask,
-            BLOCK=block,
-            num_warps=_scatter_num_warps(block),
+            src.shape[dim],
+            inp.shape[dim],
+            inner,
+            block,
         )
         return inp
 
@@ -348,13 +340,8 @@ def index_copy_(inp, dim, index, src):
 def index_copy(inp, dim, index, src):
     _validate(inp, dim, index, src)
     out = torch.empty_like(inp, memory_format=torch.contiguous_format)
-    n_elements = inp.numel()
-    if n_elements > 0:
-        if inp.is_contiguous():
-            block = _pick_copy_block(n_elements)
-            _clone_contig[(triton.cdiv(n_elements, block),)](
-                inp, out, n_elements, BLOCK=block, num_warps=_copy_num_warps(block)
-            )
-        else:
-            torch.ops.aten._copy_from(inp, out, False)
+    if inp.numel() > 0 and not tle_copy(inp, out):
+        # Layouts tle cannot move (e.g. a 1-byte transposed source) go through
+        # the gems copy_ op, which keeps its own Triton pointwise fallback.
+        _copy_into(out, inp)
     return _index_copy_impl(out, dim, index, src)

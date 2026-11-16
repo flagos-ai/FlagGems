@@ -12,14 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import logging
 import math
+import os
 
 import torch
 import triton
 import triton.language as tl
-from triton.knobs import autotuning as _autotuning_knobs
+
+try:
+    from triton.knobs import autotuning as _autotuning_knobs
+except ImportError:  # older triton / flagtree without knobs
+    _autotuning_knobs = None
 
 from flag_gems import runtime
 from flag_gems.ops.pad import pad as gems_pad
@@ -27,27 +31,36 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_AABS_AVAILABLE = _autotuning_knobs is not None and hasattr(
+    _autotuning_knobs, "adjust_block_size"
+)
 
-@contextlib.contextmanager
-def _disable_aabs():
-    """Keep the tuned block sizes for conv2d_forward_kernel.
+
+class _DisableAabs:
+    """Keep the tuned block sizes for the conv kernels.
 
     FlagTree's AABS pairs a BLOCK with the bare parameter a mask compares it
-    against and shrinks the BLOCK to next_power_of_2 of that parameter. Neither
-    pairing it finds in this kernel is the extent actually being tiled:
-    BLOCK_NI_HO_WO tiles in_n * out_height * out_width but gets matched to the
-    in_n of ``in_n_point_value < in_n``, and BLOCK_CI gets matched to weight_c,
-    which drops the dot below the K >= 16 the forward path relies on.
+    against and shrinks the BLOCK to next_power_of_2 of that parameter. That
+    pairing is not the extent actually being tiled, so the knob is switched off
+    around every launch. A plain class instead of a generator-based context
+    manager: this runs on every call and the generator costs a few microseconds.
     """
-    if not hasattr(_autotuning_knobs, "adjust_block_size"):
-        yield
-        return
-    previous = _autotuning_knobs.adjust_block_size
-    _autotuning_knobs.adjust_block_size = False
-    try:
-        yield
-    finally:
-        _autotuning_knobs.adjust_block_size = previous
+
+    __slots__ = ("_prev",)
+
+    def __enter__(self):
+        if _AABS_AVAILABLE:
+            self._prev = _autotuning_knobs.adjust_block_size
+            _autotuning_knobs.adjust_block_size = False
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if _AABS_AVAILABLE:
+            _autotuning_knobs.adjust_block_size = self._prev
+        return False
+
+
+_disable_aabs = _DisableAabs
 
 
 def conv2d_output_size(
@@ -75,9 +88,8 @@ def conv2d_output_size(
 
 # Layout of the tensors handed to the forward kernel. The kernel takes every
 # stride as a runtime argument, so both modes run the same code and differ only
-# in where the gathers land. They are not a routing decision: forward always
-# packs the weight, and _LAYOUT_NCHW is there for dgrad, which reuses this
-# kernel with plain NCHW operands.
+# in where the gathers land. forward always packs the weight (_LAYOUT_W);
+# _LAYOUT_NCHW is for dgrad, which reuses this kernel with plain NCHW operands.
 _LAYOUT_NCHW = 0  # nothing converted
 _LAYOUT_W = 1  # weight packed, input left as-is
 
@@ -85,7 +97,7 @@ _LAYOUT_W = 1  # weight packed, input left as-is
 _JIT_LAYOUT_NCHW = tl.constexpr(_LAYOUT_NCHW)
 
 
-_FORWARD_CONFIGS = runtime.get_tuned_config("conv2d_forward")
+_FORWARD_CONFIGS = list(runtime.get_tuned_config("conv2d_forward"))
 
 # Widest BLOCK_CI/BLOCK_CO in the forward table. pack_weight never pads past
 # this, and compact tiles are clamped to it.
@@ -95,6 +107,45 @@ _MAX_BLOCK_C = max(
     for name in ("BLOCK_CO", "BLOCK_CI")
     if (width := config.kwargs.get(name)) is not None
 )
+
+# ---------------------------------------------------------------------------
+# channels_last policy for the forward input.
+#
+# In NCHW the A tile is gathered at +-1 element tap offsets, so pointer
+# alignment is lost and the loads degrade to scalar accesses. In NHWC the K
+# (channel) axis is contiguous and aligned, so loads vectorize. The copy costs
+# ~2x the input bytes, so only pay it when the input is big or the reduction is
+# long (each element is re-read kh*kw times).
+# ---------------------------------------------------------------------------
+_CL_MIN_NUMEL = 1 << 22
+_CL_MIN_TAPS = 16
+_PACK_CACHE = True
+
+# ---------------------------------------------------------------------------
+# Merged-K forward path.
+#
+# On a channels_last (NHWC) input, the taps along kw of one kernel row are
+# adjacent pixels, so for a fixed kh the pair (kw, ci) is ONE contiguous run of
+# kw * C elements. The merged-K kernel treats that run as a single reduction
+# axis, K_ROW = kw * C, and only loops over kh and K blocks. Compared with the
+# per-tap kernel this
+#   * decouples the K block from the channel count (C = 16 no longer forces a
+#     16-deep dot; a 64-deep block spans four taps),
+#   * drops the per-iteration (tap, channel-block) div/mod and the spatial
+#     bounds mask (padding is already folded into the NHWC copy),
+#   * loads one long contiguous, aligned row per output pixel.
+# Eligible: channels_last path taken, groups == 1, dilation == 1. Everything
+# else (grouped, dilated, small inputs, dgrad) keeps using
+# conv2d_forward_kernel. FLAGGEMS_CONV2D_KMERGE=0 disables the merged path.
+# If the merged kernel fails to compile/launch it is switched off for the rest
+# of the process and the per-tap kernel takes over.
+# ---------------------------------------------------------------------------
+_KMERGE_ENABLED = os.environ.get("FLAGGEMS_CONV2D_KMERGE", "1") != "0"
+_KMERGE_STATE = {"broken": False}
+
+
+def _want_channels_last(input: torch.Tensor, kh: int, kw: int) -> bool:
+    return input.numel() >= _CL_MIN_NUMEL or kh * kw >= _CL_MIN_TAPS
 
 
 @libentry()
@@ -115,22 +166,18 @@ def _to_channels_last_kernel(
     """NCHW -> NHWC with coalesced loads and stores.
 
     Each program loads a [C, HW] tile (adjacent threads walk W, then H) and
-    stores the transpose as [HW, C] (adjacent threads walk C). The old kernel
-    linearized with C innermost, so neighbouring threads read H*W elements
-    apart -- 88 KB on 210x210 -- and the copy ran at half the bandwidth.
+    stores the transpose as [HW, C] (adjacent threads walk C). src strides are
+    honoured, so sliced / non-contiguous NCHW inputs stay correct.
     """
     pid_hw = tl.program_id(0)
     pid_c = tl.program_id(1)
-    n = tl.program_id(2)
+    n = tl.program_id(2).to(tl.int64)
 
     offs_hw = pid_hw * BLOCK_HW + tl.arange(0, BLOCK_HW)
     offs_c = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
     hw_mask = offs_hw < height * width
     c_mask = offs_c < channels
 
-    # Decode linear HW into (h, w) and apply the source strides. Using
-    # src_h_stride / src_w_stride (not a packed HW stride of 1) keeps sliced
-    # or otherwise non-contiguous NCHW inputs correct.
     h = offs_hw // width
     w = offs_hw % width
     tile = tl.load(
@@ -147,6 +194,60 @@ def _to_channels_last_kernel(
         + offs_c[None, :],
         tl.trans(tile),
         mask=hw_mask[:, None] & c_mask[None, :],
+    )
+
+
+@libentry()
+@triton.jit
+def _to_channels_last_pad_kernel(
+    src,
+    dst,
+    src_n_stride,
+    src_c_stride,
+    src_h_stride,
+    src_w_stride,
+    channels: tl.constexpr,
+    height: tl.constexpr,
+    width: tl.constexpr,
+    pad_h: tl.constexpr,
+    pad_w: tl.constexpr,
+    padded_h: tl.constexpr,
+    padded_w: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    BLOCK_HW: tl.constexpr,
+):
+    """NCHW -> zero-padded NHWC in one pass.
+
+    Iterates over PADDED output positions, so the zero halo is written exactly
+    once and the conv kernel needs no spatial bounds mask at all.
+    """
+    pid_hw = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    n = tl.program_id(2).to(tl.int64)
+
+    offs_hw = pid_hw * BLOCK_HW + tl.arange(0, BLOCK_HW)
+    offs_c = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+    out_valid = offs_hw < padded_h * padded_w
+    h = offs_hw // padded_w - pad_h
+    w = offs_hw % padded_w - pad_w
+    in_valid = out_valid & (h >= 0) & (h < height) & (w >= 0) & (w < width)
+    c_mask = offs_c < channels
+
+    tile = tl.load(
+        src
+        + n * src_n_stride
+        + offs_c[:, None] * src_c_stride
+        + (h * src_h_stride + w * src_w_stride)[None, :],
+        mask=c_mask[:, None] & in_valid[None, :],
+        other=0.0,
+    )
+    tl.store(
+        dst
+        + n * channels * padded_h * padded_w
+        + offs_hw[:, None] * channels
+        + offs_c[None, :],
+        tl.trans(tile),
+        mask=out_valid[:, None] & c_mask[None, :],
     )
 
 
@@ -174,6 +275,39 @@ def to_channels_last(input: torch.Tensor):
         c,
         h,
         w,
+        BLOCK_C=_CL_BLOCK_C,
+        BLOCK_HW=_CL_BLOCK_HW,
+        num_warps=8,
+    )
+    return output
+
+
+def to_channels_last_padded(input: torch.Tensor, pad_h: int, pad_w: int):
+    """Returns an (N, C, H+2*pad_h, W+2*pad_w) tensor in channels_last memory."""
+    n, c, h, w = input.shape
+    ph, pw = h + 2 * pad_h, w + 2 * pad_w
+    output = torch.empty(
+        (n, c, ph, pw),
+        dtype=input.dtype,
+        device=input.device,
+        memory_format=torch.channels_last,
+    )
+    grid = (
+        triton.cdiv(ph * pw, _CL_BLOCK_HW),
+        triton.cdiv(c, _CL_BLOCK_C),
+        n,
+    )
+    _to_channels_last_pad_kernel[grid](
+        input,
+        output,
+        *input.stride(),
+        c,
+        h,
+        w,
+        pad_h,
+        pad_w,
+        ph,
+        pw,
         BLOCK_C=_CL_BLOCK_C,
         BLOCK_HW=_CL_BLOCK_HW,
         num_warps=8,
@@ -273,6 +407,356 @@ def pack_weight(weight: torch.Tensor, groups: int):
     )
 
 
+def _cached_pack(weight: torch.Tensor, groups: int, attr: str, pack_fn):
+    """Run ``pack_fn(weight, groups)`` and remember the result on the weight.
+
+    The pack is a separate kernel launch (4-6 us) that shows up on small convs.
+    The cache key is (storage pointer, version counter, shape, strides, dtype,
+    device, groups), so an in-place update through the tensor invalidates it.
+    Writes through ``weight.data`` do not bump the version counter, so the cache
+    is bypassed whenever autograd could be training the weight (requires_grad
+    with grad mode on).
+    """
+    if (
+        not _PACK_CACHE
+        or weight.is_inference()
+        or (weight.requires_grad and torch.is_grad_enabled())
+    ):
+        return pack_fn(weight, groups)
+    key = (
+        weight.data_ptr(),
+        weight._version,
+        tuple(weight.shape),
+        tuple(weight.stride()),
+        weight.dtype,
+        weight.device,
+        groups,
+    )
+    cached = getattr(weight, attr, None)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    result = pack_fn(weight, groups)
+    try:
+        setattr(weight, attr, (key, result))
+    except Exception:  # tensor type without a __dict__
+        pass
+    return result
+
+
+def _pack_weight_cached(weight: torch.Tensor, groups: int):
+    return _cached_pack(weight, groups, "_gems_conv2d_pack", pack_weight)
+
+
+# ---------------------------------------------------------------------------
+# Merged-K weight packing: [out_c, C, kh, kw] -> [kh, kw * C, co_pad].
+# Row k = kw_idx * C + ci of kernel row kh, matching the NHWC input run
+# (pixel kw_idx, channel ci). Only co is padded (with zeros); K is exact.
+# ---------------------------------------------------------------------------
+_MERGED_MAX_CO = 64
+
+
+@triton.jit
+def _pack_weight_merged_kernel(
+    src,
+    dst,
+    out_c,
+    co_pad,
+    channels: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    k_row: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_kh = tl.program_id(0)
+    k = tl.program_id(1) * BLOCK_K + tl.arange(0, BLOCK_K)
+    co = tl.program_id(2) * BLOCK_CO + tl.arange(0, BLOCK_CO)
+
+    kw_idx = k // channels
+    ci = k % channels
+    k_ok = (k_row - k) > 0
+
+    src_off = (
+        co[None, :] * (channels * weight_height * weight_width)
+        + ci[:, None] * (weight_height * weight_width)
+        + pid_kh * weight_width
+        + kw_idx[:, None]
+    )
+    block = tl.load(
+        src + src_off,
+        mask=k_ok[:, None] & ((out_c - co) > 0)[None, :],
+        other=0.0,
+    )
+    tl.store(
+        dst + pid_kh * (k_row * co_pad) + k[:, None] * co_pad + co[None, :],
+        block,
+        mask=k_ok[:, None] & ((co_pad - co) > 0)[None, :],
+    )
+
+
+def pack_weight_merged(weight: torch.Tensor, groups: int = 1):
+    """Returns (packed [kh, kw*C, co_pad], k_row, co_pad). groups must be 1."""
+    out_c, channels, kh, kw = weight.shape
+    k_row = kw * channels
+    co_alignment = max(16, 64 // weight.element_size())
+    co_tile = min(_MERGED_MAX_CO, max(co_alignment, triton.next_power_of_2(out_c)))
+    co_pad = _round_up(out_c, co_tile)
+    packed = torch.empty((kh, k_row, co_pad), dtype=weight.dtype, device=weight.device)
+    block_k, block_co = 64, 32
+    grid = (kh, triton.cdiv(k_row, block_k), triton.cdiv(co_pad, block_co))
+    src = weight if weight.is_contiguous() else weight.contiguous()
+    _pack_weight_merged_kernel[grid](
+        src,
+        packed,
+        out_c,
+        co_pad,
+        channels,
+        kh,
+        kw,
+        k_row,
+        BLOCK_K=block_k,
+        BLOCK_CO=block_co,
+        num_warps=4,
+    )
+    return packed, k_row, co_pad
+
+
+def _pack_weight_merged_cached(weight: torch.Tensor):
+    return _cached_pack(weight, 1, "_gems_conv2d_pack_merged", pack_weight_merged)
+
+
+def _merged_configs():
+    # (BLOCK_M, BLOCK_K, BLOCK_CO, num_warps). Stage count stays 1: on this
+    # backend num_stages=2 was slower in every measured config. Tile footprints
+    # are capped to what the existing fp32 table already proves to fit.
+    specs = [
+        (64, 32, 32, 4),
+        (128, 32, 32, 4),
+        (128, 32, 32, 8),
+        (256, 32, 32, 4),
+        (256, 32, 32, 8),
+        (64, 64, 32, 4),
+        (128, 64, 32, 4),
+        (128, 64, 32, 8),
+        (64, 128, 32, 4),
+        (128, 32, 64, 8),
+        (256, 32, 64, 8),
+        (64, 64, 64, 4),
+        (128, 64, 64, 8),
+    ]
+    configs = []
+    for m, k, co, warps in specs:
+        if m * k > 8192 or k * co > 4096:
+            continue
+        configs.append(
+            triton.Config(
+                {"BLOCK_M": m, "BLOCK_K": k, "BLOCK_CO": co},
+                num_warps=warps,
+                num_stages=1,
+            )
+        )
+    return configs
+
+
+_MERGED_CONFIGS = _merged_configs()
+
+
+@libentry()
+@triton.autotune(
+    configs=_MERGED_CONFIGS,
+    key=[
+        "in_n",
+        "out_c",
+        "out_height",
+        "out_width",
+        "channels",
+        "weight_height",
+        "weight_width",
+        "stride_height",
+        "stride_width",
+    ],
+)
+@triton.jit
+def conv2d_merged_k_kernel(
+    input_pointer,
+    weight_pointer,
+    output_pointer,
+    bias_pointer,
+    input_n_stride,
+    input_height_stride,
+    output_n_stride,
+    output_c_stride,
+    output_height_stride,
+    output_width_stride,
+    in_n: tl.constexpr,
+    out_c: tl.constexpr,
+    out_height: tl.constexpr,
+    out_width: tl.constexpr,
+    channels: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    stride_height: tl.constexpr,
+    stride_width: tl.constexpr,
+    co_pad: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    """Forward conv on a padded/NHWC input with a merged (kw, ci) K axis.
+
+    Input is NHWC and already zero-padded, so every tap of every valid output
+    pixel is inside the tensor: no spatial mask. Pixel stride is ``channels``
+    and channel stride is 1, so for kernel row kh the elements
+    [pixel(oh*s, ow*s) + kh rows, + k) for k in [0, kw*C) are contiguous.
+    Weight is packed as [kh, kw*C, co_pad].
+    """
+    pid_m = tl.program_id(0)
+    pid_co = tl.program_id(1)
+
+    HW: tl.constexpr = out_height * out_width
+    K_ROW: tl.constexpr = weight_width * channels
+    NKB: tl.constexpr = (K_ROW + BLOCK_K - 1) // BLOCK_K
+    EVEN_K: tl.constexpr = K_ROW % BLOCK_K == 0
+    EVEN_CO_PAD: tl.constexpr = co_pad % BLOCK_CO == 0
+    EVEN_CO: tl.constexpr = out_c % BLOCK_CO == 0
+
+    m_offs = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    total_rows = in_n * out_height * out_width
+    row_ok = m_offs < total_rows
+
+    n_idx = m_offs // HW
+    rem = m_offs % HW
+    oh = rem // out_width
+    ow = rem % out_width
+
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    k_local = tl.arange(0, BLOCK_K)
+
+    in_base = (
+        n_idx.to(tl.int64) * input_n_stride
+        + (oh * stride_height) * input_height_stride
+        + (ow * stride_width) * channels
+    )
+    row_ptr = input_pointer + in_base[:, None]
+    w_ptr = weight_pointer + co[None, :]
+
+    accum = tl.zeros((BLOCK_M, BLOCK_CO), dtype=tl.float32)
+    for kh in range(weight_height):
+        a_row = row_ptr + kh * input_height_stride
+        w_row = w_ptr + kh * (K_ROW * co_pad)
+        for kb in range(NKB):
+            k = kb * BLOCK_K + k_local
+            if EVEN_K:
+                a_mask = tl.broadcast_to(row_ok[:, None], (BLOCK_M, BLOCK_K))
+            else:
+                a_mask = row_ok[:, None] & ((K_ROW - k) > 0)[None, :]
+            a = tl.load(a_row + k[None, :], mask=a_mask, other=0.0)
+
+            w_ptrs = w_row + k[:, None] * co_pad
+            if EVEN_K and EVEN_CO_PAD:
+                b = tl.load(w_ptrs)
+            elif EVEN_K:
+                b = tl.load(w_ptrs, mask=((co_pad - co) > 0)[None, :], other=0.0)
+            elif EVEN_CO_PAD:
+                b = tl.load(w_ptrs, mask=((K_ROW - k) > 0)[:, None], other=0.0)
+            else:
+                b = tl.load(
+                    w_ptrs,
+                    mask=((K_ROW - k) > 0)[:, None] & ((co_pad - co) > 0)[None, :],
+                    other=0.0,
+                )
+            accum += tl.dot(a, b, allow_tf32=False)
+
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + co, mask=(out_c - co) > 0, other=0.0).to(
+            tl.float32
+        )
+        accum += bias[None, :]
+
+    out_ptrs = (
+        output_pointer
+        + (
+            n_idx.to(tl.int64) * output_n_stride
+            + oh * output_height_stride
+            + ow * output_width_stride
+        )[:, None]
+        + (co * output_c_stride)[None, :]
+    )
+    if EVEN_CO:
+        out_mask = tl.broadcast_to(row_ok[:, None], (BLOCK_M, BLOCK_CO))
+    else:
+        out_mask = row_ok[:, None] & ((out_c - co) > 0)[None, :]
+    tl.store(out_ptrs, accum, mask=out_mask)
+
+
+def _kmerge_usable(k_input: torch.Tensor, channels: int, width: int) -> bool:
+    """Merged-K needs pixel stride == C, channel stride == 1, row stride == W*C."""
+    if not _KMERGE_ENABLED or _KMERGE_STATE["broken"]:
+        return False
+    if k_input.dim() != 4 or k_input.shape[1] != channels:
+        return False
+    return (
+        k_input.stride(1) == 1
+        and k_input.stride(3) == channels
+        and k_input.stride(2) == width * channels
+    )
+
+
+def _launch_merged_k(
+    k_input,
+    weight,
+    bias,
+    output,
+    in_n,
+    out_c,
+    out_height,
+    out_width,
+    channels,
+    weight_height,
+    weight_width,
+    stride_height,
+    stride_width,
+):
+    """Returns True if the merged kernel ran, False to fall back."""
+    try:
+        packed, _, co_pad = _pack_weight_merged_cached(weight)
+        grid = lambda META: (
+            triton.cdiv(in_n * out_height * out_width, META["BLOCK_M"]),
+            triton.cdiv(out_c, META["BLOCK_CO"]),
+        )
+        with _disable_aabs():
+            conv2d_merged_k_kernel[grid](
+                k_input,
+                packed,
+                output,
+                bias,
+                k_input.stride(0),
+                k_input.stride(2),
+                *output.stride(),
+                in_n,
+                out_c,
+                out_height,
+                out_width,
+                channels,
+                weight_height,
+                weight_width,
+                stride_height,
+                stride_width,
+                co_pad,
+                HAS_BIAS=bias is not None,
+            )
+        return True
+    except Exception as exc:  # compile / resource failure: use the per-tap kernel
+        if "out of memory" in str(exc).lower():
+            raise
+        _KMERGE_STATE["broken"] = True
+        logger.warning(
+            "conv2d merged-K kernel disabled, falling back to per-tap kernel: %r", exc
+        )
+        return False
+
+
 @libentry()
 @triton.autotune(
     configs=_FORWARD_CONFIGS,
@@ -292,11 +776,8 @@ def pack_weight(weight: torch.Tensor, groups: int):
         "padding_width",
         "groups",
         # This key is all shape scalars, so it does not see strides, and the
-        # forward call (channels_last weight) and the dgrad call (plain NCHW
-        # operands) would share a tuned config whenever their shapes coincide.
-        # LibEntry's own kernel cache does separate them, since it keys every
-        # non-constexpr scalar by value and the strides differ -- it is only
-        # the config that would be inherited.
+        # forward call (packed weight) and the dgrad call (plain NCHW operands)
+        # would share a tuned config whenever their shapes coincide.
         "LAYOUT",
     ],
 )
@@ -347,7 +828,7 @@ def conv2d_forward_kernel(
     pid_co = tl.program_id(1)
     pid_group = tl.program_id(2)
 
-    # caculate in_n out_height out_weight value in kernel
+    # calculate in_n / out_height / out_width values in kernel
     ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + tl.arange(0, BLOCK_NI_HO_WO)
     ni_ho_offset = ni_ho_wo_offset // out_width
     in_n_point_value = ni_ho_offset // out_height
@@ -373,6 +854,30 @@ def conv2d_forward_kernel(
         weight_n_stride * output_c_offset + weight_group_stride * pid_group
     )[None, :]
 
+    # Compile-time facts.
+    # EVEN_C / EVEN_CO: channel blocks are full, so the channel masks can go.
+    # SKIP_SPATIAL_MASK: forward-only. For a valid (padding == 0) forward conv
+    #   every tap of every valid output point lies inside the input (this also
+    #   covers pre-padded inputs). It does NOT hold for dgrad, whose dilated
+    #   out_grad can be shorter than the output it feeds, so dgrad
+    #   (LAYOUT == NCHW) always takes the fully masked path.
+    EVEN_C: tl.constexpr = weight_c % BLOCK_CI == 0
+    # NOTE: built from constexpr *parameters* only. A plain local such as
+    # out_per_group_c is converted to a tensor by the JIT and cannot feed `if`.
+    EVEN_CO: tl.constexpr = (out_c // groups) % BLOCK_CO == 0
+    SKIP_SPATIAL_MASK: tl.constexpr = (
+        LAYOUT != _JIT_LAYOUT_NCHW and padding_height == 0 and padding_width == 0
+    )
+    # One linear tail check replaces the per-axis (n, ho, wo) bounds checks: an
+    # output point is valid iff its flattened index is below N*Ho*Wo. It is
+    # deliberately an expression, not ``in_n_point_value < in_n``: FlagTree's
+    # AABS pairs a BLOCK with the bare parameter a mask compares against, and
+    # that pairing shrank every BLOCK_NI_HO_WO to in_n (32) in the autotune log.
+    # The channel masks below are written the same way (``weight_c - c``).
+    total_rows = in_n * out_height * out_width
+    row_in_range = ni_ho_wo_offset < total_rows
+
+    ci_local = tl.arange(0, BLOCK_CI)
     accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
     for hwc in range(weight_height * weight_width * BLOCK_CI_COUNT):
@@ -381,7 +886,7 @@ def conv2d_forward_kernel(
         h = hw // weight_width
         w = hw % weight_width
 
-        input_c_offset = c + tl.arange(0, BLOCK_CI)
+        input_c_offset = c + ci_local
 
         curr_input_pointer = (
             input_pointer
@@ -396,26 +901,27 @@ def conv2d_forward_kernel(
             + (weight_width_stride * w)
         )
 
-        if padding_height == 0 and padding_width == 0:
-            # For a valid convolution, every tap of a valid output point is
-            # inside the input. Keep the linear-output mask for the tail tile.
-            input_mask = (ni_ho_wo_offset < in_n * out_height * out_width)[:, None] & (
-                input_c_offset < weight_c
-            )[None, :]
+        if SKIP_SPATIAL_MASK:
+            row_valid = row_in_range
         else:
             input_height_offset = input_height_base + h * dilation_height
             input_width_offset = input_width_base + w * dilation_width
-            input_mask = (
-                (in_n_point_value < in_n)[:, None]
-                & (input_c_offset < weight_c)[None, :]
-                & (0 <= input_height_offset)[:, None]
-                & (input_height_offset < input_height)[:, None]
-                & (0 <= input_width_offset)[:, None]
-                & (input_width_offset < input_width)[:, None]
+            row_valid = (
+                row_in_range
+                & (input_height_offset >= 0)
+                & (input_height_offset < input_height)
+                & (input_width_offset >= 0)
+                & (input_width_offset < input_width)
             )
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
+        if EVEN_C:
+            # Constant along K, which keeps vectorized loads legal.
+            input_mask = tl.broadcast_to(row_valid[:, None], (BLOCK_NI_HO_WO, BLOCK_CI))
+        else:
+            input_mask = row_valid[:, None] & (ci_local < weight_c - c)[None, :]
+        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
+
         # Packed W, tile inside the pad: unmasked (SME). dgrad and overflow tiles
-        # stay masked; those two loads were identical, so they share this branch.
+        # stay masked.
         if (
             LAYOUT != _JIT_LAYOUT_NCHW
             and BLOCK_CI <= PACKED_CI_TILE
@@ -425,8 +931,9 @@ def conv2d_forward_kernel(
         else:
             weight_block = tl.load(
                 curr_weight_pointer,
-                mask=(input_c_offset < weight_c)[:, None]
+                mask=(ci_local < weight_c - c)[:, None]
                 & (output_c_offset < out_per_group_c)[None, :],
+                other=0.0,
             )
 
         accum += tl.dot(input_block, weight_block, allow_tf32=False)
@@ -443,12 +950,14 @@ def conv2d_forward_kernel(
         + (output_height_stride * output_height_point_value)[:, None]
         + (output_width_stride * output_width_point_value)[:, None]
     )
-    output_mask = (
-        (in_n_point_value < in_n)[:, None]
-        & (output_c_offset < out_per_group_c)[None, :]
-        & (output_height_point_value < out_height)[:, None]
-        & (output_width_point_value < out_width)[:, None]
-    )
+    # Single tail mask (+ channel mask only when the CO tile overhangs). The old
+    # four-way per-axis AND was always true but opaque to Triton's mask analysis.
+    if EVEN_CO:
+        output_mask = tl.broadcast_to(row_in_range[:, None], (BLOCK_NI_HO_WO, BLOCK_CO))
+    else:
+        output_mask = (
+            row_in_range[:, None] & (output_c_offset < out_per_group_c)[None, :]
+        )
 
     tl.store(output_pointer, accum, mask=output_mask)
 
@@ -517,14 +1026,14 @@ def conv2d_backward_kernel_weight(
     pid_groups = tl.program_id(1)
     pid_co = tl.program_id(2)
 
-    # caculate ci weight_height weight_weight value in kernel
+    # calculate ci / weight_height / weight_width value in kernel
     ci_hk_wk_offset = pid_ci_hk_wk * BLOCK_CI_HK_WK + tl.arange(0, BLOCK_CI_HK_WK)
     ci_hk_offset = ci_hk_wk_offset // weight_width
     ci_point_value = ci_hk_offset // weight_height
     weight_height_point_value = ci_hk_offset % weight_height
     weight_width_point_value = ci_hk_wk_offset % weight_width
 
-    # caculate init pointer info of tensors
+    # calculate init pointer info of tensors
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     out_grad_pointer += (output_c_offset * output_c_stride)[None, :] + (
         pid_groups[None] * output_c_stride * out_c
@@ -551,7 +1060,7 @@ def conv2d_backward_kernel_weight(
             for n in range(0, in_n, BLOCK_NO):
                 output_n_offset = n + tl.arange(0, BLOCK_NO)
 
-                # caculate input pointer to [cin*kh*kw, *] out_grad pointer to [*, out_c], N*hout*wout as reduce dim
+                # calculate input pointer to [cin*kh*kw, *] out_grad pointer to [*, out_c], N*hout*wout as reduce dim
                 curr_out_grad_pointer = (
                     out_grad_pointer
                     + (
@@ -609,17 +1118,17 @@ class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
         logger.debug("GEMS CONV2D")
-        assert weight.ndim == 4, "Weights must be 4D, received shape {weight.shape}"
+        assert weight.ndim == 4, f"Weights must be 4D, received shape {weight.shape}"
         assert (
             bias is None or bias.ndim == 1
-        ), "Bias must be 1D, received shape {bias.shape}"
+        ), f"Bias must be 1D, received shape {bias.shape}"
 
         assert (
             input.shape[1] == groups * weight.shape[1]
-        ), "Incompatible input ({input.shape}) and weights ({weight.shape}) shape with {groups} groups"
+        ), f"Incompatible input ({input.shape}) and weights ({weight.shape}) shape with {groups} groups"
         assert (
             bias is None or weight.shape[0] == bias.shape[0]
-        ), "Incompatible weights ({weight.shape}) and bias ({bias.shape}) shape"
+        ), f"Incompatible weights ({weight.shape}) and bias ({bias.shape}) shape"
 
         if isinstance(stride, (list, tuple)):
             stride_height, stride_width = stride
@@ -668,47 +1177,90 @@ class Conv2d(torch.autograd.Function):
             groups,
         )
 
-        def launch(x, w, w_strides, w_group_stride, packed_ci_tile, packed_co_tile):
-            conv2d_forward_kernel[grid](
-                x,
-                w,
-                output,
+        # The original input is what backward needs (wgrad reads it with its own
+        # strides and the unpadded spatial size), so keep it apart from the
+        # tensor handed to the forward kernel.
+        orig_input = input
+        k_input = input
+        k_in_h, k_in_w = input_height, input_width
+        k_pad_h, k_pad_w = padding_height, padding_width
+        use_channels_last = _want_channels_last(input, weight_height, weight_width)
+        if use_channels_last:
+            if padding_height or padding_width:
+                # Fold the zero padding into the layout conversion. The conv
+                # kernel then sees a padding-free problem on the padded input
+                # (same output size) and skips every spatial bounds check.
+                k_input = to_channels_last_padded(input, padding_height, padding_width)
+                k_in_h, k_in_w = k_input.shape[2], k_input.shape[3]
+                k_pad_h = k_pad_w = 0
+            elif not input.is_contiguous(memory_format=torch.channels_last):
+                k_input = to_channels_last(input)
+            else:
+                k_input = input
+
+        launched = False
+        if (
+            use_channels_last
+            and groups == 1
+            and dilation_height == 1
+            and dilation_width == 1
+            and k_pad_h == 0
+            and k_pad_w == 0
+            and _kmerge_usable(k_input, weight_c, k_in_w)
+        ):
+            launched = _launch_merged_k(
+                k_input,
+                weight,
                 bias,
+                output,
                 in_n,
-                input_height,
-                input_width,
                 out_c,
                 out_height,
                 out_width,
-                *x.stride(),
-                *w_strides,
-                w_group_stride,
-                *output.stride(),
                 weight_c,
                 weight_height,
                 weight_width,
                 stride_height,
                 stride_width,
-                padding_height,
-                padding_width,
-                dilation_height,
-                dilation_width,
-                groups=groups,
-                HAS_BIAS=bias is not None,
-                LAYOUT=_LAYOUT_W,
-                PACKED_CI_TILE=packed_ci_tile,
-                PACKED_CO_TILE=packed_co_tile,
             )
 
-        # W is always packed. A is copied to channels_last only for long 2-byte
-        # reductions; that load stays masked and does not put A on SME.
-        if input.element_size() == 2 and weight_height * weight_width >= 16:
-            input = to_channels_last(input)
-        packed, w_strides, co_group, ci_tile, co_tile = pack_weight(weight, groups)
-        with _disable_aabs():
-            launch(input, packed, w_strides, co_group, ci_tile, co_tile)
+        if not launched:
+            packed, w_strides, co_group, ci_tile, co_tile = _pack_weight_cached(
+                weight, groups
+            )
+            with _disable_aabs():
+                conv2d_forward_kernel[grid](
+                    k_input,
+                    packed,
+                    output,
+                    bias,
+                    in_n,
+                    k_in_h,
+                    k_in_w,
+                    out_c,
+                    out_height,
+                    out_width,
+                    *k_input.stride(),
+                    *w_strides,
+                    co_group,
+                    *output.stride(),
+                    weight_c,
+                    weight_height,
+                    weight_width,
+                    stride_height,
+                    stride_width,
+                    k_pad_h,
+                    k_pad_w,
+                    dilation_height,
+                    dilation_width,
+                    groups=groups,
+                    HAS_BIAS=bias is not None,
+                    LAYOUT=_LAYOUT_W,
+                    PACKED_CI_TILE=ci_tile,
+                    PACKED_CO_TILE=co_tile,
+                )
 
-        ctx.save_for_backward(weight, input, bias)
+        ctx.save_for_backward(weight, orig_input, bias)
 
         ctx.stride = (stride_height, stride_width)
         ctx.padding = (padding_height, padding_width)
@@ -765,22 +1317,17 @@ class Conv2d(torch.autograd.Function):
         )
         new_out_width = out_grad.shape[3] + (stride_width - 1) * (out_grad.shape[3] - 1)
 
-        new_out = torch.zeros(
-            out_grad.shape[0],
-            out_grad.shape[1],
-            new_out_height,
-            new_out_width,
-            device=device,
-            dtype=out_grad.dtype,
-        )
-
-        # copy out_grad to new_out
+        # Zero-insert out_grad by the forward stride with a single strided copy.
         if stride_height > 1 or stride_width > 1:
-            for i in range(out_grad.shape[2]):
-                for j in range(out_grad.shape[3]):
-                    new_out[:, :, i * (stride_height), j * (stride_width)] = out_grad[
-                        :, :, i, j
-                    ]
+            new_out = torch.zeros(
+                out_grad.shape[0],
+                out_grad.shape[1],
+                new_out_height,
+                new_out_width,
+                device=device,
+                dtype=out_grad.dtype,
+            )
+            new_out[:, :, ::stride_height, ::stride_width] = out_grad
         else:
             new_out = out_grad
 
@@ -853,9 +1400,8 @@ class Conv2d(torch.autograd.Function):
                 dilation_width,
                 groups=groups,
                 HAS_BIAS=False,
-                # dgrad builds its operands with pad/flip/transpose and hands them
-                # over as plain NCHW; converting them is a separate question from
-                # the forward one and is not answered here.
+                # dgrad hands over plain NCHW operands and must keep the fully
+                # masked path (see SKIP_SPATIAL_MASK in the kernel).
                 LAYOUT=_LAYOUT_NCHW,
                 PACKED_CI_TILE=0,
                 PACKED_CO_TILE=0,
@@ -905,7 +1451,7 @@ class Conv2d(torch.autograd.Function):
         else:
             bias_grad = None
         return (
-            input_back,
+            input_back.to(input.dtype),
             weight_back,
             bias_grad,
             None,
@@ -919,8 +1465,10 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert stride == 1, "Doesn't support any stride values other than 1 \
-                in padding = 'same' mode, received stride value {stride}"
+            assert stride == 1, (
+                "Doesn't support any stride values other than 1 "
+                f"in padding = 'same' mode, received stride value {stride}"
+            )
             ih = input.shape[-2]
             iw = input.shape[-1]
             kernel_size_h = weight.shape[-2]
@@ -952,7 +1500,7 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             return Conv2d.apply(input, weight, bias, stride, 0, dilation, groups)
         else:
             raise ValueError(
-                f"Unsupported padding string: {padding}, only'valild'/'same' are allowed."
+                f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
             )
     else:
         return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)

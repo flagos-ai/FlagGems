@@ -21,6 +21,7 @@ import pickle
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Generator
 
 import pytest
@@ -157,7 +158,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name in ("mm", "mm_w8a8_fp8"):
+        if self.op_name in ("mm", "mm_w8a8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -599,6 +600,13 @@ def _parallel_device_label():
 
 class ParallelBenchmarkMixin:
     SHAPE_CONFIG_KEYS = ()
+    # Operator name used to estimate per-shape cost when splitting shapes
+    # across GPUs; defaults to op_name. Set it when one op_name covers several
+    # precisions that need different cost models.
+    SHAPE_COST_OP_NAME = None
+    # Record the merged metrics in --record json. Opt-in so ops whose kanban
+    # number comes from a dedicated single-process benchmark keep that source.
+    RECORD_PARALLEL_RESULTS = False
 
     def set_more_shapes(self):
         if os.environ.get(PARALLEL_WORKER_ENV):
@@ -708,14 +716,23 @@ class ParallelBenchmarkMixin:
             )
         return metric
 
-    def _run_inputs(self, input_items):
+    def _baseline_input(self, input_item):
+        """The external record describes the native callable's input ABI."""
+        return input_item
+
+    def _run_inputs(self, input_items, dtype=None):
         metrics = []
         expected_shapes = self._iter_expected_shapes()
         for input_item in input_items:
             current_shape = next(expected_shapes, None)
             metric = BenchmarkMetrics()
             try:
+                args, kwargs = self.unpack_to_args_kwargs(
+                    self._baseline_input(input_item)
+                )
+                context = self._capture_external_baseline(args, kwargs)
                 metric = self._build_metric_from_input(input_item)
+                self._apply_external_baseline(metric, dtype, context)
             except Exception as e:
                 metric.error_msg = str(e)
                 self._record_failed_shape(current_shape)
@@ -759,11 +776,13 @@ class ParallelBenchmarkMixin:
 
         fixed_overhead = self._get_tuning_fixed_overhead()
 
+        cost_op_name = self.SHAPE_COST_OP_NAME or self.op_name
+
         def estimate_shape_cost(shape):
-            if self.op_name == "mul":
+            if cost_op_name == "mul":
                 return _estimate_mul_shape_cost(shape) + fixed_overhead
 
-            if self.op_name == "sparse_attention":
+            if cost_op_name == "sparse_attention":
                 if len(shape) != 6:
                     return 1 + fixed_overhead
                 batch, seq_len, _, topk, heads, dim = shape
@@ -779,9 +798,8 @@ class ParallelBenchmarkMixin:
                     * 4
                 ) + fixed_overhead
 
-            if self.op_name in {
+            if cost_op_name in {
                 "mm",
-                "mm_w8a8_fp8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -800,9 +818,8 @@ class ParallelBenchmarkMixin:
                 if normalized_shape is None:
                     return 1 + fixed_overhead
 
-                if self.op_name in {
+                if cost_op_name in {
                     "mm",
-                    "mm_w8a8_fp8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -900,6 +917,8 @@ class ParallelBenchmarkMixin:
             "--shape_file",
             tmp_shape_path,
         ]
+        if Config.base_data is not None:
+            cmd.extend(["--base-data", str(Path(Config.base_data.source).resolve())])
         if self.should_forward_parallel_dtype(dtype_name):
             cmd.extend(["--dtypes", dtype_name])
         if Config.user_desired_metrics:
@@ -946,7 +965,7 @@ class ParallelBenchmarkMixin:
     def _run_parallel_dtype(self, dtype):
         required_gpus = int(Config.parallel)
         if required_gpus <= 0:
-            return self._run_inputs(self.get_input_iter(dtype))
+            return self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
         if not _parallel_device_is_available():
             pytest.skip(f"--parallel N requires {_parallel_device_label()}.")
         device_ids = _parallel_device_ids()
@@ -1036,7 +1055,15 @@ class ParallelBenchmarkMixin:
             if Config.parallel > 0 and not os.environ.get(PARALLEL_WORKER_ENV):
                 metrics = self._run_parallel_dtype(dtype)
             else:
-                metrics = self._run_inputs(self.get_input_iter(dtype))
+                metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
+
+            if self.RECORD_PARALLEL_RESULTS and not os.environ.get(
+                PARALLEL_RESULT_FILE_ENV
+            ):
+                # Main process of an opted-in benchmark: record the merged
+                # metrics like a single-process benchmark (--record json).
+                self._emit_result(dtype, metrics)
+                continue
 
             result = BenchmarkResult(
                 level=Config.bench_level.value,
@@ -1108,6 +1135,9 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
     SHAPE_CONFIG_KEYS = ("mm",)
+    # op_name is the shared kanban id "mm_w8a8"; FP8 keeps the mm GEMM cost.
+    SHAPE_COST_OP_NAME = "mm"
+    RECORD_PARALLEL_RESULTS = True
 
     def should_forward_parallel_dtype(self, dtype_name):
         # The CLI excludes FP8; each worker uses the same single FP8 dtype.
@@ -1395,6 +1425,10 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
                 self.output_dtype,
             )
 
+    def _baseline_input(self, input_item):
+        dg_input, _ = input_item
+        return dg_input
+
     def _build_metric_from_input(self, input_item):
         dg_input, gems_input = input_item
         metric = BenchmarkMetrics()
@@ -1579,7 +1613,11 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     bench.run()
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="The parallel FP8 benchmark requires CUDA Graph; use test_mm_w8a8_fp8.py on other backends",
+)
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
@@ -1596,7 +1634,7 @@ def test_mm_w8a8_fp8():
 
     bench = ParallelMmW8A8Fp8Benchmark(
         input_fn=mm_w8a8_fp8_input_fn,
-        op_name="mm_w8a8_fp8",
+        op_name="mm_w8a8",
         torch_op=torch_fp8_mm,
         dtypes=(
             [torch.float8_e4m3fn]

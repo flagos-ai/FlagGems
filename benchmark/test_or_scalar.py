@@ -23,6 +23,9 @@ def or_scalar_input_fn(shape, dtype, device):
     yield inp, 0x00FF
 
 
+# ``or`` is a Python keyword, so @pytest.mark.or is a syntax error; build the
+# aggregate operator-family mark via getattr instead.
+@getattr(pytest.mark, "or")
 @pytest.mark.or_scalar
 def test_or_scalar():
     bench = base.GenericBenchmark(

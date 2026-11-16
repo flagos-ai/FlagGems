@@ -50,6 +50,7 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
   "tests/test_conv_depthwise2d.py"
+  "tests/test_conv_depthwise3d.py"
   "tests/test_cudnn_convolution_transpose.py"
 )
 
@@ -130,6 +131,27 @@ if [[ ${#OPS_IMPL_FILES[@]} -gt 0 ]]; then
       OPS_MARKERS+=("$marker")
     fi
   done
+fi
+
+# Sharding: when TOTAL_SHARDS and SHARD_INDEX are set (e.g. by the daily
+# workflow matrix), slice TEST_CASES and TEST_CASES_CPU so each parallel job
+# handles a disjoint subset.  Round-robin assignment keeps shard sizes equal.
+# OPS_MARKERS are not sharded: they only arise in per-PR runs (CHANGED_FILES !=
+# __ALL__), where TOTAL_SHARDS is never set.
+if [[ -n "${TOTAL_SHARDS:-}" && -n "${SHARD_INDEX:-}" ]]; then
+  sharded=()
+  total=${#TEST_CASES[@]}
+  for (( i=SHARD_INDEX; i<total; i+=TOTAL_SHARDS )); do
+    sharded+=("${TEST_CASES[$i]}")
+  done
+  TEST_CASES=("${sharded[@]}")
+
+  sharded_cpu=()
+  total_cpu=${#TEST_CASES_CPU[@]}
+  for (( i=SHARD_INDEX; i<total_cpu; i+=TOTAL_SHARDS )); do
+    sharded_cpu+=("${TEST_CASES_CPU[$i]}")
+  done
+  TEST_CASES_CPU=("${sharded_cpu[@]}")
 fi
 
 # Skip tests only when there is nothing at all to run.

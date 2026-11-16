@@ -69,3 +69,15 @@ def test_group_norm_backward():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.native_group_norm_backward
+def test_native_group_norm_backward():
+    bench = GroupNormBackwardBenchmark(
+        op_name="native_group_norm_backward",
+        torch_op=torch.ops.aten.native_group_norm_backward,
+        gems_op=flag_gems.group_norm_backward,
+        input_fn=group_norm_backward_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

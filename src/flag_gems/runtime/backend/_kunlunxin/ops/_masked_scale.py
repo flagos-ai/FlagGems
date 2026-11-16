@@ -22,6 +22,20 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+config_small = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=False,
+    # Keep the historical single-CTA path for tiny tensors: launching 12 CTAs
+    # costs more than it saves below ~2K elements (1024 elements: 2.1 -> 4.7 us).
+    kunlunAutoGrid=True,
+    unroll_num=16,
+)
+
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -30,18 +44,24 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     buffer_size_limit=4096,
     isCloseVectorization=False,
-    kunlunAutoGrid=True,
+    # Always use the multi-CTA path above the tiny-tensor threshold.  With
+    # kunlunAutoGrid=True, pointwise_dynamic forces a single CTA for
+    # numel <= 131072, which leaves 11 of 12 CTA slots idle on this 8-SM
+    # device (measured 14.4 us for 65536 elements vs 3.6 us with 12 CTAs).
+    kunlunAutoGrid=False,
     unroll_num=16,
 )
+
+_SMALL_NUMEL = 2048
 
 
 @pointwise_dynamic(
     is_tensor=[True, True, False],
     promotion_methods=[(0, "DEFAULT")],
-    config=config_,
+    config=config_small,
 )
 @triton.jit
-def _masked_scale_kernel(input, mask, scale):
+def _masked_scale_kernel_small(input, mask, scale):
     # Use the cast form rather than ``tl.where(mask != 0, ...)``: the
     # comparison-derived select value with an unmasked store is a known
     # triton_xpu miscompile trigger (bernoulli family, fp32).  Casting the
@@ -51,8 +71,23 @@ def _masked_scale_kernel(input, mask, scale):
     return (mask != 0).to(tl.float32) * (input * scale)
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, False],
+    promotion_methods=[(0, "DEFAULT")],
+    config=config_,
+)
+@triton.jit
+def _masked_scale_kernel(input, mask, scale):
+    # Same body as _masked_scale_kernel_small; a separate function keeps the
+    # two CodeGenConfig variants on distinct codegen-cache keys.
+    return (mask != 0).to(tl.float32) * (input * scale)
+
+
 def _masked_scale(input, mask, scale):
     logger.debug("GEMS_KUNLUNXIN _MASKED_SCALE")
     if not input.is_floating_point():
         raise ValueError(f"Only floating-point dtype is supported, got {input.dtype}")
+    n = input.numel()
+    if n <= _SMALL_NUMEL:
+        return _masked_scale_kernel_small(input, mask, scale)
     return _masked_scale_kernel(input, mask, scale)

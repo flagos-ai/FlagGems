@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gc
+import inspect
 import math
 import os
 import time
@@ -26,9 +27,15 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.testing.reference import (
+    ReferenceContractError,
+    reference_execution,
+    select_candidate,
+)
 from flag_gems.utils import shape_utils
 
 from . import consts
+from .baseline import describe_call
 from .conftest import Config, emit_record_logger, update_case_list, update_result
 from .consts import (
     BenchmarkCaseList,
@@ -105,6 +112,20 @@ class Benchmark:
         **kwargs,
     ):
         self.op_name = op_name
+        if getattr(Config, "ref_as_candidate", False):
+            if not callable(torch_op):
+                raise ReferenceContractError(
+                    f"Operator '{op_name}': --ref-as-candidate requires an explicit "
+                    "callable torch_op reference"
+                )
+            if any(
+                getattr(type(self), name) is not getattr(Benchmark, name)
+                for name in ("run", "_measure_input", "get_latency", "_candidate_call")
+            ):
+                raise ReferenceContractError(
+                    f"Operator '{op_name}': custom benchmark execution does not "
+                    "support the --ref-as-candidate reference contract"
+                )
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
         if (
@@ -525,7 +546,7 @@ class Benchmark:
                         f"dtype={dtype} err=<<<{e}>>>"
                     )
                     pytest.fail(str(e))
-                metrics.append(self._measure_input(input))
+                metrics.append(self._measure_input(input, dtype=dtype))
             results.append(self._emit_result(dtype, metrics))
         return results
 
@@ -536,6 +557,11 @@ class Benchmark:
         select_all = case_ids is None
         selected = set(case_ids or [])
         Config.available_case_ids.update(available_ids)
+        state = reference_execution()
+        if state is not None and state.ref_as_candidate and not select_all:
+            state.benchmark_selection_empty = not any(
+                case.case_id in selected for case in cases
+            )
 
         results = []
         executed = []
@@ -554,7 +580,9 @@ class Benchmark:
                         f"case_id={case.case_id} err=<<<{e}>>>"
                     )
                     pytest.fail(str(e))
-                metrics.append(self._measure_input(input, case_id=case.case_id))
+                metrics.append(
+                    self._measure_input(input, case_id=case.case_id, dtype=dtype)
+                )
                 executed.append(case.case_id)
             if metrics:
                 results.append(self._emit_result(dtype, metrics))
@@ -563,6 +591,12 @@ class Benchmark:
 
     def _candidate_call(self):
         """Resolve the same callable and dispatch scope for candidate-only modes."""
+        if getattr(Config, "ref_as_candidate", False):
+            return (
+                select_candidate(None, self.torch_op, self.op_name),
+                nullcontext(),
+                False,
+            )
         override = (
             Config.override_registry.get_override(self.op_name)
             if Config.override_registry is not None
@@ -745,11 +779,47 @@ class Benchmark:
         Config.executed_case_ids.update(executed)
         return executed
 
-    def _measure_input(self, input, case_id=None):
+    def _capture_external_baseline(self, args, kwargs):
+        """Capture reference inputs before timing can mutate them."""
+        base_data = getattr(Config, "base_data", None)
+        if base_data is None:
+            return None
+        call = describe_call(args, kwargs)
+        named_call = None
+        try:
+            bound = inspect.signature(self.torch_op).bind(*args, **kwargs)
+            bound.apply_defaults()
+            named_call = describe_call((), bound.arguments)["kwargs"]
+        except (TypeError, ValueError):
+            pass
+        return base_data, call, named_call
+
+    def _apply_external_baseline(self, metric, dtype, context):
+        """Share comparison semantics with benchmark suites using custom timers."""
+        if context is None:
+            return
+        base_data, call, named_call = context
+        try:
+            chip = torch_device_fn.get_device_name()
+        except (AttributeError, RuntimeError, TypeError):
+            chip = ""
+        base_data.apply(
+            metric,
+            self.op_name,
+            dtype,
+            call,
+            named_call,
+            vendor_name,
+            chip,
+            target_device=self.device,
+        )
+
+    def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
         try:
             args, kwargs = self.unpack_to_args_kwargs(input)
             metric.shape_detail = self.record_shapes(*args, **kwargs)
+            baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
             if "latency" in self.to_bench_metrics:
@@ -757,8 +827,18 @@ class Benchmark:
                 registry = Config.override_registry
                 key = f"flag_gems.{self.op_name}"
                 before = registry.call_counts().get(key, 0) if overridden else 0
+                state = reference_execution()
+                reference_before = state.candidate_calls if state is not None else 0
                 with dispatch:
                     metric.latency = self.get_latency(op, *args, **kwargs)
+                if getattr(Config, "ref_as_candidate", False):
+                    metric.candidate_source = "reference"
+                    if state is not None:
+                        if state.candidate_calls <= reference_before:
+                            raise ReferenceContractError(
+                                "Reference candidate timer did not invoke its callable"
+                            )
+                        state.completed_timings += 1
                 if overridden:
                     if registry.call_counts().get(key, 0) <= before:
                         raise RuntimeError(
@@ -775,6 +855,8 @@ class Benchmark:
                     metric.speedup = (metric.latency_base + self.EPS) / (
                         metric.latency + self.EPS
                     )
+
+            self._apply_external_baseline(metric, dtype, baseline_context)
 
             if "gbps" in self.to_bench_metrics:
                 if Config.skip_native:
@@ -817,6 +899,13 @@ class Benchmark:
             return
 
         self.init_user_config()
+        if (
+            getattr(Config, "ref_as_candidate", False)
+            and "latency" not in self.to_bench_metrics
+        ):
+            raise ReferenceContractError(
+                "--ref-as-candidate requires the candidate latency metric"
+            )
         configured_case_ids = getattr(Config, "case_ids", None)
         selection_requested = case_ids is not None or configured_case_ids is not None
         selected_case_ids = case_ids if case_ids is not None else configured_case_ids
@@ -1429,6 +1518,20 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
         inp = generate_tensor_input(shape, case.dtype, self.device)
         out = torch.empty_like(inp)
         return inp, {"out": out}
+
+
+class BoolUnaryPointwiseOutBenchmark(UnaryPointwiseOutBenchmark):
+    """Unary pointwise op whose out argument must be bool.
+
+    Predicates like isneginf/signbit reject non-boolean out tensors, so the
+    output is allocated with torch.bool instead of the input dtype.
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty(inp.shape, dtype=torch.bool, device=self.device)
+            yield inp, {"out": out}
 
 
 class MarginRankingLossBenchmark(GenericBenchmark):

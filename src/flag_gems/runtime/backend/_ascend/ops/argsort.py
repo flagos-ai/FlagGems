@@ -327,7 +327,7 @@ def _argsort_short_narrow(inp, dim, descending):
             inp,
             out,
             n,
-            shape,
+            (1,) if len(shape) == 1 else shape,
             strides,
             axis_stride,
             out_strides,
@@ -542,6 +542,8 @@ def _argsort_normal_narrow(inp, dim, descending):
                     rows,
                     inner,
                     256,
+                    rows * block * 2 >= 2147483648,
+                    inner == 1 and block == n,
                     num_warps=warps,
                 )
             return out
@@ -647,22 +649,25 @@ def _ascend_fp32_merge_tiles(
     tl.store(indices_out + base + col, start + permutation, valid)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["N", "RUN", "STEPS", "LOG_RUN"])
 def _ascend_fp32_partition_batch(
     keys,
     cuts,
-    N: tl.constexpr,
-    RUN: tl.constexpr,
+    N,
+    RUN,
     TILE: tl.constexpr,
     BATCH: tl.constexpr,
-    STEPS: tl.constexpr,
+    STEPS,
+    LOG_RUN,
 ):
+    tl.static_assert(TILE == 1024)
     row = tl.program_id(1)
     tile = tl.program_id(0) * BATCH + tl.arange(0, BATCH)
-    tiles: tl.constexpr = triton.cdiv(N, TILE)
+    tiles = (N + TILE - 1) >> 10
     valid = tile < tiles
     start = tl.minimum(tile * TILE, N)
-    pair = start // (2 * RUN) * (2 * RUN)
+    shift = LOG_RUN + 1
+    pair = (start >> shift) << shift
     a_len = tl.minimum(RUN, N - pair)
     b_start = pair + RUN
     b_len = tl.maximum(0, tl.minimum(RUN, N - b_start))
@@ -685,18 +690,18 @@ def _ascend_fp32_partition_batch(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["N", "RUN", "LOG_RUN"])
 def _ascend_fp32_merge_pass(
     keys_in,
     indices_in,
     cached_cuts,
     keys_out,
     indices_out,
-    N: tl.constexpr,
-    RUN: tl.constexpr,
+    N,
+    RUN,
     BLOCK: tl.constexpr,
     LOG_BLOCK: tl.constexpr,
-    SEARCH_STEPS: tl.constexpr,
+    LOG_RUN,
     SHAPE: tl.constexpr,
     OUT_STRIDES: tl.constexpr,
     OUT_AXIS_STRIDE: tl.constexpr,
@@ -704,12 +709,12 @@ def _ascend_fp32_merge_pass(
     WARPS: tl.constexpr,
 ):
     tl.static_assert(BLOCK == 1024 and LOG_BLOCK == 10)
-    tl.static_assert(N <= 262144)
-    tiles: tl.constexpr = triton.cdiv(N, BLOCK)
+    tiles = (N + BLOCK - 1) // BLOCK
     task = tl.program_id(0)
     row = task // tiles
     start = (task - row * tiles) * BLOCK
-    pair_start = start // (2 * RUN) * (2 * RUN)
+    shift = LOG_RUN + 1
+    pair_start = (start >> shift) << shift
     a_len = tl.minimum(RUN, N - pair_start)
     b_start = pair_start + RUN
     b_len = tl.maximum(0, tl.minimum(RUN, N - b_start))
@@ -873,23 +878,25 @@ def _argsort_ascend_fp32_merge(inp, dim, descending):
                 block,
                 partition_batch,
                 (run + 1).bit_length(),
+                run.bit_length() - 1,
                 num_warps=warps,
             )
+            write_final = final and inner == 1
             _ascend_fp32_merge_pass[rows * tiles,](
                 keys,
                 indices,
                 cached_cuts,
                 next_keys,
-                out if final and inner == 1 else next_indices,
+                out if write_final else next_indices,
                 n,
                 run,
                 block,
                 log_block,
-                (run + 1).bit_length(),
-                shape,
-                out_strides,
-                out_axis_stride,
-                final and inner == 1,
+                run.bit_length() - 1,
+                shape if write_final else (),
+                out_strides if write_final else (),
+                out_axis_stride if write_final else 1,
+                write_final,
                 warps,
                 num_warps=warps,
             )
@@ -907,6 +914,8 @@ def _argsort_ascend_fp32_merge(inp, dim, descending):
                 rows,
                 inner,
                 256,
+                rows * n * 2 >= 2147483648,
+                inner == 1,
                 num_warps=4,
             )
     return out
@@ -1237,6 +1246,7 @@ def _argsort_paired_rows(
         x = tl.load(
             inp + base[:, None] + col[None, :].to(tl.int64) * AXIS_STRIDE, mask, other=0
         )
+    x = x.to(tl.float32)
     x = tl.where(x != x, float("nan"), x)
     sorted_values = al.sort(x, dim=-1, descending=DESC)
     tl.store(
@@ -1301,6 +1311,11 @@ def _argsort_paired(inp, dim, descending):
     shape = tuple(s for i, s in enumerate(inp.shape) if i != dim)
     strides = tuple(s for i, s in enumerate(inp.stride()) if i != dim)
     out_strides = tuple(s for i, s in enumerate(out.stride()) if i != dim)
+    if inp.ndim == 1:
+        # Keep row-dependent pointers for the compiler's masked M-row stores.
+        shape = (1,)
+        strides = (n * inp.stride(dim),)
+        out_strides = (n * out.stride(dim),)
     unpack = dim != inp.ndim - 1
     indices = (
         torch.empty((rows, block), dtype=torch.int64, device=inp.device)
@@ -1395,19 +1410,16 @@ def _argsort_integer_pack(
 
 @PairedSortJITFunction
 def _argsort_integer_pass(
-    words,
+    plane,
     previous,
     out,
-    N: tl.constexpr,
     B: tl.constexpr,
-    ROWS: tl.constexpr,
-    WORD: tl.constexpr,
     FIRST: tl.constexpr,
     DESC: tl.constexpr,
 ):
     row = tl.program_id(0).to(tl.int64)
     lane = tl.arange(0, B)
-    keys = tl.load(words + (WORD * ROWS + row) * B + lane)
+    keys = tl.load(plane + row * B + lane)
     if FIRST:
         permutation = lane
     else:
@@ -1423,24 +1435,33 @@ def _argsort_integer_pass(
     tl.store(out + row * B + lane, permutation)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["N", "B", "ROWS", "INNER"])
 def _argsort_integer_unpack(
     inp,
     out,
-    N: tl.constexpr,
-    B: tl.constexpr,
-    ROWS: tl.constexpr,
-    INNER: tl.constexpr,
+    N,
+    B,
+    ROWS,
+    INNER,
     T: tl.constexpr,
+    WIDE: tl.constexpr,
+    DENSE: tl.constexpr,
 ):
-    if ROWS * B * 2 >= 2147483648:
+    if WIDE:
+        N = N.to(tl.int64)
+        B = B.to(tl.int64)
+        ROWS = ROWS.to(tl.int64)
+        INNER = INNER.to(tl.int64)
         base = tl.program_id(0).to(tl.int64) * T
     else:
         base = tl.program_id(0) * T
     flat = base + tl.arange(0, T)
-    row = flat // (N * INNER) * INNER + flat % INNER
-    col = flat // INNER % N
-    index = tl.load(inp + row * B + col, flat < ROWS * N, other=0)
+    if DENSE:
+        index = tl.load(inp + flat, flat < ROWS * N, other=0)
+    else:
+        row = flat // (N * INNER) * INNER + flat % INNER
+        col = flat // INNER % N
+        index = tl.load(inp + row * B + col, flat < ROWS * N, other=0)
     values = tl.reshape(tl.join(index, tl.full((T,), 0, tl.int32)), (T * 2,))
     slot = base * 2 + tl.arange(0, T * 2)
     tl.store(out + slot, values, slot < ROWS * N * 2)
@@ -1507,13 +1528,10 @@ def _argsort_integer_paired(x, dim=-1, descending=False):
         )
         for word in range(words):
             _argsort_integer_pass[(rows,)](
-                scratch,
+                scratch[word],
                 p,
                 q,
-                n,
                 b,
-                rows,
-                word,
                 word == 0,
                 descending,
                 num_warps=1,
@@ -1531,6 +1549,8 @@ def _argsort_integer_paired(x, dim=-1, descending=False):
             rows,
             inner,
             256,
+            rows * b * 2 >= 2147483648,
+            inner == 1 and b == n,
             num_warps=4,
         )
     return out
@@ -1877,7 +1897,7 @@ def _argsort_short_output(x, dim=-1, descending=False):
                 x,
                 permutation,
                 n,
-                shape,
+                (1,) if x.dtype != torch.float32 and len(shape) == 1 else shape,
                 strides,
                 axis_stride,
                 output_strides,
@@ -1898,6 +1918,8 @@ def _argsort_short_output(x, dim=-1, descending=False):
             rows,
             inner,
             256,
+            rows * block * 2 >= 2147483648,
+            inner == 1 and block == n,
             num_warps=warps,
         )
     return out
@@ -1999,23 +2021,26 @@ def _argsort_int64_merge_tiles(
     tl.store(indices_out + base + col, start + permutation, valid)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["N", "RUN", "STEPS", "LOG_RUN"])
 def _argsort_int64_partition_batch(
     high,
     low_words,
     cuts,
-    N: tl.constexpr,
-    RUN: tl.constexpr,
+    N,
+    RUN,
     TILE: tl.constexpr,
     BATCH: tl.constexpr,
-    STEPS: tl.constexpr,
+    STEPS,
+    LOG_RUN,
 ):
+    tl.static_assert(TILE == 1024)
     row = tl.program_id(1)
     tile = tl.program_id(0) * BATCH + tl.arange(0, BATCH)
-    tiles: tl.constexpr = triton.cdiv(N, TILE)
+    tiles = (N + TILE - 1) >> 10
     valid = tile < tiles
     start = tl.minimum(tile * TILE, N)
-    pair = start // (2 * RUN) * (2 * RUN)
+    shift = LOG_RUN + 1
+    pair = (start >> shift) << shift
     a_len = tl.minimum(RUN, N - pair)
     b_start = pair + RUN
     b_len = tl.maximum(0, tl.minimum(RUN, N - b_start))
@@ -2041,7 +2066,7 @@ def _argsort_int64_partition_batch(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["N", "RUN", "LOG_RUN"])
 def _argsort_int64_merge_pass(
     high_in,
     low_in,
@@ -2050,19 +2075,20 @@ def _argsort_int64_merge_pass(
     high_out,
     low_out,
     indices_out,
-    N: tl.constexpr,
-    RUN: tl.constexpr,
+    N,
+    RUN,
     BLOCK: tl.constexpr,
     LOG_BLOCK: tl.constexpr,
     WARPS: tl.constexpr,
+    LOG_RUN,
 ):
     tl.static_assert(BLOCK == 1024 and LOG_BLOCK == 10)
-    tl.static_assert(N <= 262144)
-    tiles: tl.constexpr = triton.cdiv(N, BLOCK)
+    tiles = (N + BLOCK - 1) // BLOCK
     task = tl.program_id(0)
     row = task // tiles
     start = (task - row * tiles) * BLOCK
-    pair_start = start // (2 * RUN) * (2 * RUN)
+    shift = LOG_RUN + 1
+    pair_start = (start >> shift) << shift
     a_len = tl.minimum(RUN, N - pair_start)
     b_start = pair_start + RUN
     b_len = tl.maximum(0, tl.minimum(RUN, N - b_start))
@@ -2232,6 +2258,7 @@ def _argsort_int64_merge(inp, dim, descending):
                 block,
                 batch,
                 (run + 1).bit_length(),
+                run.bit_length() - 1,
                 num_warps=warps,
             )
             _argsort_int64_merge_pass[rows * tiles,](
@@ -2247,6 +2274,7 @@ def _argsort_int64_merge(inp, dim, descending):
                 block,
                 log_block,
                 warps,
+                run.bit_length() - 1,
                 num_warps=warps,
             )
             high, next_high = next_high, high
@@ -2263,6 +2291,8 @@ def _argsort_int64_merge(inp, dim, descending):
             rows,
             inner,
             256,
+            rows * n * 2 >= 2147483648,
+            inner == 1,
             num_warps=4,
         )
     return out
@@ -3318,6 +3348,10 @@ def _argsort_asc_runtime(inp, descending):
         return out
 
 
+# Bound logical row batches for the legacy Ascend launch ABI.
+_MAX_BATCH_PROGRAMS = 32768
+
+
 def argsort(inp, dim=-1, descending=False):
     logger.debug("GEMS_ASCEND ARGSORT")
     rank = inp.ndim
@@ -3326,6 +3360,28 @@ def argsort(inp, dim=-1, descending=False):
     n = inp.shape[dim] if rank else 1
     if inp.numel() == 0:
         return torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
+    # Account for per-row launches and the 256-element pack/unpack tiles.
+    # Partition entire rows, so every merge chain remains inside its launch.
+    programs_per_row = max(1, triton.cdiv(triton.next_power_of_2(n), 256))
+    max_rows = max(1, _MAX_BATCH_PROGRAMS // programs_per_row)
+    rows_count = inp.numel() // n
+    # Strided byte loads otherwise require one scalar program per element.
+    # Reuse the contiguous vector path even below the launch ABI limit.
+    strided_byte = (
+        inp.dtype in (torch.int8, torch.uint8)
+        and rank
+        and n > 1
+        and inp.stride(dim) != 1
+    )
+    if rows_count > max_rows or strided_byte:
+        axis = dim % rank
+        moved = inp.movedim(axis, -1)
+        rows = moved.contiguous().reshape(-1, n)
+        indices = torch.empty(rows.shape, dtype=torch.int64, device=inp.device)
+        for start in range(0, rows.shape[0], max_rows):
+            stop = min(start + max_rows, rows.shape[0])
+            indices[start:stop].copy_(argsort(rows[start:stop], -1, descending))
+        return indices.reshape(moved.shape).movedim(-1, axis)
     if n == 1:
         out = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
         with torch_device_fn.device(inp.device):
@@ -3335,12 +3391,25 @@ def argsort(inp, dim=-1, descending=False):
         return out
     if (
         rank > 0
-        and inp.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and inp.dtype
+        in (
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+            torch.int8,
+            torch.uint8,
+            torch.int16,
+        )
         and 4096 < n <= 65536
         and dim % rank == rank - 1
         and inp.is_contiguous()
     ):
-        result = _argsort_asc_runtime(inp, descending)
+        runtime_input = (
+            inp.to(torch.float32)
+            if inp.dtype in (torch.int8, torch.uint8, torch.int16)
+            else inp
+        )
+        result = _argsort_asc_runtime(runtime_input, descending)
         if result is not None:
             return result
     if (
@@ -3373,6 +3442,14 @@ def argsort(inp, dim=-1, descending=False):
         return _argsort_ascend_fp32_merge(inp, dim, descending)
     if inp.dtype == torch.int64 and 4096 < n <= 262144:
         return _argsort_int64_merge(inp, dim, descending)
+    if (
+        rank > 0
+        and inp.dtype == torch.float16
+        and n in (1024, 4096)
+        and dim % rank == rank - 1
+        and inp.is_contiguous()
+    ):
+        return _argsort_paired(inp, dim, descending)
     if inp.dtype == torch.float32:
         if rank > 0 and 256 < n <= 4096:
             return _argsort_paired(inp, dim, descending)

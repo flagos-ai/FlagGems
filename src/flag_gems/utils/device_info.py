@@ -108,3 +108,21 @@ def get_l2_cache_size() -> int:
 
 def get_sm_count() -> int:
     return get_device_info().sm_count
+
+
+@lru_cache(maxsize=1)
+def is_amd_radeon() -> bool:
+    """AMD Radeon (RDNA3 gfx11xx / RDNA4 gfx120x) GPU.
+
+    These have WMMA for 16-bit types but no fp32 matrix instruction, so an
+    "ieee" fp32 tl.dot is unrolled into scalar FMAs. CDNA (gfx9xx) and
+    GFX12.5 (gfx125x) are excluded, and so is every non-AMD vendor: other HIP
+    platforms such as Hygon also report torch.version.hip but are not Radeon.
+    """
+    from flag_gems import runtime
+
+    if runtime.device.vendor_name != "amd":
+        return False
+    props = get_device_properties()
+    arch = (getattr(props, "gcnArchName", "") or "").split(":")[0]
+    return arch.startswith("gfx11") or arch.startswith("gfx120")

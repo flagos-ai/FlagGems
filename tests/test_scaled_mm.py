@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
+import importlib.util
 import logging
+import sys
+from contextlib import redirect_stderr, redirect_stdout
 from functools import lru_cache
+from io import StringIO
 from itertools import product
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 import torch
@@ -59,14 +66,52 @@ def _device_key():
     return str(flag_gems.device), torch_device_fn.current_device()
 
 
-def _unsupported_reason(exc):
+def _unsupported_reason(exc, *, dtype=None, other_dtype=None, stage=None, scaling=None):
     text = str(exc)
     # Resource exhaustion and device faults are not evidence of dtype support.
     if any(
         s in text.lower()
-        for s in ("out of memory", "device-side assert", "illegal memory")
+        for s in (
+            "out of memory",
+            "device-side assert",
+            "illegal memory",
+            "no space left on device",
+            "unspecified launch failure",
+        )
     ):
         raise exc
+    # Match the unsupported FNUZ conversion, not arbitrary compiler failures.
+    if (
+        flag_gems.vendor_name == "ascend"
+        and stage in ("input_conversion", "output_conversion")
+        and str(dtype) in ("torch.float8_e4m3fnuz", "torch.float8_e5m2fnuz")
+        and type(exc).__name__ == "MLIRCompilationError"
+        and "'hivm.hir.vbrc' op failed to verify" in text
+        and "operand at idx 0 should have element type f8E4M3FN" in text
+        and "f8E5M2 type" in text
+    ):
+        return f"Ascend {stage} does not support {dtype}: {text[-1600:]}"
+    # MACA rejects these generated, aligned native FP8 inputs. Record an
+    # unavailable baseline, not a skipped Gems benchmark or a claim that the
+    # device cannot run FP8. Require both operand types and the native stage;
+    # the same error from a conversion, dot probe, or candidate must still fail.
+    native_dtypes = ("torch.float8_e4m3fn", "torch.float8_e5m2")
+    if (
+        flag_gems.vendor_name == "metax"
+        and stage == "native"
+        and isinstance(exc, RuntimeError)
+        and str(dtype) in native_dtypes
+        and str(other_dtype) in native_dtypes
+    ):
+        if (
+            scaling in ("scalar", "rowwise")
+            and "torch.float8_e4m3fn" in (str(dtype), str(other_dtype))
+            and "CUBLAS_STATUS_INVALID_VALUE when calling cublasLtMatmul" in text
+        ) or (
+            scaling == "rowwise"
+            and "Rowwise scaling is not currently supported on your device" in text
+        ):
+            return f"MetaX native FP8 {scaling} baseline unavailable: {text[-1600:]}"
     if not any(
         s in text.lower()
         for s in (
@@ -90,12 +135,14 @@ def _unsupported_reason(exc):
 @lru_cache(None)
 def _dtype_reason(dtype, device_key, output=False):
     device, index = device_key
+    stage = "allocation"
     try:
         with torch_device_fn.device(index):
             # CPU quantization avoids requiring an unrelated vendor cast operator.
             cpu = ((torch.arange(512).float() % 13 - 6) / 16).reshape(16, 32)
             a = cpu.to(dtype).to(device)
             y = torch.empty_like(cpu, device=device)
+            stage = "input_conversion"
             _convert_probe[(2,)](a, y, 511, 256)
             torch_device_fn.synchronize()
             torch.testing.assert_close(
@@ -105,6 +152,7 @@ def _dtype_reason(dtype, device_key, output=False):
                 atol=0,
             )
             if output:
+                stage = "output_conversion"
                 _convert_probe[(2,)](y, a, 511, 256)
                 torch_device_fn.synchronize()
                 torch.testing.assert_close(
@@ -116,6 +164,7 @@ def _dtype_reason(dtype, device_key, output=False):
             else:
                 b = cpu.t().contiguous().to(dtype).to(device)
                 c = torch.empty((16, 16), dtype=torch.float32, device=device)
+                stage = "dot"
                 _dot_probe[(1,)](a, b, c)
                 torch_device_fn.synchronize()
                 torch.testing.assert_close(
@@ -125,7 +174,7 @@ def _dtype_reason(dtype, device_key, output=False):
                     atol=1e-4,
                 )
     except Exception as exc:
-        reason = _unsupported_reason(exc)
+        reason = _unsupported_reason(exc, dtype=dtype, stage=stage)
         logger.info(
             "FP8 feature check failed: device=%s dtype=%s output=%s reason=%s",
             device_key,
@@ -208,16 +257,14 @@ SHAPES = (
 )
 
 
-def _params():
-    result = []
-    for case in cases():
-        reason = case_reason(case)
-        marks = [pytest.mark.skip(reason=f"FP8 capability: {reason}")] if reason else []
-        result.append(pytest.param(case, id=case_id(case), marks=marks))
-    return result
+# Collection only enumerates metadata; device probes run for selected cases.
+CASES = [pytest.param(case, id=case_id(case)) for case in cases()]
 
 
-CASES = _params()
+def require_case(case):
+    reason = case_reason(case)
+    if reason:
+        pytest.skip(f"FP8 capability: {reason}")
 
 
 def golden(args, kwargs):
@@ -231,6 +278,7 @@ def golden(args, kwargs):
 
 
 def _check(case, shape, layout, fast, use_out):
+    require_case(case)
     args, kwargs = make_inputs(case, shape, layout=layout, fast=fast)
     expected = golden(args, kwargs)
     if use_out:
@@ -267,6 +315,7 @@ def test_scaled_mm_out(case, shape):
 @pytest.mark.parametrize("case", CASES)
 @pytest.mark.parametrize("shape", [(0, 16, 32), (16, 0, 32), (16, 16, 0)])
 def test_scaled_mm_empty(case, shape):
+    require_case(case)
     args, kwargs = make_inputs(case, shape)
     actual = flag_gems.scaled_mm(*args, **kwargs)
     torch.testing.assert_close(
@@ -277,6 +326,7 @@ def test_scaled_mm_empty(case, shape):
 @pytest.mark.scaled_mm
 @pytest.mark.parametrize("case", CASES)
 def test_scaled_mm_schema(case):
+    require_case(case)
     args, kwargs = make_inputs(case, (16, 16, 32))
     with pytest.raises(RuntimeError, match="Float32"):
         flag_gems.scaled_mm(args[0], args[1], args[2].half(), args[3], **kwargs)
@@ -347,9 +397,331 @@ def test_scaled_mm_descriptor_dtype_switch():
         torch.testing.assert_close(
             actual.cpu().float(), expected.float(), rtol=0.02, atol=0.02
         )
+
         out = torch.empty_like(actual)
         actual = flag_gems.scaled_mm_out(*args, **kwargs, out=out)
         assert actual is out
         torch.testing.assert_close(
             actual.cpu().float(), expected.float(), rtol=0.02, atol=0.02
         )
+
+
+# Host-only regression checks: no capability probe may run during collection.
+pytest_plugins = ["pytester"]
+
+ROOT = Path(__file__).resolve().parents[1]
+
+ASCEND_ERROR = (
+    "'hivm.hir.vbrc' op failed to verify that operand at idx 0 should have "
+    "element type f8E4M3FN type or f8E5M2 type or 32-bit float"
+)
+
+METAX_ERROR = (
+    "CUDA error: CUBLAS_STATUS_INVALID_VALUE when calling cublasLtMatmul "
+    "with transpose_mat1 t transpose_mat2 n m 16 n 16 k 16"
+)
+
+
+def _load_modules(monkeypatch):
+    from dataclasses import asdict, dataclass
+    from typing import List, Optional, Tuple
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("device operation during collection")
+
+    def module(name, **attributes):
+        value = ModuleType(name)
+        value.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, value)
+        return value
+
+    module("benchmark", __path__=[str(ROOT / "benchmark")])
+    names = (
+        "float16",
+        "bfloat16",
+        "float32",
+        "float8_e4m3fn",
+        "float8_e5m2",
+        "float8_e4m3fnuz",
+        "float8_e5m2fnuz",
+    )
+    module("torch", **{name: f"torch.{name}" for name in names}, arange=unexpected)
+    language = module("triton.language", constexpr=object())
+    module("triton", language=language, jit=lambda fn: fn)
+    gems = module("flag_gems", device="cuda", vendor_name="metax")
+    module(
+        "flag_gems.runtime", torch_device_fn=SimpleNamespace(current_device=unexpected)
+    )
+    module("tests.conftest", QUICK_MODE=False)
+    base = module("benchmark.base", Benchmark=type("Benchmark", (), {}))
+    consts = module("benchmark.consts", DEFAULT_METRICS=[])
+    # Load the real report dataclasses/renderer without importing device config.
+    tree = ast.parse((ROOT / "benchmark/consts.py").read_text())
+    tree.body = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        and node.name in ("BenchmarkMetrics", "BenchmarkResult", "custom_json_encoder")
+    ]
+    consts.__dict__.update(
+        dataclass=dataclass,
+        asdict=asdict,
+        List=List,
+        Optional=Optional,
+        Tuple=Tuple,
+        torch=sys.modules["torch"],
+    )
+    exec(compile(tree, "benchmark/consts.py", "exec"), consts.__dict__)
+    config = SimpleNamespace(
+        query=False,
+        list_cases=False,
+        preflight_only=False,
+        profile_only=False,
+        skip_native=False,
+        native_baseline_skip_reason=None,
+        bench_level=SimpleNamespace(value="core"),
+        mode=SimpleNamespace(value="operator"),
+    )
+    conftest = module("benchmark.conftest", Config=config)
+    # Exercise the real baseline fixture, including its teardown ordering.
+    tree = ast.parse((ROOT / "benchmark/conftest.py").read_text())
+    tree.body = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        in ("configure_native_baseline", "_get_native_baseline_skip_reason")
+    ]
+    conftest.__dict__.update(pytest=pytest, vendor_name="metax")
+    exec(compile(tree, "benchmark/conftest.py", "exec"), conftest.__dict__)
+    conftest.results, conftest.records = [], []
+    tree = ast.parse((ROOT / "benchmark/base.py").read_text())
+    benchmark_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "Benchmark"
+    )
+    tree.body = [
+        node
+        for node in benchmark_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_emit_result"
+    ]
+    namespace = dict(
+        Config=config,
+        BenchmarkResult=consts.BenchmarkResult,
+        asdict=asdict,
+        update_result=lambda name, result: conftest.results.append(result),
+        emit_record_logger=conftest.records.append,
+    )
+    exec(compile(tree, "benchmark/base.py", "exec"), namespace)
+    base.Benchmark._emit_result = namespace["_emit_result"]
+
+    def load(name, path):
+        spec = importlib.util.spec_from_file_location(name, ROOT / path)
+        value = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, value)
+        spec.loader.exec_module(value)
+        return value
+
+    accuracy = load("tests.test_scaled_mm", "tests/test_scaled_mm.py")
+    benchmark = load("benchmark.test_scaled_mm", "benchmark/test_scaled_mm.py")
+    return SimpleNamespace(
+        accuracy=accuracy,
+        benchmark=benchmark,
+        config=config,
+        conftest=conftest,
+        gems=gems,
+    )
+
+
+@pytest.fixture
+def modules(monkeypatch):
+    return _load_modules(monkeypatch)
+
+
+def test_import_enumerates_all_cases_without_device_calls(modules):
+    accuracy, benchmark = modules.accuracy, modules.benchmark
+    assert len(accuracy.CASES) == 80
+    assert len(benchmark.CASES) == 80
+    assert {p.values[0] for p in accuracy.CASES} == set(accuracy.cases())
+    assert set(benchmark.CASES) == set(accuracy.cases())
+    assert len(benchmark.DTYPES) == 4
+    assert 2 * len(benchmark.CASES) * len(benchmark.CORE_SHAPES) == 480
+    assert all(p.id == accuracy.case_id(p.values[0]) for p in accuracy.CASES)
+
+
+@pytest.mark.parametrize("dtype", ["float8_e4m3fnuz", "float8_e5m2fnuz"])
+@pytest.mark.parametrize("stage", ["input_conversion", "output_conversion"])
+def test_ascend_known_fnuz_conversion_is_unsupported(modules, dtype, stage):
+    modules.gems.vendor_name = "ascend"
+    error = type("MLIRCompilationError", (RuntimeError,), {})(ASCEND_ERROR)
+    reason = modules.accuracy._unsupported_reason(
+        error, dtype=f"torch.{dtype}", stage=stage
+    )
+    assert dtype in reason and stage in reason
+
+
+@pytest.mark.parametrize(
+    "vendor,dtype,stage,error_type",
+    [
+        ("metax", "float8_e4m3fnuz", "input_conversion", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fn", "input_conversion", "MLIRCompilationError"),
+        ("ascend", "float8_e5m2", "input_conversion", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fnuz", "dot", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fnuz", "allocation", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fnuz", "input_conversion", "RuntimeError"),
+    ],
+)
+def test_unrelated_compiler_errors_are_not_skipped(
+    modules, vendor, dtype, stage, error_type
+):
+    modules.gems.vendor_name = vendor
+    error = type(error_type, (RuntimeError,), {})(ASCEND_ERROR)
+    with pytest.raises(RuntimeError) as caught:
+        modules.accuracy._unsupported_reason(error, dtype=f"torch.{dtype}", stage=stage)
+    assert caught.value is error
+
+
+def test_metax_known_native_rowwise_rejection(modules):
+    reason = modules.accuracy._unsupported_reason(
+        RuntimeError(METAX_ERROR),
+        dtype="torch.float8_e4m3fn",
+        other_dtype="torch.float8_e4m3fn",
+        stage="native",
+        scaling="rowwise",
+    )
+    assert "native FP8 rowwise" in reason
+
+
+@pytest.mark.parametrize(
+    "vendor,dtype,other_dtype,stage,scaling,message",
+    [
+        ("nvidia", "float8_e4m3fn", "float8_e4m3fn", "native", "rowwise", METAX_ERROR),
+        ("metax", "float32", "float8_e4m3fn", "native", "rowwise", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "float32", "native", "scalar", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "float8_e4m3fn", "dot", "scalar", METAX_ERROR),
+        ("metax", "float8_e5m2", "float8_e5m2", "native", "scalar", METAX_ERROR),
+        ("metax", "float8_e4m3fn", None, "native", "scalar", METAX_ERROR),
+        (
+            "metax",
+            "float8_e4m3fn",
+            "float8_e4m3fn",
+            "native",
+            "rowwise",
+            "CUBLAS_STATUS_INVALID_VALUE",
+        ),
+        (
+            "metax",
+            "float8_e4m3fn",
+            "float8_e4m3fn",
+            "native",
+            "scalar",
+            "Rowwise scaling is not currently supported on your device",
+        ),
+    ],
+)
+def test_other_native_errors_are_not_skipped(
+    modules, vendor, dtype, other_dtype, stage, scaling, message
+):
+    modules.gems.vendor_name = vendor
+    error = RuntimeError(message)
+    with pytest.raises(RuntimeError) as caught:
+        modules.accuracy._unsupported_reason(
+            error,
+            dtype=f"torch.{dtype}",
+            other_dtype=f"torch.{other_dtype}" if other_dtype else None,
+            stage=stage,
+            scaling=scaling,
+        )
+    assert caught.value is error
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "out of memory",
+        "device-side assert",
+        "illegal memory access",
+        "No space left on device",
+        "unspecified launch failure",
+        "unknown compiler regression",
+    ],
+)
+def test_resource_and_unknown_errors_propagate(modules, message):
+    # A device fault must take precedence even when the diagnostic also
+    # contains the native rejection that would otherwise allow baseline skip.
+    diagnostic = message
+    if message != "unknown compiler regression":
+        diagnostic += "\n" + METAX_ERROR
+    with pytest.raises(RuntimeError, match=message):
+        modules.accuracy._unsupported_reason(
+            RuntimeError(diagnostic),
+            dtype="torch.float8_e4m3fn",
+            other_dtype="torch.float8_e4m3fn",
+            stage="native",
+            scaling="scalar",
+        )
+
+
+def _pytest_environment(pytester, monkeypatch):
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    pytester.makeconftest(f"""
+import ast
+import pytest
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+import sys
+import importlib.util
+source = Path({str(Path(__file__))!r}).read_text()
+tree = ast.parse(source)
+def helper_node(node):
+    if isinstance(node, ast.FunctionDef):
+        return node.name == "_load_modules"
+    return isinstance(node, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id in ("ROOT", "ASCEND_ERROR", "METAX_ERROR")
+        for t in node.targets
+    )
+tree.body = [node for node in tree.body if helper_node(node)]
+namespace = dict(globals(), __file__={str(Path(__file__))!r})
+exec(compile(tree, "regression_helpers", "exec"), namespace)
+helpers = SimpleNamespace(**namespace)
+patch = pytest.MonkeyPatch()
+modules = helpers._load_modules(patch)
+configure_native_baseline = modules.conftest.configure_native_baseline
+
+def pytest_unconfigure(config):
+    patch.undo()
+""")
+    pytester.makeini("""[pytest]
+markers =
+    scaled_mm
+    scaled_mm_out
+    unrelated
+    skip_native(vendors, reason)
+""")
+
+
+def test_unselected_tests_do_not_probe(pytester, monkeypatch):
+    _pytest_environment(pytester, monkeypatch)
+    pytester.makepyfile("""
+import pytest
+from conftest import modules
+# Import and collect the real tests, with all device calls prohibited.
+for module in (modules.accuracy, modules.benchmark):
+    globals().update({k: v for k, v in vars(module).items() if k.startswith("test_scaled_mm")})
+@pytest.mark.unrelated
+def test_unrelated():
+    pass
+""")
+    # Pytester echoes child output even under -s; show it only on a failed check.
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        result = pytester.runpytest_subprocess("-q", "-m", "unrelated")
+    diagnostics = result.stdout.str() + result.stderr.str()
+    assert result.ret == pytest.ExitCode.OK, diagnostics
+    assert result.parseoutcomes() == {"passed": 1, "deselected": 1770}, diagnostics
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        collected = pytester.runpytest_subprocess("--collect-only", "-qq")
+    assert collected.ret == pytest.ExitCode.OK, (
+        collected.stdout.str() + collected.stderr.str()
+    )
+    assert "test_unselected_tests_do_not_probe.py: 1771" in collected.stdout.str()

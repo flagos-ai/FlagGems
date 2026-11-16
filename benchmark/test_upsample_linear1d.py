@@ -78,7 +78,14 @@ class UpsampleLinear1dBackwardBenchmark(base.Benchmark):
                 for align_corners in [False, True]:
                     n, c, w_in = shape_3d
                     w_out = max(1, int(w_in * scale_factor))
-                    if n * c * max(w_in, w_out) >= 2**30:
+                    # Kunlunxin: the native reference for this op runs the
+                    # vendor atomic path; a 2**29-element case takes long
+                    # enough to trip the device watchdog
+                    # (cudaErrorLaunchTimeout / status 702, verified on
+                    # XPU 4), which aborts the whole benchmark run before
+                    # any result is recorded. Keep the matrix below that.
+                    limit = 2**28 if flag_gems.vendor_name == "kunlunxin" else 2**30
+                    if n * c * max(w_in, w_out) >= limit:
                         continue
 
                     grad = torch.randn(

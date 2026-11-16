@@ -130,9 +130,6 @@ def test_conv2d(
 
 @pytest.mark.conv2d_padding
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2802: operator doesn't work")
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin", reason="Issue #2803: operator doesn't work"
-)
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)

@@ -695,7 +695,7 @@ def _nll2d_fwd_plain_finalize_kernel(
     tl.store(total_wgt_ptr, total_w.to(total_wgt_ptr.dtype.element_ty))
 
 
-def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
+def _nll_loss_forward_raw(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_KUNLUNXIN NLL_LOSS_FWD")
     assert self.ndim <= 2, "Invalid input ndim"
 
@@ -785,6 +785,49 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     return output, total_weight
 
 
+class _NllLossForwardFunction(torch.autograd.Function):
+    """Autograd wrapper for the raw forward.
+
+    ``nll_loss_forward`` is registered on the Autograd dispatch key in
+    ``_FULL_CONFIG``; a plain raw kernel there would silently drop the graph
+    (``F.nll_loss`` would return a tensor without ``grad_fn``), so mirror the
+    generic implementation and expose the Triton forward through
+    ``torch.autograd.Function``.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, target, weight, reduction, ignore_index):
+        output, total_weight = _nll_loss_forward_raw(
+            inp, target, weight, reduction, ignore_index
+        )
+        ctx.save_for_backward(inp, target, total_weight)
+        ctx.weight = weight
+        ctx.reduction = reduction
+        ctx.ignore_index = ignore_index
+        return output, total_weight
+
+    @staticmethod
+    def backward(ctx, grad_output, grad_total_weight):
+        inp, target, total_weight = ctx.saved_tensors
+        grad_input = nll_loss_backward(
+            grad_output,
+            inp,
+            target,
+            weight=ctx.weight,
+            reduction=ctx.reduction,
+            ignore_index=ctx.ignore_index,
+            total_weight=total_weight,
+        )
+        return grad_input, None, None, None, None
+
+
+def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_FWD")
+    if self.numel() == 0:
+        return _nll_loss_forward_raw(self, target, weight, reduction, ignore_index)
+    return _NllLossForwardFunction.apply(self, target, weight, reduction, ignore_index)
+
+
 def nll_loss_backward(
     grad_output,
     self,
@@ -827,7 +870,7 @@ def nll_loss_backward(
     return grad_input
 
 
-def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
+def _nll_loss2d_forward_raw(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_KUNLUNXIN NLL_LOSS2D_FWD")
     assert self.ndim >= 3, "Invalid input ndim"
 
@@ -985,6 +1028,44 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
     return output, total_weight
 
 
+class _NllLoss2dForwardFunction(torch.autograd.Function):
+    """Autograd wrapper for the raw 3d+ forward (see ``_NllLossForwardFunction``)."""
+
+    @staticmethod
+    def forward(ctx, inp, target, weight, reduction, ignore_index):
+        output, total_weight = _nll_loss2d_forward_raw(
+            inp, target, weight, reduction, ignore_index
+        )
+        ctx.save_for_backward(inp, target, total_weight)
+        ctx.weight = weight
+        ctx.reduction = reduction
+        ctx.ignore_index = ignore_index
+        return output, total_weight
+
+    @staticmethod
+    def backward(ctx, grad_output, grad_total_weight):
+        inp, target, total_weight = ctx.saved_tensors
+        grad_input = nll_loss2d_backward(
+            grad_output,
+            inp,
+            target,
+            weight=ctx.weight,
+            reduction=ctx.reduction,
+            ignore_index=ctx.ignore_index,
+            total_weight=total_weight,
+        )
+        return grad_input, None, None, None, None
+
+
+def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS2D_FWD")
+    if self.numel() == 0:
+        return _nll_loss2d_forward_raw(self, target, weight, reduction, ignore_index)
+    return _NllLoss2dForwardFunction.apply(
+        self, target, weight, reduction, ignore_index
+    )
+
+
 def nll_loss2d_backward(
     grad_output,
     self,
@@ -1104,7 +1185,7 @@ def nll_loss_nd_backward(
 class _NllLoss2dAutograd(torch.autograd.Function):
     @staticmethod
     def forward(ctx, self, target, weight, reduction, ignore_index):
-        output, total_weight = nll_loss2d_forward(
+        output, total_weight = _nll_loss2d_forward_raw(
             self, target, weight, reduction, ignore_index
         )
         ctx.reduction = reduction

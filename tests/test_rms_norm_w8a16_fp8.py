@@ -57,7 +57,7 @@ def _quantize_fp8_weight(weight, group_size=GROUP_SIZE):
     return weight_fp8, scale.squeeze(-1).to(weight.dtype).contiguous()
 
 
-@pytest.mark.rms_norm_w8a16_fp8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("capture", [False, True], ids=["eager", "graph"])
 @pytest.mark.skipif(
@@ -115,7 +115,7 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
         utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.rms_norm_w8a16_fp8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
     "m,n,group_size",
@@ -200,7 +200,7 @@ def _run_rms_norm_w8a16_test(shape, quantize_weight, op):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.rms_norm_w8a16_fp8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("shape", W8A16_SHAPES)
 @pytest.mark.skipif(
     not _cuda_fp8_e4m3fn_available(),
@@ -210,7 +210,7 @@ def test_rms_norm_w8a16_fp8(shape):
     _run_rms_norm_w8a16_test(shape, _quantize_fp8_weight, flag_gems.rms_norm_w8a16_fp8)
 
 
-@pytest.mark.rms_norm_w8a16_fp8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize(
     "shape,normalized_shape,group_size,strided",

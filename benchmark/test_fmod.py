@@ -32,6 +32,7 @@ def _scalar_input_fn(shape, dtype, device):
     yield inp1, 0.5
 
 
+@pytest.mark.fmod
 @pytest.mark.fmod_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -46,6 +47,7 @@ def test_fmod_tensor():
     bench.run()
 
 
+@pytest.mark.fmod
 @pytest.mark.fmod_scalar
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

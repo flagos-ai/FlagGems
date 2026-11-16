@@ -27,6 +27,7 @@ from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.shape_utils import broadcasted_stride
 
 logger = logging.getLogger(__name__)
 
@@ -927,10 +928,18 @@ def scaled_dot_product_attention_forward(
         HAS_ATTN_MASK = True
         if attn_mask.dtype == torch.bool:
             attn_mask = attn_mask.to(query.dtype) * -1.0e6
-        stride_attn_mask_batch = attn_mask.stride(0)
-        stride_attn_mask_head = attn_mask.stride(1)
-        stride_attn_mask_q_seqlen = attn_mask.stride(2)
-        stride_attn_mask_kv_seqlen = attn_mask.stride(3)
+        # The kernel indexes the full [B, H_q, S_q, S_k] attention matrix.
+        # Singleton and omitted mask dimensions must therefore have zero stride.
+        (
+            stride_attn_mask_batch,
+            stride_attn_mask_head,
+            stride_attn_mask_q_seqlen,
+            stride_attn_mask_kv_seqlen,
+        ) = broadcasted_stride(
+            attn_mask.shape,
+            attn_mask.stride(),
+            (query.shape[0], q_head_num, query.shape[2], key.shape[2]),
+        )
     else:
         HAS_ATTN_MASK = False
         stride_attn_mask_batch = 1

@@ -40,6 +40,5 @@ def test_arcsinh_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp)
     torch.arcsinh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.arcsinh(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.arcsinh_out(inp, out=res_out)

@@ -33,7 +33,10 @@ def safe_poly_log_f32(x):
     p = p * t + 2.8330324636e-01
     p = p * t - 4.8915625549e-01
     p = p * t + 9.9901031459e-01
-    p = p * t + 2.2125781657e-05
+    # No constant term: the fit used to carry +2.2125781657e-05, so p(0) != 0 and
+    # ln(1) was off by that offset (which also made y slightly negative for u
+    # just below 1). See Issue #7040.
+    p = p * t
     return p + exponent.to(tl.float32) * 0.6931471805599453
 
 
@@ -53,20 +56,26 @@ def safe_poly_log7_f32(x):
     p = p * t + 3.2697268479e-01
     p = p * t - 4.9920646516e-01
     p = p * t + 9.9995747546e-01
-    p = p * t + 5.6260525100e-07
+    # Drop the trailing constant term for the same reason as safe_poly_log_f32
+    # (p(0) == 0, no negative y for u just below 1). See Issue #7040.
+    p = p * t
     return p + exponent.to(tl.float32) * 0.6931471805599453
 
 
 @triton.jit
 def transform_exponential_f32_poly5(u, inv_lambd, eps_minus):
-    is_min = u >= 1.0 - 1e-4
+    # Guard only the u == 1 endpoint, like the precise variant: the old
+    # `u >= 1.0 - 1e-4` band pinned ~1e-4 of the samples to y == 0.5 * eps
+    # (an atom in the left tail). See Issue #7040.
+    is_min = u >= 1.0 + eps_minus
     log = tl.where(is_min, eps_minus, safe_poly_log_f32(u))
     return -inv_lambd * log
 
 
 @triton.jit
 def transform_exponential_f32_poly7(u, inv_lambd, eps_minus):
-    is_min = u >= 1.0 - 1e-4
+    # Narrow guard, same as transform_exponential_f32_poly5 (Issue #7040).
+    is_min = u >= 1.0 + eps_minus
     log = tl.where(is_min, eps_minus, safe_poly_log7_f32(u))
     return -inv_lambd * log
 

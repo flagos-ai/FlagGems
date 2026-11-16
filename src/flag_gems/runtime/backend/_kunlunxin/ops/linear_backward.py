@@ -37,27 +37,22 @@ def linear_backward(input, grad_output, weight, output_mask):
 
     grad_input = None
     if output_mask[0]:
-        if input.dtype == torch.float16:
-            grad_input = mm(
-                grad_output_flat.to(torch.float32), weight.to(torch.float32)
-            ).to(input.dtype)
-        else:
-            grad_input = mm(grad_output_flat, weight)
+        # The backend mm kernel always accumulates in fp32 (dot_out_dtype=
+        # tl.float32), so fp16/bf16 inputs need no host-side upcast: running the
+        # GEMM in the native 16-bit matrix engine is both faster and as accurate
+        # as the previous fp32 upcast (which doubled memory traffic and forced
+        # the slow fp32 engine).
+        grad_input = mm(grad_output_flat, weight)
         grad_input = grad_input.reshape(*batch_dims, in_features)
 
     grad_weight = None
     if output_mask[1]:
         grad_output_transposed = grad_output_flat.t().contiguous()
-        if weight.dtype == torch.float16:
-            grad_weight = mm(
-                grad_output_transposed.to(torch.float32), input_flat.to(torch.float32)
-            ).to(weight.dtype)
-        else:
-            grad_weight = mm(grad_output_transposed, input_flat)
+        grad_weight = mm(grad_output_transposed, input_flat)
 
     grad_bias = None
     if output_mask[2]:
-        if weight.dtype == torch.float16:
+        if weight.dtype in (torch.float16, torch.bfloat16):
             grad_bias = sum_dim(grad_output_flat.to(torch.float32), dim=(0,)).to(
                 weight.dtype
             )

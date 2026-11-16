@@ -6,7 +6,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # view_copy is a pure contiguous copy (reshape + materialize). The generic
 # KernelGen kernel (src/flag_gems/ops/view_copy.py) launches a raw

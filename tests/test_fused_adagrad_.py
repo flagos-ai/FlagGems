@@ -50,6 +50,18 @@ TOLS = {
 ADAGRAD_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.float64]
 
 
+@pytest.fixture(autouse=True)
+def _skip_unsupported_fp64(request):
+    """Skip float64 cases on backends that do not support FP64.
+
+    Some XPU backends (e.g. Kunlunxin) silently materialise a float64 request as
+    float32, so no tensor can ever satisfy the float64 dtype assertion here.
+    """
+    dtype = getattr(getattr(request.node, "callspec", None), "params", {}).get("dtype")
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("backend does not support float64")
+
+
 def _native_reference(params, grads, state_sums, steps, **kwargs):
     """Run the native ``torch._fused_adagrad_`` on clones and return the results.
 
@@ -476,7 +488,13 @@ def test_fused_adagrad__later_entry_bad_dtype_or_device(bad_kind, match):
     [
         ("dtype_int32", "must contain float32 scalar tensors"),
         ("dtype_int64", "must contain float32 scalar tensors"),
-        ("dtype_fp64", "must contain float32 scalar tensors"),
+        pytest.param(
+            "dtype_fp64",
+            "must contain float32 scalar tensors",
+            marks=pytest.mark.skipif(
+                not utils.fp64_is_supported, reason="backend does not support float64"
+            ),
+        ),
         ("numel_2", "must contain 1-element tensors"),
         ("numel_0", "must contain 1-element tensors"),
         ("device_cpu", "different from other tensors"),

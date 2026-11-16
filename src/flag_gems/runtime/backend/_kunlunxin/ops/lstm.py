@@ -16,10 +16,8 @@
 # optionally bidirectional).
 #
 # The generic implementation (``flag_gems/ops/lstm.py``) folds the input and
-# the recurrent gate projections into one per-step kernel that lowers through
-# ``tl.dot``; the XPU backend aborts that module before code generation.  This
-# overlay splits the work into two single-loop kernels that the XPU pipeline
-# accepts:
+# the recurrent gate projections into one per-step kernel.  This overlay splits
+# the work into two single-loop kernels:
 #
 #   * ``_lstm_input_proj_kernel``  -- ``x @ W_ih^T + b_ih + b_hh`` for every
 #     timestep at once, into an fp32 scratch buffer;

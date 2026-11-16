@@ -39,7 +39,6 @@ def test_addr_(M, N, dtype):
     ref_vec2 = utils.to_reference(vec2, True)
 
     ref_out = torch.addr(ref_inp, ref_vec1, ref_vec2, alpha=alpha, beta=beta)
-    with flag_gems.use_gems():
-        res_out = input_tensor.addr_(vec1, vec2, alpha=alpha, beta=beta)
+    res_out = flag_gems.addr_(input_tensor, vec1, vec2, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

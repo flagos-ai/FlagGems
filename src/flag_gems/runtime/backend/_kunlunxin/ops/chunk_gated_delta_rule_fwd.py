@@ -5,6 +5,25 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Kunlunxin backend implementation of ``chunk_gated_delta_rule_fwd``.
+
+Evaluates the gated delta-rule recurrence directly, one token at a time::
+
+    S_t = exp(g_t) * S_{t-1} + beta_t * k_t^T (v_t - k_t @ S_{t-1})
+    o_t = q_t @ S_t * scale
+
+Returns ``(g, o, A, final_state, w, h, v_new)``.  ``A``, ``w``, ``h`` and
+``v_new`` are not produced by a recurrence formulation and are returned as
+``None``.
+"""
+
 import logging
 
 import torch
@@ -13,9 +32,12 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
+# The recurrence is evaluated in fp32.
+_OUTPUT_DTYPE = torch.float32
+
 
 @triton.jit
-def _chunk_gated_delta_rule_fwd_kernel(
+def _cgdr_fwd_recurrent_kernel(
     q,
     k,
     v,
@@ -26,7 +48,7 @@ def _chunk_gated_delta_rule_fwd_kernel(
     ht,
     cu_seqlens,
     scale,
-    T,  # sequence length (runtime), used only when cu_seqlens is None
+    T,  # sequence length (runtime); used only when cu_seqlens is None
     stride_q_t,
     stride_q_h,
     stride_q_k,
@@ -53,9 +75,14 @@ def _chunk_gated_delta_rule_fwd_kernel(
     H0_STRIDE_HV: tl.constexpr,
     HT_STRIDE_S: tl.constexpr,
     HT_STRIDE_HV: tl.constexpr,
-    USE_CU: tl.constexpr,  # cu_seqlens is not None
-    STORE_FINAL: tl.constexpr,  # output_final_state
+    USE_CU: tl.constexpr,
+    STORE_FINAL: tl.constexpr,
 ):
+    """One program per (sequence, v-head, v-column).
+
+    ``h`` holds column ``i_v`` of the state matrix S, i.e. ``S[:, i_v]``, a
+    ``(BK,)`` fp32 vector, and is advanced token by token.
+    """
     i_seq, i_hv, i_v = tl.program_id(0), tl.program_id(1), tl.program_id(2)
     if USE_CU:
         t0 = tl.load(cu_seqlens + i_seq * stride_cu).to(tl.int64)
@@ -78,9 +105,7 @@ def _chunk_gated_delta_rule_fwd_kernel(
     p_h = h0 + (i_seq * H0_STRIDE_S + i_hv * H0_STRIDE_HV).to(tl.int64) + offs * V + i_v
     h = tl.load(p_h).to(tl.float32)
 
-    # S_t = exp(g_t) * S_{t-1} + beta_t * k_t^T (v_t - k_t @ S_{t-1})
-    # o_t = q_t @ S_t * scale
-    for it in range(0, t1 - t0):
+    for _ in range(0, t1 - t0):
         bq = tl.load(p_q).to(tl.float32)
         bk = tl.load(p_k).to(tl.float32)
         bv = tl.load(p_v).to(tl.float32)
@@ -88,7 +113,8 @@ def _chunk_gated_delta_rule_fwd_kernel(
         bb = tl.load(p_beta).to(tl.float32)
 
         h = h * tl.exp(bg)
-        acc = tl.sum(h * bk)  # (v_t - k_t @ S) component
+        # v_t - k_t @ S_{t-1}  (column i_v)
+        acc = tl.sum(h * bk)
         bv = (bv - acc) * bb
         h = h + bk * bv
         bo = tl.sum(h * bq) * scale
@@ -102,43 +128,30 @@ def _chunk_gated_delta_rule_fwd_kernel(
         p_o += stride_o_t
 
     if STORE_FINAL:
-        # scalar stores only (vector stores are unreliable on this backend)
-        for kk in tl.static_range(0, BK):
-            h_kk = tl.sum(tl.where(offs == kk, h, 0.0))
-            p_ht = (
-                ht
-                + (i_seq * HT_STRIDE_S + i_hv * HT_STRIDE_HV).to(tl.int64)
-                + kk * V
-                + i_v
-            )
-            tl.store(p_ht, h_kk.to(ht.dtype.element_ty))
-
-
-def _chunk_size_for_sequence(T: int, is_varlen: bool) -> int:
-    # mirrors flag_gems.fused.FLA.chunk._chunk_size_for_sequence
-    if is_varlen:
-        return 64
-    return min(64, max(16, 1 << (T - 1).bit_length()))
+        p_ht = (
+            ht
+            + (i_seq * HT_STRIDE_S + i_hv * HT_STRIDE_HV).to(tl.int64)
+            + offs * V
+            + i_v
+        )
+        tl.store(p_ht, h.to(ht.dtype.element_ty))
 
 
 @triton.jit
-def _chunk_cumsum_kernel(
+def _cgdr_chunk_cumsum_kernel(
     g,
     g_out,
-    T,  # sequence length (non-varlen)
+    T,
     cu_seqlens,
     stride_cu,
     chunk: tl.constexpr,
     H: tl.constexpr,
     USE_CU: tl.constexpr,
 ):
-    """Within-chunk cumsum of g along the sequence dim (reset every chunk).
+    """Within-chunk cumulative decay of ``g`` along the sequence dimension.
 
-    Mirrors the generic chunk-local cumsum.  Program (i_chunk, i_bh):
-    g_out[bos + i_chunk*chunk + i, h] = sum_{j<=i} g[bos + i_chunk*chunk + j, h].
-
-    Uses scalar loads/stores with a runtime-bound loop (the proven pattern of
-    the main kernel; small-vector loads/stores miscompile on this backend).
+    ``g_out[bos + c*chunk + i, h] = sum_{j <= i} g[bos + c*chunk + j, h]``.
+    Sequential by construction; ``chunk`` is at most 64.
     """
     i_chunk, i_bh = tl.program_id(0), tl.program_id(1)
     i_h = i_bh % H
@@ -156,12 +169,18 @@ def _chunk_cumsum_kernel(
     p = g + t0 * H + i_h
     p_o = g_out + t0 * H + i_h
     acc = tl.zeros([], dtype=tl.float32)
-    for i in range(0, n):
-        b_g = tl.load(p).to(tl.float32)
-        acc += b_g
+    for _ in range(0, n):
+        acc += tl.load(p).to(tl.float32)
         tl.store(p_o, acc.to(g_out.dtype.element_ty))
         p += H
         p_o += H
+
+
+def _chunk_size_for_sequence(T: int, is_varlen: bool) -> int:
+    # mirrors flag_gems.fused.FLA.chunk._chunk_size_for_sequence
+    if is_varlen:
+        return 64
+    return min(64, max(16, 1 << (T - 1).bit_length()))
 
 
 def _chunk_cumsum(g: torch.Tensor, chunk_size: int, cu_seqlens) -> torch.Tensor:
@@ -173,7 +192,7 @@ def _chunk_cumsum(g: torch.Tensor, chunk_size: int, cu_seqlens) -> torch.Tensor:
         N = len(cu_seqlens) - 1
         nchunks = triton.cdiv(int(cu_seqlens[-1] - cu_seqlens[0]), chunk_size)
     g_out = torch.empty_like(g)
-    _chunk_cumsum_kernel[(nchunks, N * H)](
+    _cgdr_chunk_cumsum_kernel[(nchunks, N * H)](
         g=g,
         g_out=g_out,
         T=T,
@@ -199,17 +218,11 @@ def chunk_gated_delta_rule_fwd(
 ):
     logger.debug("GEMS_KUNLUNXIN CHUNK_GATED_DELTA_RULE_FWD")
 
-    # contiguity (mirror the generic wrapper)
-    if not q.is_contiguous():
-        q = q.contiguous()
-    if not k.is_contiguous():
-        k = k.contiguous()
-    if not v.is_contiguous():
-        v = v.contiguous()
-    if not g.is_contiguous():
-        g = g.contiguous()
-    if not beta.is_contiguous():
-        beta = beta.contiguous()
+    for t in (q, k, v, g, beta):
+        if not t.is_contiguous():
+            raise ValueError(
+                "chunk_gated_delta_rule_fwd (kunlunxin) requires contiguous inputs"
+            )
     if initial_state is not None and not initial_state.is_contiguous():
         initial_state = initial_state.contiguous()
     if cu_seqlens is not None and not cu_seqlens.is_contiguous():
@@ -246,15 +259,14 @@ def chunk_gated_delta_rule_fwd(
     if h0 is None:
         h0 = torch.zeros(N, HV, K, V, device=q.device, dtype=torch.float32)
 
-    o = torch.empty(B, T, HV, V, device=q.device, dtype=v.dtype)
+    o = torch.empty(B, T, HV, V, device=q.device, dtype=_OUTPUT_DTYPE)
     if output_final_state:
         final_state = torch.empty(N, HV, K, V, device=q.device, dtype=torch.float32)
     else:
         final_state = None
 
     BK = triton.next_power_of_2(K)
-    grid = (N, HV, V)
-    _chunk_gated_delta_rule_fwd_kernel[grid](
+    _cgdr_fwd_recurrent_kernel[(N, HV, V)](
         q=q,
         k=k,
         v=v,
@@ -299,5 +311,5 @@ def chunk_gated_delta_rule_fwd(
     )
 
     g_out = _chunk_cumsum(g, chunk_size, cu_seqlens)
-    A = torch.zeros(B, T, HV, chunk_size, device=q.device, dtype=torch.float32)
-    return g_out, o, A, final_state, None, None, None
+    # A / w / h / v_new are not produced by a recurrence formulation.
+    return g_out, o, None, final_state, None, None, None

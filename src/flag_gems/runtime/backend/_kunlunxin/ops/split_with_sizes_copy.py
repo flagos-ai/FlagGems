@@ -7,7 +7,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.utils import libentry
+
+from .expand_copy import _launch_bcast
+
+_MAX_GATHER_NDIM = 6
 
 
 @libentry()
@@ -52,13 +57,39 @@ def _product(values):
     return result
 
 
+def _materialize_contiguous(tensor):
+    """Return a contiguous tensor with the same values.
+
+    Uses gems' own Triton kernels for the strided read (``_launch_bcast`` is a
+    plain gather/identity store; ``_gems_copy_`` is the generic Triton copy)
+    instead of ``aten``'s ``.contiguous()``/``copy_``/``_copy_from`` so the
+    override never routes data movement through a torch kernel.
+    """
+    if tensor.is_contiguous():
+        return tensor
+    buffer = torch.empty(tuple(tensor.shape), dtype=tensor.dtype, device=tensor.device)
+    if tensor.numel() == 0:
+        return buffer
+    if tensor.dim() <= _MAX_GATHER_NDIM:
+        _launch_bcast(
+            tuple(tensor.shape),
+            tuple(tensor.stride()),
+            tensor,
+            buffer,
+            buffer.numel(),
+        )
+    else:
+        _gems_copy_(buffer, tensor)
+    return buffer
+
+
 def split_with_sizes_copy(input, split_sizes, dim=0):
     dim = _normalize_dim(input, dim)
     split_sizes = _normalize_split_sizes(split_sizes)
     assert all(size >= 0 for size in split_sizes), "Invalid split_sizes"
     assert sum(split_sizes) == input.shape[dim], "Invalid split_sizes"
 
-    source = input if input.is_contiguous() else input.contiguous()
+    source = _materialize_contiguous(input)
     dim_size = input.shape[dim]
     dim_prod_pre = _product(input.shape[:dim])
     dim_prod_post = _product(input.shape[dim + 1 :])
@@ -66,21 +97,21 @@ def split_with_sizes_copy(input, split_sizes, dim=0):
     if dim == 0:
         # dim==0 fast path: for a contiguous input every split output is a
         # contiguous chunk of the input storage, so the whole operation is one
-        # flat allocation + one native device copy + free slice views.
+        # flat allocation + one gems Triton flat copy + free slice views.
         #
         # - torch.empty_strided instead of torch.empty: inside a gems context
         #   torch.empty dispatches to the gems `empty` override (extra zeroing
         #   kernel + per-call recompile in this environment); empty_strided is
         #   a pure native allocation.
-        # - torch.ops.aten._copy_from is never overridden by gems, so it
-        #   reaches the vendor's optimized copy engine directly (same key as
-        #   unbind/slice_backward/resize).
+        # - the copy goes through the generic gems `copy_` (its flat
+        #   block-DMA Triton kernel for contiguous same-dtype buffers), never
+        #   through aten's `_copy_from`/`copy_`/`.contiguous()`.
         numel = source.numel()
         output_storage = torch.empty_strided(
             (numel,), (1,), dtype=input.dtype, device=input.device
         )
         if numel > 0:
-            torch.ops.aten._copy_from(source, output_storage, False)
+            _gems_copy_(output_storage, source.reshape(-1))
 
         outputs = []
         split_start = 0
