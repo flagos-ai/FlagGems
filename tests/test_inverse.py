@@ -104,6 +104,7 @@ def test_inverse_batch(shape, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
+    assert res_out.device == A.device
     ref_out = _inverse_reference(ref_A).to(dtype)
 
     assert res_out.shape == A.shape
@@ -120,6 +121,7 @@ def test_inverse_requires_pivoting(matrix, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
+    assert res_out.device == A.device
     ref_out = _inverse_reference(ref_A).to(dtype)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -157,6 +159,7 @@ def test_inverse_noncontiguous(dtype):
     ref_A = utils.to_reference(A_t, upcast=True)
 
     res_out = flag_gems.inverse(A_t)
+    assert res_out.device == A_t.device
     ref_out = _inverse_reference(ref_A).to(dtype)
 
     assert res_out.shape == A_t.shape
