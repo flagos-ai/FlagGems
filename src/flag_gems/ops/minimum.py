@@ -295,5 +295,3 @@ def minimum(X, Y):
     if torch.is_grad_enabled() and (X.requires_grad or Y.requires_grad):
         return _Minimum.apply(X, Y)
     return minimum_kernel(X, Y)
-
-
