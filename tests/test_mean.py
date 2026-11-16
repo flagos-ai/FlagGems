@@ -320,16 +320,16 @@ def test_mean_backward_use_gems(shape, dim, dtype):
     inp.requires_grad_(True)
     ref_inp = utils.to_reference(inp, True)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.mean(inp) if dim is None else flag_gems.mean_dim(inp, dim, False)
+    res_out = (
+        flag_gems.mean(inp) if dim is None else flag_gems.mean_dim(inp, dim, False)
+    )
     ref_out = torch.mean(ref_inp) if dim is None else torch.mean(ref_inp, dim, False)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn(res_out.shape, dtype=dtype, device=flag_gems.device)
     ref_grad = utils.to_reference(out_grad, True)
     ref_grad_inp = torch.autograd.grad(ref_out, ref_inp, ref_grad)[0]
-    with flag_gems.use_gems():
-        res_grad_inp = torch.autograd.grad(res_out, inp, out_grad)[0]
+    res_grad_inp = torch.autograd.grad(res_out, inp, out_grad)[0]
 
     assert res_grad_inp.shape == ref_grad_inp.shape
     assert res_grad_inp.dtype == dtype
@@ -354,8 +354,7 @@ def test_mean_backward_cpu_keeps_native_path(dim):
     # The backward is wired to this backend's device autograd key only, so CPU
     # tensors must keep torch's native mean autograd even inside use_gems().
     inp = torch.randn(8, 8, requires_grad=True)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp) if dim is None else torch.mean(inp, dim)
+    res_out = torch.mean(inp) if dim is None else torch.mean(inp, dim)
     assert type(res_out.grad_fn).__name__ in {"MeanBackward0", "MeanBackward1"}
     out_grad = torch.randn(res_out.shape)
     assert torch.autograd.grad(res_out, inp, out_grad)[0].shape == inp.shape
