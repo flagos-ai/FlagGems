@@ -178,32 +178,36 @@ def test_logaddexp_backward_special_values(dtype):
 
 @pytest.mark.logaddexp_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_logaddexp_backward_use_gems(dtype):
-    """The public ``torch.logaddexp`` entry keeps ATen's autograd node.
+def test_logaddexp_backward_entry_contract(dtype):
+    """Only differentiable inputs build the wrapper node.
 
-    ``use_gems`` only replaces the device kernel, so gradients still flow
-    through ATen's generated ``LogaddexpBackward0`` formula. This case pins
-    that contract: the grads must match the native backward in the same dtype.
+    The forward stays a plain pointwise kernel when no input can receive a
+    gradient, so inference must not pay for an autograd.Function; when one
+    input does require grad, the wrapper must own the backward. Both branches
+    must produce the same values as the native forward.
     """
-    x = torch.randn((256, 128), dtype=dtype, device=flag_gems.device)
-    y = torch.randn((256, 128), dtype=dtype, device=flag_gems.device)
-    grad_output = torch.randn((256, 128), dtype=dtype, device=flag_gems.device)
+    x = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)
+    y = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)
 
-    native_x = x.clone().requires_grad_()
-    native_y = y.clone().requires_grad_()
-    native_out = torch.logaddexp(native_x, native_y)
-    native_grad_x, native_grad_y = torch.autograd.grad(
-        native_out, (native_x, native_y), grad_output
-    )
+    ref_out = torch.logaddexp(utils.to_reference(x), utils.to_reference(y))
 
-    gems_x = x.clone().requires_grad_()
-    gems_y = y.clone().requires_grad_()
-    with flag_gems.use_gems():
-        out = torch.logaddexp(gems_x, gems_y)
-    grad_x, grad_y = torch.autograd.grad(out, (gems_x, gems_y), grad_output)
+    out = flag_gems.logaddexp(x, y)
+    assert out.requires_grad is False
+    assert out.grad_fn is None
+    utils.gems_assert_close(out, ref_out, dtype)
 
-    utils.gems_assert_close(grad_x, utils.to_reference(native_grad_x), dtype)
-    utils.gems_assert_close(grad_y, utils.to_reference(native_grad_y), dtype)
+    grad_x = x.clone().requires_grad_()
+    graph_out = flag_gems.logaddexp(grad_x, y)
+    assert graph_out.requires_grad is True
+    assert graph_out.grad_fn is not None
+    utils.gems_assert_close(graph_out, ref_out, dtype)
+    (dx,) = torch.autograd.grad(graph_out, (grad_x,), torch.ones_like(graph_out))
+    assert dx.shape == x.shape and dx.dtype == dtype
+
+    with torch.no_grad():
+        no_grad_out = flag_gems.logaddexp(grad_x, y)
+    assert no_grad_out.requires_grad is False
+    assert no_grad_out.grad_fn is None
 
 
 @pytest.mark.logaddexp_backward
