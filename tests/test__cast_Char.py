@@ -298,6 +298,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Char(dtype, shape, value_range):
+    torch.manual_seed(0)
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _reference(inp)
 
