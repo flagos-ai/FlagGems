@@ -79,6 +79,15 @@ _BOUNDARY_ROWS = tu.selected_cases(
 _CASES = _MATRIX_ROWS + _BOUNDARY_ROWS
 
 
+def _assert_result_close(actual, expected, **kwargs):
+    if flag_gems.vendor_name == "musa" and actual.is_complex():
+        assert actual.dtype == expected.dtype and actual.shape == expected.shape
+        assert actual.device.type == "musa"
+        assert expected.device == (torch.device("cpu") if utils.TO_CPU else actual.device)
+        actual, expected = actual.cpu(), expected.cpu()
+    tu.assert_result_close(actual, expected, **kwargs)
+
+
 def _make_matrix(dtype, shape, value_range, family):
     """Square matrix of ``shape`` for one construction family.
 
@@ -141,7 +150,7 @@ def test_linalg_inv_matches_reference(dtype, case):
     # The shared assertion transfers to the CPU, so the output device contract
     # is checked here against the input.
     assert res_out.device == inp.device
-    tu.assert_result_close(res_out, ref_out, atol=0)
+    _assert_result_close(res_out, ref_out, atol=0)
 
 
 _OUT_CASES = tu.selected_cases(
@@ -197,7 +206,7 @@ def test_linalg_inv_out_overload(dtype, case):
     assert res_out is out
     assert tuple(out.stride()) == stride_before
     assert out.storage_offset() == offset_before
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
 
 _BACKWARD_SHAPES = tu.selected_cases([(5, 5), (2, 5, 5), (2, 3, 5, 5)], quick=[])
@@ -213,11 +222,11 @@ def test_linalg_inv_backward(dtype, shape):
 
     ref_out = torch.ops.aten.linalg_inv(ref_inp)
     res_out = flag_gems.linalg_inv(inp)
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, tu.to_reference(upstream))
     (res_grad,) = torch.autograd.grad(res_out, inp, upstream)
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_result_close(res_grad, ref_grad)
 
 
 # Non-finite inputs: whether the native kernel rejects the input or returns an
@@ -304,7 +313,7 @@ def test_linalg_inv_nonfinite_input(dtype, scenario, placement):
     ref_out = torch.ops.aten.linalg_inv(ref_inp)
     res_out = flag_gems.linalg_inv(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
 
 # The rejection list is statically vendor / dtype gated, so it is used verbatim
