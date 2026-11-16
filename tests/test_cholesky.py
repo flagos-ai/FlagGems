@@ -499,17 +499,31 @@ def test_cholesky_backward(dtype, upper):
     upstream = tu.make_input(dtype, (4, 8, 8), ["-1", "1"])
     ref_upstream = tu.to_reference(upstream)
 
-    ref_inp = tu.to_reference(inp).detach().requires_grad_(True)
+    ref_inp = tu.to_reference(inp)
+    cpu_complex = flag_gems.vendor_name == "mthreads" and dtype.is_complex
+    if cpu_complex:
+        # Native MUSA complex backward differs from the Hermitian gradient
+        # checked by the CPU decomposition.
+        ref_inp, ref_upstream = _observe(ref_inp), _observe(ref_upstream)
+    ref_inp = ref_inp.detach().requires_grad_(True)
     res_inp = inp.detach().requires_grad_(True)
 
     ref_out = _reference_cholesky(ref_inp, upper)
     res_out = flag_gems.cholesky(res_inp, upper)
-    _assert_close(res_out, ref_out)
+    if cpu_complex:
+        assert res_out.device == res_inp.device
+        tu.assert_result_close(_observe(res_out), ref_out)
+    else:
+        _assert_close(res_out, ref_out)
 
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_outputs=upstream)
 
-    _assert_close(res_grad, ref_grad)
+    if cpu_complex:
+        assert res_grad.device == res_inp.device
+        tu.assert_result_close(_observe(res_grad), ref_grad)
+    else:
+        _assert_close(res_grad, ref_grad)
 
 
 TRIANGLE_CASES = tu.selected_cases(
