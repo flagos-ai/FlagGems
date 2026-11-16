@@ -70,6 +70,14 @@ def test_binary_cross_entropy(shape, dtype, reduction, weighted):
     ref_inp = utils.to_reference(inp, True)
     ref_target = utils.to_reference(target, True)
     ref_weight = utils.to_reference(weight, True) if weight is not None else None
+    musa_empty_mean = (
+        flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean"
+    )
+    if musa_empty_mean:
+        # MUSA returns zero for an empty mean instead of NaN.
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
+        if ref_weight is not None:
+            ref_weight = ref_weight.cpu()
     reference = torch.nn.functional.binary_cross_entropy(
         ref_inp, ref_target, weight=ref_weight, reduction=reduction
     )
@@ -78,6 +86,9 @@ def test_binary_cross_entropy(shape, dtype, reduction, weighted):
         inp, target, weight=weight, reduction=reduction
     )
 
+    if musa_empty_mean:
+        assert result.device == inp.device
+        result = result.cpu()
     _assert_loss(result, reference, dtype, reduction, inp.numel())
     assert inp.device == inp_before.device
     assert inp.dtype == inp_before.dtype and inp.shape == inp_before.shape
