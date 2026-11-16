@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -69,4 +71,5 @@ def test_lu_unpack_backward():
         dtypes=[torch.float32, torch.float64],
         is_backward=True,
     )
+    bench.set_gems(flag_gems.lu_unpack)
     bench.run()

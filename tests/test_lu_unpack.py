@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.lu_unpack import lu_unpack_backward
 
 from . import accuracy_utils as utils
 
@@ -200,7 +201,7 @@ LU_BACKWARD_GRADS = ["both", "L", "U"]
 def _gems_lu_unpack_autograd(LU_data, LU_pivots, **kwargs):
     """The real differentiable entry: `torch.lu_unpack` under Gems dispatch."""
     with flag_gems.use_gems():
-        return torch.lu_unpack(LU_data, LU_pivots, **kwargs)
+        return flag_gems.lu_unpack(LU_data, LU_pivots, **kwargs)
 
 
 def _reference_lu_unpack_backward(grad_L, grad_U, m, n):
@@ -319,7 +320,7 @@ def test_lu_unpack_backward_entry(shape, dtype, grads):
     ref_grad_L = utils.to_reference(grad_L, True) if grad_L is not None else None
     ref_grad_U = utils.to_reference(grad_U, True) if grad_U is not None else None
 
-    res_grad = flag_gems.lu_unpack_backward(grad_L, grad_U, m, n)
+    res_grad = lu_unpack_backward(grad_L, grad_U, m, n)
     ref_grad = _reference_lu_unpack_backward(ref_grad_L, ref_grad_U, m, n)
 
     assert res_grad.shape == (m, n)
@@ -424,7 +425,7 @@ def test_lu_unpack_backward_dispatch(dtype):
 
     LU = LU.clone().requires_grad_(True)
     with flag_gems.use_gems():
-        P, L, U = torch.lu_unpack(LU, pivots)
+        P, L, U = flag_gems.lu_unpack(LU, pivots)
         grad_L = ref_grad_L.to(dtype=dtype, device=flag_gems.device)
         grad_U = ref_grad_U.to(dtype=dtype, device=flag_gems.device)
         (res_grad,) = torch.autograd.grad((L, U), (LU,), (grad_L, grad_U))

@@ -228,6 +228,8 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
     records a graph whose backward is the fused
     :func:`lu_unpack_backward` kernel; only ``L`` and ``U`` are differentiable.
     """
+    if torch.is_grad_enabled() and LU_data.requires_grad:
+        return LuUnpackFunction.apply(LU_data, LU_pivots, unpack_data, unpack_pivots)
     # Get shapes
     lu_shape = LU_data.shape
     pivots_shape = LU_pivots.shape
@@ -442,7 +444,6 @@ def lu_unpack_out(
     return (P, L, U)
 
 
-lu_unpack._flag_gems_extra_dispatch = (("Autograd", _lu_unpack_autograd),)
 
 
 @libentry()
