@@ -228,14 +228,12 @@ linalg_matrix_norm_out:
     - [8, 4, 32, 32]
   shape_desc: "(*B), M, N"
 
-log10: &log10_shapes
+log10:
   shapes:
     - [4096, 4096]
     - [64, 512, 512]
     - [1024, 65536]
   shape_desc: "(B), M, N"
-
-log10_backward: *log10_shapes
 
 log10_:
   shapes:
