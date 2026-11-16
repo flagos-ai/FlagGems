@@ -38,6 +38,17 @@ def _positive_definite(shape, dtype):
     return matrix @ matrix.transpose(-2, -1) + eye
 
 
+def _reference_logdet(inp):
+    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+        # The MUSA PyTorch CPU build has no LAPACK. slogdet preserves tiny
+        # determinants and distinguishes negative from singular matrices.
+        import numpy as np
+
+        sign, logabsdet = np.linalg.slogdet(inp.numpy())
+        return torch.from_numpy(np.asarray(np.where(sign < 0, np.nan, logabsdet)))
+    return torch.logdet(inp)
+
+
 def _assert_logdet_close(result, reference, dtype, n):
     utils.gems_assert_close(result, reference, dtype, reduce_dim=n)
 
@@ -48,7 +59,7 @@ def _assert_logdet_close(result, reference, dtype, n):
 def test_logdet_positive_definite(shape, dtype):
     inp = _positive_definite(shape, dtype)
     ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
+    reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
 
@@ -61,7 +72,7 @@ def test_logdet_positive_definite(shape, dtype):
 def test_logdet_batch(shape, dtype):
     inp = _positive_definite(shape, dtype)
     ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
+    reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
 
@@ -79,7 +90,7 @@ def test_logdet_fp64_large_batch_4x4():
     )
     inp *= scales[:, None, None]
     ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
+    reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
 
@@ -92,7 +103,7 @@ def test_logdet_fp64_large_batch_4x4_nonfinite():
     diagonal = torch.ones((4096, 4), dtype=torch.float64, device=flag_gems.device)
     diagonal[:, 0] = float("inf")
     inp = torch.diag_embed(diagonal)
-    reference = torch.logdet(utils.to_reference(inp))
+    reference = _reference_logdet(utils.to_reference(inp))
 
     result = flag_gems.logdet(inp)
 
@@ -113,7 +124,7 @@ def test_logdet_fp64_large_batch_4x4_stable_lu(case):
         inp[2, 2] += 1e-7
         inp[3, 3] += 1e-7
     inp = inp.repeat(4096, 1, 1)
-    reference = torch.logdet(utils.to_reference(inp))
+    reference = _reference_logdet(utils.to_reference(inp))
     result = flag_gems.logdet(inp)
     utils.gems_assert_close(result, reference, torch.float64, equal_nan=True)
 
@@ -125,7 +136,7 @@ def test_logdet_fp64_large_batch_4x4_pathological():
     inp[:1366, 3, 3] = 1e-200
     inp[1366:2731, 0, 0] = -1.0
     inp[2731:, 3, :] = 0.0
-    reference = torch.logdet(utils.to_reference(inp))
+    reference = _reference_logdet(utils.to_reference(inp))
 
     result = flag_gems.logdet(inp)
 
@@ -144,7 +155,7 @@ def test_logdet_negative_and_singular(dtype):
     singular[..., 0, :] = 0
     inp = torch.cat((negative, singular), dim=0)
     ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
+    reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
 
@@ -158,7 +169,7 @@ def test_logdet_tiny_nonzero_pivots(dtype):
     diagonal = torch.tensor([tiny, 2.0, 3.0], dtype=dtype, device=flag_gems.device)
     inp = torch.diag(diagonal)
     ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
+    reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
 
@@ -173,7 +184,7 @@ def test_logdet_noncontiguous_and_exported_api(dtype):
     inp = base.transpose(-2, -1)
     assert not inp.is_contiguous()
     ref_inp = utils.to_reference(inp)
-    reference = torch.logdet(ref_inp)
+    reference = _reference_logdet(ref_inp)
 
     result = flag_gems.logdet(inp)
 
@@ -186,7 +197,7 @@ def test_logdet_empty(dtype):
     for shape in ((0, 0), (3, 0, 0), (0, 4, 4)):
         inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
         ref_inp = utils.to_reference(inp)
-        reference = torch.logdet(ref_inp)
+        reference = _reference_logdet(ref_inp)
 
         result = flag_gems.logdet(inp)
 
