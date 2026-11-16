@@ -262,6 +262,7 @@ from .alpha_dropout_ import alpha_dropout_  # noqa: F401
 from .amax import amax
 from .amin import amin, amin_
 from .aminmax import aminmax
+from .aminmax_reduce_all import _aminmax
 from .and_scalar import and_scalar
 from .and_tensor import and_tensor
 from .angle import angle
@@ -1044,6 +1045,7 @@ __all__ = [
     "_adaptive_avg_pool3d_backward",
     "_addmm_activation",
     "_addmm_activation_out",
+    "_aminmax",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
