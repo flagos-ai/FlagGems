@@ -48,10 +48,12 @@ from .fused_rms_norm_backward import _fused_rms_norm_backward
 from .gcd_ import gcd, gcd_
 from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .gru import gru
 from .igamma import igamma
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -149,11 +151,13 @@ __all__ = [
     "gcd_",
     "greater_",
     "grid_sampler_3d_backward",
+    "grouped_gemm_w8a8",
     "gru",
     "igamma",
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "layer_norm",
     "lcm",
     "lcm_",
     "linalg_cholesky",
@@ -178,6 +182,7 @@ __all__ = [
     "mul_",
     "mv",
     "mvlgamma",
+    "native_layer_norm",
     "nll_loss_backward",
     "nonzero_numpy",
     "nuclear_norm",

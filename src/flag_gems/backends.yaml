@@ -352,8 +352,8 @@ backends:
 
   tsingmicro-tsm260610:
     python: "3.10"
-    triton: triton==3.3.0+gitfe2a28fa
-    flagtree: flagtree==0.5.0.post20260612+git705a4064
+    triton: triton==3.6.0.post2026072919+git8f5b0609
+    flagtree: flagtree==0.7.0+tsingmicro3.6
     env:
       KUIPER_PATH: /usr/local/kuiper
       TX8_DEPS_ROOT: /usr/local/tx8_deps
@@ -366,8 +366,10 @@ backends:
       TORCH_COMPILE_DISABLE: "1"
 
     deps:
-      - torch==2.7.0+cpu
-      - torchvision==0.22.0+cpu
-      - torchaudio==2.7.0+cpu
-      - torch_txda==0.1.0+20260615.37ba6bbd
-      - txops==0.1.0+20260508.60287151
+      - flagcx==0.14.0+tsm260610
+      - numpy==1.26.4
+      - torch==2.11.0+cpu
+      - torchvision==0.26.0+cpu
+      - torchaudio==2.11.0+cpu
+      - torch_txda==0.1.0+20260728.f6fbdb71
+      - txops==0.1.0+20260716.e94d9509

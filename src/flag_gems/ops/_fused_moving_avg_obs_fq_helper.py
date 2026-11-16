@@ -100,12 +100,14 @@ def _fused_kernel(
         qmxv = qmxf + zf
         mn = tl.minimum(rmin, zf)
         mx = tl.maximum(rmax, zf)
-        # asymmetric branch (plain '/' is IEEE div.rn; libdevice.div_rn is
-        # miscompiled on this backend)
-        sc_a = (mx - mn) / (qmxv - qmnv)
+        # asymmetric branch. The divisions must be IEEE round-to-nearest:
+        # zero_point can land exactly on a .5 tie (running_min/max = -0.5/0.5
+        # with qmin/qmax = 0/255 gives 127.5), and plain '/' lowers to the
+        # approximate div.full.f32 on NVIDIA.
+        sc_a = tl.math.div_rn(mx - mn, qmxv - qmnv)
         deg = sc_a == 0.0
         sc_a = tl.where(deg, 0.1 + zf, sc_a)
-        z_a = _rint(qmnv - (mn / sc_a))
+        z_a = _rint(qmnv - tl.math.div_rn(mn, sc_a))
         z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
         z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
         sc_v = sc_a
@@ -236,10 +238,12 @@ def _finalize_pt(
         qmxv = qmxf + zf
         mn = tl.minimum(rmin, zf)
         mx = tl.maximum(rmax, zf)
-        sc_a = (mx - mn) / (qmxv - qmnv)
+        # IEEE round-to-nearest division (see _fused_kernel: zero_point can
+        # hit an exact .5 tie that plain '/' rounds the wrong way on NVIDIA).
+        sc_a = tl.math.div_rn(mx - mn, qmxv - qmnv)
         deg = sc_a == 0.0
         sc_a = tl.where(deg, 0.1 + zf, sc_a)
-        z_a = _rint(qmnv - (mn / sc_a))
+        z_a = _rint(qmnv - tl.math.div_rn(mn, sc_a))
         z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
         z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
         sc_v = sc_a

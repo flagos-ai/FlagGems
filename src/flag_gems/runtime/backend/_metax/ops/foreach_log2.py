@@ -395,7 +395,7 @@ def _one(x):
             NDIM=nd,
             SAME=same,
             CPLX=True,
-            BLOCK=_BLOCK
+            BLOCK=_BLOCK,
         )
     else:
         _log2_gen_kernel[grid](
@@ -410,7 +410,7 @@ def _one(x):
             NDIM=nd,
             SAME=same,
             CPLX=False,
-            BLOCK=_BLOCK
+            BLOCK=_BLOCK,
         )
     return y
 

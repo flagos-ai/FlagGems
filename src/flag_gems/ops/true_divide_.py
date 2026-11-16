@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.div import true_divide_ as _div_true_divide_
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
@@ -228,11 +229,7 @@ def _launcher(kern, grid, num_warps, consts, tag=()):
         return kern[(grid_x,)](*args, *consts, num_warps=num_warps)
 
     def launch(*args):
-        # The cached runner below is a GCU-specific optimization. Use the
-        # portable Triton launcher on other backends (including NVIDIA).
-        if args[0].device.type != "gcu":
-            return jit_launch(*args)
-        dev = torch.gcu.current_device()
+        dev = torch_device_fn.current_device()
         st = _LAUNCH_STATE.get(key)
         if st is not None and st[0] == dev:
             st[1](*args, *consts)

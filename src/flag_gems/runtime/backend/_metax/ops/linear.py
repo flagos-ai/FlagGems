@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import contextlib
+import copy
 import logging
+from functools import lru_cache
 
 import torch
 import triton
@@ -144,6 +146,49 @@ def linear_kernel(
     tl.store(output_ptrs, output, mask=output_mask)
 
 
+@lru_cache(maxsize=1)
+def _small_fp32_entry():
+    """Use an independent tuner without modifying the default candidate list."""
+    configs = copy.deepcopy(
+        runtime.get_tuned_config("linear")
+        + runtime.get_tuned_config("linear_small_fp32")
+    )
+    return libentry()(
+        libtuner(
+            configs=configs,
+            key=["M", "N", "K"],
+            strategy=["align32", "align32", "align32"],
+            warmup=5,
+            rep=10,
+        )(linear_kernel.jit_function)
+    )
+
+
+def _use_small_fp32_entry(input, weight, bias, rows):
+    # This is a measured shape/dtype region, not a model-name selection.
+    return (
+        0 < rows <= 1024
+        and input.device.type == "cuda"
+        and input.device == weight.device
+        and input.dtype == weight.dtype == torch.float32
+        and (
+            bias is None or (bias.device == input.device and bias.dtype == input.dtype)
+        )
+        and input.is_contiguous()
+        and weight.is_contiguous()
+        and tuple(weight.shape)
+        in {(3072, 1024), (1024, 1024), (4096, 1024), (1024, 4096)}
+        and not (
+            torch.is_grad_enabled()
+            and (
+                input.requires_grad
+                or weight.requires_grad
+                or (bias is not None and bias.requires_grad)
+            )
+        )
+    )
+
+
 def linear(input, weight, bias=None):
     """
     Applies a linear transformation to the incoming data: y = xA^T + b
@@ -172,11 +217,22 @@ def linear(input, weight, bias=None):
     for dim in batch_dims:
         M *= dim
     K = input.shape[-1]  # in_features
+    if weight.shape[1] != K:
+        raise RuntimeError(f"weight {tuple(weight.shape)} is not an (N, {K}) matrix")
     N = weight.shape[0]  # out_features
 
     # Flatten input: (*, K) -> (M, K)
     input_flat = input.view(M, K)
 
+    entry = (
+        _small_fp32_entry()
+        if not single_1d and _use_small_fp32_entry(input, weight, bias, M)
+        else linear_kernel
+    )
+    # Accept ordinary Parameter subclasses through the same public ATen API.
+    # Keep the original Parameter and its loader metadata on the owning layer.
+    if isinstance(weight, torch.nn.Parameter):
+        weight = weight.as_subclass(torch.Tensor)
     # Ensure weight is contiguous and properly shaped
     weight = weight.contiguous()
 
@@ -190,7 +246,7 @@ def linear(input, weight, bias=None):
     )
 
     with torch_device_fn.device(input.device), _disable_aabs_for_small_dims(M, N, K):
-        linear_kernel[grid](
+        entry[grid](
             input_flat,
             weight,
             bias if bias is not None else weight,  # Pass dummy ptr if no bias

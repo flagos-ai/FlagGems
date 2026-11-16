@@ -327,7 +327,7 @@ def _direct(ent, stream, gx, gy, gz, vals):
             None,
             _knobs.runtime.launch_enter_hook,
             _knobs.runtime.launch_exit_hook,
-            *vals
+            *vals,
         )
         return True
     except Exception:

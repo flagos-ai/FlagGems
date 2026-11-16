@@ -32,9 +32,10 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice as _ld
+
 from flag_gems.ops.arctanh import arctanh_out as default_arctanh_out
 from flag_gems.runtime import torch_device_fn
-from triton.language.extra import libdevice as _ld
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'

@@ -528,7 +528,7 @@ def _launch_fused(ts, os):
         K=k,
         BUCKET=_bucket(max(ns)),
         DT_KEY=_dt_key(ts[0].dtype),
-        IS_F64=is_f64
+        IS_F64=is_f64,
     )
 
 

@@ -42,6 +42,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.ops.cummax import cummaxmin_backward as default_cummaxmin_backward
 from flag_gems.runtime import torch_device_fn
 
