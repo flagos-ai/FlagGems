@@ -26,6 +26,16 @@ from . import conftest as cfg
 
 DEVICE = flag_gems.device
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason=(
+        "generic fft_rfft kernel does not compile on the XPU Triton backend "
+        "(TritonXPUCoreTiling: arith.addf encoding mismatch -> OutOfResources), "
+        "and the native fp16 rfft reference is unimplemented (kfloat16 -> "
+        "kcomplex64); tracked upstream"
+    ),
+)
+
 # Float16 cases use power-of-two transform lengths accepted by CUDA FFT.  The
 # float64 cases exercise complex128 output with an explicit comparator because
 # FlagGems' generic resolution table intentionally only lists complex64.

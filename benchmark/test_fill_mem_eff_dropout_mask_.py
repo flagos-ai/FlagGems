@@ -38,11 +38,13 @@ class FillMemEffDropoutMaskBenchmark(base.GenericBenchmark4DOnly):
         # otherwise supply 2D/3D shapes, which are invalid for this op and made
         # init_user_config's s[0] * s[1] * s[2] * s[3] raise
         # IndexError: tuple index out of range.
+        # The native ATen kernel launches rand_uniform_kernel with
+        # blockDim.x = queries (self.size(2)), so queries must stay <= 1024.
         self.shapes = [
             (4, 8, 512, 128),
             (4, 8, 1024, 128),
-            (4, 8, 2048, 128),
-            (4, 8, 4096, 128),
+            (4, 8, 1024, 256),
+            (4, 8, 1024, 512),
         ]
 
     def set_more_shapes(self):
@@ -55,7 +57,7 @@ class FillMemEffDropoutMaskBenchmark(base.GenericBenchmark4DOnly):
         self.shapes = [
             s
             for s in self.shapes
-            if len(s) == 4 and 1 < s[0] * s[1] * s[2] * s[3] < 2**31
+            if len(s) == 4 and 1 < s[0] * s[1] * s[2] * s[3] < 2**31 and s[2] <= 1024
         ]
 
 

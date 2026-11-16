@@ -22,7 +22,9 @@ import flag_gems
 from . import base
 
 
-def _torch_reference(weights, scales_zeros, bias, block_size, in_features, out_features):
+def _torch_reference(
+    weights, scales_zeros, bias, block_size, in_features, out_features
+):
     """Timing reference matching the portable packed representation.
 
     The XPU ATen reference kernel does not support bias and raises

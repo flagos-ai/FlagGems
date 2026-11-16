@@ -180,9 +180,7 @@ def _fused_rms_norm_backward(
             return None, None
         n = math.prod(normalized_shape)
         unit_weight = torch.ones(n, dtype=input.dtype, device=input.device)
-        dx, _ = rms_norm_backward(
-            grad_out, input, rstd, normalized_shape, unit_weight
-        )
+        dx, _ = rms_norm_backward(grad_out, input, rstd, normalized_shape, unit_weight)
         return dx, None
 
     dx, dw = rms_norm_backward(grad_out, input, rstd, normalized_shape, weight)
