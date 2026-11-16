@@ -160,6 +160,8 @@ def test_nanmean_edge():
 
 @pytest.mark.nanmean
 def test_nanmean_empty_and_dtype():
+    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU:
+        pytest.skip("MUSA native nanmean does not support FP64 division for this empty reduction")
     if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
         pytest.skip("Ascend native nanmean does not support FP64 output")
     inp = torch.empty((2, 0, 3), device=flag_gems.device)
@@ -220,6 +222,11 @@ def test_nanmean_real_input_complex_output(dtype):
     result = flag_gems.nanmean(inp, dim=1, dtype=dtype)
 
     assert result.dtype == dtype
+    if flag_gems.vendor_name == "mthreads":
+        assert result.device == inp.device == reference.device
+        # MUSA can produce complex64 here, but cannot run complex isclose.
+        result = result.cpu()
+        reference = reference.cpu()
     torch.testing.assert_close(result, reference, equal_nan=True)
 
 
