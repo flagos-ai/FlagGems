@@ -1632,7 +1632,17 @@ _FULL_CONFIG = (
     ("log10", log10),
     ("log10.out", log10_out),
     ("log10_", log10_),
-    ("log1p", log1p),
+    # log1p has an engine-generated Log1PBackward0 formula in ATen: overriding
+    # only the device key would keep the backward as ATen's composite
+    # `1 + x` add followed by a division, i.e. two extra kernels. The autograd
+    # fallthrough below hands the differentiable path to the autograd.Function
+    # wrapper in `flag_gems.ops.log1p`, whose backward is one fused kernel.
+    (
+        "log1p",
+        log1p,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("log1p.out", log1p_out),
     ("log1p_", log1p_),
     ("log2", log2),
