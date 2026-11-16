@@ -218,6 +218,13 @@ def dense_flash_attention_ref(q, k, v, scale, is_causal, window_size=(-1, -1)):
     return output.to(q.dtype), softmax_lse
 
 
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason=(
+        "CI flagtree 0.7.0 libdevice lacks xpu::math_log/math_log2, so the "
+        "_fa_lout_kernel LSE path fails to link; tracked upstream"
+    ),
+)
 @pytest.mark.underscore_flash_attention_forward
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
@@ -256,7 +263,9 @@ def test__flash_attention_forward(
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
     # Ascend does not provide the native ATen FlashAttention reference.
-    if cfg.TO_CPU or vendor_name == "ascend":
+    # Kunlunxin's torch_xmlir build dispatches the op to CPU and raises
+    # NotImplementedError even for XPU inputs, so use the dense reference too.
+    if cfg.TO_CPU or vendor_name in ("ascend", "kunlunxin"):
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
