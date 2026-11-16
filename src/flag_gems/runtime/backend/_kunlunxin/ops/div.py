@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
+from flag_gems.ops.div import _trunc_divide_scalars as trunc_div_scalars
 from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -680,8 +681,7 @@ def trunc_divide(A, B):
     elif isinstance(B, torch.Tensor):
         return trunc_div_func_scalar_tensor(A, B)
     else:
-        # Both scalar
-        return torch.tensor(A / B)
+        return trunc_div_scalars(A, B)
 
 
 def trunc_divide_(A, B):
