@@ -302,6 +302,6 @@ def test_max_unpool2d_backward_dispatch(monkeypatch):
     out = flag_gems.max_unpool2d(pooled, indices, [6, 10])
     assert "MaxUnpool2dFunction" in type(out.grad_fn).__name__
     grad_output = torch.randn_like(out)
-    grad, = torch.autograd.grad(out, pooled, grad_output)
+    (grad,) = torch.autograd.grad(out, pooled, grad_output)
     expected = max_unpool2d_backward(grad_output, pooled.detach(), indices, [6, 10])
     torch.testing.assert_close(grad, expected, rtol=0, atol=0)
