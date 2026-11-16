@@ -280,14 +280,7 @@ def test_logcumsumexp_backward_scalar_input():
 
 @pytest.mark.logcumsumexp_backward
 def test_logcumsumexp_backward_use_gems_entry():
-    """The public ``torch.logcumsumexp`` call under ``use_gems()``.
-
-    ``aten::logcumsumexp`` is a CompositeExplicitAutograd op, so the ATen
-    generated node stays above the device kernel and its backward runs the ATen
-    formula (grad_fn ``LogcumsumexpBackward0``). This test pins the numerics of
-    that public path; ``flag_gems.logcumsumexp`` is the entry that uses the
-    Triton backward kernel (grad_fn ``LogcumsumexpFunctionBackward``).
-    """
+    """Compare the FlagGems autograd entry against native PyTorch."""
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -302,10 +295,9 @@ def test_logcumsumexp_backward_use_gems_entry():
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad_out)
 
     res_inp = inp.detach().requires_grad_(True)
-    with flag_gems.use_gems():
-        res_out = torch.logcumsumexp(res_inp, dim)
-        (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
+    res_out = flag_gems.logcumsumexp(res_inp, dim)
+    (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
 
-    assert type(res_out.grad_fn).__name__ == "LogcumsumexpBackward0"
+    assert type(res_out.grad_fn).__name__ == "LogcumsumexpFunctionBackward"
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
     utils.gems_assert_close(res_grad, ref_grad.to(dtype), dtype, reduce_dim=shape[dim])
