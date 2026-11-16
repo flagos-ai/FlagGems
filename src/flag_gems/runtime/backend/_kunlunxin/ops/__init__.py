@@ -368,6 +368,7 @@ from .clamp import (
 from .clip import clip, clip_
 from .clone import clone  # noqa: F401
 from .col2im import col2im
+from .col_indices_copy import col_indices_copy
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
 from .conj_physical import conj_physical
@@ -1338,6 +1339,7 @@ __all__ = [
     "clip_",
     "clone",
     "col2im",
+    "col_indices_copy",
     "column_stack",
     "column_stack_out",
     "concatenate",
