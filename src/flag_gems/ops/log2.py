@@ -176,4 +176,3 @@ def log2_(A):
     logger.debug("GEMS LOG2_")
     log2_func(A, out0=A)
     return A
-
