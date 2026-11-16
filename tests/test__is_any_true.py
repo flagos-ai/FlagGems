@@ -301,3 +301,62 @@ def test__is_any_true_rejects_wrong_arity(num_args):
     inp = torch.zeros((4,), dtype=_BOOL, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._is_any_true(*((inp,) * num_args))
+
+
+# Boolean-only reduction: boundary sizes exercise both program strategies.
+_MASTER_SIZES = [0, 1, 15, 127, 128, 257, 65535, 65536, 65537, 1048576]
+
+
+@pytest.mark.underscore_is_any_true
+@pytest.mark.parametrize("n", _MASTER_SIZES)
+@pytest.mark.parametrize("kind", ["false", "first", "last", "strided"])
+def test__is_any_true_master(n, kind):
+    inp = torch.zeros(
+        n * (2 if kind == "strided" else 1), dtype=torch.bool, device=flag_gems.device
+    )
+    if kind == "strided":
+        inp = inp[::2]
+    if n and kind != "false":
+        inp[0 if kind == "first" else -1] = True
+    snapshot = inp.clone()
+    reference = torch.ops.aten._is_any_true.default(utils.to_reference(inp))
+    result = flag_gems._is_any_true(inp)
+    assert (
+        result.shape == torch.Size([])
+        and result.dtype == torch.bool
+        and result.device == inp.device
+    )
+    utils.gems_assert_equal(result, reference)
+    utils.gems_assert_equal(inp, utils.to_reference(snapshot))
+
+
+@pytest.mark.underscore_is_any_true
+@pytest.mark.parametrize("rank", [2, 8, 9, 12])
+def test__is_any_true_master_arbitrary_rank(rank):
+    inp = torch.zeros((2,) * rank, dtype=torch.bool, device=flag_gems.device)
+    inp[(1,) * rank] = True
+    inp = inp.transpose(0, -1)
+    reference = torch.ops.aten._is_any_true.default(utils.to_reference(inp))
+    utils.gems_assert_equal(flag_gems._is_any_true(inp), reference)
+
+
+@pytest.mark.underscore_is_any_true
+def test__is_any_true_master_scalar_and_expand():
+    for inp in (
+        torch.tensor(False, device=flag_gems.device),
+        torch.tensor(True, device=flag_gems.device).expand(17, 19),
+    ):
+        utils.gems_assert_equal(
+            flag_gems._is_any_true(inp),
+            torch.ops.aten._is_any_true.default(utils.to_reference(inp)),
+        )
+
+
+@pytest.mark.underscore_is_any_true
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__is_any_true_master_invalid_dtype(dtype):
+    inp = torch.zeros(3, dtype=dtype, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._is_any_true.default(inp)
+    with pytest.raises(RuntimeError):
+        flag_gems._is_any_true(inp)
