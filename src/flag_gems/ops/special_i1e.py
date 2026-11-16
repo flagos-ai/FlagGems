@@ -23,16 +23,13 @@ import flag_gems
 
 logger = logging.getLogger(__name__)
 
-# The launch is grid-strided: the grid is sized so that each program walks
-# ~_TARGET_ITERS tiles instead of one tile per program, because program count
-# is the dominant launch cost on the measured backend.
+# One tile per program with a conventional pointwise launch shape. A larger
+# tile with few warps leaves every lane holding many elements at once, which
+# spills registers and collapses memory throughput; the grid is simply capped
+# and the kernel walks the remainder with a grid-stride loop.
 _MAX_GRID = 65535
-_TARGET_ITERS = 16
-_MIN_PROGRAMS = 64
-_BLOCK = 1024
-_BLOCK_LARGE = 65536
-_BLOCK_MIN_N = 65536
-_NUM_WARPS = 1
+_BLOCK = 2048
+_NUM_WARPS = 4
 
 
 @triton.jit
@@ -189,14 +186,7 @@ def _collapse_dims(x, out):
 
 def _grid_for(n, block):
     nblocks = (n + block - 1) // block
-    if nblocks <= _TARGET_ITERS:
-        return nblocks, nblocks
-    grid_n = (nblocks + _TARGET_ITERS - 1) // _TARGET_ITERS
-    if nblocks >= _MIN_PROGRAMS and grid_n < _MIN_PROGRAMS:
-        grid_n = _MIN_PROGRAMS
-    if grid_n > _MAX_GRID:
-        grid_n = _MAX_GRID
-    return grid_n, nblocks
+    return min(nblocks, _MAX_GRID), nblocks
 
 
 def _run_special_i1e_kernel(x: torch.Tensor, out: torch.Tensor):
@@ -215,12 +205,7 @@ def _run_special_i1e_kernel(x: torch.Tensor, out: torch.Tensor):
         return out
 
     fp64 = x.dtype == torch.float64
-    if n_elements >= _BLOCK_MIN_N:
-        block = _BLOCK_LARGE
-    else:
-        # one tile per program for small inputs: a bigger tile collapses the
-        # grid to a single program, which is the cheapest possible launch.
-        block = max(_BLOCK, triton.next_power_of_2(n_elements))
+    block = _BLOCK
     grid_n, nblocks = _grid_for(n_elements, block)
     grid = (grid_n,)
 
