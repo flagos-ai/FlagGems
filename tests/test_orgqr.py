@@ -23,6 +23,10 @@ def make_reflectors(shape, dtype):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (dtype == torch.float64):
+        pytest.skip(
+            "Kunlunxin requested FP64 fixture and native output narrow to Float"
+        )
     input, tau = make_reflectors(shape, dtype)
     ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
     result = flag_gems.orgqr(input, tau)
@@ -56,6 +60,10 @@ def test_orgqr_invalid_shapes():
 @pytest.mark.orgqr
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_orgqr_complex_is_explicitly_unsupported(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (dtype == torch.complex128):
+        pytest.skip(
+            "Kunlunxin requested complex128 fixture and native output narrow to complex64"
+        )
     input, tau = make_reflectors((4, 3), dtype)
     assert torch.orgqr(input, tau).dtype == dtype
     with pytest.raises(RuntimeError, match="complex dtypes are not supported"):

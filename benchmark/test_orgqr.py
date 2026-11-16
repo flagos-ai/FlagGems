@@ -23,7 +23,11 @@ def test_orgqr():
     bench = OrgqrBenchmark(
         op_name="orgqr",
         torch_op=torch.orgqr,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=(
+            [torch.float32]
+            if flag_gems.vendor_name == "kunlunxin"
+            else [torch.float32, torch.float64]
+        ),
     )
     bench.set_gems(flag_gems.orgqr)
     bench.run()
