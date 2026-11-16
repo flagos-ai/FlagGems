@@ -20,13 +20,19 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+PER_CHANNEL_SHAPES = [
+    ((8,), 0),
+    ((4, 8), 0),
+    ((4, 8), 1),
+    ((2, 19, 7), 1),
+    ((16, 128, 64, 60), 1),
+    ((16, 128, 64, 60), 3),
+]
+QUANT_RANGES = [(0, 255), (-128, 127)]
 PER_CHANNEL_CASES = [
-    ((8,), 0, 0, 255),
-    ((4, 8), 0, -128, 127),
-    ((4, 8), 1, 0, 255),
-    ((2, 19, 7), 1, -128, 127),
-    ((16, 128, 64, 60), 1, 0, 255),
-    ((16, 128, 64, 60), 3, -128, 127),
+    (shape, axis, quant_min, quant_max)
+    for shape, axis in PER_CHANNEL_SHAPES
+    for quant_min, quant_max in QUANT_RANGES
 ]
 
 

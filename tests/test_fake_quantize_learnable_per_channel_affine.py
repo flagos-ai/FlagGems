@@ -83,6 +83,17 @@ def test_fake_quantize_learnable_per_channel_affine(
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.parametrize("shape, axis", PER_CHANNEL_SHAPES)
+def test_fake_quantize_learnable_per_channel_affine_master_grad_factor(shape, axis):
+    inputs = _make_inputs(shape, axis, torch.float32)
+    expected = _ATEN_OP(*(_reference(tensor) for tensor in inputs), axis, 0, 255, 2.5)
+    actual = flag_gems._fake_quantize_learnable_per_channel_affine(
+        *inputs, axis, 0, 255, 2.5
+    )
+    utils.gems_assert_close(actual, expected, torch.float32)
+
+
+@pytest.mark.fake_quantize_learnable_per_channel_affine
 @pytest.mark.parametrize("axis", [1, -2])
 @pytest.mark.parametrize("grad_factor", [0.5, 2.5])
 def test_fake_quantize_learnable_per_channel_affine_grad_factor(axis, grad_factor):
