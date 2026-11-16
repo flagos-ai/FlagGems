@@ -1190,12 +1190,8 @@ from flag_gems.ops.matmul_backward import matmul_backward
 from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
-from flag_gems.ops.max import (
-    evenly_distribute_backward,
-    max,
-    max_backward,
-    max_dim,
-)
+from flag_gems.ops.max import max, max_dim
+from flag_gems.ops.max_backward import evenly_distribute_backward, max_backward
 from flag_gems.ops.max_pool1d import max_pool1d
 from flag_gems.ops.max_pool1d_with_indices import max_pool1d_with_indices
 from flag_gems.ops.max_pool2d_with_indices import (
