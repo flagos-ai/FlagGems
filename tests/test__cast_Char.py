@@ -606,8 +606,6 @@ def _require_master_dtype(dtype):
         pytest.skip("FP64 is not supported on this backend")
     if dtype is torch.bfloat16 and not utils.bf16_is_supported:
         pytest.skip("BF16 is not supported on this backend")
-    if flag_gems.vendor_name == "mthreads" and dtype.is_complex:
-        pytest.skip("MUSA cannot construct this complex input dtype")
 
 
 def _master_cast_reference(inp, non_blocking=False):
