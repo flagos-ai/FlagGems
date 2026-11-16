@@ -33,10 +33,9 @@ _SHAPE_CASES = [
     pytest.param([(), ()], id="scalar-pair"),
     pytest.param([(0,), (0,)], id="zero-size"),
 ]
-_INVALID_SHAPES = [
+_INCOMPATIBLE_SHAPES = [
     pytest.param([(16, 256), (8, 128)], id="mismatched-rows"),
     pytest.param([(5,), (6,)], id="mismatched-1d"),
-    pytest.param([(5,), (5, 1, 1)], id="mismatched-rank"),
 ]
 
 
@@ -114,7 +113,7 @@ def test_column_stack_mixed_dtype_and_tuple_input():
 
 
 @pytest.mark.column_stack
-@pytest.mark.parametrize("shapes", _INVALID_SHAPES[:2])
+@pytest.mark.parametrize("shapes", _INCOMPATIBLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_column_stack_rejects_incompatible_shapes(shapes, dtype):
     torch.manual_seed(0)
@@ -126,7 +125,8 @@ def test_column_stack_rejects_incompatible_shapes(shapes, dtype):
 
 @pytest.mark.column_stack
 def test_column_stack_rejects_mismatched_rank():
-    inputs = [_make_tensor(shape, torch.float32) for shape in _INVALID_SHAPES[2].values[0]]
+    torch.manual_seed(0)
+    inputs = [_make_tensor(shape, torch.float32) for shape in [(5,), (5, 1, 1)]]
     with pytest.raises(RuntimeError):
         flag_gems.column_stack(inputs)
 
