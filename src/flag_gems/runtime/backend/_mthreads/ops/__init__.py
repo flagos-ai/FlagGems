@@ -30,6 +30,7 @@ from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
 )
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_acos_ import _foreach_acos_
+from ._foreach_add_Scalar import _foreach_add_Scalar
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -228,6 +229,7 @@ __all__ = [
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_foreach_abs_",
     "_foreach_acos_",
+    "_foreach_add_Scalar",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
