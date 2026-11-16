@@ -513,7 +513,8 @@ from .fused_moving_avg_obs_fake_quant import (  # noqa: F401
     fused_moving_avg_obs_fake_quant,
 )
 from .gather import gather, gather_backward
-from .gcd import gcd, gcd_, gcd_out
+from .gcd import gcd, gcd_out
+from .gcd_inplace import gcd_
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_  # noqa: F401
