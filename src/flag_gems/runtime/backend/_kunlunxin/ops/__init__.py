@@ -978,6 +978,7 @@ from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
+from .unique_dim_consecutive import unique_dim_consecutive
 from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -2031,6 +2032,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unique_dim_consecutive",
     "upsample_bilinear2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
