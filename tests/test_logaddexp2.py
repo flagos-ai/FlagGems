@@ -253,8 +253,6 @@ def test_logaddexp2_backward_noncontiguous(dtype):
 @pytest.mark.logaddexp2_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_logaddexp2_backward_registered_autograd_key(dtype):
-    # The benchmark candidate reaches logaddexp2 through flag_gems.use_gems(),
-    # i.e. the ATen Autograd registration, not the Python entry point.
     shape = (37, 41)
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -264,8 +262,7 @@ def test_logaddexp2_backward_registered_autograd_key(dtype):
 
     res_x = x.detach().requires_grad_(True)
     res_y = y.detach().requires_grad_(True)
-    with flag_gems.use_gems(include=["logaddexp2"]):
-        res_out = flag_gems.logaddexp2(res_x, res_y)
+    res_out = flag_gems.logaddexp2(res_x, res_y)
     _require_gems_autograd(res_out)
     res_grad_x, res_grad_y = torch.autograd.grad(res_out, (res_x, res_y), out_grad)
 
