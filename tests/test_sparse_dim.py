@@ -929,8 +929,8 @@ def test_sparse_dim_unsupported_layout_parity():
     # build-independent part of the native message; match it exactly. The
     # trailing registered-backend list varies per build and is not repeated.
     if flag_gems.vendor_name == "mthreads":
-        native_msg = native_msg.replace("NestedTensorPrivateUse1", backend)
-        res_msg = res_msg.replace("NestedTensorPrivateUse1", backend)
+        native_msg = native_msg.replace("NestedTensorPrivateUse1", backend).replace("NestedTensormusa", backend)
+        res_msg = res_msg.replace("NestedTensorPrivateUse1", backend).replace("NestedTensormusa", backend)
     assert f"'{backend}' backend" in native_msg
     assert f"'{backend}' backend" in res_msg
     assert res_msg.split(". ")[0] == native_msg.split(". ")[0]
