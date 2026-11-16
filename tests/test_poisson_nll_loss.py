@@ -330,9 +330,13 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     elif case == "real_target":
         target = target.real.abs() + 0.5
     full = case == "real_target"
+    ref_inp, ref_target = utils.to_reference(inp), utils.to_reference(target)
+    if flag_gems.vendor_name == "mthreads" and case == "empty" and reduction == 1:
+        # MUSA returns zero for an empty complex mean; the mean is undefined.
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
     reference = _complex_reference(
-        utils.to_reference(inp),
-        utils.to_reference(target),
+        ref_inp,
+        ref_target,
         log_input,
         full,
         1e-8,
