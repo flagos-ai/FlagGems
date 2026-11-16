@@ -190,7 +190,5 @@ def lt_scalar_(A, B):
     return A
 
 
-lt_._flag_gems_autograd_impl = torch.library.fallthrough_kernel
 
 
-lt_scalar_._flag_gems_autograd_impl = torch.library.fallthrough_kernel

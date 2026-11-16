@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -128,6 +130,7 @@ def test_lt_tensor_backward():
         is_backward=True,
         is_inplace=True,
     )
+    bench.set_gems(flag_gems.lt_)
     bench.run()
 
 
@@ -143,4 +146,5 @@ def test_lt_scalar_backward():
         is_backward=True,
         is_inplace=True,
     )
+    bench.set_gems(flag_gems.lt_scalar_)
     bench.run()
