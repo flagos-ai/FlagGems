@@ -96,7 +96,7 @@ class GeqrfBenchmark(generated_operator_utils.OperatorBenchmark):
     def set_shapes(self, shape_file_path=None, *, default_shapes=None):
         if default_shapes is None:
             default_shapes = GEQRF_BENCH_SHAPES
-            if base.vendor_name == "hygon":
+            if base.vendor_name in ("hygon", "mthreads"):
                 default_shapes = [
                     (shape, "conditioned") for shape in _MASTER_CORE_SHAPES
                 ]

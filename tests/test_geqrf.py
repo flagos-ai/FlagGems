@@ -46,9 +46,9 @@ def _reference_geqrf(inp, *, a=None, tau=None):
     return a, tau
 
 
-def _assert_geqrf_result_close(result, reference):
+def _assert_geqrf_result_close(result, reference, device):
     if flag_gems.vendor_name == "mthreads":
-        assert result.device.type == flag_gems.device
+        assert result.device == device
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_close(result, reference)
 
@@ -287,9 +287,9 @@ def _assert_terminal_reflector_equivalent(
     _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
     a, tau = a.cpu(), tau.cpu()
 
-    _assert_geqrf_result_close(a[:-1], ref_a[:-1])
-    _assert_geqrf_result_close(a[-1, :-1], ref_a[-1, :-1])
-    _assert_geqrf_result_close(tau[:-1], ref_tau[:-1])
+    tu.assert_result_close(a[:-1], ref_a[:-1])
+    tu.assert_result_close(a[-1, :-1], ref_a[-1, :-1])
+    tu.assert_result_close(tau[:-1], ref_tau[:-1])
 
     # The final square reflector acts only on one coordinate. LAPACK and
     # Hygon may split that coordinate's phase differently between Q and R.
@@ -307,7 +307,7 @@ def _assert_terminal_reflector_equivalent(
         _assert_projected_terminal(column, a, tau)
         _assert_projected_terminal(column, ref_a, ref_tau)
     else:
-        _assert_geqrf_result_close(terminal[0], terminal[1])
+        tu.assert_result_close(terminal[0], terminal[1])
 
 
 def _assert_qr_factorization(inp, a, tau, ref_a, ref_tau):
@@ -392,8 +392,8 @@ def test_geqrf_value_range(shape, value_range, dtype):
             ),
         )
     else:
-        _assert_geqrf_result_close(res_a, ref_a)
-        _assert_geqrf_result_close(res_tau, ref_tau)
+        _assert_geqrf_result_close(res_a, ref_a, inp.device)
+        _assert_geqrf_result_close(res_tau, ref_tau, inp.device)
     # The default overload is not in-place.
     _assert_geqrf_input_unchanged(inp, snapshot)
 
@@ -408,8 +408,8 @@ def test_geqrf_boundary_shapes(shape, dtype):
     ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    _assert_geqrf_result_close(res_a, ref_a)
-    _assert_geqrf_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a, inp.device)
+    _assert_geqrf_result_close(res_tau, ref_tau, inp.device)
 
 
 @pytest.mark.geqrf
@@ -422,8 +422,8 @@ def test_geqrf_empty_shapes(shape, dtype):
     ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    _assert_geqrf_result_close(res_a, ref_a)
-    _assert_geqrf_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a, inp.device)
+    _assert_geqrf_result_close(res_tau, ref_tau, inp.device)
 
 
 @pytest.mark.geqrf
@@ -437,8 +437,8 @@ def test_geqrf_non_contiguous_input(layout, dtype):
     ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    _assert_geqrf_result_close(res_a, ref_a)
-    _assert_geqrf_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a, inp.device)
+    _assert_geqrf_result_close(res_tau, ref_tau, inp.device)
     _assert_geqrf_input_unchanged(inp, snapshot)
 
 
@@ -461,8 +461,8 @@ def test_geqrf_out_buffers(shape, layout, dtype):
     assert returned_a is out_a
     assert returned_tau is out_tau
     assert out_buffer_metadata((out_a, out_tau)) == supplied_metadata
-    _assert_geqrf_result_close(out_a, ref_a)
-    _assert_geqrf_result_close(out_tau, ref_tau)
+    _assert_geqrf_result_close(out_a, ref_a, inp.device)
+    _assert_geqrf_result_close(out_tau, ref_tau, inp.device)
     _assert_geqrf_input_unchanged(inp, snapshot)
 
 
@@ -477,8 +477,8 @@ def test_geqrf_special_values(dtype, scenario):
     ref_a, ref_tau = _reference_geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    _assert_geqrf_result_close(res_a, ref_a)
-    _assert_geqrf_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a, inp.device)
+    _assert_geqrf_result_close(res_tau, ref_tau, inp.device)
 
 
 @pytest.mark.geqrf
@@ -494,8 +494,8 @@ def test_geqrf_special_values_placed(dtype, scenario):
     # what distinguishes this workload from the single-row case; both packed A and
     # tau are compared with matching NaNs (equal_nan) and no masking, so a
     # candidate that computes different positions still fails.
-    _assert_geqrf_result_close(res_a, ref_a)
-    _assert_geqrf_result_close(res_tau, ref_tau)
+    _assert_geqrf_result_close(res_a, ref_a, inp.device)
+    _assert_geqrf_result_close(res_tau, ref_tau, inp.device)
 
 
 @pytest.mark.geqrf
