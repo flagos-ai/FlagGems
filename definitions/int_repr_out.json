@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "int_repr_out",
+  "requires_triton_kernel": true,
+  "description": "ATen schema: aten::int_repr.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Writes the raw integer codes into the caller-owned plain integer output buffer. Resizes an incompatible shape, preserves a same-shape strided view, and returns the same buffer. Rejects an incompatible output dtype.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

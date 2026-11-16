@@ -263,6 +263,7 @@ def test_int_repr(shape, value_range, qdtype):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
     # Reading the input must not change the quantized storage.
     tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
@@ -288,6 +289,7 @@ def test_int_repr_result_is_independent_of_input_storage(qdtype, layout):
     expected = _reference_codes(inp)
 
     res_out = flag_gems.int_repr(inp)
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, expected)
 
     # Filling the result must leave the quantized input untouched.
@@ -295,7 +297,7 @@ def test_int_repr_result_is_independent_of_input_storage(qdtype, layout):
     tu.assert_result_equal(torch.ops.aten.int_repr(inp), expected)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", QUANTIZED_DTYPES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_int_repr_out(shape, qdtype):
@@ -306,14 +308,15 @@ def test_int_repr_out(shape, qdtype):
     # The sentinel pre-fill makes the exact comparison reject a candidate that
     # returns the buffer without writing its result.
     buf = _sentinel_buffer(shape, out_dtype)
-    res_out = flag_gems.int_repr(inp, out=buf)
+    res_out = flag_gems.int_repr_out(inp, out=buf)
 
     assert res_out is buf
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
     tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", OUT_RESIZE_ROWS)
 def test_int_repr_out_resizes_buffer(qdtype):
     inp = _quantized_input((2, 19, 7), qdtype, ["-1", "1"])
@@ -321,15 +324,16 @@ def test_int_repr_out_resizes_buffer(qdtype):
     out_dtype = _QUANTIZED_TO_INT[qdtype]
 
     buf = _sentinel_buffer((3,), out_dtype)
-    res_out = flag_gems.int_repr(inp, out=buf)
+    res_out = flag_gems.int_repr_out(inp, out=buf)
 
     assert res_out is buf
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
     # The resizing path must not disturb the quantized input's storage.
     tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", OUT_STRIDED_ROWS)
 def test_int_repr_out_writes_through_strided_buffer(qdtype):
     inp = _quantized_input((4, 5, 6), qdtype, ["-1", "1"])
@@ -342,10 +346,11 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
     ref_pad[:, :, ::2].copy_(ref_out)
     pad = torch.full(gap, sentinel, dtype=out_dtype, device=flag_gems.device)
     buf = pad[:, :, ::2]
-    res_out = flag_gems.int_repr(inp, out=buf)
+    res_out = flag_gems.int_repr_out(inp, out=buf)
 
     assert res_out is buf
     assert tuple(buf.stride()) == (60, 12, 2)
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
     # Only the strided view is written; the parent's padding stays untouched.
     tu.assert_result_equal(pad, ref_pad)
@@ -375,6 +380,7 @@ def test_int_repr_reads_layout(layout, shape, qdtype):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
 
 
@@ -388,6 +394,7 @@ def test_int_repr_per_channel_quantization(qdtype, shape, axis):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
     tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
@@ -402,6 +409,7 @@ def test_int_repr_extreme_qparams(qdtype, scale, fraction):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
 
 
@@ -416,6 +424,7 @@ def test_int_repr_storage_boundaries(qdtype, rule):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
 
 
@@ -432,6 +441,7 @@ def test_int_repr_quantized_special_values(scenario, qdtype):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
 
 
@@ -443,10 +453,11 @@ def test_int_repr_degenerate_shape(shape, qdtype):
 
     res_out = flag_gems.int_repr(inp)
 
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("shape,qdtype", DEGENERATE_ROWS)
 def test_int_repr_out_degenerate_shape(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
@@ -454,9 +465,10 @@ def test_int_repr_out_degenerate_shape(shape, qdtype):
     out_dtype = _QUANTIZED_TO_INT[qdtype]
 
     buf = _sentinel_buffer(shape, out_dtype)
-    res_out = flag_gems.int_repr(inp, out=buf)
+    res_out = flag_gems.int_repr_out(inp, out=buf)
 
     assert res_out is buf
+    assert res_out.device == inp.device
     tu.assert_result_equal(res_out, ref_out)
     tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
@@ -475,7 +487,7 @@ def test_int_repr_rejects_non_tensor_argument():
         flag_gems.int_repr([1, 2, 3])
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", QUANTIZED_DTYPES)
 def test_int_repr_out_rejects_mismatched_dtype(qdtype):
     inp = _quantized_input((2, 19, 7), qdtype, ["-1", "1"])
@@ -483,4 +495,4 @@ def test_int_repr_out_rejects_mismatched_dtype(qdtype):
     # int_repr produces (uint8 / int8 / int32), so the out dtype check fires.
     buf = torch.empty((2, 19, 7), dtype=torch.int16, device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        flag_gems.int_repr(inp, out=buf)
+        flag_gems.int_repr_out(inp, out=buf)

@@ -332,7 +332,7 @@ def test_int_repr(input_layout):
     bench.run()
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize(
     "input_layout",
     [
@@ -349,7 +349,7 @@ def test_int_repr(input_layout):
 )
 def test_int_repr_out(input_layout):
     bench = IntReprBenchmark(
-        op_name="int_repr",
+        op_name="int_repr_out",
         case_fn=partial(_case_fn, input_layout=input_layout),
         build_inputs_fn=_build_inputs_fn_out,
         torch_op=torch.ops.aten.int_repr.out,
