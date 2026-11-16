@@ -16886,6 +16886,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: reshape_as
+  description: |
+    Returns `self` with the same shape as `other`, equivalent to
+    `self.reshape(other.size())`. Any input whose target shape is
+    stride-expressible returns a zero-copy view; only layouts a view cannot
+    express are materialized with a Triton copy kernel.
+  for:
+  - reshape_as
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: reshape_from_tensor
   description: |
     Reshape using a tensor of dimensions, preserving views when possible and copying otherwise.
@@ -19340,6 +19355,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Reduction
   stages:
   - alpha: '5.5'
+- id: sparse_sparse_matmul
+  description: 'SpGEMM: multiplies two 2-D sparse COO matrices with a five-phase
+    Triton pipeline (B-CSR grouping, dense-flag/product accumulation, exact per-row
+    counting and row-major emission); the output is a coalesced row-major COO whose
+    support set is the deterministic intersection pattern with structural zeros
+    preserved.
+
+    '
+  for:
+  - _sparse_sparse_matmul
+  - _sparse_sparse_matmul.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_sum_backward
   description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
     back onto the sorted-unique coordinate support of the input sparse tensor, keeping
@@ -22555,11 +22588,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: validate_compressed_sparse_indices
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_compressed_sparse_indices
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: validate_sparse_bsr_tensor_args
   description: |
     Validate BSR tensor metadata and compressed index invariants.
   for:
     - _validate_sparse_bsr_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
+- id: validate_sparse_coo_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_coo_tensor_args
   labels:
     - aten
     - KernelGen

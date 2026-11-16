@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 ROUTER_GEMM_SHAPES = [
@@ -35,16 +37,6 @@ ROUTER_GEMM_SHAPES = [
 
 def torch_router_gemm(x, weight):
     return torch.mm(x, weight.t()).to(torch.float32)
-
-
-router_gemm = None
-try:
-    if base.vendor_name == "nvidia":
-        from flag_gems.runtime.backend._nvidia.hopper.ops.mm import router_gemm
-    elif base.vendor_name == "cambricon":
-        from flag_gems.runtime.backend._cambricon.ops.mm import router_gemm
-except Exception:
-    pass
 
 
 class RouterGemmBenchmark(base.Benchmark):
@@ -72,15 +64,11 @@ class RouterGemmBenchmark(base.Benchmark):
 
 
 @pytest.mark.router_gemm
-@pytest.mark.skipif(
-    router_gemm is None,
-    reason="router_gemm benchmark requires Cambricon or NVIDIA Hopper backend",
-)
 def test_perf_router_gemm():
     bench = RouterGemmBenchmark(
         op_name="router_gemm",
         torch_op=torch_router_gemm,
-        gems_op=router_gemm,
+        gems_op=flag_gems.router_gemm,
         dtypes=consts.FP16_BF16_DTYPES,
     )
     bench.run()
