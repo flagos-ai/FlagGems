@@ -41,7 +41,7 @@ def _reference(inp, target, weight, reduction):
     if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == 1:
         return torch.nn.functional.binary_cross_entropy(
             inp.cpu(), target.cpu(), None if weight is None else weight.cpu(), reduction="mean"
-        ).to(inp.device if not utils.TO_CPU else "cpu")
+        )
     return torch.nn.functional.binary_cross_entropy(
         utils.to_reference(inp, True),
         utils.to_reference(target, True),
@@ -87,7 +87,11 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
     assert out.data_ptr() == pointer
     assert out.stride() == stride
     assert out.storage_offset() == storage_offset
-    _assert_close(out, expected, dtype, reduction, inp.numel())
+    if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == 1:
+        assert out.device == inp.device
+        _assert_close(out.cpu(), expected, dtype, reduction, inp.numel())
+    else:
+        _assert_close(out, expected, dtype, reduction, inp.numel())
     utils.gems_assert_equal(inp, inp_before)
     utils.gems_assert_equal(target, target_before)
     if weight is not None:
