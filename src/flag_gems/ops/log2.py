@@ -177,5 +177,3 @@ def log2_(A):
     log2_func(A, out0=A)
     return A
 
-
-log2._flag_gems_autograd_impl = torch.library.fallthrough_kernel
