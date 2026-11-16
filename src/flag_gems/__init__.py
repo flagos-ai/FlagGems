@@ -28,7 +28,6 @@ from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
-from flag_gems.ops.max_unpool2d import max_unpool2d_backward  # noqa: F401
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -2412,17 +2411,6 @@ _FULL_CONFIG = (
 # not pay an extra zero-fill kernel on every torch.empty under use_gems.
 if vendor_name == "amd":
     _FULL_CONFIG = _FULL_CONFIG + (("empty.memory_format", empty),)
-
-
-def _with_operator_dispatch(entry):
-    if len(entry) == 2:
-        extra = getattr(entry[1], "_flag_gems_extra_dispatch", ())
-        if extra:
-            return (*entry, None, extra)
-    return entry
-
-
-_FULL_CONFIG = tuple(map(_with_operator_dispatch, _FULL_CONFIG))
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
 FULL_CONFIG_BY_FUNC = {}

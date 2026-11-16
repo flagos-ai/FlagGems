@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # Shapes cover small to large NCHW combinations typical for unpooling benchmarks
@@ -82,4 +84,5 @@ def test_max_unpool2d_backward():
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
+    bench.set_gems(flag_gems.max_unpool2d)
     bench.run()

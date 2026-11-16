@@ -183,11 +183,6 @@ class MaxUnpool2dFunction(torch.autograd.Function):
         return grad_pooled, None, None
 
 
-max_unpool2d._flag_gems_extra_dispatch = (
-    ("Autograd", torch.library.fallthrough_kernel),
-)
-
-
 _BACKWARD_BLOCK = 256
 _BACKWARD_WARPS = 4
 

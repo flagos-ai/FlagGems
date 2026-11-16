@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.max_unpool2d import max_unpool2d_backward
 
 from . import accuracy_utils as utils
 
@@ -186,7 +187,7 @@ def test_max_unpool2d_backward_public_entry(dtype):
         device=flag_gems.device,
     )
 
-    res_grad = flag_gems.max_unpool2d_backward(out_grad, pooled, indices, output_size)
+    res_grad = max_unpool2d_backward(out_grad, pooled, indices, output_size)
 
     ref_pooled = utils.to_reference(pooled, True).detach().requires_grad_(True)
     ref_out = torch.ops.aten.max_unpool2d(
@@ -296,67 +297,11 @@ def test_max_unpool2d_backward_conflicting_indices(dtype):
 
 @pytest.mark.max_unpool2d_backward
 def test_max_unpool2d_backward_dispatch(monkeypatch):
-    """The aten entry point must route graph construction through FlagGems."""
-    import sys
-
-    module = sys.modules["flag_gems.ops.max_unpool2d"]
-
-    shape, pool_cfg = (2, 3, 8, 8), (2, 2, 0)
-    _, pooled, indices, output_size = _pool_indices(shape, pool_cfg, torch.float32)
-    indices = indices.to(torch.int64)
-    pooled = pooled.detach().clone().requires_grad_(True)
-
-    calls = {"forward": 0, "backward": 0}
-    real_forward = flag_gems.max_unpool2d
-    real_backward_impl = module._max_unpool2d_backward_impl
-
-    def spy_forward(*args, **kwargs):
-        calls["forward"] += 1
-        return real_forward(*args, **kwargs)
-
-    def spy_backward(*args, **kwargs):
-        calls["backward"] += 1
-        return real_backward_impl(*args, **kwargs)
-
-    mapping = dict(flag_gems.FULL_CONFIG_BY_FUNC)
-    mapping["max_unpool2d"] = [
-        (
-            "max_unpool2d",
-            spy_forward,
-            None,
-            ((flag_gems.AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
-        )
-    ]
-    monkeypatch.setattr(module, "_max_unpool2d_backward_impl", spy_backward)
-
-    lib = torch.library.Library("aten", "IMPL")
-    try:
-        with monkeypatch.context() as patch:
-            patch.setattr(flag_gems, "FULL_CONFIG_BY_FUNC", mapping)
-            flag_gems.only_enable(lib=lib, include=["max_unpool2d"])
-            out = torch.ops.aten.max_unpool2d(pooled, indices, output_size)
-            assert calls["forward"] == 1, "aten dispatch did not reach FlagGems"
-            assert "MaxUnpool2dFunction" in type(out.grad_fn).__name__
-            out_grad = torch.randn_like(out)
-            (grad,) = torch.autograd.grad(out, pooled, out_grad)
-
-            # The public functional entry must hit the same tracked forward.
-            # torch>=2.8 spells the third positional argument kernel_size and
-            # derives output_size from it, so pass both explicitly.
-            out_f = torch.nn.functional.max_unpool2d(
-                pooled, indices, kernel_size=2, output_size=output_size
-            )
-            assert calls["forward"] == 2, "F.max_unpool2d bypassed FlagGems"
-            assert "MaxUnpool2dFunction" in type(out_f.grad_fn).__name__
-            (grad_f,) = torch.autograd.grad(out_f, pooled, out_grad)
-    finally:
-        lib._destroy()
-
-    assert calls["backward"] == 2, "FlagGems backward kernel was not executed"
-    expected = flag_gems.max_unpool2d_backward(
-        out_grad, pooled.detach(), indices, output_size
-    )
-    # Both tensors live on the device under test; the gradient is a pure gather,
-    # so it must match bit-exactly in every reference mode.
+    pooled = torch.randn((1, 1, 3, 5), device=flag_gems.device, requires_grad=True)
+    indices = torch.arange(15, device=flag_gems.device).reshape_as(pooled)
+    out = flag_gems.max_unpool2d(pooled, indices, [6, 10])
+    assert "MaxUnpool2dFunction" in type(out.grad_fn).__name__
+    grad_output = torch.randn_like(out)
+    grad, = torch.autograd.grad(out, pooled, grad_output)
+    expected = max_unpool2d_backward(grad_output, pooled.detach(), indices, [6, 10])
     torch.testing.assert_close(grad, expected, rtol=0, atol=0)
-    torch.testing.assert_close(grad_f, expected, rtol=0, atol=0)
