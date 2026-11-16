@@ -98,6 +98,7 @@ class Benchmark:
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     EPS = 1e-7
+    BASELINE_USES_KERNEL = True
     """
     the base class for the operations benchmark
     """
@@ -850,6 +851,12 @@ class Benchmark:
         records whether a non-CPU device event with recorded device time was
         observed.  The session passes as long as at least one case across the
         whole benchmark run launched a kernel (checked in pytest_sessionfinish).
+
+        Benchmarks that set BASELINE_USES_KERNEL = False (e.g. zero-copy view
+        ops like expand) are skipped: each case is recorded with
+        invoked_kernel=None to signal "not applicable" rather than False.
+        The session-level check ignores None entries so a run consisting
+        entirely of view ops does not fail.
         """
         from torch.autograd import DeviceType
 
@@ -870,26 +877,26 @@ class Benchmark:
                 "operator": self.op_name,
                 "nodeid": Config.current_nodeid,
                 "case_id": case.case_id,
-                "invoked_kernel": False,
+                "invoked_kernel": None,
                 "status": "failed",
             }
             Config.kernel_check_records.append(record)
             try:
-                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
-                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
-                with torch.profiler.profile() as prof:
-                    fn()
-                    torch_device_fn.synchronize()
-                record["invoked_kernel"] = any(
-                    event.device_type != DeviceType.CPU
-                    and event.self_device_time_total > 0
-                    for event in prof.key_averages()
-                )
+                if self.BASELINE_USES_KERNEL:
+                    args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+                    fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                    with torch.profiler.profile() as prof:
+                        fn()
+                        torch_device_fn.synchronize()
+                    record["invoked_kernel"] = any(
+                        event.device_type != DeviceType.CPU
+                        and event.self_device_time_total > 0
+                        for event in prof.key_averages()
+                    )
+                    del args, kwargs
             except Exception as exc:
                 record["error"] = str(exc)
                 raise
-            finally:
-                del args, kwargs
             record["status"] = "passed"
             Config.executed_case_ids.add(case.case_id)
             executed.append(case.case_id)
@@ -902,7 +909,8 @@ class Benchmark:
             metric.shape_detail = self.record_shapes(*args, **kwargs)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
-                self._verify_base_invokes_kernel(self.torch_op, args, kwargs)
+                if self.BASELINE_USES_KERNEL:
+                    self._verify_base_invokes_kernel(self.torch_op, args, kwargs)
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
             if "latency" in self.to_bench_metrics:
                 op, dispatch, overridden = self._candidate_call()
