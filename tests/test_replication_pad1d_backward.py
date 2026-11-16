@@ -51,6 +51,22 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 ]
 
 
+def _ones_like_padded(inp, padding):
+    """All-ones grad_output of the padded width for the Kunlunxin path.
+
+    Kunlunxin's device-native forward rejects negative padding ("ASSERT-FAIL
+    (-2>=0)") and complex dtypes (kcomplex64 is unsupported), and its complex
+    fill is unimplemented ("fill.cpp ... NOT IMPLEMENTED"), so the tensor cannot
+    be produced through ``aten.replication_pad1d`` + ``ones_like`` there.  The
+    values are ones either way, so derive the width arithmetically instead.
+    """
+    width = inp.shape[-1] + int(padding[0]) + int(padding[1])
+    shape = tuple(inp.shape[:-1]) + (width,)
+    if inp.is_complex():
+        return torch.ones(shape, dtype=inp.dtype).to(inp.device)
+    return torch.ones(shape, dtype=inp.dtype, device=inp.device)
+
+
 @pytest.mark.replication_pad1d_backward
 @pytest.mark.parametrize("shape", REPLICATION_PAD1D_BACKWARD_SHAPES)
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
@@ -61,8 +77,14 @@ def test_replication_pad1d_backward(shape, padding, dtype):
     ref_inp = inp.cpu() if use_cpu_reference else utils.to_reference(inp)
 
     pad_input = ref_inp if use_cpu_reference else inp
-    padded_out = torch.ops.aten.replication_pad1d(pad_input, padding)
-    grad_output = torch.ones_like(padded_out, device=inp.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        # The device-native forward rejects negative padding ("ASSERT-FAIL
+        # (-2>=0)") and complex dtypes, so derive the all-ones grad_output
+        # arithmetically instead of going through it.
+        grad_output = _ones_like_padded(inp, padding)
+    else:
+        padded_out = torch.ops.aten.replication_pad1d(pad_input, padding)
+        grad_output = torch.ones_like(padded_out, device=inp.device)
     ref_grad = (
         grad_output.cpu() if use_cpu_reference else utils.to_reference(grad_output)
     )
