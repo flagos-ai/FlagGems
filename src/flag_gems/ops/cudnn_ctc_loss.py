@@ -38,6 +38,11 @@ def _logaddexp(a, b):
 
 
 @triton.jit
+def _min_index(a, b):
+    return tl.minimum(a, b)
+
+
+@triton.jit
 def _logaddexp3(a, b, c, use_c):
     c = tl.where(use_c, c, -float("inf"))
     max_abc = tl.maximum(tl.maximum(a, b), c)
@@ -258,6 +263,7 @@ def cudnn_ctc_loss_backward_kernel(
     STATE_COUNT_MAX: tl.constexpr,
     BLANK: tl.constexpr,
     BLOCK_S: tl.constexpr,
+    DETERMINISTIC: tl.constexpr,
 ):
     batch = tl.program_id(0)
     states = tl.arange(0, BLOCK_S)
@@ -321,6 +327,30 @@ def cudnn_ctc_loss_backward_kernel(
     shift1 = tl.where(states + 1 < BLOCK_S, states + 1, 0)
     shift2 = tl.where(states + 2 < BLOCK_S, states + 2, 0)
 
+    # The scatter destination is `labels`-indexed, and those collide: every
+    # blank state and every repeated label land on the same address. `atomic_add`
+    # resolves the collisions in arrival order, which varies between runs, so
+    # `deterministic=True` needs the reduction ordered instead. The grouping is
+    # derived from `labels` alone (fixed for the whole loop), so the sort and the
+    # group-boundary scan are hoisted out of it and the loop only pays for one
+    # segmented sum per step.
+    #
+    # Every lane participates, not just `stored_state`: the padding lanes carry
+    # `BLANK` and a zero posterior, so folding them into the blank group leaves
+    # that column unchanged while letting the whole `BLOCK_S` block sort and scan
+    # without a masked-lane special case.
+    if DETERMINISTIC:
+        order = tl.sort(labels.to(tl.int64) * BLOCK_S + states)
+        perm = (order % BLOCK_S).to(tl.int32)
+        sorted_labels = tl.gather(labels, perm, 0)
+        prev_sorted = tl.gather(sorted_labels, tl.maximum(states - 1, 0), 0)
+        next_sorted = tl.gather(sorted_labels, tl.minimum(states + 1, BLOCK_S - 1), 0)
+        group_first = (states == 0) | (sorted_labels != prev_sorted)
+        group_last = (states == BLOCK_S - 1) | (sorted_labels != next_sorted)
+        group_end = tl.associative_scan(
+            tl.where(group_last, states, BLOCK_S), 0, _min_index, reverse=True
+        )
+
     # `beta` is carried in registers, so the shifted neighbours are gathered
     # from the carried block instead of going through a double-buffered
     # scratch row, which removes the per-step barrier.
@@ -344,12 +374,24 @@ def cudnn_ctc_loss_backward_kernel(
             tl.exp(log_post),
             0.0,
         )
-        tl.atomic_add(
-            grad_input + safe_t * N * C + batch * C + labels,
-            -scale * posterior,
-            sem="relaxed",
-            mask=active & valid_state & (target_len > 0) & aligned & stored_state,
-        )
+        if DETERMINISTIC:
+            # Reorder the per-state deltas into label order, take a suffix-free
+            # running sum, and collapse each group onto its first lane. Groups
+            # are disjoint addresses, so one store per label accumulates into
+            # `grad_input` in a fixed order regardless of scheduling.
+            sorted_delta = tl.gather(-scale * posterior, perm, 0)
+            running = tl.cumsum(sorted_delta, 0)
+            group_sum = tl.gather(running, group_end, 0) - (running - sorted_delta)
+            destination = grad_input + safe_t * N * C + batch * C + sorted_labels
+            previous = tl.load(destination, mask=group_first, other=0.0)
+            tl.store(destination, previous + group_sum, mask=group_first)
+        else:
+            tl.atomic_add(
+                grad_input + safe_t * N * C + batch * C + labels,
+                -scale * posterior,
+                sem="relaxed",
+                mask=active & valid_state & (target_len > 0) & aligned & stored_state,
+            )
 
         stay = beta + tl.load(
             log_probs + safe_t * N * C + batch * C + labels,
@@ -474,6 +516,72 @@ def _length_stats(values, name):
     return min(lengths), max(lengths)
 
 
+# Label bounds are a pure function of the target tensor's contents, and the
+# reduction that computes them costs ~7us on the host -- comparable to a kernel
+# launch, which is real money at the smallest benchmark shape. Keyed the same way
+# `_length_stats` in `ctc_loss.py` caches its statistics: device, address, size
+# and `_version`, so an in-place mutation invalidates the entry. The tensor is
+# held in the value to keep the address from being recycled underneath the key.
+_TARGET_BOUNDS_CACHE = {}
+_TARGET_BOUNDS_CACHE_LIMIT = 64
+
+
+def _label_bounds(targets):
+    """`(min, max)` of the labels, cached across calls with the same tensor."""
+    if targets.device.type != "cpu":
+        # A device tensor would need a synchronizing read to answer this; that is
+        # the caller's choice to pay, not something to memoise.
+        bounds = torch.aminmax(targets)
+        return int(bounds.min), int(bounds.max)
+
+    key = (targets.data_ptr(), targets.numel(), targets._version)
+    cached = _TARGET_BOUNDS_CACHE.get(key)
+    if cached is not None:
+        return cached[1]
+
+    bounds = torch.aminmax(targets)
+    result = (int(bounds.min), int(bounds.max))
+    if len(_TARGET_BOUNDS_CACHE) >= _TARGET_BOUNDS_CACHE_LIMIT:
+        _TARGET_BOUNDS_CACHE.clear()
+    _TARGET_BOUNDS_CACHE[key] = (targets, result)
+    return result
+
+
+def _check_targets(targets, target_lengths, num_classes):
+    """Reject target tensors the kernels would read or write out of bounds.
+
+    Both failure modes are memory safety issues, not accuracy issues: a short
+    `targets` makes the forward's `targets + origin + index` run past the end of
+    the buffer, and an out-of-range label makes `log_probs + t * N * C + b * C +
+    label` read past the row and the backward's `atomic_add` write past the end
+    of `grad_input`. cuDNN faults on both as well, so there is no odd-but-valid
+    behaviour to preserve -- only a check to add before any kernel launches.
+
+    The check runs against the *caller's* tensor rather than the staged device
+    copy. Targets normally arrive on the CPU (cuDNN's own convention), where the
+    label bounds are a host-side pass and are memoised by `_label_bounds`;
+    validating the staged device copy instead would force a sync into an
+    otherwise fully asynchronous path.
+    """
+    total = (
+        sum(target_lengths)
+        if not torch.is_tensor(target_lengths)
+        else int(target_lengths.sum())
+    )
+    if int(total) != targets.numel():
+        raise RuntimeError(
+            "cudnn_ctc_loss expected sum(target_lengths) to equal "
+            f"targets.numel(), but got {int(total)} and {targets.numel()}"
+        )
+    if targets.numel():
+        label_min, label_max = _label_bounds(targets)
+        if label_min < 0 or label_max >= num_classes:
+            raise RuntimeError(
+                "cudnn_ctc_loss expected targets to be in the range "
+                f"[0, {num_classes}), but got [{label_min}, {label_max}]"
+            )
+
+
 def _launch_params(block_s):
     """Pick the launch shape for a state-row block of `block_s` lanes.
 
@@ -501,6 +609,7 @@ def _launch_backward(
     num_classes,
     state_count_max,
     blank,
+    deterministic,
 ):
     block_s = triton.next_power_of_2(state_count_max)
     launch_params = _launch_params(block_s)
@@ -541,6 +650,7 @@ def _launch_backward(
             state_count_max,
             blank,
             block_s,
+            deterministic,
             **launch_params,
         )
 
@@ -624,6 +734,7 @@ def _cudnn_ctc_loss_impl(
     _, max_input = _length_stats(input_lengths, "input_lengths")
     if max_input > T:
         raise RuntimeError("input_lengths must be in [0, T]")
+    _check_targets(targets, target_lengths, num_classes)
 
     state_count_max = 2 * max_target + 1
     block_s = triton.next_power_of_2(state_count_max)
@@ -685,6 +796,7 @@ def _cudnn_ctc_loss_impl(
             num_classes,
             state_count_max,
             blank,
+            deterministic,
         )
 
     return neg_log_likelihood, grad_input

@@ -742,3 +742,95 @@ def test_cudnn_ctc_loss_empty_axis_rejected(empty_axis):
 
     # No kernel ran, so the device is still usable.
     assert torch.zeros(4, device=device).sum().item() == 0
+
+
+@pytest.mark.cudnn_ctc_loss
+@pytest.mark.parametrize(
+    "targets,input_lengths,target_lengths,message",
+    [
+        # sum(target_lengths) > targets.numel(): the forward indexes past the
+        # end of the buffer.
+        ([1, 2, 3, 4], [8, 8], [3, 3], r"sum\(target_lengths\)"),
+        # ...and the other direction, which also leaves labels unread.
+        ([1, 2, 3, 4, 5, 1], [8, 8], [2, 2], r"sum\(target_lengths\)"),
+        # A label >= C makes `log_probs + t * N * C + b * C + label` read past
+        # the row and the backward's scatter write past `grad_input`.
+        ([1, 2, 3, 9, 4, 5], [8, 8], [3, 3], "range"),
+        ([1, -2, 3, 4, 4, 5], [8, 8], [3, 3], "range"),
+    ],
+)
+def test_cudnn_ctc_loss_invalid_targets(
+    targets, input_lengths, target_lengths, message
+):
+    """Out-of-bounds `targets` must raise before any kernel launches.
+
+    Both cases are memory-safety bugs, not accuracy bugs: the label indexes the
+    forward's gather and the backward's scatter, so a stale label reads past
+    `log_probs` and *writes* past `grad_input`. cuDNN faults on both too, so
+    there is no reference behaviour to match -- only the check to assert.
+    """
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    log_probs = torch.log_softmax(
+        torch.randn(8, 2, 6, dtype=torch.float32, device=device), dim=-1
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        flag_gems.cudnn_ctc_loss(
+            log_probs,
+            torch.tensor(targets, dtype=torch.int32),
+            input_lengths,
+            target_lengths,
+            0,
+            True,
+            False,
+        )
+
+    # No kernel ran, so the device is still usable.
+    assert torch.zeros(4, device=device).sum().item() == 0
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_deterministic():
+    """`deterministic=True` must be bitwise reproducible across runs.
+
+    The scatter in the backward is `labels`-indexed, so every blank state and
+    every repeated label targets the same `grad_input` slot; an unordered
+    `atomic_add` resolves those collisions in arrival order, which varies
+    between runs. With only unique labels the collisions still exist -- every
+    blank state lands on column 0 -- so this shape does not need duplicate
+    labels to reproduce the race.
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    t_steps, batch, classes = 64, 8, 32
+    log_probs = torch.log_softmax(
+        torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device),
+        dim=-1,
+    )
+    # All-equal labels maximise the collision count on a single column.
+    targets = torch.tensor([5] * (batch * 8), dtype=torch.int32)
+    input_lengths = [t_steps] * batch
+    target_lengths = [8] * batch
+
+    def run(flag):
+        return flag_gems.cudnn_ctc_loss(
+            log_probs, targets, input_lengths, target_lengths, 0, flag, False
+        )
+
+    # Deterministic mode: every repeat must match bit for bit.
+    first_loss, first_grad = run(True)
+    for _ in range(20):
+        loss, grad = run(True)
+        assert torch.equal(loss, first_loss)
+        assert torch.equal(grad, first_grad)
+
+    # ...and it must still agree with the atomic path, not merely with itself.
+    atomic_loss, atomic_grad = run(False)
+    utils.gems_assert_close(first_loss, atomic_loss, torch.float32)
+    utils.gems_assert_close(first_grad, atomic_grad, torch.float32)
