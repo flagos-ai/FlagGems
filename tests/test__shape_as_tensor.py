@@ -264,7 +264,7 @@ def test__shape_as_tensor_master_noncontiguous():
 @pytest.mark.underscore_shape_as_tensor
 def test__shape_as_tensor_master_sparse_coo():
     cases = [
-        ("plain", _make_coo(2, 3, (2, 3), seed=1), [2, 3]),
+        ("plain", _make_coo(2, 3, (2, 3), seed=1).coalesce(), [2, 3]),
         ("1d", _make_coo(1, 3, (3,), seed=2), [3]),
         (
             "hybrid",
@@ -299,7 +299,8 @@ def test__shape_as_tensor_master_sparse_compressed():
     val = torch.randn(4, device=flag_gems.device)
 
     csr = torch.sparse_csr_tensor(row, col, val, (2, 3))
-    csc = torch.sparse_csc_tensor(col, row, val, (2, 3))
+    ccol = torch.tensor([0, 2, 4, 4], dtype=torch.int64, device=flag_gems.device)
+    csc = torch.sparse_csc_tensor(ccol, col, val, (2, 3), check_invariants=True)
     bsr = torch.randn(4, 4, device=flag_gems.device).to_sparse_bsr((2, 2))
     bsc = torch.randn(4, 4, device=flag_gems.device).to_sparse_bsc((2, 2))
     empty_nnz = torch.sparse_csr_tensor(
