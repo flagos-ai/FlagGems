@@ -130,6 +130,52 @@ def _observe(tensor):
     return values
 
 
+def _cpu_cholesky_for_backward(inp):
+    # The CPU fallback only uses this differentiable decomposition for the
+    # small, finite SPD backward fixture. Symmetrization gives the Hermitian
+    # input gradient exposed by native Cholesky.
+    remainder = (inp + inp.mH) * 0.5
+    columns = []
+    n = inp.shape[-1]
+    for i in range(n):
+        pivot = remainder[..., 0, 0].real.sqrt()
+        tail = remainder[..., 1:, 0] / pivot.unsqueeze(-1)
+        current = torch.cat((pivot.unsqueeze(-1).to(inp.dtype), tail), dim=-1)
+        zeros = inp.new_zeros((*inp.shape[:-2], i))
+        columns.append(torch.cat((zeros, current), dim=-1))
+        remainder = remainder[..., 1:, 1:] - tail.unsqueeze(-1) * tail.conj().unsqueeze(-2)
+    return torch.stack(columns, dim=-1)
+
+
+def _reference_cholesky(inp, upper=False, *, out=None):
+    if flag_gems.vendor_name != "mthreads" or inp.device.type != "cpu":
+        if out is not None:
+            return torch.ops.aten.cholesky.out(inp, upper, out=out)
+        return torch.ops.aten.cholesky.default(inp, upper)
+
+    if inp.requires_grad:
+        result = _cpu_cholesky_for_backward(inp)
+        if upper:
+            result = result.mH
+    else:
+        import numpy as np
+
+        matrix = inp.numpy()
+        if upper:
+            matrix = matrix.swapaxes(-1, -2).conj()
+        try:
+            factor = np.linalg.cholesky(matrix)
+        except np.linalg.LinAlgError as error:
+            raise torch.linalg.LinAlgError(str(error)) from error
+        if upper:
+            factor = factor.swapaxes(-1, -2).conj()
+        result = torch.from_numpy(np.ascontiguousarray(factor))
+    if out is not None:
+        out.copy_(result)
+        return out
+    return result
+
+
 def _assert_close(result, reference):
     result, reference = _comparison_values(result, reference)
     tu.assert_result_close(result, reference)
@@ -159,7 +205,7 @@ def _make_master_spd(shape, dtype):
 
 def _check_master_factorization(inp, upper=False):
     kwargs = {"upper": True} if upper else {}
-    reference = torch.cholesky(utils.to_reference(inp), **kwargs)
+    reference = _reference_cholesky(utils.to_reference(inp), **kwargs)
     result = flag_gems.cholesky(inp, **kwargs)
     actual, expected = _comparison_values(result, reference)
     utils.gems_assert_close(actual, expected, inp.dtype)
@@ -191,7 +237,7 @@ def test_cholesky_master_negative_definite(dtype):
     with pytest.raises(torch.linalg.LinAlgError):
         flag_gems.cholesky(inp)
     with pytest.raises(torch.linalg.LinAlgError):
-        torch.cholesky(utils.to_reference(inp))
+        _reference_cholesky(utils.to_reference(inp))
 
 
 @pytest.mark.cholesky
@@ -313,7 +359,7 @@ def test_cholesky_value_range(fixture, dtype, shape, value_range):
     inp = _make_pd_input(fixture, dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.cholesky(ref_inp)
+    ref_out = _reference_cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
     _assert_close(res_out, ref_out)
@@ -332,7 +378,7 @@ def test_cholesky_upper(dtype, upper):
     ref_inp = tu.to_reference(inp)
     kwargs = {} if upper is None else {"upper": upper}
 
-    ref_out = torch.ops.aten.cholesky(ref_inp, **kwargs)
+    ref_out = _reference_cholesky(ref_inp, **kwargs)
     res_out = flag_gems.cholesky(inp, **kwargs)
 
     _assert_close(res_out, ref_out)
@@ -385,7 +431,7 @@ def test_cholesky_input_layout(dtype, layout):
     preserved = storage.clone()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.cholesky(ref_inp)
+    ref_out = _reference_cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
     # The factorization is not in-place: nothing in the input storage, inside or
@@ -429,7 +475,7 @@ def test_cholesky_out(dtype, upper, strided, shape):
         ref_out = _full(ref_inp.shape, 7.0, ref_inp.dtype, ref_inp.device)
         out = _full(inp.shape, 7.0, dtype, flag_gems.device)
 
-    ref_ret = torch.ops.aten.cholesky.out(ref_inp, upper, out=ref_out)
+    ref_ret = _reference_cholesky(ref_inp, upper, out=ref_out)
     res_ret = flag_gems.cholesky(inp, upper, out=out)
 
     assert res_ret is out
@@ -456,7 +502,7 @@ def test_cholesky_backward(dtype, upper):
     ref_inp = tu.to_reference(inp).detach().requires_grad_(True)
     res_inp = inp.detach().requires_grad_(True)
 
-    ref_out = torch.ops.aten.cholesky(ref_inp, upper)
+    ref_out = _reference_cholesky(ref_inp, upper)
     res_out = flag_gems.cholesky(res_inp, upper)
     _assert_close(res_out, ref_out)
 
@@ -489,7 +535,7 @@ def test_cholesky_opposite_triangle(dtype, upper):
     perturbed = (inp + perturbation).to(flag_gems.device)
 
     ref_inp = tu.to_reference(perturbed)
-    ref_out = torch.ops.aten.cholesky(ref_inp, upper)
+    ref_out = _reference_cholesky(ref_inp, upper)
     res_out = flag_gems.cholesky(perturbed, upper)
 
     _assert_close(res_out, ref_out)
@@ -515,7 +561,7 @@ def test_cholesky_imaginary_diagonal(dtype):
     )
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.cholesky(ref_inp)
+    ref_out = _reference_cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
     _assert_close(res_out, ref_out)
@@ -672,7 +718,7 @@ def test_cholesky_inf_diagonal(dtype):
     inp = inp.to(flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.cholesky(ref_inp)
+    ref_out = _reference_cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
     _assert_close(res_out, ref_out)
@@ -707,7 +753,7 @@ def test_cholesky_special_values_in_ignored_triangle(dtype, scenario):
     inp = inp.to(flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.cholesky(ref_inp)
+    ref_out = _reference_cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
     _assert_close(res_out, ref_out)
