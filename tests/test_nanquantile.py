@@ -121,6 +121,13 @@ def _assert_close(result, reference, dtype, reduction_size):
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 @pytest.mark.parametrize("dim, keepdim", [(None, False), (1, False), (-1, True)])
 def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and dtype == torch.float64
+        and interpolation != "linear"
+        and not cfg.TO_CPU
+    ):
+        pytest.skip("MUSA device reference does not support Float64 nanquantile")
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("Enflame Float64 storage loses adjacent-double values")
     inp = _input((7, 33), dtype).T
