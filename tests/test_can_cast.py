@@ -22,12 +22,6 @@ from flag_gems import _FULL_CONFIG
 
 from . import accuracy_utils as utils
 
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
-
 # The full dtype grid native ``can_cast`` is defined over on this build: the 13
 # standard scalar types plus the four float8 spellings when present.  Probed
 # rather than referenced directly so the suite still collects on older builds.
@@ -38,6 +32,9 @@ _FLOAT8_NAMES = (
     "float8_e5m2fnuz",
 )
 
+# This grid is iterated by a plain for-loop, not expanded by parametrize, so
+# every entry must be a real torch.dtype. Filter dtypes the current device
+# cannot allocate instead of wrapping them in pytest.param.
 _DTYPES = [
     torch.bool,
     torch.uint8,
@@ -48,10 +45,10 @@ _DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64),
+    *([torch.float64] if utils.fp64_is_supported else []),
     torch.complex32,
     torch.complex64,
-    pytest.param(torch.complex128, marks=_SKIP_FP64),
+    *([torch.complex128] if utils.fp64_is_supported else []),
 ] + [getattr(torch, n) for n in _FLOAT8_NAMES if hasattr(torch, n)]
 
 # Boundaries worth naming individually so a failure points at the category

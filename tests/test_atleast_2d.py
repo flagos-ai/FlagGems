@@ -22,12 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
-
 # atleast_2d is a pure host-side reshape: its output only depends on the
 # input rank, never on element values. The dtype sweep exercises every
 # branch (identity / one unsqueeze / two unsqueezes) across dtype classes.
@@ -46,9 +40,12 @@ SWEEP_DTYPES = (
     utils.FLOAT_DTYPES
     + utils.INT_DTYPES
     + utils.BOOL_TYPES
-    + [pytest.param(torch.float64, marks=_SKIP_FP64), torch.int64]
+    + ([torch.float64] if utils.fp64_is_supported else [])
+    + [torch.int64]
 )
-COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+COMPLEX_DTYPES = [torch.complex64] + (
+    [torch.complex128] if utils.fp64_is_supported else []
+)
 
 
 @pytest.mark.atleast_2d
@@ -249,10 +246,6 @@ def test_accuracy_atleast_2d_alias_semantics():
 
 
 @pytest.mark.atleast_2d
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason=("enflame/GCU backend capability"),
-)
 def test_accuracy_atleast_2d_dtype_neutrality():
     """The op never reads element data: special-value payloads (NaN/Inf for
     floats, extreme bit patterns for ints) pass through unchanged."""
