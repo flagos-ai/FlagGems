@@ -65,8 +65,6 @@ def log1p_out(A, out):
     return log1p_func(A, out0=out)
 
 
-
-
 @triton.jit
 def _log1p_backward_grad(grad_output, x):
     # ATen computes log1p_backward as `grad / (1 + self)` with two roundings:

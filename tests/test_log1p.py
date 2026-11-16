@@ -166,10 +166,9 @@ def test_log1p_backward_via_torch_dispatch(dtype):
     ref_x = utils.to_reference(x.detach().clone()).requires_grad_()
     grad = torch.randn_like(x, memory_format=torch.contiguous_format)
 
-    with flag_gems.use_gems():
-        inp = x.detach().clone().requires_grad_()
-        out = flag_gems.log1p(inp)
-        (dx,) = torch.autograd.grad(out, inp, grad)
+    inp = x.detach().clone().requires_grad_()
+    out = flag_gems.log1p(inp)
+    (dx,) = torch.autograd.grad(out, inp, grad)
 
     assert "Log1pFunction" in type(out.grad_fn).__name__, type(out.grad_fn).__name__
 
