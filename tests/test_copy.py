@@ -156,9 +156,7 @@ def test_copy_inplace_dtype_fallback():
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason=(
-        "enflame GCU has no float8_e8m0fnu support: "
-    ),
+    reason=("enflame GCU has no float8_e8m0fnu support: "),
 )
 @pytest.mark.parametrize(
     "shape",
