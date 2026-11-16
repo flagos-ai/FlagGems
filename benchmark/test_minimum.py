@@ -44,4 +44,5 @@ def test_minimum_backward():
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
+    bench.set_gems(flag_gems.minimum)
     bench.run()

@@ -242,7 +242,7 @@ def test_minimum_backward_under_use_gems(dtype):
     x = base_x.clone().requires_grad_(True)
     y = base_y.clone().requires_grad_(True)
     with flag_gems.use_gems():
-        out = torch.minimum(x, y)
+        out = flag_gems.minimum(x, y)
     gx, gy = torch.autograd.grad(out, (x, y), (out_grad,))
 
     utils.gems_assert_close(gx, ref_gx, dtype)

@@ -297,4 +297,3 @@ def minimum(X, Y):
     return minimum_kernel(X, Y)
 
 
-minimum._flag_gems_autograd_impl = torch.library.fallthrough_kernel

@@ -108,11 +108,6 @@ class GeneralOpRegistrar:
 
     @staticmethod
     def _extra_dispatch_keys(item):
-        if len(item) == 2:
-            # Device implementations can supply their own Autograd entry.
-            impl = getattr(item[1], "_flag_gems_autograd_impl", None)
-            if impl is not None:
-                return (("Autograd", impl),)
         return tuple(item[3]) if len(item) > 3 else ()
 
     def _normalized_config(self, item):
