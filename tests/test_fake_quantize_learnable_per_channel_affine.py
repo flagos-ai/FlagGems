@@ -47,6 +47,10 @@ QUANT_RANGES = [(0, 255), (-128, 127)]
 def test_fake_quantize_learnable_per_channel_affine(
     shape, axis, dtype, quant_min, quant_max
 ):
+    if flag_gems.vendor_name == "kunlunxin" and (dtype == torch.float16):
+        pytest.skip(
+            "Kunlunxin native learnable per-channel Half returns Float instead of Half"
+        )
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     channels = shape[axis]
     scale = (
