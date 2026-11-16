@@ -36,6 +36,7 @@ from ._foreach_add__ScalarList import _foreach_add__ScalarList
 from ._foreach_add_Scalar import _foreach_add_Scalar
 from ._foreach_add_ScalarList import _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
+from ._foreach_addcdiv__ScalarList import _foreach_addcdiv__ScalarList
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -240,6 +241,7 @@ __all__ = [
     "_foreach_add_Scalar",
     "_foreach_add_ScalarList",
     "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__ScalarList",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
