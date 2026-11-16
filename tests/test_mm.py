@@ -25,7 +25,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-mm_backward = importlib.import_module(flag_gems.mm.__module__).mm_backward
+mm_backward = getattr(importlib.import_module(flag_gems.mm.__module__), "mm_backward", None)
 
 if QUICK_MODE:
     MNK_SHAPES = [
@@ -303,6 +303,7 @@ def _grad_inputs(mat1, mat2, needs_input_grad):
 
 
 @pytest.mark.mm_backward
+@pytest.mark.skipif(mm_backward is None, reason="Hopper mm backward is unavailable on this backend")
 @pytest.mark.parametrize("M, N, K", BACKWARD_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [False, True])
@@ -363,6 +364,7 @@ def test_mm_backward(M, N, K, dtype, b_column_major, grad_mode):
 
 
 @pytest.mark.mm_backward
+@pytest.mark.skipif(mm_backward is None, reason="Hopper mm backward is unavailable on this backend")
 @pytest.mark.parametrize(
     "M, N, K", BACKWARD_MNK_SHAPES + BACKWARD_DEGENERATE_MNK_SHAPES
 )
@@ -408,6 +410,7 @@ def test_mm_backward_entry(M, N, K, dtype, needs_input_grad):
 
 
 @pytest.mark.mm_backward
+@pytest.mark.skipif(mm_backward is None, reason="Hopper mm backward is unavailable on this backend")
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_backward_use_gems(dtype):
     """``torch.mm`` under ``use_gems()`` must differentiate through FlagGems."""
@@ -450,6 +453,7 @@ def test_mm_backward_use_gems(dtype):
 
 
 @pytest.mark.mm_backward
+@pytest.mark.skipif(mm_backward is None, reason="Hopper mm backward is unavailable on this backend")
 @pytest.mark.parametrize("M, N, K", BACKWARD_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("path", ["fused", "tuned"])
@@ -489,6 +493,7 @@ def test_mm_backward_selectable_path(monkeypatch, M, N, K, dtype, path):
 
 
 @pytest.mark.mm_backward
+@pytest.mark.skipif(mm_backward is None, reason="Hopper mm backward is unavailable on this backend")
 @pytest.mark.skipif(
     not torch.cuda.is_available() or flag_gems.device != "cuda",
     reason="CUDA profiler activity is required to attribute the backward kernels.",
