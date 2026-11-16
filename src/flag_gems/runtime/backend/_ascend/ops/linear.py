@@ -21,6 +21,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.add import add_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
@@ -390,7 +391,7 @@ def linear(input, weight, bias=None):
     output = output.view(*batch_dims, N)
 
     if bias is not None and not bias_is_vector:
-        output.add_(bias)
+        add_(output, bias)
 
     # If original input was 1D, squeeze the batch dim
     if single_1d:

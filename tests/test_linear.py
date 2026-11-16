@@ -171,3 +171,56 @@ def test_linear_bias_cancellation(dtype, features, batch):
     bias = cpu_bias.to(inp.device)
     actual = flag_gems.linear(inp, weight, bias)
     utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.linear
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["matrix", "broadcast", "strided"])
+def test_linear_nonvector_bias(dtype, layout):
+    torch.manual_seed(16)
+    cpu_input = (torch.randn(2, 3, 64) * 0.1).to(dtype)
+    cpu_weight = (torch.randn(33, 64) * 0.1).to(dtype)
+    cpu_bias = (torch.randn(2, 3, 33) * 0.1).to(dtype)
+    if layout == "broadcast":
+        cpu_bias = cpu_bias[:, :1, :]
+    inp = cpu_input.to(flag_gems.device)
+    weight = cpu_weight.to(inp.device)
+    if layout == "strided":
+        bias_storage = torch.empty(2, 3, 67, dtype=dtype, device=inp.device)
+        bias = bias_storage[..., 1::2]
+        bias.copy_(cpu_bias)
+    else:
+        bias = cpu_bias.to(inp.device)
+    expected = torch.nn.functional.linear(
+        cpu_input.float(), cpu_weight.float(), cpu_bias.float()
+    ).to(dtype)
+    actual = flag_gems.linear(inp, weight, bias)
+    utils.gems_assert_close(actual.cpu(), expected, dtype, reduce_dim=64)
+    utils.gems_assert_equal(bias.cpu(), cpu_bias)
+
+
+@pytest.mark.linear
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Requires Ascend NPUGraph capture and replay",
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_linear_nonvector_bias_graph(dtype):
+    cpu_input = torch.ones((3, 64), dtype=dtype)
+    cpu_weight = torch.zeros((33, 64), dtype=dtype)
+    cpu_weight[:, :2] = 1
+    inp = cpu_input.to(flag_gems.device)
+    weight = cpu_weight.to(inp.device)
+    bias = torch.ones((3, 33), dtype=dtype, device=inp.device)
+    flag_gems.linear(inp, weight, bias)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.linear(inp, weight, bias)
+    for value in (2, -3):
+        inp.fill_(value)
+        bias.fill_(value)
+        actual.fill_(-123)
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.full((3, 33), 3 * value, dtype=dtype)
+        utils.gems_assert_equal(actual.cpu(), expected)
