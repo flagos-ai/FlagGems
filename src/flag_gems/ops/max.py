@@ -328,9 +328,7 @@ def evenly_distribute_scale_kernel(
         match = ((values == result) | ((values != values) & nan_result)) & mask
         tl.store(
             out_ptr + offsets,
-            tl.where(match, scaled, tl.zeros_like(scaled)).to(
-                out_ptr.dtype.element_ty
-            ),
+            tl.where(match, scaled, tl.zeros_like(scaled)).to(out_ptr.dtype.element_ty),
             mask=mask,
         )
 
@@ -448,9 +446,7 @@ def evenly_distribute_backward(grad_output, self, result):
     with _device_context(inp.device):
         if n_partials <= _MAX_PARTIALS:
             block_partials = triton.next_power_of_2(n_partials)
-            partial = torch.empty(
-                2 * n_partials, dtype=torch.int32, device=inp.device
-            )
+            partial = torch.empty(2 * n_partials, dtype=torch.int32, device=inp.device)
             grid = (n_partials,)
             evenly_distribute_slab_kernel[grid](
                 inp, grad, value, partial, out, n_elements, n_partials, block
@@ -469,9 +465,7 @@ def evenly_distribute_backward(grad_output, self, result):
         else:
             count = torch.zeros([], dtype=torch.int32, device=inp.device)
             grid = (n_partials,)
-            evenly_distribute_count_kernel[grid](
-                inp, value, count, n_elements, block
-            )
+            evenly_distribute_count_kernel[grid](inp, value, count, n_elements, block)
             evenly_distribute_fill_kernel[grid](
                 inp, grad, value, count, out, n_elements, block
             )

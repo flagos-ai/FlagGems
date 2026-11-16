@@ -171,6 +171,7 @@ def test_max_dim_big_shape(shape, dim, keepdim, dtype):
     utils.gems_assert_equal(res_out_index, ref_out_index)
     utils.gems_assert_equal(res_out_value, ref_out_value)
 
+
 # ---------------------------------------------------------------------------
 # Backward: torch.max(x) (full reduction) and torch.max(x, dim, keepdim)
 #
@@ -257,9 +258,7 @@ def test_max_backward_dim(shape, dim, keepdim, dtype):
         ref_values, ref_leaf, utils.to_reference(out_grad, True)
     )[0]
 
-    res_grad = flag_gems.max_backward(
-        out_grad, inp, res_values, res_indices, dim
-    )
+    res_grad = flag_gems.max_backward(out_grad, inp, res_values, res_indices, dim)
 
     assert res_grad.shape == inp.shape
     assert res_grad.dtype == inp.dtype
@@ -381,15 +380,12 @@ def test_max_backward_autograd_dispatch(dtype):
     ref_dim_values, _ = torch.max(ref_leaf, dim=1)
     ref_dim_grad = torch.autograd.grad(ref_dim_values, ref_leaf, dim_grad_out)[0]
     full_grad_out = torch.randn((), dtype=ref_leaf.dtype, device=ref_leaf.device)
-    ref_full_grad = torch.autograd.grad(
-        torch.max(ref_leaf), ref_leaf, full_grad_out
-    )[0]
+    ref_full_grad = torch.autograd.grad(torch.max(ref_leaf), ref_leaf, full_grad_out)[0]
 
     leaf = inp.detach().clone().requires_grad_(True)
-    with unittest.mock.patch.object(
-        module, "max_backward", spy_max_backward
-    ), unittest.mock.patch.object(
-        module, "evenly_distribute_backward", spy_evenly
+    with (
+        unittest.mock.patch.object(module, "max_backward", spy_max_backward),
+        unittest.mock.patch.object(module, "evenly_distribute_backward", spy_evenly),
     ):
         (res_dim_grad,) = torch.autograd.grad(
             flag_gems.max_dim(leaf, dim=1).values,
