@@ -368,6 +368,15 @@ class _LdexpStaticBaseline:
 class LdexpInplaceBenchmark(
     _LdexpStaticBaseline, base.BinaryPointwiseBenchmark, OperatorBenchmark
 ):
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if flag_gems.vendor_name != "mthreads":
+            return
+        master_shapes = [(1,), (1024,), (1024, 1024), (4096, 4096), (16, 128, 64, 64)]
+        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            master_shapes.extend([(2**24,), (8192, 4096)])
+        self.shapes = list(dict.fromkeys([*map(tuple, self.shapes), *master_shapes]))
+
     def supports_cases(self):
         return True
 
