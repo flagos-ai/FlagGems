@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.max_unpool3d import max_unpool3d_backward
 
 from . import accuracy_utils as utils
 
@@ -116,5 +117,5 @@ def test_max_unpool3d_backward(shape, kernel_size, stride, padding, dtype):
 
     # The standalone backward helper must reproduce the autograd result: it is
     # the same public ABI the KernelGen seed and catalog use.
-    direct_grad = flag_gems.max_unpool3d_backward(grad_out, indices)
+    direct_grad = max_unpool3d_backward(grad_out, indices)
     utils.gems_assert_close(direct_grad, ref_grad, dtype)

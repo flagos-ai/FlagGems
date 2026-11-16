@@ -1205,7 +1205,6 @@ from flag_gems.ops.max_pool3d_with_indices_backward import (
 )
 from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.max_unpool3d import max_unpool3d
-from flag_gems.ops.max_unpool3d_backward import max_unpool3d_backward
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
@@ -2945,7 +2944,6 @@ __all__ = [
     "max_pool3d_with_indices_backward",
     "max_unpool2d",
     "max_unpool3d",
-    "max_unpool3d_backward",
     "maximum",
     "mean",
     "mean_dim",
