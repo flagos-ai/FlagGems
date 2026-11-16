@@ -1717,7 +1717,17 @@ _FULL_CONFIG = (
     ("mH", mH),
     ("min", min),
     ("min.dim", min_dim),
-    ("minimum", minimum),
+    # minimum has no dedicated *_backward ATen schema: PyTorch derives its
+    # gradient from a multi-kernel elementwise formula. The autograd.Function in
+    # ops/minimum.py owns that formula, so the Autograd key has to fall through
+    # to it instead of re-wrapping the result in ATen's generated node (cf. the
+    # ``clone`` and ``adaptive_avg_pool3d`` entries).
+    (
+        "minimum",
+        minimum,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("miopen_batch_norm", miopen_batch_norm),
     ("miopen_batch_norm_backward", miopen_batch_norm_backward),
     ("mish", mish),

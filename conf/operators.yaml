@@ -13621,6 +13621,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.1'
+- id: minimum_backward
+  description: The backward version of `minimum()`. ATen has no dedicated `*_backward`
+    schema for it; the gradient comes from the derivative formula that `ops/minimum.py`
+    owns through an autograd.Function, so this entry registers the fused Triton kernel
+    behind `aten::minimum`.
+  for:
+  - minimum
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '5.4'
 - id: miopen_batch_norm
   description: Computes batch normalization on the input tensor using the MIOpen
     convention and updates the running statistics.
