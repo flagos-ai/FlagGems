@@ -18,6 +18,20 @@ generic_math = (
 )
 
 
+@pytest.fixture
+def math_caplog(caplog, monkeypatch):
+    op_logger = logging.getLogger(
+        utils.gems_log_logger(flag_gems._scaled_dot_product_attention_math)
+    )
+    # Exercise capture even when another test disabled log propagation.
+    monkeypatch.setattr(op_logger, "propagate", False)
+    op_logger.addHandler(caplog.handler)
+    try:
+        yield caplog
+    finally:
+        op_logger.removeHandler(caplog.handler)
+
+
 # Cases cover: (1) equal q/kv seq lens with and without causal masking, (2)
 # differing q/kv seq lens, (3) an explicit float attn_mask, and (4) custom
 # scale values. attn_mask is only used when is_causal=False because the aten
@@ -126,7 +140,7 @@ def test_scaled_dot_product_attention_math_gqa(
     use_mask,
     is_causal,
     dtype,
-    caplog,
+    math_caplog,
 ):
     utils.init_seed(1234567890)
     q = torch.randn(2, heads, q_len, head_dim, dtype=dtype, device=device)
@@ -147,7 +161,7 @@ def test_scaled_dot_product_attention_math_gqa(
         enable_gqa=True,
     )
     gems_op = flag_gems._scaled_dot_product_attention_math
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+    with math_caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
         res_out, res_weights = gems_op(
             q,
             k,
@@ -160,14 +174,14 @@ def test_scaled_dot_product_attention_math_gqa(
 
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
+        in math_caplog.text
     )
     utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
     utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
 
 
 @pytest.mark.scaled_dot_product_attention_math
-def test_scaled_dot_product_attention_math_positional_dropout_mask_gqa(caplog):
+def test_scaled_dot_product_attention_math_positional_dropout_mask_gqa(math_caplog):
     utils.init_seed(1234567890)
     q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
     k = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
@@ -186,32 +200,32 @@ def test_scaled_dot_product_attention_math_positional_dropout_mask_gqa(caplog):
         enable_gqa=True,
     )
     gems_op = flag_gems._scaled_dot_product_attention_math
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+    with math_caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
         res_out, res_weights = gems_op(
             q, k, v, None, 0.0, False, dropout_mask, scale=0.25, enable_gqa=True
         )
 
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
+        in math_caplog.text
     )
     utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
     utils.gems_assert_close(res_weights, ref_weights, q.dtype, atol=3e-2)
 
 
 @pytest.mark.scaled_dot_product_attention_math
-def test_scaled_dot_product_attention_math_broadcast_heads(caplog):
+def test_scaled_dot_product_attention_math_broadcast_heads(math_caplog):
     utils.init_seed(1234567890)
     q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
     k = torch.randn(2, 1, 8, 16, dtype=q.dtype, device=device)
     v = torch.randn(2, 1, 8, 16, dtype=q.dtype, device=device)
     ref_out, ref_weights = sdpa_math(q.cpu(), k.cpu(), v.cpu(), enable_gqa=False)
     gems_op = flag_gems._scaled_dot_product_attention_math
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+    with math_caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
         res_out, res_weights = gems_op(q, k, v, enable_gqa=False)
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
+        in math_caplog.text
     )
 
     utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
@@ -220,18 +234,18 @@ def test_scaled_dot_product_attention_math_broadcast_heads(caplog):
 
 @pytest.mark.scaled_dot_product_attention_math
 @pytest.mark.skipif(not generic_math, reason="Legacy positional scale is a generic API")
-def test_scaled_dot_product_attention_math_legacy_positional_scale(caplog):
+def test_scaled_dot_product_attention_math_legacy_positional_scale(math_caplog):
     utils.init_seed(1234567890)
     q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
     k = torch.randn_like(q)
     v = torch.randn_like(q)
     ref_out, ref_weights = sdpa_math(q.cpu(), k.cpu(), v.cpu(), scale=0.5)
     gems_op = flag_gems._scaled_dot_product_attention_math
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+    with math_caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
         res_out, res_weights = gems_op(q, k, v, None, 0.0, False, 0.5)
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
+        in math_caplog.text
     )
 
     utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
@@ -241,19 +255,21 @@ def test_scaled_dot_product_attention_math_legacy_positional_scale(caplog):
 @pytest.mark.scaled_dot_product_attention_math
 @pytest.mark.skipif(not generic_math, reason="Checks the generic kernel's empty heads")
 @pytest.mark.parametrize("key_heads,value_heads", [(0, 0), (0, 1), (1, 0)])
-def test_scaled_dot_product_attention_math_empty_heads(key_heads, value_heads, caplog):
+def test_scaled_dot_product_attention_math_empty_heads(
+    key_heads, value_heads, math_caplog
+):
     q = torch.empty(2, 0, 8, 16, dtype=torch.float16, device=device)
     k = torch.empty(2, key_heads, 8, 16, dtype=q.dtype, device=device)
     v = torch.empty(2, value_heads, 8, 16, dtype=q.dtype, device=device)
     ref_out, ref_weights = sdpa_math(q.cpu(), k.cpu(), v.cpu())
     gems_op = flag_gems._scaled_dot_product_attention_math
 
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
+    with math_caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
         res_out, res_weights = gems_op(q, k, v)
 
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
+        in math_caplog.text
     )
     assert res_out.shape == ref_out.shape and res_out.dtype == ref_out.dtype
     assert (
@@ -295,33 +311,28 @@ def test_scaled_dot_product_attention_math_invalid_gqa(key_heads, value_heads):
 
 @pytest.mark.scaled_dot_product_attention_math
 @pytest.mark.skipif(device != "cuda", reason="Forces the CUDA SDPA math backend")
-def test_flaggems_sdpa_math_dispatch_gqa(caplog, monkeypatch):
-    # Earlier record=True enable tests leave the FlagGems parent logger isolated.
-    monkeypatch.setattr(logging.getLogger("flag_gems"), "propagate", False)
+def test_flaggems_sdpa_math_dispatch_gqa(math_caplog):
     utils.init_seed(1234567890)
     q = torch.randn(2, 4, 8, 16, dtype=torch.float16, device=device)
     k = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
     v = torch.randn(2, 2, 8, 16, dtype=q.dtype, device=device)
     ref_out, _ = sdpa_math(q.cpu(), k.cpu(), v.cpu(), enable_gqa=True)
     gems_op = flag_gems._scaled_dot_product_attention_math
-    op_logger = logging.getLogger(utils.gems_log_logger(gems_op))
     previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     lib = torch.library.Library("aten", "IMPL")
-    op_logger.addHandler(caplog.handler)
     try:
         flag_gems.only_enable(lib=lib, include=["_scaled_dot_product_attention_math"])
-        with caplog.at_level("DEBUG", logger=op_logger.name):
+        with math_caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_op)):
             with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):
                 res_out = torch.nn.functional.scaled_dot_product_attention(
                     q, k, v, enable_gqa=True
                 )
     finally:
-        op_logger.removeHandler(caplog.handler)
         lib._destroy()
         flag_gems.current_work_registrar = previous_registrar
 
     assert (
         f"{utils.gems_log_prefix(gems_op)} _SCALED_DOT_PRODUCT_ATTENTION_MATH"
-        in caplog.text
+        in math_caplog.text
     )
     utils.gems_assert_close(res_out, ref_out, q.dtype, atol=3e-2)
