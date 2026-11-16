@@ -689,7 +689,6 @@ def _cudnn_attn_bwd_aten(
     is_causal,
     scale=None,
 ):
-    lse = lse.unsqueeze(-1)
     return torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
         dOut_bhsd,
         Q_bhsd,
