@@ -399,6 +399,7 @@ def grouped_gemm_w8a8(
             raise ValueError("C must not overlap an input")
 
     direct = m <= e
+    large_gate_up = not direct and (n, k) == (512, 6144)
     split_k = 1
     if direct:
         bm, bn = 16, 64
@@ -407,7 +408,7 @@ def grouped_gemm_w8a8(
             bk, split_k = 256, 12
         else:
             bk = 512 if k % 512 == 0 else 128
-    elif (n, k) == (512, 6144):
+    elif large_gate_up:
         bm, bn, bk = 128, 128, 128
     else:
         bm, bn, bk = 64, 64, 64
@@ -488,7 +489,7 @@ def grouped_gemm_w8a8(
             SPLIT_K=split_k,
             M=m if split_k > 1 else 0,
             num_warps=4,
-            num_stages=2,
+            num_stages=1 if large_gate_up else 2,
             enable_fp_fusion=False,
         )
         if split_k > 1:
