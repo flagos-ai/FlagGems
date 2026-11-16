@@ -188,11 +188,11 @@ def _make_special_payload(dtype, scenario):
 
 
 def _assert_values_equal(actual, expected, *, device, equal_nan=False):
-    if flag_gems.vendor_name == "kunlunxin" and actual.dtype in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-        torch.float64,
-    ):
+    vendor = flag_gems.vendor_name
+    if (
+        vendor in ("kunlunxin", "mthreads")
+        and actual.dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (vendor == "kunlunxin" and actual.dtype == torch.float64):
         # Retain the original contract before CPU observation; keep FP64
         # precision while decoding FP8 for the missing comparison kernels.
         assert actual.dtype == expected.dtype
