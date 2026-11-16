@@ -36,6 +36,11 @@ VIEW_AS_REAL_COPY_SHAPES = [
     (20, 320, 15),
     (16, 128, 64, 60),
     (16, 7, 57, 32, 29),
+    (2048, 1024),
+    (4096, 4096),
+    (8, 4096, 4096),
+    (4096, 8192),
+    (16, 4096, 2048),
 ]
 
 
@@ -51,14 +56,24 @@ def _case_fn(shape, dtype):
     yield base.BenchmarkCasePlan(
         shape={"input": list(extents)},
         params={},
-        builder_args=(extents,),
+        builder_args=(extents, False),
     )
+    if extents == (4096, 8192):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(extents)},
+            params={"row_strided": True},
+            builder_args=(extents, True),
+        )
 
 
 def _build_inputs_fn(plan, dtype, device):
     # benchmark.utils.generate_tensor_input returns None for complex dtypes other
     # than complex64, so the input is built from the requested complex dtype.
-    return torch.randn(plan.builder_args[0], dtype=dtype, device=device), {}
+    shape, row_strided = plan.builder_args
+    if row_strided:
+        pool = torch.randn((2 * shape[0], *shape[1:]), dtype=dtype, device=device)
+        return pool[::2], {}
+    return torch.randn(shape, dtype=dtype, device=device), {}
 
 
 class ViewAsRealCopyBenchmark(OperatorBenchmark):
@@ -99,7 +114,6 @@ def test_view_as_real_copy_bench(dtype):
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.view_as_real_copy,
-        gems_op=getattr(flag_gems, "view_as_real_copy", None),
         dtypes=VIEW_AS_REAL_COPY_DTYPES,
         partition_dtype=dtype,
     )
