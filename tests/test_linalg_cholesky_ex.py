@@ -130,7 +130,7 @@ def _pd_input(dtype, shape, value_range):
     high = abs(tu.resolve_bound(value_range[1], dtype))
     scale = max(low, high, 1.0)
     sampled = _range_input(dtype, shape, value_range)
-    if flag_gems.vendor_name == "thead" and dtype.is_complex:
+    if flag_gems.vendor_name in ("thead", "mthreads") and dtype.is_complex:
         sampled = sampled.cpu()
     sampled = sampled / scale
     gram = sampled @ sampled.conj().transpose(-2, -1)
@@ -274,6 +274,17 @@ def _out_buffers(shape, dtype, device, layout):
     return l_buf, info
 
 
+def _assert_factor_close(actual, expected, **kwargs):
+    if flag_gems.vendor_name == "mthreads" and actual.is_complex():
+        assert actual.device.type == "musa"
+        assert actual.shape == expected.shape and actual.dtype == expected.dtype
+        assert expected.device == (
+            torch.device("cpu") if utils.TO_CPU else actual.device
+        )
+        actual, expected = actual.cpu(), expected.cpu()
+    tu.assert_result_close(actual, expected, **kwargs)
+
+
 def _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info):
     assert res_l.device == res_info.device == inp.device
     assert res_l.dtype == ref_l.dtype == inp.dtype
@@ -284,7 +295,7 @@ def _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info):
     if successful.any():
         order = inp.shape[-1]
         matrix_shape = (successful.numel(), order, order)
-        tu.assert_result_close(
+        _assert_factor_close(
             res_l.reshape(matrix_shape)[successful.to(res_l.device)],
             ref_l.reshape(matrix_shape)[successful],
         )
@@ -340,7 +351,7 @@ def test_linalg_cholesky_ex_pd_success(shape, dtype, value_range):
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _EXTREME_ROWS = [
@@ -363,7 +374,7 @@ def test_linalg_cholesky_ex_extreme_pd(symbol, upper, dtype):
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _UPPER_SHAPES = [(8, 8), (64, 64), (2, 16, 16)]
@@ -419,7 +430,7 @@ def test_linalg_cholesky_ex_param_combos(upper, check_errors, dtype):
     )
 
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 @pytest.mark.linalg_cholesky_ex
@@ -435,7 +446,7 @@ def test_linalg_cholesky_ex_default_arguments(dtype):
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _LAYOUT_KINDS = ["stride", "offset", "batch"]
@@ -452,7 +463,7 @@ def test_linalg_cholesky_ex_layout(layout, dtype):
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _OUT_SHAPES = [(16, 16), (2, 16, 16)]
@@ -502,7 +513,7 @@ def test_linalg_cholesky_ex_out_overload(shape, layout, upper, dtype):
     assert res_out[0].device == inp.device
     assert res_out[1].device == inp.device
     tu.assert_result_equal(res_out[1], ref_out[1])
-    tu.assert_result_close(res_out[0], ref_out[0])
+    _assert_factor_close(res_out[0], ref_out[0])
 
 
 _FAILURE_ROWS = [
@@ -570,7 +581,7 @@ def test_linalg_cholesky_ex_complex_diagonal(dtype):
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _BACKWARD_ROWS = [(upper, dtype) for dtype in _DTYPES for upper in (False, True)]
@@ -595,11 +606,11 @@ def test_linalg_cholesky_ex_backward(upper, dtype):
 
     # The successful forward is compared before differentiating.
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
     (ref_grad,) = torch.autograd.grad(ref_l, ref_inp, grad_outputs=ref_upstream)
     (res_grad,) = torch.autograd.grad(res_l, res_inp, grad_outputs=upstream)
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_factor_close(res_grad, ref_grad)
 
 
 # Dtypes the native kernel selection rejects, measured on the CUDA/cuSOLVER
