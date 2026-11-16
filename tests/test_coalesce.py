@@ -184,8 +184,8 @@ def _special_value_cases(dtypes):
     for dtype in dtypes:
         if not dtype.is_floating_point:
             continue
-        cases.append(pytest.param((dtype, "nan")))
-        cases.extend(pytest.param((dtype, kind)) for kind in ("inf", "mixed"))
+        cases.append(pytest.param(dtype, "nan"))
+        cases.extend(pytest.param(dtype, kind) for kind in ("inf", "mixed"))
     return cases
 
 
