@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -61,12 +59,11 @@ class FakeQuantizeLearnablePerChannelAffineBenchmark(OperatorBenchmark):
         self.shapes = PER_CHANNEL_CASES
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 def test_fake_quantize_learnable_per_channel_affine():
     bench = FakeQuantizeLearnablePerChannelAffineBenchmark(
-        op_name="fake_quantize_learnable_per_channel_affine",
+        op_name="_fake_quantize_learnable_per_channel_affine",
         torch_op=torch.ops.aten._fake_quantize_learnable_per_channel_affine,
-        gems_op=flag_gems._fake_quantize_learnable_per_channel_affine,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
