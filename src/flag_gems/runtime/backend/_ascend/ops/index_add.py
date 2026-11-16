@@ -24,9 +24,24 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+
+@libentry()
+@triton.jit
+def _index_add_bounds_kernel(
+    index, valid, count, upper_bound, BLOCK: tl.constexpr, SINGLE_PROGRAM: tl.constexpr
+):
+    pid = tle.program_id(0).to(tl.int64)
+    all_valid = tl.full((), 1, tl.int32)
+    for start in range(pid * BLOCK, count, tl.num_programs(0).to(tl.int64) * BLOCK):
+        offsets = start + tl.arange(0, BLOCK)
+        active = offsets < count
+        values = tl.load(index + offsets, active, other=0)
+        within_bounds = (~active) | ((values >= 0) & (values < upper_bound))
+        all_valid = tl.minimum(all_valid, tl.min(within_bounds.to(tl.int32), 0))
+    if SINGLE_PROGRAM:
+        tl.store(valid, all_valid)
+    else:
+        tl.atomic_min(valid, all_valid, sem="relaxed")
 
 
 @libentry()
@@ -240,19 +255,30 @@ def _assert_index_in_bounds(index, upper_bound):
         with torch_device_fn.device(index.device):
             if torch_device_fn.is_current_stream_capturing():
                 return
-    if index.numel() <= 2:
+    if index.device.type == "cpu" or index.numel() <= 2:
         # One small transfer avoids a reduction and two scalar synchronizations.
         values = index.cpu().tolist()
         assert all(
             0 <= value < upper_bound for value in values
         ), "0 <= index < self.size(dim)"
         return
-    lower, upper = torch.ops.aten.aminmax.default.redispatch(
-        _FALLBACK_KEYSET, index, dim=None, keepdim=False
-    )
-    assert (
-        lower.item() >= 0 and upper.item() < upper_bound
-    ), "0 <= index < self.size(dim)"
+    with torch_device_fn.device(index.device):
+        single_program = index.numel() <= 8192
+        if single_program:
+            valid = torch.empty((), dtype=torch.int32, device=index.device)
+            grid = (1,)
+        else:
+            valid = torch.ones((), dtype=torch.int32, device=index.device)
+            grid = (min(triton.cdiv(index.numel(), 1024), 65535),)
+        _index_add_bounds_kernel[grid](
+            index,
+            valid,
+            index.numel(),
+            upper_bound,
+            BLOCK=1024,
+            SINGLE_PROGRAM=single_program,
+        )
+    assert valid.item() != 0, "0 <= index < self.size(dim)"
 
 
 def _can_use_contiguous_suffix_path(inp, dim, index, src):

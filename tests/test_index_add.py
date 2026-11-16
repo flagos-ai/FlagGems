@@ -273,3 +273,29 @@ def test_index_add_short_invalid_preserves_input(inplace, bad_index):
         else:
             flag_gems.index_add(inp, 0, index, src)
     utils.gems_assert_equal(inp, expected)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("count", [1025, 4097, 16385])
+@pytest.mark.parametrize("boundary", ["valid", "negative", "upper"])
+def test_index_add_multiblock_bounds(inplace, index_dtype, count, boundary):
+    cpu_input = torch.zeros((64, 4))
+    cpu_index = (torch.arange(count) % 64).to(index_dtype)
+    if boundary != "valid":
+        cpu_index[-1] = -1 if boundary == "negative" else 64
+    cpu_source = torch.ones((count, 4))
+    inp = cpu_input.to(flag_gems.device)
+    index = cpu_index.to(inp.device)
+    src = cpu_source.to(inp.device)
+    fn = flag_gems.index_add_ if inplace else flag_gems.index_add
+    if boundary != "valid":
+        with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
+            fn(inp, 0, index, src)
+        utils.gems_assert_equal(inp.cpu(), cpu_input)
+    else:
+        actual = fn(inp, 0, index, src)
+        expected = cpu_input.index_add(0, cpu_index, cpu_source)
+        utils.gems_assert_equal(actual.cpu(), expected)
