@@ -28,6 +28,8 @@ from flag_gems.utils.limits import get_dtype_max
 
 logger = logging.getLogger(__name__)
 
+MinResult = namedtuple("min", ["values", "indices"])
+
 
 @libentry()
 @triton.jit
@@ -110,7 +112,9 @@ def min_kernel(
     tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
-def min_forward(inp):
+def min(inp):
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        return MinFunction.apply(inp)
     logger.debug("GEMS MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -127,7 +131,10 @@ def min_forward(inp):
     return out
 
 
-def min_dim_forward(inp, dim=None, keepdim=False):
+def min_dim(inp, dim=None, keepdim=False):
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        values, indices = MinDimFunction.apply(inp, dim, keepdim)
+        return MinResult(values, indices)
     logger.debug("GEMS MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
@@ -455,7 +462,7 @@ def _min_backward_dim(grad_output, inp, indices, dim):
 class MinFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp):
-        result = min_forward(inp)
+        result = min(inp)
         ctx.save_for_backward(inp, result)
         return result
 
@@ -470,7 +477,7 @@ class MinFunction(torch.autograd.Function):
 class MinDimFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, dim, keepdim):
-        values, indices = min_dim_forward(inp, dim, keepdim)
+        values, indices = min_dim(inp, dim, keepdim)
         ctx.save_for_backward(inp, indices)
         ctx.dim = dim
         ctx.mark_non_differentiable(indices)
@@ -482,27 +489,3 @@ class MinDimFunction(torch.autograd.Function):
             return None, None, None
         inp, indices = ctx.saved_tensors
         return _min_backward_dim(grad_values, inp, indices, ctx.dim), None, None
-
-
-def min(inp):
-    logger.debug("GEMS MIN")
-    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
-        return MinFunction.apply(inp)
-    return min_forward(inp)
-
-
-def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MIN_DIM")
-    # `dim is None` keeps the pre-existing forward contract (and its error), so
-    # it never enters the autograd path.
-    if (
-        dim is not None
-        and torch.is_grad_enabled()
-        and inp.requires_grad
-        and inp.is_floating_point()
-    ):
-        dim = dim % inp.ndim
-        values, indices = MinDimFunction.apply(inp, dim, keepdim)
-        Min_out = namedtuple("min", ["values", "indices"])
-        return Min_out(values=values, indices=indices)
-    return min_dim_forward(inp, dim, keepdim)
