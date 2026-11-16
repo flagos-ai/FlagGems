@@ -112,6 +112,8 @@ def test_nanquantile_out(dtype, q_shape):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 def test_nanquantile_scalar_out(dtype, interpolation):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin FP64 inputs/results are narrowed to FP32")
     inp = _input((11, 15), dtype)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
