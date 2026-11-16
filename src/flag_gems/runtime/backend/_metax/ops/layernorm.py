@@ -103,25 +103,27 @@ def layer_norm_persistent_kernel_multiline(
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
-    # Keep the original multiline launch grouping while each program uses the
-    # one-dimensional layout supported by the MetaX lowering pipeline.
-    pid = ext.program_id(0) * TILE_M + ext.program_id(1)
-    m_mask = pid < M
+    # Map the program id to the row of X and Y it should compute.
+    pid = ext.program_id(0)
+    m_offsets = pid * TILE_M + tl.arange(0, TILE_M)
+    m_mask = m_offsets < M
 
-    n_offsets = tl.arange(0, TILE_N)
+    n_offsets = tl.arange(0, TILE_N)[None, :]
     n_mask = n_offsets < N
-    mask = m_mask & n_mask
+    mask = m_mask[:, None] & n_mask
 
-    x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
-    m = tl.sum(x) / N
-    d = x - m  # deviation
+    x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
+        tl.float32
+    )
+    m = tl.sum(x, axis=1) / N
+    d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
-    sum_square = tl.sum(s)  # sum of square of deviation
+    sum_square = tl.sum(s, axis=1)  # sum of square of deviation
     var = sum_square / N
     rstd = tl.math.rsqrt(var + eps)
 
-    tl.store(out_mean_ptr + pid, m, mask=m_mask)
-    tl.store(out_rstd_ptr + pid, rstd, mask=m_mask)
+    tl.store(out_mean_ptr + m_offsets, m, mask=m_mask)
+    tl.store(out_rstd_ptr + m_offsets, rstd, mask=m_mask)
 
     if weight_ptr is None:
         w = 1
@@ -131,9 +133,9 @@ def layer_norm_persistent_kernel_multiline(
         b = 0
     else:
         b = tl.load(bias_ptr + n_offsets, mask=n_mask)
-    out = (x - m) * rstd * w + b
+    out = (x - m[:, None]) * rstd[:, None] * w + b
 
-    tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
+    tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
 
 
 @libentry()
