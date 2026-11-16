@@ -4,6 +4,9 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
 @pytest.mark.lstm
@@ -74,12 +77,27 @@ def test_lstm(
     # tolerance against an accurate reference is both stricter and more informative.
     use_fp64_ref = dtype is torch.float32
 
-    ref_input = utils.to_reference(input, upcast=use_fp64_ref)
-    ref_h0 = utils.to_reference(h0, upcast=use_fp64_ref)
-    ref_c0 = utils.to_reference(c0, upcast=use_fp64_ref)
-    ref_params = tuple(
-        utils.to_reference(param, upcast=use_fp64_ref) for param in params
-    )
+    if IS_KUNLUNXIN and not cfg.TO_CPU:
+        # XPU's native torch.lstm reference is broken: fp64 inputs raise
+        # "tensor does not have a device" and multi-layer / no-bias combos
+        # miscompute the weight shapes, so always compare against the CPU
+        # reference on this backend (same semantics as --ref cpu).
+        ref_input = input.detach().cpu()
+        ref_h0 = h0.detach().cpu()
+        ref_c0 = c0.detach().cpu()
+        ref_params = tuple(p.detach().cpu() for p in params)
+        if use_fp64_ref:
+            ref_input = ref_input.to(torch.float64)
+            ref_h0 = ref_h0.to(torch.float64)
+            ref_c0 = ref_c0.to(torch.float64)
+            ref_params = tuple(p.to(torch.float64) for p in ref_params)
+    else:
+        ref_input = utils.to_reference(input, upcast=use_fp64_ref)
+        ref_h0 = utils.to_reference(h0, upcast=use_fp64_ref)
+        ref_c0 = utils.to_reference(c0, upcast=use_fp64_ref)
+        ref_params = tuple(
+            utils.to_reference(param, upcast=use_fp64_ref) for param in params
+        )
     ref_out, ref_hn, ref_cn = torch.lstm(
         ref_input,
         (ref_h0, ref_c0),
@@ -91,6 +109,13 @@ def test_lstm(
         bidirectional,
         batch_first,
     )
+
+    if IS_KUNLUNXIN and not cfg.TO_CPU:
+        # The reference was computed on CPU (see above); move it back to the
+        # device so the shared comparison below compares like-for-like.
+        ref_out = ref_out.to(flag_gems.device)
+        ref_hn = ref_hn.to(flag_gems.device)
+        ref_cn = ref_cn.to(flag_gems.device)
 
     res_out, res_hn, res_cn = flag_gems.lstm(
         input,

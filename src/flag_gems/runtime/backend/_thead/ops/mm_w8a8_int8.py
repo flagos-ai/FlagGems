@@ -35,8 +35,8 @@ except ImportError:
     tle_async = None
     HAS_TLE = False
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.runtime import get_tuned_config, torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +66,91 @@ def _grouped_pids(
     return pid_m, pid_n
 
 
+def _prune_mm_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    max_m = max(16, triton.next_power_of_2(m))
+    if 8 < m <= 32 and n <= 512 and k > 4096:
+        max_m = 32
+    max_n = max(16, triton.next_power_of_2(n))
+    max_k = max(32, triton.next_power_of_2(k))
+    pruned = [
+        config
+        for config in configs
+        if config.kwargs["BLOCK_M"] <= max_m
+        and config.kwargs["BLOCK_N"] <= max_n
+        and config.kwargs["BLOCK_K"] <= max_k
+        and (k < 256 or config.kwargs["BLOCK_K"] >= 128)
+        and (n <= 512 or config.kwargs["BLOCK_N"] >= 64)
+        and (m <= 256 or config.kwargs["BLOCK_M"] >= 32)
+        and (m <= 32 or n <= 512 or config.kwargs["BLOCK_M"] >= 32)
+        and (m <= 512 or n <= 512 or k < 256 or config.kwargs["BLOCK_M"] >= 64)
+    ]
+    if k == 128 and n >= 2048 and m > 16:
+        # The reduction fits in one step; deeper pipelines only add overhead.
+        pruned = [
+            config
+            for config in pruned
+            if config.kwargs["BLOCK_K"] == k and config.num_stages <= 2
+        ]
+    elif args["TRANSPOSE_OUT"] and n >= 2048 and k > 4096:
+        # Tall, narrow products reuse more rows through the transposed output.
+        pruned = [
+            config
+            for config in pruned
+            if config.kwargs["BLOCK_M"] >= 64 and config.kwargs["BLOCK_N"] >= 128
+        ]
+    elif m >= 1024 and n >= 1024 and k >= 4096:
+        pruned = [config for config in pruned if config.kwargs["BLOCK_M"] >= 64]
+    elif n <= 512 and 4096 < k <= 8192:
+        if 8 < m <= 256:
+            pruned = [
+                config
+                for config in pruned
+                if config.kwargs["BLOCK_K"] >= 256
+                and 32 <= config.kwargs["BLOCK_N"] <= 64
+            ]
+        elif m > 256:
+            pruned = [
+                config
+                for config in pruned
+                if config.kwargs["BLOCK_M"] >= 64 and config.kwargs["BLOCK_N"] >= 64
+            ]
+    return pruned
+
+
 @libentry()
-@triton.jit(do_not_specialize_on_alignment=["A_Q", "B_Q", "OUT"])
+@libtuner(
+    configs=get_tuned_config("mm_w8a8_int8"),
+    key=[
+        "M",
+        "N",
+        "K",
+        "TRANSPOSE_OUT",
+        "A_SCALAR",
+        "B_SCALAR",
+        "HAS_BIAS",
+        "STORE_CACHE",
+    ],
+    prune_configs_by={"early_config_prune": _prune_mm_configs},
+    use_cuda_graph=True,
+    rep=30,
+)
+@triton.heuristics(
+    {
+        "BOUNDARY": lambda args: args["M"] % args["BLOCK_M"] != 0
+        or args["N"] % args["BLOCK_N"] != 0
+        or args["K"] % args["BLOCK_K"] != 0,
+        "STORE_MASK": lambda args: args["M"] % args["BLOCK_M"] != 0
+        or args["N"] % args["BLOCK_N"] != 0
+        or args["K"] % args["BLOCK_K"] != 0,
+        "NUM_WARPS": lambda args: args["num_warps"],
+        "FAST_TAIL": lambda args: args["BLOCK_M"] >= 128
+        and args["N"] >= 1024
+        and args["K"] >= 2048,
+    }
+)
+@triton.jit
 def _mm_w8a8_aiu_kernel(
     A_Q,
     B_Q,
@@ -90,6 +173,8 @@ def _mm_w8a8_aiu_kernel(
     B_SCALAR: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     TRANSPOSE_OUT: tl.constexpr = False,
+    FAST_TAIL: tl.constexpr = False,
+    STORE_CACHE: tl.constexpr = "",
 ):
     pid = tl.program_id(0)
     pid_m, pid_n = _grouped_pids(pid, M, N, BLOCK_M, BLOCK_N, GROUP_M)
@@ -112,27 +197,41 @@ def _mm_w8a8_aiu_kernel(
         order=(0, 1),
     )
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
-    if BOUNDARY:
+    A_CHECK: tl.constexpr = ((0,) if M % BLOCK_M else ()) + (
+        (1,) if K % BLOCK_K else ()
+    )
+    B_CHECK: tl.constexpr = ((0,) if K % BLOCK_K else ()) + (
+        (1,) if N % BLOCK_N else ()
+    )
+    if FAST_TAIL:
+        full_tile = (
+            K % BLOCK_K == 0
+            and (pid_m + 1) * BLOCK_M <= M
+            and (pid_n + 1) * BLOCK_N <= N
+        )
+    else:
+        full_tile = not BOUNDARY
+    if full_tile:
         for _ in range(0, tl.cdiv(K, BLOCK_K)):
-            a = tle_async.load(
-                a_block_ptr,
-                boundary_check=(0, 1),
-                padding_option="zero",
-                is_async=True,
-            )
-            b = tle_async.load(
-                b_block_ptr,
-                boundary_check=(0, 1),
-                padding_option="zero",
-                is_async=True,
-            )
+            a = tle_async.load(a_block_ptr, is_async=True)
+            b = tle_async.load(b_block_ptr, is_async=True)
             acc = tl.dot(a, b, acc=acc, out_dtype=tl.int32)
             a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
             b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
     else:
         for _ in range(0, tl.cdiv(K, BLOCK_K)):
-            a = tle_async.load(a_block_ptr, is_async=True)
-            b = tle_async.load(b_block_ptr, is_async=True)
+            a = tle_async.load(
+                a_block_ptr,
+                boundary_check=A_CHECK,
+                padding_option="zero",
+                is_async=True,
+            )
+            b = tle_async.load(
+                b_block_ptr,
+                boundary_check=B_CHECK,
+                padding_option="zero",
+                is_async=True,
+            )
             acc = tl.dot(a, b, acc=acc, out_dtype=tl.int32)
             a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
             b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
@@ -168,64 +267,10 @@ def _mm_w8a8_aiu_kernel(
             OUT + offsets,
             out,
             mask=(offs_m[:, None] < M) & (offs_n[None, :] < OUT_N),
+            cache_modifier=STORE_CACHE,
         )
     else:
-        tl.store(OUT + offsets, out)
-
-
-def _pick_tiles(m: int, n: int, k: int) -> tuple[int, int, int, int, int, int]:
-    """Return BLOCK_M, BLOCK_N, BLOCK_K, warps, stages, GROUP_M.
-
-    INT8 AIU v1 uses channels of 32/64/128 bytes. Wide decode projections
-    load two 128-byte K segments per tile to amortize async load overhead.
-    Never pad BLOCK_N far past N: a 64-wide MMA on N=1 is ~64x wasted work.
-    """
-    if 1 < m <= 8 and n >= 32768 and 2048 <= k <= 4096:
-        return 16, 128, 256, 4, 3, 8
-    if 32 < m <= 128 and n <= 512 and k >= 2048:
-        return 16, 16, 128, 1, 2, 8
-    if 128 < m <= 256 and n <= 512 and k >= 2048:
-        return 32, 32, 128, 4, 2, 8
-    if m >= 1024 and n <= 1024 and k >= 2048:
-        return 64, 128, 128, 4, 3, 8
-    if 32 < m <= 256 and n >= 1024 and 256 <= k <= 512:
-        return 32, 128, 128, 4, 3, 8
-    if 16 < m <= 64 and 512 <= n < 2048 and k >= 1024:
-        return 32, 64, 128, 4, 3, 8
-    if 32 < m <= 512 and n >= 2048 and k >= 2048:
-        return 64, 128, 128, 4 if n >= 16384 else 8, 3, 8
-    if k >= 256:
-        block_k = 128
-    elif k >= 64:
-        block_k = 64
-    else:
-        block_k = 32
-    if k >= 2048:
-        stages = 3 if m >= 1024 else 4
-    elif k >= 512:
-        stages = 3
-    else:
-        stages = 2
-    group_m = 8
-    # Keep BLOCK_N close to N so skinny GEMM does not compute unused columns.
-    if n <= 16:
-        block_n = 16
-    elif n <= 32:
-        block_n = 32
-    elif n < 512:
-        block_n = 64
-    else:
-        block_n = 128
-    if m <= 16:
-        # Tiny wide GEMM is launch-bound; one warp + BLOCK_K=128 beats gems BF16.
-        if n <= 256 and k <= 256 and k >= 128:
-            return 16, min(block_n, 64), 128, 1, 2, group_m
-        warps = 1 if block_n <= 32 else 4
-        return 16, block_n, block_k, warps, stages, group_m
-    if m <= 32:
-        warps = 2 if block_n <= 16 else 4
-        return 32, block_n, block_k, warps, stages, group_m
-    return 64, block_n, block_k, 4, stages, group_m
+        tl.store(OUT + offsets, out, cache_modifier=STORE_CACHE)
 
 
 @libentry()
@@ -332,8 +377,20 @@ def _launch(
             "THead mm_w8a8_int8 AIU path is unavailable: requires "
             "triton.experimental.tle."
         )
-    transpose_out = (m == 256 and n >= 16384 and 2048 <= k <= 4096) or (
-        m >= 1024 and n <= 1024 and 2048 <= k <= 4096
+    long_narrow_transpose = (
+        m >= 1024 and n <= 512 and 4096 < k <= 8192 and (n > 128 or m >= 8192)
+    )
+    short_transpose = k == 128 and n >= 2048 and 1024 < m <= 8192 and m % 128 != 0
+    store_cache = (
+        ".cs"
+        if k == 128 and n >= 2048 and m > 16
+        else (".cg" if 256 < m <= 512 and n >= 1024 and k >= 2048 else "")
+    )
+    transpose_out = (
+        (m == 256 and n >= 16384 and 2048 <= k <= 4096)
+        or (m >= 1024 and n <= 1024 and 2048 <= k <= 4096)
+        or long_narrow_transpose
+        or short_transpose
     )
     if transpose_out:
         # Both operands are already in the required physical layout.
@@ -341,43 +398,11 @@ def _launch(
         a_q, b_q = b_q, a_q
         a_scale, b_scale = b_scale, a_scale
         m, n = n, m
-        block_m, block_n, block_k, num_warps, num_stages, group_m = (
-            64,
-            256,
-            128,
-            8,
-            3,
-            8,
-        )
-    else:
-        (
-            block_m,
-            block_n,
-            block_k,
-            num_warps,
-            num_stages,
-            group_m,
-        ) = _pick_tiles(m, n, k)
-    n_b = n
-    boundary = (m % block_m) != 0 or (n_b % block_n) != 0 or (k % block_k) != 0
-    store_mask = boundary or (n != n_b)
-    logger.debug(
-        "GEMS_THEAD MM_W8A8_AIU m=%s n=%s k=%s n_b=%s "
-        "tiles=(%s,%s,%s) warps=%s stages=%s boundary=%s store_mask=%s",
-        m,
-        n,
-        k,
-        n_b,
-        block_m,
-        block_n,
-        block_k,
-        num_warps,
-        num_stages,
-        boundary,
-        store_mask,
-    )
+    logger.debug("GEMS_THEAD MM_W8A8_AIU m=%s n=%s k=%s", m, n, k)
     with torch_device_fn.device(a_q.device):
-        grid = (triton.cdiv(m, block_m) * triton.cdiv(n_b, block_n),)
+        grid = lambda meta: (
+            triton.cdiv(m, meta["BLOCK_M"]) * triton.cdiv(n, meta["BLOCK_N"]),
+        )
         _mm_w8a8_aiu_kernel[grid](
             a_q,
             b_q,
@@ -386,22 +411,14 @@ def _launch(
             out,
             bias,
             m,
-            n_b,
+            n,
             k,
             n,
-            BLOCK_M=block_m,
-            BLOCK_N=block_n,
-            BLOCK_K=block_k,
-            GROUP_M=group_m,
-            BOUNDARY=boundary,
-            STORE_MASK=store_mask,
-            NUM_WARPS=num_warps,
             TRANSPOSE_OUT=transpose_out,
+            STORE_CACHE=store_cache,
             A_SCALAR=a_scale.numel() == 1,
             B_SCALAR=b_scale.numel() == 1,
             HAS_BIAS=bias is not None,
-            num_warps=num_warps,
-            num_stages=num_stages,
         )
     return out
 
@@ -415,17 +432,22 @@ def _run_mm(a, b, scale_a, scale_b, out, m, n, k, bias=None):
                 out, bias, m * n, n, bias is not None, BLOCK=1024
             )
         return out
+    small_long_k = m <= 8 and n <= 512 and 4096 < k <= 8192
+    vector_dp4a = m == 1 and 512 <= n <= 16384 and 512 <= k <= 2048
     if (
-        1 < m <= 8
-        and n <= 512
-        and k <= 4096
+        ((1 < m <= 8 and n <= 512 and k <= 4096) or small_long_k or vector_dp4a)
         and k % 4 == 0
         and a.is_contiguous()
         and b.stride() == (1, k)
         and a.data_ptr() % 4 == 0
         and b.data_ptr() % 4 == 0
     ):
-        r, warps = (1, 1) if m > 4 else (2, 4)
+        if small_long_k:
+            r, warps = (1 if m == 1 else 4 if n <= 128 else 2), 4
+        elif vector_dp4a:
+            r, warps = (4 if k <= 768 else 2), 1
+        else:
+            r, warps = (1, 1) if m > 4 else (2, 4)
         with torch_device_fn.device(a.device):
             _small_rows[(triton.cdiv(n, r), m)](
                 a,
@@ -502,6 +524,33 @@ def _run_mm(a, b, scale_a, scale_b, out, m, n, k, bias=None):
     # Normalize inputs for the required async AIU loader.
     a = a.contiguous()
     b = b.t().contiguous().t()
+    if HAS_TLE and m >= 8192 and 64 <= n <= 128 and 4096 <= k <= 8192 and k % 256 == 0:
+        props = torch.cuda.get_device_properties(a.device)
+        tile_count = triton.cdiv(n, 64) * triton.cdiv(m, 256)
+        wave_capacity = (
+            triton.cdiv(tile_count, props.multi_processor_count)
+            * props.multi_processor_count
+        )
+        if m * k > props.L2_cache_size and 4 * tile_count < 3 * wave_capacity:
+            # Use more row tiles when activation traffic exceeds L2 and waves are underfilled.
+            with torch_device_fn.device(a.device):
+                _mm_w8a8_rows192_kernel[
+                    lambda meta: (triton.cdiv(m, 192) * triton.cdiv(n, meta["BN"]),)
+                ](
+                    a,
+                    b,
+                    scale_a,
+                    scale_b,
+                    out,
+                    bias,
+                    m,
+                    n,
+                    k,
+                    A_SCALAR=scale_a.numel() == 1,
+                    B_SCALAR=scale_b.numel() == 1,
+                    HAS_BIAS=bias is not None,
+                )
+            return out
     return _launch(a, scale_a, b, scale_b, out, m, n, k, bias)
 
 
@@ -599,3 +648,96 @@ def mm_w8a8_int8_out(
         raise ValueError("out must be contiguous [M,N] on the input device")
     _validate_output_dtype_and_bias(a, n, out.dtype, bias)
     return _run_mm(a, b, scale_a, scale_b, out, m, n, k, bias)
+
+
+@libentry()
+@libtuner(configs=get_tuned_config("mm_w8a8_int8_rows192"), key=["M", "N", "K"])
+@triton.jit
+def _mm_w8a8_rows192_kernel(
+    A,
+    B,
+    SA,
+    SB,
+    OUT,
+    BIAS,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP: tl.constexpr,
+    A_SCALAR: tl.constexpr,
+    B_SCALAR: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    CACHE: tl.constexpr,
+):
+    """Accumulate a logical 192-row tile using 128-row and 64-row integer dots."""
+    GM: tl.constexpr = (M + 191) // 192
+    pm, pn = _grouped_pids(tl.program_id(0), GM * 128, N, 128, BN, GROUP)
+    base = pm * 192
+    ap0 = tl.make_block_ptr(
+        A,
+        shape=(M, K),
+        strides=(K, 1),
+        offsets=(base, 0),
+        block_shape=(128, BK),
+        order=(1, 0),
+    )
+    ap1 = tl.make_block_ptr(
+        A,
+        shape=(M, K),
+        strides=(K, 1),
+        offsets=(base + 128, 0),
+        block_shape=(64, BK),
+        order=(1, 0),
+    )
+    bp = tl.make_block_ptr(
+        B,
+        shape=(K, N),
+        strides=(1, K),
+        offsets=(0, pn * BN),
+        block_shape=(BK, BN),
+        order=(0, 1),
+    )
+    c0 = tl.zeros((128, BN), tl.int32)
+    c1 = tl.zeros((64, BN), tl.int32)
+    AC0: tl.constexpr = (0,) if M % 192 and M % 192 < 128 else ()
+    AC1: tl.constexpr = (0,) if M % 192 else ()
+    BC: tl.constexpr = (1,) if N % BN else ()
+    for _ in range(K // BK):
+        a0 = tle_async.load(
+            ap0, boundary_check=AC0, padding_option="zero", is_async=True
+        )
+        b0 = tle_async.load(bp, boundary_check=BC, padding_option="zero", is_async=True)
+        c0 = tl.dot(a0, b0, acc=c0, out_dtype=tl.int32)
+        a1 = tle_async.load(
+            ap1, boundary_check=AC1, padding_option="zero", is_async=True
+        )
+        c1 = tl.dot(a1, b0, acc=c1, out_dtype=tl.int32)
+        ap0 = tl.advance(ap0, (0, BK))
+        ap1 = tl.advance(ap1, (0, BK))
+        bp = tl.advance(bp, (BK, 0))
+    rm0 = base + tl.arange(0, 128)
+    rm1 = base + 128 + tl.arange(0, 64)
+    rn = pn * BN + tl.arange(0, BN)
+    sa0 = tl.load(SA + tl.where(A_SCALAR, 0, rm0), rm0 < M, other=0)
+    sa1 = tl.load(SA + tl.where(A_SCALAR, 0, rm1), rm1 < M, other=0)
+    sb = tl.load(SB + tl.where(B_SCALAR, 0, rn), rn < N, other=0)
+    y0 = c0.to(tl.float32) * sa0[:, None] * sb[None, :]
+    y1 = c1.to(tl.float32) * sa1[:, None] * sb[None, :]
+    if HAS_BIAS:
+        bias = tl.load(BIAS + rn, rn < N, other=0).to(tl.float32)
+        y0 += bias[None, :]
+        y1 += bias[None, :]
+    tl.store(
+        OUT + rm0[:, None] * N + rn[None, :],
+        y0,
+        (rm0[:, None] < M) & (rn[None, :] < N),
+        cache_modifier=CACHE,
+    )
+    tl.store(
+        OUT + rm1[:, None] * N + rn[None, :],
+        y1,
+        (rm1[:, None] < M) & (rn[None, :] < N),
+        cache_modifier=CACHE,
+    )

@@ -125,7 +125,7 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
     scale_tri = torch.tensor([1.0], device=flag_gems.device, dtype=torch.float32)
     zp_tri = torch.zeros(1, device=flag_gems.device, dtype=torch.int32)
 
-    res_out = flag_gems.ops.fused_moving_avg_obs_fake_quant(
+    res_out = flag_gems.fused_moving_avg_obs_fake_quant(
         input_tensor,
         torch.tensor([observer_on], dtype=torch.int32),
         torch.tensor([fake_quant_on], dtype=torch.int32),

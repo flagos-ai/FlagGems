@@ -716,3 +716,34 @@ def adaptive_avg_pool2d(input, output_size):
             buffer_size_limit=2048,
         )
     return output
+
+
+def adaptive_avg_pool2d_out(input, output_size, *, out):
+    # _adaptive_avg_pool2d.out(Tensor self, int[2] output_size, *, Tensor(a!) out)
+    # The generic _adaptive_pool_windows used by the common _out implementation
+    # applies its per-lane window mask at a 64-lane granularity on XPU3, so
+    # non-trivial window bounds (r < KH*KW etc.) are dropped and the output is
+    # wrong (e.g. [2,4,10,10]->[1,5] sums BR=32 lanes instead of 20 and returns
+    # 1.6 for an all-ones input). Reuse the vendor functional kernel instead,
+    # which is correct for every shape in tests/test_adaptive_avg_pool2d.py.
+    logger.debug("GEMS_KUNLUNXIN ADAPTIVE_AVG_POOL2D_OUT")
+    if out.dtype != input.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {input.dtype}, "
+            f"but got {out.dtype} instead"
+        )
+    if isinstance(output_size, int):
+        output_size = (output_size, output_size)
+    output_height, output_width = output_size
+    output_shape = (*input.shape[:-2], output_height, output_width)
+    # ATen resizes a mismatched out tensor instead of raising, so mirror that.
+    if tuple(out.shape) != output_shape:
+        out.resize_(output_shape)
+    if out.numel() == 0:
+        return out
+    result = adaptive_avg_pool2d(input, output_size)
+    # The vendor functional kernel always returns a fresh contiguous tensor, so
+    # the caller's buffer (possibly strided / channels_last) is filled with the
+    # vendor triton copy_ (_kunlunxin/ops/copy.py), never an ATen fallback.
+    out.copy_(result)
+    return out
