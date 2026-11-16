@@ -17,8 +17,6 @@ import math
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, utils
 
 # aten::_nnpack_spatial_convolution is the NNPACK CPU engine: it takes float32
@@ -126,8 +124,7 @@ def test__nnpack_spatial_convolution():
         op_name="_nnpack_spatial_convolution",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten._nnpack_spatial_convolution,
-        gems_op=getattr(flag_gems, "_nnpack_spatial_convolution", None),
+        torch_op=torch.ops.aten._nnpack_spatial_convolution.default,
         dtypes=_DTYPES,
     )
     bench.run()
