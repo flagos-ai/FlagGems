@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
@@ -125,6 +127,10 @@ class MmBackwardBenchmark(base.BlasBenchmark):
 
 
 @pytest.mark.mm_backward
+@pytest.mark.skipif(
+    not hasattr(importlib.import_module(flag_gems.mm.__module__), "mm_backward"),
+    reason="mm backward is implemented for the Hopper backend",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
