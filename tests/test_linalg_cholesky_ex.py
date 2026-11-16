@@ -128,8 +128,12 @@ def _reference_cholesky(inp, *, upper=False, check_errors=False, L=None, info=No
             raise torch.linalg.LinAlgError("linalg_cholesky_ex: matrix is not positive-definite")
         if L is None:
             return factor, status
-        L.resize_(factor.shape).copy_(factor)
-        info.resize_(status.shape).copy_(status)
+        if L.shape != factor.shape:
+            L.resize_(factor.shape)
+        if info.shape != status.shape:
+            info.resize_(status.shape)
+        L.copy_(factor)
+        info.copy_(status)
         return L, info
 
     use_cpu = (
@@ -305,7 +309,10 @@ def _special_input(dtype, placement, upper, scenario, n=6):
         return torch.diag(_payload_rows(dtype, scenario, n))
     inp = _pd_input(dtype, (n, n), ["-1", "1"])
     rows = _payload_rows(dtype, scenario, n).reshape(n, 1)
-    return torch.where(_payload_mask(placement, upper, n), rows, inp)
+    mask = _payload_mask(placement, upper, n)
+    if flag_gems.vendor_name == "mthreads" and dtype.is_complex:
+        return torch.where(mask.cpu(), rows.cpu(), inp.cpu()).to(inp.device)
+    return torch.where(mask, rows, inp)
 
 
 def _buffer_metadata(buf):
@@ -792,3 +799,50 @@ def test_linalg_cholesky_ex_master_spd(case):
     assert actual_l.shape == matrix.shape and actual_info.shape == batch
     utils.gems_assert_close(actual_l, ref_l.to(dtype), dtype, reduce_dim=n * n)
     utils.gems_assert_equal(actual_info, ref_info)
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("shape", [(0, 3, 3), (0, 3, 3, 3), (2, 0, 3, 3), (0, 0)])
+def test_linalg_cholesky_ex_master_empty(shape):
+    inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_l, ref_info = _reference_cholesky(_reference_input(inp))
+    actual_l, actual_info = flag_gems.linalg_cholesky_ex(inp)
+
+    _assert_defined_factor(inp, actual_l, actual_info, ref_l, ref_info)
+    assert torch.count_nonzero(actual_info) == 0
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("upper", [False, True])
+def test_linalg_cholesky_ex_master_noncontiguous(upper):
+    inp = _pd_input(torch.float32, (2, 5, 5), ["-1", "1"]).transpose(-1, -2)
+    assert not inp.is_contiguous()
+    ref_l, ref_info = _reference_cholesky(_reference_input(inp), upper=upper)
+    actual_l, actual_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
+
+    _assert_defined_factor(inp, actual_l, actual_info, ref_l, ref_info)
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("upper", [False, True])
+def test_linalg_cholesky_ex_master_inactive_triangle(upper):
+    inp = _pd_input(torch.float32, (6, 6), ["-1", "1"])
+    factor, info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
+
+    assert factor.device == info.device == inp.device
+    assert info.item() == 0
+    inactive = factor.tril(-1) if upper else factor.triu(1)
+    torch.testing.assert_close(inactive, torch.zeros_like(inactive), rtol=0, atol=0)
+
+
+@pytest.mark.linalg_cholesky_ex
+def test_linalg_cholesky_ex_master_check_errors_success():
+    inp = _pd_input(torch.float32, (5, 5), ["-1", "1"])
+    factor, info = flag_gems.linalg_cholesky_ex(inp, upper=False, check_errors=True)
+
+    assert factor.device == info.device == inp.device
+    assert info.item() == 0
+    observed = utils.to_reference(factor, True)
+    expected = utils.to_reference(inp, True)
+    reconstructed = observed @ observed.mT
+    torch.testing.assert_close(reconstructed, expected, rtol=1e-5, atol=1e-5)
