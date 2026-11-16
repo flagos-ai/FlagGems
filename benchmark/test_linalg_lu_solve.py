@@ -360,7 +360,11 @@ class LinalgLuSolveBenchmark(OperatorBenchmark):
 
     def set_shapes(self, shape_file_path=None):
         # Ascend's static timing records cover only the existing five shapes.
-        shapes = SHAPES if flag_gems.vendor_name == "ascend" else _MASTER_SHAPES
+        shapes = SHAPES
+        if flag_gems.vendor_name == "metax":
+            shapes = _MASTER_SHAPES
+        elif flag_gems.vendor_name == "mthreads":
+            shapes = [*SHAPES, *(shape for shape in _MASTER_SHAPES if shape not in SHAPES)]
         super().set_shapes(shape_file_path, default_shapes=shapes)
 
 
