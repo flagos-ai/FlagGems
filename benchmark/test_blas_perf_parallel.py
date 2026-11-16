@@ -1754,11 +1754,17 @@ def test_vdot_benchmark():
         inp2 = torch.randn([m], dtype=cur_dtype, device=device)
         yield inp1, inp2
 
+    # The T-Head PyTorch baseline aborts when calling complex64 vdot.
+    dtypes = (
+        FLOAT_DTYPES
+        if flag_gems.vendor_name == "thead"
+        else COMPLEX_DTYPES + FLOAT_DTYPES
+    )
     bench = ParallelVdotBenchmark(
         input_fn=vdot_input_fn,
         op_name="vdot",
         torch_op=torch.Tensor.vdot,
-        dtypes=COMPLEX_DTYPES + FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()
 

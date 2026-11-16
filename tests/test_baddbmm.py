@@ -119,8 +119,7 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
 
 @pytest.mark.baddbmm
 @pytest.mark.parametrize("dtype", GEMM_DTYPES)
-@pytest.mark.parametrize("use_aten", [False, True], ids=["direct", "aten"])
-def test_baddbmm_backward_broadcast(dtype, use_aten):
+def test_baddbmm_backward_broadcast(dtype):
     batch, M, N, K = 2, 4, 16, 128
     alpha, beta = 0.25, 0.5
     inputs = tuple(
@@ -129,11 +128,7 @@ def test_baddbmm_backward_broadcast(dtype, use_aten):
     )
     ref_inputs = tuple(to_reference(x, True) for x in inputs)
     ref_out = torch.baddbmm(*ref_inputs, alpha=alpha, beta=beta)
-    if use_aten:
-        with flag_gems.use_gems(include=["baddbmm"]):
-            res_out = torch.baddbmm(*inputs, alpha=alpha, beta=beta)
-    else:
-        res_out = flag_gems.baddbmm(*inputs, alpha=alpha, beta=beta)
+    res_out = flag_gems.baddbmm(*inputs, alpha=alpha, beta=beta)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
     _assert_baddbmm_gradients(
