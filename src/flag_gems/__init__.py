@@ -857,6 +857,7 @@ _FULL_CONFIG = (
     ),
     ("_validate_compressed_sparse_indices", _validate_compressed_sparse_indices),
     ("_validate_sparse_bsr_tensor_args", _validate_sparse_bsr_tensor_args),
+    ("_validate_sparse_coo_tensor_args", _validate_sparse_coo_tensor_args),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
     ("_validate_sparse_csr_tensor_args", _validate_sparse_csr_tensor_args),
     (
