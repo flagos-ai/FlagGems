@@ -431,6 +431,7 @@ def test__indices_master(nnd, nnz, size):
 
     ref_out = torch.ops.aten._indices(ref_inp)
     res_out = flag_gems._indices(res_inp)
+    assert res_out.device == res_inp.device
 
     assert res_out.dtype == torch.int64
     assert res_out.shape == (nnd, nnz)
@@ -456,6 +457,7 @@ def test__indices_master_uncoalesced_keeps_coordinates():
     assert not res_inp.is_coalesced()
     ref_out = torch.ops.aten._indices(utils.to_reference(res_inp))
     res_out = flag_gems._indices(res_inp)
+    assert res_out.device == res_inp.device
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -468,6 +470,7 @@ def test__indices_master_empty():
         (4, 4),
     )
     res_out = flag_gems._indices(res_inp)
+    assert res_out.device == res_inp.device
     assert res_out.shape == (2, 0)
 
 
@@ -482,6 +485,7 @@ def test__indices_master_hybrid():
         (2, 2, 3, 4),
     )
     res_out = flag_gems._indices(res_inp)
+    assert res_out.device == res_inp.device
     ref_out = torch.ops.aten._indices(utils.to_reference(res_inp))
     assert res_out.shape == (2, 2)
     utils.gems_assert_equal(res_out, ref_out)
@@ -497,6 +501,7 @@ def test__indices_master_alias_and_mutation():
 
     first = flag_gems._indices(res_inp)
     second = flag_gems._indices(res_inp)
+    assert first.device == second.device == res_inp.device
     assert (
         first.data_ptr() == second.data_ptr()
     ), "_indices must return an aliasing view, not a fresh copy"
@@ -520,7 +525,7 @@ def test__indices_master_unsupported_layout_raises(layout):
     if layout == "csr":
         inp = torch.sparse_csr_tensor(indptr, indices, values, size=(2, 4))
     else:
-        inp = torch.sparse_csc_tensor(indptr, indices, values, size=(2, 4))
+        inp = torch.sparse_csc_tensor(indptr, indices, values, size=(4, 2))
     with pytest.raises(NotImplementedError):
         flag_gems._indices(inp)
 
