@@ -128,9 +128,12 @@ def test_accuracy_poisson_nll_loss_empty(reduction):
         )
     input = torch.empty((0, 3), device=flag_gems.device)
     target = torch.empty_like(input)
+    ref_inp, ref_target = utils.to_reference(input), utils.to_reference(target)
+    if flag_gems.vendor_name == "mthreads" and reduction == 1:
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
     ref = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(input),
-        utils.to_reference(target),
+        ref_inp,
+        ref_target,
         True,
         False,
         1e-8,
@@ -142,6 +145,9 @@ def test_accuracy_poisson_nll_loss_empty(reduction):
         assert result.dtype == ref.dtype == torch.float32
         assert result.shape == ref.shape == torch.Size([])
         result, ref = result.cpu(), ref.cpu()
+    if flag_gems.vendor_name == "mthreads" and reduction == 1:
+        assert result.device == input.device
+        result = result.cpu()
     utils.gems_assert_close(result, ref, torch.float32, equal_nan=True)
 
 
