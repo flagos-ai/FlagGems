@@ -333,11 +333,15 @@ def test__is_any_true_master(n, kind):
 @pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("rank", [2, 8, 9, 12])
 def test__is_any_true_master_arbitrary_rank(rank):
+    if flag_gems.vendor_name == "mthreads" and rank == 12:
+        pytest.skip("MUSA native _is_any_true rejects rank-12 tensor descriptors")
     inp = torch.zeros((2,) * rank, dtype=torch.bool, device=flag_gems.device)
     inp[(1,) * rank] = True
     inp = inp.transpose(0, -1)
     reference = torch.ops.aten._is_any_true.default(utils.to_reference(inp))
-    utils.gems_assert_equal(flag_gems._is_any_true(inp), reference)
+    result = flag_gems._is_any_true(inp)
+    assert result.device == inp.device
+    utils.gems_assert_equal(result, reference)
 
 
 @pytest.mark.underscore_is_any_true
@@ -346,9 +350,10 @@ def test__is_any_true_master_scalar_and_expand():
         torch.tensor(False, device=flag_gems.device),
         torch.tensor(True, device=flag_gems.device).expand(17, 19),
     ):
+        result = flag_gems._is_any_true(inp)
+        assert result.device == inp.device
         utils.gems_assert_equal(
-            flag_gems._is_any_true(inp),
-            torch.ops.aten._is_any_true.default(utils.to_reference(inp)),
+            result, torch.ops.aten._is_any_true.default(utils.to_reference(inp))
         )
 
 
