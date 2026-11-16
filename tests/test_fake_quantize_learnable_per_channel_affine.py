@@ -77,7 +77,7 @@ def test_fake_quantize_learnable_per_channel_affine(
 
     utils.gems_assert_close(result, ref_out, dtype)
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
+        torch.testing.assert_close(value, snapshot, rtol=0, atol=0)
     assert result.shape == inputs[0].shape
     assert result.dtype == inputs[0].dtype
 
@@ -109,7 +109,7 @@ def test_fake_quantize_learnable_per_channel_affine_grad_factor(axis, grad_facto
 
 
 @pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
-def test_fake_quantize_learnable_per_channel_affine_autograd():
+def test_fake_quantize_learnable_per_channel_affine_autograd(request):
     _seed()
     inp = torch.randn((4, 8), device=flag_gems.device, requires_grad=True)
     scale = (torch.rand(8, device=flag_gems.device) * 0.5 + 0.01).requires_grad_()
@@ -124,10 +124,17 @@ def test_fake_quantize_learnable_per_channel_affine_autograd():
         ref_out, (ref_inp, ref_scale, ref_zero_point), ref_upstream
     )
 
-    output = flag_gems._fake_quantize_learnable_per_channel_affine(
-        inp, scale, zero_point, 1, -128, 127, 0.5
-    )
-    grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
+    registry = request.config._override_registry
+    if registry.get_override("_fake_quantize_learnable_per_channel_affine") is None:
+        # Retain the ATen autograd dispatch path for the built-in implementation.
+        with flag_gems.use_gems():
+            output = _ATEN_OP(inp, scale, zero_point, 1, -128, 127, 0.5)
+            grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
+    else:
+        output = flag_gems._fake_quantize_learnable_per_channel_affine(
+            inp, scale, zero_point, 1, -128, 127, 0.5
+        )
+        grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
 
     utils.gems_assert_close(output, ref_out, torch.float32)
     utils.gems_assert_close(grads[0], ref_grads[0], torch.float32)
