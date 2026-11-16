@@ -278,6 +278,37 @@ def _current_stream(device):
         return None
 
 
+def masked_fill(inp, mask, value):
+    logger.debug("GEMS MASKED_FILL")
+    if torch.is_grad_enabled() and (
+        inp.requires_grad or (torch.is_tensor(value) and value.requires_grad)
+    ):
+        _validate_masked_fill_args(inp, mask, value, "masked_fill")
+        return MaskedFillFunction.apply(inp, mask, value)
+    assert (
+        (torch.is_tensor(value) and value.ndim == 0)
+        or isinstance(value, int)
+        or isinstance(value, float)
+    ), "masked_fill_ only supports a 0-dimensional value tensor"
+    if torch.is_tensor(value):
+        # Value can be a tensor or a scalar
+        value = value.item()
+    assert broadcastable_to(
+        mask.shape, inp.shape
+    ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
+
+    if inp.ndim == 0:
+        # inp is a single-value
+        return (
+            torch.tensor(value, dtype=inp.dtype, device=inp.device)
+            if mask.item()
+            else inp.clone()
+        )
+
+    expand_mask = mask.expand(inp.shape)
+    return masked_fill_kernel(inp, expand_mask, value)
+
+
 def _validate_masked_fill_args(inp, mask, value, name):
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
@@ -472,20 +503,6 @@ class MaskedFillFunction(torch.autograd.Function):
                 grad_value = grad_value.to(ctx.value_dtype)
 
         return grad_inp, None, grad_value
-
-
-def masked_fill(inp, mask, value):
-    logger.debug("GEMS MASKED_FILL")
-    _validate_masked_fill_args(inp, mask, value, "masked_fill")
-    # Keep the plain kernel launch for inference and for the ATen-generated
-    # backward, which recomputes ``grad.masked_fill(mask, 0)`` with grad mode
-    # disabled; only a graph-building call needs the autograd.Function.
-    needs_graph = torch.is_grad_enabled() and (
-        inp.requires_grad or (torch.is_tensor(value) and value.requires_grad)
-    )
-    if needs_graph:
-        return MaskedFillFunction.apply(inp, mask, value)
-    return _masked_fill_forward(inp, mask, value)
 
 
 def masked_fill_(inp, mask, value):
