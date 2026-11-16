@@ -38,13 +38,26 @@ def _make_inputs(batch_shape, n, nrhs, dtype, *, requires_grad=False):
     return matrix, rhs
 
 
+def _reference_solve_ex(matrix, rhs):
+    if flag_gems.vendor_name == "mthreads" and matrix.device.type == "cpu":
+        # Fixtures calling this path are nonsingular or empty. The singular
+        # error contract is checked separately through the candidate.
+        import numpy as np
+
+        values = np.linalg.solve(matrix.detach().numpy(), rhs.detach().numpy())
+        result = torch.from_numpy(values)
+        info = torch.zeros(matrix.shape[:-2], dtype=torch.int32, device=matrix.device)
+        return result, info
+    return torch.linalg.solve_ex(matrix, rhs)
+
+
 def _assert_outputs(actual, expected, dtype):
     result, info = actual
     expected_result, expected_info = expected
     utils.gems_assert_close(result, expected_result, dtype)
     utils.gems_assert_equal(info, expected_info)
     assert result.shape == expected_result.shape
-    assert result.dtype == expected_result.dtype
+    assert result.dtype == dtype
     assert info.shape == expected_info.shape
     assert info.dtype == torch.int32
 
@@ -58,21 +71,22 @@ def test_linalg_solve_ex(batch_shape, n, nrhs, dtype):
     rhs_before = rhs.clone()
     ref_matrix = utils.to_reference(matrix, True)
     ref_rhs = utils.to_reference(rhs, True)
-    expected = torch.linalg.solve_ex(ref_matrix, ref_rhs)
+    expected = _reference_solve_ex(ref_matrix, ref_rhs)
 
     actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
     _assert_outputs(actual, expected, dtype)
-    utils.gems_assert_equal(matrix, matrix_before)
-    utils.gems_assert_equal(rhs, rhs_before)
-    assert actual.result is not matrix
-    assert actual.result is not rhs
+    assert actual[0].device == actual[1].device == matrix.device
+    utils.gems_assert_equal(matrix, utils.to_reference(matrix_before))
+    utils.gems_assert_equal(rhs, utils.to_reference(rhs_before))
+    assert actual[0] is not matrix
+    assert actual[0] is not rhs
     input_storage_pointers = {
         matrix.untyped_storage().data_ptr(),
         rhs.untyped_storage().data_ptr(),
     }
-    assert actual.result.untyped_storage().data_ptr() not in input_storage_pointers
-    assert actual.info.untyped_storage().data_ptr() not in input_storage_pointers
+    assert actual[0].untyped_storage().data_ptr() not in input_storage_pointers
+    assert actual[1].untyped_storage().data_ptr() not in input_storage_pointers
 
 
 @pytest.mark.linalg_solve_ex
@@ -83,20 +97,21 @@ def test_linalg_solve_ex_broadcast(dtype):
     rhs = torch.randn((1, 3, 4, 2), dtype=dtype, device=flag_gems.device)
     ref_matrix = utils.to_reference(matrix, True)
     ref_rhs = utils.to_reference(rhs, True)
-    expected = torch.linalg.solve_ex(ref_matrix, ref_rhs)
+    expected = _reference_solve_ex(ref_matrix, ref_rhs)
 
     actual = flag_gems.linalg_solve_ex(matrix, rhs)
 
-    _assert_outputs(actual, expected, dtype)
-    assert actual.result.shape == (2, 3, 4, 2)
-    assert actual.info.shape == (2, 3)
+    expected_result, expected_info = expected
+    _assert_outputs(actual, (expected_result, expected_info.expand(2, 3)), dtype)
+    assert actual[0].shape == (2, 3, 4, 2)
+    assert actual[1].shape == (2, 3)
 
 
 @pytest.mark.linalg_solve_ex
 def test_linalg_solve_ex_empty_batch():
     matrix = torch.empty((0, 4, 4), dtype=torch.float32, device=flag_gems.device)
     rhs = torch.empty((0, 4, 2), dtype=torch.float32, device=flag_gems.device)
-    expected = torch.linalg.solve_ex(
+    expected = _reference_solve_ex(
         utils.to_reference(matrix, True), utils.to_reference(rhs, True)
     )
 
@@ -119,10 +134,15 @@ def test_linalg_solve_ex_autograd_matches_reference():
     matrix, rhs = _make_inputs((), 4, 2, torch.float32, requires_grad=True)
     ref_matrix = utils.to_reference(matrix, True).detach().requires_grad_(True)
     ref_rhs = utils.to_reference(rhs, True).detach().requires_grad_(True)
-    expected, expected_info = torch.linalg.solve_ex(ref_matrix, ref_rhs)
-    expected_grads = torch.autograd.grad(
-        expected.square().sum(), (ref_matrix, ref_rhs)
-    )
+    expected, expected_info = _reference_solve_ex(ref_matrix, ref_rhs)
+    if flag_gems.vendor_name == "mthreads" and ref_matrix.device.type == "cpu":
+        # For X = A⁻¹B and loss ||X||², dB = A⁻ᵀ(2X) and dA = -dB Xᵀ.
+        rhs_grad, _ = _reference_solve_ex(ref_matrix.mT, 2 * expected)
+        expected_grads = (-rhs_grad @ expected.mT, rhs_grad)
+    else:
+        expected_grads = torch.autograd.grad(
+            expected.square().sum(), (ref_matrix, ref_rhs)
+        )
 
     result, info = flag_gems.linalg_solve_ex(matrix, rhs)
     actual_grads = torch.autograd.grad(result.square().sum(), (matrix, rhs))
@@ -192,7 +212,7 @@ def test_linalg_solve_ex_square_rhs(shape, dtype):
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
-    ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
+    ref_out, ref_info = _reference_solve_ex(ref_A, ref_B)
     res_out, res_info = flag_gems.linalg_solve_ex(A, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -210,7 +230,7 @@ def test_linalg_solve_ex_batched(batch_shape, n, k, dtype):
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
-    ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
+    ref_out, ref_info = _reference_solve_ex(ref_A, ref_B)
     res_out, res_info = flag_gems.linalg_solve_ex(A, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
