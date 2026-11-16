@@ -196,16 +196,21 @@ def test_lt_backward_leaf_rejected(dtype):
 
 @pytest.mark.lt_backward_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_lt_backward_through_dispatch(dtype):
-    """The registered ``torch.lt_`` entry must reach the FlagGems backward."""
+def test_lt_backward_autograd_node(dtype):
+    """Both public entries must build the FlagGems autograd node."""
     inp = torch.randn(32, dtype=dtype, device=flag_gems.device)
     other = torch.randn(32, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        leaf = inp.detach().clone().requires_grad_(True)
-        out = leaf.clone().lt_(other)
-        (grad,) = torch.autograd.grad(out, (leaf,), torch.ones_like(out))
-
+    leaf = inp.detach().clone().requires_grad_(True)
+    out = flag_gems.lt_(leaf.clone(), other)
+    (grad,) = torch.autograd.grad(out, (leaf,), torch.ones_like(out))
     assert type(out.grad_fn).__name__ == "_LtInplaceFunctionBackward"
+    assert grad.shape == inp.shape and grad.dtype == dtype
+    assert torch.equal(grad, torch.zeros_like(grad))
+
+    leaf = inp.detach().clone().requires_grad_(True)
+    out = flag_gems.lt_scalar_(leaf.clone(), 0)
+    (grad,) = torch.autograd.grad(out, (leaf,), torch.ones_like(out))
+    assert type(out.grad_fn).__name__ == "_LtScalarInplaceFunctionBackward"
     assert grad.shape == inp.shape and grad.dtype == dtype
     assert torch.equal(grad, torch.zeros_like(grad))
