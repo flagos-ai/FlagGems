@@ -141,7 +141,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
         default = Path(__file__).with_name("core_shapes.yaml")
         if path.resolve() == default.resolve():
             pytest.skip(
-                "External grouped_mm_w8a8 dataset required: pass --shape_file "
+                f"External {self.op_name} dataset required: pass --shape_file "
                 "PATH to a prepared benchmark JSON. See this module docstring "
                 "for the real-shape source."
             )
@@ -151,7 +151,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
         self.use_hygon = flag_gems.vendor_name == "hygon"
         if self.use_hygon:
             if self.use_deepgemm or self.dataset.get("input_dtype") != "int8":
-                raise ValueError("Hygon grouped_mm_w8a8 replay requires INT8 inputs")
+                raise ValueError("Hygon grouped_gemm_w8a8 replay requires INT8 inputs")
             self.torch_op = self.hygon_reference
             self.baseline_name = "Hygon LightOp INT8 MoE GEMM, routing included"
         elif self.use_deepgemm:
@@ -170,7 +170,6 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             if requested and requested != [torch.int8]:
                 raise ValueError("This captured export requires INT8 inputs")
             self.to_bench_dtypes = [torch.int8]
-            self.gems_op = flag_gems.grouped_mm_w8a8
         self.shape_desc = "G, M, N, K; " + self.dataset["classification"]
         for row in self.shapes:
             lengths = row["lengths"]

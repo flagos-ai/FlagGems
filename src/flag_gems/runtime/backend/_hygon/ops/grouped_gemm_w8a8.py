@@ -65,7 +65,7 @@ else:
         gl.store(C + row * N + cols, value)
 
     @gluon.jit
-    def _grouped_mm_w8a8_gemv(
+    def _grouped_gemm_w8a8_gemv(
         A, As, B, Bs, C, RowIndices, Rows, M: gl.constexpr, N: gl.constexpr
     ):
         row = gl.program_id(1)
@@ -136,7 +136,7 @@ else:
 
 @libentry()
 @triton.jit
-def grouped_mm_w8a8_prefix(
+def grouped_gemm_w8a8_prefix(
     Rows, RowEnds, TileEnds, E: tl.constexpr, BM: tl.constexpr, BLOCK: tl.constexpr
 ):
     experts = tl.arange(0, BLOCK)
@@ -147,7 +147,7 @@ def grouped_mm_w8a8_prefix(
 
 @libentry()
 @triton.jit
-def grouped_mm_w8a8_kernel(
+def grouped_gemm_w8a8_kernel(
     A,
     As,
     B,
@@ -257,7 +257,7 @@ def grouped_mm_w8a8_kernel(
 
 @libentry()
 @triton.jit
-def _grouped_mm_w8a8_reduce_split_k(
+def _grouped_gemm_w8a8_reduce_split_k(
     Partials,
     As,
     Bs,
@@ -283,7 +283,7 @@ def _grouped_mm_w8a8_reduce_split_k(
 
 @libentry()
 @triton.jit
-def _grouped_mm_w8a8_direct_k256(
+def _grouped_gemm_w8a8_direct_k256(
     A, As, B, Bs, C, RowIndices, Rows, N: tl.constexpr, EVEN_N: tl.constexpr
 ):
     BM: tl.constexpr = 16
@@ -333,7 +333,7 @@ def _grouped_mm_w8a8_direct_k256(
             )
 
 
-def grouped_mm_w8a8(
+def grouped_gemm_w8a8(
     A: torch.Tensor,
     As: torch.Tensor,
     B: torch.Tensor,
@@ -349,13 +349,13 @@ def grouped_mm_w8a8(
     """
     tensors = (A, As, B, Bs, C, m_indices, m_rows)
     if not all(isinstance(tensor, torch.Tensor) for tensor in tensors):
-        raise TypeError("grouped_mm_w8a8 expects tensor operands")
+        raise TypeError("grouped_gemm_w8a8 expects tensor operands")
     if A.ndim != 2 or B.ndim != 3:
         raise ValueError("expected A[M,K] and B[E,N,K]")
     m, k = A.shape
     e, n, weight_k = B.shape
     if A.dtype != torch.int8 or B.dtype != torch.int8:
-        raise TypeError("Hygon grouped_mm_w8a8 requires signed INT8 inputs")
+        raise TypeError("Hygon grouped_gemm_w8a8 requires signed INT8 inputs")
     if (As.dtype, Bs.dtype, C.dtype, m_indices.dtype, m_rows.dtype) != (
         torch.float32,
         torch.float32,
@@ -421,7 +421,7 @@ def grouped_mm_w8a8(
             and B.numel() < 2**31
             and triton.runtime.driver.active.get_current_target().arch == "gfx936"
         ):
-            _grouped_mm_w8a8_gemv[(n // 2, m)](
+            _grouped_gemm_w8a8_gemv[(n // 2, m)](
                 A,
                 As,
                 B,
@@ -437,7 +437,7 @@ def grouped_mm_w8a8(
             )
             return
         if direct and k == 256:
-            _grouped_mm_w8a8_direct_k256[(m * triton.cdiv(n, 64),)](
+            _grouped_gemm_w8a8_direct_k256[(m * triton.cdiv(n, 64),)](
                 A,
                 As,
                 B,
@@ -458,7 +458,7 @@ def grouped_mm_w8a8(
         else:
             metadata = torch.empty((2, e), dtype=torch.int32, device=A.device)
             row_ends, tile_ends = metadata[0], metadata[1]
-            grouped_mm_w8a8_prefix[(1,)](
+            grouped_gemm_w8a8_prefix[(1,)](
                 m_rows, row_ends, tile_ends, e, bm, triton.next_power_of_2(e)
             )
             max_tiles = min(m, triton.cdiv(m, bm) + e - 1)
@@ -467,7 +467,7 @@ def grouped_mm_w8a8(
             destination = torch.empty(
                 (split_k, m, n), dtype=torch.int32, device=A.device
             )
-        grouped_mm_w8a8_kernel[(max_tiles * triton.cdiv(n, bn) * split_k,)](
+        grouped_gemm_w8a8_kernel[(max_tiles * triton.cdiv(n, bn) * split_k,)](
             A,
             As,
             B,
@@ -493,7 +493,7 @@ def grouped_mm_w8a8(
             enable_fp_fusion=False,
         )
         if split_k > 1:
-            _grouped_mm_w8a8_reduce_split_k[(triton.cdiv(m * n, 256),)](
+            _grouped_gemm_w8a8_reduce_split_k[(triton.cdiv(m * n, 256),)](
                 destination,
                 As,
                 Bs,

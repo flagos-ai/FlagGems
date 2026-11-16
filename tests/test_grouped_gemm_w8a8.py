@@ -24,7 +24,15 @@ from .accuracy_utils import gems_assert_close, gems_assert_equal
 
 pytestmark = pytest.mark.skipif(
     "grouped_gemm_w8a8" not in vars(flag_gems),
-    reason="requires a registered PPU grouped INT8 GEMM implementation",
+    reason="requires a registered grouped INT8 GEMM implementation",
+)
+
+
+requires_ppu = pytest.mark.skipif(
+    flag_gems.vendor_name != "thead", reason="requires the PPU implementation"
+)
+requires_hygon = pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="requires the Hygon implementation"
 )
 
 
@@ -74,6 +82,7 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
         ([0, 129, 3], 17, 0),
         ([0, 129, 3], 0, 128),
         ([1] + [0] * 255 + [13], 64, 6144),
+        pytest.param([1, 2, 0, 3, 0, 0], 512, 6144, marks=requires_hygon),
         ([0, 1, 0], 17, 1),
         ([0, 0, 0], 64, 128),
     ],
@@ -82,12 +91,13 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
 def test_grouped_gemm_w8a8(lengths, n, k):
     args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
     expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-    flag_gems.grouped_gemm_w8a8(*args)
+    assert flag_gems.grouped_gemm_w8a8(*args) is None
     gems_assert_equal(args[4].cpu(), expected)
 
 
 @pytest.mark.parametrize("n,k", [(512, 6144), (6144, 256)])
 @pytest.mark.grouped_gemm_w8a8
+@requires_ppu
 def test_grouped_gemm_w8a8_deepgemm(n, k):
     pytest.importorskip("deep_gemm")
     lengths = [1] * 32 + [0] * 224 + [13]
@@ -159,6 +169,7 @@ def test_grouped_gemm_w8a8_changing_expert_rows():
 )
 @pytest.mark.parametrize("values", ["random", "extreme", "cancellation"])
 @pytest.mark.grouped_gemm_w8a8
+@requires_ppu
 def test_grouped_gemm_w8a8_async(
     async_a, async_b, block_m, block_k, swap, stages, values
 ):
@@ -223,6 +234,7 @@ def test_grouped_gemm_w8a8_async(
 
 @pytest.mark.parametrize("cache,evict", [(".cg", ""), (".ca", "evict_last")])
 @pytest.mark.grouped_gemm_w8a8
+@requires_ppu
 def test_grouped_gemm_w8a8_gemv_cache_tail(cache, evict):
     module = importlib.import_module(flag_gems.grouped_gemm_w8a8.__module__)
     lengths = [1, 0, 8, 3]
@@ -246,3 +258,41 @@ def test_grouped_gemm_w8a8_gemv_cache_tail(cache, evict):
         num_stages=1,
     )
     gems_assert_equal(args[4].cpu(), expected)
+
+
+@pytest.mark.grouped_gemm_w8a8
+@requires_hygon
+def test_grouped_gemm_w8a8_int8_cancellation():
+    args = make_grouped_gemm_case([0, 17, 65, 0, 131, 1], 64, 6144, flag_gems.device)
+    args[0].fill_(127)
+    args[2].fill_(127)
+    args[0][:, 3072:] = -127
+    args[0][:, 2048] = 126
+    expected = grouped_gemm_cpu_reference(*args[:4], [0, 17, 65, 0, 131, 1])
+    flag_gems.grouped_gemm_w8a8(*args)
+    gems_assert_equal(args[4].cpu(), expected)
+
+
+@pytest.mark.grouped_gemm_w8a8
+@requires_hygon
+@pytest.mark.parametrize("n,k", [(65, 2051), (1025, 129), (1025, 513)])
+def test_grouped_gemm_w8a8_sparse_changing_groups(n, k):
+    # Compact/noncompact dispatch boundaries, output/K tails, and a group
+    # spanning several M tiles. Reuse metadata storage across different routes.
+    lengths = [0] * 257
+    lengths[0], lengths[17], lengths[256] = 1, 3, 33
+    args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
+    for counts in ((1, 3, 33), (33, 1, 3)):
+        lengths[0], lengths[17], lengths[256] = counts
+        args[6].copy_(torch.tensor(lengths, dtype=torch.int32, device=flag_gems.device))
+        args[5].copy_(
+            torch.repeat_interleave(
+                torch.arange(257, dtype=torch.int32, device=flag_gems.device),
+                args[6],
+                output_size=sum(lengths),
+            )
+        )
+        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+        args[4].fill_(float("nan"))
+        assert flag_gems.grouped_gemm_w8a8(*args) is None
+        gems_assert_equal(args[4].cpu(), expected)

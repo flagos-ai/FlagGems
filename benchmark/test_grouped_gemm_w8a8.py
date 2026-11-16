@@ -19,6 +19,7 @@ import flag_gems
 from tests.test_grouped_gemm_w8a8 import deepgemm_grouped_gemm, make_grouped_gemm_case
 
 from .base import Benchmark
+from .test_grouped_mm_w8a8 import GroupedMMW8A8Benchmark
 
 
 class GroupedGemmInt8Benchmark(Benchmark):
@@ -40,9 +41,18 @@ class GroupedGemmInt8Benchmark(Benchmark):
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     "grouped_gemm_w8a8" not in vars(flag_gems),
-    reason="requires a registered PPU grouped INT8 GEMM implementation",
+    reason="requires a registered grouped INT8 GEMM implementation",
 )
 def test_grouped_gemm_w8a8():
+    if flag_gems.vendor_name == "hygon":
+        GroupedMMW8A8Benchmark(
+            op_name="grouped_gemm_w8a8",
+            torch_op=None,
+            gems_op=flag_gems.grouped_gemm_w8a8,
+            dtypes=[torch.int8],
+        ).run()
+        return
+
     pytest.importorskip("deep_gemm")
     bench = GroupedGemmInt8Benchmark(
         op_name="grouped_gemm_w8a8",
