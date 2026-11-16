@@ -25,6 +25,7 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+
 # Tile sizes for the fused first-order backward. The backward pass is a pure
 # elementwise pass, so the tile only trades coalescing on the innermost ``K``
 # axis against the number of launched programs. The splits below come from the
@@ -36,7 +37,6 @@ _MAX_BACKWARD_INNER_BLOCK = 1024
 _MIN_BACKWARD_INNER_BLOCK = 64
 _STRIDED_LOOP_MIN_ROWS = 512
 _STRIDED_LOOP_MAX_BLOCK_K = 256
-_MAX_REDUCED_DIMS = 8
 _GENERIC_BLOCK = 1024
 
 _WIDE_INNER_CONFIGS = [
@@ -130,7 +130,7 @@ def logsumexp_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    """Kernel for logsumexp when the reduction dimension is the innermost."""
+    """Kernel for logsumexp when reduction dimension is the innermost."""
     pid_m = ext.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
@@ -139,7 +139,7 @@ def logsumexp_kernel_inner(
         mask = n_offsets < N
         inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, axis=0)
-        # Handle case where all inputs were -inf
+        # Handle case where all inputs are -inf
         safe_m = tl.where(m == float("-inf"), 0.0, m)
         e = tl.exp(inp - safe_m)
         z = tl.sum(e, axis=0)
@@ -171,6 +171,84 @@ def logsumexp_kernel_inner(
         out = tl.where(m == float("-inf"), m, m + tl.log(z))
         output_ptrs = output_ptr + pid_m
         tl.store(output_ptrs, out)
+
+
+def logsumexp(inp, dim, keepdim=False):
+    logger.debug("GEMS LOGSUMEXP")
+
+    dims = tuple(dim) if isinstance(dim, (list, tuple)) else (dim,)
+    normalized = []
+    for axis in dims:
+        if not -inp.ndim <= axis < inp.ndim:
+            raise IndexError(f"Dimension out of range: {axis}")
+        axis %= inp.ndim
+        if axis in normalized:
+            raise RuntimeError(f"dim {axis} appears multiple times in the list of dims")
+        normalized.append(axis)
+    if normalized and torch.is_grad_enabled() and inp.requires_grad:
+        return _LogSumExp.apply(inp, tuple(normalized), keepdim)
+
+    if isinstance(dim, (list, tuple)):
+        # Handle multi-dimensional reduction
+        if len(dim) == 0:
+            # Empty dim list means no reduction, just return the input
+            return inp.clone()
+        if len(dim) == 1:
+            dim = dim[0]
+        else:
+            # For multiple dims, reduce sequentially
+            # Sort dims in descending order to handle dimension shifts correctly
+            sorted_dims = sorted([d % inp.ndim for d in dim], reverse=True)
+            result = inp
+            for d in sorted_dims:
+                result = logsumexp(result, d, keepdim=True)
+            if not keepdim:
+                # Remove the reduced dimensions
+                for d in sorted(sorted_dims, reverse=True):
+                    result = result.squeeze(d)
+            return result
+
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    dim = dim % inp.ndim
+    M = 1
+    N = inp.shape[dim]
+    for i in range(dim):
+        M *= inp.shape[i]
+    inp = inp.contiguous()
+    if inp.numel() == 0:
+        shape = list(inp.shape)
+        shape[dim] = 1
+        out = inp.new_full(shape, float("-inf"))
+        return out if keepdim else out.squeeze(dim)
+    K = inp.numel() // M // N
+
+    # Output shape with reduction dimension set to 1
+    shape = list(inp.shape)
+    shape[dim] = 1
+    out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+
+    with torch_device_fn.device(inp.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            logsumexp_kernel_non_inner[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+            )
+        else:
+            grid = (M, 1, 1)
+            logsumexp_kernel_inner[grid](
+                out,
+                inp,
+                M,
+                N,
+            )
+
+    if not keepdim:
+        out = out.squeeze(dim=dim)
+    return out
 
 
 # The backward kernels take explicit block sizes and need no heuristics, so
@@ -339,80 +417,6 @@ def logsumexp_backward_kernel_multi_axis(
     tl.store(grad_in_ptr + offsets, grad_in, mask=mask)
 
 
-def _normalize_dim(dim, ndim):
-    assert -ndim <= dim < ndim, "Invalid dim"
-    return dim % ndim
-
-
-def _normalize_dims(dim, ndim):
-    if isinstance(dim, (list, tuple)):
-        if len(dim) == 0:
-            return ()
-        # Reducing the same axis twice is identical to reducing it once.
-        return tuple(sorted({_normalize_dim(d, ndim) for d in dim}))
-    return (_normalize_dim(dim, ndim),)
-
-
-def _launch_forward(inp, dim):
-    """Run the forward kernel over one normalized axis, keeping that axis.
-
-    Returns the keepdim output and the contiguous input the kernel read.
-    """
-    ndim = inp.ndim
-    assert 0 <= dim < ndim, "Invalid dim"
-    N = inp.shape[dim]
-    inp = inp.contiguous()
-    shape = list(inp.shape)
-    shape[dim] = 1
-    out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
-    if N == 0:
-        # ATen defines logsumexp over an empty reduction axis as -inf.
-        out.fill_(float("-inf"))
-        return out, inp
-    if inp.numel() == 0:
-        return out, inp
-    M = 1
-    for i in range(dim):
-        M *= inp.shape[i]
-    K = inp.numel() // M // N
-
-    with torch_device_fn.device(inp.device):
-        if K > 1:
-            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-            logsumexp_kernel_non_inner[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-            )
-        else:
-            grid = (M, 1, 1)
-            logsumexp_kernel_inner[grid](
-                out,
-                inp,
-                M,
-                N,
-            )
-    return out, inp
-
-
-def _forward_keepdim(inp, dims):
-    """Forward over one or more normalized axes, always keeping every axis.
-
-    Single-axis reductions keep the original kernel path. Multiple axes are
-    reduced sequentially, exactly like the pre-existing forward implementation,
-    so results are unchanged.
-    """
-    if len(dims) == 1:
-        return _launch_forward(inp, dims[0])
-    contiguous = inp.contiguous()
-    result = contiguous
-    for dim in sorted(dims, reverse=True):
-        result, _ = _launch_forward(result, dim)
-    return result, contiguous
-
-
 def _contiguous_or_self(tensor):
     return tensor if tensor.is_contiguous() else tensor.contiguous()
 
@@ -511,11 +515,6 @@ def _backward_multi_axis(grad_out, inp, out, dims):
     if inp.numel() == 0:
         return grad_in
     ndim = inp.ndim
-    if ndim > _MAX_REDUCED_DIMS:
-        raise NotImplementedError(
-            "logsumexp backward supports at most "
-            f"{_MAX_REDUCED_DIMS} dimensions for multi-axis reductions"
-        )
     out_strides = list(out.stride())
     for reduced in dims:
         out_strides[reduced] = 0
@@ -551,9 +550,9 @@ class _LogSumExp(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, inp, dim, keepdim):
-        dims = _normalize_dims(dim, inp.ndim)
-        out, contiguous = _forward_keepdim(inp, dims)
+    def forward(ctx, inp, dims, keepdim):
+        contiguous = inp.contiguous()
+        out = logsumexp(contiguous, dims, keepdim=True)
         ctx.dims = dims
         ctx.keepdim = keepdim
         ctx.save_for_backward(contiguous, out)
@@ -576,10 +575,4 @@ class _LogSumExp(torch.autograd.Function):
         return grad_in, None, None
 
 
-def logsumexp(inp, dim, keepdim=False):
-    logger.debug("GEMS LOGSUMEXP")
-
-    if isinstance(dim, (list, tuple)) and len(dim) == 0:
-        # Empty dim list means no reduction, just return the input.
-        return inp.clone()
-    return _LogSumExp.apply(inp, dim, keepdim)
+logsumexp._flag_gems_autograd_impl = torch.library.fallthrough_kernel

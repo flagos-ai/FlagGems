@@ -1664,18 +1664,7 @@ _FULL_CONFIG = (
     ("logit_", logit_),
     ("logit_backward", logit_backward),
     ("logspace", logspace),
-    (
-        "logsumexp",
-        logsumexp,
-        None,
-        # logsumexp is differentiable, so registering only the device key leaves
-        # the generated Autograd kernel in charge: the fused Triton backward
-        # below is bypassed and the gradient is rebuilt from separate
-        # sub/exp/mul kernels. The Autograd fallthrough hands the whole
-        # differentiable path to the autograd.Function inside `logsumexp`
-        # (same convention as `clone` and `adaptive_avg_pool3d`).
-        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
-    ),
+    ("logsumexp", logsumexp),
     ("lstm.input", lstm),
     ("lstm_cell", lstm_cell),
     ("lt.Scalar", lt_scalar),

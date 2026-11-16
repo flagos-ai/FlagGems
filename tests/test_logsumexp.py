@@ -271,3 +271,17 @@ def test_accuracy_logsumexp(shape, dtype, dim, keepdim):
     res_out = flag_gems.logsumexp(inp, dim=dim, keepdim=keepdim)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim], atol=5e-3)
+
+
+@pytest.mark.logsumexp_backward
+def test_logsumexp_backward_high_rank_and_duplicate_dims():
+    x = torch.randn((2,) * 9, device=flag_gems.device, requires_grad=True)
+    with pytest.raises(RuntimeError, match="appears multiple times"):
+        flag_gems.logsumexp(x, (0, -9))
+    ref = torch.logsumexp(x, (0, 1))
+    result = flag_gems.logsumexp(x, (0, 1))
+    grad = torch.randn_like(ref)
+    torch.testing.assert_close(
+        torch.autograd.grad(result, x, grad)[0],
+        torch.autograd.grad(ref, x, grad)[0],
+    )
