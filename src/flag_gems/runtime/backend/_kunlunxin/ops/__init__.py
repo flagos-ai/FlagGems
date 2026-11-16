@@ -524,6 +524,7 @@ from .geqrf import geqrf
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
+from .gradient import gradient
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
 from .grid_sampler import grid_sampler
@@ -1488,6 +1489,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "gradient",
     "greater",
     "greater_equal_",
     "greater_out",
