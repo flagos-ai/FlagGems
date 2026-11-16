@@ -650,6 +650,8 @@ from .logit_ import logit_
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
+from .lstm import lstm
+from .lstm_cell import lstm_cell
 from .lt import (
     less_,
     less__scalar,
@@ -660,8 +662,6 @@ from .lt import (
     lt_scalar_,
     lt_tensor,
 )
-from .lstm import lstm
-from .lstm_cell import lstm_cell
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
