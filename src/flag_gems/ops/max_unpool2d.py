@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.max_unpool2d_backward import _max_unpool2d_backward_impl
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -107,62 +108,24 @@ def max_unpool2d_kernel(
     tl.store(output_base_ptr + out_offsets, pooled_vals, mask=out_mask)
 
 
-# One pooled plane per grid axis 0, BLOCK elements of the flattened plane per
-# program on axis 1.  The op is memory bound and launch bound at the benchmark
-# shapes: a sweep over BLOCK in {64, 128, 256, 1024} with num_warps in {1, 2, 4}
-# stayed within 1.5% of this choice on H800, so the kernel ships one
-# configuration instead of an autotune list.
-_BACKWARD_BLOCK = 256
-_BACKWARD_WARPS = 4
+def max_unpool2d(pooled: torch.Tensor, indices: torch.Tensor, output_size: list):
+    logger.debug("GEMS MAX_UNPOOL2D")
+    if torch.is_grad_enabled() and pooled.requires_grad:
+        return MaxUnpool2dFunction.apply(pooled, indices, output_size)
+    if indices.shape != pooled.shape:
+        raise ValueError(
+            "max_unpool2d expects indices and pooled input to have the same shape"
+        )
+    if pooled.ndim == 3:
+        return max_unpool2d(
+            pooled.unsqueeze(0), indices.unsqueeze(0), output_size
+        ).squeeze(0)
 
-
-@libentry()
-@triton.jit
-def max_unpool2d_backward_kernel(
-    grad_output_ptr,
-    indices_ptr,
-    grad_input_ptr,
-    out_plane,
-    pooled_plane,
-    BLOCK: tl.constexpr,
-):
-    """Gather the incoming gradient with the forward max-pool indices.
-
-    The ATen autograd derivative of ``max_unpool2d`` is
-    ``grad_input[n, c, i] = grad_output[n, c].flatten()[indices[n, c, i]]``,
-    i.e. a pure gather over the flattened spatial plane.  Duplicate indices
-    therefore read the same source element instead of accumulating.
-    """
-    plane = tl.program_id(0)
-    offs = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < pooled_plane
-
-    in_base = plane.to(tl.int64) * pooled_plane
-    out_base = plane.to(tl.int64) * out_plane
-
-    flat_idx = tl.load(indices_ptr + in_base + offs, mask=mask, other=-1)
-    valid = mask & (flat_idx >= 0) & (flat_idx < out_plane)
-    vals = tl.load(grad_output_ptr + out_base + flat_idx, mask=valid, other=0.0)
-    tl.store(grad_input_ptr + in_base + offs, vals, mask=mask)
-
-
-def _normalize_output_size(output_size):
-    """Return ``(out_h, out_w)`` from the aten ``int[2]`` output_size argument."""
-    if isinstance(output_size, int):
-        return output_size, output_size
-    size = tuple(int(v) for v in output_size)
-    if len(size) == 1:
-        return size[0], size[0]
-    if len(size) >= 2:
-        return size[0], size[1]
-    raise ValueError(f"max_unpool2d expects a non-empty output_size, got {output_size}")
-
-
-def _max_unpool2d_launch(pooled, indices, out_h, out_w):
     pooled = pooled.contiguous()
     indices = indices.contiguous()
 
     n, c, pooled_h, pooled_w = pooled.shape
+    out_h, out_w = output_size[0], output_size[1]
 
     output = torch.zeros((n, c, out_h, out_w), device=pooled.device, dtype=pooled.dtype)
 
@@ -197,112 +160,16 @@ def _max_unpool2d_launch(pooled, indices, out_h, out_w):
     return output
 
 
-def _max_unpool2d_backward_impl(grad_output, indices, pooled_shape):
-    """Gather ``grad_output`` with the saved indices into ``pooled_shape``."""
-    unbatched = len(pooled_shape) == 3
-    grad4d = grad_output.unsqueeze(0) if unbatched else grad_output
-    indices4d = indices.unsqueeze(0) if unbatched else indices
-    grad4d = grad4d.contiguous()
-    indices4d = indices4d.contiguous()
-
-    grad_input4d = torch.empty_like(indices4d, dtype=grad4d.dtype)
-    n, c, pooled_h, pooled_w = grad_input4d.shape
-    pooled_plane = pooled_h * pooled_w
-    out_plane = grad4d.shape[-2] * grad4d.shape[-1]
-
-    if pooled_plane != 0:
-        grid = (n * c, triton.cdiv(pooled_plane, _BACKWARD_BLOCK))
-        max_unpool2d_backward_kernel[grid](
-            grad4d,
-            indices4d,
-            grad_input4d,
-            out_plane,
-            pooled_plane,
-            BLOCK=_BACKWARD_BLOCK,
-            num_warps=_BACKWARD_WARPS,
-        )
-
-    return grad_input4d.squeeze(0) if unbatched else grad_input4d
-
-
-def max_unpool2d_backward(grad_output, self, indices, output_size=None):
-    """Gradient of ``max_unpool2d`` with respect to its pooled input.
-
-    ``self`` is the pooled (forward input) tensor, ``indices`` are the
-    ``max_pool2d(..., return_indices=True)`` indices saved by the forward, and
-    ``output_size`` is the unpooled spatial size.  Every value of ``self``
-    contributes to exactly one output position, so the derivative is the
-    gather ``grad_self[n, c, i] = grad_output[n, c].flatten()[indices[n, c, i]]``
-    (ATen's ``max_pool_double_backward`` semantics).
-    """
-    logger.debug("GEMS MAX_UNPOOL2D BACKWARD")
-
-    if grad_output.dim() not in (3, 4):
-        raise ValueError(
-            "max_unpool2d_backward expects a 3D (C, H, W) or 4D (N, C, H, W) "
-            f"grad_output, got {grad_output.dim()}D"
-        )
-
-    unbatched = grad_output.dim() == 3
-    grad4d = grad_output.unsqueeze(0) if unbatched else grad_output
-    self4d = self.unsqueeze(0) if self.dim() == 3 else self
-    indices4d = indices.unsqueeze(0) if indices.dim() == 3 else indices
-
-    if indices4d.shape != self4d.shape:
-        raise ValueError(
-            "max_unpool2d_backward expects indices to have the same shape as the "
-            f"pooled input, got indices {tuple(indices4d.shape)} and self "
-            f"{tuple(self4d.shape)}"
-        )
-    n, c = self4d.shape[0], self4d.shape[1]
-    if grad4d.shape[0] != n or grad4d.shape[1] != c:
-        raise ValueError(
-            "max_unpool2d_backward expects grad_output and self to agree on the "
-            f"(N, C) dimensions, got grad_output {tuple(grad4d.shape)} and self "
-            f"{tuple(self4d.shape)}"
-        )
-
-    if output_size is not None:
-        out_h, out_w = _normalize_output_size(output_size)
-        if (out_h, out_w) != tuple(grad4d.shape[-2:]):
-            raise ValueError(
-                "max_unpool2d_backward expects output_size to match the unpooled "
-                f"spatial size, got output_size {(out_h, out_w)} and grad_output "
-                f"{tuple(grad4d.shape[-2:])}"
-            )
-
-    return _max_unpool2d_backward_impl(grad_output, indices, tuple(self.shape))
-
-
 class MaxUnpool2dFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, pooled, indices, output_size):
         logger.debug("GEMS MAX_UNPOOL2D FORWARD")
 
-        if pooled.dim() not in (3, 4):
-            raise ValueError(
-                "max_unpool2d expects a 3D (C, H, W) or 4D (N, C, H, W) pooled "
-                f"input, got {pooled.dim()}D"
-            )
-        if indices.shape != pooled.shape:
-            raise ValueError(
-                "max_unpool2d expects indices to have the same shape as the pooled "
-                f"input, got indices {tuple(indices.shape)} and pooled input "
-                f"{tuple(pooled.shape)}"
-            )
-
-        out_h, out_w = _normalize_output_size(output_size)
-        unbatched = pooled.dim() == 3
-        pooled4d = pooled.unsqueeze(0) if unbatched else pooled
-        indices4d = indices.unsqueeze(0) if unbatched else indices
-
-        output = _max_unpool2d_launch(pooled4d, indices4d, out_h, out_w)
-
+        output = max_unpool2d(pooled, indices, output_size)
         ctx.save_for_backward(indices)
         ctx.input_shape = pooled.shape
-        ctx.output_size = (out_h, out_w)
 
-        return output.squeeze(0) if unbatched else output
+        return output
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -317,7 +184,4 @@ class MaxUnpool2dFunction(torch.autograd.Function):
         return grad_pooled, None, None
 
 
-def max_unpool2d(pooled: torch.Tensor, indices: torch.Tensor, output_size: list):
-    logger.debug("GEMS MAX_UNPOOL2D")
-
-    return MaxUnpool2dFunction.apply(pooled, indices, output_size)
+max_unpool2d._flag_gems_autograd_impl = torch.library.fallthrough_kernel
