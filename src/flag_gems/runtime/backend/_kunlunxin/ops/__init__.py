@@ -807,6 +807,8 @@ from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
+from .rrelu_ import rrelu_  # noqa: F401
+from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -970,7 +972,7 @@ from .triu_indices import triu_indices  # noqa: F401
 from .trunc import trunc, trunc_
 from .unbind_copy import unbind_copy  # noqa: F401
 from .unfold_copy import unfold_copy
-from .uniform import uniform_
+from .uniform import uniform_  # noqa: F401
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
@@ -1832,6 +1834,9 @@ __all__ = [
     "round_out",
     "row_indices_copy",
     "row_indices_copy_out",
+    "rrelu_",
+    "rrelu_with_noise",
+    "rrelu_with_noise_",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
