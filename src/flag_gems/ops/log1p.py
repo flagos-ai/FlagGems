@@ -65,7 +65,6 @@ def log1p_out(A, out):
     return log1p_func(A, out0=out)
 
 
-log1p._flag_gems_extra_dispatch = (("Autograd", torch.library.fallthrough_kernel),)
 
 
 @triton.jit
