@@ -106,6 +106,21 @@ def _make_special_complex(real_dtype, scenario):
     return torch.complex(real, tu.make_special_input(real_dtype, scenario).flip(0))
 
 
+def _assert_equal(actual, expected):
+    if flag_gems.vendor_name != "mthreads":
+        tu.assert_result_equal(actual, expected)
+        return
+
+    target = torch.empty(0, device=flag_gems.device).device
+    assert actual.device == target
+    assert actual.dtype == expected.dtype
+    actual, expected = actual.cpu(), expected.cpu()
+    if actual.is_complex():
+        actual = torch.view_as_real(actual.resolve_conj())
+        expected = torch.view_as_real(expected.resolve_conj())
+    tu.assert_result_equal(actual, expected)
+
+
 def _assert_copy_contract(res_out, ref_out, inp, ref_inp, allocating=True):
     """Native values, allocating geometry, and an input left untouched.
 
@@ -113,8 +128,8 @@ def _assert_copy_contract(res_out, ref_out, inp, ref_inp, allocating=True):
     the input is rejected as well; an empty result has no storage independence
     to observe, so that check is limited to non-empty inputs.
     """
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(res_out, ref_out)
+    _assert_equal(inp, ref_inp)
     if allocating:
         # Compare the result geometry with the native allocating result instead
         # of assuming it; an out buffer keeps the caller's own layout.
@@ -198,9 +213,9 @@ def test_view_as_real_copy_out_offset_buffer(shape, dtype):
     res_ret = flag_gems.view_as_real_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(base, ref_base)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(out, ref_out)
+    _assert_equal(base, ref_base)
+    _assert_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_real_copy
@@ -358,11 +373,21 @@ def test_view_as_real_copy_result_is_independent_storage(shape, dtype):
     ref_out = torch.ops.aten.view_as_real_copy(ref_inp)
     res_out = flag_gems.view_as_real_copy(inp)
 
-    inp.fill_(7)
-    tu.assert_result_equal(res_out, ref_out)
+    if flag_gems.vendor_name == "mthreads":
+        components = torch.view_as_real(inp)
+        components[..., 0].fill_(7)
+        components[..., 1].zero_()
+        expected = torch.empty_like(ref_inp, device="cpu")
+        expected_components = torch.view_as_real(expected)
+        expected_components[..., 0].fill_(7)
+        expected_components[..., 1].zero_()
+    else:
+        inp.fill_(7)
+        expected = torch.full_like(ref_inp, 7)
+    _assert_equal(res_out, ref_out)
 
     res_out.fill_(0)
-    tu.assert_result_equal(inp, torch.full_like(ref_inp, 7))
+    _assert_equal(inp, expected)
 
 
 @pytest.mark.view_as_real_copy
@@ -384,12 +409,12 @@ def test_view_as_real_copy_backward(shape, dtype):
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
     res_out = flag_gems.view_as_real_copy(inp)
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(res_out, ref_out)
+    _assert_equal(inp, ref_inp)
 
     res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=grad)[0]
 
-    tu.assert_result_equal(res_in_grad, ref_in_grad)
+    _assert_equal(res_in_grad, ref_in_grad)
 
 
 @pytest.mark.view_as_real_copy
