@@ -43,6 +43,10 @@ _BENCH_CASES = [
     ((16, 7, 57, 16, 29), {"dim": [4, 3]}),
     ((4096,), {"dim": None}),
     ((65536,), {"dim": 0, "edge_order": 2}),
+    ((65536,), {}),
+    ((1048576,), {}),
+    ((4096, 4096), {}),
+    ((256, 256, 256), {}),
 ]
 
 # Listing and execution share this table: _case_fn reads it for every shape it is
@@ -57,6 +61,8 @@ _BENCH_SHAPES = list(_PARAMS_BY_SHAPE)
 _BENCH_DTYPES = [torch.float16, torch.float32]
 if flag_gems.runtime.device.support_bf16:
     _BENCH_DTYPES.append(torch.bfloat16)
+if flag_gems.runtime.device.support_fp64:
+    _BENCH_DTYPES.append(torch.float64)
 
 
 def _case_fn(shape, dtype):
@@ -110,7 +116,6 @@ def test_gradient():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.gradient,
-        gems_op=getattr(flag_gems, "gradient", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()

@@ -71,6 +71,9 @@ def _assert_gradients(result, reference, inp, *, atol=None):
     assert len(result) == len(reference)
     for res_part, ref_part in zip(result, reference):
         assert res_part.device == inp.device
+        if flag_gems.vendor_name == "mthreads" and res_part.is_complex():
+            assert res_part.dtype == ref_part.dtype
+            res_part, ref_part = res_part.cpu(), ref_part.cpu()
         if atol is None:
             tu.assert_result_close(res_part, ref_part)
         else:
