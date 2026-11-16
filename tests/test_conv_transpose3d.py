@@ -32,17 +32,6 @@ STRIDES = [1, 2]
 PADDINGS = [0, 1]
 
 
-@pytest.fixture(autouse=True)
-def _full_precision_musa_convolution():
-    if flag_gems.vendor_name == "mthreads":
-        from torch_musa.core import mudnn
-
-        with mudnn.flags(allow_tf32=False):
-            yield
-    else:
-        yield
-
-
 @pytest.mark.conv_transpose3d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE3D)
 @pytest.mark.parametrize("stride", STRIDES)
@@ -170,7 +159,13 @@ def test_conv_transpose3d_dilation(stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
-    if flag_gems.vendor_name == "mthreads" and stride == 2 and groups == 3:
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and groups == 3
+        and shape == (1, 12, 5, 5, 5)
+        and kernel == (12, 4, 2, 2, 2)
+    ):
         pytest.skip("MUSA native conv_transpose3d fails this stride-2 three-group geometry")
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
