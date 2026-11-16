@@ -19,7 +19,17 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
+
+# The vectorized `tl.cumsum` scan is the default implementation and stays in
+# charge on every backend that can compile it. Kunlunxin (TritonXPU) cannot:
+# its scan input is an elementwise combination of two vectorized loads, which
+# lowers to a `triton_xpu.unpack` that fails to legalize ("reached lowering
+# without a bufPtr"). Only on that backend is the scan replaced by a
+# sequential fp32 accumulator.
+_SERIAL_SCAN = runtime.device.vendor_name == "kunlunxin"
 
 
 _MAX_RANK = 8
@@ -183,6 +193,36 @@ def _row_scan(
         tl.store(o_base + c * STEP_OUT, v * dx, mask=m)
 
 
+@triton.jit
+def _cumtrapz_serial_kernel(
+    y_ptr,
+    out_ptr,
+    N,
+    inner,
+    stride_row_in,
+    stride_row_out,
+    dx,
+):
+    """One program per (outer, inner) pair, walking the row one element at a time.
+
+    Used on XPU only. The reference there accumulates the scan serially in fp32,
+    so this reproduces it without a `tl.cumsum` scan.
+    """
+    pid = tl.program_id(0)
+    o = pid // inner
+    i = pid % inner
+    in_base = o * stride_row_in + i
+    out_base = o * stride_row_out + i
+
+    acc = tl.zeros((), dtype=tl.float32)
+    prev = tl.load(y_ptr + in_base).to(tl.float32)
+    for j in range(0, N - 1):
+        nxt = tl.load(y_ptr + in_base + (j + 1) * inner).to(tl.float32)
+        acc = acc + (prev + nxt) * dx
+        prev = nxt
+        tl.store(out_ptr + out_base + j * inner, acc)
+
+
 def cumulative_trapezoid(y, *, dx=1, dim=-1):
     logger.debug("GEMS CUMULATIVE_TRAPEZOID")
 
@@ -208,6 +248,26 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
     out_shape[d] = K
     out = torch.empty(out_shape, dtype=y.dtype, device=y.device)
     if K == 0 or nrows == 0:
+        return out
+
+    if _SERIAL_SCAN:
+        # XPU path: one program per (outer, inner) pair over a contiguous copy.
+        N = D
+        outer = 1
+        for s in shape[:d]:
+            outer *= s
+        inner = 1
+        for s in shape[d + 1 :]:
+            inner *= s
+        _cumtrapz_serial_kernel[(outer * inner,)](
+            y.contiguous(),
+            out,
+            N,
+            inner,
+            N * inner,
+            (N - 1) * inner,
+            0.5 * float(dx),
+        )
         return out
 
     # Non-integration axes: (size, input stride, output stride).

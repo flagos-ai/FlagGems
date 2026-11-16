@@ -62,3 +62,60 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     )
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.arange_start
+@pytest.mark.arange_start_step
+@pytest.mark.parametrize(
+    "start,end,step,dtype",
+    [
+        (1 / 70, 1.0, 1 / 70, None),
+        (-0.5, 0.5, 0.125, None),
+        (0.0, 3.0, 1, None),
+        (2, 11, 3, None),
+        (2, 11, 3.0, None),
+        (0, 0, 1, None),
+        (11, 2, -3, None),
+        (0.0, 1000 / 70, 1 / 70, None),
+        (0.1, 5.9, 1.0, torch.int64),
+    ],
+)
+def test_arange_start_dtype_inference(start, end, step, dtype):
+    target_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    ref_out = torch.arange(start, end, step, dtype=dtype, device=target_device)
+    res_out = flag_gems.arange_start(
+        start, end, step, dtype=dtype, device=flag_gems.device
+    )
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.shape == ref_out.shape
+    if cfg.TO_CPU and ref_out.dtype.is_floating_point:
+        utils.gems_assert_close(
+            res_out,
+            ref_out,
+            ref_out.dtype,
+            atol=torch.finfo(ref_out.dtype).eps,
+        )
+    else:
+        utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.arange_start
+@pytest.mark.arange_start_step
+def test_arange_start_float_args_follow_default_dtype():
+    start, end, step = 1 / 70, 1.0, 1 / 70
+    target_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    ref_out = torch.arange(start, end, step, device=target_device)
+    res_out = flag_gems.arange_start(start, end, step, device=flag_gems.device)
+    assert torch.get_default_dtype() is torch.float32
+    assert res_out.dtype == torch.float32
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.shape == ref_out.shape
+    if cfg.TO_CPU:
+        utils.gems_assert_close(
+            res_out,
+            ref_out,
+            torch.float32,
+            atol=torch.finfo(torch.float32).eps,
+        )
+    else:
+        utils.gems_assert_equal(res_out, ref_out)

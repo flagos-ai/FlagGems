@@ -44,10 +44,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+# XPU's unordered comparisons report NaN as in-range, so the reference's
+# non-finite handling (mask False, zero quantized value) has to be restored
+# explicitly on that backend; every other backend keeps the original path.
+_NONFINITE_FIX = runtime.device.vendor_name == "kunlunxin"
 
 _MAGIC_C = tl.constexpr(8388608.0)
 _BLOCK_MIN = 1024
@@ -147,6 +153,7 @@ def fake_quantize_per_tensor_affine_cachemask_kernel(
     zp,
     qmin,
     qmax,
+    NONFINITE_FIX: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0) + tl.program_id(1) * gx
@@ -167,6 +174,10 @@ def fake_quantize_per_tensor_affine_cachemask_kernel(
     inr = (q >= qmin) & (q <= qmax)
     qc = tl.minimum(tl.maximum(q, qmin), qmax)
     o = (qc - zp) * sf
+    if NONFINITE_FIX:
+        nf = (y != y) | (tl.abs(y) == float("inf"))
+        inr = inr & ~nf
+        o = tl.where(nf, 0.0, o)
     tl.store(y_ptr + offs, o.to(y_ptr.dtype.element_ty), mask=act)
     tl.store(m_ptr + offs, inr, mask=act)
 
@@ -273,6 +284,7 @@ def _fq_strided_kernel(
     qmin,
     qmax,
     RANK: tl.constexpr,
+    NONFINITE_FIX: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0) + tl.program_id(1) * gx
@@ -324,6 +336,10 @@ def _fq_strided_kernel(
     inr = (q >= qmin) & (q <= qmax)
     qc = tl.minimum(tl.maximum(q, qmin), qmax)
     o = (qc - zp) * sf
+    if NONFINITE_FIX:
+        nf = (y != y) | (tl.abs(y) == float("inf"))
+        inr = inr & ~nf
+        o = tl.where(nf, 0.0, o)
     tl.store(y_ptr + yoff, o.to(y_ptr.dtype.element_ty), mask=act)
     tl.store(m_ptr + moff, inr, mask=act)
 
@@ -359,6 +375,7 @@ def _launch(x, out, mask, scale, inv_scale, zp, qmin, qmax):
                 zp,
                 qmin,
                 qmax,
+                NONFINITE_FIX=_NONFINITE_FIX,
                 BLOCK=block,
                 num_warps=_pick_warps(block, nblocks),
             )
@@ -409,6 +426,7 @@ def _launch(x, out, mask, scale, inv_scale, zp, qmin, qmax):
             qmin,
             qmax,
             RANK=r,
+            NONFINITE_FIX=_NONFINITE_FIX,
             BLOCK=block,
             num_warps=_STRIDED_WARPS,
         )

@@ -58,12 +58,14 @@ def _is_cpu_0d_tensor(tensor):
 
 
 def _host_scalar(scalar, result_dtype):
-    # Match the Python type to the result dtype so the scalar kernel's
-    # promotion keeps the expected output dtype.
+    # Keep integral scalars as Python ints so int64/int32 values reach the
+    # kernel without a detour through fp32.
     value = scalar.item()
     if result_dtype is torch.bool:
         return bool(value)
-    return float(value) if result_dtype.is_floating_point else int(value)
+    if not scalar.dtype.is_floating_point:
+        return int(value)
+    return float(value)
 
 
 def _maximum_with_cpu_scalar(scalar, tensor):
@@ -76,6 +78,10 @@ def _maximum_with_cpu_scalar(scalar, tensor):
     # resolved result dtype first.
     if tensor.dtype != result_dtype:
         tensor = tensor.to(result_dtype)
+    # Python floats reach Triton as fp32. Materialise an fp64 scalar on the
+    # device so its low mantissa bits survive.
+    if scalar.dtype == torch.float64:
+        return maximum_kernel(tensor, scalar.to(tensor))
     return maximum_kernel_tensor_scalar(tensor, _host_scalar(scalar, result_dtype))
 
 
