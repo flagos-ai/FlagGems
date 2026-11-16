@@ -24,6 +24,7 @@ import triton.language as tl
 from packaging.version import parse as _parse_version
 
 from flag_gems.config import use_c_extension
+from flag_gems.ops.arange import arange as _gems_arange
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.shape_utils import broadcasted_stride
 
@@ -1330,6 +1331,145 @@ def efficient_attention_backward(
     )
 
 
+_ATTN_FWD_HEAD_DIMS = {16, 32, 64, 128, 256}
+_ATTN_FWD_BLOCK_M = 128
+_ATTN_FWD_DTYPES = (torch.float16, torch.bfloat16)
+
+
+def _attn_fwd_available(query, key, value, attn_mask, dropout_p, is_causal):
+    """Gate for the fused ``_attn_fwd`` forward kernel.
+
+    The kernel addresses dense BHSD tensors with unit last-dim stride and puts
+    the causal band on the main diagonal, so it is only taken for contiguous
+    fp16/bf16 inputs without mask or dropout, and for causal only when the
+    query and key/value lengths agree.
+    """
+    if attn_mask is not None or dropout_p != 0.0:
+        return False
+    if query.dim() != 4 or key.dim() != 4 or value.dim() != 4:
+        return False
+    head_dim = query.shape[-1]
+    if head_dim not in _ATTN_FWD_HEAD_DIMS:
+        return False
+    if key.shape[-1] != head_dim or value.shape[-1] != head_dim:
+        return False
+    if query.dtype not in _ATTN_FWD_DTYPES:
+        return False
+    if key.dtype != query.dtype or value.dtype != query.dtype:
+        return False
+    if not (query.is_contiguous() and key.is_contiguous() and value.is_contiguous()):
+        return False
+    kv_head_num = key.shape[1]
+    if kv_head_num == 0 or query.shape[1] != kv_head_num:
+        # GQA/MQA stays on the materialised path: it is not covered by the
+        # benchmark roster and the grouped-head lowering is not revalidated here.
+        return False
+    if is_causal and query.shape[2] != key.shape[2]:
+        return False
+    return True
+
+
+def _attn_fwd_forward(query, key, value, attn_mask, sm_scale, is_causal, enable_gqa):
+    """Fused attention forward. Returns ``(out, lse_log2)``.
+
+    ``lse_log2`` is the base-2 log-sum-exp consumed by the backward entry.
+    """
+    # shape constraints
+    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
+    # when v is in float8_e5m2 it is transposed.
+    HEAD_DIM_V = value.shape[-1]
+    assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
+    assert HEAD_DIM_K in _ATTN_FWD_HEAD_DIMS
+
+    o = torch.empty_like(query, dtype=value.dtype)
+
+    stage = 3 if is_causal else 1
+    # Precision knobs kept for parity with the vendor implementation; the
+    # defaults (fp32 accumulation, non-tf32 GEMM) preserve the existing math.
+    fa_accum_type = os.environ.get("FLAG_GEMS_FA_ACCUM_TYPE", "float")
+    fa_gemm_type = os.environ.get("FLAG_GEMS_FA_GEMM_TYPE", "float")
+
+    q_head_num = query.shape[1]
+    kv_head_num = key.shape[1]
+    assert enable_gqa or q_head_num == kv_head_num, (
+        f"q_head_num {q_head_num} != kv_head_num {kv_head_num}, "
+        "enable_gqa must be True to support different head numbers."
+    )
+
+    # Constant grid: a per-call callable becomes part of the compile-cache key
+    # on this backend and forces a recompile on every launch.
+    grid = (
+        triton.cdiv(query.shape[2], _ATTN_FWD_BLOCK_M),
+        query.shape[0] * q_head_num,
+        1,
+    )
+
+    if attn_mask is not None:
+        HAS_ATTN_MASK = True
+        if attn_mask.dtype == torch.bool:
+            attn_mask = attn_mask.to(query.dtype) * -1.0e6
+        stride_attn_mask_batch = attn_mask.stride(0)
+        stride_attn_mask_head = attn_mask.stride(1)
+        stride_attn_mask_q_seqlen = attn_mask.stride(2)
+        stride_attn_mask_kv_seqlen = attn_mask.stride(3)
+    else:
+        HAS_ATTN_MASK = False
+        stride_attn_mask_batch = 1
+        stride_attn_mask_head = 1
+        stride_attn_mask_q_seqlen = 1
+        stride_attn_mask_kv_seqlen = 1
+
+    M = torch.empty(
+        (query.shape[0], query.shape[1], query.shape[2]),
+        device=query.device,
+        dtype=torch.float32,
+    )
+
+    with torch_device_fn.device(query.device):
+        _attn_fwd[grid](
+            query,
+            key,
+            value,
+            attn_mask,
+            sm_scale,
+            M,
+            o,  #
+            query.stride(0),
+            query.stride(1),
+            query.stride(2),
+            query.stride(3),  #
+            key.stride(0),
+            key.stride(1),
+            key.stride(2),
+            key.stride(3),  #
+            value.stride(0),
+            value.stride(1),
+            value.stride(2),
+            value.stride(3),  #
+            stride_attn_mask_batch,
+            stride_attn_mask_head,
+            stride_attn_mask_q_seqlen,
+            stride_attn_mask_kv_seqlen,  #
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            o.stride(3),  #
+            query.shape[0],
+            q_head_num,
+            kv_head_num,  #
+            q_head_num // kv_head_num,  # group_head
+            query.shape[2],  #
+            key.shape[2],  #
+            HEAD_DIM_K,  #
+            STAGE=stage,  #
+            HAS_ATTN_MASK=HAS_ATTN_MASK,  #
+            ACCUM_TYPE=fa_accum_type,
+            GEMM_TYPE=fa_gemm_type,
+        )
+
+    return o, M
+
+
 class ScaleDotProductAttention(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -1344,107 +1484,19 @@ class ScaleDotProductAttention(torch.autograd.Function):
         enable_gqa=False,
     ):
         logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_ATTENTION")
-        # shape constraints
-        HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
-        # when v is in float8_e5m2 it is transposed.
-        HEAD_DIM_V = value.shape[-1]
-        assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-        assert HEAD_DIM_K in {16, 32, 64, 128, 256}
         assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
-
-        o = torch.empty_like(query, dtype=value.dtype)
-
-        stage = 3 if is_causal else 1
-        # Precision knobs kept for parity with the vendor implementation; the
-        # defaults (fp32 accumulation, non-tf32 GEMM) preserve the existing math.
-        fa_accum_type = os.environ.get("FLAG_GEMS_FA_ACCUM_TYPE", "float")
-        fa_gemm_type = os.environ.get("FLAG_GEMS_FA_GEMM_TYPE", "float")
-
         if scale is None:
-            sm_scale = 1.0 / (HEAD_DIM_K**0.5)
+            sm_scale = 1.0 / (query.shape[-1] ** 0.5)
         else:
             sm_scale = scale
 
-        q_head_num = query.shape[1]
-        kv_head_num = key.shape[1]
-        assert enable_gqa or q_head_num == kv_head_num, (
-            f"q_head_num {q_head_num} != kv_head_num {kv_head_num}, "
-            "enable_gqa must be True to support different head numbers."
+        o, M = _attn_fwd_forward(
+            query, key, value, attn_mask, sm_scale, is_causal, enable_gqa
         )
-
-        grid = lambda args: (
-            triton.cdiv(query.shape[2], args["BLOCK_M"]),
-            query.shape[0] * query.shape[1],
-            1,
-        )
-
-        if attn_mask is not None:
-            HAS_ATTN_MASK = True
-            if attn_mask.dtype == torch.bool:
-                attn_mask = attn_mask.to(query.dtype) * -1.0e6
-            stride_attn_mask_batch = attn_mask.stride(0)
-            stride_attn_mask_head = attn_mask.stride(1)
-            stride_attn_mask_q_seqlen = attn_mask.stride(2)
-            stride_attn_mask_kv_seqlen = attn_mask.stride(3)
-        else:
-            HAS_ATTN_MASK = False
-            stride_attn_mask_batch = 1
-            stride_attn_mask_head = 1
-            stride_attn_mask_q_seqlen = 1
-            stride_attn_mask_kv_seqlen = 1
-
-        M = torch.empty(
-            (query.shape[0], query.shape[1], query.shape[2]),
-            device=query.device,
-            dtype=torch.float32,
-        )
-
-        with torch_device_fn.device(query.device):
-            _attn_fwd[grid](
-                query,
-                key,
-                value,
-                attn_mask,
-                sm_scale,
-                M,
-                o,  #
-                query.stride(0),
-                query.stride(1),
-                query.stride(2),
-                query.stride(3),  #
-                key.stride(0),
-                key.stride(1),
-                key.stride(2),
-                key.stride(3),  #
-                value.stride(0),
-                value.stride(1),
-                value.stride(2),
-                value.stride(3),  #
-                stride_attn_mask_batch,
-                stride_attn_mask_head,
-                stride_attn_mask_q_seqlen,
-                stride_attn_mask_kv_seqlen,  #
-                o.stride(0),
-                o.stride(1),
-                o.stride(2),
-                o.stride(3),  #
-                query.shape[0],
-                q_head_num,
-                kv_head_num,  #
-                q_head_num // kv_head_num,  # group_head
-                query.shape[2],  #
-                key.shape[2],  #
-                HEAD_DIM_K,  #
-                STAGE=stage,  #
-                HAS_ATTN_MASK=HAS_ATTN_MASK,  #
-                ACCUM_TYPE=fa_accum_type,
-                GEMM_TYPE=fa_gemm_type,
-            )
 
         ctx.save_for_backward(query, key, value, o, M)
-        ctx.grid = grid
         ctx.sm_scale = sm_scale
-        ctx.BLOCK_DMODEL = HEAD_DIM_K
+        ctx.BLOCK_DMODEL = query.shape[-1]
         ctx.causal = is_causal
         ctx.enable_gqa = enable_gqa
         return o
@@ -1696,6 +1748,10 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
+    if _attn_fwd_available(query, key, value, attn_mask, dropout_p, is_causal):
+        return ScaleDotProductAttention.apply(
+            query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa
+        )
     return scaled_dot_product_attention_forward(
         query,
         key,
@@ -2227,8 +2283,8 @@ def flash_attention_forward(
     cmask = None
     if is_causal or has_window:
         cmask2d = torch.full((q_len, k_pad), 50.0, dtype=torch.float32, device=device)
-        rows = torch.arange(q_len, device=device)[:, None]
-        cols = torch.arange(k_pad, device=device)[None, :]
+        rows = _gems_arange(q_len, device=device)[:, None]
+        cols = _gems_arange(k_pad, device=device)[None, :]
         off = k_len - q_len
         if is_causal:
             valid = cols <= (rows + off)
