@@ -193,14 +193,16 @@ def isreal(input: torch.Tensor) -> torch.Tensor:
                 input = input.contiguous()
 
             if input.dtype == torch.complex64:
-                rv = torch.view_as_real(input)
+                # view_as_real is a zero-copy complex->real reinterpretation, not
+                # compute (the isreal check runs in the kernel below).
+                rv = torch.view_as_real(input)  # allow-torch-compute
                 if not rv.is_contiguous():
                     rv = rv.contiguous()
                 packed = rv.reshape(-1).view(torch.int64)
                 _isreal_complex64(packed, out, n)
             else:
                 isreal_complex128_kernel[(triton.cdiv(n, 1024),)](
-                    torch.view_as_real(input),
+                    torch.view_as_real(input),  # allow-torch-compute
                     out,
                     n,
                     BLOCK_SIZE=1024,

@@ -138,7 +138,8 @@ def kaiser_window(
     if window_length == 0:
         return out
     if window_length == 1:
-        return torch.fill(out, 1.0)
+        out.fill_(1.0)
+        return out
 
     # N is the effective full size: window_length for the periodic window and
     # window_length - 1 for the symmetric one (matches aten).
