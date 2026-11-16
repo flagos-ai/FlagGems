@@ -89,7 +89,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}-shard${{ inputs.shard_index }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}-shard${{ inputs.shard_index }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -100,6 +100,12 @@ jobs:
           backend: ${{ inputs.backend }}
           vllm-version: '0.21.0'
           gpu-check-script: ${{ inputs.gpu_check_script }}
+
+      - name: Precompile flag_gems Python bytecode
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          python3 -m compileall -q src/flag_gems/
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
@@ -150,7 +156,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       # klx-p800 reuses its workspace across jobs. Stale skip-worktree bits
@@ -237,7 +243,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -299,7 +305,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -371,7 +377,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -429,7 +435,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -494,7 +500,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -554,7 +560,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
