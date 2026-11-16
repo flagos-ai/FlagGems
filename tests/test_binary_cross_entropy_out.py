@@ -25,7 +25,7 @@ def _seed_random_inputs():
     torch.manual_seed(0)
 
 
-_SHAPES = [(2, 3), (4, 5, 7), (0,), (2, 0, 3)]
+_SHAPES = list(dict.fromkeys([*utils.REDUCTION_SHAPES, (2, 3), (4, 5, 7), (0,), (2, 0, 3)]))
 _REDUCTIONS = [0, 1, 2]
 
 
@@ -47,10 +47,7 @@ def _reference(inp, target, weight, reduction):
 
 
 def _call(inp, target, weight, reduction, out):
-    with flag_gems.use_gems():
-        return torch.ops.aten.binary_cross_entropy.out(
-            inp, target, weight, reduction, out=out
-        )
+    return flag_gems.binary_cross_entropy_out(inp, target, weight, reduction, out=out)
 
 
 def _assert_close(result, expected, dtype, reduction, numel):
