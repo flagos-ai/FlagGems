@@ -22,6 +22,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 _COMPLEX32_UNSUPPORTED_VENDORS = {"tsingmicro"}
 
 
@@ -191,6 +193,9 @@ def _assert_std_mean(result, reference, dtype, *, equal_nan=False, atol=1e-4):
     result_std, result_mean = result
     reference_std, reference_mean = reference
     std_dtype = _std_dtype(dtype)
+    if IS_KUNLUNXIN and dtype.is_complex:
+        result_std, reference_std = result_std.cpu(), reference_std.cpu()
+        result_mean, reference_mean = result_mean.cpu(), reference_mean.cpu()
 
     assert result_std.dtype == std_dtype
     assert result_mean.dtype == dtype
