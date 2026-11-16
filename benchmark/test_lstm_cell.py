@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -53,9 +51,20 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, [h0, c0], w_ih, w_hh, b_ih, b_hh, {}
 
 
+_MASTER_CORE_SHAPES = [
+    (1, 8, 16),
+    (4, 16, 16),
+    (8, 32, 32),
+    (16, 64, 64),
+    (32, 128, 128),
+    (64, 256, 256),
+    (128, 512, 512),
+]
+
+
 class LstmCellBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=LSTM_CELL_SHAPES)
+        super().set_shapes(shape_file_path, default_shapes=[*LSTM_CELL_SHAPES, *_MASTER_CORE_SHAPES])
 
 
 @pytest.mark.lstm_cell
@@ -64,8 +73,7 @@ def test_lstm_cell():
         op_name="lstm_cell",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten.lstm_cell,
-        gems_op=getattr(flag_gems, "lstm_cell", None),
+        torch_op=torch.ops.aten.lstm_cell.default,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
