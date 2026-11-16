@@ -46,6 +46,16 @@ on:
         required: false
         type: string
         default: ''
+      total_shards:
+        description: 'Total number of shards for full-range runs (native runner path only). Leave empty to disable sharding.'
+        required: false
+        type: string
+        default: ''
+      shard_index:
+        description: 'Zero-based index of this shard. Used together with total_shards.'
+        required: false
+        type: string
+        default: ''
       container_image:
         description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (enflame-tops1106, hygon-dtk2604, iluvatar-corex450, kunlunxin-xre5371, metax-maca3810, mthreads-musa520). See .github/backends.json.'
         required: false
@@ -79,7 +89,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}-shard${{ inputs.shard_index }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -98,20 +108,39 @@ jobs:
         shell: bash
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      # The workspace may be reused across jobs; drop any coverage/ left by an
+      # earlier run so a failed shard cannot upload stale results.
+      - name: Clean stale coverage output
+        if: ${{ inputs.test_script == '' }}
+        shell: bash
+        run: rm -rf coverage
+
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          TOTAL_SHARDS: ${{ inputs.total_shards }}
+          SHARD_INDEX: ${{ inputs.shard_index }}
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
+
+      # test-op.sh only produces coverage/ (htmlcov + ut-summary.md) for
+      # full-range runs, so skip this step for per-PR runs.
+      - name: Upload coverage and summary
+        if: ${{ always() && inputs.test_script == '' && inputs.changed_files == '__ALL__' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: op-ut-coverage-${{ inputs.backend }}${{ inputs.shard_index != '' && format('-shard{0}', inputs.shard_index) || '' }}
+          path: coverage/
+          if-no-files-found: warn
 
   # Kunlunxin runs inside a container on the klx-p800 server, since the XPU
   # driver/runtime it needs is only set up inside this image.
   # Equivalent to:
   #   docker run --rm -it \
-  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-kunlunxin:
     if: ${{ inputs.backend == 'kunlunxin-xre5371' }}
@@ -195,7 +224,7 @@ jobs:
   #     --device /dev/mxcd \
   #     --device /dev/dri \
   #     --group-add video \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-metax:
     if: ${{ inputs.backend == 'metax-maca3810' }}
@@ -310,7 +339,7 @@ jobs:
   # enflame-s60-1. Equivalent to:
   #   docker run --rm -it --privileged -v /dev:/dev \
   #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
-  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   #
   # NOTE: image/options/runner labels all come from .github/backends.json via
@@ -387,7 +416,7 @@ jobs:
   #     --group-add video \
   #     -v /opt/hyhal:/opt/hyhal \
   #     --security-opt seccomp=unconfined \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-hygon:
     if: ${{ inputs.backend == 'hygon-dtk2604' }}
@@ -452,7 +481,7 @@ jobs:
   #     --device /dev/mtgpu.0 /dev/mtgpu.1 /dev/mtgpu.2 /dev/mtgpu.3 /dev/mtgpu.4 /dev/mtgpu.5 /dev/mtgpu.6 /dev/mtgpu.7 \
   #     --device /dev/dri \
   #     -v /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-mthreads:
     if: ${{ inputs.backend == 'mthreads-musa520' }}
@@ -513,7 +542,7 @@ jobs:
   #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
   #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
   # with GitHub Actions creating/starting the container and exec'ing each step.
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.3.0 bash
   test-iluvatar:
     if: ${{ inputs.backend == 'iluvatar-corex450' }}
     runs-on: >-

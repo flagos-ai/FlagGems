@@ -2683,3 +2683,13 @@ mm_wide:
       scenario: ''
     num_warps: 4
     num_stages: 2
+
+# Additional candidates for contiguous FP32 Linear, M<=1024 and measured
+# (N,K) feature pairs. The operator keeps all other inputs on its default tuner.
+linear_small_fp32:
+- META: {BLOCK_SIZE_M: 32, BLOCK_SIZE_N: 64, BLOCK_SIZE_K: 32}
+  num_warps: 8
+  num_stages: 4
+- META: {BLOCK_SIZE_M: 64, BLOCK_SIZE_N: 64, BLOCK_SIZE_K: 32}
+  num_warps: 8
+  num_stages: 4
