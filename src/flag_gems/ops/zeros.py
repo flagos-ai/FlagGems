@@ -57,12 +57,12 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 def zero_(x: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS ZERO_")
     if not x.is_contiguous():
-        # `zeros_kernel` writes a flat 0..numel-1 range starting at the view's
-        # data pointer and ignores strides, so a non-contiguous view would be
-        # zeroed outside its own memory and partly left untouched. Zero a
-        # contiguous buffer and copy it into the view, like `digamma_` does.
-        # See Issue #7115.
-        x.copy_(torch.zeros(x.shape, dtype=x.dtype, device=x.device))
+        # `zeros_kernel` walks flat offsets 0..numel-1 from the view's data
+        # pointer and ignores strides, so a non-contiguous view would be zeroed
+        # outside its own memory and partly left untouched. `fill_` writes
+        # through the tensor's strides (ATen's `zero_` delegates to it as well),
+        # so it needs no temporary buffer. See Issue #7115.
+        x.fill_(0)
         return x
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
