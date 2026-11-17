@@ -57,3 +57,18 @@ def test_maximum():
         dtypes=MAXIMUM_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.maximum_backward
+def test_maximum_backward():
+    # The backward timer builds the forward graph once through the same
+    # ``flag_gems.maximum`` entry the forward benchmark exercises, then times
+    # ``torch.autograd.grad`` for the identical upstream gradient.
+    bench = MaximumBenchmark(
+        op_name="maximum",
+        torch_op=torch.maximum,
+        dtypes=MAXIMUM_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.maximum)
+    bench.run()
