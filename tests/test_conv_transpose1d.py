@@ -41,6 +41,18 @@ else:
     PADDINGS = [0, 1]
 
 
+@pytest.fixture(autouse=True)
+def _full_precision_musa_convolution():
+    if flag_gems.vendor_name == "mthreads":
+        from torch_musa.core import mudnn
+
+        # Compare with the CPU reference at the original FP32 accuracy.
+        with mudnn.flags(allow_tf32=False):
+            yield
+    else:
+        yield
+
+
 @pytest.mark.conv_transpose1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV_TRANSPOSE1D)
 @pytest.mark.parametrize("stride", STRIDES)
