@@ -292,7 +292,7 @@ def _flash_attn_bwd_dq_fused(
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
         # Keep the pre-dropout softmax probability separate from the
         # probability used by the value path.  The softmax derivative is
-        # P * (dP - sum(P_drop * dP_drop)); using P_drop for the outer
+        # P * (dP_drop - sum(P_drop * dP)); using P_drop for the outer
         # factor incorrectly applies the dropout mask to the subtraction term.
         p = tl.exp(s - Li[:, None])
         if FP32:
