@@ -347,7 +347,15 @@ def linear(input, weight, bias=None):
 
     weight = weight.contiguous()
 
-    output = torch.empty((M, N), device=input.device, dtype=input.dtype)
+    # Keep cancellation residuals until a broadcast bias has been added.
+    output_dtype = (
+        torch.float32
+        if bias is not None
+        and not bias_is_vector
+        and input.dtype in (torch.float16, torch.bfloat16)
+        else input.dtype
+    )
+    output = torch.empty((M, N), device=input.device, dtype=output_dtype)
     bias_arg = bias if bias_is_vector else weight  # dummy ptr when unfused
 
     if (
@@ -392,6 +400,8 @@ def linear(input, weight, bias=None):
 
     if bias is not None and not bias_is_vector:
         add_(output, bias)
+        if output.dtype != input.dtype:
+            output = output.to(input.dtype)
 
     # If original input was 1D, squeeze the batch dim
     if single_1d:
