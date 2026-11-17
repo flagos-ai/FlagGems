@@ -58,13 +58,31 @@ def index_select(inp, dim, index):
     logger.debug("GEMS_ASCEND INDEX_SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
+    # NOTE: there used to be an
+    #   assert ((i >= 0 and i < inp.size(dim)) for i in index)
+    # here. The generator expression is always truthy, so it never validated
+    # anything, but creating it still evaluates `iter(index)` eagerly, and
+    # `Tensor.__iter__` unbinds the whole index on the host (~4096
+    # `torch.as_strided` calls for a 4096-element index, ~11 ms per call).
+    # Removed for #9127; range checking would need a device->host reduction.
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
     dim = dim % inp.ndim
     inp_shape = list(inp.shape)
     index_len = index.numel()
+
+    # `index_select_kernel` tiles the *selected* axis (BLOCK_N spans `index`),
+    # so with dim=0 on a wide contiguous tensor -- e.g. the (vocab, hidden)
+    # embedding weight that vLLM looks up -- the lanes of a tile read one
+    # element from a different row each and the loads are completely scattered.
+    # Measured on Ascend 910C for a (32000, 4096) weight this costs ~37 ms,
+    # against ~0.04 ms for the native row gather and ~0.3 ms for the adjacent
+    # index kernel that copies contiguous row tiles (#9127). Delegate to it.
+    if dim == 0 and inp.is_contiguous():
+        from .index import index as adjacent_index
+
+        return adjacent_index(inp, [index])
 
     # with dim_compress
     inp = dim_compress(inp, dim)
