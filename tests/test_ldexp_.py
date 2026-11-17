@@ -51,6 +51,13 @@ def _functional_reference(self, other):
     return torch.ops.aten.ldexp.Tensor(self, other).to(self.dtype)
 
 
+def _comparison_result(result):
+    # Enflame has no native device ldexp reference.
+    if flag_gems.vendor_name == "enflame":
+        return result.cpu()
+    return result
+
+
 @pytest.mark.ldexp_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
@@ -412,3 +419,49 @@ def test_ldexp_conjugated_complex_exponent_():
     assert result is self and result.device == expected_device
     assert result.dtype == self.dtype
     utils.gems_assert_close(result, reference, self.dtype, equal_nan=True)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_noncontiguous_broadcast_(dtype):
+    torch.manual_seed(0)
+    inp = torch.randn((19, 7), dtype=dtype, device=flag_gems.device).T
+    exponent = torch.randint(-4, 5, (19,), dtype=torch.int64, device=inp.device)
+    original_pointer = inp.data_ptr()
+    original_stride = inp.stride()
+    reference = _functional_reference(
+        utils.to_reference(inp.clone(), True), utils.to_reference(exponent, False)
+    )
+
+    expected_device = inp.device
+    result = flag_gems.ldexp_(inp, exponent)
+
+    assert result is inp
+    assert result.device == expected_device
+    assert result.data_ptr() == original_pointer
+    assert result.stride() == original_stride
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_special_values_integral_exponent_(dtype):
+    inp = torch.tensor(
+        [0.0, -0.0, 1.0, -1.0, float("inf"), -float("inf"), float("nan")],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    exponent = torch.tensor([128, -128, 0, 1, -1, 0, 2], device=inp.device)
+    # On MUSA, FP32 scaling overflows at 128 before multiply. Keep that
+    # behavior when comparing against CPU in the original input dtype.
+    upcast = not (flag_gems.vendor_name == "mthreads" and utils.TO_CPU)
+    reference = _functional_reference(
+        utils.to_reference(inp.clone(), upcast), utils.to_reference(exponent, False)
+    )
+
+    expected_device = inp.device
+    result = flag_gems.ldexp_(inp, exponent)
+
+    assert result is inp
+    assert result.device == expected_device
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype, equal_nan=True)
