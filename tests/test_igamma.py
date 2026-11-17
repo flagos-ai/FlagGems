@@ -37,3 +37,35 @@ def test_igamma(shape, dtype):
     res_out = flag_gems.igamma(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.igamma_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_igamma_backward(shape, dtype):
+    a = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    x = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    x.requires_grad_(True)
+
+    out = flag_gems.igamma(a, x)
+    out_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    (res_dx,) = torch.autograd.grad(out, x, out_grad)
+
+    ref_a = utils.to_reference(a, True)
+    ref_x = utils.to_reference(x.detach(), True)
+    ref_g = utils.to_reference(out_grad, True)
+
+    # aten registers no gradient for igamma, so compare against the analytic
+    # derivative d/dx P(a, x) = x^(a-1) e^(-x) / Gamma(a).
+    ref_dx = ref_g * torch.exp(
+        (ref_a - 1.0) * torch.log(ref_x) - ref_x - torch.lgamma(ref_a)
+    )
+    utils.gems_assert_close(res_dx, ref_dx, dtype)
+
+    # Independent finite-difference cross-check on the CPU in fp64.
+    a_cpu = ref_a.detach().cpu().double()
+    x_cpu = ref_x.detach().cpu().double()
+    g_cpu = ref_g.detach().cpu().double()
+    h = 1e-6
+    fd = (torch.igamma(a_cpu, x_cpu + h) - torch.igamma(a_cpu, x_cpu - h)) / (2.0 * h)
+    utils.gems_assert_close(res_dx, fd * g_cpu, dtype, atol=1e-4)
