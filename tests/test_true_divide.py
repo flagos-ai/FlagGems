@@ -12,12 +12,74 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+
+
+@pytest.mark.true_divide__tensor
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["transpose", "slice", "scalar"])
+def test_true_divide_inplace_strides(dtype, layout):
+    op = importlib.import_module("flag_gems.ops.true_divide_")
+
+    op._PLAN.clear()
+    op._LAUNCH_STATE.clear()
+    # Keep caches warm across different divisor layouts, including strides of 1.
+    for rhs in (
+        "dense",
+        "strided",
+        "broadcast",
+        "zero_dim",
+        "singleton",
+        "python",
+        "self",
+    ):
+        base = torch.arange(1, 97, dtype=dtype, device=flag_gems.device).reshape(8, 12)
+        ref = base.cpu().clone()
+
+        def view(t):
+            if layout == "transpose":
+                return t.t()
+            if layout == "slice":
+                return t[1::2, 1::3]
+            return t[1, 1]
+
+        x, expected = view(base), view(ref)
+        if rhs == "self":
+            y = x
+        elif rhs == "python":
+            y = 2.0
+        elif rhs in ("zero_dim", "singleton"):
+            y = torch.full(
+                () if rhs == "zero_dim" else (1,) * x.ndim,
+                2.0,
+                dtype=dtype,
+                device=x.device,
+            )
+        elif rhs == "strided":
+            y = torch.arange(1, 2 * x.numel() + 1, dtype=dtype, device=x.device)[
+                ::2
+            ].reshape(x.shape)
+        elif rhs == "broadcast" and x.ndim:
+            y = torch.arange(1, x.shape[-1] + 1, dtype=dtype, device=x.device)
+        else:
+            y = torch.full(x.shape, 2.0, dtype=dtype, device=x.device)
+        expected.div_(y.cpu() if isinstance(y, torch.Tensor) else y)
+        pointer, stride, offset = x.data_ptr(), x.stride(), x.storage_offset()
+        assert op.true_divide_tensor_(x, y) is x
+        assert (x.data_ptr(), x.stride(), x.storage_offset()) == (
+            pointer,
+            stride,
+            offset,
+        )
+        # Compare the whole allocation, not just the view: holes must be untouched.
+        torch.testing.assert_close(base.cpu(), ref)
 
 
 @pytest.mark.true_divide_tensor
