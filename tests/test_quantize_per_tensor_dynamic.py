@@ -232,6 +232,9 @@ def test_quantize_per_tensor_dynamic_out():
     res_out = flag_gems.quantize_per_tensor_dynamic_out(x, torch.qint8, False, out=out)
     assert res_out is out
     _assert_quantized_identical(utils.to_reference(out), utils.to_reference(ref_out))
+    # The dynamically computed quantizer must be adopted by ``out`` too.
+    assert res_out.q_scale() == ref_out.q_scale()
+    assert res_out.q_zero_point() == ref_out.q_zero_point()
 
 
 @pytest.mark.quantize_per_tensor_dynamic_out

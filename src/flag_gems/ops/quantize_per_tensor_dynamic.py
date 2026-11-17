@@ -234,8 +234,10 @@ def _validate(self, dtype):
 
     Only qint8 / quint8 are supported ("dtype QInt32 not supported" for the
     rest); the input must be float32 ("Quantize only works on Float Tensor").
+    ``dtype=torch.float16`` is ATen's "cast to half" quantizer -- accepted here
+    and handled by the dedicated branches below.
     """
-    if dtype not in _QUANT_INFO:
+    if dtype not in _QUANT_INFO and dtype is not torch.float16:
         raise RuntimeError(f"dtype {dtype}not supported")
     if self.dtype != torch.float32:
         raise RuntimeError(f"Quantize only works on Float Tensor, got {self.dtype}")
@@ -392,7 +394,34 @@ def quantize_per_tensor_dynamic_out(self, dtype, reduce_range=False, *, out=None
             "selective/custom build process."
         )
     result, scale, zero_point = _quantize_impl(self, dtype, reduce_range)
-    # Quantized ``copy_`` overwrites the integers and adopts the source
-    # quantizer -- the same landing ATen reaches, minus its staging copy.
-    out.copy_(_make_per_tensor_from_int(result, scale, zero_point))
+    # Write the integers straight through ``out``'s own int view (zero-copy
+    # storage alias) with FlagGems' Triton ``copy_`` -- ``int_repr()`` returns a
+    # detached copy and a quantized ``out.copy_`` adds a native O(n) pass, so
+    # neither is used. The strided view honours ``out``'s layout, so
+    # channels-last / offset destinations are written in place, elementwise.
+    from flag_gems.ops.copy import copy_
+
+    out_int = torch.empty(0, dtype=result.dtype, device=out.device).set_(
+        out.untyped_storage(),
+        out.storage_offset(),
+        tuple(out.shape),
+        out.stride(),
+    )
+    copy_(out_int, result)
+    # Adopt the dynamically computed quantizer via the ``.data`` alias swap
+    # (the only way to re-point a quantized tensor's quantizer in place).
+    alias = torch._empty_affine_quantized(
+        0,
+        scale=float(scale),
+        zero_point=int(zero_point),
+        dtype=out.dtype,
+        device=out.device,
+    )
+    alias.set_(
+        out.untyped_storage(),
+        out.storage_offset(),
+        tuple(out.shape),
+        out.stride(),
+    )
+    out.data = alias
     return out
