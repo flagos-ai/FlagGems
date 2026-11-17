@@ -93,7 +93,7 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
         with pytest.raises(RuntimeError):
             flag_gems.ldexp(inp, other)
         return
-    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    reference = torch.ldexp(_to_reference(inp), _to_reference(other))
     result = flag_gems.ldexp(inp, other)
     utils.gems_assert_close(result, reference, result.dtype)
 
@@ -138,7 +138,7 @@ def test_ldexp_lazy_conjugation(conj_input, conj_other):
         inp = inp.conj()
     if conj_other:
         other = other.conj()
-    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    reference = torch.ldexp(_to_reference(inp), _to_reference(other))
     result = flag_gems.ldexp(inp, other)
     utils.gems_assert_close(result, reference, inp.dtype)
 
@@ -150,8 +150,8 @@ def test_ldexp(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, shape, device=flag_gems.device, dtype=torch.int32)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -194,8 +194,8 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     else:
         other = torch.randint(-8, 9, shape, dtype=other_dtype, device=flag_gems.device)
 
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -224,8 +224,8 @@ def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
     other = torch.randn((), dtype=other_dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
 
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
     res_out = flag_gems.ldexp(self, other)
@@ -240,8 +240,8 @@ def test_ldexp_broadcast_noncontiguous_and_empty():
     self = torch.randn((19, 7), device=flag_gems.device).T
     other = torch.randint(-8, 9, (19,), device=flag_gems.device, dtype=torch.int64)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
     res_out = flag_gems.ldexp(self, other)
     utils.gems_assert_close(res_out, ref_out, torch.float32)
@@ -290,8 +290,8 @@ def test_ldexp_special_values(dtype):
 def test_ldexp_complex():
     self = torch.randn((19, 7), dtype=torch.complex64, device=flag_gems.device)
     other = torch.randn((7,), dtype=torch.complex64, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other, True)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -305,8 +305,8 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
     self = torch.randn((11, 37), dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, (37,), device=flag_gems.device, dtype=torch.int32)
 
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
     ref_storage = torch.empty((37, 11), dtype=dtype, device=ref_self.device)
     ref_out_buf = ref_storage.T
     ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
@@ -364,8 +364,8 @@ def test_ldexp_out_dtype_casting(out_dtype):
 def test_ldexp_out_aliasing():
     self = torch.randn((17,), device=flag_gems.device)
     other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
 
     ref_result = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_self)
     result = flag_gems.ldexp_out(self, other, out=self)
@@ -398,8 +398,8 @@ def test_ldexp_out_rejects_device_mismatch():
     other = torch.ones((17,), dtype=torch.int32, device=flag_gems.device)
     wrong_device = "meta" if self.device.type == "cpu" else "cpu"
     out = torch.empty((17,), device=wrong_device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
     ref_out = torch.empty((17,), device="meta")
     with pytest.raises(RuntimeError):
         torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out)
