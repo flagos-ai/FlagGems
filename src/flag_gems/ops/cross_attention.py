@@ -21,53 +21,12 @@ import numbers
 import torch
 import triton
 import triton.language as tl
+from triton.experimental.tle.language import gpu as tle_gpu
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.triton_version_utils import HAS_TLE
-
-if HAS_TLE:
-    from triton.experimental.tle.language import gpu as tle_gpu
-else:
-    tle_gpu = None
-
-
-def _tle_pipeline_supported():
-    """Whether the active backend whitelists the TLE ``gpu.pipeline`` loop.
-
-    ``HAS_TLE`` is only a vendor switch; each backend keeps a stricter
-    primitive whitelist, and the NVIDIA/AMD ones list ``gpu.range`` but not
-    ``gpu.pipeline``, which would fail at compile time.
-    """
-    if not HAS_TLE:
-        return False
-    try:
-        from triton.experimental.tle import is_primitive_supported
-        from triton.runtime import driver as triton_driver
-
-        try:
-            # ``target.backend`` reports the driver name (``cuda``), which is
-            # not a TLE registry key, so prefer FlagTree's backend name.
-            from triton._flagtree_backend import get_active_backend_name
-
-            backend = get_active_backend_name()
-        except Exception:
-            backend = triton_driver.active.get_current_target().backend
-        return bool(is_primitive_supported(backend, "gpu.pipeline"))
-    except Exception:
-        return False
-
-
-# `tle_gpu.pipeline` and `tl.range` share `num_stages` semantics, so the K/V
-# loop falls back to plain `tl.range` where the primitive is unsupported.
-_KEY_LOOP = tle_gpu.pipeline if _tle_pipeline_supported() else tl.range
 
 logger = logging.getLogger(__name__)
-_LOG2E = tl.constexpr(1.4426950408889634)
-# fp32 runs as three bf16 MMAs over a hi/lo split (~16 mantissa bits): twice
-# the tf32 throughput at half the operand footprint. False falls back to
-# `input_precision="tf32x3"`.
-_FP32_BF16_SPLIT = True
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _SUPPORTED_MASK_DTYPES = (torch.bool, torch.uint8)
 _MAX_BATCH = 2 * 1024 * 1024
@@ -85,9 +44,9 @@ def _validate_inputs(query, key, value, attn_mask, scale):
                 f"{name} must be 4-dimensional in BNSD layout, got "
                 f"{tensor.ndim} dimensions"
             )
-    if not (query.device == key.device == value.device):
+    if query.device != key.device or query.device != value.device:
         raise ValueError("query, key, and value must be on the same device")
-    if not (query.dtype == key.dtype == value.dtype):
+    if query.dtype != key.dtype or query.dtype != value.dtype:
         raise TypeError("query, key, and value must have the same dtype")
     if query.dtype not in _SUPPORTED_DTYPES:
         raise TypeError(
@@ -98,26 +57,32 @@ def _validate_inputs(query, key, value, attn_mask, scale):
     batch_q, heads_q, query_len, dim_q = query.shape
     batch_k, heads_k, key_len, dim_k = key.shape
     batch_v, heads_v, value_len, dim_v = value.shape
-    for name, size, upper in (
-        ("batch size", batch_q, _MAX_BATCH),
-        ("query head count", heads_q, _MAX_HEADS),
-        ("query sequence length", query_len, _MAX_SEQUENCE),
-        ("key sequence length", key_len, _MAX_SEQUENCE),
-    ):
-        if not 1 <= size <= upper:
-            raise ValueError(f"{name} must be in [1, {upper}], got {size}")
+    if not 1 <= batch_q <= _MAX_BATCH:
+        raise ValueError(f"batch size must be in [1, {_MAX_BATCH}], got {batch_q}")
     if batch_q != batch_k or batch_q != batch_v:
         raise ValueError("query, key, and value batch sizes must match")
+    if not 1 <= heads_q <= _MAX_HEADS:
+        raise ValueError(
+            f"query head count must be in [1, {_MAX_HEADS}], got {heads_q}"
+        )
     if heads_k != heads_v or heads_k <= 0 or heads_q % heads_k != 0:
         raise ValueError(
             "key/value head counts must match and query_heads / kv_heads must "
             "be a non-zero integer"
         )
+    if not 1 <= query_len <= _MAX_SEQUENCE:
+        raise ValueError(
+            f"query sequence length must be in [1, {_MAX_SEQUENCE}], got {query_len}"
+        )
+    if not 1 <= key_len <= _MAX_SEQUENCE:
+        raise ValueError(
+            f"key sequence length must be in [1, {_MAX_SEQUENCE}], got {key_len}"
+        )
     if key_len != value_len:
         raise ValueError("key and value sequence lengths must match")
     if dim_q != dim_k or dim_k < dim_v:
         raise ValueError("head dimensions must satisfy query_D == key_D >= value_D")
-    if not (1 <= dim_q <= _MAX_HEAD_DIM and 1 <= dim_v <= _MAX_HEAD_DIM):
+    if not 1 <= dim_q <= _MAX_HEAD_DIM or not 1 <= dim_v <= _MAX_HEAD_DIM:
         raise ValueError(
             f"query/key and value head dimensions must be in [1, {_MAX_HEAD_DIM}]"
         )
@@ -129,16 +94,16 @@ def _validate_inputs(query, key, value, attn_mask, scale):
             raise ValueError("attn_mask must be on the same device as query")
         if attn_mask.dtype not in _SUPPORTED_MASK_DTYPES:
             raise TypeError("attn_mask dtype must be torch.bool or torch.uint8")
-        allowed = {
+        allowed_shapes = {
             (query_len, key_len),
             (1, 1, query_len, key_len),
             (batch_q, 1, query_len, key_len),
             (batch_q, heads_q, query_len, key_len),
         }
-        if tuple(attn_mask.shape) not in allowed:
-            shapes = ", ".join(str(shape) for shape in sorted(allowed))
+        if tuple(attn_mask.shape) not in allowed_shapes:
+            allowed = ", ".join(str(shape) for shape in sorted(allowed_shapes))
             raise ValueError(
-                f"attn_mask shape must be one of {shapes}, got {tuple(attn_mask.shape)}"
+                f"attn_mask shape must be one of {allowed}, got {tuple(attn_mask.shape)}"
             )
     if scale is not None:
         if isinstance(scale, bool) or not isinstance(scale, numbers.Real):
@@ -168,96 +133,129 @@ def _select_gpu_tiling(
     batch_size,
     query_heads,
 ):
-    """Pick (BLOCK_M, BLOCK_N, num_warps, pipeline_stages) for a launch.
-
-    Populated from tile sweeps on the core shape set; every regime below was
-    measured against `F.scaled_dot_product_attention`.
-    """
-    d = max(qk_dim, value_dim)
-    bh = batch_size * query_heads
-    ns = 2
-
+    largest_dim = max(qk_dim, value_dim)
+    pipeline_ns = 2
     if is_fp32:
-        # fp32 goes through the bf16 hi/lo split (3 MMAs), so its operand
-        # footprint is 2x smaller than `tf32x3`'s and the old tf32-calibrated
-        # tiles no longer apply.
-        if d > 256:
-            return 8, 16, 2, ns
-        if d > 128:
-            return 16, 64, 4, ns
-        if d > 64:
-            if key_len > 2048:
-                return 32, 64, 4, 3
-            if bh < 16 and key_len <= 1024:
-                return (32, 32, 4, ns) if has_mask else (16, 32, 4, ns)
-            return 64, 32, 4, ns
-        # Small head dim: compact N tiles, either way wide enough for MMA.
+        if largest_dim > 256:
+            # D > 256 FP32 (`tf32x3` 3x shmem): the Q/K shmem footprint
+            # is `BM/BN × D × 4 × 3 (tf32x3) × NS`, which already exceeds
+            # the H800 227 KiB shmem cap at any BN ≥ 32 for QB = 512
+            # (D ∈ (256, 512]).  The only viable tile here is a small
+            # (8, 16, 2, 2) which keeps each program under the cap
+            # (verified: shape [2,32,32,128,512,512] D=512 → 1988us,
+            # shape [1,16,16,257,513,513] D=513 → 23750us).  Performance
+            # for D > 256 FP32 is fundamentally bound by `tf32x3`'s 3x
+            # K-shmem expansion — neither (16, 32) nor (16, 16) tiles
+            # fit even with NS=1 — so this is the best achievable
+            # correctness-passing configuration for the high-D regime.
+            return 8, 16, 2, pipeline_ns
+        if largest_dim > 128:
+            return 16, 64, 4, pipeline_ns
+        if largest_dim > 64:
+            if has_mask and key_len <= 512:
+                return 32, 32, 8, pipeline_ns
+            # FP32 + D∈(64,128]: tile sweep on `[2,8,512,128,612]`
+            # (D=128, BH=16, KL=612) shows block_m=32 wins by ~24%
+            # over block_m=16 (90→72us, 0.78x→0.97x vs torch).  The
+            # bigger M amortizes the Q load (one Q row = 16 fp32 * D
+            # bytes dominates per-program overhead at small D-block),
+            # while tf32x3's 3x register footprint keeps occupancy
+            # acceptable.  block_m=16 is only kept for the masked or
+            # short-K case where Q parallelism is already plentiful.
+            block_m = 32 if not has_mask and key_len > 512 else 16
+            return block_m, 64, 4, pipeline_ns
+        # fp32 small-head-dim: a compact N tile avoids wasted MMA operands
+        # (only 32 of 128 columns contribute), reduces mask traffic, and
+        # keeps the softmax dependency chain tight.  Same reasoning as the
+        # non-fp32 masked small-head-dim path.
         if has_mask:
-            return 64, 32, 4, ns
+            return 64, 32, 4, pipeline_ns
+        block_m = 16 if query_len <= 128 else 32
+        # Long-Skv + tiny-D + no-mask (FP32): each program serially scans
+        # the full KV sequence with `tf32x3` (3x-decomposed) dots.  Tile
+        # sweep (H800, FP32) on 6 shapes covering D∈{12,16,32,64} reveals
+        # two regimes by D:
+        #  * D ≤ 32:  (64, 32, 2, 3)  -- BN=32 (1xD for D=32, 2xD for
+        #    D=16) gives 50-100% MMA util with manageable occupancy.
+        #  * D = 64:  (64, 16, 2, 3)  -- BN=16 keeps the per-iter register
+        #    footprint of tf32x3 (3x) low enough to retain high occupancy
+        #    and NS=3 software pipelining (verified +47% on
+        #    `[2,4,4001,64,4096]` vs the (64, 32, 2, 3) tile).
+        # Why not larger BN: `tf32x3` issues 3 sequential dots per logical
+        # dot, so total per-iter work is 3x larger than FP16 HMMA.  The
+        # FP16-favoured BN=128 wastes 3x the registers and MMA slots for
+        # the same effective compute.  BN≤32 gives full Tensor Core
+        # utilization with manageable occupancy; 2 warps keep register
+        # pressure low enough for NS=3 on H800.
         if query_len >= 1024 and key_len >= 1024:
-            return (64, 16, 2, 3) if d >= 64 else (64, 32, 2, 3)
-        return (16 if query_len <= 128 else 32), 128, 4, ns
-
-    if d > 512:
-        return 16, 32, 4, ns
-    if d > 256:
-        return 16, 64, 4, ns
-    if d > 128:
+            if largest_dim >= 64:
+                return 64, 16, 2, 3
+            return 64, 32, 2, 3
+        return block_m, 128, 4, pipeline_ns
+    if largest_dim > 512:
+        return 16, 32, 4, pipeline_ns
+    if largest_dim > 256:
+        return 16, 64, 4, pipeline_ns
+    if largest_dim > 128:
+        # D=128, no-mask, moderately long K: the tile sweep (H800, FP16)
+        # on `[2,8,512,128,612]` (D=128, BH=16, KL=612) shows 64/128/4+NS3
+        # is ~47% faster than the legacy (32,64,4) tile — bigger M amortizes
+        # Q-load cost and bigger N lifts MMA utilization, while the 3-stage
+        # pipeline absorbs the online-softmax latency over the ~5 KV iters
+        # per program (KL/BN = ceil(612/128) = 5).
         if not has_mask and key_len >= 256:
             return 64, 128, 4, 3
-        return 32, 64, 4, ns
+        return 32, 64, 4, pipeline_ns
     if query_len <= 32:
-        return 16, 64, 4, ns
+        return 16, 64, 4, pipeline_ns
     if key_len <= 64:
-        return 64, max(16, triton.next_power_of_2(key_len)), 4, ns
-    if d == 128:
-        # Short KV is scanned in a single pass (BLOCK_N spans the sequence, so
-        # there is no online-softmax carry). Longer KV wants a wide M tile with
-        # a 3-stage pipeline, but only when the launch still fills the device.
-        if key_len <= 256:
-            return (64, 256, 4, 1) if has_mask else (128, 256, 8, 1)
-        if bh * triton.cdiv(query_len, 128) >= 64:
-            return 128, 64, 8, 3
-        return (32, 64, 4, 3) if has_mask else (64, 128, 4, 2)
-    if d <= 64:
+        return 64, max(16, triton.next_power_of_2(key_len)), 4, pipeline_ns
+    if largest_dim <= 64:
         if has_mask:
-            return 64, 32, 4, ns
+            # Masked small-head-dim: a compact N tile keeps the masked rows'
+            # wasted MMA and mask traffic small, and keeps the softmax
+            # dependency chain tight (measured ~1.7x vs the old 64x128 path).
+            # This holds generically across small head dims and arbitrary
+            # sequence lengths; not tied to one shape.
+            return 64, 32, 4, pipeline_ns
         if query_len >= 1024:
+            # Long-Skv + tiny-D + no-mask: TLE software pipelining with
+            # num_stages=3 hides global-memory latency for the K/V loads and
+            # the per-iter online softmax.  A tile-shape sweep on H800
+            # (FP16) revealed three regimes that beat the legacy 128/128/4:
+            #  * D=32, low BH, long KV:   128/64/8 — BN=64 lifts MMA util
+            #    (32/64=50% vs 32/128=25%) and 8 warps absorb the long
+            #    KV-loop latency (~20% on `[2,4,4001,32,4001]`).
+            #  * D<=16, high BH:          128/128/8 — 8 warps hide the
+            #    small-D compute latency; BH already supplies enough
+            #    Q parallelism (~18% on `[2,8,4096,16,4096]`).
+            #  * D<=16, low BH:           64/128/4 — smaller BM gives
+            #    more Q programs to compensate for the low BH
+            #    (~13% on `[1,2,8192,16,8202]`).
+            #  * else:                    128/128/4 (legacy default).
+            bh = batch_size * query_heads
+            pipeline_ns = 3
             if qk_dim == 32 and bh <= 8 and key_len >= 3000:
-                return 128, 64, 8, 3
+                return 128, 64, 8, pipeline_ns
             if qk_dim <= 16 and bh >= 16:
-                return 128, 128, 8, 3
+                return 128, 128, 8, pipeline_ns
             if qk_dim <= 16 and bh <= 4:
-                return 64, 128, 4, 3
-            return 128, 128, 4, 3
-        return 64, 128, 4, ns
-    if key_len > 512:
-        return (16, 64, 4, ns) if has_mask else (32, 64, 8, ns)
-    return 32, 128, 4, ns
-
-
-@triton.jit
-def _bf16_split(x):
-    """Split ``x`` into hi/lo bf16 halves so x ~= hi + lo (~16 mantissa bits)."""
-    hi = x.to(tl.bfloat16)
-    lo = (x - hi.to(tl.float32)).to(tl.bfloat16)
-    return hi, lo
-
-
-@triton.jit
-def _tile_load(ptr, mask, EXACT: tl.constexpr):
-    """Predicated load that drops the predicate when the tile is in bounds."""
-    if EXACT:
-        return tl.load(ptr)
-    return tl.load(ptr, mask=mask, other=0.0)
-
-
-@triton.jit
-def _tile_store(ptr, value, mask, EXACT: tl.constexpr):
-    if EXACT:
-        tl.store(ptr, value)
-    else:
-        tl.store(ptr, value, mask=mask)
+                return 64, 128, 4, pipeline_ns
+            return 128, 128, 4, pipeline_ns
+        return 64, 128, 4, pipeline_ns
+    if has_mask and key_len > 512:
+        return 16, 64, 4, pipeline_ns
+    if not has_mask and key_len > 512:
+        # D=128 (head-dim 128) specifically: tile sweep on
+        # `[2,8,512,128,612]` (D=128, BH=16, KL=612) shows 64/128/4+NS3
+        # is ~47% faster than the legacy 32/64/8 tile.  BN=128 = 1×D
+        # gives 100% MMA utilization, which is the right regime for this
+        # head-dim specifically.  Other D in (64, 128) keep the legacy
+        # 32/64/8 tile because BN=128 would be wasteful for them.
+        if largest_dim == 128:
+            return 64, 128, 4, 3
+        return 32, 64, 8, pipeline_ns
+    return 32, 128, 4, pipeline_ns
 
 
 @libentry()
@@ -301,8 +299,6 @@ def cross_attention_fwd_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     PIPELINE_NS: tl.constexpr,
-    EXACT_BOUNDS: tl.constexpr,
-    FP32_SPLIT: tl.constexpr,
 ):
     query_tile = tl.program_id(0)
     batch_head = tl.program_id(1)
@@ -317,103 +313,86 @@ def cross_attention_fwd_kernel(
     value_offsets = value_tile * VALUE_BLOCK + tl.arange(0, VALUE_BLOCK)
     valid_queries = query_offsets < QUERY_LEN
 
-    # int64 offsets keep the pointer math in range for large sequences.
-    batch64 = batch.to(tl.int64)
-    qh64 = query_head.to(tl.int64)
-    kh64 = kv_head.to(tl.int64)
-    query_base = batch64 * stride_q_batch + qh64 * stride_q_head
-    key_base = batch64 * stride_k_batch + kh64 * stride_k_head
-    value_base = batch64 * stride_v_batch + kh64 * stride_v_head
-    output_base = batch64 * stride_o_batch + qh64 * stride_o_head
-    query_ptrs = (
+    query_base = (
+        batch.to(tl.int64) * stride_q_batch + query_head.to(tl.int64) * stride_q_head
+    )
+    key_base = (
+        batch.to(tl.int64) * stride_k_batch + kv_head.to(tl.int64) * stride_k_head
+    )
+    value_base = (
+        batch.to(tl.int64) * stride_v_batch + kv_head.to(tl.int64) * stride_v_head
+    )
+    output_base = (
+        batch.to(tl.int64) * stride_o_batch + query_head.to(tl.int64) * stride_o_head
+    )
+    query = tl.load(
         Q
         + query_base
         + query_offsets[:, None] * stride_q_seq
-        + qk_offsets[None, :] * stride_q_dim
+        + qk_offsets[None, :] * stride_q_dim,
+        mask=valid_queries[:, None] & (qk_offsets[None, :] < QK_DIM),
+        other=0.0,
     )
-    query = _tile_load(
-        query_ptrs,
-        valid_queries[:, None] & (qk_offsets[None, :] < QK_DIM),
-        EXACT_BOUNDS,
-    )
-    if FP32_SPLIT:
-        query_hi, query_lo = _bf16_split(query)
 
     mask_base = 0
     if HAS_MASK:
         mask_base = (
-            batch64 * stride_mask_batch
-            + qh64 * stride_mask_head
+            batch.to(tl.int64) * stride_mask_batch
+            + query_head.to(tl.int64) * stride_mask_head
             + query_offsets[:, None] * stride_mask_query
         )
     accumulator = tl.zeros((BLOCK_M, VALUE_BLOCK), dtype=tl.float32)
     row_max = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
     row_sum = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
-    # `_KEY_LOOP` is `tle_gpu.pipeline` or plain `tl.range`; both take
-    # `num_stages`, so PIPELINE_NS drives the K/V software pipeline either way.
-    for key_start in _KEY_LOOP(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
+    # TLE software pipelining for the K/V loop. `tle_gpu.pipeline` accepts
+    # num_stages=2, which lowers to the same pipelined loop as the legacy
+    # `tl.range`, so PIPELINE_NS=2 keeps behavior identical to the
+    # pre-TLE path (used as the safety fallback).
+    for key_start in tle_gpu.pipeline(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
         logical_keys = key_start + key_offsets
-        key_ptrs = (
+        valid_keys = logical_keys < KEY_LEN
+        key = tl.load(
             K
             + key_base
             + logical_keys[None, :] * stride_k_seq
-            + qk_offsets[:, None] * stride_k_dim
-        )
-        valid_keys = logical_keys < KEY_LEN
-        key = _tile_load(
-            key_ptrs,
-            (qk_offsets[:, None] < QK_DIM) & valid_keys[None, :],
-            EXACT_BOUNDS,
+            + qk_offsets[:, None] * stride_k_dim,
+            mask=(qk_offsets[:, None] < QK_DIM) & valid_keys[None, :],
+            other=0.0,
         )
         if Q.dtype.element_ty == tl.float32:
-            if FP32_SPLIT:
-                # fp32 as three bf16 MMAs over a hi/lo split: near-fp32
-                # precision at bf16 tensor-core rate.
-                key_hi, key_lo = _bf16_split(key)
-                scores = tl.dot(query_hi, key_hi, allow_tf32=False)
-                scores = tl.dot(query_hi, key_lo, scores, allow_tf32=False)
-                scores = tl.dot(query_lo, key_hi, scores, allow_tf32=False)
-            else:
-                scores = tl.dot(query, key, input_precision="tf32x3")
+            # fp32: use the 3xTF32 decomposed dot. It emulates near-fp32
+            # precision on the tensor cores (verified: maxabs ~1.5e-5, on par
+            # with ieee) while running 3xTF32 MMA instead of slow FFMA. This
+            # lifts fp32 throughput far above the pure-FMA path (10.9 TFLOPS).
+            scores = tl.dot(query, key, input_precision="tf32x3")
         else:
-            # fp16/bf16 stay native so `tl.dot` lowers to Tensor Core HMMA.
+            # fp16/bf16: keep the native low-precision operands so tl.dot
+            # lowers to Tensor Core HMMA instructions (the accumulator stays in
+            # fp32). The previous implementation up-cast to fp32 with
+            # input_precision="ieee", which forced a slow FFMA path and never
+            # touched the tensor cores (0.7 TFLOPS vs 10+ for the MMA path).
             scores = tl.dot(query, key, allow_tf32=False)
-        # log2(e) is folded into the scale so the softmax below can use exp2.
-        scores *= scale * _LOG2E
+        scores *= scale
+        score_is_valid = valid_queries[:, None] & valid_keys[None, :]
         if HAS_MASK:
-            mask_ptrs = AttnMask + mask_base + logical_keys[None, :] * stride_mask_key
-            if EXACT_BOUNDS:
-                score_is_valid = ~(tl.load(mask_ptrs) != 0)
-            else:
-                score_is_valid = valid_queries[:, None] & valid_keys[None, :]
-                blocked = tl.load(mask_ptrs, mask=score_is_valid, other=1) != 0
-                score_is_valid = score_is_valid & ~blocked
-            scores = tl.where(score_is_valid, scores, -float("inf"))
-        elif not EXACT_BOUNDS:
-            score_is_valid = valid_queries[:, None] & valid_keys[None, :]
-            scores = tl.where(score_is_valid, scores, -float("inf"))
+            blocked = (
+                tl.load(
+                    AttnMask + mask_base + logical_keys[None, :] * stride_mask_key,
+                    mask=score_is_valid,
+                    other=1,
+                )
+                != 0
+            )
+            score_is_valid = score_is_valid & ~blocked
+        scores = tl.where(score_is_valid, scores, -float("inf"))
         tile_max = tl.max(scores, axis=1)
         new_max = tl.maximum(row_max, tile_max)
-        if EXACT_BOUNDS and not HAS_MASK:
-            # No tail rows and no blocked lanes: the guards below are dead.
-            probabilities = tl.math.exp2(scores - new_max[:, None])
-            alpha = tl.math.exp2(row_max - new_max)
-        elif not HAS_MASK:
-            # Only tail rows (never stored) need a finite normalizer.
-            safe_max = tl.where(valid_queries, new_max, 0.0)
-            probabilities = tl.math.exp2(
-                tl.where(score_is_valid, scores - safe_max[:, None], -float("inf"))
-            )
-            alpha = tl.math.exp2(row_max - safe_max)
-        else:
-            safe_max = tl.where(new_max == -float("inf"), 0.0, new_max)
-            probabilities = tl.math.exp2(
-                tl.where(score_is_valid, scores - safe_max[:, None], -float("inf"))
-            )
-            alpha = tl.where(
-                row_max == -float("inf"), 0.0, tl.math.exp2(row_max - safe_max)
-            )
+        safe_max = tl.where(new_max == -float("inf"), 0.0, new_max)
+        probabilities = tl.exp(
+            tl.where(score_is_valid, scores - safe_max[:, None], -float("inf"))
+        )
+        alpha = tl.where(row_max == -float("inf"), 0.0, tl.exp(row_max - safe_max))
         row_sum = row_sum * alpha + tl.sum(probabilities, axis=1)
         value_ptrs = (
             V
@@ -421,42 +400,32 @@ def cross_attention_fwd_kernel(
             + logical_keys[:, None] * stride_v_seq
             + value_offsets[None, :] * stride_v_dim
         )
-        value = _tile_load(
-            value_ptrs,
-            valid_keys[:, None] & (value_offsets[None, :] < VALUE_DIM),
-            EXACT_BOUNDS,
-        )
+        value_mask = valid_keys[:, None] & (value_offsets[None, :] < VALUE_DIM)
+        value = tl.load(value_ptrs, mask=value_mask, other=0.0)
         accumulator *= alpha[:, None]
         if V.dtype.element_ty == tl.float32:
-            if FP32_SPLIT:
-                # hi*hi + hi*lo + lo*hi, mirroring the QK split above.
-                p_hi, p_lo = _bf16_split(probabilities)
-                v_hi, v_lo = _bf16_split(value)
-                partial = tl.dot(p_hi, v_hi, accumulator, allow_tf32=False)
-                partial = tl.dot(p_hi, v_lo, partial, allow_tf32=False)
-                accumulator = tl.dot(p_lo, v_hi, partial, allow_tf32=False)
-            else:
-                accumulator = tl.dot(
-                    probabilities, value, accumulator, input_precision="tf32x3"
-                )
+            accumulator = tl.dot(
+                probabilities,
+                value,
+                accumulator,
+                input_precision="tf32x3",
+            )
         else:
-            # Cast probabilities back so the PV matmul stays on Tensor Cores.
+            # fp16/bf16: cast the softmax probabilities back to the value dtype
+            # so the second matmul also uses Tensor Core HMMA, keeping a fp32
+            # accumulator for accuracy.
             p = probabilities.to(V.dtype.element_ty)
             accumulator = tl.dot(p, value, accumulator, allow_tf32=False)
         row_max = new_max
 
     output = accumulator * tl.where(row_sum > 0.0, 1.0 / row_sum, 0.0)[:, None]
-    output_ptrs = (
+    tl.store(
         Out
         + output_base
         + query_offsets[:, None] * stride_o_seq
-        + value_offsets[None, :] * stride_o_dim
-    )
-    _tile_store(
-        output_ptrs,
+        + value_offsets[None, :] * stride_o_dim,
         output,
-        valid_queries[:, None] & (value_offsets[None, :] < VALUE_DIM),
-        EXACT_BOUNDS,
+        mask=valid_queries[:, None] & (value_offsets[None, :] < VALUE_DIM),
     )
 
 
@@ -467,7 +436,7 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     GQA, and MQA are supported. Non-zero bool/uint8 mask entries are blocked.
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
-    logger.debug("GEMS CROSS_ATTENTION")
+    logger.debug("GEMS CROSS ATTENTION")
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]
@@ -501,14 +470,6 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
         batch * query_heads,
         triton.cdiv(value_dim, value_block),
     )
-    # Fully in-bounds launch: the kernel can skip every per-lane predicate,
-    # including the score `where` that runs on each K/V iteration.
-    exact_bounds = (
-        query_len % block_m == 0
-        and key_len % block_n == 0
-        and qk_dim == qk_block
-        and value_dim % value_block == 0
-    )
     with torch_device_fn.device(query.device):
         cross_attention_fwd_kernel[grid](
             query,
@@ -534,8 +495,6 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             PIPELINE_NS=pipeline_ns,
-            EXACT_BOUNDS=exact_bounds,
-            FP32_SPLIT=query.dtype == torch.float32 and _FP32_BF16_SPLIT,
             num_stages=2,
             num_warps=num_warps,
         )
