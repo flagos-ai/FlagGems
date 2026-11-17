@@ -1,4 +1,3 @@
-import math
 import logging
 
 import torch
@@ -168,13 +167,22 @@ def _validate_args(inp, dim, index, source, reduce):
     assert inp.ndim > 0, "Expected self to have at least one dimension"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim == 1, "Index is supposed to be a vector"
-    assert index.dtype in (torch.int32, torch.int64), "Expected dtype int32/int64 for index"
-    assert inp.is_floating_point(), "index_reduce_(): Expected self to be floating point"
-    assert source.dtype == inp.dtype, "index_reduce_(): Expected self and source to have same dtype"
-    assert inp.ndim == source.ndim, "Self and source should have the same number of dimensions"
-    assert index.numel() == source.size(dim), (
-        "The dimth dimension of source must have the same size as the length of index"
-    )
+    assert index.dtype in (
+        torch.int32,
+        torch.int64,
+    ), "Expected dtype int32/int64 for index"
+    assert (
+        inp.is_floating_point()
+    ), "index_reduce_(): Expected self to be floating point"
+    assert (
+        source.dtype == inp.dtype
+    ), "index_reduce_(): Expected self and source to have same dtype"
+    assert (
+        inp.ndim == source.ndim
+    ), "Self and source should have the same number of dimensions"
+    assert index.numel() == source.size(
+        dim
+    ), "The dimth dimension of source must have the same size as the length of index"
     assert all(
         inp.size(i) == source.size(i) for i in range(inp.ndim) if i != dim
     ), "source.size(d) == self.size(d) for all dimensions d != dim"
