@@ -48,16 +48,16 @@ class BaddbmmBenchmark(base.BlasBenchmark):
         return total_flops
 
 
-def _input_fn(b, m, n, k, dtype, device, b_column_major):
-    inp1 = torch.randn([b, m, k], dtype=dtype, device=device, requires_grad=True)
+def baddbmm_input_fn(b, m, n, k, dtype, device, b_column_major):
+    inp1 = torch.randn([b, m, k], dtype=dtype, device=device)
 
     if b_column_major:
-        inp2 = torch.randn([b, n, k], dtype=dtype, device=device, requires_grad=True)
-        inp2 = inp2.transpose(1, 2).contiguous()
+        inp2 = torch.randn([b, n, k], dtype=dtype, device=device)
+        inp2 = inp2.transpose(1, 2)
     else:
-        inp2 = torch.randn([b, k, n], dtype=dtype, device=device, requires_grad=True)
+        inp2 = torch.randn([b, k, n], dtype=dtype, device=device)
 
-    bias = torch.randn([b, m, n], dtype=dtype, device=device, requires_grad=True)
+    bias = torch.randn([b, m, n], dtype=dtype, device=device)
 
     yield bias, inp1, inp2
 
@@ -69,9 +69,9 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 def test_baddbmm():
     bench = BaddbmmBenchmark(
         op_name="baddbmm",
-        input_fn=_input_fn,
+        input_fn=baddbmm_input_fn,
         torch_op=torch.baddbmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -82,7 +82,7 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
 
     if b_column_major:
         inp2 = torch.randn([b, n, k], dtype=dtype, device=device)
-        inp2 = inp2.transpose(1, 2).contiguous()
+        inp2 = inp2.transpose(1, 2)
     else:
         inp2 = torch.randn([b, k, n], dtype=dtype, device=device)
 
@@ -101,7 +101,7 @@ def test_baddbmm_out():
         op_name="baddbmm_out",
         input_fn=_input_fn_out,
         torch_op=torch.ops.aten.baddbmm.out,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
