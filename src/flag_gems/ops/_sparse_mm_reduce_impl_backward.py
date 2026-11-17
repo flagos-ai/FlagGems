@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -419,8 +420,13 @@ def _sparse_mm_reduce_impl_backward(
         grad_self = None
         grad_other = None
         if mask0:
-            grad_self = torch.sparse_csr_tensor(
-                crow, col, val_acc.to(val.dtype), size=(M, K), device=val.device
+            grad_self = sparse_csr_tensor(
+                crow,
+                col,
+                val_acc.to(val.dtype),
+                size=(M, K),
+                dtype=val.dtype,
+                device=val.device,
             )
         if mask1:
             grad_other = other_acc.to(weight.dtype)
@@ -525,8 +531,13 @@ def _sparse_mm_reduce_impl_backward(
     # matching aten's ``opmath_t`` accumulate-then-cast; the atomics run in
     # fp32/fp64 rather than doing per-block casts.
     if mask0:
-        grad_self = torch.sparse_csr_tensor(
-            crow, col, val_acc.to(val.dtype), size=(M, K), device=val.device
+        grad_self = sparse_csr_tensor(
+            crow,
+            col,
+            val_acc.to(val.dtype),
+            size=(M, K),
+            dtype=val.dtype,
+            device=val.device,
         )
     if mask1:
         grad_other = other_acc.to(weight.dtype)
