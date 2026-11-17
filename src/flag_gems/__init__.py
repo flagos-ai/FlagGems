@@ -149,6 +149,11 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Double", "default"),
     ),
     (
+        "_cast_Float",
+        cast_Float,
+        lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
@@ -630,6 +635,18 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    (
+        "_sparse_coo_tensor_with_dims",
+        sparse_coo_tensor_with_dims,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims.out",
+        sparse_coo_tensor_with_dims_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
     (
         "_sparse_csr_sum",
