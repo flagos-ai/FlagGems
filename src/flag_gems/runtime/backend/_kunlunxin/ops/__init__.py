@@ -187,6 +187,9 @@ from ._native_batch_norm_legit import (
     _native_batch_norm_legit_out,
 )
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._nested_tensor_from_mask_left_aligned import (  # noqa: F401
+    _nested_tensor_from_mask_left_aligned,
+)
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from ._pad_circular import _pad_circular  # noqa: F401
@@ -1186,6 +1189,7 @@ __all__ = [
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
     "_nested_tensor_from_mask",
+    "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_circular",
