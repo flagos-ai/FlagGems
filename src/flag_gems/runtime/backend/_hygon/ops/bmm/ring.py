@@ -27,7 +27,7 @@ _RING_F16 = ring_asm("_bmm_ring")
 _RING_BF16 = ring_asm("_bmm_ring", bf16=True)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def ring_kernel(
     A,
@@ -125,10 +125,19 @@ def ring_kernel(
                 tl.store(C + offset, values, (rr[:, None] < M) & (cc < N))
 
 
-def launch_ring(a, b, c, group=1):
+_RING_LAUNCH_OPTIONS = dict(
+    num_warps=8,
+    num_stages=1,
+    allow_flush_denorm=True,
+    enable_fp_fusion=True,
+)
+
+
+def ring_launch_args(a, b, c, group):
     batch, m, k = a.shape
     n = b.shape[2]
-    return ring_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256), batch)](
+    grid = (((m + 255) // 256) * ((n + 255) // 256), batch)
+    args = (
         a,
         b,
         c,
@@ -138,8 +147,10 @@ def launch_ring(a, b, c, group=1):
         group,
         a.dtype == torch.bfloat16,
         min(k.bit_length() - 1, 12),
-        num_warps=8,
-        num_stages=1,
-        allow_flush_denorm=True,
-        enable_fp_fusion=True,
     )
+    return grid, args
+
+
+def launch_ring(a, b, c, group=1):
+    grid, args = ring_launch_args(a, b, c, group)
+    return ring_kernel[grid](*args, **_RING_LAUNCH_OPTIONS)

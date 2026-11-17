@@ -27,7 +27,7 @@ _RING_F16 = ring_asm("_addmm_ring_${:uid}")
 _RING_BF16 = ring_asm("_addmm_ring_${:uid}", bf16=True)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("addmm_ring"),
     key=["M", "N", "K"],

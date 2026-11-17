@@ -341,7 +341,7 @@ def _native_dot(
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_2_128_128_16_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -349,7 +349,7 @@ def regular_2_128_128_16_2_2(
     _native_dot(A, B, C, M, N, K, GROUP, 128, 128, 16, 2)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_2_64_64_128_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -357,7 +357,7 @@ def regular_2_64_64_128_2_2(
     _native_dot(A, B, C, M, N, K, GROUP, 64, 64, 128, 1)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_0_64_64_128_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -542,7 +542,7 @@ def regular_0_64_64_128_2_2(
         tl.store(C + offset, acc[i], (rr < M) & (cc < N))
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_1_32_64_128_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -697,7 +697,7 @@ def regular_1_32_64_128_2_2(
         tl.store(C + offset, acc[i], (rr < M) & (cc < N))
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_0_64_64_32_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -705,7 +705,7 @@ def regular_0_64_64_32_2_2(
     _native_dot(A, B, C, M, N, K, GROUP, 64, 64, 32, 2)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_1_64_64_32_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -713,7 +713,7 @@ def regular_1_64_64_32_2_2(
     _native_dot(A, B, C, M, N, K, GROUP, 64, 64, 32, 2)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_0_128_128_32_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -721,7 +721,7 @@ def regular_0_128_128_32_2_2(
     _native_dot(A, B, C, M, N, K, GROUP, 128, 128, 32, 2)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_1_128_128_32_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr
@@ -729,7 +729,7 @@ def regular_1_128_128_32_2_2(
     _native_dot(A, B, C, M, N, K, GROUP, 128, 128, 32, 2)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def regular_2_64_64_16_2_2(
     A, B, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, GROUP: tl.constexpr

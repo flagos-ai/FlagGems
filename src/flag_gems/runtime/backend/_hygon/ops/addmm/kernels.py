@@ -74,7 +74,7 @@ def _prune_addmm_configs(configs, named_args, **kwargs):
     return shortlist or pruned or configs
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     # One legal LibTuner fallback; the search space is declared only in expand.
     configs=[
@@ -283,7 +283,7 @@ def _store_addmm_subtile(
     tl.store(c_ptr + rows[:, None] * stride_cm + cols[None, :] * stride_cn, accumulator)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("addmm_rowmajor"),
     key=["M", "N", "K"],
@@ -539,7 +539,7 @@ def _addmm_compact_body(
     tl.store(C + m[:, None] * stride_cm + n[None, :] * stride_cn, acc, mask)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("addmm_small"),
     key=["M", "N", "K"],
@@ -604,7 +604,7 @@ def addmm_small_kernel(
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("addmm_medium"),
     key=["M", "N", "K"],
@@ -669,7 +669,7 @@ def addmm_medium_kernel(
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("addmm_fp32"),
     key=["M", "N", "K"],
@@ -804,7 +804,7 @@ def addmm_fp32_kernel(
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("addmm_column"),
     key=["M", "N", "K"],
@@ -867,4 +867,110 @@ def addmm_column_kernel(
         BETA_ZERO,
         BETA_ONE,
         True,
+    )
+
+
+@triton.jit
+def _dense_addmm_half(
+    A,
+    B,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    PREFETCH: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr = 1,
+):
+    _addmm_compact_body(
+        A,
+        B,
+        Bias,
+        Out,
+        1,
+        1,
+        M,
+        N,
+        K,
+        N,
+        1,
+        N,
+        1,
+        BLOCK_SIZE_M,
+        BLOCK_SIZE_N,
+        BLOCK_SIZE_K,
+        GROUP_SIZE_M,
+        PREFETCH,
+        True,
+        False,
+        True,
+    )
+
+
+def _dense_addmm_tuner(name):
+    return libentry(cache_binding=True)(
+        libtuner(
+            configs=runtime.get_tuned_config(name),
+            key=["M", "N", "K"],
+            strategy="default",
+            warmup=2,
+            rep=8,
+            use_cuda_graph=True,
+        )(_dense_addmm_half)
+    )
+
+
+dense_addmm_small = _dense_addmm_tuner("addmm_small")
+dense_addmm_medium = _dense_addmm_tuner("addmm_medium")
+
+
+_addmm_ieee_body = addmm_kernel.jit_function
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def dense_addmm_small_fp32(
+    A,
+    B,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+):
+    _addmm_ieee_body(
+        A,
+        B,
+        Bias,
+        Out,
+        1,
+        1,
+        M,
+        N,
+        K,
+        N,
+        1,
+        N,
+        1,
+        N,
+        1,
+        32,
+        32,
+        64,
+        1,
+        True,
+        False,
+        True,
+        False,
+        False,
+        False,
+        True,
+        M % 32 == 0,
+        N % 32 == 0,
+        K % 64 == 0,
+        False,
+        False,
     )

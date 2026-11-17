@@ -160,7 +160,7 @@ def _packed_store(
     tl.store(Out + batch * OB + rm[:, None] * OM + rn[None, :] * ON, acc, mask)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _pack_b(
     B,
@@ -476,7 +476,7 @@ def _make_tuner(kernel, contract, prune=None, key=None):
             "ALPHA",
             "BETA",
         ]
-    return libentry()(
+    return libentry(cache_binding=True)(
         libtuner(
             configs=configs,
             key=key,
@@ -508,7 +508,7 @@ if HAS_TLE:
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _bias_kernel(
     Bias,
@@ -537,3 +537,46 @@ def _bias_kernel(
             * BETA
         )
     tl.store(Out + batch * OB + row * OM + col * ON, val, x < M * N)
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def _small_contiguous_baddbmm(
+    A,
+    B,
+    Bias,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BATCH: tl.constexpr,
+    TN: tl.constexpr,
+):
+    baddbmm_kernel(
+        A,
+        B,
+        Bias,
+        Out,
+        M,
+        N,
+        K,
+        M * K,
+        K,
+        1,
+        K * N,
+        N,
+        1,
+        M * N,
+        N,
+        1,
+        M * N,
+        N,
+        1,
+        1,
+        1,
+        32,
+        TN,
+        64,
+        1,
+        BATCH=BATCH,
+    )

@@ -13,16 +13,19 @@
 # limitations under the License.
 
 import logging
+from contextlib import nullcontext
 from numbers import Number
 
 import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.flagtune import _flagtune_state_key
 from flag_gems.utils import broadcastable_to
+from flag_gems.utils.libentry import LibTunerRunMode
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
-from ..bmm.splitk import launch_small_splitk
+from ..bmm.splitk import launch_small_splitk, small_splitk_count
 from .kernels import (
     _transpose_addmm_b,
     addmm_column_kernel,
@@ -31,10 +34,57 @@ from .kernels import (
     addmm_medium_kernel,
     addmm_rowmajor_kernel,
     addmm_small_kernel,
+    dense_addmm_medium,
+    dense_addmm_small,
+    dense_addmm_small_fp32,
 )
 from .ring import addmm_ring_kernel
 
 logger = logging.getLogger(__name__)
+_VECTOR_BIAS_LAUNCHES = {}
+
+
+def _launch_vector_bias(args, options, grid):
+    kernel = addmm_kernel
+    tuner = kernel.fn
+    specialize = kernel._tensor_spec_fn
+    tensors = args[:4]
+    alpha, beta = args[4:6]
+    if (
+        specialize is None
+        or kernel._flagtune_tuners
+        or tuner._run_mode != LibTunerRunMode.NORMAL
+        or getattr(tuner, "shared_config_pre_hook", None) is not None
+        or type(alpha) not in (int, float, bool)
+        or type(beta) not in (int, float, bool)
+        or any(type(t) is not torch.Tensor for t in tensors)
+    ):
+        kernel.run(*args, grid=grid, warmup=False, **options)
+        return
+    signature = tuple((t.device, t.dtype, specialize(t, align=True)) for t in tensors)
+    key = (
+        _flagtune_state_key(),
+        signature,
+        args[4:],
+        tuple(options.items()),
+        type(alpha),
+        type(beta),
+    )
+    plan = _VECTOR_BIAS_LAUNCHES.get(key)
+    if plan is not None:
+        launch, constants = plan
+        launch(*args, *constants)
+        return
+
+    binary, meta = kernel.run(*args, grid=grid, warmup=False, **options)
+    if all(config.pre_hook is None for config in tuner.configs):
+        names = kernel.arg_names
+        launch_grid = grid({**dict(zip(names, args)), **options, **meta})
+        bound = {**meta, **options}
+        constants = tuple(bound[name] for name in names[len(args) :])
+        if len(_VECTOR_BIAS_LAUNCHES) >= 128:
+            _VECTOR_BIAS_LAUNCHES.clear()
+        _VECTOR_BIAS_LAUNCHES[key] = (binary[(launch_grid + (1, 1))[:3]], constants)
 
 
 def _scalar_eq(value, target):
@@ -103,10 +153,19 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
     bias_row = False
     bias_col = False
     if not beta_zero:
-        if bias.shape != out.shape:
-            bias = bias.broadcast_to(out.shape)
-        stride_im = bias.stride(0)
-        stride_in = bias.stride(1)
+        bias_shape = bias.shape
+        if bias_shape == out.shape:
+            stride_im, stride_in = bias.stride()
+        elif not bias_shape:
+            stride_im = stride_in = 0
+        elif len(bias_shape) == 1:
+            stride_im = 0
+            stride_in = bias.stride(0) if bias_shape[0] == N else 0
+        else:
+            # The API already validated broadcasting. The kernel can address
+            # the original storage using zero strides in expanded dimensions.
+            stride_im = bias.stride(0) if bias_shape[0] == M else 0
+            stride_in = bias.stride(1) if bias_shape[1] == N else 0
         bias_scalar = stride_im == 0 and stride_in == 0
         bias_row = stride_im == 0 and stride_in != 0
         bias_col = stride_im != 0 and stride_in == 0
@@ -118,7 +177,13 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
         ((M + META["BLOCK_SIZE_M"] - 1) // META["BLOCK_SIZE_M"])
         * ((N + META["BLOCK_SIZE_N"] - 1) // META["BLOCK_SIZE_N"]),
     )
-    with torch_device_fn.device(mat1.device):
+    device = mat1.device
+    guard = (
+        nullcontext()
+        if torch_device_fn.current_device() == device.index
+        else torch_device_fn.device(device)
+    )
+    with guard:
         if kernel is addmm_rowmajor_kernel or kernel is addmm_column_kernel:
             # Materialize on every call: inputs may be mutated between launches.
             transposed_b = torch.empty((N, K), device=mat2.device, dtype=mat2.dtype)
@@ -126,7 +191,7 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
                 mat2, transposed_b, K, N, num_warps=4
             )
             mat2 = transposed_b.t()
-        kernel[grid](
+        args = (
             mat1,
             mat2,
             bias,
@@ -142,6 +207,8 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
             stride_in,
             out.stride(0),
             out.stride(1),
+        )
+        options = dict(
             ALPHA_ONE=_scalar_eq(alpha, 1),
             BETA_ZERO=beta_zero,
             BETA_ONE=_scalar_eq(beta, 1),
@@ -157,12 +224,69 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
                 else {}
             ),
         )
+        if (
+            kernel is addmm_kernel
+            and bias_row
+            and bias.ndim == 1
+            and mat1.dtype in (torch.float16, torch.bfloat16)
+        ):
+            _launch_vector_bias(args, options, grid)
+        else:
+            kernel[grid](*args, **options)
     return out
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    m, n, _ = _validate_addmm_shapes(bias, mat1, mat2)
-    out = torch.empty((m, n), device=mat1.device, dtype=mat1.dtype)
+    m, n, k = _validate_addmm_shapes(bias, mat1, mat2)
+    device, dtype = mat1.device, mat1.dtype
+    out = torch.empty((m, n), device=device, dtype=dtype)
+    max_dim = max(m, n, k)
+    min_dim = min(m, n, k)
+    small = 128 <= min_dim and max_dim <= 512
+    half = dtype in (torch.float16, torch.bfloat16)
+    # Keep the dense epilogue in the existing small and medium tile domains.
+    medium = (
+        half
+        and 512 <= min_dim
+        and max_dim <= 1536
+        and triton.cdiv(m, 256) * triton.cdiv(n, 256) < 24
+    )
+    if (
+        (
+            (
+                small
+                and (half or (dtype == torch.float32 and not _allow_tf32(mat1, mat2)))
+            )
+            or medium
+        )
+        and _scalar_eq(alpha, 1)
+        and _scalar_eq(beta, 1)
+        and mat2.dtype == dtype == bias.dtype
+        and mat2.device == device == bias.device
+        and bias.shape == (m, n)
+        and mat1.is_contiguous()
+        and mat2.is_contiguous()
+        and bias.is_contiguous()
+    ):
+        guard = (
+            nullcontext()
+            if torch_device_fn.current_device() == device.index
+            else torch_device_fn.device(device)
+        )
+        with guard:
+            if dtype == torch.float32:
+                dense_addmm_small_fp32[(triton.cdiv(m, 32) * triton.cdiv(n, 32),)](
+                    mat1, mat2, bias, out, m, n, k, num_warps=4, num_stages=2
+                )
+            else:
+                kernel = dense_addmm_small if small else dense_addmm_medium
+                kernel[
+                    lambda cfg: (
+                        triton.cdiv(m, cfg["BLOCK_SIZE_M"])
+                        * triton.cdiv(n, cfg["BLOCK_SIZE_N"]),
+                    )
+                ](mat1, mat2, bias, out, m, n, k, not small)
+        return out
     return _launch_addmm(bias, mat1, mat2, out, beta=beta, alpha=alpha)
 
 
@@ -297,17 +421,27 @@ def _use_ring_addmm(bias, mat1, mat2, out):
 
 
 def _launch_addmm(bias, mat1, mat2, out, *, beta=1, alpha=1):
-    if not _scalar_eq(alpha, 0):
-        with torch_device_fn.device(mat1.device):
-            if launch_small_splitk(
-                mat1.unsqueeze(0),
-                mat2.unsqueeze(0),
-                out.unsqueeze(0),
-                bias.broadcast_to(out.shape).unsqueeze(0),
+    m, k = mat1.shape
+    n = mat2.shape[1]
+    splits = small_splitk_count(1, m, n, k, mat1.dtype)
+    if splits and not _scalar_eq(alpha, 0):
+        device = mat1.device
+        guard = (
+            nullcontext()
+            if torch_device_fn.current_device() == device.index
+            else torch_device_fn.device(device)
+        )
+        with guard:
+            launch_small_splitk(
+                mat1,
+                mat2,
+                out,
+                bias if bias.shape == out.shape else bias.broadcast_to(out.shape),
                 alpha,
                 beta,
-            ):
-                return out
+                splits=splits,
+            )
+        return out
     if _scalar_eq(alpha, 0) or not _use_ring_addmm(bias, mat1, mat2, out):
         return _launch_addmm_generic(bias, mat1, mat2, out, beta=beta, alpha=alpha)
     m, k = mat1.shape

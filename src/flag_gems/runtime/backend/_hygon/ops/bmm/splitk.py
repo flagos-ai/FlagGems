@@ -18,9 +18,11 @@
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.libentry import LibTunerRunMode
 
 
 @triton.jit
@@ -80,7 +82,7 @@ def _partials(
     tl.store(P + offsets, acc, (rm[:, None] < M) & (rn[None, :] < N))
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=runtime.get_tuned_config("bmm_splitk"),
     key=["BATCH", "M", "N", "K", "AB", "AM", "AK", "BB", "BK", "BN", "SPLITS"],
@@ -111,7 +113,6 @@ def _small_partials(
     _partials(A, B, P, M, N, K, AB, AM, AK, BB, BK, BN, BATCH, SPLITS, TM, TN, TK)
 
 
-@libentry()
 @triton.jit
 def _finish_splitk(
     P,
@@ -161,25 +162,36 @@ def _finish_splitk(
     )
 
 
-def _launch_reduction(partials, out, splits, bias=None, alpha=1, beta=0):
-    batch, m, n = out.shape
-    cb, cm, cn = bias.stride() if bias is not None else (0, 0, 0)
-    _finish_splitk[(triton.cdiv(batch * m * n, 256),)](
-        partials,
-        out,
-        bias if bias is not None else out,
+def _batch_strides(tensor):
+    strides = tensor.stride()
+    return strides if tensor.ndim == 3 else (0, *strides)
+
+
+def _reduction_constants(out, batch, m, n, splits, bias, alpha, beta, bias_strides):
+    if bias_strides is None:
+        bias_strides = _batch_strides(bias) if bias is not None else (0, 0, 0)
+    return (
         m,
         n,
         batch,
-        *out.stride(),
+        *_batch_strides(out),
         splits,
         256,
-        cb,
-        cm,
-        cn,
+        *bias_strides,
         alpha,
         beta,
         bias is not None,
+    )
+
+
+def _launch_reduction(partials, out, bias, args, grid):
+    return _finish_splitk.run(
+        partials,
+        out,
+        bias,
+        *args,
+        grid=grid,
+        warmup=False,
         num_warps=4,
         num_stages=1,
     )
@@ -208,39 +220,97 @@ def launch_splitk(a, b, out, config):
         num_stages=2,
         allow_flush_denorm=True,
     )
-    _launch_reduction(partials, out, splits)
+    args = _reduction_constants(out, batch, m, n, splits, None, 1, 0, None)
+    _launch_reduction(partials, out, out, args, ((batch * m * n + 255) // 256, 1, 1))
 
 
-def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0):
-    """Return whether a long reduction was split across additional workgroups.
-
-    Each call allocates fresh FP32 partials. The second kernel reduces them and
-    applies the optional bias once, before casting to the output dtype.
-    """
-    batch, m, k = a.shape
-    n = b.shape[2]
+def small_splitk_count(batch, m, n, k, dtype):
+    """Return the split count, or zero if the ordinary GEMM should run."""
     if (
         min(batch, m, n, k) <= 0
-        or a.dtype not in (torch.float16, torch.bfloat16)
+        or dtype not in (torch.float16, torch.bfloat16)
         or k < 1024
         or min(m, n) > 128
         or max(m, n) > 4096
     ):
-        return False
-    tiles = batch * triton.cdiv(m, 32) * triton.cdiv(n, 64)
+        return 0
+    tiles = batch * ((m + 31) // 32) * ((n + 63) // 64)
     if tiles >= 128:
-        return False
-    splits = min(32, triton.next_power_of_2(triton.cdiv(128, tiles)))
-    splits = min(splits, triton.next_power_of_2(k) // 256)
-    if splits < 2:
+        return 0
+    requested = (127 + tiles) // tiles
+    splits = min(32, 1 << (requested - 1).bit_length())
+    splits = min(splits, (1 << (k - 1).bit_length()) // 256)
+    return splits if splits >= 2 else 0
+
+
+_SMALL_SPLITK_LAUNCHES = {}
+
+
+def _small_splitk_grid(meta, batch, m, n, splits):
+    tm, tn = meta["TM"], meta["TN"]
+    return (((m + tm - 1) // tm) * ((n + tn - 1) // tn), batch, splits)
+
+
+def _splitk_launch_key(tensors, partial_args, finish_args, alpha, beta):
+    tuner = _small_partials.fn
+    specialize = _small_partials._tensor_spec_fn
+    if (
+        specialize is None
+        or tuner._run_mode != LibTunerRunMode.NORMAL
+        or getattr(tuner, "shared_config_pre_hook", None) is not None
+        or type(alpha) not in (int, float, bool)
+        or type(beta) not in (int, float, bool)
+        or any(type(t) is not torch.Tensor for t in tensors)
+    ):
+        return None
+    signatures = tuple((t.device, t.dtype, specialize(t, align=True)) for t in tensors)
+    return signatures, partial_args, finish_args, type(alpha), type(beta)
+
+
+def launch_small_splitk(
+    a, b, out, bias=None, alpha=1, beta=0, *, splits=None, bias_strides=None
+):
+    """Allocate fresh FP32 partials and apply the epilogue in the reduction."""
+    m, k = a.shape[-2:]
+    n = b.shape[-1]
+    batch = a.shape[0] if a.ndim == 3 else 1
+    if splits is None:
+        splits = small_splitk_count(batch, m, n, k, a.dtype)
+    if not splits:
         return False
     partials = torch.empty((splits, batch, m, n), dtype=torch.float32, device=a.device)
-    _small_partials[
-        lambda meta: (
-            triton.cdiv(m, meta["TM"]) * triton.cdiv(n, meta["TN"]),
-            batch,
-            splits,
-        )
-    ](a, b, partials, m, n, k, *a.stride(), *b.stride(), batch, splits)
-    _launch_reduction(partials, out, splits, bias, alpha, beta)
+    args = (m, n, k, *_batch_strides(a), *_batch_strides(b), batch, splits)
+    finish_args = _reduction_constants(
+        out, batch, m, n, splits, bias, alpha, beta, bias_strides
+    )
+    finish_grid = ((batch * m * n + 255) // 256, 1, 1)
+    bias_arg = bias if bias is not None else out
+    key = _splitk_launch_key(
+        (a, b, partials, out, bias_arg), args, finish_args, alpha, beta
+    )
+    plan = _SMALL_SPLITK_LAUNCHES.get(key)
+    if plan is not None:
+        first, second, tile = plan
+        stream = driver.active.get_current_stream(a.device.index)
+        first(a, b, partials, *args, *tile, stream=stream)
+        second(partials, out, bias_arg, *finish_args, stream=stream)
+        return True
+
+    first, config = _small_partials.run(
+        a,
+        b,
+        partials,
+        *args,
+        grid=lambda meta: _small_splitk_grid(meta, batch, m, n, splits),
+        warmup=False,
+    )
+    second = _launch_reduction(partials, out, bias_arg, finish_args, finish_grid)
+    if key is not None and all(c.pre_hook is None for c in _small_partials.fn.configs):
+        if len(_SMALL_SPLITK_LAUNCHES) >= 128:
+            _SMALL_SPLITK_LAUNCHES.clear()
+        # Keep only launchers and compile-time tiles. Every call passes current
+        # tensors and its stream, including a freshly allocated partial buffer.
+        grid = _small_splitk_grid(config, batch, m, n, splits)
+        tile = (config["TM"], config["TN"], config["TK"])
+        _SMALL_SPLITK_LAUNCHES[key] = (first[grid], second[finish_grid], tile)
     return True

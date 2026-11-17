@@ -4,6 +4,20 @@
 bmm:
 - gen: true
   param_map:
+    META: {FAMILY: family, TM: m, TN: n, TK: k, GROUP: group, SPLITS: splits, PACK: pack}
+    num_warps: warps
+    num_stages: stages
+  family: [0]
+  m: [256]
+  n: [128]
+  k: [32]
+  group: [1]
+  splits: [1]
+  pack: [64]
+  warps: [8]
+  stages: [1]
+- gen: true
+  param_map:
     META:
       FAMILY: family
       TM: m

@@ -18,6 +18,8 @@
 import hashlib
 import logging
 import threading
+from contextlib import nullcontext
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 import torch
@@ -26,9 +28,10 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.flagtune import _flagtune_state_key
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
-from flag_gems.utils.libentry import LibTuner
+from flag_gems.utils.libentry import LibTuner, LibTunerRunMode, _TritonOutOfResources
 
 from . import regular, ring
 from .splitk import launch_small_splitk, launch_splitk
@@ -99,9 +102,14 @@ def select_kernel(dtype, batch, m, n, k):
     return "generic", None
 
 
-def supports_isa(a):
-    props = torch.cuda.get_device_properties(a.device)
+@lru_cache(maxsize=16)
+def _supports_ring_device(device):
+    props = torch.cuda.get_device_properties(device)
     return getattr(props, "gcnArchName", "").split(":", 1)[0] == "gfx936"
+
+
+def supports_isa(a):
+    return _supports_ring_device(a.device)
 
 
 def supports_vector_layout(a, b, out):
@@ -124,7 +132,7 @@ def supports_native_layout(a, b, out):
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _bmm_regular_kernel(
     A,
@@ -347,7 +355,7 @@ def _launch_generic(A, B, out, batch, M, N, K):
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _pack_b(
     B,
@@ -473,6 +481,45 @@ _KEYS = [
 _ARGS = ["A", "B", "O"] + _KEYS
 _TUNER = None
 _LOCK = threading.RLock()
+_LAUNCH_CONFIGS = {}
+_SHORT_WIDE_LAUNCHES = {}
+
+
+def _short_wide_bmm(batch, m, n, k, dtype):
+    return (
+        batch == 1
+        and m <= 512
+        and 0 < k <= 512
+        and n >= 1024
+        and dtype in (torch.float16, torch.bfloat16)
+    )
+
+
+def _launch_pipeline_kernel(kernel, grid, prepare, *args, **options):
+    specialize = kernel._tensor_spec_fn
+    tensors = args[:3]
+    if (
+        not prepare
+        or specialize is None
+        or kernel.fn is not kernel.jit_function
+        or any(type(t) is not torch.Tensor for t in tensors)
+    ):
+        kernel[grid](*args, **options)
+        return
+
+    signature = tuple((t.device, t.dtype, specialize(t, align=True)) for t in tensors)
+    key = (kernel, grid, signature, args[3:], tuple(options.items()))
+    plan = _SHORT_WIDE_LAUNCHES.get(key)
+    if plan is not None:
+        launch, constants = plan
+        launch(*args, *constants)
+        return
+    binary, meta = kernel.run(*args, grid=grid, warmup=False, **options)
+    bound = {**meta, **options}
+    constants = tuple(bound[name] for name in kernel.arg_names[len(args) :])
+    if len(_SHORT_WIDE_LAUNCHES) >= 128:
+        _SHORT_WIDE_LAUNCHES.clear()
+    _SHORT_WIDE_LAUNCHES[key] = (binary[(grid + (1, 1))[:3]], constants)
 
 
 def _bmm_pipeline(
@@ -506,13 +553,18 @@ def _bmm_pipeline(
     num_stages=1,
     **unused,
 ):
+    prepare = _short_wide_bmm(BATCH, M, N, K, A.dtype)
     if FAMILY in (4, 5):
         B = pack_b(B, PACK)
         FAMILY = 1 if FAMILY == 4 else 2
     if FAMILY == 1:
         dt = {torch.float16: 0, torch.bfloat16: 1, torch.float32: 2}[A.dtype]
         kernel = regular.REGULAR_KERNELS[(dt, TM, TN, TK, 2, 2)]
-        kernel[(triton.cdiv(M, TM) * triton.cdiv(N, TN), BATCH)](
+        grid = (((M + TM - 1) // TM) * ((N + TN - 1) // TN), BATCH)
+        _launch_pipeline_kernel(
+            kernel,
+            grid,
+            prepare,
             A,
             B,
             O,
@@ -526,12 +578,19 @@ def _bmm_pipeline(
             enable_fp_fusion=True,
         )
     elif FAMILY == 2:
-        ring.launch_ring(A, B, O, group=GROUP)
+        grid, args = ring.ring_launch_args(A, B, O, GROUP)
+        _launch_pipeline_kernel(
+            ring.ring_kernel, grid, prepare, *args, **ring._RING_LAUNCH_OPTIONS
+        )
     elif FAMILY == 3:
         # Both launches and workspace allocation are in the measured callable.
         launch_splitk(A, B, O, (SPLITS, TM, TN, TK))
     else:
-        _bmm_regular_kernel[(triton.cdiv(M, TM) * triton.cdiv(N, TN), BATCH)](
+        grid = (((M + TM - 1) // TM) * ((N + TN - 1) // TN), BATCH)
+        _launch_pipeline_kernel(
+            _bmm_regular_kernel,
+            grid,
+            prepare,
             A,
             B,
             O,
@@ -587,16 +646,35 @@ def _prune(configs, named_args, **kwargs):
     dt = {torch.float16: 0, torch.bfloat16: 1, torch.float32: 2}.get(dtype)
     default_m = 16 if m <= 16 else 32 if m <= 32 else 64
     default_n = 16 if n <= 16 else 32 if n <= 32 else 64
+    short_wide = _short_wide_bmm(batch, m, n, k, dtype)
+    # Wider IEEE tiles amortize the input loads for large, single-batch GEMMs.
+    wide_fp32 = (
+        dt == 2
+        and batch == 1
+        and min(m, n) >= 1536
+        and bounded
+        and a["AK"] == 1
+        and a["AM"] == k
+        and ((a["BN"], a["BK"]) == (1, n) or (a["BK"], a["BN"]) == (1, k))
+    )
     choices = []
     for c in configs:
         p = c.kwargs
         family, tm, tn, tk = (p[x] for x in ("FAMILY", "TM", "TN", "TK"))
+        # Packing adds another launch and reads the whole B matrix for a short
+        # reduction. Keep the direct strided candidates in this domain.
+        if short_wide and family in (4, 5):
+            continue
         if family == 0:
             # Bounded nearby candidates; includes the previous generic default.
-            if tm not in (default_m, min(128, 2 * default_m)):
-                continue
-            if tn not in (default_n, min(128, 2 * default_n)):
-                continue
+            if (tm, tn, tk) == (256, 128, 32):
+                if not wide_fp32:
+                    continue
+            else:
+                if tm not in (default_m, min(128, 2 * default_m)):
+                    continue
+                if tn not in (default_n, min(128, 2 * default_n)):
+                    continue
             if p["GROUP"] != 1 or (tm * tn >= 16384 and c.num_stages > 1):
                 continue
             if dtype == torch.float64 and (tm > 64 or tn > 64):
@@ -648,7 +726,7 @@ def _prune(configs, named_args, **kwargs):
 
 
 class _PipelineTuner(LibTuner.get("flagtune")):
-    @property
+    @cached_property
     def cache_key(self):
         # LibTuner normally derives this from one JIT function. This pipeline
         # spans several kernels, so invalidate caches on ANY implementation edit.
@@ -703,22 +781,32 @@ def _get_tuner():
     return _TUNER
 
 
-def _launch_autotuned(a, b, out):
-    if (
+@lru_cache(maxsize=8)
+def _expanded_mode(state):
+    return (
         runtime.resolve_tuning_mode("bmm", supports_cost_model=False)
-        is not runtime.TuningMode.EXPANDED
-    ):
+        is runtime.TuningMode.EXPANDED
+    )
+
+
+@lru_cache(maxsize=16)
+def _device_key(device):
+    props = torch.cuda.get_device_properties(device)
+    return (
+        f"{props.name}:{getattr(props, 'gcnArchName', 'unknown')}:"
+        f"{props.major}.{props.minor}:{device.index}:"
+        f"{torch.version.hip}:{triton.__version__}"
+    )
+
+
+def _launch_autotuned(a, b, out):
+    state = _flagtune_state_key()
+    if not _expanded_mode(state):
         return False
     batch, m, k = a.shape
     n = b.shape[2]
     if k == 0:
         return False
-    props = torch.cuda.get_device_properties(a.device)
-    device = (
-        f"{props.name}:{getattr(props, 'gcnArchName', 'unknown')}:"
-        f"{props.major}.{props.minor}:{a.device.index}:"
-        f"{torch.version.hip}:{triton.__version__}"
-    )
     args = (
         a,
         b,
@@ -732,15 +820,58 @@ def _launch_autotuned(a, b, out):
         *out.stride(),
         supports_vector_layout(a, b, out),
         supports_packing(a, b, out),
-        device,
+        _device_key(a.device),
     )
-    # The tuner mutates nargs/best_config while selecting and launching.
-    # Serialize those operations, but leave all cache access to LibTuner.
-    with _LOCK:
-        tuner = _get_tuner()
-        tuner.apply_flagtune()
-        tuner.run(*args)
-    return True
+    key = (state, a.dtype, b.dtype, out.dtype, *args[3:])
+    failed_config = None
+    while True:
+        tuner = _TUNER
+        if tuner is not None and tuner._run_mode == LibTunerRunMode.NORMAL:
+            cached_config = _LAUNCH_CONFIGS.get(key)
+            if cached_config is not None:
+                try:
+                    _bmm_pipeline(*args, **cached_config)
+                    return True
+                except _TritonOutOfResources:
+                    failed_config = cached_config
+
+        with _LOCK:
+            tuner = _get_tuner()
+            if tuner._run_mode == LibTunerRunMode.NORMAL:
+                current_config = _LAUNCH_CONFIGS.get(key)
+                if current_config is not None:
+                    if current_config is not failed_config:
+                        # Another caller published a config while we waited.
+                        continue
+                    del _LAUNCH_CONFIGS[key]
+
+            # Preserve LibTuner's retry across candidate configs on resource errors.
+            tuner.apply_flagtune()
+            tuner.run(*args)
+            config = tuner.best_config
+            if (
+                tuner._run_mode == LibTunerRunMode.NORMAL
+                and config.pre_hook is None
+                and getattr(tuner, "shared_config_pre_hook", None) is None
+            ):
+                if len(_LAUNCH_CONFIGS) >= 128:
+                    _LAUNCH_CONFIGS.clear()
+                _LAUNCH_CONFIGS[key] = config.all_kwargs()
+            return True
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def _small_contiguous_bmm(
+    A,
+    B,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    TN: tl.constexpr,
+):
+    regular._native_dot(A, B, Out, M, N, K, 1, 32, TN, 64, 2)
 
 
 def _dispatch_bmm(A, B, out):
@@ -748,7 +879,40 @@ def _dispatch_bmm(A, B, out):
     N = B.shape[2]
     if batch == 0 or M == 0 or N == 0:
         return out
-    with torch_device_fn.device(A.device):
+    device = A.device
+    guard = (
+        nullcontext()
+        if torch_device_fn.current_device() == device.index
+        else torch_device_fn.device(device)
+    )
+    with guard:
+        if (
+            0 < K <= 512
+            and M <= 512
+            and N <= 512
+            and A.dtype in (torch.float16, torch.bfloat16, torch.float32)
+            and A.is_contiguous()
+            and B.is_contiguous()
+            and out.is_contiguous()
+            and (_TUNER is None or _TUNER._run_mode == LibTunerRunMode.NORMAL)
+        ):
+            fp32 = A.dtype == torch.float32
+            tn = 32 if fp32 else 64
+            _small_contiguous_bmm[(triton.cdiv(M, 32) * triton.cdiv(N, tn), batch)](
+                A,
+                B,
+                out,
+                M,
+                N,
+                K,
+                tn,
+                num_warps=4 if fp32 else 2,
+                num_stages=2,
+                matrix_instr_nonkdim=16,
+                allow_flush_denorm=True,
+                enable_fp_fusion=True,
+            )
+            return out
         if launch_small_splitk(A, B, out):
             return out
         if _launch_autotuned(A, B, out):
@@ -785,7 +949,7 @@ def bmm(A, B):
     return _dispatch_bmm(A, B, out)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _copy_scale(
     Src,

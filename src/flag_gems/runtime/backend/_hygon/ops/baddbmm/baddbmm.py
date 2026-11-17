@@ -15,6 +15,7 @@
 """Hygon baddbmm entry points and kernel dispatch."""
 
 import logging
+from contextlib import nullcontext
 
 import torch
 import triton
@@ -25,40 +26,37 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
-from ..bmm.splitk import launch_small_splitk
-from .kernels import _TUNERS, _bias_kernel, _pack_b
+from ..bmm.splitk import launch_small_splitk, small_splitk_count
+from .kernels import _TUNERS, _bias_kernel, _pack_b, _small_contiguous_baddbmm
 
 logger = logging.getLogger(__name__)
 
 
-def _algorithm(batch, m, n, k, device=None, dtype=None):
+def _algorithm(batch, m, n, k, device=None, dtype=None, *, allow_ring=True):
+    if dtype not in (torch.float16, torch.bfloat16):
+        return "matmul"
+    packed = batch == 1 and m >= 4096 and n >= 1024 and k >= 1024
+    gm, gn = (m + 255) // 256, (n + 255) // 256
+    # Long reductions can use the ring with one batch and avoid packing B.
     if (
-        dtype in (torch.float16, torch.bfloat16)
-        and batch == 1
-        and m >= 4096
-        and n >= 1024
-        and k >= 1024
-    ):
-        return "packed"
-    if (
-        HAS_TLE
-        and dtype == torch.bfloat16
-        and batch > 1
+        allow_ring
+        and HAS_TLE
+        and (batch > 1 or (packed and k >= n))
         and min(m, n) >= 1024
         and k >= 512
         and k % 64 == 0
         and n % 8 == 0
-        and batch * triton.cdiv(m, 256) * triton.cdiv(n, 256) >= 24
-        and 2 * m * n >= triton.cdiv(m, 256) * triton.cdiv(n, 256) * 256**2
+        and batch * gm * gn >= 24
+        and 2 * m * n >= gm * gn * 256**2
         and max(batch * m * k, batch * k * n, batch * m * n) * 2 < 2**31
-        and triton.cdiv(m, 256) * 256 * n * 2 < 2**31
+        and gm * 256 * n * 2 < 2**31
         and getattr(torch.cuda.get_device_properties(device), "gcnArchName", "").split(
             ":", 1
         )[0]
         == "gfx936"
     ):
         return "ring"
-    return "matmul"
+    return "packed" if packed else "matmul"
 
 
 def _validate(bias, a, b):
@@ -99,13 +97,23 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
     n = b.shape[2]
     if not batch or not m or not n:
         return out
-    with torch_device_fn.device(a.device):
+    device = a.device
+    guard = (
+        nullcontext()
+        if torch_device_fn.current_device() == device.index
+        else torch_device_fn.device(device)
+    )
+    with guard:
         if k == 0 or alpha == 0:
             _bias_kernel[(triton.cdiv(m * n, 256), batch)](
                 bias, out, m, n, *bias_strides, *out.stride(), beta, 256
             )
             return out
-        if launch_small_splitk(a, b, out, bias.broadcast_to(out.shape), alpha, beta):
+        splits = small_splitk_count(batch, m, n, k, a.dtype)
+        if splits:
+            launch_small_splitk(
+                a, b, out, bias, alpha, beta, splits=splits, bias_strides=bias_strides
+            )
             return out
         algorithm = _algorithm(batch, m, n, k, a.device, a.dtype)
         if algorithm == "ring":
@@ -114,7 +122,9 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
                     a, b, bias, out, m, n, k, *bias_strides, alpha, beta, BATCH=batch
                 )
                 return out
-            algorithm = "matmul"
+            algorithm = _algorithm(
+                batch, m, n, k, device, a.dtype, allow_ring=False
+            )
         if algorithm == "packed":
             packed = torch.empty((batch, n, k), device=b.device, dtype=b.dtype)
             _pack_b[(triton.cdiv(k, 64), triton.cdiv(n, 64), batch)](
@@ -146,6 +156,37 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
 
 
 def _forward_checked(bias, a, b, beta, alpha, shape, bias_strides):
+    batch, m, n = shape
+    k = a.shape[2]
+    if (
+        0 < min(batch, m, n, k)
+        and max(m, n, k) <= 512
+        and batch * max(m * k, k * n, m * n) < 2**31
+        and alpha == beta == 1
+        and bias.shape == shape
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and bias.is_contiguous()
+        and torch_device_fn.current_device() == a.device.index
+    ):
+        out = torch.empty(shape, device=a.device, dtype=a.dtype)
+        fp32 = a.dtype == torch.float32
+        tn = 32 if fp32 else 64
+        _small_contiguous_baddbmm[(triton.cdiv(m, 32) * triton.cdiv(n, tn), batch)](
+            a,
+            b,
+            bias,
+            out,
+            m,
+            n,
+            k,
+            batch,
+            tn,
+            num_warps=4 if fp32 else 2,
+            num_stages=2,
+            matrix_instr_nonkdim=16,
+        )
+        return out
     out = (
         torch.empty_like(bias, memory_format=torch.contiguous_format)
         if bias.shape == shape
@@ -204,8 +245,14 @@ class _Baddbmm(torch.autograd.Function):
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
     logger.debug("GEMS BADDBMM")
     metadata = _validate(bias, A, B)
-    if torch.is_grad_enabled() and (
-        bias.requires_grad or A.requires_grad or B.requires_grad
+    # ATen redispatches its AutogradCUDA forward below ADInplaceOrView.
+    # The public Gems API supplies its own backward when called directly.
+    if (
+        torch.is_grad_enabled()
+        and (bias.requires_grad or A.requires_grad or B.requires_grad)
+        and not torch._C._dispatch_tls_is_dispatch_key_excluded(
+            torch._C.DispatchKey.ADInplaceOrView
+        )
     ):
         return _Baddbmm.apply(bias, A, B, beta, alpha, metadata)
     return _forward_checked(bias, A, B, beta, alpha, *metadata)

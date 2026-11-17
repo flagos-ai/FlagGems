@@ -19,6 +19,7 @@ import triton.language as tl
 
 from ..bmm.ring_core import _RING_CONSTRAINTS, _RING_OUTPUT_DTYPES, ring_asm
 
+_FP16_RING_ASM = ring_asm("_baddbmm_ring_f16", bf16=False)
 _BF16_RING_ASM = ring_asm("_baddbmm_ring", bf16=True)
 
 
@@ -78,7 +79,7 @@ def baddbmm_ring_kernel(
     )
     bp3 = tl.where((wn == 1) & (lane >> 2 & 3 == 3), bp - 512, bp)
     acc = tl.inline_asm_elementwise(
-        _BF16_RING_ASM,
+        _BF16_RING_ASM if A.dtype.element_ty == tl.bfloat16 else _FP16_RING_ASM,
         _RING_CONSTRAINTS,
         [
             aptr.to(tl.uint32),
