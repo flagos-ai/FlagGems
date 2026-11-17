@@ -100,13 +100,21 @@ def _run_ref(op, params, grads, mbufs, **kwargs):
     arguments such as ``lr``/``grad_scale``/``found_inf`` -- so the reference
     runs entirely on the reference device under ``--ref cpu`` while the
     ``--ref`` device lane is unchanged.
+
+    ``to_reference`` returns the same tensors on the device lane but new CPU
+    tensors under ``--ref cpu``, and the op updates its inputs in place, so the
+    stepped tensors are returned: callers must compare against the returned
+    lists, not the tensors they passed in.
     """
-    ref = lambda xs: [utils.to_reference(x) for x in xs]
+    params = [utils.to_reference(x) for x in params]
+    grads = [utils.to_reference(x) for x in grads]
+    mbufs = [utils.to_reference(x) for x in mbufs]
     ref_kwargs = {
         name: utils.to_reference(value) if isinstance(value, torch.Tensor) else value
         for name, value in kwargs.items()
     }
-    return op(tuple(ref(params)), tuple(ref(grads)), tuple(ref(mbufs)), **ref_kwargs)
+    op(tuple(params), tuple(grads), tuple(mbufs), **ref_kwargs)
+    return params, grads, mbufs
 
 
 def _run_gems(op, params, grads, mbufs, **kwargs):
@@ -141,7 +149,7 @@ def test_fused_sgd_(
     gems_g = g.clone()
     gems_mb = mb.clone()
 
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch._fused_sgd_,
         [ref_p],
         [ref_g],
@@ -168,9 +176,9 @@ def test_fused_sgd_(
         is_first_step=is_first_step,
     )
 
-    utils.gems_assert_close(gems_p, ref_p, dtype)
-    utils.gems_assert_close(gems_mb, ref_mb, dtype)
-    utils.gems_assert_close(gems_g, ref_g, dtype)
+    utils.gems_assert_close(gems_p, ref_p[0], dtype)
+    utils.gems_assert_close(gems_mb, ref_mb[0], dtype)
+    utils.gems_assert_close(gems_g, ref_g[0], dtype)
 
 
 @pytest.mark.fused_sgd_
@@ -201,7 +209,7 @@ def test_fused_sgd__multitensor(
     res_g = [t[1].clone() for t in tensors]
     res_mb = [t[2].clone() for t in tensors]
 
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch._fused_sgd_,
         ref_p,
         ref_g,
@@ -247,7 +255,7 @@ def test_fused_sgd__grad_scale():
     res_p, res_g, res_mb = p.clone(), g.clone(), mb.clone()
     gs = torch.tensor([4.0], device=device)
 
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch._fused_sgd_,
         [ref_p],
         [ref_g],
@@ -276,9 +284,9 @@ def test_fused_sgd__grad_scale():
         grad_scale=gs,
     )
 
-    utils.gems_assert_close(res_p, ref_p, dtype)
-    utils.gems_assert_close(res_mb, ref_mb, dtype)
-    utils.gems_assert_close(res_g, ref_g, dtype)
+    utils.gems_assert_close(res_p, ref_p[0], dtype)
+    utils.gems_assert_close(res_mb, ref_mb[0], dtype)
+    utils.gems_assert_close(res_g, ref_g[0], dtype)
 
 
 @pytest.mark.fused_sgd_
@@ -309,14 +317,16 @@ def test_fused_sgd__found_inf(found_inf_val):
     )
 
     ref_p, ref_g, ref_mb = p.clone(), g.clone(), mb.clone()
-    _run_ref(torch._fused_sgd_, [ref_p], [ref_g], [ref_mb], **opts)
+    ref_p, ref_g, ref_mb = _run_ref(
+        torch._fused_sgd_, [ref_p], [ref_g], [ref_mb], **opts
+    )
 
     res_p, res_g, res_mb = p.clone(), g.clone(), mb.clone()
     _run_gems(flag_gems._fused_sgd_, [res_p], [res_g], [res_mb], **opts)
 
-    utils.gems_assert_close(res_p, ref_p, dtype)
-    utils.gems_assert_close(res_g, ref_g, dtype)
-    utils.gems_assert_close(res_mb, ref_mb, dtype)
+    utils.gems_assert_close(res_p, ref_p[0], dtype)
+    utils.gems_assert_close(res_g, ref_g[0], dtype)
+    utils.gems_assert_close(res_mb, ref_mb[0], dtype)
 
     if found_inf_val == 1.0:
         # Buffers must be untouched, not merely close to the reference.
@@ -356,7 +366,7 @@ def test_fused_sgd__tensor_lr(lr_shape, dtype):
     )
 
     ref_p, ref_g, ref_mb = p.clone(), g.clone(), mb.clone()
-    _run_ref(
+    ref_p, ref_g, ref_mb = _run_ref(
         torch.ops.aten._fused_sgd_.tensor_lr,
         [ref_p],
         [ref_g],
@@ -367,8 +377,8 @@ def test_fused_sgd__tensor_lr(lr_shape, dtype):
     res_p, res_g, res_mb = p.clone(), g.clone(), mb.clone()
     _run_gems(flag_gems._fused_sgd__tensor_lr, [res_p], [res_g], [res_mb], **opts)
 
-    utils.gems_assert_close(res_p, ref_p, dtype)
-    utils.gems_assert_close(res_mb, ref_mb, dtype)
+    utils.gems_assert_close(res_p, ref_p[0], dtype)
+    utils.gems_assert_close(res_mb, ref_mb[0], dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +571,7 @@ def test_fused_sgd__heterogeneous_batch_accuracy():
         dampening=0.2,
         nesterov=True,
     )
-    _run_ref(torch._fused_sgd_, ref_p, ref_g, ref_mb, **opts)
+    ref_p, ref_g, ref_mb = _run_ref(torch._fused_sgd_, ref_p, ref_g, ref_mb, **opts)
     _run_gems(flag_gems._fused_sgd_, res_p, res_g, res_mb, **opts)
 
     for i in range(len(shapes)):
