@@ -28,8 +28,7 @@ if not cfg.QUICK_MODE:
     SHAPES += [(1024, 1024)]
 
 
-    
-    = [
+EXTENDED_DTYPES = [
     torch.bool,
     torch.int32,
     pytest.param(
