@@ -43,8 +43,12 @@ def _launch(x_contig: torch.Tensor, out_contig: torch.Tensor):
     deg2rad_kernel[grid](x_contig, out_contig, n_elements, _SCALE, BLOCK_SIZE=1024)
 
 
-def deg2rad(x: torch.Tensor):
-    logger.debug("GEMS DEG2RAD")
+def _deg2rad_impl(x: torch.Tensor):
+    """Forward kernel without the autograd bridge.
+
+    ``Deg2RadFunction.forward`` calls this directly so the autograd wrapper does
+    not re-enter itself.
+    """
     if x.is_floating_point():
         result_dtype = x.dtype
     else:
@@ -54,6 +58,24 @@ def deg2rad(x: torch.Tensor):
     out = torch.empty_like(x_contig)
     _launch(x_contig.view(-1), out.view(-1))
     return out.view_as(x)
+
+
+def deg2rad(x: torch.Tensor):
+    logger.debug("GEMS DEG2RAD")
+    # This Torch build has no standalone ``aten::deg2rad_backward`` schema, so a
+    # differentiable input is routed through the FlagGems ``autograd.Function``
+    # bridge to reach the Triton backward kernel. Pure forward calls (and the
+    # in-place / out variants) keep their previous behaviour.
+    if (
+        isinstance(x, torch.Tensor)
+        and x.requires_grad
+        and torch.is_grad_enabled()
+        and x.is_complex() is False
+    ):
+        from flag_gems.ops.deg2rad_backward import Deg2RadFunction
+
+        return Deg2RadFunction.apply(x)
+    return _deg2rad_impl(x)
 
 
 def deg2rad_(x: torch.Tensor):

@@ -5170,6 +5170,23 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: deg2rad_backward
+  description: |
+    Backward pass for `deg2rad`: the gradient with respect to the input is the
+    elementwise product of the upstream gradient with pi/180. The multiply is
+    performed in float32 opmath for fp16/bf16 and the result is cast back to the
+    input dtype, matching ATen's Deg2RadBackward0. Exposed through a
+    `torch.autograd.Function` bridge because this Torch build has no standalone
+    `aten::deg2rad_backward` schema.
+  for:
+  - deg2rad_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: deg2rad_out
   description: Out-of-place variant of deg2rad with pre-allocated output tensor.
   for:
