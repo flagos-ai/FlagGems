@@ -128,6 +128,7 @@ def test_ctc_loss():
         torch_op=_ctc_loss_reference,
         dtypes=CTC_DTYPES,
     )
+    bench.set_gems(lambda *args, **kwargs: flag_gems.ctc_loss(*args, **kwargs))
     bench.run()
 
 
