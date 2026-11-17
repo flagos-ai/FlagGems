@@ -191,7 +191,6 @@ def _config(numel):
 
 
 def _ldexp_impl(self, other):
-    logger.debug("GEMS_KUNLUNXIN LDEXP")
     if self.dtype.is_complex or other.dtype.is_complex:
         raise RuntimeError("Kunlunxin ldexp does not support complex operands")
     a0 = self.dim() == 0
@@ -340,6 +339,7 @@ def _ldexp_impl(self, other):
 
 
 def ldexp(self, other):
+    logger.debug("GEMS_KUNLUNXIN LDEXP")
     device = self.device if self.device.type != "cpu" else other.device
     with torch_device_fn.device(device):
         return _ldexp_impl(self, other)
