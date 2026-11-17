@@ -112,7 +112,7 @@ def max_unpool2d(pooled: torch.Tensor, indices: torch.Tensor, output_size: list)
     if torch.is_grad_enabled() and pooled.requires_grad:
         return MaxUnpool2dFunction.apply(pooled, indices, output_size)
     if indices.shape != pooled.shape:
-        raise ValueError(
+        raise RuntimeError(
             "max_unpool2d expects indices and pooled input to have the same shape"
         )
     if pooled.ndim == 3:

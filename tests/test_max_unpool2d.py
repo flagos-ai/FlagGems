@@ -305,3 +305,11 @@ def test_max_unpool2d_backward_dispatch(monkeypatch):
     (grad,) = torch.autograd.grad(out, pooled, grad_output)
     expected = max_unpool2d_backward(grad_output, pooled.detach(), indices, [6, 10])
     torch.testing.assert_close(grad, expected, rtol=0, atol=0)
+
+
+@pytest.mark.max_unpool2d_backward
+def test_max_unpool2d_rejects_indices_shape_mismatch():
+    pooled = torch.randn((1, 1, 2, 2), device=flag_gems.device)
+    indices = torch.zeros((1, 1, 2, 1), dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="same shape"):
+        flag_gems.max_unpool2d(pooled, indices, [4, 4])
