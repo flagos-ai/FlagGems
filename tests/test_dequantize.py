@@ -39,15 +39,44 @@ def test_dequantize(shape, scale, zero_point):
     fp_tensor = torch.randn(shape, device="cpu")
     q_tensor = torch.quantize_per_tensor(
         fp_tensor, scale=scale, zero_point=zero_point, dtype=torch.qint8
-    ).to(flag_gems.device)
+    )
+    if flag_gems.vendor_name == "ascend":
+        host = q_tensor
+        q_tensor = torch._empty_affine_quantized(
+            host.shape,
+            scale=host.q_scale(),
+            zero_point=host.q_zero_point(),
+            dtype=host.dtype,
+            device=flag_gems.device,
+        )
+        q_tensor.untyped_storage().copy_(host.untyped_storage())
+    else:
+        q_tensor = q_tensor.to(flag_gems.device)
 
-    ref_q_tensor = utils.to_reference(q_tensor)
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU:
+        # Observe the actual target bytes: quantized .to("cpu") is unsupported.
+        integers = torch.empty(0, dtype=torch.int8).set_(
+            q_tensor.untyped_storage().cpu(),
+            q_tensor.storage_offset(),
+            q_tensor.shape,
+            q_tensor.stride(),
+        )
+        ref_q_tensor = torch._make_per_tensor_quantized_tensor(
+            integers, q_tensor.q_scale(), q_tensor.q_zero_point()
+        )
+    else:
+        ref_q_tensor = utils.to_reference(q_tensor)
 
     # Reference dequantize, upcast after dequantization for comparison.
     ref_out = utils.to_reference(torch.dequantize(ref_q_tensor), True)
 
     # GEMS dequantize
     res_out = flag_gems.dequantize(q_tensor)
+
+    if flag_gems.vendor_name == "ascend":
+        assert res_out.device == q_tensor.device
+        assert res_out.dtype == torch.float32 and res_out.shape == q_tensor.shape
+        assert res_out.untyped_storage()._cdata != q_tensor.untyped_storage()._cdata
 
     # Output is always float32
     utils.gems_assert_close(res_out, ref_out, dtype=torch.float32)
