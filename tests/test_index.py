@@ -568,3 +568,87 @@ def test_index_boolean_capture_rejected():
     utils.gems_assert_equal(
         inp.cpu(), torch.arange(12, dtype=torch.float32).reshape(3, 4)
     )
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend eager bounds validation"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("layout", ["contiguous", "transpose", "separated"])
+@pytest.mark.parametrize("bad", [4, -5, 2**63 - 1, -(2**63)])
+def test_index_out_of_bounds_rejected(dtype, layout, bad):
+    cpu = torch.arange(4 * 4 * 6).reshape(4, 4, 6).to(dtype)
+    if layout == "transpose":
+        cpu = cpu.transpose(0, 1)
+    indices = [torch.tensor([0, bad])]
+    if layout == "separated":
+        indices += [None, torch.tensor([-1, 0])]
+    with pytest.raises(IndexError):
+        torch.ops.aten.index.Tensor(cpu, indices)
+    inp = cpu.to(flag_gems.device)
+    device_indices = [
+        item.to(inp.device) if item is not None else None for item in indices
+    ]
+    with pytest.raises(IndexError, match="out of bounds"):
+        flag_gems.index(inp, device_indices)
+    utils.gems_assert_equal(inp.cpu(), cpu)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend eager bounds validation"
+)
+@pytest.mark.parametrize("count", [1025, 65537])
+@pytest.mark.parametrize("bad", [4, -5])
+def test_index_out_of_bounds_block_tail(count, bad):
+    inp = torch.arange(24, device=flag_gems.device).reshape(4, 6)
+    cpu_storage = torch.zeros(2 * count, dtype=torch.int64)
+    cpu_storage[-2] = bad
+    index = cpu_storage.to(inp.device)[::2]
+    with pytest.raises(IndexError, match="out of bounds"):
+        flag_gems.index(inp, [index])
+    index[-1] = -4
+    actual = flag_gems.index(inp, [index])
+    expected = torch.zeros((count, 6), dtype=torch.int64)
+    expected[:] = torch.arange(6)
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+@pytest.mark.parametrize("paired", [False, True])
+def test_index_noncontiguous_suffix_tail(dtype, layout, paired):
+    cpu_raw = torch.arange(7 * 3 * 1301, dtype=torch.int64).reshape(7, 3, 1301)
+    cpu_raw = cpu_raw + 2**54 if dtype == torch.int64 else cpu_raw % 97
+    cpu_raw = cpu_raw.to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    if layout == "transpose":
+        cpu, inp = cpu_raw.transpose(0, 1), raw.transpose(0, 1)
+    else:
+        cpu, inp = cpu_raw[::2, :, ::2], raw[::2, :, ::2]
+    indices = [torch.tensor([0, -1])]
+    if paired:
+        indices.append(torch.tensor([-1, 0]))
+    expected = torch.ops.aten.index.Tensor(cpu, indices)
+    actual = flag_gems.index(inp, [index.to(inp.device) for index in indices])
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(raw.cpu(), cpu_raw)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("extent", [1025, 4097])
+def test_index_large_sparse_noncontiguous(dtype, extent):
+    values = (
+        torch.arange(17, dtype=torch.int16)[:, None, None]
+        + torch.arange(extent, dtype=torch.int16)[None, :, None]
+        + torch.arange(1025, dtype=torch.int16)[None, None, :]
+    )
+    cpu = (values % 97).to(dtype)
+    inp = cpu.to(flag_gems.device).transpose(0, 1)
+    index = torch.tensor([0, -1], device=inp.device)
+    actual = flag_gems.index(inp, [index])
+    expected = cpu.transpose(0, 1)[torch.tensor([0, -1])]
+    utils.gems_assert_equal(actual.cpu(), expected)

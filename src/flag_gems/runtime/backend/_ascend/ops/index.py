@@ -24,6 +24,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import broadcast_shapes
@@ -471,13 +472,23 @@ def _tensor_index_dims_are_adjacent(tensor_index_dims):
 
 def _can_use_linearized_adjacent_index(inp, indices):
     tensor_index_dims = _tensor_index_dims(indices)
-    # Floating payloads use the optimized adjacent-index kernel; integer
-    # payloads use the stride-aware gather to preserve exact values.
     supported_dtype = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
-    return (
+    if not (
         supported_dtype
         and tensor_index_dims
         and _tensor_index_dims_are_adjacent(tensor_index_dims)
+    ):
+        return False
+    if inp.is_contiguous():
+        return True
+    output_numel = indices[tensor_index_dims[0]].numel() * _shape_product(
+        inp.size(dim) for dim in range(inp.ndim) if dim not in tensor_index_dims
+    )
+    # A direct gather is slower for small views. Bound layout-copy work by
+    # either a small absolute budget or a constant multiple of output size.
+    return (
+        inp.numel() * inp.element_size() <= 128 * 1024**2
+        or inp.numel() <= 4 * output_numel
     )
 
 
@@ -500,6 +511,47 @@ def _run_linearized_adjacent_index(inp, indices):
     tensor_indices = [idx.contiguous() for idx in tensor_indices]
     _adjacent_index_func(inp, start_dim, tensor_indices, out)
     return out.contiguous()
+
+
+@libentry()
+@triton.jit
+def _index_check_bounds_kernel(
+    index, valid, N, SIZE: tl.constexpr, DEVICE_CHECK: tl.constexpr, BLOCK: tl.constexpr
+):
+    good = tl.full((), True, tl.int1)
+    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
+        offsets = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        raw = tl.load(index + offsets, offsets < N, other=0).to(tl.int64)
+        good &= (
+            tl.min(((offsets >= N) | ((raw >= -SIZE) & (raw < SIZE))).to(tl.int32), 0)
+            != 0
+        )
+    if DEVICE_CHECK:
+        if not good:
+            tl.device_assert(False, "index out of bounds")
+    else:
+        tl.store(valid + tl.program_id(0), good)
+
+
+def _check_index_bounds(index, size):
+    if index.numel() == 0:
+        return
+    index = index.contiguous()
+    block = min(1024, triton.next_power_of_2(index.numel()))
+    programs = min(48, triton.cdiv(index.numel(), block))
+    capturing = torch_device_fn.is_current_stream_capturing()
+    valid = (
+        None
+        if capturing
+        else torch.empty(programs, device=index.device, dtype=torch.int32)
+    )
+    _index_check_bounds_kernel[(programs,)](
+        index, valid, index.numel(), size, capturing, block, debug=capturing
+    )
+    # Capture cannot read a host scalar. Enable the device assertion explicitly
+    # on that path; eager calls keep the normal Python IndexError contract.
+    if not capturing and not all(valid.cpu().tolist()):
+        raise IndexError(f"index is out of bounds for dimension with size {size}")
 
 
 @triton.jit
@@ -638,7 +690,7 @@ def _gather_function(
         ]
     lines += [
         "        value = tl.load(inp + source, active, other=0)",
-        "        tl.store(out + linear, value, linear < N)",
+        "        tl.store(out + linear, value, active)",
     ]
     plain_shape = tuple(output_shape[axis] for _, axis in plain_axes)
     plain_numel = 1
@@ -720,7 +772,7 @@ def _gather_function(
         lines += [
             f"        active = (plain < {plain_numel}) & valid_index",
             "        value = tl.load(inp + source_base + source, active, other=0)",
-            f"        tl.store(out + destination, value, plain < {plain_numel})",
+            "        tl.store(out + destination, value, active)",
         ]
 
     code = "\n".join(lines) + "\n"
@@ -739,6 +791,7 @@ def _index_impl(inp, indices):
     if all(item is None for item in indices):
         raise IndexError("Index out of range")
     expanded = []
+    mask_dims = set()
     for item in indices:
         if item is None:
             expanded.append(None)
@@ -753,6 +806,7 @@ def _index_impl(inp, indices):
             ):
                 raise IndexError("boolean index shape does not match indexed tensor")
             expanded.extend(_boolean_coordinates(item, inp.device))
+            mask_dims.update(range(start, start + item.ndim))
         elif item.dtype in (torch.int32, torch.int64):
             expanded.append(item.to(inp.device))
         else:
@@ -771,6 +825,15 @@ def _index_impl(inp, indices):
             "shape mismatch: indexing tensors could not be broadcast together"
         ) from error
     tensors = [item.expand(broadcast_shape) for item in tensors]
+    has_output = all(broadcast_shape) and all(
+        inp.size(dim) for dim in range(inp.ndim) if dim not in index_dims
+    )
+    if has_output:
+        # Check original indices once, before their broadcast expansion.
+        # Boolean coordinates already satisfy the matching shape bounds.
+        for dim in index_dims:
+            if dim not in mask_dims:
+                _check_index_bounds(expanded[dim], inp.size(dim))
     for dim, tensor in zip(index_dims, tensors):
         expanded[dim] = tensor
     if _can_use_linearized_adjacent_index(inp, expanded):
@@ -806,8 +869,8 @@ def _index_impl(inp, indices):
             broadcast_axes,
         )
         programs = min(48, index_tiles or triton.cdiv(out.numel(), 1024))
-        # Match Triton's standard debug-controlled bounds assertions. The
-        # load mask remains active regardless of debug to prevent invalid reads.
+        # Eager and capture bounds checks run before gathering. Read and write
+        # masks also exclude invalid coordinates during graph replay.
         kernel[(programs,)](inp, *tensors, out, out.numel(), 1024, programs)
     return out
 
