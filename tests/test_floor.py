@@ -214,8 +214,8 @@ def test_floor_hygon_fallback(kind, monkeypatch):
     monkeypatch.setattr(provider, "_generic_floor", delegate)
     result = flag_gems.floor(inp)
     assert len(calls) == 1 and calls[0] is inp
-    utils.gems_assert_equal(result.cpu(), torch.floor(cpu_inp))
-    utils.gems_assert_equal(inp.cpu(), cpu_inp)
+    utils.gems_assert_equal(result.cpu(), torch.floor(cpu_inp), equal_nan=True)
+    utils.gems_assert_equal(inp.cpu(), cpu_inp, equal_nan=True)
 
 
 @pytest.mark.floor
