@@ -2966,6 +2966,7 @@ def _mm_tile(
     )
 
 
+@libentry()
 @triton.jit
 def _mm_backward_kernel(
     GRAD_OUT,
@@ -3166,6 +3167,8 @@ def _tuned_mm(x, y):
 def mm_backward(grad_output, a, b, needs_input_grad):
     """First-order gradients of ``torch.mm`` for real 2-D operands.
 
+    Complex operands and higher-order gradients are not supported.
+
     ``a`` is ``(M, K)``, ``b`` is ``(K, N)`` and ``grad_output`` is ``(M, N)``.
     ``needs_input_grad`` mirrors ``ctx.needs_input_grad``: an entry that is
     ``False`` returns ``None`` instead of launching that GEMM.
@@ -3209,9 +3212,9 @@ def mm_backward(grad_output, a, b, needs_input_grad):
         _fused_mm_backward(grad_output, a, b, grad_a, grad_b, need_a, need_b)
     else:
         if need_a:
-            grad_a = _tuned_mm(grad_output, b.transpose(0, 1)).to(a.dtype)
+            grad_a = _tuned_mm(grad_output, b.transpose(0, 1))
         if need_b:
-            grad_b = _tuned_mm(a.transpose(0, 1), grad_output).to(b.dtype)
+            grad_b = _tuned_mm(a.transpose(0, 1), grad_output)
     return grad_a, grad_b
 
 
