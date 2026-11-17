@@ -388,15 +388,10 @@ def _resolve_range(inp, range_, N, acc_dtype):
     # from the non-finite check by ``rows < real_M``.
     padded_M = triton.cdiv(M, BLOCK_M) * BLOCK_M
     if padded_M != M:
-        inp = torch.cat(
-            [
-                inp,
-                torch.full(
-                    (padded_M - M, N), float("nan"), dtype=inp.dtype, device=inp.device
-                ),
-            ],
-            dim=0,
-        )
+        padded = torch.empty((padded_M, N), dtype=inp.dtype, device=inp.device)
+        padded[:M].copy_(inp)
+        padded[M:].fill_(float("nan"))
+        inp = padded
     # Per-column lowest-non-finite flag (sentinel N = all finite). No cross-
     # program atomic is used; the host reduces the N tiny scalars instead.
     nonfinite_flags = torch.full((N,), N, dtype=torch.int32, device=inp.device)
@@ -530,7 +525,11 @@ def _histogramdd_from_bin_cts_impl(
     rights_host = rights.detach().cpu().tolist()
     edges_host = torch.full((N, max_edges), float("inf"), dtype=acc_dtype)
     for d in _builtins.range(N):
-        e = torch.linspace(
+        # Host-side edge table: ATen materialises its bin boundaries with
+        # linspace, so reusing the same call is what keeps the edges
+        # bit-identical. Only N * (bins + 1) scalars are built here; the
+        # histogram itself is accumulated by the Triton kernel below.
+        e = torch.linspace(  # allow-torch-compute: ATen-bit-exact edges
             lefts_host[d], rights_host[d], bins_list[d] + 1, dtype=acc_dtype
         )
         edges_host[d, : bins_list[d] + 1] = e
@@ -589,24 +588,16 @@ def _histogramdd_from_bin_cts_impl(
         # range and contribute nothing.
         padded_M = triton.cdiv(M, BLOCK_SIZE) * BLOCK_SIZE
         if padded_M != M:
-            pad_rows = padded_M - M
-            inp = torch.cat(
-                [
-                    inp,
-                    torch.full(
-                        (pad_rows, N), float("nan"), dtype=inp.dtype, device=inp.device
-                    ),
-                ],
-                dim=0,
-            )
+            padded = torch.empty((padded_M, N), dtype=inp.dtype, device=inp.device)
+            padded[:M].copy_(inp)
+            padded[M:].fill_(float("nan"))
+            inp = padded
             if has_weight:
-                weight = torch.cat(
-                    [
-                        weight,
-                        torch.zeros(pad_rows, dtype=weight.dtype, device=weight.device),
-                    ],
-                    dim=0,
+                padded_weight = torch.zeros(
+                    padded_M, dtype=weight.dtype, device=weight.device
                 )
+                padded_weight[:M].copy_(weight)
+                weight = padded_weight
         weight_ptr = (
             weight if has_weight else torch.empty(1, dtype=inp.dtype, device=inp.device)
         )
