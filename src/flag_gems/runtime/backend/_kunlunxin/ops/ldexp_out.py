@@ -24,9 +24,16 @@ provably equivalent to full saturation for every finite input of the compute
 dtype, which removes any branch from the hot path.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 _MAXDIM = 8
 
@@ -128,6 +135,7 @@ def _apply(x, n, F64: tl.constexpr, F16C: tl.constexpr):
 # ---------------------------------------------------------------------------
 
 
+@libentry()
 @triton.jit
 def _ldexp_flat(
     x_ptr,
@@ -179,6 +187,7 @@ def _ldexp_flat(
 # ---------------------------------------------------------------------------
 
 
+@libentry()
 @triton.jit
 def _ldexp_gen(
     x_ptr,
@@ -224,6 +233,7 @@ def _ldexp_gen(
     ESCALAR: tl.constexpr,
     NS: tl.constexpr,
     F16C: tl.constexpr,
+    REAL_TO_COMPLEX: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -286,6 +296,10 @@ def _ldexp_gen(
     else:
         n = _exp_i32(tl.load(e_ptr + ei, mask=m, other=0), E64)
     y = _apply(x, n, F64, F16C)
+    if REAL_TO_COMPLEX:
+        # The real view has even strides for all logical dimensions and a
+        # unit component stride, so odd output offsets are imaginary lanes.
+        y = tl.where(oi % 2 == 0, y, 0.0)
     tl.store(o_ptr + oi, y.to(o_ptr.dtype.element_ty), mask=m)
 
 
@@ -385,8 +399,6 @@ def _run(self, other, out):
         )
 
     sdt = self.dtype
-    if not (sdt.is_floating_point or sdt.is_complex):
-        raise RuntimeError("ldexp: not implemented for '{}'".format(sdt))
     if exp_t is not None and (exp_t.dtype.is_floating_point or exp_t.dtype.is_complex):
         raise RuntimeError("ldexp: exponent must be an integral tensor")
 
@@ -395,14 +407,9 @@ def _run(self, other, out):
         comp64 = sdt == torch.complex128
     else:
         comp64 = sdt == torch.float64
-    if odt.is_complex and not sdt.is_complex:
-        raise RuntimeError(
-            "result type {} can't be cast to the desired output type {}".format(
-                sdt, odt
-            )
-        )
     # Shape/dtype metadata or a storage-sharing view; no tensor computation.
-    if not torch.can_cast(sdt, odt):  # allow-torch-compute
+    result_dtype = sdt if sdt.is_floating_point or sdt.is_complex else torch.float32
+    if not torch.can_cast(result_dtype, odt):  # allow-torch-compute
         raise RuntimeError(
             "result type {} can't be cast to the desired output type {}".format(
                 sdt, odt
@@ -426,7 +433,10 @@ def _run(self, other, out):
     cplx = out.is_complex()
     if cplx:
         # Shape/dtype metadata or a storage-sharing view; no tensor computation.
-        x_t = torch.view_as_real(self)  # allow-torch-compute
+        if sdt.is_complex:
+            x_t = torch.view_as_real(self)  # allow-torch-compute
+        else:
+            x_t = self
         # Shape/dtype metadata or a storage-sharing view; no tensor computation.
         o_t = torch.view_as_real(out)  # allow-torch-compute
     else:
@@ -496,7 +506,12 @@ def _run(self, other, out):
     # ---- generic path -----------------------------------------------------
     rank = len(oshape)
     if cplx:
-        xs = _bstride(x_t.shape[:-1], x_t.stride()[:-1], rank) + [int(x_t.stride()[-1])]
+        if sdt.is_complex:
+            xs = _bstride(x_t.shape[:-1], x_t.stride()[:-1], rank) + [
+                int(x_t.stride()[-1])
+            ]
+        else:
+            xs = _bstride(x_t.shape, x_t.stride(), rank) + [0]
         os_ = _bstride(o_t.shape[:-1], o_t.stride()[:-1], rank) + [
             int(o_t.stride()[-1])
         ]
@@ -538,6 +553,7 @@ def _run(self, other, out):
         ESCALAR=(exp_t is None),
         NS=(scalar_exp if scalar_exp is not None else 0),
         F16C=f16c,
+        REAL_TO_COMPLEX=cplx and not sdt.is_complex,
         num_warps=warps,
     )
     return out
@@ -549,6 +565,7 @@ def _run(self, other, out):
 
 
 def ldexp_out(self, other, out=None, **kwargs):
+    logger.debug("GEMS_KUNLUNXIN LDEXP_OUT")
     if out is None:
         out = kwargs.pop("out", None)
     if kwargs:
@@ -557,4 +574,5 @@ def ldexp_out(self, other, out=None, **kwargs):
         )
     if out is None:
         raise TypeError("ldexp_out() missing 1 required keyword-only argument: 'out'")
-    return _run(self, other, out)
+    with torch_device_fn.device(self.device):
+        return _run(self, other, out)

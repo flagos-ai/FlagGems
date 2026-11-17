@@ -65,15 +65,14 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
 @pytest.mark.ldexp_out
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_ldexp_real_operands_complex_out(dtype):
-    if flag_gems.vendor_name == "kunlunxin" and (True):
-        pytest.skip(
-            "Kunlunxin native complex out values or requested complex128 dtype are unsupported"
-        )
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        pytest.skip("Kunlunxin does not preserve complex128 tensors")
     inp = torch.randn(17, device=flag_gems.device)
     other = torch.randint(-3, 4, (17,), device=inp.device)
     reference_input = utils.to_reference(inp)
     reference = torch.empty(17, dtype=dtype, device=reference_input.device)
-    if cfg.TO_CPU:
+    if cfg.TO_CPU or flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin native out casting returns incorrect complex64 values.
         # PyTorch 2.11 CPU integer-exponent out kernels assert internally when
         # casting a real result to complex; validate the values via functional
         # ldexp plus the output cast. CUDA still exercises the native overload.
@@ -356,3 +355,27 @@ def test_ldexp_out_rejects_invalid_dtype():
     out = torch.empty((17,), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ldexp_out(self, other, out=out)
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("input_dtype", [torch.bool, torch.int32, torch.float32])
+@pytest.mark.parametrize("strided", [False, True])
+def test_ldexp_out_real_to_complex_regression(input_dtype, strided):
+    inp = torch.tensor(
+        [[1, 0, 1], [0, 1, 1]], dtype=input_dtype, device=flag_gems.device
+    )
+    exponent = torch.tensor([2, -2, 3], dtype=torch.int32, device=inp.device)
+    if strided:
+        inp = inp.T
+        exponent = exponent[:, None]
+        out = torch.empty((2, 3), dtype=torch.complex64, device=inp.device).T
+    else:
+        out = torch.empty(inp.shape, dtype=torch.complex64, device=inp.device)
+    # Functional native computation plus a cast avoids native out-casting bugs.
+    expected = torch.ldexp(inp.cpu(), exponent.cpu()).to(torch.complex64)
+    result = flag_gems.ldexp_out(inp, exponent, out=out)
+    assert result is out
+    assert result.dtype == torch.complex64
+    assert result.device == inp.device
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
