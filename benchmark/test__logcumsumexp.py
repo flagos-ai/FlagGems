@@ -35,18 +35,53 @@ def _logcumsumexp_case_fn(shape, dtype):
 
 def _logcumsumexp_build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
-    if (
-        flag_gems.vendor_name == "mthreads"
-        and dtype == torch.bfloat16
-        and torch.Size(shape).numel() != 0
-    ):
-        pytest.skip("MUSA native logcumsumexp does not support nonempty BFloat16")
     return next(_logcumsumexp_input_fn(shape, dtype, device))
+
+
+def _musa_bf16_without_native(inp):
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.dtype == torch.bfloat16
+        and inp.numel() != 0
+    )
+
+
+class LogcumsumexpBenchmark(base.GenericBenchmark2DOnly):
+    def build_inputs(self, case):
+        inputs = super().build_inputs(case)
+        args, kwargs = self.unpack_to_args_kwargs(inputs)
+        # Candidate-only traversal does not consume a native timing record.
+        if _musa_bf16_without_native(args[0]) and not (
+            base.Config.preflight_only or base.Config.profile_only
+        ):
+            if base.Config.reference_only:
+                pytest.skip("MUSA native logcumsumexp lacks nonempty BFloat16")
+            context = self._capture_external_baseline(args, kwargs)
+            if context is not None:
+                baseline, call, named_call = context
+                record, _, _ = baseline.lookup(
+                    self.op_name, case.dtype, call, named_call, target_device=self.device
+                )
+                if record is not None:
+                    return inputs
+            pytest.skip("MUSA native logcumsumexp lacks BFloat16 and no matching baseline is loaded")
+        return inputs
+
+    def _measure_input(self, inputs, case_id=None):
+        args, _ = self.unpack_to_args_kwargs(inputs)
+        if not _musa_bf16_without_native(args[0]):
+            return super()._measure_input(inputs, case_id=case_id)
+        previous = base.Config.skip_native
+        base.Config.skip_native = True
+        try:
+            return super()._measure_input(inputs, case_id=case_id)
+        finally:
+            base.Config.skip_native = previous
 
 
 @pytest.mark.underscore_logcumsumexp
 def test__logcumsumexp():
-    bench = base.GenericBenchmark2DOnly(
+    bench = LogcumsumexpBenchmark(
         op_name="_logcumsumexp",
         case_fn=_logcumsumexp_case_fn,
         build_inputs_fn=_logcumsumexp_build_inputs_fn,
