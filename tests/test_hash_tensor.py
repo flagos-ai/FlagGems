@@ -23,7 +23,9 @@ from . import accuracy_utils as utils
 def _reference_hash(inp, dim, *, keepdim, mode):
     result = torch.ops.aten.hash_tensor(inp, dim, keepdim=keepdim, mode=mode)
     if flag_gems.vendor_name == "iluvatar" and result.dtype == torch.uint32:
-        pytest.skip("Iluvatar ATen hash_tensor returns uint32; this test requires uint64")
+        pytest.skip(
+            "Iluvatar ATen hash_tensor returns uint32; this test requires uint64"
+        )
     return result
 
 

@@ -45,7 +45,9 @@ class MixedDtypesLinearBenchmark(base.Benchmark):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_gems(
-            lambda inp, w, s, **kwargs: flag_gems.mixed_dtypes_linear(inp, w, s, **kwargs)
+            lambda inp, w, s, **kwargs: flag_gems.mixed_dtypes_linear(
+                inp, w, s, **kwargs
+            )
         )
 
     def set_shapes(self, shape_file_path=None):
@@ -54,7 +56,6 @@ class MixedDtypesLinearBenchmark(base.Benchmark):
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
             yield from mixed_dtypes_linear_input_fn(shape, cur_dtype, self.device)
-
 
 
 def mixed_dtypes_linear_input_fn(shape, dtype, device):

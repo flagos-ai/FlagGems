@@ -36,7 +36,9 @@ class SpecialMultigammalnBenchmark(base.UnaryPointwiseBenchmark):
         (shape,) = plan.builder_args
         p = plan.params["p"]
         torch.manual_seed(0)
-        inp = torch.rand(shape, dtype=case.dtype, device=self.device) + (p - 1) / 2 + 1.0
+        inp = (
+            torch.rand(shape, dtype=case.dtype, device=self.device) + (p - 1) / 2 + 1.0
+        )
         return inp, p
 
 
