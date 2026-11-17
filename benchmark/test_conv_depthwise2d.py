@@ -27,6 +27,8 @@ import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
+from .test_linalg_cond import _aten_qualify_metadata as _qualify_legacy_metadata
+from .test_linalg_cond import _aten_read_bytes as _read_legacy_baseline
 
 CASES = [
     (32, 4, 8, 8, 2, 2, 1, 0, 1),
@@ -34,6 +36,17 @@ CASES = [
     (1, 64, 224, 224, 3, 3, 1, 1, 1),
     (1, 128, 112, 112, 5, 5, 2, 2, 1),
 ]
+
+_MUSA_MASTER_CASES = [
+    (32, 32, 64, 64, 3, 3, 1, 1, 1),
+    (16, 64, 128, 128, 3, 3, 2, 1, 1),
+    (8, 128, 56, 56, 5, 5, 1, 2, 1),
+    (4, 256, 28, 28, 3, 3, 1, 1, 2),
+    (2, 512, 14, 14, 3, 3, 1, 1, 1),
+]
+_MASTER_H800_SHA = "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3"
+_MASTER_H800_SOURCE = "ccc0508d81b3b10283a62dab73fc05e256093848"
+_MASTER_COLLECTION_OP = "conv_depthwise2d"
 
 _H800_SHA = "994c96eb30805b319672606cbe6e5bdbeab266a4bce3dd0eeb6b7c75262eeebb"
 _H800_SOURCE = "4b01b9b2480f6d0ac99aef8c3d45c79029918b39"
@@ -181,8 +194,18 @@ class _ExternalMetrics(base.BenchmarkMetrics):
 
 
 class ConvDepthwise2DBenchmark(OperatorBenchmark):
+    @property
+    def _uses_musa_core(self):
+        return (
+            flag_gems.vendor_name == "mthreads"
+            and base.Config.bench_level == consts.BenchLevel.CORE
+        )
+
     def set_shapes(self, shape_file_path=None):
-        if (
+        if self._uses_musa_core:
+            self.shapes = list(dict.fromkeys([*CASES, *_MUSA_MASTER_CASES]))
+            self.shape_desc = "N, C, H, W, Kh, Kw, stride, padding, dilation"
+        elif (
             flag_gems.vendor_name in ("enflame", "mthreads", "kunlunxin")
             or os.environ.get("FLAGGEMS_NV_BASELINE")
         ):
@@ -232,6 +255,43 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
             ),
             ("pr43:op_depthwise_current_core_h800_baseline"),
         )
+
+    @cached_property
+    def _master_external_records(self):
+        path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
+        source_id = "legacy:pytorch-h800-primary"
+        payload = _read_legacy_baseline(path, source_id)
+        if hashlib.sha256(payload).hexdigest() != _MASTER_H800_SHA:
+            raise ValueError("Expected the qualified historical H800 depthwise archive")
+        data = json.loads(payload)
+        task = data["_collection"]["tasks"][_MASTER_COLLECTION_OP]
+        environment = data["_environments"][str(task["device"])]
+        collection = data[_MASTER_COLLECTION_OP]
+        if (
+            task["status"] != "completed"
+            or task["returncode"] != 0
+            or environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
+            or environment["source"]["git_commit"] != _MASTER_H800_SOURCE
+            or environment["source"]["git_dirty"] is not False
+            or data["_collection"]["configuration"]["repo"] != "pytorch"
+            or collection["native_api"] != "ops." + _MASTER_COLLECTION_OP
+        ):
+            raise ValueError("Incomplete historical H800 depthwise provenance")
+        records = collection["shapes"]
+        if sum(len(ds) for ds in records.values()) != 15:
+            raise ValueError("Expected all fifteen master depthwise timing records")
+        return records, _qualify_legacy_metadata(
+            dict(
+                kind="external_nvidia",
+                artifact=str(path),
+                artifact_sha256=_MASTER_H800_SHA,
+                collection_task=task,
+                device_environment=environment,
+                ratio="H800 native latency_ms / target candidate latency_ms",
+            ),
+            source_id,
+        )
+
 
     def _import_latency(self, args, kwargs):
         if len(args) != 7 or kwargs:
@@ -283,7 +343,12 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
                 seed=0, input="torch.randn", weight="torch.randn", bias=None
             ),
         )
-        records, source = self._external_records
+        if self._uses_musa_core and tuple(descriptor) in _MUSA_MASTER_CASES:
+            config["source_commit"] = "9d57a23b4386bd669152a935fe88a96db907da7c"
+            del config["input_recipe"]
+            records, source = self._master_external_records
+        else:
+            records, source = self._external_records
         matches = [
             r
             for ds in records.values()
