@@ -38,6 +38,11 @@ QINT_ZERO_POINTS = {torch.quint8: 100, torch.qint8: -8, torch.qint32: 0}
 
 
 def _make_qinput(shape, device, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE):
+    if flag_gems.vendor_name == "mthreads" and torch.device(device).type == "musa" and 0 in shape:
+        # An empty quantized tensor needs metadata only.
+        return torch._empty_affine_quantized(
+            shape, scale=scale, zero_point=zero_point, dtype=dtype, device=device
+        )
     x = torch.randn(shape, device=device)
     return torch.quantize_per_tensor(x, scale=scale, zero_point=zero_point, dtype=dtype)
 
@@ -412,10 +417,9 @@ def test_quantized_max_pool3d_empty_batch():
 @pytest.mark.quantized_max_pool3d
 def test_quantized_max_pool3d_rejects_non_quantized():
     """A plain float tensor is not a valid input."""
+    inp = torch.randn((1, 2, 6, 6, 6), device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        flag_gems.quantized_max_pool3d(
-            torch.randn(1, 2, 6, 6, 6, device=flag_gems.device), kernel_size=2
-        )
+        flag_gems.quantized_max_pool3d(inp, kernel_size=2)
 
 
 @pytest.mark.quantized_max_pool3d
