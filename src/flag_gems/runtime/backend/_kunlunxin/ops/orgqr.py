@@ -46,6 +46,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from .copy import copy_
+
 logger = logging.getLogger(__name__)
 
 
@@ -263,4 +265,25 @@ def orgqr(self, input2):
                 o_cs,
                 BLOCK_M,
             )
+    return out
+
+
+def orgqr_out(input, tau, *, out):
+    """Compute Q in input precision, then write into the caller's output view."""
+    logger.debug("GEMS_KUNLUNXIN ORGQR_OUT")
+    if out.device != input.device:
+        raise RuntimeError("orgqr: input and out must be on the same device")
+    # Dtype metadata query; no tensor computation.
+    cast_ok = torch.can_cast(input.dtype, out.dtype)  # allow-torch-compute
+    if not cast_ok:
+        raise RuntimeError(
+            f"orgqr: result dtype {input.dtype} cannot be safely cast to {out.dtype}"
+        )
+    with torch_device_fn.device(input.device):
+        # Complete reads before writing out, including when it aliases input.
+        # The workspace also avoids rounding each reflector update to out.dtype.
+        result = orgqr(input, tau)
+        if out.shape != input.shape:
+            out.resize_(input.shape)
+        copy_(out, result)
     return out
