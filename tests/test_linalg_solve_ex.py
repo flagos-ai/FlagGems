@@ -54,6 +54,19 @@ def _make_solve_ex_inputs(shape, k, dtype, device, left=True):
     return A, B
 
 
+def _reference_solve_ex(matrix, rhs):
+    if flag_gems.vendor_name == "mthreads" and matrix.device.type == "cpu":
+        # Fixtures calling this path are nonsingular or empty. The singular
+        # error contract is checked separately through the candidate.
+        import numpy as np
+
+        values = np.linalg.solve(matrix.detach().numpy(), rhs.detach().numpy())
+        result = torch.from_numpy(values)
+        info = torch.zeros(matrix.shape[:-2], dtype=torch.int32, device=matrix.device)
+        return result, info
+    return torch.linalg.solve_ex(matrix, rhs)
+
+
 @pytest.mark.linalg_solve_ex
 @pytest.mark.parametrize("shape", SOLVE_EX_SHAPES)
 @pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
@@ -63,9 +76,10 @@ def test_linalg_solve_ex(shape, dtype):
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
-    ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
+    ref_out, ref_info = _reference_solve_ex(ref_A, ref_B)
     res_out, res_info = flag_gems.linalg_solve_ex(A, B)
 
+    assert res_out.device == res_info.device == A.device
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert torch.equal(res_info, ref_info.to(res_info.device))
 
@@ -81,9 +95,10 @@ def test_linalg_solve_ex_batched(batch_shape, n, k, dtype):
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
-    ref_out, ref_info = torch.linalg.solve_ex(ref_A, ref_B)
+    ref_out, ref_info = _reference_solve_ex(ref_A, ref_B)
     res_out, res_info = flag_gems.linalg_solve_ex(A, B)
 
+    assert res_out.device == res_info.device == A.device
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert torch.equal(res_info, ref_info.to(res_info.device))
 
