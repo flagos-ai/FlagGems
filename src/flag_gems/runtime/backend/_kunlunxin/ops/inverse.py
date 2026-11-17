@@ -40,6 +40,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from torch.linalg import LinAlgError
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -289,7 +290,7 @@ def _inverse_kernel_impl(A):
         # A zero pivot at any step means at least one matrix is singular; raise
         # LinAlgError (matching torch.inverse) instead of returning inf/NaN.
         if sing.any().item():
-            raise torch.linalg.LinAlgError("inverse: the input matrix is singular")
+            raise LinAlgError("inverse: the input matrix is singular")
         # After the loop the result lives in the buffer written by the last
         # iteration (k = n - 1).  Even k writes to X1 (xdst = X1 for even k),
         # odd k writes to X0, so the final buffer is X0 when n is even

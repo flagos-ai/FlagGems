@@ -171,6 +171,10 @@ def test_inverse_unsupported_dtype():
 
 @pytest.mark.inverse
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="singular detection is a Kunlunxin-only backend behaviour",
+)
 def test_inverse_singular(dtype):
     # Singular inputs must raise LinAlgError (matching torch.inverse), not
     # silently return an inf/NaN-filled result.  This rank-1 matrix only hits
