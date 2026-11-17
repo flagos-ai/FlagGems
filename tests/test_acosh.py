@@ -27,11 +27,9 @@ from . import accuracy_utils as utils
 # outside it: x < 1 produces NaN (x == 1 produces 0). Those cases pin the
 # kernel's out-of-domain path; the comparison runs with equal_nan=True.
 #
-# Out-of-domain magnitudes are clamped to |x| <= 1000: the kernel computes
-# acosh with the naive formula log(x + sqrt(x*x - 1)), which loses the NaN
-# contract of ATen through catastrophic cancellation for large |x|
-# (e.g. acosh(-1e4) gives -inf instead of NaN). |x| <= 1000 was verified
-# bit-exact against ATen across all supported dtypes.
+# The kernel guards its domain explicitly (see src/flag_gems/ops/acosh.py),
+# so the full unbounded grid agrees with ATen's NaN contract and no
+# magnitude cap is needed.
 #
 # Shapes are the spec's REQUIRED_SHAPES (0-5 dims). dtypes cover the float
 # sweep (fp16/bf16/fp32), the fp8 sweep (e4m3/e5m2, supported by the Triton
@@ -58,9 +56,9 @@ ACOSH_VALUE_RANGES = [
     ("[min,0]", None, 0.0),
 ]
 
-# The kernel's out-of-domain path diverges from ATen for large |x| (see the
-# file comment above); 1000 is the largest magnitude verified to agree.
-OUT_OF_DOMAIN_CAP = 1000.0
+# FP8_DTYPES is arch-gated in accuracy_utils.py (sm89+): Triton's CUDA backend
+# only compiles fp8e4nv pointers on sm89+.
+FP8_DTYPES = utils.FP8_DTYPES
 
 FLOAT_DTYPES = [
     torch.float16,
@@ -68,34 +66,12 @@ FLOAT_DTYPES = [
     torch.float32,
 ]
 
-# FP8_DTYPES is arch-gated in accuracy_utils.py (sm89+): Triton's CUDA backend
-# only compiles fp8e4nv pointers on sm89+.
-FP8_DTYPES = utils.FP8_DTYPES
-
 INT_DTYPES = [
     torch.int8,
     torch.uint8,
     torch.int32,
     torch.int64,
 ]
-
-
-def _clamp_out_of_domain_bound(value, side):
-    """Keep out-of-domain bounds inside the kernel's verified agreement region.
-
-    ``side`` is ``low`` or ``high``: the out-of-domain side of the range (x < 1)
-    is clamped to |x| <= OUT_OF_DOMAIN_CAP. A ``None`` bound means the dtype
-    extreme, so it resolves to the cap itself (the in-domain side is capped
-    too — ATen's NaN contract extends to arbitrarily large out-of-domain
-    magnitudes, which the kernel's formula does not preserve).
-    """
-    if side == "low":
-        if value is None:
-            return -OUT_OF_DOMAIN_CAP
-        return max(value, -OUT_OF_DOMAIN_CAP)
-    if value is None:
-        return OUT_OF_DOMAIN_CAP
-    return min(value, OUT_OF_DOMAIN_CAP)
 
 
 def _make_float_input(dtype, shape, low, high):
@@ -125,7 +101,9 @@ def _make_int_input(dtype, shape, low, high):
     implementation) and promoted by acosh to float32, matching ATen.
     torch.randint rejects bounds outside the dtype's own range, so the
     bounds are clamped to the representable window first (e.g. uint8
-    cannot hold -1, so [-1,0] degenerates to [0,0]).
+    cannot hold -1, so [-1,0] degenerates to [0,0]). For int64 the exclusive
+    upper bound (high + 1) would overflow the signed window torch.randint
+    samples in, so the inclusive form is clamped to iinfo.max as well.
     """
     if high is None:
         high = torch.iinfo(dtype).max
@@ -135,6 +113,7 @@ def _make_int_input(dtype, shape, low, high):
     low = max(int(low), int(info.min))
     high = min(int(high), int(info.max))
     low = min(low, high)
+    high = min(high, torch.iinfo(torch.int64).max - 1)
     inp = torch.randint(low, high + 1, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
     )
@@ -151,11 +130,7 @@ def _make_int_input(dtype, shape, low, high):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + FP8_DTYPES)
 @pytest.mark.parametrize("value_range", ACOSH_VALUE_RANGES)
 def test_acosh(shape, dtype, value_range):
-    range_name, low, high = value_range
-    # Out-of-domain magnitudes are capped so inputs stay where the kernel
-    # matches ATen's NaN contract (see the file comment above).
-    low = _clamp_out_of_domain_bound(low, "low")
-    high = _clamp_out_of_domain_bound(high, "high")
+    _, low, high = value_range
     inp = _make_float_input(dtype, shape, low, high)
     if dtype in FP8_DTYPES:
         # FP8 has no ATen acosh kernel on any backend; the reference is the
@@ -186,9 +161,7 @@ def test_acosh(shape, dtype, value_range):
 @pytest.mark.parametrize("value_range", ACOSH_VALUE_RANGES)
 def test_acosh_int_promote(shape, dtype, value_range):
     # Integer inputs are promoted to float32 by acosh, exactly as ATen does.
-    range_name, low, high = value_range
-    low = _clamp_out_of_domain_bound(low, "low")
-    high = _clamp_out_of_domain_bound(high, "high")
+    _, low, high = value_range
     inp = _make_int_input(dtype, shape, low, high)
     ref_inp = utils.to_reference(inp)
 
@@ -204,9 +177,7 @@ def test_acosh_int_promote(shape, dtype, value_range):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("value_range", ACOSH_VALUE_RANGES)
 def test_acosh_(shape, dtype, value_range):
-    range_name, low, high = value_range
-    low = _clamp_out_of_domain_bound(low, "low")
-    high = _clamp_out_of_domain_bound(high, "high")
+    _, low, high = value_range
     inp = _make_float_input(dtype, shape, low, high)
     ref_inp = utils.to_reference(inp.clone())
 
@@ -224,9 +195,7 @@ def test_acosh_(shape, dtype, value_range):
 def test_acosh__fp8(shape, dtype, value_range):
     # The in-place kernel accepts fp8 as well; the reference is the float32
     # upcast, compared at fp8 resolution.
-    range_name, low, high = value_range
-    low = _clamp_out_of_domain_bound(low, "low")
-    high = _clamp_out_of_domain_bound(high, "high")
+    _, low, high = value_range
     inp = _make_float_input(dtype, shape, low, high)
     # Snapshot before the in-place call: acosh_ mutates inp, so the reference
     # must be computed from a pre-mutation copy.
@@ -277,18 +246,3 @@ def test_acosh__integer_rejects(shape, dtype):
         inp = torch.randint(0, 3, shape, dtype=dtype, device="cpu").to(flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.acosh_(inp)
-
-
-def _debug_fp8_inplace():
-    import torch as _t
-
-    shape = (16, 128, 64, 60)
-    dtype = _t.float8_e5m2
-    low, high = -1000.0, 0.0
-    values = _t.rand(shape, dtype=_t.float32, device=flag_gems.device)
-    inp = (values * (high - low) + low).to(dtype)
-    snapshot = inp.float().clone()
-    res_out = flag_gems.acosh_(inp)
-    ref_out = _t.acosh(snapshot).to(dtype)
-    print("DBG res nan:", res_out.float().isnan().sum().item())
-    print("DBG ref nan:", ref_out.float().isnan().sum().item())
