@@ -25,7 +25,6 @@ normal execution.
 import pytest
 import torch
 
-import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
@@ -122,7 +121,42 @@ def test__is_any_true():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._is_any_true,
-        gems_op=getattr(flag_gems, "_is_any_true", None),
         dtypes=consts.BOOL_DTYPES,
     )
     bench.run()
+
+
+
+def _master_case_fn(shape, dtype):
+    for strided in (False, True):
+        yield base.BenchmarkCasePlan(
+            shape={"input": shape},
+            params={"strided": strided},
+            builder_args=(shape, strided),
+        )
+
+
+def _build_master_input(plan, dtype, device):
+    (n,), strided = plan.builder_args
+    inp = torch.zeros(n * (2 if strided else 1), dtype=dtype, device=device)
+    if strided:
+        inp = inp[::2]
+    if n:
+        inp[-1] = True
+    return (inp,)
+
+
+class IsAnyTrueMasterBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(0,), (1,), (257,), (65536,), (65537,), (1048576,)]
+
+
+@pytest.mark.underscore_is_any_true
+def test__is_any_true_master():
+    IsAnyTrueMasterBenchmark(
+        op_name="_is_any_true",
+        torch_op=torch.ops.aten._is_any_true.default,
+        case_fn=_master_case_fn,
+        build_inputs_fn=_build_master_input,
+        dtypes=consts.BOOL_DTYPES,
+    ).run()
