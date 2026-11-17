@@ -116,8 +116,8 @@ def test_kaiser_window_periodic(window_length, periodic, dtype):
     ref_out = ref_kaiser_window(
         window_length, periodic=periodic, dtype=dtype, device=device
     )
-    res_out = flag_gems.kaiser_window(
-        window_length, periodic=periodic, dtype=dtype, device=flag_gems.device
+    res_out = flag_gems.kaiser_window_periodic(
+        window_length, periodic, dtype=dtype, device=flag_gems.device
     )
 
     assert res_out.dtype == dtype
@@ -142,12 +142,8 @@ def test_kaiser_window_beta(window_length, periodic, beta, dtype):
     ref_out = ref_kaiser_window(
         window_length, periodic=periodic, beta=beta, dtype=dtype, device=device
     )
-    res_out = flag_gems.kaiser_window(
-        window_length,
-        periodic=periodic,
-        beta=beta,
-        dtype=dtype,
-        device=flag_gems.device,
+    res_out = flag_gems.kaiser_window_beta(
+        window_length, periodic, beta, dtype=dtype, device=flag_gems.device
     )
 
     assert res_out.dtype == dtype
