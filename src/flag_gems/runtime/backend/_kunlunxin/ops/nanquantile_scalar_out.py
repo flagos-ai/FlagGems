@@ -34,9 +34,16 @@ Rank arithmetic is exact 48-bit fixed point: pos = q*(cnt-1),
 rank = pos >> 48, gamma = frac(pos), so floor/ceil cannot drift by a ULP.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 _QSCALE = 1 << 48
 _QOFFS = 1 << 40  # added on the host so the q argument is always int64-typed
@@ -107,6 +114,7 @@ def _key(xs, BITS: tl.constexpr):
         return tl.where(bits >= 0, bits + 32768, -bits - 1)
 
 
+@libentry()
 @triton.jit
 def _nanq_kernel(
     inp_ptr,
@@ -476,9 +484,7 @@ def _next_pow2(v):
 def nanquantile_scalar_out(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ):
-    if isinstance(q, torch.Tensor):
-        q = q.item()
-    q = float(q)
+    logger.debug("GEMS_KUNLUNXIN NANQUANTILE_SCALAR_OUT")
     interp = _INTERP.get(interpolation)
     if interp is None:
         raise ValueError(
@@ -493,10 +499,16 @@ def nanquantile_scalar_out(
         bits = 16
     else:
         raise RuntimeError(
-            "quantile() input tensor must be either float or double dtype (got "
+            "Kunlunxin nanquantile_scalar_out supports float16, bfloat16 and float32; got "
             + str(dt)
             + ")"
         )
+
+    if isinstance(q, torch.Tensor):
+        q = q.item()
+    q = float(q)
+    if not 0.0 <= q <= 1.0:
+        raise RuntimeError("quantile() q must be in the range [0, 1]")
 
     nd = inp.dim()
     if nd == 0:
@@ -565,33 +577,34 @@ def nanquantile_scalar_out(
     # Radix width: 3 bits per pass for long slices (load-call bound), 2 bits for
     # short ones (reduce-site bound).  Threshold from measured per-workload data.
     nbits = 3 if n >= 256 else 2
-    _nanq_kernel[(M,)](
-        inp,
-        out,
-        n,
-        SD,
-        OST,
-        qarg,
-        flat[0],
-        flat[1],
-        flat[2],
-        flat[3],
-        flat[4],
-        flat[5],
-        flat[6],
-        flat[7],
-        flat[8],
-        flat[9],
-        flat[10],
-        flat[11],
-        BLOCK=_BLOCK,
-        MODE=mode,
-        K=K,
-        NDIM=nd,
-        INTERP=interp,
-        BITS=bits,
-        NBITS=nbits,
-        ONE=1 if n == 1 else 0,
-        num_warps=1,
-    )
+    with torch_device_fn.device(inp.device):
+        _nanq_kernel[(M,)](
+            inp,
+            out,
+            n,
+            SD,
+            OST,
+            qarg,
+            flat[0],
+            flat[1],
+            flat[2],
+            flat[3],
+            flat[4],
+            flat[5],
+            flat[6],
+            flat[7],
+            flat[8],
+            flat[9],
+            flat[10],
+            flat[11],
+            BLOCK=_BLOCK,
+            MODE=mode,
+            K=K,
+            NDIM=nd,
+            INTERP=interp,
+            BITS=bits,
+            NBITS=nbits,
+            ONE=1 if n == 1 else 0,
+            num_warps=1,
+        )
     return out
