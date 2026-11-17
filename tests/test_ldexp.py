@@ -26,6 +26,8 @@ from . import conftest as cfg
     "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
 )
 def test_ldexp_integral_exponent_boundaries(dtype, exponent):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin does not preserve FP64 input tensors")
     inp = torch.tensor(
         [2.0 ** (-exponent + 2), 2.0 ** (-exponent + 1), 0.0, float("inf")],
         dtype=dtype,
@@ -90,6 +92,8 @@ def test_ldexp_real_operands_complex_out(dtype):
     "conj_input,conj_other", [(True, False), (False, True), (True, True)]
 )
 def test_ldexp_lazy_conjugation(conj_input, conj_other):
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin native ldexp complex full kernel is not implemented")
     inp = torch.randn(17, dtype=torch.complex64, device=flag_gems.device)
     other = torch.randn_like(inp)
     if conj_input:
@@ -130,6 +134,8 @@ def test_ldexp(shape, dtype):
     ],
 )
 def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (expected_dtype == torch.float64):
+        pytest.skip("Kunlunxin FP64 inputs/results are narrowed to FP32")
     shape = (37, 53)
     if self_dtype == torch.bool:
         self = torch.randint(0, 2, shape, device=flag_gems.device).bool()
@@ -163,6 +169,8 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     ],
 )
 def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
+    if flag_gems.vendor_name == "kunlunxin" and (self_dtype.is_complex):
+        pytest.skip("Kunlunxin native ldexp complex full kernel is not implemented")
     if self_dtype.is_complex and flag_gems.vendor_name in ("ascend", "tsingmicro"):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
@@ -231,6 +239,8 @@ def test_ldexp_special_values(dtype):
     reason="The backend does not support complex tensors",
 )
 def test_ldexp_complex():
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin native ldexp complex full kernel is not implemented")
     self = torch.randn((19, 7), dtype=torch.complex64, device=flag_gems.device)
     other = torch.randn((7,), dtype=torch.complex64, device=flag_gems.device)
     ref_self = utils.to_reference(self, True)
@@ -379,3 +389,41 @@ def test_ldexp_out_real_to_complex_regression(input_dtype, strided):
     assert result.dtype == torch.complex64
     assert result.device == inp.device
     torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.ldexp
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("strided", [False, True])
+def test_ldexp_large_integral_exponents(strided):
+    inp = torch.tensor(
+        [2.0**-126, 2.0**126, 1.0, 1.0, -0.0, -float("inf")],
+        device=flag_gems.device,
+    )
+    exponent = torch.tensor(
+        [128, -128, -(2**40), 2**40, 2**40, -(2**40)],
+        dtype=torch.int64,
+        device=inp.device,
+    )
+    if strided:
+        inp = inp.repeat(2, 1).T
+        exponent = exponent[:, None]
+    actual = flag_gems.ldexp(inp, exponent)
+    expected = torch.tensor([4.0, 0.25, 0.0, float("inf"), -0.0, -float("inf")])
+    if strided:
+        expected = expected[:, None].expand(6, 2)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    assert torch.equal(torch.signbit(actual.cpu()), torch.signbit(expected))
+
+
+@pytest.mark.ldexp
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin limitation")
+@pytest.mark.parametrize("complex_operand", ["self", "other"])
+def test_ldexp_rejects_complex_operands(complex_operand):
+    inp = torch.ones(3, device=flag_gems.device)
+    exponent = torch.ones(3, dtype=torch.int32, device=inp.device)
+    if complex_operand == "self":
+        inp = inp.to(torch.complex64)
+    else:
+        exponent = exponent.to(torch.complex64)
+    with pytest.raises(RuntimeError, match="does not support complex operands"):
+        flag_gems.ldexp(inp, exponent)

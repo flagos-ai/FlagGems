@@ -592,6 +592,7 @@ from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
+from .ldexp import ldexp
 from .ldexp_out import ldexp_out
 from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
@@ -1579,6 +1580,7 @@ __all__ = [
     "layer_norm_backward",
     "lcm",
     "lcm_",
+    "ldexp",
     "ldexp_out",
     "ldl_factor",
     "ldl_factor_ex",
