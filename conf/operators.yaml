@@ -12038,6 +12038,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - beta: '5.4'
 - id: linalg_pinv
   description: Computes the Moore-Penrose pseudoinverse of a matrix via Jacobi SVD.
+    The registered atol_rtol overloads support real floating-point inputs only;
+    complex inputs raise RuntimeError instead of falling back to the native
+    kernel (ATen itself supports complex).
   for:
   - linalg_pinv
   - linalg_pinv.atol_rtol_float

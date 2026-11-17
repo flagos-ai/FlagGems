@@ -127,3 +127,50 @@ def test_linalg_pinv_rejects_complex():
     A = torch.randn(4, 4, dtype=torch.complex64)
     with pytest.raises(RuntimeError, match="complex"):
         flag_gems.linalg_pinv(A)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out_resizes_and_warns(shape, dtype):
+    # A non-empty out buffer with the wrong shape is resized with a warning,
+    # matching ATen's out= contract.
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    out = torch.empty((1, 1), dtype=dtype, device=flag_gems.device)
+    with pytest.warns(UserWarning, match="resized"):
+        res_out = flag_gems.linalg_pinv_out(A, out=out)
+    assert res_out is out
+    assert out.shape == (n, m)
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out_rejects_unsafe_cast(shape, dtype):
+    # float32 -> int32 is not a safe cast, so the out buffer is rejected.
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    out = torch.empty((n, m), dtype=torch.int32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="safely castable"):
+        flag_gems.linalg_pinv_out(A, out=out)
+
+
+@pytest.mark.linalg_pinv
+@pytest.mark.parametrize("shape", PINV_SHAPES)
+@pytest.mark.parametrize("dtype", PINV_DTYPES)
+def test_linalg_pinv_out_noncontiguous(shape, dtype):
+    # The kernel result must be copied into a same-shaped non-contiguous out.
+    m, n = shape
+    A = _well_conditioned(m, n, dtype)
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.pinv(ref_A)
+    holder = torch.empty((n, m * 2), dtype=dtype, device=flag_gems.device)
+    out = holder[:, ::2]
+    assert not out.is_contiguous()
+    res_out = flag_gems.linalg_pinv_out(A, out=out)
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)

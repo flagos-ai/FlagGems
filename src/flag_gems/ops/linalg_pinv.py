@@ -30,6 +30,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.can_cast import can_cast
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -670,7 +671,7 @@ def linalg_pinv_out(
             f"the same device, but got result on {out.device} and input on "
             f"{A.device}"
         )
-    if not torch.can_cast(result.dtype, out.dtype):
+    if not can_cast(result.dtype, out.dtype):
         raise RuntimeError(
             "torch.linalg.pinv: Expected result to be safely castable from "
             f"{result.dtype} to {out.dtype}"
