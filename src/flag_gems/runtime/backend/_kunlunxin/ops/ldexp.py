@@ -58,8 +58,8 @@ def _scale_integral(x, n):
     adjusted = tl.where(exponent == 0, 1, exponent)
     # Normalize subnormal significands using integer shifts only. Zero is
     # restored below, so its otherwise meaningless normalized exponent is safe.
-    for shift in tl.static_range(4, -1, -1):
-        step = 1 << shift
+    for bit in tl.static_range(4, -1, -1):
+        step = 1 << bit
         move = significand < (0x800000 >> (step - 1))
         significand = tl.where(move, significand << step, significand)
         adjusted -= tl.where(move, step, 0)
