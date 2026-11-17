@@ -38,9 +38,15 @@ reduce.  Sharing one step across BC=4 adjacent output columns cuts the step coun
 per-call launch overhead and are faster with BC=1, hence the dispatch below.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -51,10 +57,11 @@ def _orgqr_kernel_1(
     m,
     n,
     K,
-    a_bs,
+    BATCH_SHAPE: tl.constexpr,
+    A_BATCH_STRIDES: tl.constexpr,
+    T_BATCH_STRIDES: tl.constexpr,
     a_rs,
     a_cs,
-    t_bs,
     t_cs,
     o_bs,
     o_rs,
@@ -67,8 +74,16 @@ def _orgqr_kernel_1(
     rows = tl.arange(0, BLOCK_M)
     w = tl.where(rows == j, 1.0, 0.0).to(A.dtype.element_ty)
 
-    a_ptr = A + pid_b * a_bs + rows * a_rs
-    t_ptr = TAU + pid_b * t_bs
+    rem = pid_b.to(tl.int64)
+    a_offset = tl.full((), 0, tl.int64)
+    t_offset = tl.full((), 0, tl.int64)
+    for d in tl.static_range(len(BATCH_SHAPE) - 1, -1, -1):
+        index = rem % BATCH_SHAPE[d]
+        rem = rem // BATCH_SHAPE[d]
+        a_offset += index * A_BATCH_STRIDES[d]
+        t_offset += index * T_BATCH_STRIDES[d]
+    a_ptr = A + a_offset + rows * a_rs
+    t_ptr = TAU + t_offset
 
     kmax = tl.minimum(K, j + 1)
     for kk in range(0, kmax):
@@ -98,10 +113,11 @@ def _orgqr_kernel_4(
     m,
     n,
     K,
-    a_bs,
+    BATCH_SHAPE: tl.constexpr,
+    A_BATCH_STRIDES: tl.constexpr,
+    T_BATCH_STRIDES: tl.constexpr,
     a_rs,
     a_cs,
-    t_bs,
     t_cs,
     o_bs,
     o_rs,
@@ -118,8 +134,16 @@ def _orgqr_kernel_4(
     w2 = tl.where(rows == j0 + 2, 1.0, 0.0).to(A.dtype.element_ty)
     w3 = tl.where(rows == j0 + 3, 1.0, 0.0).to(A.dtype.element_ty)
 
-    a_ptr = A + pid_b * a_bs + rows * a_rs
-    t_ptr = TAU + pid_b * t_bs
+    rem = pid_b.to(tl.int64)
+    a_offset = tl.full((), 0, tl.int64)
+    t_offset = tl.full((), 0, tl.int64)
+    for d in tl.static_range(len(BATCH_SHAPE) - 1, -1, -1):
+        index = rem % BATCH_SHAPE[d]
+        rem = rem // BATCH_SHAPE[d]
+        a_offset += index * A_BATCH_STRIDES[d]
+        t_offset += index * T_BATCH_STRIDES[d]
+    a_ptr = A + a_offset + rows * a_rs
+    t_ptr = TAU + t_offset
 
     kmax = tl.minimum(K, j0 + 4)
     for kk in range(0, kmax):
@@ -149,6 +173,7 @@ def _orgqr_kernel_4(
 
 
 def orgqr(self, input2):
+    logger.debug("GEMS_KUNLUNXIN ORGQR")
     A = self
     tau = input2
     if not isinstance(A, torch.Tensor) or not isinstance(tau, torch.Tensor):
@@ -189,9 +214,6 @@ def orgqr(self, input2):
         B *= s
 
     BLOCK_M = triton.next_power_of_2(m)
-    # flat stride of the folded leading (batch) dims; 0 when there are none
-    a_bs = A.stride(-3) if A.dim() > 2 else 0
-    u_bs = tau.stride(-2) if tau.dim() > 1 else 0
     o_bs = out.stride(-3) if out.dim() > 2 else 0
 
     a_rs = A.stride(-2)
@@ -201,41 +223,44 @@ def orgqr(self, input2):
     o_cs = out.stride(-1)
     warps = 1 if BLOCK_M <= 128 else 4
 
-    if n < 32:
-        _orgqr_kernel_1[(B, n)](
-            A,
-            tau,
-            out,
-            m,
-            n,
-            K,
-            a_bs,
-            a_rs,
-            a_cs,
-            u_bs,
-            u_cs,
-            o_bs,
-            o_rs,
-            o_cs,
-            BLOCK_M=BLOCK_M,
-            num_warps=warps,
-        )
-    else:
-        _orgqr_kernel_4[(B, (n + 3) // 4)](
-            A,
-            tau,
-            out,
-            m,
-            n,
-            K,
-            a_bs,
-            a_rs,
-            a_cs,
-            u_bs,
-            u_cs,
-            o_bs,
-            o_rs,
-            o_cs,
-            BLOCK_M,
-        )
+    with torch_device_fn.device(A.device):
+        if n < 32:
+            _orgqr_kernel_1[(B, n)](
+                A,
+                tau,
+                out,
+                m,
+                n,
+                K,
+                tuple(A.shape[:-2]),
+                tuple(A.stride()[:-2]),
+                tuple(tau.stride()[:-1]),
+                a_rs,
+                a_cs,
+                u_cs,
+                o_bs,
+                o_rs,
+                o_cs,
+                BLOCK_M=BLOCK_M,
+                num_warps=warps,
+            )
+        else:
+            _orgqr_kernel_4[(B, (n + 3) // 4)](
+                A,
+                tau,
+                out,
+                m,
+                n,
+                K,
+                tuple(A.shape[:-2]),
+                tuple(A.stride()[:-2]),
+                tuple(tau.stride()[:-1]),
+                a_rs,
+                a_cs,
+                u_cs,
+                o_bs,
+                o_rs,
+                o_cs,
+                BLOCK_M,
+            )
     return out

@@ -192,3 +192,18 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
         torch.orgqr(input, tau, out=cpu_out)
     with pytest.raises(RuntimeError):
         flag_gems.orgqr_out(input, tau, out=cpu_out)
+
+
+@pytest.mark.orgqr
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("n", [5, 32])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_orgqr_noncontiguous_batch(n, layout):
+    input, tau = make_reflectors((4, 3, n + 2, n), torch.float32)
+    if layout == "transpose":
+        input, tau = input.transpose(0, 1), tau.transpose(0, 1)
+    else:
+        input, tau = input[1::2], tau[1::2]
+    reference = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
+    result = flag_gems.orgqr(input, tau)
+    utils.gems_assert_close(result, reference, torch.float32)
