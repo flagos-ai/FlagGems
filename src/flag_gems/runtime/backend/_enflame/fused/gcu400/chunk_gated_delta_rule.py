@@ -25,7 +25,7 @@ from flag_gems.fused.FLA.chunk_gated_delta_direct import (
     can_use_chunk_gated_delta_rule_direct,
     chunk_gated_delta_rule_direct_fwd,
 )
-from flag_gems.ops.max import max_dim as _flaggems_max_dim
+from ...gcu400.ops.max import max_dim as _flaggems_max_dim
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)

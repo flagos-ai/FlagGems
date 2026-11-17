@@ -700,7 +700,7 @@ def _fp8_quantize(
         block_k = block_shape[1]
         assert A.size(-1) % block_k == 0
         if A.ndim == 2 and A.stride(-1) == 1:
-            from flag_gems.ops.per_token_group_quant_fp8 import (
+            from ...gcu400.ops.per_token_group_quant_fp8 import (
                 per_token_group_quant_fp8,
             )
 
