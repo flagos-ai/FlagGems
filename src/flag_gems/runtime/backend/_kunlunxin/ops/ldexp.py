@@ -47,10 +47,9 @@ logger = logging.getLogger(__name__)
 # kernels
 # --------------------------------------------------------------------------- #
 @triton.jit
-def _scale_integral(x, n):
+def _scale_integral_ieee(bits, n):
     # Work on the IEEE representation: device multiplication flushes subnormal
     # inputs and can lose the sign of zero, even when the final value is normal.
-    bits = x.to(tl.float32).to(tl.uint32, bitcast=True)
     sign = bits & 0x80000000
     exponent = ((bits >> 23) & 255).to(tl.int32)
     fraction = bits & 0x7FFFFF
@@ -79,6 +78,23 @@ def _scale_integral(x, n):
     result = sign | magnitude
     result = tl.where((exponent == 255) | ((bits & 0x7FFFFFFF) == 0), bits, result)
     return result.to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _scale_integral(x, n):
+    bits = x.to(tl.float32).to(tl.uint32, bitcast=True)
+    exponent = ((bits >> 23) & 255).to(tl.int32)
+    n = tl.minimum(tl.maximum(n, -378), 378).to(tl.int32)
+    target = exponent + n
+    needs_ieee = (exponent == 0) | (exponent == 255) | (target <= 0) | (target >= 255)
+    # Normal input/output needs only an exponent-field adjustment. Run the
+    # normalization/rounding path for the whole tile only when a lane needs it.
+    if tl.sum(needs_ieee.to(tl.int32), 0) == 0:
+        result = bits + (n.to(tl.uint32) << 23)
+        value = result.to(tl.float32, bitcast=True)
+    else:
+        value = _scale_integral_ieee(bits, n)
+    return value
 
 
 @libentry()
