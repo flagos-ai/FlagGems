@@ -1,92 +1,90 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic
 
+
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def _masked_scale_kernel(
-    input_ptr,
-    mask_ptr,
-    out_ptr,
-    n_elements,
-    scale,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    valid = offsets < n_elements
-    x = tl.load(input_ptr + offsets, mask=valid)
-    m = tl.load(mask_ptr + offsets, mask=valid)
-    res = tl.where(m != 0, x * scale, 0.0)
-    tl.store(out_ptr + offsets, res, mask=valid)
+def _masked_scale_pointwise(input, mask, scale):
+    return tl.where(mask != 0, input * scale, 0.0)
 
 
+@libentry()
 @triton.jit
-def _masked_scale_kernel_nomask(
+def _masked_scale_contiguous_kernel(
     input_ptr,
     mask_ptr,
     out_ptr,
     scale,
+    N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    STREAMING: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    x = tl.load(input_ptr + offsets)
-    m = tl.load(mask_ptr + offsets)
-    res = tl.where(m != 0, x * scale, 0.0)
-    tl.store(out_ptr + offsets, res)
-
-
-@triton.jit
-def _masked_scale_kernel_nomask_stream(
-    input_ptr,
-    mask_ptr,
-    out_ptr,
-    scale,
-    BLOCK_SIZE: tl.constexpr,
-):
-    # Streaming variant: .cg loads bypass L1/L2 caching for single-use
-    # inputs, .cs store marks the output as streaming to avoid write
-    # allocate pollution. Best on very large (>100M element) workloads.
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    x = tl.load(
-        input_ptr + offsets,
-        cache_modifier=".cg",
-        eviction_policy="evict_first",
-    )
-    m = tl.load(
-        mask_ptr + offsets,
-        cache_modifier=".cg",
-        eviction_policy="evict_first",
-    )
-    res = tl.where(m != 0, x * scale, 0.0)
-    tl.store(
-        out_ptr + offsets,
-        res,
-        cache_modifier=".cs",
-        eviction_policy="evict_first",
-    )
+    load_cache: tl.constexpr = ".cg" if STREAMING else ""
+    store_cache: tl.constexpr = ".cs" if STREAMING else ""
+    pid = tl.program_id(0)
+    if N > 2147483647:
+        offsets = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    else:
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if N % BLOCK_SIZE == 0:
+        x = tl.load(input_ptr + offsets, cache_modifier=load_cache)
+        mask = tl.load(mask_ptr + offsets, cache_modifier=load_cache)
+    else:
+        valid = offsets < N
+        x = tl.load(input_ptr + offsets, valid, other=0, cache_modifier=load_cache)
+        mask = tl.load(mask_ptr + offsets, valid, other=0, cache_modifier=load_cache)
+    result = tl.where(mask != 0, x * scale, 0.0)
+    if N % BLOCK_SIZE == 0:
+        tl.store(out_ptr + offsets, result, cache_modifier=store_cache)
+    else:
+        tl.store(out_ptr + offsets, result, offsets < N, cache_modifier=store_cache)
 
 
 def run(input, mask, scale):
+    if not input.is_floating_point():
+        raise ValueError(f"Only floating-point dtype is supported, got {input.dtype}")
+    if (
+        input.shape != mask.shape
+        or not input.is_contiguous()
+        or not mask.is_contiguous()
+    ):
+        return _masked_scale_pointwise(input, mask, scale)
     out = torch.empty_like(input)
-    n_elements = input.numel()
-    scale = float(scale)
-    if n_elements % 1024 == 0:
-        if n_elements >= 100_000_000:
-            grid = (n_elements // 1024,)
-            _masked_scale_kernel_nomask_stream[grid](
-                input, mask, out, scale, BLOCK_SIZE=1024, num_warps=8
+    count = input.numel()
+    if count:
+        # Use the measured streaming configuration for full-memory passes.
+        streaming = count >= 100_000_000
+        block, warps = 1024, 8 if streaming else 4
+        with torch_device_fn.device(input.device):
+            _masked_scale_contiguous_kernel[(triton.cdiv(count, block),)](
+                input,
+                mask,
+                out,
+                float(scale),
+                count,
+                BLOCK_SIZE=block,
+                STREAMING=streaming,
+                num_warps=warps,
             )
-        else:
-            grid = (n_elements // 1024,)
-            _masked_scale_kernel_nomask[grid](input, mask, out, scale, BLOCK_SIZE=1024)
-    else:
-        grid = (triton.cdiv(n_elements, 1024),)
-        _masked_scale_kernel[grid](input, mask, out, n_elements, scale, BLOCK_SIZE=1024)
     return out
 
 
-# Alias for FlagGems import convention
 masked_scale = run
