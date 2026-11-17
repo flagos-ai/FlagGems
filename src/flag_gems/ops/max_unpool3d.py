@@ -209,6 +209,7 @@ class MaxUnpool3dFunction(torch.autograd.Function):
         return (grad_input, None, None, None, None, None)
 
 
+@libentry()
 @triton.jit
 def max_unpool3d_backward_staged_kernel(
     grad_output_ptr,
@@ -246,6 +247,7 @@ def max_unpool3d_backward_staged_kernel(
     tl.store(grad_input_ptr + offsets, grad, mask=mask)
 
 
+@libentry()
 @triton.jit
 def max_unpool3d_backward_kernel(
     grad_output_ptr,
