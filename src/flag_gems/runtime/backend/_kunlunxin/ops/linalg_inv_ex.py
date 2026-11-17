@@ -18,10 +18,16 @@ The generic ``_gj_inv_kernel`` keeps a ``BLOCK_N``-by``2*BLOCK_N`` augmented
 register tile live across a serial pivot loop; the ``TritonXPULegalize`` MLIR
 pipeline crashes on that shape/dependency combination on this backend.
 
-The inverse is computed exactly as in the ``linalg_inv`` override (LU factor +
-column substitution).  ``info`` is recovered from the U diagonal of the factors:
-a zero diagonal element at index ``k`` means the ``k``-th pivot vanished, and
-``info`` stores ``k + 1`` (LAPACK ordering) for the first such index, else 0.
+This override reuses the two pieces that already ship on the backend:
+
+* ``_linalg_lu_factor`` — the ``linalg_lu_factor`` override (pure Triton);
+* ``linalg_lu_solve`` — the ``linalg_lu_solve`` override.
+
+``A^-1`` is obtained by solving ``A X = I`` column by column, so no register
+tile survives across the pivot loop.  ``info`` is recovered from the U diagonal
+of the factors: a zero diagonal element at index ``k`` means the ``k``-th pivot
+vanished, and ``info`` stores ``k + 1`` (LAPACK ordering) for the first such
+index, else 0.
 """
 
 import logging
@@ -36,11 +42,13 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from .linalg_lu_factor import _linalg_lu_factor
-from .linalg_lu_solve import _xpu_identity_rhs, _xpu_lu_solve_impl
+from .linalg_lu_solve import linalg_lu_solve
 
 logger = logging.getLogger(__name__)
 
 LinalgInvExResult = namedtuple("LinalgInvExResult", ["inverse", "info"])
+
+_IDENTITY_BLOCK = 1024
 
 
 @libentry()
@@ -76,6 +84,33 @@ def _lu_info_flag_kernel(INFO, FLAG, B, BLOCK_B: tl.constexpr):
     tl.store(FLAG, (acc != 0).to(tl.int32))
 
 
+@libentry()
+@triton.jit
+def _xpu_eye_kernel(RHS, n, total, BLOCK: tl.constexpr):
+    """Fill a contiguous ``(batch, n, n)`` buffer with identity matrices."""
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    row = (offs // n) % n
+    value = tl.where(offs % n == row, 1.0, 0.0)
+    tl.store(RHS + offs, value.to(RHS.dtype.element_ty), mask=offs < total)
+
+
+def _xpu_identity_rhs(n, batch, dtype, device):
+    """Contiguous ``(batch, n, n)`` identity built on device.
+
+    The inverse is the solution of ``A X = I``, so the RHS has to be
+    materialised.  Building it directly as one contiguous buffer avoids both a
+    separate ``torch.eye(...).expand(...)`` creation call and the copy that
+    making it contiguous would otherwise cost.
+    """
+    rhs = torch.empty((batch, n, n), dtype=dtype, device=device)
+    total = rhs.numel()
+    with torch_device_fn.device(device):
+        _xpu_eye_kernel[(triton.cdiv(total, _IDENTITY_BLOCK),)](
+            rhs, n, total, BLOCK=_IDENTITY_BLOCK, num_warps=4
+        )
+    return rhs
+
+
 def linalg_inv_ex(A, *, check_errors=False):
     logger.debug("GEMS_KUNLUNXIN LINALG_INV_EX")
 
@@ -96,7 +131,7 @@ def linalg_inv_ex(A, *, check_errors=False):
     # Solve A X = I; each RHS column of X is a column of A^-1.
     rhs = _xpu_identity_rhs(n, batch, A_work.dtype, A_work.device)
     with torch_device_fn.device(A.device):
-        inv = _xpu_lu_solve_impl(LU_work, piv_work, rhs, batch, n, n)
+        inv = linalg_lu_solve(LU_work, piv_work, rhs)
         _lu_diag_info_kernel[(batch,)](
             LU_work,
             info.reshape(batch),
