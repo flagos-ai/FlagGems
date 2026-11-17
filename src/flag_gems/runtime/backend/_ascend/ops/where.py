@@ -211,12 +211,16 @@ def where_self_out(condition, self, other, out=None):
         c.dtype == torch.bool
     ), f"where expected condition to be a boolean tensor, but got a tensor with dtype {condition.dtype}"
 
-    if out is None:
+    try:
         out_shape = broadcast_shapes([c.shape, a.shape, b.shape])
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    if out is None:
         out = torch.empty(out_shape, dtype=result_type, device=device)
 
     if _has_uniform_storage(c) and not out.is_complex():
-        if tuple(out.shape) == tuple(broadcast_shapes([c.shape, a.shape, b.shape])):
+        if tuple(out.shape) == tuple(out_shape):
             return _where_uniform_condition(c, a, b, out)
 
     ndim = max(c.ndim, a.ndim, b.ndim)

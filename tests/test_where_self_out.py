@@ -240,3 +240,33 @@ def test_where_uniform_condition_graph_reloads_inputs(dtype, strided_out):
             utils.gems_assert_equal(
                 backing[:, ::2].cpu(), torch.full((3, 7), -123.0, dtype=dtype)
             )
+
+
+@pytest.mark.where_self
+@pytest.mark.where_self_out
+@pytest.mark.parametrize(
+    "with_out",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name != "ascend",
+                reason="Ascend out= broadcast error contract",
+            ),
+        ),
+    ],
+)
+@pytest.mark.parametrize("uniform", [False, True])
+def test_where_invalid_broadcast_raises_runtime_error(with_out, uniform):
+    condition = torch.tensor([True, False], device=flag_gems.device)
+    if uniform:
+        condition = condition[:1].expand(2)
+    left = torch.ones((2,), device=flag_gems.device)
+    right = torch.ones((3,), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        if with_out:
+            out = torch.empty((3,), device=flag_gems.device)
+            flag_gems.where_self_out(condition, left, right, out=out)
+        else:
+            flag_gems.where_self(condition, left, right)
