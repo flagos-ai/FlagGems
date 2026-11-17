@@ -817,6 +817,14 @@ class Benchmark:
 
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
+        # Attach profiling time-share metadata when --model-profile was
+        # supplied. The same metadata applies to every shape inside this op
+        # because it comes from op-level profiling.
+        if (
+            getattr(Config, "model_profile", None)
+            and self.op_name in Config.model_profile
+        ):
+            metric.time_share = Config.model_profile[self.op_name]
         try:
             args, kwargs = self.unpack_to_args_kwargs(input)
             metric.shape_detail = self.record_shapes(*args, **kwargs)
