@@ -75,6 +75,8 @@ def test_orgqr_complex_is_explicitly_unsupported(dtype):
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr_out(shape, dtype):
     input, tau = make_reflectors(shape, dtype)
+    if flag_gems.vendor_name == "kunlunxin" and input.dtype != dtype:
+        pytest.skip(f"Kunlunxin reflector fixture narrows {dtype} to {input.dtype}")
     ref_input = utils.to_reference(input)
     ref_tau = utils.to_reference(tau)
     ref_out = torch.empty(0, dtype=dtype, device=ref_input.device)
@@ -92,6 +94,8 @@ def test_accuracy_orgqr_out(shape, dtype):
 @pytest.mark.parametrize("layout", ["transposed_batch", "sliced_batch"])
 def test_orgqr_out_multiple_noncontiguous_batch_dimensions(dtype, layout):
     input, tau = make_reflectors((2, 3, 7, 5), dtype)
+    if flag_gems.vendor_name == "kunlunxin" and input.dtype != dtype:
+        pytest.skip(f"Kunlunxin reflector fixture narrows {dtype} to {input.dtype}")
     ref_input = utils.to_reference(input)
     ref_tau = utils.to_reference(tau)
 
@@ -175,12 +179,6 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
     assert result is alias_input
     utils.gems_assert_close(result, ref_alias, torch.float32)
 
-    wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
-    wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
-    result = flag_gems.orgqr_out(input, tau, out=wide_out)
-    ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
-    utils.gems_assert_close(result, ref, torch.float64)
-
     bad_out = torch.empty((7, 5), dtype=torch.int32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.orgqr(input, tau, out=bad_out)
@@ -192,6 +190,20 @@ def test_orgqr_out_stride_alias_dtype_and_device_contract():
         torch.orgqr(input, tau, out=cpu_out)
     with pytest.raises(RuntimeError):
         flag_gems.orgqr_out(input, tau, out=cpu_out)
+
+
+@pytest.mark.orgqr_out
+def test_orgqr_out_widen_dtype_contract():
+    input, tau = make_reflectors((7, 5), torch.float32)
+    ref_input = utils.to_reference(input)
+    ref_tau = utils.to_reference(tau)
+    wide_out = torch.empty((7, 5), dtype=torch.float64, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin" and wide_out.dtype != torch.float64:
+        pytest.skip("Kunlunxin out factory narrows requested float64 to float32")
+    wide_ref = torch.empty((7, 5), dtype=torch.float64, device=ref_input.device)
+    result = flag_gems.orgqr_out(input, tau, out=wide_out)
+    ref = torch.orgqr(ref_input, ref_tau, out=wide_ref)
+    utils.gems_assert_close(result, ref, torch.float64)
 
 
 @pytest.mark.orgqr
