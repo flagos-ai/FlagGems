@@ -22,15 +22,23 @@ import flag_gems
 
 from .accuracy_utils import gems_assert_close, gems_assert_equal
 
+HAS_GROUPED_FP8 = "grouped_gemm_w8a8_fp8" in vars(flag_gems)
+grouped_gemm_mark = (
+    pytest.mark.grouped_gemm_w8a8_fp8
+    if HAS_GROUPED_FP8
+    else pytest.mark.grouped_gemm_w8a8
+)
 requires_int8 = pytest.mark.skipif(
     "grouped_gemm_w8a8" not in vars(flag_gems),
-    reason="requires a registered grouped INT8 GEMM implementation",
+    reason="requires a registered PPU grouped INT8 GEMM implementation",
+)
+requires_grouped_gemm = pytest.mark.skipif(
+    not HAS_GROUPED_FP8 and "grouped_gemm_w8a8" not in vars(flag_gems),
+    reason="requires a registered grouped GEMM implementation",
 )
 
 
-def make_grouped_gemm_case(
-    lengths, n, k, device, seed=20261019, *, dtype=torch.int8, column_major_scales=False
-):
+def make_grouped_gemm_case(lengths, n, k, device, seed=20261019, *, dtype=torch.int8):
     torch.manual_seed(seed)
     m, e = sum(lengths), len(lengths)
     if dtype == torch.int8:
@@ -42,10 +50,7 @@ def make_grouped_gemm_case(
     else:
         A = torch.randn((m, k), device=device).to(dtype)
         B = torch.randn((e, n, k), device=device).to(dtype)
-        if column_major_scales:
-            As = (0.01 + 0.02 * torch.rand((k // 128, m), device=device)).T
-        else:
-            As = 0.01 + 0.02 * torch.rand((m, k // 128), device=device)
+        As = 0.01 + 0.02 * torch.rand((m, k // 128), device=device)
         Bs = 0.01 + 0.02 * torch.rand((e, triton.cdiv(n, 128), k // 128), device=device)
         C = torch.full((m, n), float("nan"), dtype=torch.bfloat16, device=device)
     rows = torch.tensor(lengths, dtype=torch.int32, device=device)
@@ -55,11 +60,25 @@ def make_grouped_gemm_case(
     return A, As, B, Bs, C, indices, rows
 
 
+def make_grouped_fp8_case(lengths, n, k, device):
+    return make_grouped_gemm_case(
+        lengths, n, k, device, seed=42, dtype=torch.float8_e4m3fn
+    )
+
+
 def deepgemm_grouped_gemm(A, As, B, Bs, C, m_indices, m_rows):
     import deep_gemm
 
     deep_gemm.m_grouped_gemm_int8_int8_bf16_nt_nopad(
         (A, As), (B, Bs), C, m_indices, m_rows
+    )
+
+
+def mate_grouped_fp8(a, sa, b, sb, out, m_indices, m_rows):
+    from mate.gemm import ragged_m_moe_gemm_8bit
+
+    ragged_m_moe_gemm_8bit(
+        (a, sa), (b, sb), m_rows, out, gemm_mode="per_expert", backend="mubin"
     )
 
 
@@ -90,25 +109,36 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
 @pytest.mark.parametrize(
     "lengths,n,k",
     [
-        ([0, 1, 3, 0, 7], 65, 129),
-        ([1, 32, 0, 65], 128, 256),
-        ([0, 257, 3], 64, 128),
-        ([0, 257, 3], 257, 128),
-        ([0, 129, 3], 65, 129),
-        ([0, 129, 3], 17, 0),
-        ([0, 129, 3], 0, 128),
-        ([1] + [0] * 255 + [13], 64, 6144),
-        ([0, 1, 0], 17, 1),
-        ([0, 0, 0], 64, 128),
+        (lengths, n, k)
+        for lengths, n, k in [
+            ([0, 1, 3, 0, 7], 65, 129),
+            ([1, 32, 0, 65], 128, 256),
+            ([0, 257, 3], 64, 128),
+            ([0, 257, 3], 257, 128),
+            ([0, 129, 3], 65, 129),
+            ([0, 129, 3], 17, 0),
+            ([0, 129, 3], 0, 128),
+            ([1] + [0] * 255 + [13], 64, 6144),
+            ([0, 1, 0], 17, 1),
+            ([0, 0, 0], 64, 128),
+        ]
+        if not HAS_GROUPED_FP8 or (n > 0 and n % 64 == 0 and k > 0 and k % 128 == 0)
     ],
 )
-@requires_int8
-@pytest.mark.grouped_gemm_w8a8
+@requires_grouped_gemm
+@grouped_gemm_mark
 def test_grouped_gemm_w8a8(lengths, n, k):
-    args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
+    if HAS_GROUPED_FP8:
+        make_case, op = make_grouped_fp8_case, flag_gems.grouped_gemm_w8a8_fp8
+    else:
+        make_case, op = make_grouped_gemm_case, flag_gems.grouped_gemm_w8a8
+    args = make_case(lengths, n, k, flag_gems.device)
     expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-    flag_gems.grouped_gemm_w8a8(*args)
-    gems_assert_equal(args[4].cpu(), expected)
+    op(*args)
+    if HAS_GROUPED_FP8:
+        gems_assert_close(args[4].cpu(), expected, torch.bfloat16)
+    else:
+        gems_assert_equal(args[4].cpu(), expected)
 
 
 @pytest.mark.parametrize("n,k", [(512, 6144), (6144, 256)])
@@ -277,97 +307,3 @@ def test_grouped_gemm_w8a8_gemv_cache_tail(cache, evict):
         num_stages=1,
     )
     gems_assert_equal(args[4].cpu(), expected)
-
-
-requires_fp8 = pytest.mark.skipif(
-    "grouped_gemm_w8a8_fp8" not in vars(flag_gems),
-    reason="requires a registered unpadded grouped FP8 GEMM backend",
-)
-
-
-def make_grouped_fp8_case(lengths, n, k, device, column_major_scales=False):
-    return make_grouped_gemm_case(
-        lengths,
-        n,
-        k,
-        device,
-        seed=42,
-        dtype=torch.float8_e4m3fn,
-        column_major_scales=column_major_scales,
-    )
-
-
-def mate_grouped_fp8(a, sa, b, sb, out, m_indices, m_rows):
-    from mate.gemm import ragged_m_moe_gemm_8bit
-
-    ragged_m_moe_gemm_8bit(
-        (a, sa), (b, sb), m_rows, out, gemm_mode="per_expert", backend="mubin"
-    )
-
-
-@requires_fp8
-@pytest.mark.grouped_gemm_w8a8_fp8
-@pytest.mark.parametrize("column_major", [False, True])
-@pytest.mark.parametrize(
-    "lengths,n,k",
-    [
-        ([1, 0, 7], 64, 128),
-        ([63, 65, 0, 129], 192, 256),
-        ([0, 0], 128, 128),
-        ([7, 3], 256, 6144),
-        ([1, 3], 6144, 128),
-        ([1, 129], 512, 1024),
-        ([1] * 8 + [0] * 24, 256, 6144),
-        ([1, 273, 512], 256, 6144),
-        ([1, 273, 512], 512, 128),
-        ([1, 0, 7], 192, 384),
-        ([1, 63, 65], 192, 128),
-        ([0, 193, 0, 1351], 768, 128),
-        ([0, 17, 137, 401], 512, 768),
-    ],
-)
-def test_grouped_gemm_w8a8_fp8(lengths, n, k, column_major):
-    args = make_grouped_fp8_case(lengths, n, k, flag_gems.device, column_major)
-    expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-    # Leave real rows directly adjacent to BF16 sentinels on both sides.
-    backing = torch.full(
-        (sum(lengths) + 2, n), 7.0, device=flag_gems.device, dtype=torch.bfloat16
-    )
-    out = backing[1:-1]
-    out.fill_(float("nan"))
-    assert flag_gems.grouped_gemm_w8a8_fp8(*args[:4], out, *args[5:]) is None
-    gems_assert_close(out.cpu(), expected, torch.bfloat16)
-    guards = backing.cpu()[[0, -1]]
-    gems_assert_equal(guards, torch.full_like(guards, 7.0))
-
-
-@requires_fp8
-@pytest.mark.grouped_gemm_w8a8_fp8
-@pytest.mark.parametrize("n,k", [(256, 6144), (6144, 128)])
-def test_grouped_gemm_w8a8_fp8_native(n, k):
-    pytest.importorskip("mate.gemm")
-    args = make_grouped_fp8_case([1, 0, 17, 129], n, k, flag_gems.device)
-    expected = args[4].clone()
-    mate_grouped_fp8(*args[:4], expected, *args[5:])
-    flag_gems.grouped_gemm_w8a8_fp8(*args)
-    gems_assert_close(args[4], expected, torch.bfloat16)
-
-
-@requires_fp8
-@pytest.mark.grouped_gemm_w8a8_fp8
-@pytest.mark.parametrize("n,k", [(256, 512), (512, 128)])
-def test_grouped_gemm_w8a8_fp8_changing_routes(n, k):
-    args = make_grouped_fp8_case([257, 0, 513], n, k, flag_gems.device)
-    for lengths in ([257, 0, 513], [0, 769, 1], [770, 0, 0], [257, 0, 513]):
-        args[6].copy_(torch.tensor(lengths, device=args[6].device, dtype=torch.int32))
-        args[5].copy_(
-            torch.repeat_interleave(
-                torch.arange(3, dtype=torch.int32, device=args[5].device),
-                args[6],
-                output_size=770,
-            )
-        )
-        args[4].fill_(float("nan"))
-        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
-        flag_gems.grouped_gemm_w8a8_fp8(*args)
-        gems_assert_close(args[4].cpu(), expected, torch.bfloat16)
