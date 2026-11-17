@@ -272,6 +272,10 @@ FLOAT_DTYPES = (
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
+# Sub-32-bit integer dtypes. ATen implements the math/bitwise pointwise ops for
+# these on CPU and CUDA, so operators that accept integer inputs must cover them
+# explicitly; the 16/32/64-bit list above misses both.
+SMALL_INT_DTYPES = [torch.int8, torch.uint8]
 BOOL_TYPES = [torch.bool]
 COMPLEX_DTYPES = (
     ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
@@ -289,6 +293,57 @@ GLU_SHAPES = (
     if QUICK_MODE
     else [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60), (16, 7, 57, 32, 30)]
 )
+
+
+def randint_in_range(shape, dtype, low=-0x7FFF, high=0x7FFF):
+    """Build an integer tensor on CPU, clamped to the dtype's own value range.
+
+    torch.randint rejects bounds outside the target dtype, so the default
+    signed 16-bit window has to shrink for uint8, whose range starts at 0.
+    """
+    if dtype is torch.uint8:
+        low, high = max(low, 0), min(high, 0xFF)
+    elif dtype is torch.int8:
+        low, high = max(low, -0x80), min(high, 0x7F)
+    return torch.randint(low, high, shape, dtype=dtype, device="cpu")
+
+
+def promoted_float_dtype(dtype, op):
+    """Return the dtype ATen produces for a float-valued op applied to `dtype`.
+
+    Integer inputs are promoted to the default float dtype; float inputs keep
+    their own dtype. Querying the real op rather than hard-coding float32 keeps
+    the expectation correct when the process default dtype is not float32.
+    """
+    if dtype.is_floating_point or dtype.is_complex:
+        return dtype
+    probe = torch.zeros(1, dtype=dtype)
+    op_name = {
+        "acosh": torch.acosh,
+        "asin": torch.asin,
+        "atanh": torch.atanh,
+        "atan2": lambda t: torch.atan2(t, t),
+        "arctan2": lambda t: torch.arctan2(t, t),
+    }[op]
+    return op_name(probe).dtype
+
+
+def make_reduction_input(shape, dtype):
+    """Build a reduction input on the active device for float, int or bool dtype.
+
+    GPU random init has no integer or bool implementation, so those are built on
+    CPU and moved over; the values are dense enough that a reduction over any
+    dimension still sees several distinct inputs.
+    """
+    if dtype in BOOL_TYPES:
+        return torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(
+            flag_gems.device
+        )
+    if dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype.is_floating_point:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    return randint_in_range(shape, dtype).to(flag_gems.device)
 
 
 def to_reference(inp, upcast=False):
@@ -365,9 +420,11 @@ def ref_fmod(a, b):
 
 
 def to_cpu(res, ref):
-    if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
-        res = res.to("cpu")
-        assert ref.device == torch.device("cpu")
+    # Compare on the CPU whenever the reference is there (e.g. a CPU-only
+    # eager op on a backend without fp64); the result tensor follows it.
+    if isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
+        if TO_CPU or ref.device.type == "cpu":
+            res = res.to("cpu")
     return res
 
 

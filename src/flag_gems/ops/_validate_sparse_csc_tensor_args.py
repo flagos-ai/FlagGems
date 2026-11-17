@@ -44,8 +44,12 @@ def _check_indices_kernel(
     PSTRIDES: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    row = tl.program_id(0)
-    batch = tl.program_id(1).to(tl.int64)
+    # Flatten segment and batch coordinates into CUDA grid dimension 0;
+    # dimension 1 is limited to 65535 even when the batch product is larger.
+    segment_count = tl.maximum(cdim, 1)
+    pid = tl.program_id(0).to(tl.int64)
+    row = pid % segment_count
+    batch = pid // segment_count
     cb = tl.full((), 0, tl.int64)
     pb = tl.full((), 0, tl.int64)
     for d in tl.static_range(len(BSHAPE) - 1, -1, -1):
@@ -128,7 +132,7 @@ def _check_indices(is_crow, compressed_idx, plain_idx, cdim, dim, nnz):
         count *= extent
     if count:
         with torch_device_fn.device(compressed_idx.device):
-            _check_indices_kernel[(max(cdim, 1), count)](
+            _check_indices_kernel[(max(cdim, 1) * count,)](
                 compressed_idx,
                 plain_idx,
                 cdim,
