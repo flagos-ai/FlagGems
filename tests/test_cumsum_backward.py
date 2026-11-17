@@ -17,6 +17,12 @@ import torch
 
 import flag_gems
 
+# ``aten::cumsum`` has no dedicated backward op, so ``flag_gems.cumsum``
+# keeps routing through ATen's ``CumsumBackward0`` under ``use_gems()``.
+# The Triton reverse-scan kernel is reached through the explicit
+# ``CumsumFunction`` entry that ``flag_gems.cumsum_backward`` provides.
+from flag_gems.ops.cumsum_backward import CumsumFunction
+
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
@@ -61,7 +67,7 @@ def _cumsum_backward_reference(grad, dim):
 @pytest.mark.parametrize("shape, dim", CUMSUM_BACKWARD_SHAPE_DIMS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_cumsum_backward(shape, dim, dtype):
-    """Gradient of ``flag_gems.cumsum`` against the float64 suffix sum."""
+    """Gradient of ``CumsumFunction`` against the float64 suffix sum."""
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -70,7 +76,7 @@ def test_cumsum_backward(shape, dim, dtype):
     grad_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     res_inp = inp.detach().requires_grad_(True)
-    res_out = flag_gems.cumsum(res_inp, dim)
+    res_out = CumsumFunction.apply(res_inp, dim, None)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
 
     assert res_out.grad_fn is not None
@@ -105,7 +111,7 @@ def test_cumsum_backward_autograd_chain(dim):
     (ref_grad,) = torch.autograd.grad(torch.cumsum(ref_inp, dim), ref_inp, ref_grad_out)
 
     res_inp = inp.detach().requires_grad_(True)
-    res_out = flag_gems.cumsum(res_inp, dim)
+    res_out = CumsumFunction.apply(res_inp, dim, None)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
 
     utils.gems_assert_close(res_grad, ref_grad.to(dtype), dtype, reduce_dim=shape[dim])
@@ -120,7 +126,7 @@ def test_cumsum_backward_non_contiguous(dtype):
     grad_out = torch.randn(inp.shape, dtype=dtype, device=flag_gems.device)
 
     res_inp = inp.detach().requires_grad_(True)
-    res_out = flag_gems.cumsum(res_inp, dim)
+    res_out = CumsumFunction.apply(res_inp, dim, None)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
 
     ref_grad = _cumsum_backward_reference(grad_out, dim).to(dtype)
@@ -141,7 +147,7 @@ def test_cumsum_backward_middle_and_negative_dim(dim):
     grad_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     res_inp = inp.detach().requires_grad_(True)
-    res_out = flag_gems.cumsum(res_inp, dim)
+    res_out = CumsumFunction.apply(res_inp, dim, None)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
 
     ref_grad = _cumsum_backward_reference(grad_out, dim).to(dtype)
@@ -155,7 +161,7 @@ def test_cumsum_backward_empty(shape, dim):
     grad_out = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
 
     res_inp = inp.detach().requires_grad_(True)
-    res_out = flag_gems.cumsum(res_inp, dim)
+    res_out = CumsumFunction.apply(res_inp, dim, None)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
 
     assert res_grad.shape == inp.shape
@@ -167,7 +173,7 @@ def test_cumsum_backward_empty(shape, dim):
 def test_cumsum_backward_scalar_input():
     inp = torch.tensor(2.5, dtype=torch.float32, device=flag_gems.device)
     res_inp = inp.detach().requires_grad_(True)
-    res_out = flag_gems.cumsum(res_inp, 0)
+    res_out = CumsumFunction.apply(res_inp, 0, None)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, torch.ones_like(res_out))
 
     ref_inp = utils.to_reference(inp.detach(), True).requires_grad_(True)
@@ -186,7 +192,7 @@ def test_cumsum_backward_use_gems_entry():
     ``aten::cumsum`` is a CompositeExplicitAutograd op, so the generated
     ``CumsumBackward0`` node stays above the device kernel and differentiates
     with the ATen formula. This pins that public path against the float64
-    reference; ``flag_gems.cumsum`` is the entry that reaches the Triton kernel.
+    reference; ``CumsumFunction`` is the entry that reaches the Triton kernel.
     """
     shape, dim, dtype = (64, 128), 1, torch.float32
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)

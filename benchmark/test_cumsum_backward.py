@@ -20,27 +20,36 @@ import flag_gems
 from . import base, consts, utils
 
 
+def _cumsum_backward_ref(grad, input, dim):
+    """Eager baseline with the same signature as ``flag_gems.cumsum_backward``.
+
+    ``aten::cumsum`` has no dedicated backward operator, so autograd derives it
+    as a flip + ``cumsum`` + flip chain. Timing that chain is the fair eager
+    comparison for the single-kernel reverse scan. ``input`` only carries the
+    shape/dtype/device, exactly as in the FlagGems wrapper.
+    """
+    return torch.flip(torch.cumsum(torch.flip(grad, [dim]), dim), [dim])
+
+
 def cumsum_backward_input_fn(shape, dtype, device):
-    # ``is_backward=True`` clones the tensor inputs with ``requires_grad`` and
-    # times ``torch.autograd.grad`` on the forward output. The upstream gradient
-    # is drawn bounded so the fp16 baseline stays finite.
+    # ``grad`` is the upstream gradient; the reverse scan reads it once and
+    # writes once, so no forward output is needed (unlike ``cumprod_backward``).
+    grad = utils.generate_tensor_input(shape, dtype, device)
     inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, 1
+    yield grad, inp, 1
 
 
 @pytest.mark.cumsum_backward
 def test_cumsum_backward():
-    # ``aten::cumsum`` has no dedicated backward op, so under ``use_gems()`` the
-    # ATen ``CumsumBackward0`` node stays above the device kernel and the
-    # reference backward would win on the ``torch.*`` path. Drive the explicit
-    # FlagGems entry through ``set_gems`` so the Triton reverse-scan kernel is
-    # what actually gets timed.
+    # ``flag_gems.cumsum_backward`` is the explicit Triton entry: the
+    # ``torch.*`` path would keep ATen's ``CumsumBackward0`` node. Drive the
+    # FlagGems wrapper through ``set_gems`` so the reverse-scan kernel is what
+    # actually gets timed.
     bench = base.GenericBenchmark2DOnly(
         op_name="cumsum_backward",
         input_fn=cumsum_backward_input_fn,
-        torch_op=torch.cumsum,
+        torch_op=_cumsum_backward_ref,
         dtypes=consts.FLOAT_DTYPES,
-        is_backward=True,
     )
-    bench.set_gems(flag_gems.cumsum)
+    bench.set_gems(flag_gems.cumsum_backward)
     bench.run()
