@@ -132,11 +132,13 @@ class BenchmarkMetrics:
     base_miss_reason: Optional[str] = None
     # Error message
     error_msg: Optional[str] = None
+    case_metadata: Optional[dict] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "case_id",
     "candidate_source",
+    "case_metadata",
     "legacy_shape",
     "shape_detail",
     "base_raw_speedup",
