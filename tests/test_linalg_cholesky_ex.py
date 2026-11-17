@@ -60,8 +60,89 @@ def _reference_input(inp):
     return tu.to_reference(inp)
 
 
+def _numpy_cholesky_ex(inp, upper):
+    import numpy as np
+
+    n = inp.shape[-1]
+    status = np.zeros(tuple(inp.shape[:-2]), dtype=np.int32)
+    if not inp.numel():
+        return torch.empty_like(inp), torch.from_numpy(status)
+
+    matrix = inp.detach().resolve_conj().resolve_neg().numpy()
+    if upper:
+        matrix = matrix.swapaxes(-1, -2).conj()
+    try:
+        factor = np.linalg.cholesky(matrix)
+    except np.linalg.LinAlgError:
+        # NumPy reports a failed factorization without the pivot index. For
+        # those lanes find the first leading minor that cannot be factored.
+        factor = np.zeros(matrix.shape, dtype=matrix.dtype)
+        for index in np.ndindex(status.shape):
+            lane = matrix[index]
+            try:
+                factor[index] = np.linalg.cholesky(lane)
+                continue
+            except np.linalg.LinAlgError:
+                pass
+            lower, upper_bound = 0, n
+            while lower + 1 < upper_bound:
+                pivot = (lower + upper_bound) // 2
+                try:
+                    np.linalg.cholesky(lane[:pivot, :pivot])
+                except np.linalg.LinAlgError:
+                    upper_bound = pivot
+                else:
+                    lower = pivot
+            status[index] = upper_bound
+
+    if upper:
+        factor = factor.swapaxes(-1, -2).conj()
+    return torch.from_numpy(np.ascontiguousarray(factor)), torch.from_numpy(status)
+
+
+def _differentiable_cpu_factor(inp, upper):
+    # For the small Hermitian positive-definite backward fixture. Symmetrizing
+    # the input gives the Hermitian adjoint at the original input.
+    remainder = (inp + inp.mH) * 0.5
+    columns = []
+    for i in range(inp.shape[-1]):
+        pivot = remainder[..., 0, 0].real.sqrt()
+        tail = remainder[..., 1:, 0] / pivot.unsqueeze(-1)
+        current = torch.cat((pivot.unsqueeze(-1).to(inp.dtype), tail), dim=-1)
+        zeros = inp.new_zeros((*inp.shape[:-2], i))
+        columns.append(torch.cat((zeros, current), dim=-1))
+        remainder = remainder[..., 1:, 1:] - tail.unsqueeze(-1) * tail.conj().unsqueeze(-2)
+    factor = torch.stack(columns, dim=-1)
+    return factor.mH if upper else factor
+
+
 def _reference_cholesky(inp, *, upper=False, check_errors=False, L=None, info=None):
     op = torch.ops.aten.linalg_cholesky_ex
+    if flag_gems.vendor_name == "mthreads" and inp.device.type == "cpu":
+        if inp.requires_grad:
+            factor = _differentiable_cpu_factor(inp, upper)
+            status = torch.zeros(inp.shape[:-2], dtype=torch.int32, device=inp.device)
+        elif torch.isfinite(inp).all():
+            factor, status = _numpy_cholesky_ex(inp, upper)
+        else:
+            # CPU LAPACK is unavailable and NumPy differs from MUSA ATen on
+            # nonfinite triangles, including the reported first failing pivot.
+            factor, status = op.default(
+                inp.to(flag_gems.device), upper=upper, check_errors=check_errors
+            )
+            factor, status = factor.cpu(), status.cpu()
+        if check_errors and (status != 0).any():
+            raise torch.linalg.LinAlgError("linalg_cholesky_ex: matrix is not positive-definite")
+        if L is None:
+            return factor, status
+        if L.shape != factor.shape:
+            L.resize_(factor.shape)
+        if info.shape != status.shape:
+            info.resize_(status.shape)
+        L.copy_(factor)
+        info.copy_(status)
+        return L, info
+
     use_cpu = (
         flag_gems.vendor_name == "thead"
         and inp.device.type != "cpu"
@@ -130,7 +211,7 @@ def _pd_input(dtype, shape, value_range):
     high = abs(tu.resolve_bound(value_range[1], dtype))
     scale = max(low, high, 1.0)
     sampled = _range_input(dtype, shape, value_range)
-    if flag_gems.vendor_name == "thead" and dtype.is_complex:
+    if flag_gems.vendor_name in ("thead", "mthreads") and dtype.is_complex:
         sampled = sampled.cpu()
     sampled = sampled / scale
     gram = sampled @ sampled.conj().transpose(-2, -1)
@@ -235,7 +316,10 @@ def _special_input(dtype, placement, upper, scenario, n=6):
         return torch.diag(_payload_rows(dtype, scenario, n))
     inp = _pd_input(dtype, (n, n), ["-1", "1"])
     rows = _payload_rows(dtype, scenario, n).reshape(n, 1)
-    return torch.where(_payload_mask(placement, upper, n), rows, inp)
+    mask = _payload_mask(placement, upper, n)
+    if flag_gems.vendor_name == "mthreads" and dtype.is_complex:
+        return torch.where(mask.cpu(), rows.cpu(), inp.cpu()).to(inp.device)
+    return torch.where(mask, rows, inp)
 
 
 def _buffer_metadata(buf):
@@ -274,6 +358,17 @@ def _out_buffers(shape, dtype, device, layout):
     return l_buf, info
 
 
+def _assert_factor_close(actual, expected, **kwargs):
+    if flag_gems.vendor_name == "mthreads" and actual.is_complex():
+        assert actual.device.type == "musa"
+        assert actual.shape == expected.shape and actual.dtype == expected.dtype
+        assert expected.device == (
+            torch.device("cpu") if utils.TO_CPU else actual.device
+        )
+        actual, expected = actual.cpu(), expected.cpu()
+    tu.assert_result_close(actual, expected, **kwargs)
+
+
 def _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info):
     assert res_l.device == res_info.device == inp.device
     assert res_l.dtype == ref_l.dtype == inp.dtype
@@ -284,7 +379,7 @@ def _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info):
     if successful.any():
         order = inp.shape[-1]
         matrix_shape = (successful.numel(), order, order)
-        tu.assert_result_close(
+        _assert_factor_close(
             res_l.reshape(matrix_shape)[successful.to(res_l.device)],
             ref_l.reshape(matrix_shape)[successful],
         )
@@ -339,8 +434,9 @@ def test_linalg_cholesky_ex_pd_success(shape, dtype, value_range):
     ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _EXTREME_ROWS = [
@@ -362,8 +458,9 @@ def test_linalg_cholesky_ex_extreme_pd(symbol, upper, dtype):
     ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _UPPER_SHAPES = [(8, 8), (64, 64), (2, 16, 16)]
@@ -418,8 +515,9 @@ def test_linalg_cholesky_ex_param_combos(upper, check_errors, dtype):
         inp, upper=upper, check_errors=check_errors
     )
 
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 @pytest.mark.linalg_cholesky_ex
@@ -434,8 +532,9 @@ def test_linalg_cholesky_ex_default_arguments(dtype):
     ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _LAYOUT_KINDS = ["stride", "offset", "batch"]
@@ -451,8 +550,9 @@ def test_linalg_cholesky_ex_layout(layout, dtype):
     ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _OUT_SHAPES = [(16, 16), (2, 16, 16)]
@@ -502,7 +602,7 @@ def test_linalg_cholesky_ex_out_overload(shape, layout, upper, dtype):
     assert res_out[0].device == inp.device
     assert res_out[1].device == inp.device
     tu.assert_result_equal(res_out[1], ref_out[1])
-    tu.assert_result_close(res_out[0], ref_out[0])
+    _assert_factor_close(res_out[0], ref_out[0])
 
 
 _FAILURE_ROWS = [
@@ -569,8 +669,9 @@ def test_linalg_cholesky_ex_complex_diagonal(dtype):
     ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
 
 _BACKWARD_ROWS = [(upper, dtype) for dtype in _DTYPES for upper in (False, True)]
@@ -594,12 +695,14 @@ def test_linalg_cholesky_ex_backward(upper, dtype):
     res_l, res_info = flag_gems.linalg_cholesky_ex(res_inp, upper=upper)
 
     # The successful forward is compared before differentiating.
+    assert res_l.device == res_info.device == inp.device
     tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_factor_close(res_l, ref_l)
 
     (ref_grad,) = torch.autograd.grad(ref_l, ref_inp, grad_outputs=ref_upstream)
     (res_grad,) = torch.autograd.grad(res_l, res_inp, grad_outputs=upstream)
-    tu.assert_result_close(res_grad, ref_grad)
+    assert res_grad.device == res_inp.device
+    _assert_factor_close(res_grad, ref_grad)
 
 
 # Dtypes the native kernel selection rejects, measured on the CUDA/cuSOLVER
@@ -711,3 +814,69 @@ def test_linalg_cholesky_ex_master_spd(case):
     assert actual_l.shape == matrix.shape and actual_info.shape == batch
     utils.gems_assert_close(actual_l, ref_l.to(dtype), dtype, reduce_dim=n * n)
     utils.gems_assert_equal(actual_info, ref_info)
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("shape", [(0, 3, 3), (0, 3, 3, 3), (2, 0, 3, 3), (0, 0)])
+def test_linalg_cholesky_ex_master_empty(shape):
+    inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_l, ref_info = _reference_cholesky(_reference_input(inp))
+    actual_l, actual_info = flag_gems.linalg_cholesky_ex(inp)
+
+    _assert_defined_factor(inp, actual_l, actual_info, ref_l, ref_info)
+    assert torch.count_nonzero(actual_info) == 0
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("upper", [False, True])
+def test_linalg_cholesky_ex_master_noncontiguous(upper):
+    inp = _pd_input(torch.float32, (2, 5, 5), ["-1", "1"]).transpose(-1, -2)
+    assert not inp.is_contiguous()
+    ref_l, ref_info = _reference_cholesky(_reference_input(inp), upper=upper)
+    actual_l, actual_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
+
+    _assert_defined_factor(inp, actual_l, actual_info, ref_l, ref_info)
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("upper", [False, True])
+def test_linalg_cholesky_ex_master_inactive_triangle(upper):
+    inp = _pd_input(torch.float32, (6, 6), ["-1", "1"])
+    factor, info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
+
+    assert factor.device == info.device == inp.device
+    assert info.item() == 0
+    inactive = factor.tril(-1) if upper else factor.triu(1)
+    torch.testing.assert_close(inactive, torch.zeros_like(inactive), rtol=0, atol=0)
+
+
+@pytest.mark.linalg_cholesky_ex
+def test_linalg_cholesky_ex_master_check_errors_success():
+    inp = _pd_input(torch.float32, (5, 5), ["-1", "1"])
+    factor, info = flag_gems.linalg_cholesky_ex(inp, upper=False, check_errors=True)
+
+    assert factor.device == info.device == inp.device
+    assert info.item() == 0
+    observed = utils.to_reference(factor, True)
+    expected = utils.to_reference(inp, True)
+    reconstructed = observed @ observed.mT
+    torch.testing.assert_close(reconstructed, expected, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize(
+    "kind,pivot", [("negative_definite", 1), ("zeros", 1), ("indefinite_diagonal", 2)]
+)
+def test_linalg_cholesky_ex_master_failed_minor(kind, pivot):
+    device = flag_gems.device
+    if kind == "negative_definite":
+        inp = -_pd_input(torch.float32, (4, 4), ["-1", "1"])
+    elif kind == "zeros":
+        inp = torch.zeros(4, 4, dtype=torch.float32, device=device)
+    else:
+        inp = torch.diag(torch.tensor([1.0, -1.0, 1.0, 1.0], device=device))
+    ref_l, ref_info = _reference_cholesky(_reference_input(inp), check_errors=False)
+    actual_l, actual_info = flag_gems.linalg_cholesky_ex(inp, check_errors=False)
+
+    _assert_defined_factor(inp, actual_l, actual_info, ref_l, ref_info)
+    assert actual_info.item() == pivot
