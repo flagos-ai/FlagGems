@@ -290,13 +290,38 @@ def test_index_reduce_empty_index_out_of_place(include_self):
 
 @pytest.mark.index_reduce
 def test_index_reduce_invalid_reduce():
-    if flag_gems.vendor_name == "kunlunxin" and (True):
-        pytest.skip(
-            "Kunlunxin native invalid reduce raises RuntimeError instead of master AssertionError"
-        )
     inp = torch.ones((2, 3), device=flag_gems.device)
     source = torch.ones((2, 1), device=flag_gems.device)
     index = torch.zeros((1,), dtype=torch.int64, device=flag_gems.device)
 
     with pytest.raises(AssertionError, match="Unsupported reduce"):
         flag_gems.index_reduce(inp, 1, index, source, "sum")
+
+
+@pytest.mark.index_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin validation regression"
+)
+@pytest.mark.parametrize("include_self", [True, False])
+@pytest.mark.parametrize("invalid_index", [-1, 3, 2**32])
+def test_index_reduce_out_of_bounds(invalid_index, include_self):
+    inp = torch.ones((2, 3), device=flag_gems.device)
+    source = torch.ones((2, 1), device=flag_gems.device)
+    index = torch.tensor([invalid_index], dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(IndexError, match="index out of range"):
+        flag_gems.index_reduce(inp, 1, index, source, "prod", include_self=include_self)
+
+
+@pytest.mark.index_reduce
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin validation regression"
+)
+@pytest.mark.parametrize(
+    "source_shape,index_shape", [((2, 2), (1,)), ((3, 1), (1,)), ((2, 1), (1, 1))]
+)
+def test_index_reduce_invalid_shapes(source_shape, index_shape):
+    inp = torch.ones((2, 3), device=flag_gems.device)
+    source = torch.ones(source_shape, device=flag_gems.device)
+    index = torch.zeros(index_shape, dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.index_reduce(inp, 1, index, source, "prod")

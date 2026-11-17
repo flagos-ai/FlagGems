@@ -46,15 +46,28 @@ Backend rules that constrain every kernel here (measured on this target):
     loops keep 1D tiles, scalar accumulators and loop-invariant masks only.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
+
 _REDUCE_ID = {"amax": 0, "amin": 1, "prod": 2, "mean": 3}
-_REDUCE_ERR = (
-    "index_reduce(): Expected reduce to be one of prod, mean, amax or amin "
-    "but got {}."
-)
+
+
+@triton.jit
+def _ir_validate_index(idx_ptr, valid_ptr, S, D, istride, BLOCK: tl.constexpr):
+    valid = 1
+    for start in range(0, S, BLOCK):
+        off = start + tl.arange(0, BLOCK)
+        index = tl.load(idx_ptr + off * istride, mask=off < S, other=0)
+        invalid = (off < S) & ((index < 0) | (index >= D))
+        valid &= tl.sum(invalid.to(tl.int32), 0) == 0
+    tl.store(valid_ptr, valid)
 
 
 # --------------------------------------------------------------------- fast path
@@ -117,12 +130,13 @@ def _ir_scatter_col(
     cbase_acc = outer * (D * INNER) + inr
 
     for i in range(0, S):
-        iv = tl.load(idx_ptr + i * istride).to(tl.int32)
+        iv = tl.load(idx_ptr + i * istride).to(tl.int64)
         s = tl.load(src_ptr + cbase_src + i * INNER, mask=cmask, other=0).to(
             acc_ptr.dtype.element_ty
         )
         off = cbase_acc + iv * INNER
-        v = tl.load(acc_ptr + off, mask=cmask, other=0)
+        target_mask = cmask & (iv >= 0) & (iv < D)
+        v = tl.load(acc_ptr + off, mask=target_mask, other=0)
         if REDUCE == 0:
             nv = tl.maximum(v, s)
         elif REDUCE == 1:
@@ -131,7 +145,7 @@ def _ir_scatter_col(
             nv = v * s
         else:
             nv = v + s
-        tl.store(acc_ptr + off, nv, mask=cmask)
+        tl.store(acc_ptr + off, nv, mask=target_mask)
 
 
 @triton.jit
@@ -264,7 +278,7 @@ def _ir_gather_strided(
             cnt = tl.zeros([BC, BJ], tl.int32)
 
     for i in range(0, S):
-        iv = tl.load(idx_ptr + i * istride).to(tl.int32)
+        iv = tl.load(idx_ptr + i * istride).to(tl.int64)
         svec = tl.load(src_ptr + sbase + i * qdim, mask=cc < C, other=0).to(accty)
         m = m2 & (jj[None, :] == iv)
         sv = svec[:, None]
@@ -343,9 +357,15 @@ _COUNT_BLOCK = 256
 
 
 def index_reduce(self, dim, index, source, reduce, include_self=True):
+    logger.debug("GEMS_KUNLUNXIN INDEX_REDUCE")
+    with torch_device_fn.device(self.device):
+        return _index_reduce(self, dim, index, source, reduce, include_self)
+
+
+def _index_reduce(self, dim, index, source, reduce, include_self):
     rid = _REDUCE_ID.get(reduce)
     if rid is None:
-        raise RuntimeError(_REDUCE_ERR.format(reduce))
+        raise AssertionError(f"Unsupported reduce: {reduce}")
 
     nd = self.dim()
     if dim < -nd or dim >= nd:
@@ -354,6 +374,30 @@ def index_reduce(self, dim, index, source, reduce, include_self=True):
             "but got {})".format(-nd, nd - 1, dim)
         )
     d = dim % nd
+
+    if index.ndim != 1 or index.dtype not in (torch.int32, torch.int64):
+        raise RuntimeError("index_reduce(): index must be a vector of int32 or int64")
+    if source.ndim != nd or source.dtype != self.dtype:
+        raise RuntimeError("index_reduce(): source must match self rank and dtype")
+    if source.device != self.device or index.device != self.device:
+        raise RuntimeError("index_reduce(): all tensors must be on the same device")
+    if index.numel() != source.shape[d] or any(
+        source.shape[k] != self.shape[k] for k in range(nd) if k != d
+    ):
+        raise RuntimeError("index_reduce(): source shape does not match self and index")
+    if nd > 8:
+        raise NotImplementedError(
+            "index_reduce(): at most eight dimensions are supported"
+        )
+    if index.numel():
+        valid = torch.empty((), dtype=torch.int32, device=self.device)
+        _ir_validate_index[(1,)](
+            index, valid, index.numel(), self.shape[d], index.stride(0), 256
+        )
+        # XPU device_assert is a no-op. Read the Triton validation result before
+        # any scatter launch; masking below also prevents out-of-bounds accesses.
+        if not valid.item():
+            raise IndexError("index_reduce(): index out of range")
 
     # the reference returns a fresh contiguous result tensor
     out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
