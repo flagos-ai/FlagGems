@@ -26,8 +26,15 @@ def _make_inputs(layout, shape, index_dtype, dtype, device, strided_batch=False)
     row_major = layout in (torch.sparse_csr, torch.sparse_bsr)
     per_segment = min(dim, 2)
     nnz = cdim * per_segment
-    comp = torch.arange(cdim + 1, dtype=index_dtype, device=device) * per_segment
-    plain = torch.arange(per_segment, dtype=index_dtype, device=device).repeat(cdim)
+    if cdim == 0:
+        # Exercise ATen's zero-axis behavior with nonempty in-range plain
+        # indices. The compressed endpoint and ordering are ignored here.
+        nnz = per_segment
+        comp = torch.full((1,), 5, dtype=index_dtype, device=device)
+        plain = torch.arange(per_segment, dtype=index_dtype, device=device).flip(0)
+    else:
+        comp = torch.arange(cdim + 1, dtype=index_dtype, device=device) * per_segment
+        plain = torch.arange(per_segment, dtype=index_dtype, device=device).repeat(cdim)
     comp = comp.expand(*batch, cdim + 1).clone()
     plain = plain.expand(*batch, nnz).clone()
     if strided_batch and batch:
@@ -51,6 +58,7 @@ class SparseValidationBenchmark(base.Benchmark):
             (256, 256, (), ()),
             (4096, 4096, (), ()),
             (64, 64, (8,), ()),
+            (0, 3, (), ()),
         ]
 
     def get_input_iter(self, dtype):
