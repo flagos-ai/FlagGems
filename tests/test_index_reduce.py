@@ -325,3 +325,34 @@ def test_index_reduce_invalid_shapes(source_shape, index_shape):
     index = torch.zeros(index_shape, dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.index_reduce(inp, 1, index, source, "prod")
+
+
+@pytest.mark.index_reduce_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin out dispatch regression"
+)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+def test_index_reduce_out_strided_buffer(reduce):
+    inp = _make_values((4, 6), torch.float32)
+    source = _make_values((4, 3), torch.float32)
+    index = _make_index(3, 6, torch.int64)
+    out = torch.empty((6, 4), device=flag_gems.device).t()
+    strides = out.stride()
+    reference = torch.index_reduce(inp.cpu(), 1, index.cpu(), source.cpu(), reduce)
+    result = flag_gems.index_reduce_out(inp, 1, index, source, reduce, out=out)
+    assert result is out
+    assert result.stride() == strides
+    torch.testing.assert_close(result.cpu(), reference)
+
+
+@pytest.mark.index_reduce_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin out dispatch regression"
+)
+def test_index_reduce_out_rejects_dtype():
+    inp = torch.ones((2, 3), device=flag_gems.device)
+    source = torch.ones((2, 1), device=flag_gems.device)
+    index = torch.zeros((1,), dtype=torch.int64, device=flag_gems.device)
+    out = torch.empty((2, 3), dtype=torch.int32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="dtype"):
+        flag_gems.index_reduce_out(inp, 1, index, source, "prod", out=out)

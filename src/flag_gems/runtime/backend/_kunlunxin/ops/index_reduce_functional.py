@@ -54,6 +54,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from .copy import copy_
+
 logger = logging.getLogger(__name__)
 
 _REDUCE_ID = {"amax": 0, "amin": 1, "prod": 2, "mean": 3}
@@ -538,4 +540,28 @@ def _index_reduce(self, dim, index, source, reduce, include_self):
         bc,
         bj,
     )
+    return out
+
+
+def index_reduce_out(self, dim, index, source, reduce, *, include_self=True, out=None):
+    logger.debug("GEMS_KUNLUNXIN INDEX_REDUCE_OUT")
+    if out is None:
+        return index_reduce(self, dim, index, source, reduce, include_self)
+    if out.dtype != self.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {self.dtype}, but got {out.dtype}"
+        )
+    if out.device != self.device:
+        raise RuntimeError(
+            f"Expected out tensor to be on device {self.device}, but got {out.device}"
+        )
+    if any(size > 1 and stride == 0 for size, stride in zip(out.shape, out.stride())):
+        raise RuntimeError("unsupported operation: output elements overlap in memory")
+    with torch_device_fn.device(self.device):
+        # Finish reading self/source before touching out, including when out
+        # aliases an input. Copy through the backend's stride-aware Triton op.
+        result = _index_reduce(self, dim, index, source, reduce, include_self)
+        if out.shape != self.shape:
+            out.resize_(self.shape)
+        copy_(out, result)
     return out
