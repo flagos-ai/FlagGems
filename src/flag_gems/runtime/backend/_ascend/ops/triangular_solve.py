@@ -39,7 +39,8 @@ def _launch_resident(entry, pointers, constants, grid):
     if not _USE_LAUNCH_CACHE:
         entry[grid](*pointers, *constants)
         return
-    debug = triton.knobs.runtime.debug
+    _knobs = getattr(triton, "knobs", None)
+    debug = getattr(getattr(_knobs, "runtime", None), "debug", False)
     key = (
         entry,
         pointers[0].device,

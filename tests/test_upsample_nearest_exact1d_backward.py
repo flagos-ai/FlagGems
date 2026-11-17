@@ -20,6 +20,20 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE, TO_CPU
 
+
+def _byte_reference_available():
+    try:
+        probe = torch.zeros((1, 1, 1), dtype=torch.uint8, device=flag_gems.device)
+        torch.ops.aten._upsample_nearest_exact1d_backward.default(
+            probe, (1,), (1, 1, 1)
+        )
+    except Exception:
+        return False
+    return True
+
+
+HAS_BYTE_REFERENCE = _byte_reference_available()
+
 SHAPES = (
     [(1, 2, 7, 13)]
     if QUICK_MODE
@@ -30,7 +44,14 @@ SHAPES = (
         (4, 8, 64, 127),
     ]
 )
-DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES + [torch.float64]
+_SKIP_FP64 = pytest.mark.skipif(
+    not utils.fp64_is_supported, reason="float64 is not supported on this platform"
+)
+DTYPES = (
+    [torch.float32]
+    if QUICK_MODE
+    else utils.FLOAT_DTYPES + [pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 
 
 def _make_grad_output(shape, dtype, noncontiguous=False):
@@ -146,7 +167,10 @@ def test_upsample_nearest_exact1d_backward_empty(shape):
 
 
 @pytest.mark.upsample_nearest_exact1d_backward
-@pytest.mark.skipif(TO_CPU, reason="native CPU backward does not support uint8")
+@pytest.mark.skipif(
+    TO_CPU or not HAS_BYTE_REFERENCE,
+    reason="the aten uint8 reference is not implemented on this platform",
+)
 def test_upsample_nearest_exact1d_backward_uint8():
     grad_output = torch.randint(
         0, 256, (2, 3, 17), dtype=torch.uint8, device=flag_gems.device

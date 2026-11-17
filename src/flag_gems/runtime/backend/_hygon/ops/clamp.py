@@ -125,15 +125,11 @@ def clamp_tensor(A, mini=None, maxi=None):
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
         if _clamp_fast_path_ok(A, maxi):
-            return _launch_clamp(
-                _clamp_max_tensor_kernel, torch.empty_like(A), A, maxi
-            )
+            return _launch_clamp(_clamp_max_tensor_kernel, torch.empty_like(A), A, maxi)
         return clamp_func_max_tensor(A, maxi)
     elif maxi is None:
         if _clamp_fast_path_ok(A, mini):
-            return _launch_clamp(
-                _clamp_min_tensor_kernel, torch.empty_like(A), A, mini
-            )
+            return _launch_clamp(_clamp_min_tensor_kernel, torch.empty_like(A), A, mini)
         return clamp_func_min_tensor(A, mini)
     else:
         if _clamp_fast_path_ok(A, mini, maxi):

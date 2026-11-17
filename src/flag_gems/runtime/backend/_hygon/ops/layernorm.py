@@ -14,6 +14,7 @@
 
 import logging
 import math
+from typing import Optional, Sequence, Tuple
 
 import torch
 import triton
@@ -664,3 +665,16 @@ def layer_norm_backward(
             grad_out, input, mean, rstd, weight_grad, bias_grad, M, N
         )
     return in_grad, weight_grad, bias_grad
+
+
+def native_layer_norm(
+    input: torch.Tensor,
+    normalized_shape: Sequence[int],
+    weight: Optional[torch.Tensor] = None,
+    bias: Optional[torch.Tensor] = None,
+    eps: float = 1e-5,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    logger.debug("GEMS_HYGON NATIVE_LAYER_NORM")
+    output, mean, rstd = layer_norm(input, normalized_shape, weight, bias, eps)
+    stats_shape = input.shape[: -len(normalized_shape)] + (1,) * len(normalized_shape)
+    return output, mean.view(stats_shape), rstd.view(stats_shape)

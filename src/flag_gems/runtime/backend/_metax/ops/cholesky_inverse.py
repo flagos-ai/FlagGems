@@ -12,431 +12,413 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger(__name__)
+# ---------------------------------------------------------------------------
+# cholesky_inverse (FlagGems / Gems pytest contract)
+#
+#   out = A^{-1} where A = L L^T (upper=False) or A = U^T U (upper=True)
+#   computed WITHOUT mutating self.
+#
+# Identity used everywhere: with L_eff = L (lower) or L_eff = U^T (upper,
+# obtained as a zero-copy stride swap of the input's last two dims),
+#       Y = L_eff^{-1}   (lower triangular)   and   out = Y^T Y .
+#
+# Precision note: tl.dot is accurate for fp32 on this backend but returns
+# garbage for fp64 operands (verified numerically), so every fp64 product is a
+# tile FMA reduction.  Profiling also showed that an in-loop cross-lane
+# reduction (tl.sum over a 3-D broadcast tile) costs ~9 us per step here while a
+# rank-1 element-wise update costs ~0.2 us, so fp64 products use rank-1 loops:
+#   * fused path   : out accumulates sum_k y_k y_k^T while Y is built
+#   * off-diagonal : rank-1 loop over scaled L blocks (see below)
+#   * gram         : rank-1 accumulation over k
+#
+# Dispatch (metadata only):
+#   n <= 16          : single fused launch, one program per matrix
+#   16 < n <= 64     : column-parallel substitution + tiled gram (2 launches)
+#   n > 64           : blocked path
+#     K0 diag inverse: one warp per column of each diagonal block inverse
+#     K1 scale       : M_ik = D_i L_ik for k < i, fully parallel over (i,k)
+#                      (fp64 only; it removes the per-block-row post-product)
+#     K2 chain       : Y_ij = -sum_k M_ik Y_kj   (fp32: D_i applied by tl.dot)
+#     K3 gram        : out = Y^T Y
+# ---------------------------------------------------------------------------
 
-
-def _tri_inv_col_kernel(
-    L_ptr,
-    X_ptr,
-    n,
-    L_s0,
-    L_s1,
-    L_s2,
-    X_s0,
-    X_s1,
-    X_s2,
-    UPPER: tl.constexpr,
-    N_PAD: tl.constexpr,
-    DT: tl.constexpr,
-):
-    # Column-parallel forward substitution (one CTA per matrix column).
-    # Column k of X = M^{-1} solves M x = e_k:
-    #   x[k] = 1/M[k,k];  x[i] = -(1/M[i,i]) * sum_{j=k}^{i-1} M[i,j] x[j]
-    pid = tl.program_id(0)  # column k
-    b = tl.program_id(1)  # batch
-    k = pid
-    rows = tl.arange(0, N_PAD)
-    cols = tl.arange(0, N_PAD)
-    lbase = L_ptr + b * L_s0
-    xbase = X_ptr + b * X_s0
-
-    d_k = tl.load(lbase + k * L_s1 + k * L_s2)
-    x = tl.where(rows == k, 1.0 / d_k, tl.zeros([N_PAD], dtype=DT))
-    # Steps i <= k are pure waste (x[i] = 0 for i < k and x[k] is initialized);
-    # start the substitution chain at k+1.  The Cholesky factor is exactly
-    # triangular, so entries with cols > i are already zero and need no mask.
-    for i in range(k + 1, n):
-        if UPPER:
-            mrow = tl.load(lbase + cols * L_s1 + i * L_s2, mask=cols < n, other=0.0)
-        else:
-            mrow = tl.load(lbase + i * L_s1 + cols * L_s2, mask=cols < n, other=0.0)
-        S = tl.sum(mrow * x, axis=0)
-        d_i = tl.load(lbase + i * L_s1 + i * L_s2)
-        xi = -S / d_i
-        x = tl.where(rows == i, xi, x)
-    tl.store(xbase + rows * X_s1 + k * X_s2, x, mask=rows < n)
-
-
-@triton.jit
-def _tri_inv_col2_kernel(
-    L_ptr,
-    X_ptr,
-    n,
-    L_s0,
-    L_s1,
-    L_s2,
-    X_s0,
-    X_s1,
-    X_s2,
-    UPPER: tl.constexpr,
-    N_PAD: tl.constexpr,
-    G: tl.constexpr,
-    DT: tl.constexpr,
-):
-    # Grouped column-parallel substitution: one CTA per G columns, sharing
-    # each matrix-row load across the group (cheaper per-column chain latency).
-    pid = tl.program_id(0)
-    b = tl.program_id(1)
-    k0 = pid * G
-    rows = tl.arange(0, N_PAD)
-    cols = tl.arange(0, N_PAD)
-    gs = tl.arange(0, G)
-    lbase = L_ptr + b * L_s0
-    xbase = X_ptr + b * X_s0
-
-    xs = tl.zeros([G, N_PAD], dtype=DT)
-    for g in tl.static_range(G):
-        k = k0 + g
-        d_k = tl.load(lbase + k * L_s1 + k * L_s2)
-        xrow = tl.where(rows == k, 1.0 / d_k, 0.0)
-        xs = tl.where(gs[:, None] == g, xrow[None, :], xs)
-    for i in range(0, n):
-        if UPPER:
-            mrow = tl.load(lbase + cols * L_s1 + i * L_s2, mask=cols < n, other=0.0)
-        else:
-            mrow = tl.load(lbase + i * L_s1 + cols * L_s2, mask=cols < n, other=0.0)
-        mrow = tl.where(cols <= i, mrow, 0.0)
-        S = tl.sum(mrow[None, :] * xs, axis=1)
-        d_i = tl.load(lbase + i * L_s1 + i * L_s2)
-        upd = tl.where(rows[None, :] == i, -S[:, None] / d_i, 0.0)
-        active_g = gs < (i - k0)
-        xs = tl.where((rows[None, :] == i) & active_g[:, None], upd, xs)
-    tl.store(
-        xbase + (k0 + gs)[:, None] * X_s2 + rows[None, :] * X_s1,
-        xs,
-        mask=rows[None, :] < n,
-    )
-
-
-@triton.jit
-def _blk_diag_kernel(
-    L_ptr,
-    X_ptr,
-    n,
-    L_s0,
-    L_s1,
-    L_s2,
-    X_s0,
-    X_s1,
-    X_s2,
-    UPPER: tl.constexpr,
-    T: tl.constexpr,
-    DT: tl.constexpr,
-):
-    # Diagonal block inverses X_ii = inv(M_ii) via T-step row sweep in [T,T]
-    # registers; also zero the strictly-upper blocks of X (invalid entries).
-    i = tl.program_id(0)
-    b = tl.program_id(1)
-    m = tl.num_programs(0)
-    rows = tl.arange(0, T)
-    cols = tl.arange(0, T)
-    lbase = L_ptr + b * L_s0
-    xbase = X_ptr + b * X_s0
-
-    Xb = tl.zeros([T, T], dtype=DT)
-    for r in range(0, T):
-        if UPPER:
-            mrow = tl.load(
-                lbase + (i * T + cols) * L_s1 + (i * T + r) * L_s2,
-                mask=cols < T,
-                other=0.0,
-            )
-        else:
-            mrow = tl.load(
-                lbase + (i * T + r) * L_s1 + (i * T + cols) * L_s2,
-                mask=cols < T,
-                other=0.0,
-            )
-        d = tl.load(lbase + (i * T + r) * L_s1 + (i * T + r) * L_s2)
-        S = tl.sum(mrow[:, None] * Xb, axis=0)
-        xr = (tl.where(cols == r, 1.0, 0.0) - S) / d
-        Xb = tl.where(rows[:, None] == r, xr[None, :], Xb)
-    tl.store(
-        xbase + (i * T + rows)[:, None] * X_s1 + (i * T + cols)[None, :] * X_s2, Xb
-    )
-    Z = tl.zeros([T, T], dtype=DT)
-    for j in range(i + 1, m):
-        tl.store(
-            xbase + (i * T + rows)[:, None] * X_s1 + (j * T + cols)[None, :] * X_s2, Z
-        )
-
-
-@triton.jit
-def _blk_col_kernel(
-    L_ptr,
-    X_ptr,
-    n,
-    L_s0,
-    L_s1,
-    L_s2,
-    X_s0,
-    X_s1,
-    X_s2,
-    UPPER: tl.constexpr,
-    T: tl.constexpr,
-    KC: tl.constexpr,
-    DT: tl.constexpr,
-):
-    # Block-column forward substitution (one CTA per matrix column block).
-    # Column k: X_ik = -D_i @ sum_{j=k}^{i-1} M_ij X_jk, i = k+1..m-1 sequential.
-    k = tl.program_id(0)
-    b = tl.program_id(1)
-    m = tl.num_programs(0)
-    rows = tl.arange(0, T)
-    cols = tl.arange(0, T)
-    kkc = tl.arange(0, KC)
-    lbase = L_ptr + b * L_s0
-    xbase = X_ptr + b * X_s0
-    for i in range(k + 1, m):
-        S = tl.zeros([T, T], dtype=DT)
-        for j in range(k, i):
-            for kc in range(0, T, KC):
-                if UPPER:
-                    mch = tl.load(
-                        lbase
-                        + (j * T + kc + kkc)[None, :] * L_s1
-                        + (i * T + rows)[:, None] * L_s2,
-                        mask=(kc + kkc)[None, :] < T,
-                        other=0.0,
-                    )
-                else:
-                    mch = tl.load(
-                        lbase
-                        + (i * T + rows)[:, None] * L_s1
-                        + (j * T + kc + kkc)[None, :] * L_s2,
-                        mask=(kc + kkc)[None, :] < T,
-                        other=0.0,
-                    )
-                xch = tl.load(
-                    xbase
-                    + (j * T + kc + kkc)[:, None] * X_s1
-                    + (k * T + cols)[None, :] * X_s2,
-                    mask=(kc + kkc)[:, None] < T,
-                    other=0.0,
-                )
-                S += tl.sum(mch[:, :, None] * xch[None, :, :], axis=1)
-        D = tl.load(
-            xbase + (i * T + rows)[:, None] * X_s1 + (i * T + cols)[None, :] * X_s2
-        )
-        Xik = -tl.sum(D[:, :, None] * S[None, :, :], axis=1)
-        tl.store(
-            xbase + (i * T + rows)[:, None] * X_s1 + (k * T + cols)[None, :] * X_s2, Xik
-        )
-
-
-@triton.jit
-def _xtx_kernel(
-    X_ptr,
-    out_ptr,
-    n,
-    X_s0,
-    X_s1,
-    X_s2,
-    O_s0,
-    O_s1,
-    O_s2,
-    KC: tl.constexpr,
-    BLOCK: tl.constexpr,
-    DT: tl.constexpr,
-):
-    # out = X^T @ X via exact accumulation:
-    # out[i, j] = sum_k X[k, i] * X[k, j]
-    # X is lower triangular, so terms with k < max(i,j) are exactly zero;
-    # start each tile's k-loop at kstart = max(i0, j0).
-    pid = tl.program_id(0)
-    b = tl.program_id(1)
-    ncol = (n + BLOCK - 1) // BLOCK
-    i0 = (pid // ncol) * BLOCK
-    j0 = (pid % ncol) * BLOCK
-    rows = i0 + tl.arange(0, BLOCK)
-    cols = j0 + tl.arange(0, BLOCK)
-    kk = tl.arange(0, KC)
-    kstart = tl.maximum(i0, j0)
-    xbase = X_ptr + b * X_s0
-    acc = tl.zeros([BLOCK, BLOCK], dtype=DT)
-    for k0 in range(kstart, n, KC):
-        a = tl.load(
-            xbase + (k0 + kk)[:, None] * X_s1 + rows[None, :] * X_s2,
-            mask=((k0 + kk)[:, None] < n) & (rows[None, :] < n),
-            other=0.0,
-        )
-        c = tl.load(
-            xbase + (k0 + kk)[:, None] * X_s1 + cols[None, :] * X_s2,
-            mask=((k0 + kk)[:, None] < n) & (cols[None, :] < n),
-            other=0.0,
-        )
-        acc += tl.sum(a[:, :, None] * c[:, None, :], axis=0)
-    tl.store(
-        out_ptr + b * O_s0 + rows[:, None] * O_s1 + cols[None, :] * O_s2,
-        acc,
-        mask=(rows[:, None] < n) & (cols[None, :] < n),
-    )
+_FUSED_MAX = 16
+_COLSUB_MAX = 64
 
 
 @triton.jit
 def _fused_kernel(
-    L_ptr,
-    out_ptr,
+    L,
+    Out,
     n,
-    L_s0,
-    L_s1,
-    L_s2,
-    O_s0,
-    O_s1,
-    O_s2,
-    UPPER: tl.constexpr,
-    N_PAD: tl.constexpr,
-    DT: tl.constexpr,
+    sr,
+    sc,
+    sb,
+    BLOCK_N: tl.constexpr,
+    F64: tl.constexpr,
 ):
-    # Single-CTA fused tiny-n: X = M^{-1} row sweep in registers while
-    # accumulating out = X^T @ X in registers (one launch, no X round-trip).
     pid = tl.program_id(0)
-    rows = tl.arange(0, N_PAD)
-    cols = tl.arange(0, N_PAD)
-    lbase = L_ptr + pid * L_s0
-    obase = out_ptr + pid * O_s0
-    X = tl.zeros([N_PAD, N_PAD], dtype=DT)
-    acc = tl.zeros([N_PAD, N_PAD], dtype=DT)
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_N)
+    row_mask = rows < n
+    col_mask = cols < n
+
+    Y = tl.zeros((BLOCK_N, BLOCK_N), dtype=L.dtype.element_ty)
+    if F64:
+        out_acc = tl.zeros((BLOCK_N, BLOCK_N), dtype=L.dtype.element_ty)
+    base = L + pid * sb
+
     for i in range(0, n):
-        if UPPER:
-            mrow = tl.load(lbase + cols * L_s1 + i * L_s2, mask=cols < n, other=0.0)
-        else:
-            mrow = tl.load(lbase + i * L_s1 + cols * L_s2, mask=cols < n, other=0.0)
-        mrow = tl.where(cols <= i, mrow, 0.0)
-        d = tl.load(lbase + i * L_s1 + i * L_s2)
-        S = tl.sum(mrow[:, None] * X, axis=0)
-        xrow = (tl.where(cols == i, 1.0, 0.0) - S) / d
-        X = tl.where(rows[:, None] == i, xrow[None, :], X)
-        acc += xrow[:, None] * xrow[None, :]
+        off = base + i * sr
+        lrow = tl.load(off + cols * sc, mask=col_mask & (cols < i), other=0.0)
+        lii = tl.load(off + i * sc)
+        acc = tl.sum(lrow[:, None] * Y, axis=0)
+        nr = tl.where(cols == i, 1.0, 0.0).to(L.dtype.element_ty) - acc
+        nr = nr / lii
+        nr = tl.where(col_mask, nr, 0.0)
+        if F64:
+            out_acc += nr[:, None] * nr[None, :]
+        Y = tl.where(rows[:, None] == i, nr[None, :], Y)
+
+    if F64:
+        res = out_acc
+    else:
+        res = tl.dot(tl.trans(Y), Y, out_dtype=tl.float32, input_precision="ieee")
+
+    out_off = Out + pid * n * n + rows[:, None] * n + cols[None, :]
+    tl.store(out_off, res, mask=row_mask[:, None] & col_mask[None, :])
+
+
+@triton.jit
+def _colsub_kernel(
+    L,
+    Ysc,
+    n,
+    sr,
+    sc,
+    sb,
+    BLOCK_N: tl.constexpr,
+):
+    """One program per column c of Y = L_eff^{-1}; entries i >= c only."""
+    b = tl.program_id(0)
+    c = tl.program_id(1)
+    idx = tl.arange(0, BLOCK_N)
+    base = L + b * sb
+    y = tl.zeros((BLOCK_N,), dtype=L.dtype.element_ty)
+    for i in range(c, n):
+        lrow = tl.load(base + i * sr + idx * sc, mask=idx < i, other=0.0)
+        lii = tl.load(base + i * sr + i * sc)
+        acc = tl.sum(lrow * y, axis=0)
+        val = (tl.where(i == c, 1.0, 0.0).to(L.dtype.element_ty) - acc) / lii
+        y = tl.where(idx == i, val, y)
+    tl.store(Ysc + b * n * n + idx * n + c, y, mask=idx < n)
+
+
+@triton.jit
+def _diag_inv_col_kernel(
+    L,
+    Ysc,
+    n,
+    sr,
+    sc,
+    sb,
+    BK: tl.constexpr,
+):
+    """One program per column of each BK x BK diagonal block inverse."""
+    b = tl.program_id(0)
+    j = tl.program_id(1)
+    c = tl.program_id(2)
+    i0 = j * BK
+    idx = tl.arange(0, BK)
+    gc = i0 + c
+    base = L + b * sb
+    y = tl.zeros((BK,), dtype=L.dtype.element_ty)
+    for i in range(c, BK):
+        gt = i0 + i
+        lrow = tl.load(
+            base + gt * sr + (i0 + idx) * sc, mask=(idx < i) & (gc < n), other=0.0
+        )
+        lii = tl.load(base + gt * sr + gt * sc, mask=gt < n, other=1.0)
+        acc = tl.sum(lrow * y, axis=0)
+        val = (tl.where(i == c, 1.0, 0.0).to(L.dtype.element_ty) - acc) / lii
+        y = tl.where(idx == i, val, y)
+    tl.store(Ysc + b * n * n + (i0 + idx) * n + gc, y, mask=(gc < n) & (i0 + idx < n))
+
+
+@triton.jit
+def _premul_kernel(
+    L,
+    Ysc,
+    Msc,
+    n,
+    sr,
+    sc,
+    sb,
+    BK: tl.constexpr,
+):
+    """M_ik = D_i L_ik  (k < i) with D_i = inv(L_ii) read from Ysc.
+    Fully parallel over (block row i, block col k); rank-1 element updates."""
+    b = tl.program_id(0)
+    i = tl.program_id(1)
+    k = tl.program_id(2)
+    r = tl.arange(0, BK)
+    c = tl.arange(0, BK)
+    gi = i * BK + r
+    gkc = k * BK + c
+    imask = gi < n
+    kmask = gkc < n
+    base = L + b * sb
+    ybase = Ysc + b * n * n
+    acc = tl.zeros((BK, BK), dtype=L.dtype.element_ty)
+    for t in range(0, BK):
+        gt = i * BK + t
+        dv = tl.load(ybase + gi * n + gt, mask=imask & (gt < n), other=0.0)
+        lv = tl.load(base + gt * sr + gkc * sc, mask=(gt < n) & kmask, other=0.0)
+        acc += dv[:, None] * lv[None, :]
     tl.store(
-        obase + rows[:, None] * O_s1 + cols[None, :] * O_s2,
-        acc,
-        mask=(rows[:, None] < n) & (cols[None, :] < n),
+        Msc + b * n * n + gkc[:, None] * n + gi[None, :],
+        tl.trans(acc),
+        mask=kmask[:, None] & imask[None, :] & (k < i),
     )
 
 
-def cholesky_inverse(L, upper=False):
-    dev = L.device
-    dt = L.dtype
-    n = L.shape[-1]
-    if L.numel() == 0:
-        return torch.empty_like(L)
-    if L.dim() < 2 or L.shape[-2] != n:
-        raise ValueError("cholesky_inverse: input must be square and at least 2D")
-    if dt == torch.float32:
-        tl_dt = tl.float32
-    elif dt == torch.float64:
-        tl_dt = tl.float64
-    else:
-        raise TypeError(f"cholesky_inverse: unsupported dtype {dt}")
+@triton.jit
+def _offdiag_inv_kernel(
+    L,
+    Ysc,
+    Msc,
+    n,
+    sr,
+    sc,
+    sb,
+    nb,
+    BK: tl.constexpr,
+    F64: tl.constexpr,
+):
+    b = tl.program_id(0)
+    j = tl.program_id(1)
+    r = tl.arange(0, BK)
+    c = tl.arange(0, BK)
+    gj = j * BK + c
+    jmask = gj < n
+    base = L + b * sb
+    ybase = Ysc + b * n * n
+    mbase = Msc + b * n * n
 
-    batch = L.numel() // (n * n)
-    if L.dim() == 2:
-        ls0, ls1, ls2 = 0, L.stride(0), L.stride(1)
-    else:
-        ls0, ls1, ls2 = L.stride(-3), L.stride(-2), L.stride(-1)
+    for i in range(j + 1, nb):
+        gi = i * BK + r
+        imask = gi < n
+        acc = tl.zeros((BK, BK), dtype=L.dtype.element_ty)
+        if F64:
+            # Y_ij = -sum_k M_ik Y_kj, no post-multiplication needed.
+            # M is stored transposed so the column of M is a contiguous row.
+            for gk in range(j * BK, i * BK):
+                mv = tl.load(mbase + gk * n + gi, mask=(gk < n) & imask, other=0.0)
+                yv = tl.load(ybase + gk * n + gj, mask=(gk < n) & jmask, other=0.0)
+                acc += mv[:, None] * yv[None, :]
+            res = -acc
+        else:
+            for k in range(j, i):
+                gkc = k * BK + c
+                rk = k * BK + r
+                lt = tl.load(
+                    base + gi[:, None] * sr + gkc[None, :] * sc,
+                    mask=imask[:, None] & (gkc < n)[None, :],
+                    other=0.0,
+                )
+                yt = tl.load(
+                    ybase + rk[:, None] * n + gj[None, :],
+                    mask=(rk < n)[:, None] & jmask[None, :],
+                    other=0.0,
+                )
+                acc = tl.dot(lt, yt, acc, out_dtype=tl.float32, input_precision="ieee")
+            di = tl.load(
+                ybase + gi[:, None] * n + gi[None, :],
+                mask=imask[:, None] & imask[None, :],
+                other=0.0,
+            )
+            zero = tl.zeros((BK, BK), dtype=L.dtype.element_ty)
+            res = -tl.dot(di, acc, zero, out_dtype=tl.float32, input_precision="ieee")
+        tl.store(
+            ybase + gi[:, None] * n + gj[None, :],
+            res,
+            mask=imask[:, None] & jmask[None, :],
+        )
 
-    out = torch.empty_like(L)
-    if out.dim() == 2:
-        os0, os1, os2 = 0, out.stride(0), out.stride(1)
-    else:
-        os0, os1, os2 = out.stride(-3), out.stride(-2), out.stride(-1)
 
-    if n <= 16:
-        N_PAD = max(16, triton.next_power_of_2(n))
-        _fused_kernel[(batch,)](
-            L,
+@triton.jit
+def _gram_kernel(
+    Ysc,
+    Out,
+    n,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    F64: tl.constexpr,
+):
+    b = tl.program_id(0)
+    pm = tl.program_id(1)
+    pn = tl.program_id(2)
+    rm = pm * BM + tl.arange(0, BM)
+    rn = pn * BN + tl.arange(0, BN)
+    rk = tl.arange(0, BK)
+    yb = Ysc + b * n * n
+    mmask = rm < n
+    nmask = rn < n
+
+    acc = tl.zeros((BM, BN), dtype=Ysc.dtype.element_ty)
+    if F64:
+        for k in range(0, n):
+            av = tl.load(yb + k * n + rm, mask=mmask & (k >= rm), other=0.0)
+            bv = tl.load(yb + k * n + rn, mask=nmask & (k >= rn), other=0.0)
+            acc += av[:, None] * bv[None, :]
+    else:
+        for k0 in range(0, n, BK):
+            kk = k0 + rk
+            kmask = kk < n
+            a = tl.load(
+                yb + kk[:, None] * n + rm[None, :],
+                mask=kmask[:, None] & (kk[:, None] >= rm[None, :]) & mmask[None, :],
+                other=0.0,
+            )
+            bb = tl.load(
+                yb + kk[:, None] * n + rn[None, :],
+                mask=kmask[:, None] & (kk[:, None] >= rn[None, :]) & nmask[None, :],
+                other=0.0,
+            )
+            acc = tl.dot(
+                tl.trans(a), bb, acc, out_dtype=tl.float32, input_precision="ieee"
+            )
+
+    tl.store(
+        Out + b * n * n + rm[:, None] * n + rn[None, :],
+        acc,
+        mask=mmask[:, None] & nmask[None, :],
+    )
+
+
+def _num_warps(block_n):
+    if block_n >= 64:
+        return 8
+    if block_n >= 32:
+        return 4
+    return 2
+
+
+def _gram_cfg(n, f64):
+    if n <= 64:
+        return 16, (8 if f64 else 16)
+    if n <= 128:
+        return 32, (4 if f64 else 32)
+    return (32, 4) if f64 else (64, 32)
+
+
+def cholesky_inverse(self, upper=False):
+    if self.numel() == 0:
+        return self
+
+    n = self.size(-1)
+    B = self.numel() // (n * n)
+    sr = self.stride(-2)
+    sc = self.stride(-1)
+    sb = self.stride(-3) if self.dim() >= 3 else 0
+    if upper:
+        sr, sc = sc, sr
+
+    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    f64 = self.dtype == torch.float64
+
+    if n <= _FUSED_MAX:
+        block_n = max(16, triton.next_power_of_2(n))
+        _fused_kernel[(B,)](
+            self,
             out,
             n,
-            ls0,
-            ls1,
-            ls2,
-            os0,
-            os1,
-            os2,
-            UPPER=bool(upper),
-            N_PAD=N_PAD,
-            DT=tl_dt,
-            num_warps=1,
+            sr,
+            sc,
+            sb,
+            BLOCK_N=block_n,
+            F64=f64,
+            num_warps=_num_warps(block_n),
+            num_stages=1,
         )
         return out
 
-    X = torch.empty((batch, n, n), dtype=dt, device=dev)
-    xs = X.stride()
+    bmn, bkc = _gram_cfg(n, f64)
 
-    if n <= 32 or dt == torch.float64 or n % 16 != 0:
-        N_PAD = max(16, triton.next_power_of_2(n))
-        _tri_inv_col_kernel[(n, batch)](
-            L,
-            X,
+    if n <= _COLSUB_MAX:
+        block_n = max(16, triton.next_power_of_2(n))
+        ysc = torch.empty((B, n, n), dtype=self.dtype, device=self.device)
+        _colsub_kernel[(B, n)](
+            self,
+            ysc,
             n,
-            ls0,
-            ls1,
-            ls2,
-            xs[0],
-            xs[1],
-            xs[2],
-            UPPER=bool(upper),
-            N_PAD=N_PAD,
-            DT=tl_dt,
+            sr,
+            sc,
+            sb,
+            BLOCK_N=block_n,
             num_warps=1,
+            num_stages=4,
         )
     else:
-        T = 16
-        m = n // T
-        _blk_diag_kernel[(m, batch)](
-            L,
-            X,
+        bk = 16 if (not f64 and n <= 128) else 32
+        nb = (n + bk - 1) // bk
+        ysc = torch.empty((B, n, n), dtype=self.dtype, device=self.device)
+        _diag_inv_col_kernel[(B, nb, bk)](
+            self,
+            ysc,
             n,
-            ls0,
-            ls1,
-            ls2,
-            xs[0],
-            xs[1],
-            xs[2],
-            UPPER=bool(upper),
-            T=T,
-            DT=tl_dt,
-            num_warps=4,
+            sr,
+            sc,
+            sb,
+            BK=bk,
+            num_warps=1,
+            num_stages=4,
         )
-        _blk_col_kernel[(m, batch)](
-            L,
-            X,
+        if f64:
+            msc = torch.empty((B, n, n), dtype=self.dtype, device=self.device)
+            _premul_kernel[(B, nb, nb)](
+                self,
+                ysc,
+                msc,
+                n,
+                sr,
+                sc,
+                sb,
+                BK=bk,
+                num_warps=4,
+                num_stages=3,
+            )
+        else:
+            msc = ysc
+        _offdiag_inv_kernel[(B, nb)](
+            self,
+            ysc,
+            msc,
             n,
-            ls0,
-            ls1,
-            ls2,
-            xs[0],
-            xs[1],
-            xs[2],
-            UPPER=bool(upper),
-            T=T,
-            KC=16,
-            DT=tl_dt,
+            sr,
+            sc,
+            sb,
+            nb,
+            BK=bk,
+            F64=f64,
             num_warps=4,
+            num_stages=3,
         )
 
-    BLOCK, KC = 16, 16
-    grid = (triton.cdiv(n, BLOCK) * triton.cdiv(n, BLOCK), batch)
-    _xtx_kernel[grid](
-        X,
+    _gram_kernel[(B, triton.cdiv(n, bmn), triton.cdiv(n, bmn))](
+        ysc,
         out,
         n,
-        xs[0],
-        xs[1],
-        xs[2],
-        os0,
-        os1,
-        os2,
-        KC=KC,
-        BLOCK=BLOCK,
-        DT=tl_dt,
-        num_warps=4,
+        BM=bmn,
+        BN=bmn,
+        BK=bkc,
+        F64=f64,
+        num_warps=2 if bmn <= 16 else 4,
+        num_stages=3,
     )
     return out

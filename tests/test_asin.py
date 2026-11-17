@@ -22,16 +22,25 @@ from . import accuracy_utils as utils
 
 @pytest.mark.asin
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.SMALL_INT_DTYPES)
 def test_asin(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # asin promotes integer inputs to float32, matching ATen. Integers only hit
+    # {-1, 0, 1} of the valid domain, so -2/2 are kept to cover the out-of-domain
+    # NaN edges as well.
+    if dtype in utils.SMALL_INT_DTYPES:
+        res_inp = utils.randint_in_range(shape, dtype, low=-2, high=3).to(
+            flag_gems.device
+        )
+    else:
+        res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.asin(ref_inp)
     res_out = flag_gems.asin(res_inp)
-    ref_out = ref_out.to(res_out.dtype)
+    out_dtype = utils.promoted_float_dtype(dtype, "asin")
+    ref_out = ref_out.to(out_dtype)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    utils.gems_assert_close(res_out, ref_out, out_dtype, equal_nan=True)
 
 
 @pytest.mark.asin_
