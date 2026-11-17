@@ -68,6 +68,10 @@ jobs:
       - shell: bash
         run: tools/gpu_check_nvidia.sh
 
+      - name: Precompile flag_gems Python bytecode
+        shell: bash
+        run: python3 -m compileall -q src/flag_gems/
+
       - shell: bash
         env:
           CHANGED_FILES: '__ALL__'
