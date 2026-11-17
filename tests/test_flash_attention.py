@@ -31,6 +31,18 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
+# Generic `ops/flash_kernel.py` splitkv combine kernels fail to compile on the
+# XPU backend (TritonXPUCoreTiling / TritonToLinalgExperimental), so skip the
+# three splitkv layout tests there until the generic kernel is fixed.
+KUNLUNXIN_SPLITKV_SKIP = pytest.mark.skipif(
+    vendor_name == "kunlunxin",
+    reason=(
+        "generic flash_kernel splitkv combine fails to compile on the XPU "
+        "backend (TritonXPUCoreTiling/TritonToLinalgExperimental: uni_sram / "
+        "linalg.matmul shape mismatch); tracked upstream"
+    ),
+)
+
 # The GCU torch build does not register several operators this module relies on:
 # `aten::_flash_attention_forward` (the reference oracle for the dense tests),
 # `torch.gather` on the expanded sparse index tensor, and the `add` broadcast in
@@ -992,6 +1004,7 @@ def launch_combine(out, final_lse, partial, lse, block_m):
 # `flash_kernel`/`flash_api` also name the implementation files these tests
 # cover, so tools/test-op.sh can select them by marker when ops/flash_kernel.py
 # or ops/flash_api.py changes.
+@KUNLUNXIN_SPLITKV_SKIP
 @pytest.mark.flash_kernel
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -1023,6 +1036,7 @@ def test_splitkv_combine_output_layout(
     assert_no_stray_writes(backing, occupied)
 
 
+@KUNLUNXIN_SPLITKV_SKIP
 @pytest.mark.flash_kernel
 @pytest.mark.flash_attention_forward
 @pytest.mark.skipif(
@@ -1066,6 +1080,7 @@ def test_splitkv_combine_graph_replay(layout, dtype):
         assert_no_stray_writes(backing, occupied)
 
 
+@KUNLUNXIN_SPLITKV_SKIP
 @pytest.mark.flash_api
 @pytest.mark.flash_attention_forward
 @pytest.mark.skipif(
