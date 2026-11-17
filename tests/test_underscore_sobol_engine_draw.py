@@ -40,8 +40,8 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
     quasi_cpu = eng.quasi.clone()
     sobolstate_cpu = eng.sobolstate.clone()
 
-    quasi_cuda = quasi_cpu.cuda()
-    sobolstate_cuda = sobolstate_cpu.cuda()
+    quasi_device = quasi_cpu.to(flag_gems.device)
+    sobolstate_device = sobolstate_cpu.to(flag_gems.device)
 
     # Generate reference on CPU
     result_ref, quasi_ref = torch._sobol_engine_draw(
@@ -50,7 +50,7 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
 
     # Generate with FlagGems
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda, n, sobolstate_cuda, dimension, 0, dtype=dtype
+        quasi_device, n, sobolstate_device, dimension, 0, dtype=dtype
     )
 
     # Check results
@@ -59,8 +59,8 @@ def test_accuracy_underscore_sobol_engine_draw(n, dimension, dtype):
     assert quasi_gems.shape == (dimension,)
     assert quasi_gems.dtype == torch.int64
 
-    assert result_gems.device == quasi_cuda.device
-    assert quasi_gems.device == quasi_cuda.device
+    assert result_gems.device == quasi_device.device
+    assert quasi_gems.device == quasi_device.device
 
     result_cpu = result_gems.cpu()
     # Iluvatar FP64 comparisons can misclassify values that round-trip exactly.
@@ -93,8 +93,8 @@ def test_accuracy_underscore_sobol_engine_draw_with_offset(num_generated):
     quasi_cpu = eng.quasi.clone()
     sobolstate_cpu = eng.sobolstate.clone()
 
-    quasi_cuda = quasi_cpu.cuda()
-    sobolstate_cuda = sobolstate_cpu.cuda()
+    quasi_device = quasi_cpu.to(flag_gems.device)
+    sobolstate_device = sobolstate_cpu.to(flag_gems.device)
 
     # Generate reference on CPU (note: num_generated - 1 in the call, as per SobolEngine.draw)
     result_ref, quasi_ref = torch._sobol_engine_draw(
@@ -108,15 +108,17 @@ def test_accuracy_underscore_sobol_engine_draw_with_offset(num_generated):
 
     # Generate with FlagGems
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda,
+        quasi_device,
         n,
-        sobolstate_cuda,
+        sobolstate_device,
         dimension,
         num_generated - 1 if num_generated > 0 else 0,
         dtype=dtype,
     )
 
     # Check match
+    assert result_gems.device == quasi_device.device
+    assert quasi_gems.device == quasi_device.device
     torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)
     assert torch.equal(quasi_gems.cpu(), quasi_ref)
 
@@ -129,17 +131,19 @@ def test_accuracy_underscore_sobol_engine_draw_edge_cases():
     dtype = torch.float32
 
     eng = SobolEngine(dimension=dimension, scramble=False)
-    quasi_cuda = eng.quasi.cuda()
-    sobolstate_cuda = eng.sobolstate.cuda()
+    quasi_device = eng.quasi.to(flag_gems.device)
+    sobolstate_device = eng.sobolstate.to(flag_gems.device)
 
     result_ref, quasi_ref = torch._sobol_engine_draw(
         eng.quasi, n, eng.sobolstate, dimension, 0, dtype=dtype
     )
 
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda, n, sobolstate_cuda, dimension, 0, dtype=dtype
+        quasi_device, n, sobolstate_device, dimension, 0, dtype=dtype
     )
 
+    assert result_gems.device == quasi_device.device
+    assert quasi_gems.device == quasi_device.device
     torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)
     assert torch.equal(quasi_gems.cpu(), quasi_ref)
 
@@ -152,16 +156,18 @@ def test_accuracy_underscore_sobol_engine_draw_large():
     dtype = torch.float32
 
     eng = SobolEngine(dimension=dimension, scramble=False)
-    quasi_cuda = eng.quasi.cuda()
-    sobolstate_cuda = eng.sobolstate.cuda()
+    quasi_device = eng.quasi.to(flag_gems.device)
+    sobolstate_device = eng.sobolstate.to(flag_gems.device)
 
     result_ref, quasi_ref = torch._sobol_engine_draw(
         eng.quasi, n, eng.sobolstate, dimension, 0, dtype=dtype
     )
 
     result_gems, quasi_gems = flag_gems.underscore_sobol_engine_draw(
-        quasi_cuda, n, sobolstate_cuda, dimension, 0, dtype=dtype
+        quasi_device, n, sobolstate_device, dimension, 0, dtype=dtype
     )
 
+    assert result_gems.device == quasi_device.device
+    assert quasi_gems.device == quasi_device.device
     torch.testing.assert_close(result_gems.cpu(), result_ref, rtol=1e-5, atol=1e-8)
     assert torch.equal(quasi_gems.cpu(), quasi_ref)
