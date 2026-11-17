@@ -316,3 +316,168 @@ def test_validate_sparse_compressed_tensor_args_dispatch(caplog):
     finally:
         library._destroy()
         flag_gems.current_work_registrar = previous_registrar
+
+
+def _make_zero_axis_inputs(layout, index_dtype, dtype, batch, plain_values, device):
+    # A zero compressed axis can still have stored plain indices. ATen checks
+    # their bounds but ignores compressed endpoints and per-segment ordering.
+    blocked = layout in (torch.sparse_bsr, torch.sparse_bsc)
+    row_major = layout in (torch.sparse_csr, torch.sparse_bsr)
+    nnz = len(plain_values)
+    comp = torch.full((*batch, 1), 5 if nnz else -5, dtype=index_dtype, device=device)
+    plain = torch.tensor(plain_values, dtype=index_dtype, device=device)
+    plain = plain.expand(*batch, nnz).clone()
+    block_shape = (2, 3) if blocked else ()
+    values = torch.zeros((*batch, nnz, *block_shape), dtype=dtype, device=device)
+    rows, cols = (0, 3) if row_major else (3, 0)
+    size = (*batch, rows * (2 if blocked else 1), cols * (3 if blocked else 1))
+    return comp, plain, values, size
+
+
+@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
+@pytest.mark.parametrize(
+    "layout", [torch.sparse_csr, torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc]
+)
+@pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("batch", [(), (2,), (0,)])
+@pytest.mark.parametrize("plain_values", [(), (1, 0), (1, 1)])
+def test_validate_sparse_compressed_tensor_args_zero_compressed_axis(
+    layout, index_dtype, dtype, batch, plain_values
+):
+    comp, plain, values, size = _make_zero_axis_inputs(
+        layout, index_dtype, dtype, batch, plain_values, flag_gems.device
+    )
+    snapshots = [tensor.clone() for tensor in (comp, plain, values)]
+    reference = torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+        comp, plain, values, size, layout, check_pinning=False
+    )
+    result = flag_gems._validate_sparse_compressed_tensor_args(
+        comp, plain, values, size, layout, check_pinning=False
+    )
+    flag_gems.runtime.torch_device_fn.synchronize()
+    assert result is reference is None
+    for tensor, before in zip((comp, plain, values), snapshots):
+        utils.gems_assert_equal(tensor, utils.to_reference(before))
+
+
+@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
+@pytest.mark.parametrize(
+    "layout", [torch.sparse_csr, torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc]
+)
+@pytest.mark.parametrize(
+    "case",
+    [
+        "compressed_stride",
+        "plain_stride",
+        "index_dtype",
+        "compressed_shape",
+        "plain_shape",
+    ],
+)
+def test_validate_sparse_compressed_tensor_args_zero_axis_metadata(layout, case):
+    comp, plain, values, size = _make_zero_axis_inputs(
+        layout, torch.int64, torch.float32, (), (0, 1), flag_gems.device
+    )
+    if case == "compressed_stride":
+        comp = torch.empty_strided((1,), (3,), dtype=comp.dtype, device=comp.device)
+        comp.fill_(5)
+    elif case == "plain_stride":
+        plain = torch.empty_strided((2,), (3,), dtype=plain.dtype, device=plain.device)
+        plain.copy_(torch.tensor([0, 1], device=plain.device))
+    elif case == "index_dtype":
+        plain = plain.to(torch.int32)
+    elif case == "compressed_shape":
+        comp = torch.zeros(2, dtype=comp.dtype, device=comp.device)
+    else:
+        plain = plain[:1]
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+            comp, plain, values, size, layout, check_pinning=False
+        )
+    with pytest.raises(RuntimeError):
+        flag_gems._validate_sparse_compressed_tensor_args(
+            comp, plain, values, size, layout, check_pinning=False
+        )
+
+
+@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
+@pytest.mark.parametrize("layout", [torch.sparse_csr, torch.sparse_csc])
+@pytest.mark.parametrize("case", ["negative", "bounds"])
+def test_validate_sparse_compressed_tensor_args_zero_axis_invalid_indices(layout, case):
+    comp, plain, values, size = _make_zero_axis_inputs(
+        layout, torch.int64, torch.float32, (), (0, 1), "cpu"
+    )
+    plain[0 if case == "negative" else 1] = -1 if case == "negative" else 3
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+            comp, plain, values, size, layout, check_pinning=False
+        )
+    child_code = """
+import resource, sys
+resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+import torch
+import flag_gems
+layout = getattr(torch, sys.argv[2])
+blocked = layout in (torch.sparse_bsr, torch.sparse_bsc)
+row_major = layout in (torch.sparse_csr, torch.sparse_bsr)
+comp = torch.tensor([5], dtype=torch.int64, device=flag_gems.device)
+plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+plain[0 if sys.argv[1] == "negative" else 1] = -1 if sys.argv[1] == "negative" else 3
+values = torch.zeros((2, 2, 3) if blocked else (2,), device=flag_gems.device)
+size = (0, 3) if row_major else ((6, 0) if blocked else (3, 0))
+flag_gems._validate_sparse_compressed_tensor_args(comp, plain, values, size, layout, check_pinning=False)
+flag_gems.runtime.torch_device_fn.synchronize()
+"""
+    child_env = os.environ.copy()
+    child_env["PYTHONPATH"] = os.pathsep.join(
+        filter(
+            None,
+            (
+                str(Path(__file__).resolve().parents[1] / "src"),
+                child_env.get("PYTHONPATH"),
+            ),
+        )
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", child_code, case, str(layout).split(".")[-1]],
+        env=child_env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    assert result.returncode != 0, "out-of-range plain indices were silently accepted"
+    assert "invalid sparse compressed indices" in result.stderr, result.stderr[-2000:]
+
+
+@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
+@pytest.mark.parametrize(
+    "layout", [torch.sparse_csr, torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc]
+)
+def test_validate_sparse_compressed_tensor_args_large_batch(layout):
+    # Exercise the inherited flattened grid through the public validator,
+    # with 65536 nonempty batches and real non-square block metadata.
+    comp, plain, values, size = _make_inputs(
+        layout,
+        (1, 3, (256, 256), ()),
+        torch.int64,
+        torch.float32,
+        flag_gems.device,
+    )
+    assert (
+        torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+            comp, plain, values, size, layout, check_pinning=False
+        )
+        is None
+    )
+    assert (
+        flag_gems._validate_sparse_compressed_tensor_args(
+            comp, plain, values, size, layout, check_pinning=False
+        )
+        is None
+    )
+    flag_gems.runtime.torch_device_fn.synchronize()
