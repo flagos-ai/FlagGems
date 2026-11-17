@@ -209,7 +209,6 @@ def cudnn_ctc_loss_init_grad_kernel(
     input_lengths,
     target_lengths,
     log_alpha,
-    grad_output,
     grad_input,
     total,
     T,
@@ -225,7 +224,6 @@ def cudnn_ctc_loss_init_grad_kernel(
 
     input_len = tl.load(input_lengths + batch, mask=mask, other=0)
     target_len = tl.load(target_lengths + batch, mask=mask, other=0)
-    scale = tl.load(grad_output + batch, mask=mask, other=0.0).to(tl.float32)
     logp = tl.load(log_probs + offsets, mask=mask, other=-float("inf")).to(tl.float32)
     # A finite `log_alpha` at either terminal state means at least one
     # alignment exists (the forward pass sums both, exactly as
@@ -248,7 +246,7 @@ def cudnn_ctc_loss_init_grad_kernel(
         other=-float("inf"),
     )
     aligned = tl.maximum(last_state, prev_state) > -float("inf")
-    grad = tl.where((t < input_len) & aligned & mask, tl.exp(logp) * scale, 0.0)
+    grad = tl.where((t < input_len) & aligned & mask, tl.exp(logp), 0.0)
     tl.store(grad_input + offsets, grad, mask=mask)
 
 
@@ -262,7 +260,6 @@ def cudnn_ctc_loss_backward_kernel(
     target_offsets,
     neg_log_likelihood,
     log_alpha,
-    grad_output,
     grad_input,
     T,
     N,
@@ -311,8 +308,6 @@ def cudnn_ctc_loss_backward_kernel(
     target_value2 = tl.load(target_ptrs2, mask=target_mask2, other=BLANK)
     labels2 = target_value2
 
-    scale = tl.load(grad_output + batch).to(tl.float32)
-
     beta_init = tl.where(
         ((states == state_count - 1) | ((states == state_count - 2) & (target_len > 0)))
         & valid_state
@@ -321,7 +316,9 @@ def cudnn_ctc_loss_backward_kernel(
         -float("inf"),
     )
     beta_init = tl.where(valid_state, beta_init, -float("inf"))
-    log_likelihood = tl.where(scale != 0.0, -nll, 0.0)
+    # The eager call differentiates the summed loss, so every batch entry
+    # carries a unit upstream gradient: `log_likelihood` is `-nll` outright.
+    log_likelihood = -nll
     # `-nll` is `+inf` only for the empty-input/empty-target case; an infeasible
     # alignment reports a zero loss instead (see the forward kernel), so the
     # posterior is identically zero there and the subtraction below must not
@@ -382,7 +379,7 @@ def cudnn_ctc_loss_backward_kernel(
         # mass into, so the gradient stays at `exp(log_probs)`; an infeasible
         # alignment has no posterior at all, so its gradient is zero.
         posterior = tl.where(
-            active & valid_state & (target_len > 0) & aligned & (scale != 0.0),
+            active & valid_state & (target_len > 0) & aligned,
             tl.exp(log_post),
             0.0,
         )
@@ -391,7 +388,7 @@ def cudnn_ctc_loss_backward_kernel(
             # running sum, and collapse each group onto its first lane. Groups
             # are disjoint addresses, so one store per label accumulates into
             # `grad_input` in a fixed order regardless of scheduling.
-            sorted_delta = tl.gather(-scale * posterior, perm, 0)
+            sorted_delta = tl.gather(-posterior, perm, 0)
             running = tl.cumsum(sorted_delta, 0)
             group_sum = tl.gather(running, group_end, 0) - (running - sorted_delta)
             destination = grad_input + safe_t * N * C + batch * C + sorted_labels
@@ -400,7 +397,7 @@ def cudnn_ctc_loss_backward_kernel(
         else:
             tl.atomic_add(
                 grad_input + safe_t * N * C + batch * C + labels,
-                -scale * posterior,
+                -posterior,
                 sem="relaxed",
                 mask=active & valid_state & (target_len > 0) & aligned & stored_state,
             )
@@ -511,17 +508,11 @@ def _target_offsets(target_lengths, device, batch_size):
 
 
 def _length_stats(values, name):
-    """Return `(min, max)` of a length argument without a device sync.
+    """Return `(min, max)` of a host-side length argument.
 
-    When the lengths are passed as a Python sequence the values are already on
-    the host, so the statistics are free. Tensor arguments fall back to a
-    single synchronizing read.
+    Only called with the sequences `_host_lengths` returns: tensor arguments
+    are already flattened to the host there, so no device sync is left here.
     """
-    if torch.is_tensor(values):
-        values = values.reshape(-1).to(dtype=torch.long).cpu()
-        if values.numel() == 0:
-            raise RuntimeError(f"{name} must not be empty")
-        return int(values.min()), int(values.max())
     lengths = list(values)
     if not lengths:
         raise RuntimeError(f"{name} must not be empty")
@@ -557,6 +548,27 @@ def _label_bounds(targets):
         _TARGET_BOUNDS_CACHE.clear()
     _TARGET_BOUNDS_CACHE[key] = (targets, result)
     return result
+
+
+def _host_lengths(input_lengths, target_lengths, batch_size):
+    """Host copies of both length arguments, taking at most one device sync.
+
+    Tensor arguments need a synchronising read before the range checks can run,
+    and asking for each statistic separately paid for that read three times
+    (~28us apiece on H20 -- as much as two kernel launches, which is visible at
+    the smallest benchmark shape). Both vectors are `batch_size` long by the
+    time this runs, so they move in a single copy.
+    """
+    if not torch.is_tensor(input_lengths) and not torch.is_tensor(target_lengths):
+        return list(input_lengths), list(target_lengths)
+    parts = []
+    for values in (input_lengths, target_lengths):
+        if torch.is_tensor(values):
+            parts.append(values.reshape(-1).to(dtype=torch.long))
+        else:
+            parts.append(torch.tensor(list(values), dtype=torch.long))
+    host = torch.cat(parts).cpu().tolist()
+    return host[:batch_size], host[batch_size:]
 
 
 def _check_targets(targets, target_lengths, num_classes):
@@ -624,7 +636,6 @@ def _launch_backward(
     target_offsets,
     neg_log_likelihood,
     log_alpha,
-    grad_output,
     grad_input,
     T,
     batch_size,
@@ -647,7 +658,6 @@ def _launch_backward(
             work_input_lengths,
             work_target_lengths,
             log_alpha,
-            grad_output,
             grad_input,
             total,
             T,
@@ -664,7 +674,6 @@ def _launch_backward(
             target_offsets,
             neg_log_likelihood,
             log_alpha,
-            grad_output,
             grad_input,
             T,
             batch_size,
@@ -751,13 +760,18 @@ def _cudnn_ctc_loss_impl(
             f"Int; but got {targets.dtype} instead"
         )
 
-    min_target_len, max_target = _length_stats(target_lengths, "target_lengths")
+    # One host copy of both length vectors, shared by every check below, so the
+    # tensor-argument path pays for a single device sync instead of three.
+    host_input_lengths, host_target_lengths = _host_lengths(
+        input_lengths, target_lengths, batch_size
+    )
+    min_target_len, max_target = _length_stats(host_target_lengths, "target_lengths")
     if min_target_len < 0:
         raise RuntimeError("target_lengths must be non-negative")
-    _, max_input = _length_stats(input_lengths, "input_lengths")
+    _, max_input = _length_stats(host_input_lengths, "input_lengths")
     if max_input > T:
         raise RuntimeError("input_lengths must be in [0, T]")
-    _check_targets(targets, target_lengths, num_classes)
+    _check_targets(targets, host_target_lengths, num_classes)
 
     state_count_max = 2 * max_target + 1
     block_s = triton.next_power_of_2(state_count_max)
@@ -772,11 +786,6 @@ def _cudnn_ctc_loss_impl(
         device=log_probs.device,
     )
     grad_input = torch.empty_like(work_log_probs)
-    # The eager call differentiates with respect to the summed loss, so
-    # every batch entry starts out with a unit gradient.
-    grad_output = torch.ones(
-        (batch_size,), dtype=torch.float32, device=log_probs.device
-    )
     if batch_size > 0:
         with torch_device_fn.device(log_probs.device):
             cudnn_ctc_loss_forward_kernel[(batch_size,)](
@@ -813,7 +822,6 @@ def _cudnn_ctc_loss_impl(
             target_offsets,
             neg_log_likelihood,
             log_alpha,
-            grad_output,
             grad_input,
             T,
             batch_size,
