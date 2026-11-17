@@ -1245,6 +1245,7 @@ _FULL_CONFIG = (
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
     ("diagonal_scatter", diagonal_scatter),
+    ("diagonal_scatter_backward", diagonal_scatter_backward),
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
