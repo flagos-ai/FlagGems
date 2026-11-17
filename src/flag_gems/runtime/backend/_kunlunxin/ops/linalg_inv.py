@@ -39,7 +39,7 @@ import torch
 from flag_gems.runtime import torch_device_fn
 
 from .linalg_lu_factor import _linalg_lu_factor
-from .linalg_lu_solve import _xpu_lu_solve_impl
+from .linalg_lu_solve import _xpu_identity_rhs, _xpu_lu_solve_impl
 
 logger = logging.getLogger(__name__)
 
@@ -64,26 +64,21 @@ def linalg_inv(A):
         )
 
     n = A.shape[-1]
-    out = torch.empty(A.shape, dtype=A.dtype, device=A.device)
-
-    batch_shape = tuple(A.shape[:-2])
     batch = 1
-    for s in batch_shape:
+    for s in A.shape[:-2]:
         batch *= int(s)
     if batch == 0 or n == 0 or A.numel() == 0:
-        return out
+        return torch.empty(A.shape, dtype=A.dtype, device=A.device)
 
     A_work = A.reshape(batch, n, n).contiguous()
     LU_work, piv_work = _linalg_lu_factor(A_work, True)
 
     # Solve A X = I; each RHS column of X is a column of A^-1.
-    eye = torch.eye(n, dtype=A_work.dtype, device=A_work.device)
-    rhs = eye.unsqueeze(0).expand(batch, n, n)
+    rhs = _xpu_identity_rhs(n, batch, A_work.dtype, A_work.device)
     with torch_device_fn.device(A.device):
         inv = _xpu_lu_solve_impl(LU_work, piv_work, rhs, batch, n, n)
 
-    out.copy_(inv.reshape(A.shape))
-    return out
+    return inv.reshape(A.shape)
 
 
 __all__ = ["linalg_inv"]

@@ -27,10 +27,11 @@ this backend).  That kernel compiles up to ``N == 128``; for ``N > 128`` the
 which contains ``N == 256``.
 
 The fix keeps the same algorithm but removes every *loop-carried vector* from
-the two substitution sweeps and from the pivot composition:
+the pivot composition and from the two substitution sweeps:
 
-* the row permutation is composed on a scratch global buffer with scalar
-  swaps instead of a loop-carried ``BLOCK_N`` index vector;
+* the row permutation is composed once per batch element by its own kernel
+  (scalar swaps, so no loop-carried vector) into a scratch row that the solve
+  programs only read afterwards;
 * the working column is stored to / reloaded from the (contiguous) output
   buffer each step instead of staying live across the loop.
 
@@ -58,19 +59,52 @@ _REGISTER_MAX_N = 128
 
 @libentry()
 @triton.jit
+def _xpu_pivot_compose_kernel(
+    pivots,
+    PERM,
+    N,
+    batch_stride_piv,
+    stride_piv_row,
+    BLOCK_N: tl.constexpr,
+):
+    """Compose the sequential 1-indexed pivot swaps into one row permutation.
+
+    One program per batch element.  The ``N`` swaps are inherently serial, so
+    only the row indices take part in the chain, and this program is the sole
+    writer of the row: every solve program reads the finished permutation
+    afterwards, which keeps the ``batch * nrhs`` solve grid read-only on
+    ``PERM``.  The swaps are scalar load/store pairs, so no vector is carried
+    across the loop -- which is what keeps this compilable for ``BLOCK_N >
+    128`` (the register-resident composition used by the generic kernel is
+    rejected by ``TritonXPUUnrollControl`` at that width).
+    """
+    batch = tl.program_id(0)
+    rows = tl.arange(0, BLOCK_N)
+    rows_mask = rows < N
+    piv_base = pivots + batch * batch_stride_piv
+    perm_base = PERM + batch * BLOCK_N
+
+    tl.store(perm_base + rows, rows, mask=rows_mask)
+    for i in range(0, N):
+        p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
+        v_i = tl.load(perm_base + i)
+        v_p = tl.load(perm_base + p)
+        tl.store(perm_base + i, v_p)
+        tl.store(perm_base + p, v_i)
+
+
+@libentry()
+@triton.jit
 def _xpu_lu_solve_global_kernel(
     LU,
     B,
     X,
-    pivots,
     PERM,
     N,
     nrhs,
     batch_stride_lu,
     stride_lu_row,
     stride_lu_col,
-    batch_stride_piv,
-    stride_piv_row,
     batch_stride_b,
     stride_b_row,
     stride_b_col,
@@ -86,6 +120,9 @@ def _xpu_lu_solve_global_kernel(
     vectors are produced and consumed inside a single loop iteration.  This is
     what lets ``BLOCK_N > 128`` compile; the arithmetic is identical to the
     register-resident kernel.
+
+    ``PERM`` is read-only here: it is composed by ``_xpu_pivot_compose_kernel``,
+    which has a single writer per batch row.
     """
     pid = tl.program_id(0)
     batch = pid // nrhs
@@ -94,20 +131,8 @@ def _xpu_lu_solve_global_kernel(
     rows_mask = rows < N
 
     lu_base = LU + batch * batch_stride_lu
-    piv_base = pivots + batch * batch_stride_piv
     perm_base = PERM + batch * BLOCK_N
     x_col = X + batch * batch_stride_x + col * stride_x_col
-
-    # Compose the sequential 1-indexed pivot swaps on the scratch buffer.  The
-    # swaps are scalar load/store pairs, so no vector is carried across the
-    # loop.
-    tl.store(perm_base + rows, rows, mask=rows_mask)
-    for i in range(0, N):
-        p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
-        v_i = tl.load(perm_base + i)
-        v_p = tl.load(perm_base + p)
-        tl.store(perm_base + i, v_p)
-        tl.store(perm_base + p, v_i)
 
     perm = tl.load(perm_base + rows, mask=rows_mask, other=0)
     w0 = tl.load(
@@ -151,6 +176,36 @@ def _xpu_lu_solve_global_kernel(
         tl.store(x_col + rows * stride_x_row, w, mask=rows_mask)
 
 
+@libentry()
+@triton.jit
+def _xpu_eye_kernel(RHS, n, total, BLOCK: tl.constexpr):
+    """Fill a contiguous ``(batch, n, n)`` buffer with identity matrices."""
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    row = (offs // n) % n
+    value = tl.where(offs % n == row, 1.0, 0.0)
+    tl.store(RHS + offs, value.to(RHS.dtype.element_ty), mask=offs < total)
+
+
+_IDENTITY_BLOCK = 1024
+
+
+def _xpu_identity_rhs(n, batch, dtype, device):
+    """Contiguous ``(batch, n, n)`` identity built on device.
+
+    ``linalg_inv``/``linalg_inv_ex`` need ``A^-1`` as the solution of
+    ``A X = I``.  Materialising ``I`` directly as one contiguous buffer keeps
+    the solve's RHS contiguous and avoids both a second full-size copy and the
+    ``torch.eye(...).expand(...)`` host-side creation call.
+    """
+    rhs = torch.empty((batch, n, n), dtype=dtype, device=device)
+    total = rhs.numel()
+    with torch_device_fn.device(device):
+        _xpu_eye_kernel[(triton.cdiv(total, _IDENTITY_BLOCK),)](
+            rhs, n, total, BLOCK=_IDENTITY_BLOCK, num_warps=4
+        )
+    return rhs
+
+
 def _xpu_lu_solve_impl(LU_work, piv_work, B, batch, n, nrhs):
     """Solve ``LU x = pivots(B)`` for one batch of contiguous factors."""
     if n <= _REGISTER_MAX_N:
@@ -162,19 +217,28 @@ def _xpu_lu_solve_impl(LU_work, piv_work, B, batch, n, nrhs):
     perm = torch.empty((batch, block_n), dtype=torch.int32, device=LU_work.device)
     with torch.no_grad():
         with torch_device_fn.device(LU_work.device):
+            # One writer per batch row, then a read-only consumer grid: the
+            # permutation is composed once instead of by every RHS column.
+            _xpu_pivot_compose_kernel[(batch,)](
+                piv_work,
+                perm,
+                n,
+                piv_work.stride(0),
+                piv_work.stride(1),
+                BLOCK_N=block_n,
+                num_warps=1,
+                num_stages=1,
+            )
             _xpu_lu_solve_global_kernel[(batch * nrhs,)](
                 LU_work,
                 B_work,
                 X,
-                piv_work,
                 perm,
                 n,
                 nrhs,
                 LU_work.stride(0),
                 LU_work.stride(1),
                 LU_work.stride(2),
-                piv_work.stride(0),
-                piv_work.stride(1),
                 B_work.stride(0),
                 B_work.stride(1),
                 B_work.stride(2),

@@ -30,12 +30,13 @@ from collections import namedtuple
 import torch
 import triton
 import triton.language as tl
+from torch.linalg import LinAlgError
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from .linalg_lu_factor import _linalg_lu_factor
-from .linalg_lu_solve import _xpu_lu_solve_impl
+from .linalg_lu_solve import _xpu_identity_rhs, _xpu_lu_solve_impl
 
 logger = logging.getLogger(__name__)
 
@@ -82,19 +83,18 @@ def linalg_inv_ex(A, *, check_errors=False):
     batch_shape = A.shape[:-2]
     nn = n * n
 
-    out = torch.empty(A.shape, dtype=A.dtype, device=A.device)
     info = torch.empty(batch_shape, dtype=torch.int32, device=A.device)
-    if nn == 0:
-        return LinalgInvExResult(out, info)
+    if nn == 0 or A.numel() == 0:
+        return LinalgInvExResult(
+            torch.empty(A.shape, dtype=A.dtype, device=A.device), info
+        )
     batch = A.numel() // nn
-    if batch == 0:
-        return LinalgInvExResult(out, info)
 
     A_work = A.reshape(batch, n, n).contiguous()
     LU_work, piv_work = _linalg_lu_factor(A_work, True)
 
-    eye = torch.eye(n, dtype=A_work.dtype, device=A_work.device)
-    rhs = eye.unsqueeze(0).expand(batch, n, n)
+    # Solve A X = I; each RHS column of X is a column of A^-1.
+    rhs = _xpu_identity_rhs(n, batch, A_work.dtype, A_work.device)
     with torch_device_fn.device(A.device):
         inv = _xpu_lu_solve_impl(LU_work, piv_work, rhs, batch, n, n)
         _lu_diag_info_kernel[(batch,)](
@@ -104,7 +104,6 @@ def linalg_inv_ex(A, *, check_errors=False):
             BLOCK_N=max(1, triton.next_power_of_2(n)),
             num_warps=1,
         )
-    out.copy_(inv.reshape(A.shape))
 
     if check_errors:
         flag = torch.empty(1, dtype=torch.int32, device=A.device)
@@ -112,12 +111,12 @@ def linalg_inv_ex(A, *, check_errors=False):
         with torch_device_fn.device(A.device):
             _lu_info_flag_kernel[(1,)](info.reshape(batch), flag, batch, block_b)
         if flag.item() != 0:
-            raise torch.linalg.LinAlgError(
+            raise LinAlgError(
                 "torch.linalg.inv_ex: The diagonal element of the LU "
                 "decomposition is zero."
             )
 
-    return LinalgInvExResult(out, info)
+    return LinalgInvExResult(inv.reshape(A.shape), info)
 
 
 __all__ = ["linalg_inv_ex"]
