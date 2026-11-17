@@ -156,3 +156,49 @@ def test_median_dim_values_out_rejects_bad_index_dtype():
 
     with pytest.raises(RuntimeError):
         flag_gems.median_dim_values(inp, dim=1, values=values, indices=indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin validation regression"
+)
+@pytest.mark.parametrize("dim", [-4, 3])
+def test_median_dim_values_invalid_dim(dim):
+    inp = torch.empty((2, 3, 4), device=flag_gems.device)
+    values = torch.empty((2, 3), device=flag_gems.device)
+    indices = torch.empty((2, 3), dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(IndexError):
+        flag_gems.median_dim_values(inp, dim, values=values, indices=indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin 64-bit regression"
+)
+@pytest.mark.parametrize("dtype", [torch.int64, torch.float64])
+@pytest.mark.parametrize("dim", [0, 1])
+def test_median_dim_values_strided_64bit(dtype, dim):
+    # Binary64 values differ below FP32 precision; int64 values exceed 32 bits.
+    if dtype == torch.float64:
+        data = [
+            [1.0000000001, -2.0, float("nan")],
+            [1.0000000002, -3.0, float("inf")],
+            [1.0000000003, -4.0, -float("inf")],
+        ]
+    else:
+        data = [
+            [2**40, -(2**40), 3],
+            [2**40 + 1, -(2**40) - 1, 2],
+            [2**40 + 2, -(2**40) - 2, 1],
+        ]
+    reference = torch.tensor(data, dtype=dtype).t()
+    inp = torch.tensor(data, dtype=dtype, device=flag_gems.device).t()
+    expected = torch.median(reference, dim=dim)
+    shape = tuple(expected.values.shape)
+    values = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    indices = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
+    result = flag_gems.median_dim_values(inp, dim, values=values, indices=indices)
+    torch.testing.assert_close(
+        result.values.cpu(), expected.values, rtol=0, atol=0, equal_nan=True
+    )
+    torch.testing.assert_close(result.indices.cpu(), expected.indices)
