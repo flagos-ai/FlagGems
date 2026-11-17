@@ -52,17 +52,24 @@ _BENCH_CASES = [
 _PARAMS_BY_SHAPE = {}
 for _shape, _params in _BENCH_CASES:
     _PARAMS_BY_SHAPE.setdefault(_shape, []).append(_params)
-_BENCH_SHAPES = list(_PARAMS_BY_SHAPE)
+_MASTER_BENCH_SHAPES = [(65536,), (1048576,), (4096, 4096), (1024, 1024), (256, 256, 256)]
+_BENCH_SHAPES = list(dict.fromkeys([*_PARAMS_BY_SHAPE, *_MASTER_BENCH_SHAPES]))
 
 _BENCH_DTYPES = [torch.float16, torch.float32]
 if flag_gems.runtime.device.support_bf16:
     _BENCH_DTYPES.append(torch.bfloat16)
+if flag_gems.runtime.device.support_fp64:
+    _BENCH_DTYPES.append(torch.float64)
 
 
 def _case_fn(shape, dtype):
-    del dtype
     shape = tuple(shape)
-    for variant in _PARAMS_BY_SHAPE.get(shape, [{}]):
+    legacy = _PARAMS_BY_SHAPE.get(shape, [] if shape in _MASTER_BENCH_SHAPES else [{}])
+    variants = [] if dtype == torch.float64 else legacy
+    if shape in _MASTER_BENCH_SHAPES and dtype != torch.bfloat16:
+        if not any((_DEFAULT_PARAMS | variant) == _DEFAULT_PARAMS for variant in variants):
+            variants = [*variants, {}]
+    for variant in variants:
         params = dict(_DEFAULT_PARAMS)
         params.update(variant)
         yield base.BenchmarkCasePlan(
@@ -79,7 +86,10 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     shape, dim, spacing, edge_order = plan.builder_args
-    inp = utils.generate_tensor_input(tuple(shape), dtype, device)
+    if dtype == torch.float64:
+        inp = torch.randn(shape, dtype=dtype, device=device)
+    else:
+        inp = utils.generate_tensor_input(shape, dtype, device)
     gradient_kwargs = {"edge_order": edge_order}
     if dim is not None:
         gradient_kwargs["dim"] = dim
@@ -110,7 +120,6 @@ def test_gradient():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.gradient,
-        gems_op=getattr(flag_gems, "gradient", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()
