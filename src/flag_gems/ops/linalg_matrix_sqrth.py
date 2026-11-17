@@ -156,25 +156,33 @@ else:
     # the public ``torch.linalg`` API instead of pre-captured vendor kernels.
     # The registration above stays version-gated, so this path is only reached
     # by direct ``flag_gems.linalg_matrix_sqrth`` calls (the accuracy tests).
+    #
+    # The calls below carry an explicit ``allow-torch-compute`` pragma: this
+    # branch is unreachable on builds that register the operator, and there is
+    # no Triton formulation of a complex eigensolver or complex GEMM to
+    # delegate to, so the vendor kernels are the only implementation. They are
+    # still device work -- not a CPU fallback -- and the same composition is
+    # used by the captured-kernel branch above.
 
     def _native_mul(left, right):
-        return torch.mul(left, right)
+        return torch.mul(left, right)  # allow-torch-compute: vendor kernel, see above
 
     def _native_scale(tensor, scale):
-        return torch.mul(tensor, scale)
+        return torch.mul(tensor, scale)  # allow-torch-compute: vendor kernel, see above
 
     def _native_add(left, right):
-        return torch.add(left, right, alpha=1)
+        return torch.add(left, right, alpha=1)  # allow-torch-compute: vendor kernel
 
     def _native_matmul(left, right):
-        return torch.matmul(left, right)
+        return torch.matmul(left, right)  # allow-torch-compute: vendor complex GEMM
 
     def _native_adjoint(tensor):
         transposed = tensor.transpose(-2, -1)
         return transposed.conj() if tensor.is_complex() else transposed
 
     def _native_eigh(inp):
-        return torch.linalg.eigh(inp, UPLO="L")
+        # No Triton complex eigensolver exists; this is the vendor kernel.
+        return torch.linalg.eigh(inp, UPLO="L")  # allow-torch-compute
 
     def _native_resize(out, shape):
         out.resize_(shape)

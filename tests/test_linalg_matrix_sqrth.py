@@ -40,7 +40,14 @@ def _make_hpd(shape, dtype, device):
 
 
 def _reference(inp):
-    ref_inp = utils.to_reference(inp)
+    # Compute the reference in the widest precision the reference backend
+    # supports.  The candidate runs in the input dtype, and the CPU reference
+    # kernel under ``--ref cpu`` is a second fp32/complex64 implementation, so
+    # comparing two independent fp32 square-root kernels can differ by ~5e-4
+    # on complex64 (measured in CI's quick-cpu lane) without either side being
+    # wrong.  With the widened reference the check measures the candidate's
+    # own rounding error (~1e-6 on H20, 2200 random draws).
+    ref_inp = utils.to_reference(inp, True)
     if _HAS_ATEN_SQRTH:
         return torch.ops.aten.linalg_matrix_sqrth(ref_inp)
     # PyTorch 2.11 has no aten::linalg_matrix_sqrth.  Reconstruct the same
