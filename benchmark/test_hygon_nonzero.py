@@ -43,7 +43,6 @@ class HygonNonzeroAPIBenchmark(base.GenericBenchmark):
         ((2, 3, 5, 7), 0.5),
         ((8193,), 0.01),
         ((2**22,), 0.01),
-        ((2**22 + 1,), 0.01),
     ],
 )
 def test_hygon_nonzero_full_api(shape, density):
@@ -64,8 +63,8 @@ def test_hygon_nonzero_full_api(shape, density):
         op_name="nonzero",
         torch_op=torch.nonzero,
         gems_op=flag_gems.nonzero,
-        # Keep the optimized FP32 path and the FP16 generic fallback as
-        # separate benchmark labels; the aggregate must not mix them.
+        # Every case in this label satisfies the contiguous FP32 fast domain.
+        # FP16 and oversized FP32 are reported under nonzero_fallback.
         dtypes=[torch.float32],
     )
     # Benchmark's OPERATOR mode warms up JIT, synchronizes before/after a wall
@@ -77,20 +76,21 @@ def test_hygon_nonzero_full_api(shape, density):
 @pytest.mark.nonzero
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon override")
 @pytest.mark.parametrize(
-    "shape,density",
+    "shape,density,dtype",
     [
-        ((), 1.0),
-        ((1023,), 0.0),
-        ((1024,), 0.01),
-        ((1025,), 1.0),
-        ((33, 31), 0.5),
-        ((2, 3, 5, 7), 0.5),
-        ((8193,), 0.01),
-        ((2**22,), 0.01),
-        ((2**22 + 1,), 0.01),
+        ((), 1.0, torch.float16),
+        ((1023,), 0.0, torch.float16),
+        ((1024,), 0.01, torch.float16),
+        ((1025,), 1.0, torch.float16),
+        ((33, 31), 0.5, torch.float16),
+        ((2, 3, 5, 7), 0.5, torch.float16),
+        ((8193,), 0.01, torch.float16),
+        ((2**22,), 0.01, torch.float16),
+        ((2**22 + 1,), 0.01, torch.float16),
+        ((2**22 + 1,), 0.01, torch.float32),
     ],
 )
-def test_hygon_nonzero_fallback_api(shape, density):
+def test_hygon_nonzero_fallback_api(shape, density, dtype):
     if Config.mode != consts.BenchMode.OPERATOR:
         pytest.skip("nonzero full API requires --mode operator")
 
@@ -106,6 +106,6 @@ def test_hygon_nonzero_fallback_api(shape, density):
         op_name="nonzero_fallback",
         torch_op=torch.nonzero,
         gems_op=flag_gems.nonzero,
-        dtypes=[torch.float16],
+        dtypes=[dtype],
     )
     bench.run()
