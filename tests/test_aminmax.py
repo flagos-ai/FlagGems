@@ -322,14 +322,12 @@ def test_aminmax_global_views(dtype, layout, keepdim):
     metadata = (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr())
     ref_min, ref_max = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
     res_min, res_max = flag_gems.aminmax(inp, keepdim=keepdim)
-    # PyTorch versions used by the CPU reference have differed on whether
-    # global keepdim=True returns a scalar or a singleton for bool-like
-    # reductions. Global aminmax has one value, so compare the canonical
-    # scalar shape while retaining exact dtype/value checks.
-    ref_min = ref_min.reshape(()) if ref_min.numel() == 1 else ref_min
-    ref_max = ref_max.reshape(()) if ref_max.numel() == 1 else ref_max
-    res_min = res_min.reshape(()) if res_min.numel() == 1 else res_min
-    res_max = res_max.reshape(()) if res_max.numel() == 1 else res_max
+    expected_shape = (1,) * inp.ndim if keepdim else ()
+    assert res_min.shape == res_max.shape == expected_shape
+    # Some native backend versions squeeze global bool results. Normalize only
+    # that reference metadata; never reshape the FlagGems outputs under test.
+    ref_min = ref_min.reshape(expected_shape)
+    ref_max = ref_max.reshape(expected_shape)
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
     utils.gems_assert_equal(storage, before)
@@ -367,8 +365,10 @@ def test_aminmax_global_stride_boundaries(n, keepdim):
     before = utils.to_reference(storage).clone()
     expected = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
     actual = flag_gems.aminmax(inp, keepdim=keepdim)
+    expected_shape = (1,) * inp.ndim if keepdim else ()
     for result, reference in zip(actual, expected):
-        utils.gems_assert_equal(result, reference)
+        assert result.shape == expected_shape
+        utils.gems_assert_equal(result, reference.reshape(expected_shape))
     utils.gems_assert_equal(storage, before)
 
 
@@ -389,7 +389,8 @@ def test_aminmax_global_nan_holes_out(keepdim):
     expected = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
     actual = flag_gems.aminmax(inp, keepdim=keepdim, out=out)
     for result, reference, target in zip(actual, expected, out):
-        utils.gems_assert_equal(result, reference)
+        assert result.shape == target.shape == shape
+        utils.gems_assert_equal(result, reference.reshape(shape))
         assert result.data_ptr() == target.data_ptr()
     utils.gems_assert_equal(storage, before, equal_nan=True)
 
