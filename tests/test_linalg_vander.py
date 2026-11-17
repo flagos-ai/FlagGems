@@ -98,6 +98,12 @@ def test_linalg_vander_with_N(shape, N, dtype):
 @pytest.mark.linalg_vander
 @pytest.mark.parametrize("shape", VANDER_SHAPES)
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.xfail(
+    flag_gems.vendor_name == "iluvatar",
+    raises=AssertionError,
+    strict=True,
+    reason="Iluvatar vander candidate drops nonzero complex powers on COREX 4.5",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend torch.randn does not support complex input dtypes",
@@ -123,6 +129,12 @@ def test_linalg_vander_complex(shape, dtype):
 @pytest.mark.parametrize("shape", VANDER_SHAPES)
 @pytest.mark.parametrize("N", [2, 3, 4, 8])
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.xfail(
+    flag_gems.vendor_name == "iluvatar",
+    raises=AssertionError,
+    strict=True,
+    reason="Iluvatar vander candidate drops nonzero complex powers on COREX 4.5",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend torch.randn does not support complex input dtypes",

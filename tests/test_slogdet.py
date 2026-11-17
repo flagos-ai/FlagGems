@@ -374,7 +374,12 @@ def test_slogdet_backward(dtype):
     assert logabsdet.device == gems_A.device
     if use_cpu_oracle:
         # Create the loss seed on CPU and bypass unreliable FP64 leaf accumulation.
-        (gems_grad,) = torch.autograd.grad(logabsdet.cpu(), gems_A)
+        try:
+            (gems_grad,) = torch.autograd.grad(logabsdet.cpu(), gems_A)
+        except RuntimeError as error:
+            if "CUBLAS_STATUS_NOT_SUPPORTED" not in str(error):
+                raise
+            pytest.xfail("Iluvatar ATen does not support FP64 LU in slogdet backward")
     else:
         logabsdet.backward()
         gems_grad = gems_A.grad
@@ -407,7 +412,12 @@ def test_slogdet_batched_backward(dtype):
     assert logabsdet.device == gems_A.device
     if use_cpu_oracle:
         # Create the loss seed on CPU and bypass unreliable FP64 leaf accumulation.
-        (gems_grad,) = torch.autograd.grad(logabsdet.cpu().sum(), gems_A)
+        try:
+            (gems_grad,) = torch.autograd.grad(logabsdet.cpu().sum(), gems_A)
+        except RuntimeError as error:
+            if "CUBLAS_STATUS_NOT_SUPPORTED" not in str(error):
+                raise
+            pytest.xfail("Iluvatar ATen does not support FP64 LU in slogdet backward")
     else:
         logabsdet.sum().backward()
         gems_grad = gems_A.grad
