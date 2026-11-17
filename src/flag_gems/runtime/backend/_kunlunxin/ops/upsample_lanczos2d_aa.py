@@ -63,6 +63,157 @@ def _lanczos3(x):
 
 
 @triton.jit
+def _lanczos_dense_kernel(
+    wmat,  # [out, in] row-major
+    output_size,
+    input_size,
+    SCALE,
+    SUPPORT,
+    INVSCALE,
+    BLOCK_IN: tl.constexpr,
+):
+    """One program per output row: build the dense normalized [out, in] weight row.
+
+    The separable resample is a rank-1 2-D filter, so the whole forward is
+    ``Wh @ in @ Ww^T`` -- two GEMMs on the vendor tensor cores.  This table is
+    the same normalized Lanczos-3 weight as the sparse tap table, just laid out
+    densely so it can feed ``tl.dot``.
+    """
+    o = tl.program_id(0)
+    i = tl.arange(0, BLOCK_IN)
+    mask = i < input_size
+    center = SCALE * (o.to(tl.float32) + 0.5)
+    index_min = tl.maximum((center - SUPPORT + 0.5).to(tl.int32), 0)
+    index_max = tl.minimum((center + SUPPORT + 0.5).to(tl.int32), input_size)
+    arg = (i.to(tl.float32) - center + 0.5) * INVSCALE
+    wv = _lanczos3(arg)
+    wv = tl.where(mask & (i >= index_min) & (i < index_max), wv, 0.0)
+    total = tl.sum(wv, axis=0)
+    total = tl.where(total != 0.0, total, 1.0)
+    tl.store(
+        wmat + o * input_size + i,
+        (wv / total).to(wmat.dtype.element_ty),
+        mask=mask,
+    )
+
+
+@triton.jit
+def _gemm_h_kernel(
+    src,
+    wt,
+    dst,
+    M,
+    IW: tl.constexpr,
+    OW: tl.constexpr,
+    NPAD: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    EVEN_M: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    """Horizontal pass ``out[m, n] = sum_k src[m, k] * wt[n, k]`` (NT GEMM).
+
+    ``src`` is the flat ``(M, IW)`` input, ``wt`` the dense ``(OW, IW)`` weight
+    matrix, ``dst`` an over-allocated ``(grid_m*BM, NPAD)`` buffer (row padding,
+    column padding) so the store is fully affine and unmasked.
+    """
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    rm = pid_m * BM + tl.arange(0, BM)
+    rn = pid_n * BN + tl.arange(0, BN)
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for k0 in range(0, IW, BK):
+        kk = k0 + tl.arange(0, BK)
+        if EVEN_M:
+            if EVEN_K:
+                a = tl.load(src + rm[:, None] * IW + kk[None, :])
+            else:
+                a = tl.load(
+                    src + rm[:, None] * IW + kk[None, :],
+                    mask=(kk[None, :] < IW),
+                    other=0.0,
+                )
+        else:
+            if EVEN_K:
+                a = tl.load(
+                    src + rm[:, None] * IW + kk[None, :],
+                    mask=(rm[:, None] < M),
+                    other=0.0,
+                )
+            else:
+                a = tl.load(
+                    src + rm[:, None] * IW + kk[None, :],
+                    mask=(rm[:, None] < M) & (kk[None, :] < IW),
+                    other=0.0,
+                )
+        b = tl.load(
+            wt + rn[:, None] * IW + kk[None, :],
+            mask=(rn[:, None] < OW) & (kk[None, :] < IW),
+            other=0.0,
+        )
+        acc += tl.dot(a, tl.trans(b), input_precision="ieee")
+    tl.store(dst + rm[:, None] * NPAD + rn[None, :], acc)
+
+
+@triton.jit
+def _gemm_v_kernel(
+    v1,
+    wh,
+    out,
+    IH: tl.constexpr,
+    OH: tl.constexpr,
+    OW: tl.constexpr,
+    NPAD: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    EVEN_ROWS: tl.constexpr,
+    EVEN_COLS: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    """Vertical pass, batched over ``nc``: ``out[nc,oh,ow] = sum_ih wh[oh,ih] * v1[nc,ih,ow]``.
+
+    NN GEMM per (nc, oh-tile, ow-tile).  ``wh`` is the dense ``(OH, IH)`` weight
+    matrix (load-rooted, affine).  Row/column tails clamp instead of masking so
+    every lane keeps an in-bounds idempotent write on the final output.
+    """
+    pz = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_n = tl.program_id(2)
+    oh_raw = pid_m * BM + tl.arange(0, BM)
+    rn_raw = pid_n * BN + tl.arange(0, BN)
+    if EVEN_ROWS:
+        oh = oh_raw
+    else:
+        oh = tl.minimum(oh_raw, OH - 1)
+    if EVEN_COLS:
+        rn = rn_raw
+    else:
+        rn = tl.minimum(rn_raw, OW - 1)
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    base = pz * IH
+    for k0 in range(0, IH, BK):
+        kk = k0 + tl.arange(0, BK)
+        if EVEN_K:
+            a = tl.load(wh + oh[:, None] * IH + kk[None, :])
+            b = tl.load(v1 + (base + kk)[:, None] * NPAD + rn[None, :])
+        else:
+            a = tl.load(
+                wh + oh[:, None] * IH + kk[None, :],
+                mask=(kk[None, :] < IH),
+                other=0.0,
+            )
+            b = tl.load(
+                v1 + (base + kk)[:, None] * NPAD + rn[None, :],
+                mask=(kk[:, None] < IH),
+                other=0.0,
+            )
+        acc += tl.dot(a, b, input_precision="ieee")
+    tl.store(out + (pz * OH + oh)[:, None] * OW + rn[None, :], acc)
+
+
+@triton.jit
 def _clamp_u8(acc, IS_UINT8: tl.constexpr):
     if IS_UINT8:
         acc = tl.floor(tl.minimum(tl.maximum(acc, 0.0), 255.0) + 0.5)
@@ -302,6 +453,186 @@ def _validate(input: torch.Tensor, output_size: Sequence[int]) -> Tuple[int, int
     return output_h, output_w
 
 
+_DENSE_CACHE = {}
+
+
+def _make_dense_weights(
+    input_size: int,
+    output_size: int,
+    scale: float,
+    support: float,
+    dtype: torch.dtype,
+    device_: torch.device,
+):
+    key = (
+        input_size,
+        output_size,
+        float(scale),
+        float(support),
+        str(dtype),
+        str(device_),
+    )
+    cached = _DENSE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    invscale = 1.0 / scale if scale >= 1.0 else 1.0
+    block_in = max(16, triton.next_power_of_2(input_size))
+    wmat = torch.empty((output_size, input_size), device=device_, dtype=dtype)
+    with torch_device_fn.device(device_):
+        _lanczos_dense_kernel[(output_size,)](
+            wmat,
+            output_size,
+            input_size,
+            scale,
+            support,
+            invscale,
+            BLOCK_IN=block_in,
+        )
+    if len(_DENSE_CACHE) >= _CACHE_MAX_ENTRIES:
+        _DENSE_CACHE.pop(next(iter(_DENSE_CACHE)))
+    _DENSE_CACHE[key] = wmat
+    return wmat
+
+
+def _pick_tile(divisor: int, cap: int = 128, floor: int = 16) -> Tuple[int, bool]:
+    """Largest power-of-two block in ``[floor, cap]`` dividing ``divisor``.
+
+    Returns ``(block, even)``.  When no such block exists the largest one <= cap
+    is returned with ``even=False`` (the kernel masks/clamps the tail).
+    """
+    for b in (128, 64, 32, 16):
+        if b > cap:
+            continue
+        if b >= floor and divisor % b == 0:
+            return b, True
+    b = cap
+    while b > floor and b > 16:
+        b //= 2
+    return max(b, 16), False
+
+
+def _gemm_forward(
+    input: torch.Tensor,
+    output_h: int,
+    output_w: int,
+    scale_h: float,
+    scale_w: float,
+    support_h: float,
+    support_w: float,
+):
+    """Tensor-core separable resample for floating dtypes.
+
+    Returns ``None`` when the geometry cannot be expressed as two clean GEMMs
+    (the caller then uses the elementwise gather path).
+    """
+    n, c, input_h, input_w = input.shape
+    dtype = input.dtype
+    dev = input.device
+    M = n * c * input_h
+    NC = n * c
+    do_h = input_w != output_w
+    do_v = input_h != output_h
+    if not do_h and not do_v:
+        return input.clone()
+
+    # H is the *final* pass whenever the vertical axis is identity: its output
+    # must be the exact contiguous result, so require clean row/col tiling.
+    h_final = do_h and not do_v
+    if h_final:
+        bm, even_m = _pick_tile(M, cap=128)
+        bn, even_n = _pick_tile(output_w, cap=64)
+        if not (even_m and even_n):
+            return None
+    else:
+        bm, _ = _pick_tile(M, cap=128)
+        bn, _ = _pick_tile(output_w, cap=64)
+    bk = 64 if input_w % 64 == 0 else (32 if input_w % 32 == 0 else 16)
+    even_k = input_w % bk == 0
+
+    with torch_device_fn.device(dev):
+        if do_h:
+            wmat_w = _make_dense_weights(
+                input_w, output_w, scale_w, support_w, dtype, dev
+            )
+            if h_final:
+                dst = torch.empty((M, output_w), device=dev, dtype=dtype)
+                grid = (triton.cdiv(M, bm), triton.cdiv(output_w, bn))
+                _gemm_h_kernel[grid](
+                    input,
+                    wmat_w,
+                    dst,
+                    M,
+                    IW=input_w,
+                    OW=output_w,
+                    NPAD=output_w,
+                    BM=bm,
+                    BN=bn,
+                    BK=bk,
+                    EVEN_M=True,
+                    EVEN_K=even_k,
+                )
+                return dst.view(n, c, output_h, output_w)
+            grid_n = triton.cdiv(output_w, bn)
+            npad = grid_n * bn
+            grid_m = triton.cdiv(M, bm)
+            v1 = torch.empty((grid_m * bm, npad), device=dev, dtype=dtype)
+            even_m = M % bm == 0
+            _gemm_h_kernel[(grid_m, grid_n)](
+                input,
+                wmat_w,
+                v1,
+                M,
+                IW=input_w,
+                OW=output_w,
+                NPAD=npad,
+                BM=bm,
+                BN=bn,
+                BK=bk,
+                EVEN_M=even_m,
+                EVEN_K=even_k,
+            )
+            npad_w = npad
+            v1_rows = grid_m * bm
+        else:
+            v1 = input
+            npad_w = input_w
+            v1_rows = M
+
+        if do_v:
+            wmat_h = _make_dense_weights(
+                input_h, output_h, scale_h, support_h, dtype, dev
+            )
+            bmv, even_rows = _pick_tile(output_h, cap=64)
+            bnv, even_cols = _pick_tile(output_w, cap=64)
+            bkv = 64 if input_h % 64 == 0 else (32 if input_h % 32 == 0 else 16)
+            even_kv = input_h % bkv == 0
+            out = torch.empty((NC * output_h, output_w), device=dev, dtype=dtype)
+            grid = (
+                NC,
+                triton.cdiv(output_h, bmv),
+                triton.cdiv(output_w, bnv),
+            )
+            _gemm_v_kernel[grid](
+                v1,
+                wmat_h,
+                out,
+                IH=input_h,
+                OH=output_h,
+                OW=output_w,
+                NPAD=npad_w,
+                BM=bmv,
+                BN=bnv,
+                BK=bkv,
+                EVEN_ROWS=even_rows,
+                EVEN_COLS=even_cols,
+                EVEN_K=even_kv,
+            )
+            return out.view(n, c, output_h, output_w)
+
+        # No vertical pass: reshape the padded H buffer (guarded by h_final).
+        return v1.view(n, c, output_h, output_w)
+
+
 def _make_weights(
     input_size: int,
     output_size: int,
@@ -436,6 +767,24 @@ def _upsample_lanczos2d_aa_contiguous(
     support_w, taps_w = _support_and_taps(scale_w)
     support_h, taps_h = _support_and_taps(scale_h)
     is_uint8 = input.dtype == torch.uint8
+
+    # fp16/fp32 take the tensor-core separable GEMM path (two ``tl.dot``
+    # passes).  bf16 stays on the elementwise gather path: bf16 ``tl.dot`` with
+    # ``tl.trans`` + ``input_precision="ieee"`` faulted the device (status=700 /
+    # KL_XID_KERNEL_EXCEPTION) in batch18, and the UPCAST-to-fp32 variant that was
+    # safe on the power-of-2 benchmark geometries still faults for bf16 on odd
+    # geometries whose K axis is not a multiple of BK (the ``EVEN_K=False``
+    # masked-load branch feeding ``tl.dot`` -- see batch19 notes).  Re-enable only
+    # after a mask-free (zero-padded K) bf16 formulation is proven safe.
+    # The GEMM path falls back to elementwise for geometries that cannot be
+    # expressed as clean GEMMs (e.g. an identity vertical axis whose exact output
+    # layout would need a copy).
+    if input.dtype in (torch.float16, torch.float32):
+        gemm_out = _gemm_forward(
+            input, output_h, output_w, scale_h, scale_w, support_h, support_w
+        )
+        if gemm_out is not None:
+            return gemm_out
 
     with torch_device_fn.device(input.device):
         if input_w != output_w:

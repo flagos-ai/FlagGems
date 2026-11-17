@@ -807,6 +807,7 @@ from .msort import msort  # noqa: F401
 from .msort_out import msort_out  # noqa: F401
 from .mul import mul, mul_
 from .multi_margin_loss import (  # noqa: F401
+    multi_margin_loss,
     multi_margin_loss_backward,
     multi_margin_loss_backward_out,
     multi_margin_loss_out,
@@ -1212,6 +1213,15 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 from .slow_conv_transpose2d import slow_conv_transpose2d  # noqa: F401
+from .slow_conv2d_backward import _slow_conv2d_backward  # noqa: F401
+from ._scaled_dot_product_attention_math import _scaled_dot_product_attention_math  # noqa: F401
+from ._scaled_dot_product_attention_math_for_mps import _scaled_dot_product_attention_math_for_mps  # noqa: F401
+from .quantized_gru import quantized_gru_input, quantized_gru_data  # noqa: F401
+from ._native_multi_head_attention import _native_multi_head_attention  # noqa: F401
+from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
+from ._pad_circular import _pad_circular  # noqa: F401
+from .grid_sampler_2d_backward import grid_sampler_2d_backward  # noqa: F401
+from .triplet_margin_loss import triplet_margin_loss  # noqa: F401
 __all__ = [
     "__iand___scalar",
     "__iand___tensor",
@@ -1384,10 +1394,12 @@ __all__ = [
     "_native_batch_norm_legit_no_stats_out",
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
+    "_native_multi_head_attention",
     "_nested_sum_backward",
     "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
     "_pdist_backward",
@@ -1395,11 +1407,15 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_slow_conv2d_backward",
     "_slow_conv2d_forward",
+    "_sobol_engine_ff_",
     "_sparse_mm_reduce_impl",
     "_sparse_semi_structured_linear",
     "_stack",
@@ -1758,6 +1774,7 @@ __all__ = [
     "grid_sample",
     "grid_sampler",
     "grid_sampler_2d",
+    "grid_sampler_2d_backward",
     "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "group_mm",
@@ -1988,6 +2005,7 @@ __all__ = [
     "msort_out",
     "mul",
     "mul_",
+    "multi_margin_loss",
     "multi_margin_loss_backward",
     "multi_margin_loss_backward_out",
     "multi_margin_loss_out",
@@ -2092,6 +2110,8 @@ __all__ = [
     "put_",
     "put_out",
     "quantile",
+    "quantized_gru_data",
+    "quantized_gru_input",
     "quantized_lstm",
     "quantized_max_pool1d",
     "quantized_max_pool1d_out",
@@ -2354,6 +2374,7 @@ __all__ = [
     "tril_",
     "tril_indices",
     "tril_out",
+    "triplet_margin_loss",
     "triu",
     "triu_",
     "triu_indices",

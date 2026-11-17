@@ -22,6 +22,14 @@ compile for N > 64 (e.g. the (256, 32, 512) shape in the test matrix).  We
 therefore pick ``next_pow2(N)`` for N<=64 and a masked 1024-wide tile otherwise
 (measured ~16x faster than a 64-lane tile on N=1024).
 
+When the chosen tile divides ``N`` exactly (``N % BLOCK_N == 0``) every lane of
+every program is in range, so the ``rmask`` on the ``mat2`` block load is
+provably redundant; ``NEED_MASK=False`` drops it and lets the load take the
+plain contiguous block-DMA path (-7 % on 1024^2/4096^2, bit-identical result).
+Shapes where the tile does not divide ``N`` keep the fully masked path.  The
+output store keeps its (then statically all-true) mask on both paths: removing
+both predicates makes the XPU3 compiler miscompile the in-loop block DMA.
+
 The host pipeline (CSR conversion, layout/validation) mirrors the generic
 implementation; the reduction itself is the Triton kernel.
 """
@@ -30,19 +38,102 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
 from flag_gems.ops._sparse_mm_reduce_impl import (
+    _REDUCE_AMAX,
+    _REDUCE_AMIN,
     _REDUCE_CODES,
+    _REDUCE_MEAN,
     _SPARSE_MM_REDUCE_IMPL_DTYPES,
-    _sparse_mm_reduce_impl_kernel,
 )
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
 # XPU3-safe loop-carried 1-D accumulator widths: <=64 lanes, or exactly 1024.
 _MAX_BLOCK_N = 64
 _WIDE_BLOCK_N = 1024
+
+
+@libentry()
+@triton.jit
+def _sparse_mm_reduce_impl_kernel(
+    crow_ptr,
+    col_ptr,
+    val_ptr,
+    mat2_ptr,
+    out_ptr,
+    M,
+    N,
+    stride_mat2_k,
+    stride_mat2_n,
+    stride_out_m,
+    stride_out_n,
+    IS_FP64: tl.constexpr,
+    REDUCE: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """Backend copy of the generic row kernel plus the ``NEED_MASK`` switch.
+
+    ``NEED_MASK=False`` is only legal when ``N % BLOCK_N == 0`` (the host
+    guarantees it): then ``rn < N`` is statically all-true and the masked
+    memory path is pure overhead.
+    """
+    row = ext.program_id(0)
+    rn = ext.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
+    rmask = rn < N
+    row64 = row.to(tl.int64)
+    col_off = (rn * stride_mat2_n).to(tl.int64)
+
+    acc_dtype = tl.float64 if IS_FP64 else tl.float32
+    acc = tl.zeros((BLOCK_N,), dtype=acc_dtype)
+
+    start = tl.load(crow_ptr + row64).to(tl.int64)
+    end = tl.load(crow_ptr + row64 + 1).to(tl.int64)
+
+    if REDUCE == _REDUCE_AMAX or REDUCE == _REDUCE_AMIN:
+        # Fold with tl.where so the first stored product seeds acc without a
+        # dynamic branch; max/min over an empty row collapses to zero below.
+        for e in range(start, end):
+            c = tl.load(col_ptr + e).to(tl.int64)
+            v = tl.load(val_ptr + e).to(acc_dtype)
+            if NEED_MASK:
+                b = tl.load(
+                    mat2_ptr + c * stride_mat2_k + col_off, mask=rmask, other=0.0
+                ).to(acc_dtype)
+            else:
+                b = tl.load(mat2_ptr + c * stride_mat2_k + col_off).to(acc_dtype)
+            p = b * v
+            if REDUCE == _REDUCE_AMAX:
+                acc = tl.where(e == start, p, tl.maximum(acc, p))
+            else:
+                acc = tl.where(e == start, p, tl.minimum(acc, p))
+        acc = tl.where(start < end, acc, 0.0)
+    else:
+        for e in range(start, end):
+            c = tl.load(col_ptr + e).to(tl.int64)
+            v = tl.load(val_ptr + e).to(acc_dtype)
+            if NEED_MASK:
+                b = tl.load(
+                    mat2_ptr + c * stride_mat2_k + col_off, mask=rmask, other=0.0
+                ).to(acc_dtype)
+            else:
+                b = tl.load(mat2_ptr + c * stride_mat2_k + col_off).to(acc_dtype)
+            acc += b * v
+        if REDUCE == _REDUCE_MEAN:
+            nnz = (end - start).to(acc_dtype)
+            acc = tl.where(nnz > 0, acc / nnz, 0.0)
+
+    cos = (row64 * stride_out_m + (rn * stride_out_n).to(tl.int64)).to(tl.int64)
+    # The store keeps its mask unconditionally: on XPU3 dropping *both* the
+    # load and the store predicate removes `rmask` entirely and miscompiles the
+    # in-loop block DMA (measured: 50 % wrong lanes / non-deterministic at
+    # M=256,K=512,N=32).  Dropping only the load predicate is exact.
+    tl.store(out_ptr + cos, acc.to(out_ptr.dtype.element_ty), mask=rmask)
 
 
 def _pick_block_n(N, dtype):
@@ -148,6 +239,9 @@ def _sparse_mm_reduce_impl(self, other, reduce="sum"):
 
     # Backend-local tile choice: see module docstring.
     block_n = _pick_block_n(N, other.dtype)
+    # All lanes are in range exactly when the tile divides N; then the mask on
+    # the mat2 block load / output store is provably redundant.
+    need_mask = (N % block_n) != 0
     grid = (M, triton.cdiv(N, block_n))
     with torch_device_fn.device(other.device):
         _sparse_mm_reduce_impl_kernel[grid](
@@ -165,6 +259,7 @@ def _sparse_mm_reduce_impl(self, other, reduce="sum"):
             IS_FP64=other.dtype == torch.float64,
             REDUCE=_REDUCE_CODES[reduce],
             BLOCK_N=block_n,
+            NEED_MASK=need_mask,
             num_warps=4,
         )
     return out, arg_out

@@ -132,6 +132,7 @@ def linalg_vander(x, N=None):
             NBITS=nbits,
             BLOCK=block,
             COMPUTE_DTYPE=tl.float32,
+            MSB_FIRST=False,
         )
         return out
 

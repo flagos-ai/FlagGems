@@ -453,6 +453,37 @@ def _copy_strided(src, dst):
         )
 
 
+def multi_margin_loss(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    p=1,
+    margin=1,
+    weight=None,
+    reduction=1,
+) -> torch.Tensor:
+    """Functional forward (no ``out``); reuses the same XPU-safe kernels.
+
+    The generic forward is not covered by the ``*_out`` override, and its
+    kernel contains ``tl.device_assert`` which lowers to ``__assert_fail`` and
+    fails at link time on XPU3 (wiki
+    ``pattern-xpu3-device-assert-unlinkable``).  The marker's
+    ``forward_backward_consistency`` case calls this entry directly, so it
+    needs the same implementation.
+    """
+    logger.debug("GEMS_KUNLUNXIN MULTI_MARGIN_LOSS")
+    p = _normalize_p(p)
+    reduction = _normalize_reduction(reduction)
+    try:
+        margin = float(margin)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("multi_margin_loss: margin must be a real scalar") from error
+    input, target, weight, N, C, is_batched = _check_inputs(input, target, weight)
+    _validate_target_range(target, N, C)
+    shape = _output_shape(N, is_batched, reduction)
+    out = torch.empty(shape, dtype=input.dtype, device=input.device)
+    return _forward(input, target, weight, N, C, is_batched, p, margin, reduction, out)
+
+
 def multi_margin_loss_out(
     input: torch.Tensor,
     target: torch.Tensor,
@@ -639,6 +670,7 @@ def multi_margin_loss_backward(
 # implementation -- same pattern as `_kunlunxin/ops/_batch_norm_impl_index.py`
 # and `_enflame/gcu300/ops/div.py`.
 _VENDOR_OPS = {
+    "multi_margin_loss": multi_margin_loss,
     "multi_margin_loss_out": multi_margin_loss_out,
     "multi_margin_loss_backward_out": multi_margin_loss_backward_out,
     "multi_margin_loss_backward": multi_margin_loss_backward,

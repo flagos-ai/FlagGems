@@ -179,6 +179,74 @@ def _sparse_gate_words_kernel(W32, Meta, O32, WPG: tl.constexpr, BLOCK: tl.const
 
 
 @triton.jit
+def _sparse_gate_kn_flat_kernel(W, Meta, O, N, K4, BLOCK: tl.constexpr):
+    """2:4 gate for a weight whose storage is the contiguous (K, N) transpose.
+
+    ``W`` is ``base`` (K, N) row-major where ``base = weight.t()``.  A 2:4 group
+    is 4 *consecutive K rows*, i.e. ``4 * N`` *contiguous* elements, so each
+    program owns one group and runs a flat 1-D affine load/store (the 1-D flat
+    pass is ~10x faster than a 2-D tiled copy of the same tiny tile on XPU3 --
+    the 2-D path pays a per-row DMA floor).  ``BLOCK`` must equal ``4 * N``.
+    ``g = pid`` is constant per program, so the meta index ``col * K4 + pid`` is
+    a repeated-index gather over ``col = lane // N``.
+    """
+    pid = tl.program_id(0)  # group index g; owns rows [4g, 4g+4) = BLOCK elems
+    lane = tl.arange(0, BLOCK)
+    row = lane // N  # position 0..3 within the group
+    col = lane % N  # n
+    meta = tl.load(Meta + col * K4 + pid)
+    keep = tl.where(row < 2, meta != 0, meta == 0)
+    off = pid * BLOCK + lane
+    w = tl.load(W + off)
+    tl.store(O + off, tl.where(keep, w, tl.zeros_like(w)))
+
+
+@triton.jit
+def _nn_gemm_epilogue_kernel(
+    A,
+    B,
+    Bias,
+    C,
+    stride_am,
+    stride_bk,
+    stride_cm,
+    K: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    IEEE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """``C = A @ B`` (NN) with a fused bias / out-dtype epilogue.
+
+    ``A`` is (M, K) and ``B`` is a contiguous (K, N); both are affine.  Used for
+    the transposed-storage path, whose gate naturally materialises the masked
+    weight in (K, N) order.  Tiles divide M/N/K exactly (no masked ``tl.dot``
+    operand, which miscompiles on XPU3).
+    """
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, K // BLOCK_K):
+        a = tl.load(A + rm[:, None] * stride_am + (k * BLOCK_K + rk)[None, :])
+        b = tl.load(B + (k * BLOCK_K + rk)[:, None] * stride_bk + rn[None, :])
+        if IEEE:
+            acc += tl.dot(a, b, input_precision="ieee")
+        else:
+            acc += tl.dot(a, b)
+
+    if HAS_BIAS:
+        acc += tl.load(Bias + rn).to(tl.float32)
+
+    out_dtype = C.dtype.element_ty
+    out = acc.to(out_dtype)
+    tl.store(C + rm[:, None] * stride_cm + rn[None, :], out)
+
+
+@triton.jit
 def _nt_gemm_epilogue_kernel(
     A,
     B,
@@ -255,6 +323,67 @@ def _fast_tiles(M: int, N: int, K: int):
     return bm, bn, bk
 
 
+def _word_gate_mask(weight, meta, N, K, itemsize, device):
+    """Materialise the 2:4-masked (N, K) weight with the flat 32-bit word gate.
+
+    Returns ``(masked, blk)`` or ``(None, None)`` when the word count has no
+    power-of-two divisor >= 32 (then a masked tail would be needed; the caller
+    falls back to the strided gate).  Both operands must be contiguous.
+    """
+    n_words = (N * K * itemsize) // 4
+    blk = min(8192, max(256, n_words // 8))
+    # Floor is 32 (not 256) so shapes whose word count is not a multiple of 256
+    # (e.g. K=48, N=48 fp16 -> 1152 words) still find a divisor instead of the
+    # scalarised gate.  Official benchmark shapes divide at their initial >=256
+    # block, so this never changes their block size.
+    while blk > 32 and n_words % blk:
+        blk //= 2
+    if n_words % blk != 0 or n_words < blk:
+        return None, None
+    masked = torch.empty((N, K), device=device, dtype=weight.dtype)
+    with torch_device_fn.device(device):
+        _sparse_gate_words_kernel[(n_words // blk,)](
+            weight.view(torch.int32),
+            meta,
+            masked.view(torch.int32),
+            WPG=itemsize,
+            BLOCK=blk,
+        )
+    return masked, blk
+
+
+def _finish(out, bias, act_relu, act_gelu, act_silu, output_dtype):
+    """Apply bias -> out-dtype cast -> activation to a dense (M, N) result."""
+    needs_epilogue = (
+        bias is not None
+        or act_relu
+        or act_gelu
+        or act_silu
+        or output_dtype != out.dtype
+    )
+    if not needs_epilogue:
+        return out
+    M, N = out.shape
+    result = torch.empty((M, N), device=out.device, dtype=output_dtype)
+    MN = M * N
+    BLOCK = 1024
+    bias_arg = bias if bias is not None else out
+    with torch_device_fn.device(out.device):
+        _linear_epilogue_kernel[(triton.cdiv(MN, BLOCK),)](
+            out,
+            bias_arg,
+            result,
+            MN,
+            N,
+            bias is not None,
+            act_relu,
+            act_gelu,
+            act_silu,
+            BLOCK=BLOCK,
+        )
+    return result
+
+
 def _sparse_semi_structured_linear(
     input: torch.Tensor,
     weight: torch.Tensor,
@@ -295,46 +424,103 @@ def _sparse_semi_structured_linear(
             "Expected one of: 'relu', 'gelu', 'silu' (or 'swish'), or None."
         )
 
-    # ---- Fast path: flat word gate + single NT-GEMM with fused epilogue.
+    # ---- Contiguous-operand path.
     #
-    # Requires contiguous operands (so the gate is a flat affine pass and both
-    # GEMM operands are K-contiguous) and tiles that divide M/N/K exactly (so
-    # no ``tl.dot`` operand has to be masked, which miscompiles on XPU3).
+    # The 2:4 gate is a flat, fully affine 32-bit-word pass (no per-element
+    # mask/gather) whose block divides the word count, so it is always valid on
+    # contiguous operands.  When the NT-GEMM tiles also divide M/N/K exactly we
+    # fuse the matmul + bias + out-dtype into ``_nt_gemm_epilogue_kernel`` (the
+    # fast main path); otherwise (e.g. M<16, or a dim with no >=16 power-of-two
+    # divisor) we still use the fast word gate and hand the dense (N, K) weight
+    # to the backend ``mm`` kernel -- this replaces the old scalarised strided
+    # gate for all contiguous shapes while leaving the main path byte-identical.
     tiles = _fast_tiles(M, N, K)
     if (
-        tiles is not None
-        and input.is_contiguous()
+        input.is_contiguous()
         and weight.is_contiguous()
         and meta.is_contiguous()
         and input.dtype.itemsize in (2, 4)
     ):
-        bm, bn, bk = tiles
-        # A group is 4 elements = 4 * itemsize bytes = ``itemsize`` 32-bit words.
-        wpg = input.dtype.itemsize
-        n_words = (N * K * input.dtype.itemsize) // 4
-        # Aim for ~8 programs; BLOCK must divide the word count (no masks).
-        blk = min(8192, max(256, n_words // 8))
-        while blk > 256 and n_words % blk:
-            blk //= 2
-        if n_words % blk == 0 and n_words >= blk:
-            masked = torch.empty((N, K), device=input.device, dtype=weight.dtype)
+        masked, _blk = _word_gate_mask(
+            weight, meta, N, K, input.dtype.itemsize, input.device
+        )
+        if masked is not None:
+            if tiles is not None:
+                bm, bn, bk = tiles
+                out = torch.empty((M, N), device=input.device, dtype=output_dtype)
+                bias_arg = bias if bias is not None else out
+                with torch_device_fn.device(input.device):
+                    _nt_gemm_epilogue_kernel[(M // bm, N // bn)](
+                        input,
+                        masked,
+                        bias_arg,
+                        out,
+                        input.stride(0),
+                        masked.stride(0),
+                        out.stride(0),
+                        K,
+                        bias is not None,
+                        input.dtype == torch.float32,
+                        BLOCK_M=bm,
+                        BLOCK_N=bn,
+                        BLOCK_K=bk,
+                    )
+                    if act_relu or act_gelu or act_silu:
+                        # Bias + cast folded; apply only the activation.
+                        result = torch.empty_like(out)
+                        mn = M * N
+                        eblk = 1024
+                        _linear_epilogue_kernel[(triton.cdiv(mn, eblk),)](
+                            out,
+                            out,
+                            result,
+                            mn,
+                            N,
+                            False,
+                            act_relu,
+                            act_gelu,
+                            act_silu,
+                            BLOCK=eblk,
+                        )
+                        return result
+                return out
+            # tiles None: dense NN/NT matmul via the backend mm kernel.
+            out = _gems_mm(input, masked.t())
+            return _finish(out, bias, act_relu, act_gelu, act_silu, output_dtype)
+
+    # ---- Transposed-storage weight: ``weight.t()`` is a contiguous (K, N).
+    #
+    # A (N, K) weight that is the transpose of a contiguous (K, N) base has its
+    # 2:4 groups as 4 *contiguous* K-rows of the base, so the flat 1-D gate
+    # (``_sparse_gate_kn_flat_kernel``) materialises the masked weight in (K, N)
+    # order -- both the load and store stay flat/affine (a 2-D tiled copy of the
+    # same tile is ~10x slower here).  The dense result is ``input @ masked_kn``
+    # (a plain NN matmul) done in-kernel by ``_nn_gemm_epilogue_kernel``; the
+    # backend ``mm`` kernel has ~70us fixed overhead at these sizes.
+    if (
+        not weight.is_contiguous()
+        and input.is_contiguous()
+        and meta.is_contiguous()
+        and input.dtype.itemsize in (2, 4)
+    ):
+        wt = weight.t()
+        # Flat gate needs BLOCK == 4 * N to be a power of two -> N must be.
+        if wt.is_contiguous() and N >= 4 and (N & (N - 1)) == 0 and tiles is not None:
+            bm, bn, bk = tiles
+            masked_kn = torch.empty((K, N), device=input.device, dtype=weight.dtype)
             out = torch.empty((M, N), device=input.device, dtype=output_dtype)
             bias_arg = bias if bias is not None else out
             with torch_device_fn.device(input.device):
-                _sparse_gate_words_kernel[(n_words // blk,)](
-                    weight.view(torch.int32),
-                    meta,
-                    masked.view(torch.int32),
-                    WPG=wpg,
-                    BLOCK=blk,
+                _sparse_gate_kn_flat_kernel[(K // 4,)](
+                    wt, meta, masked_kn, N, K4, BLOCK=4 * N
                 )
-                _nt_gemm_epilogue_kernel[(M // bm, N // bn)](
+                _nn_gemm_epilogue_kernel[(M // bm, N // bn)](
                     input,
-                    masked,
+                    masked_kn,
                     bias_arg,
                     out,
                     input.stride(0),
-                    masked.stride(0),
+                    masked_kn.stride(0),
                     out.stride(0),
                     K,
                     bias is not None,
@@ -344,7 +530,6 @@ def _sparse_semi_structured_linear(
                     BLOCK_K=bk,
                 )
                 if act_relu or act_gelu or act_silu:
-                    # Bias + cast are already folded; apply only the activation.
                     result = torch.empty_like(out)
                     mn = M * N
                     eblk = 1024
@@ -363,6 +548,7 @@ def _sparse_semi_structured_linear(
                     return result
             return out
 
+    # ---- Fallback: arbitrary strided weight (kept for correctness).
     # 1) Materialise the 2:4-masked weight, row-major (N, K).
     masked = torch.empty((N, K), device=input.device, dtype=weight.dtype)
     BLOCK_N = 16
@@ -389,32 +575,4 @@ def _sparse_semi_structured_linear(
     out = _gems_mm(input, masked.t())
 
     # 3) Optional fused epilogue (bias -> cast -> activation).
-    needs_epilogue = (
-        bias is not None
-        or act_relu
-        or act_gelu
-        or act_silu
-        or output_dtype != input.dtype
-    )
-    if not needs_epilogue:
-        return out
-
-    result = torch.empty((M, N), device=input.device, dtype=output_dtype)
-    MN = M * N
-    BLOCK = 1024
-    egrid = (triton.cdiv(MN, BLOCK),)
-    bias_arg = bias if bias is not None else out
-    with torch_device_fn.device(input.device):
-        _linear_epilogue_kernel[egrid](
-            out,
-            bias_arg,
-            result,
-            MN,
-            N,
-            bias is not None,
-            act_relu,
-            act_gelu,
-            act_silu,
-            BLOCK=BLOCK,
-        )
-    return result
+    return _finish(out, bias, act_relu, act_gelu, act_silu, output_dtype)

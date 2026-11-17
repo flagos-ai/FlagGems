@@ -97,13 +97,56 @@ def _backend_svd(input, some=True, compute_uv=True):
     return SvdResult(u, s, v)
 
 
+# The backend one-sided-Jacobi fallback (``linalg_svd._osj_pipeline``) is kept
+# disabled until it is device-validated end-to-end; ``svd`` therefore never
+# launches it.
+_BACKEND_OSJ_ENABLED = False
+
+
+def _generic_thin_reorth_danger(input):
+    """Shapes for which the *generic* ``svd`` reaches a device-faulting kernel.
+
+    For ``k in {16, 17}`` with ``max(m, n) <= 64`` the generic ``svd`` dispatches
+    into ``_cyclic_jacobi_svd`` -> ``_thin_reorthogonalize_kernel``.  That kernel
+    indexes ``base + rows * K + j`` over ``tl.arange(0, BLOCK_R)`` with
+    ``BLOCK_R = next_power_of_2(ROWS)`` and only a *mask* (no address clamp).
+    When ``ROWS`` is not a power of two (e.g. ``(17,17)``: ROWS=17 -> BLOCK_R=32)
+    the masked-off lanes still touch ``[ROWS*K, BLOCK_R*K)`` of ``Q`` and the
+    XPU3 backend faults on that wild access:
+        ``kl3ChannelCheckErrors ... status=700`` / ``KL_XID_KERNEL_EXCEPTION``
+        (``err task ... .name=_thin_reorthogonalize_kernel`` in dmesg).
+    The batched ``(16,16,16)`` case faults in the same kernel as well.  Both are
+    confirmed XIDs, so these shapes must not be handed to the generic path.
+    """
+    if input.dim() < 2:
+        return False
+    m, n = input.shape[-2:]
+    return min(m, n) in (16, 17) and max(m, n) <= 64
+
+
 def svd(input, some=True, compute_uv=True):
     """Singular value decomposition; routes XPU-unsupported shapes to the backend."""
     logger.debug("GEMS_KUNLUNXIN SVD")
-    use_backend = input.dtype in (torch.float16, torch.bfloat16)
-    if not use_backend:
-        try:
-            return _generic_module().svd(input, some=some, compute_uv=compute_uv)
-        except NotImplementedError:
-            use_backend = True
-    return _backend_svd(input, some=some, compute_uv=compute_uv)
+    if _generic_thin_reorth_danger(input):
+        if _BACKEND_OSJ_ENABLED:
+            return _backend_svd(input, some=some, compute_uv=compute_uv)
+        raise NotImplementedError(
+            "FlagGems svd on Kunlunxin: shape "
+            f"{tuple(input.shape)} would launch the generic "
+            "`_thin_reorthogonalize_kernel`, whose unclamped masked access "
+            "faults the XPU3 device (status=700 / KL_XID_KERNEL_EXCEPTION)."
+        )
+    try:
+        return _generic_module().svd(input, some=some, compute_uv=compute_uv)
+    except (NotImplementedError, RuntimeError):
+        # ``RuntimeError`` here is an XPU Triton lowering failure (e.g.
+        # ``tt.reduce`` not legalized); it never launched a backend kernel.
+        pass
+    if _BACKEND_OSJ_ENABLED:
+        return _backend_svd(input, some=some, compute_uv=compute_uv)
+    raise NotImplementedError(
+        "FlagGems svd on Kunlunxin: no device-safe kernel for this "
+        f"shape/dtype (shape={tuple(input.shape)}, dtype={input.dtype}, "
+        f"some={some}, compute_uv={compute_uv}). The backend one-sided Jacobi "
+        "fallback is disabled because it triggers KL_XID_KERNEL_EXCEPTION."
+    )

@@ -78,7 +78,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from ..utils.tle_copy import tle_copy
-from .cumsum import cumsum as _cumsum
+from .cumsum import _scan_rows_into
 
 logger = logging.getLogger(__name__)
 
@@ -468,6 +468,27 @@ def _plan(shape, d):
     return p
 
 
+def _scan_rows_last_dim(inp, acc_dtype):
+    """Row-wise inclusive scan over the last (already contiguous) dimension.
+
+    Equivalent to ``_cumsum(inp, dim=-1, dtype=acc_dtype)`` for a contiguous
+    ``(rows..., D)`` tensor (so ``K == 1``).  ``allow_mm=False`` keeps the
+    scan on the group path: the matmul path's multi-group (``N > G``) case used
+    to be unbuildable (``TritonSDNNCombineBefore`` abort, ``out of resource:
+    uni_sram``); it now compiles as a scan-then-fan split but arranges its
+    segment-sum / prefix passes as one tiny program per (row, group), which is
+    measured 5-24x slower than the group scan (see ``cumsum._MM_ALLOW_MULTIGROUP``).
+    batch 17 already shipped this op on the group path at 0.379 dtype-equal, so
+    this keeps that (validated) formulation rather than the slower matmul one.
+    """
+    out = torch.empty_like(inp, dtype=acc_dtype)
+    n = inp.shape[-1]
+    m = inp.numel() // n
+    with torch_device_fn.device(inp.device):
+        _scan_rows_into(inp, out, m, n, allow_mm=False)
+    return out
+
+
 def cumulative_trapezoid(y, *, dx=1, dim=-1):
     logger.debug("GEMS_KUNLUNXIN CUMULATIVE_TRAPEZOID")
 
@@ -515,7 +536,7 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
             _pair_flat_kernel[(triton.cdiv(n_elems - 1, block),)](
                 src, build, n_elems - 1, scale, BLOCK=block, num_warps=4
             )
-            scanned = _cumsum(build.view(src.shape), dim=-1, dtype=acc_dtype)
+            scanned = _scan_rows_last_dim(build.view(src.shape), acc_dtype)
             cut = scanned.narrow(-1, 0, K)
             if d == ndim - 1 and tle_copy(cut, out):
                 return out
@@ -533,7 +554,7 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
             return out
 
         # Small tensors: two passes (scan, then a pair kernel).
-        scanned = _cumsum(src, dim=-1, dtype=acc_dtype)
+        scanned = _scan_rows_last_dim(src, acc_dtype)
         if d == ndim - 1 and out.numel() >= 64:
             block = 1 << (out.numel().bit_length() - 1)
             block = min(block, _BLOCK_MAX)

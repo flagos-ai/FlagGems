@@ -142,6 +142,23 @@ def put_scatter_kernel(
             tl.store(out_ptr + real_off + 1, imag, mask=final_mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N", "out_numel"])
+def _wrap_index_kernel(index_ptr, out_ptr, out_numel, N, BLOCK_SIZE: tl.constexpr):
+    """Materialise the non-negative form of ``put``'s flat index.
+
+    ``put`` accepts negative indices (``-out_numel ... -1``) and wraps them by
+    ``out_numel``; the deterministic accumulate path feeds the index to the
+    vendor ``index_add``, which only accepts ``[0, out_numel)``.
+    """
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < N
+    v = tl.load(index_ptr + offsets, mask=mask, other=0).to(tl.int64)
+    v = tl.where(v < 0, v + out_numel, v)
+    tl.store(out_ptr + offsets, v, mask=mask)
+
+
 def _launch_scatter(meta, data, index, source, accumulate, elems_per_slot):
     """XPU launcher: generic scatter + on-device bounds verdict read back once."""
     N = index.numel()
@@ -163,6 +180,46 @@ def _launch_scatter(meta, data, index, source, accumulate, elems_per_slot):
     # `torch.empty` only allocates the per-program verdict scratch; no numeric
     # result goes through torch.
     verdict = torch.empty(grid[0], dtype=torch.int32, device=meta.device)
+
+    if accumulate and elems_per_slot == 1:
+        # `tl.atomic_add` loses/duplicates individual updates on XPU3 under
+        # contention (measured: one add of magnitude ~0.9 silently dropped out
+        # of 96k, and a 512-way duplicate uint8 accumulate was 100% wrong), so
+        # the accumulate path must be deterministic and atomic-free.  A `put`
+        # accumulate on the flattened tensor is exactly `index_add(0, index,
+        # source)`; the vendor `index_add` has a duplicate-safe, non-atomic
+        # segment-reduction path, so reuse it.  `data` is the (possibly strided,
+        # e.g. a complex real/imag plane) destination.
+        with torch_device_fn.device(meta.device):
+            put_check_kernel[grid](
+                index,
+                verdict,
+                meta.numel(),
+                N,
+                BLOCK_SIZE=BLOCK_SIZE,
+                num_warps=num_warps,
+            )
+        if any(verdict.tolist()):
+            raise RuntimeError(_OOB_MSG)
+        import flag_gems
+
+        work = data if data.is_contiguous() else data.contiguous()
+        flat = work.reshape(-1)
+        # index_add only accepts non-negative indices, so materialise the wrapped
+        # form (put allows -out_numel ... -1) before the deterministic add.
+        wid = torch.empty_like(index)
+        with torch_device_fn.device(meta.device):
+            _wrap_index_kernel[grid](
+                index,
+                wid,
+                meta.numel(),
+                N,
+                BLOCK_SIZE=BLOCK_SIZE,
+                num_warps=num_warps,
+            )
+        added = flag_gems.index_add(flat, 0, wid, source)
+        data.copy_(added.reshape(data.shape))
+        return
 
     with torch_device_fn.device(meta.device):
         put_check_kernel[grid](
@@ -192,5 +249,67 @@ def _launch_scatter(meta, data, index, source, accumulate, elems_per_slot):
 # accumulate) through the XPU launcher above.
 _generic._launch_scatter = _launch_scatter
 
-put = _generic.put
+# The generic `_put_scatter` scatters a complex tensor through the *interleaved*
+# `ELEMS_PER_SLOT == 2` kernel (two stores, one at ``2 * offset`` and one at
+# ``2 * offset + 1``).  On XPU3 that two-store interleaved path miscompiles:
+# with two or more active lanes only lane 0 lands correctly, and later lanes
+# write zero / clobber a previous lane's target (measured --- 3 complex writes
+# ``[3,7,11]`` produced ``[100,500,0]`` instead of ``[100,300,500]``).  A single
+# strided store per launch *does* work, so scatter the real and imaginary parts
+# as two independent 1-D scatters (`ELEMS_PER_SLOT == 1`), exactly as the
+# in-place `put_` complex path already does.
+_generic_put_scatter = _generic._put_scatter
+
+
+def _put_scatter(out, index, source, accumulate):
+    if not out.is_complex():
+        return _generic_put_scatter(out, index, source, accumulate)
+
+    if index.numel() == 0:
+        return out
+    if out.numel() == 0:
+        raise IndexError("put_(): Tried to put elements into an empty tensor")
+    if out.dtype == torch.complex32:
+        raise NotImplementedError(
+            '"put_cuda" not implemented for '
+            f"'{_generic._scalar_type_name(torch.complex32)}'"
+        )
+
+    real_view = torch.view_as_real(out)
+    src_real = torch.view_as_real(source)
+    _launch_scatter(
+        real_view[..., 0], real_view[..., 0], index, src_real[..., 0].contiguous(),
+        accumulate, 1,
+    )
+    _launch_scatter(
+        real_view[..., 1], real_view[..., 1], index, src_real[..., 1].contiguous(),
+        accumulate, 1,
+    )
+    return out
+
+
+_generic._put_scatter = _put_scatter
+
+
+def put(self, index, source, accumulate=False):
+    """Out-of-place ``put``.
+
+    ATen's ``put`` allocates a fresh **row-major (contiguous)** result and
+    copies ``self`` into it before scattering, so the return value is always
+    ``contiguous`` regardless of ``self``'s layout.  The generic wrapper uses
+    ``torch.empty_like(self)``, which for a dense-but-non-contiguous ``self``
+    (a transpose / permute) *preserves* that odd stride set instead of
+    collapsing to row-major.  The values are still correct, but
+    ``test_put_non_contiguous*`` compares ``res.stride() == ref.stride()`` and
+    ATen's reference is contiguous.  Force ``contiguous_format`` so the stride
+    contract matches native; the values are unaffected because ``_flat_copy``
+    honours the stride difference itself.
+    """
+    _generic.logger.debug("GEMS PUT (kunlunxin)")
+    _generic._check_same_device(self, index, source)
+    out = torch.empty_like(self, memory_format=torch.contiguous_format)
+    _generic._flat_copy(out, self)
+    return _generic.put_impl(out, index, source, accumulate)
+
+
 put_out = _generic.put_out

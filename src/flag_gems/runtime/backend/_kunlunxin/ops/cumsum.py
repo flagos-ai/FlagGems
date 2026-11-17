@@ -258,7 +258,7 @@ def cumsum_identity_kernel(
 
 def _scan_rows_into(inp, out, M, N, allow_mm=True):
     """K == 1 (row scan) fast paths: identity for N == 1, prefix-sum matmul when
-    _mm_plan accepts the shape (see cumsum_mm_rowblock_kernel), flat multi-row
+    _mm_plan accepts the shape (see _scan_rows_mm_into), flat multi-row
     sweep for power-of-two N <= 512 (see cumsum_flat_kernel), single-shot row
     kernel for N <= 4096, chunked online scan for N > 4096.
 
@@ -467,12 +467,12 @@ _MM_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _MM_MIN_ELEMS = 1 << 12
 # Row offsets are computed in int32 inside the kernel.
 _MM_MAX_ELEMS = (1 << 31) - 1
-# Single-group (NG == 1) tile budget in fp32 lanes: BM * G + G * G.  There is no
-# such simple bound once the group loop exists -- the running carry costs extra
-# and the measured feasible set is not a function of the tile size alone
-# (G=256/BM=512 with NG == 1 compiles while G=128/BM=512 with NG == 32 does not,
-# although the latter tile is smaller) -- so the loop case uses the (G, BM)
-# pairs below, every one of which was verified to compile.
+# Single-group (NG == 1) tile budget in fp32 lanes: BM * G + G * G.  The split
+# N > G path launches one independent (BM, G) dot per group, so the per-program
+# tile is the same size as the NG == 1 tile and needs no extra budget for a
+# carried accumulator (the old group-loop kernel kept a running vector and its
+# feasible (G, BM) set was not a function of the tile size alone; it does not
+# compile at all on the current Triton stack -- see cumsum_mm_group_kernel).
 _MM_FLAT_BUDGET = 200_000
 # Group-loop case: G=128 with BM=128 is the widest tile that both compiles and
 # wins here; BM=256 at the same G compiles but is slower on every shape with a
@@ -481,6 +481,19 @@ _MM_LOOP_BUDGET = 32_768
 _MM_BM_CAND = (512, 256, 128, 64, 32, 16)
 _MM_MIN_GRID = 8
 _MM_U_CACHE = {}
+
+# The N > G multi-group matmul path (scan-then-fan: group-sum -> scan sums ->
+# per-group dot -> prefix add) now COMPILES and is numerically correct --
+# cumsum_mm_group_kernel has no runtime loop, no loop-carried vector and no
+# in-loop reduction, so it no longer aborts TritonSDNNCombineBefore for any
+# shape.  But it is measurably SLOWER than the non-matmul group scan on this
+# stack, because its segment-sum and prefix passes run one tiny (row, group)
+# program each (G = 128 -> N/G times more programs than the GROUP = 1024 group
+# scan): scan-only wall time (1024,1024) 2.11 vs 0.088 ms, (4096,4096) 23.5 vs
+# 4.51 ms, (1024,65536) 87 vs 15.7 ms.  So it is kept behind this switch and the
+# default routes N > G to the group scan (functional-first, optimal perf).  Set
+# to True to exercise the compiling matmul path (e.g. for future tuning).
+_MM_ALLOW_MULTIGROUP = False
 
 
 def _mm_tri_u(G, dev, dtype=torch.float32):
@@ -498,7 +511,7 @@ def _mm_plan(M, N, f16=False):
 
     G must be a power of two (it is a tl.arange extent) and must divide N
     exactly, because the kernel is deliberately unmasked -- see
-    cumsum_mm_rowblock_kernel.
+    cumsum_mm_group_kernel.
 
     BM is chosen to keep `M % BM` small before anything else: the leftover rows
     are re-planned at a narrower BM, and a narrow row block over a long row is
@@ -513,10 +526,16 @@ def _mm_plan(M, N, f16=False):
     elif f16 and N % 256 == 0 and M >= 128:
         # The fp16 kernel feeds tl.dot narrow operands and pays off at a wider
         # contraction (measured (4096, 4096) 0.715x at G=256 vs 0.674x at 128).
+        if N // 256 > 1 and not _MM_ALLOW_MULTIGROUP:
+            return None
         return 256, 128
     elif N % 128 == 0:
+        if N // 128 > 1 and not _MM_ALLOW_MULTIGROUP:
+            return None
         G, budget = 128, _MM_LOOP_BUDGET
     elif N % 64 == 0:
+        if N // 64 > 1 and not _MM_ALLOW_MULTIGROUP:
+            return None
         G, budget = 64, _MM_LOOP_BUDGET
     else:
         return None
@@ -530,74 +549,79 @@ def _mm_plan(M, N, f16=False):
 
 @libentry()
 @triton.jit
-def cumsum_mm_rowblock_kernel(
-    inp, out, u_ptr, N, NG, G: tl.constexpr, BM: tl.constexpr
-):
-    """cumsum(x) == x @ U with U upper-triangular ones, so Y[i, k] is
-    sum_{j <= k} X[i, j].  One program owns BM whole rows and walks that row's
-    NG = N // G groups in order, keeping the running row total in registers, so
-    the data is read once and written once (~2N traffic) with no `sums` matrix
-    and no second pass.
+def cumsum_mm_group_kernel(inp, out, u_ptr, N, G: tl.constexpr, BM: tl.constexpr):
+    """Within-group inclusive prefix as a matmul: for one (BM, G) tile,
+    ``y = x @ U`` with U upper-triangular ones gives y[i, k] = sum_{j <= k}
+    x[i, j].  One program owns BM rows of **one** group (grid is
+    (n_row_blocks, NG)), so there is no runtime loop, no loop-carried vector and
+    no in-loop reduction -- the three-at-once construct that made every N > G
+    shape abort in ``TritonSDNNCombineBefore`` with ``out of resource:
+    uni_sram`` (Required 0 / limit 0).  The cross-group offset is added by a
+    separate :func:`cumsum_chunk_prefix_kernel` pass (see _scan_rows_mm_into).
 
     Every load is unmasked: the caller guarantees N % G == 0 and only launches
-    over the first (M // BM) * BM rows (the remainder goes back through
-    _scan_rows_into), because a masked partial group leaks the OOB lanes'
-    garbage into the dot and its sum -- the same backend corner documented on
-    cumsum_chunk_scan_kernel (reproduced here on (33, 1000): rel err 0.24-0.53).
-
-    `carry` MUST stay a computed value (tl.sum) and never a loaded one: in a
-    kernel that also holds a 2D load and a tl.dot, broadcasting a *loaded*
-    per-row scalar across the (BM, G) tile mis-compiles on this backend.  That
-    was verified against broadcast_to / + zeros / * full(1) / * (arange >= 0),
-    against folding the prefix into lane 0 ahead of the dot, and against both a
-    strided and a contiguous (transposed `sums`) prefix load -- all wrong, while
-    the same load stored 1D and the same broadcast of a computed value are both
-    exact.  It is what rules out the two-pass group variant here."""
-    pid = ext.program_id(0)
-    rm = pid * BM + tl.arange(0, BM)
+    over whole BM blocks (the remainder goes back through _scan_rows_into),
+    because a masked partial group leaks the OOB lanes' garbage into the dot and
+    its sum -- the same backend corner documented on cumsum_chunk_scan_kernel
+    (reproduced here on (33, 1000): rel err 0.24-0.53)."""
+    pid_m = ext.program_id(0)
+    pid_g = ext.program_id(1)
+    rm = pid_m * BM + tl.arange(0, BM)
     kk = tl.arange(0, G)
     jj = tl.arange(0, G)
+    cols = pid_g * G + kk
     u = tl.load(u_ptr + jj[:, None] * G + kk[None, :]).to(tl.float32)
-    carry = tl.zeros([BM], dtype=tl.float32)
-    for g in range(NG):
-        cols = g * G + kk
-        x = tl.load(inp + rm[:, None] * N + cols[None, :]).to(tl.float32)
-        y = tl.dot(x, u, input_precision="ieee") + carry[:, None]
-        tl.store(out + rm[:, None] * N + cols[None, :], y.to(out.dtype.element_ty))
-        carry = carry + tl.sum(x, axis=1)
+    x = tl.load(inp + rm[:, None] * N + cols[None, :]).to(tl.float32)
+    y = tl.dot(x, u, input_precision="ieee")
+    tl.store(out + rm[:, None] * N + cols[None, :], y.to(out.dtype.element_ty))
 
 
 @libentry()
 @triton.jit
-def cumsum_mm_rowblock_f16_kernel(
-    inp, out, u_ptr, N, NG, G: tl.constexpr, BM: tl.constexpr
-):
-    """fp16 variant of cumsum_mm_rowblock_kernel that feeds tl.dot the fp16
+def cumsum_mm_group_f16_kernel(inp, out, u_ptr, N, G: tl.constexpr, BM: tl.constexpr):
+    """fp16 variant of cumsum_mm_group_kernel that feeds tl.dot the fp16
     operands directly instead of up-casting to fp32 first.
 
     This is numerically equivalent, not a trade: every U entry is exactly 1.0,
     so each product is exact in fp16 and tl.dot still accumulates in fp32 --
-    only the matmul unit changes.  Measured against the up-casting kernel it is
+    only the matmul unit changes.  Measured against the up-casting kernel it was
     worth 1.12x on (64, 64), 1.24x on (256, 256), 1.09x on (4096, 4096) and
-    2.75x on (10000, 256).  bf16 does NOT get the same treatment: its narrow
-    dot runs out of uni_sram for every (G, BM) that has a group loop, and where
-    it does compile the up-casting kernel is already faster."""
-    pid = ext.program_id(0)
-    rm = pid * BM + tl.arange(0, BM)
+    2.75x on (10000, 256).  bf16 does NOT get the same treatment (the up-casting
+    kernel is already faster and compiles more widely)."""
+    pid_m = ext.program_id(0)
+    pid_g = ext.program_id(1)
+    rm = pid_m * BM + tl.arange(0, BM)
     kk = tl.arange(0, G)
     jj = tl.arange(0, G)
+    cols = pid_g * G + kk
     u = tl.load(u_ptr + jj[:, None] * G + kk[None, :])
-    carry = tl.zeros([BM], dtype=tl.float32)
-    for g in range(NG):
-        cols = g * G + kk
-        x = tl.load(inp + rm[:, None] * N + cols[None, :])
-        y = tl.dot(x, u) + carry[:, None]
-        tl.store(out + rm[:, None] * N + cols[None, :], y.to(out.dtype.element_ty))
-        carry = carry + tl.sum(x.to(tl.float32), axis=1)
+    x = tl.load(inp + rm[:, None] * N + cols[None, :])
+    y = tl.dot(x, u)
+    tl.store(out + rm[:, None] * N + cols[None, :], y.to(out.dtype.element_ty))
 
 
 def _scan_rows_mm_into(inp, out, M, N, G, BM):
-    """K == 1 row scan through the matmul row-block kernel.
+    """K == 1 row scan through the matmul group kernels (scan-then-fan).
+
+    N == G (one group per row): a single dot per (BM, N) tile, exactly the
+    prefix-sum-as-matmul that always compiled.
+
+    N > G (more than one group per row): the three passes below, none of which
+    keeps a loop-carried vector or reduces a dot tile inside a runtime loop:
+
+      1. ``scan_group_sum_kernel``: per-group 1-D sum into an (M, NG) matrix
+         (no dot, no loop) -- this is the segment-sum pass.
+      2. ``_scan_rows_into(sums, sums, M, NG, allow_mm=False)``: scan that tiny
+         matrix in place; ``allow_mm=False`` is mandatory so a planable NG
+         (e.g. 512) cannot re-enter this very kernel.
+      3. ``cumsum_mm_group_*``: per-(row-block, group) dot emits the
+         within-group prefix, then ``cumsum_chunk_prefix_kernel`` adds the
+         scanned segment prefix as a pure elementwise read-modify-write.
+
+    Step 3 is deliberately split: broadcasting a *loaded* per-row prefix into a
+    tile that also feeds a tl.dot is silently wrong on this backend (measured
+    rel err 0.87-4.9e6 on (1024, 1024) against 1.3e-6 for the split), while the
+    elementwise pass is exact.
 
     Rows past the last whole BM block are re-planned (a narrower BM, so the tail
     still goes through the matmul) and only drop to the scan path once they are
@@ -606,20 +630,30 @@ def _scan_rows_mm_into(inp, out, M, N, G, BM):
     look like 0.69x/0.61x instead of 1.12x/0.65x: no power-of-two BM divides
     10000, so the leftover rows were paying the old price for the whole launch.
     """
+    NG = N // G
     n_full = (M // BM) * BM
+    nblocks = n_full // BM
     f16 = inp.dtype is torch.float16 and out.dtype is torch.float16
-    kernel = cumsum_mm_rowblock_f16_kernel if f16 else cumsum_mm_rowblock_kernel
-    kernel[(n_full // BM,)](
-        inp,
-        out,
-        _mm_tri_u(G, inp.device, inp.dtype if f16 else torch.float32),
-        N,
-        N // G,
-        G=G,
-        BM=BM,
-        num_warps=4,
-        buffer_size_limit=2048,
-    )
+    kernel = cumsum_mm_group_f16_kernel if f16 else cumsum_mm_group_kernel
+    u = _mm_tri_u(G, inp.device, inp.dtype if f16 else torch.float32)
+    if NG == 1:
+        # One group per row: no cross-group prefix to add, the dot is the scan.
+        kernel[(nblocks, 1)](
+            inp, out, u, N, G=G, BM=BM, num_warps=4, buffer_size_limit=2048
+        )
+    else:
+        with torch_device_fn.device(inp.device):
+            sums = torch.empty(n_full, NG, dtype=torch.float32, device=inp.device)
+        scan_group_sum_kernel[(n_full, NG)](
+            inp, sums, N, NG, G, num_warps=8, buffer_size_limit=2048
+        )
+        _scan_rows_into(sums, sums, n_full, NG, allow_mm=False)
+        kernel[(nblocks, NG)](
+            inp, out, u, N, G=G, BM=BM, num_warps=4, buffer_size_limit=2048
+        )
+        cumsum_chunk_prefix_kernel[(n_full * NG,)](
+            out, sums, N, NG, NG, BN=G, num_warps=8, buffer_size_limit=2048
+        )
     if n_full == M:
         return
     rest = M - n_full

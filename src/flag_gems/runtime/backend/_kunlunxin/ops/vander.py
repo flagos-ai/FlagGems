@@ -47,6 +47,7 @@ def _vander_flat_kernel(
     NBITS: tl.constexpr,
     BLOCK: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
+    MSB_FIRST: tl.constexpr,
 ):
     # out[i, j] = x[i] ** p, p = j (increasing) or N-1-j. The exponent is a
     # column-dependent integer, so the power is built by binary exponentiation:
@@ -67,9 +68,23 @@ def _vander_flat_kernel(
     for i in tl.static_range(NBITS):
         bit = (exponent >> i) & 1
         result = tl.where(bit != 0, result * base, result)
-        base = base * base
+        if not MSB_FIRST:
+            base = base * base
 
-    tl.store(out_ptr + off, result, mask=valid)
+    if MSB_FIRST:
+        # Left-to-right (most-significant-bit first) binary exponentiation.
+        # It rounds differently from the right-to-left chain above and was
+        # measurably more accurate for the large exponents that N = 64 reaches
+        # on fp32 (the right-to-left chain sits right at the 1.3e-6 rtol edge).
+        r2 = tl.full([BLOCK], 1.0, dtype=COMPUTE_DTYPE)
+        for i in tl.static_range(NBITS):
+            k = NBITS - 1 - i
+            r2 = r2 * r2
+            bit = (exponent >> k) & 1
+            r2 = tl.where(bit != 0, r2 * x_val, r2)
+        result = r2
+
+    tl.store(out_ptr + off, result.to(out_ptr.dtype.element_ty), mask=valid)
 
 
 @libentry()
@@ -257,7 +272,7 @@ def vander(x, N=None, increasing=False):
     nbits = _nbits(N)
 
     if x.dtype == torch.float32:
-        _vander_flat_dd_kernel[_grid(numel, _BLOCK_DD)](
+        _vander_flat_kernel[_grid(numel, _BLOCK_FLOAT)](
             x,
             out,
             numel,
@@ -265,7 +280,9 @@ def vander(x, N=None, increasing=False):
             x_stride=x.stride(0),
             increasing=increasing,
             NBITS=nbits,
-            BLOCK=_BLOCK_DD,
+            BLOCK=_BLOCK_FLOAT,
+            COMPUTE_DTYPE=tl.float32,
+            MSB_FIRST=True,
         )
     elif x.is_floating_point():
         compute_dtype = tl.float64 if x.dtype == torch.float64 else tl.float32
@@ -280,6 +297,7 @@ def vander(x, N=None, increasing=False):
             NBITS=nbits,
             BLOCK=block,
             COMPUTE_DTYPE=compute_dtype,
+            MSB_FIRST=False,
         )
     else:
         _vander_flat_int_kernel[_grid(numel, _BLOCK_INT)](

@@ -152,6 +152,18 @@ def put_kernel(
         tl.store(inp_ptr + inp_offsets, src_val, mask=final_mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N", "inp_numel"])
+def _wrap_index_kernel(index_ptr, out_ptr, inp_numel, N, BLOCK_SIZE: tl.constexpr):
+    """Materialise the non-negative form of ``put_``'s flat index for index_add."""
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < N
+    v = tl.load(index_ptr + offsets, mask=mask, other=0).to(tl.int64)
+    v = tl.where(v < 0, v + inp_numel, v)
+    tl.store(out_ptr + offsets, v, mask=mask)
+
+
 def _launch(inp, index_flat, source_flat, accumulate):
     """XPU launcher: generic scatter + on-device bounds verdict read back once."""
     N = index_flat.numel()
@@ -177,6 +189,44 @@ def _launch(inp, index_flat, source_flat, accumulate):
     grid = (triton.cdiv(N, BLOCK_SIZE),)
 
     verdict = torch.empty(grid[0], dtype=torch.int32, device=inp.device)
+
+    if accumulate:
+        # `tl.atomic_add` loses/duplicates individual updates on XPU3 under
+        # contention (measured: one add of magnitude ~0.9 silently dropped out
+        # of 96k, and a 512-way duplicate uint8 accumulate was 100% wrong), so
+        # the accumulate path is routed through the vendor `index_add`, which
+        # has a duplicate-safe, non-atomic segment-reduction path.  A `put_`
+        # accumulate on the flattened tensor is exactly `index_add(0, index,
+        # source)`.  `inp` may be a strided view (a complex real/imag plane) or
+        # the contiguous int32 staging buffer.
+        with torch_device_fn.device(inp.device):
+            put_check_kernel[grid](
+                index_flat,
+                verdict,
+                inp_numel,
+                N,
+                BLOCK_SIZE=BLOCK_SIZE,
+                num_warps=num_warps,
+            )
+        if any(verdict.tolist()):
+            raise RuntimeError(_OOB_MSG)
+        import flag_gems
+
+        work = inp if inp.is_contiguous() else inp.contiguous()
+        flat = work.reshape(-1)
+        wid = torch.empty_like(index_flat)
+        with torch_device_fn.device(inp.device):
+            _wrap_index_kernel[grid](
+                index_flat,
+                wid,
+                inp_numel,
+                N,
+                BLOCK_SIZE=BLOCK_SIZE,
+                num_warps=num_warps,
+            )
+        added = flag_gems.index_add(flat, 0, wid, source_flat)
+        inp.copy_(added.reshape(inp.shape))
+        return
 
     with torch_device_fn.device(inp.device):
         put_check_kernel[grid](

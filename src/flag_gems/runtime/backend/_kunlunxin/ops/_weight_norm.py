@@ -58,20 +58,14 @@ kernels; the forward saves the per-group norm exactly as they expect.
 """
 
 import logging
-import math
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
-from .weight_norm import (
-    weight_norm_except_dim,
-    weight_norm_except_dim_backward,
-)
+from .weight_norm import weight_norm_except_dim, weight_norm_except_dim_backward
 from .weightnorm import weight_norm_interface_backward
 
 logger = logging.getLogger(__name__)
@@ -211,7 +205,9 @@ def _wn_dL_norm_kernel(v, scratch, M, K, R: tl.constexpr, C: tl.constexpr):
         )
         acc += tl.dot(ones, x * x, out_dtype=tl.float32, input_precision="ieee")
     tl.store(
-        scratch + tl.arange(0, 16)[:, None] * (tl.num_programs(0) * C) + kb * C
+        scratch
+        + tl.arange(0, 16)[:, None] * (tl.num_programs(0) * C)
+        + kb * C
         + tl.arange(0, C)[None, :],
         acc,
         mask=cmask[None, :],
@@ -244,9 +240,11 @@ def _wn_dL_part_kernel(
             tl.float32
         )
         acc += tl.dot(ones, x * x, out_dtype=tl.float32, input_precision="ieee")
-    offs = (c * 16 + tl.arange(0, 16)[:, None]) * (GK * C) + kb * C + tl.arange(
-        0, C
-    )[None, :]
+    offs = (
+        (c * 16 + tl.arange(0, 16)[:, None]) * (GK * C)
+        + kb * C
+        + tl.arange(0, C)[None, :]
+    )
     tl.store(part + offs, acc, mask=cmask[None, :])
 
 
@@ -310,7 +308,11 @@ def _forward_first(v, g, need_norm):
     gs = g.stride(0) if g.numel() > 1 else 0
     with torch_device_fn.device(v.device):
         if N == 1:
-            nrm = torch.empty(M, dtype=torch.float32, device=v.device) if need_norm else None
+            nrm = (
+                torch.empty(M, dtype=torch.float32, device=v.device)
+                if need_norm
+                else None
+            )
             # scale1 kernel does not store norm; compute it only when needed
             _wn_d0_scale1_kernel[(triton.cdiv(M, 8192),)](
                 v, g, out, M, GS=gs, BLOCK=8192, num_warps=4
@@ -321,7 +323,11 @@ def _forward_first(v, g, need_norm):
         if N <= 8192:
             BN = max(8, _npo2(N))
             BS = _pick_bs(M)
-            nrm = torch.empty(M, dtype=torch.float32, device=v.device) if need_norm else None
+            nrm = (
+                torch.empty(M, dtype=torch.float32, device=v.device)
+                if need_norm
+                else None
+            )
             if BS >= 2:
                 _wn_d0_multi_kernel[(triton.cdiv(M, BS),)](
                     v,
@@ -352,7 +358,9 @@ def _forward_first(v, g, need_norm):
             return out, nrm
         # N > 8192: dot reduction + apply
         scale = torch.empty(M, dtype=torch.float32, device=v.device)
-        nrm = torch.empty(M, dtype=torch.float32, device=v.device) if need_norm else None
+        nrm = (
+            torch.empty(M, dtype=torch.float32, device=v.device) if need_norm else None
+        )
         R = 64
         C = 256
         _wn_d0_dot_norm_kernel[(triton.cdiv(M, R),)](
@@ -391,13 +399,13 @@ def _forward_last(v, g, need_norm):
             BM = R * triton.cdiv(triton.cdiv(M, triton.cdiv(M, 8192)), R)
             NCH = triton.cdiv(M, BM)
             NPAD = max(16, _npo2(NCH))
-            part = torch.empty(
-                NPAD * 16 * GK * C, dtype=torch.float32, device=v.device
-            )
+            part = torch.empty(NPAD * 16 * GK * C, dtype=torch.float32, device=v.device)
             _wn_dL_part_kernel[(NCH, GK)](
                 v, part, M, K, R=R, C=C, BM=BM, GK=GK, num_warps=4
             )
-            _wn_dL_fin_kernel[(GK,)](part, scratch, NCH, NPAD=NPAD, C=C, GK=GK, num_warps=4)
+            _wn_dL_fin_kernel[(GK,)](
+                part, scratch, NCH, NPAD=NPAD, C=C, GK=GK, num_warps=4
+            )
         if need_norm:
             _wn_dL_nrm_kernel[(triton.cdiv(K, 1024),)](
                 scratch, nrm, K, BLOCK=1024, num_warps=4
@@ -461,9 +469,7 @@ class _WeightNormFn(torch.autograd.Function):
         if ctx.can_fuse:
             v_grad, g_grad = weight_norm_interface_backward(gr, v, g, nrm, ctx.dim)
         else:
-            v_grad, g_grad = weight_norm_except_dim_backward(
-                gr, v, g, nrm, ctx.dim
-            )
+            v_grad, g_grad = weight_norm_except_dim_backward(gr, v, g, nrm, ctx.dim)
         if v_grad.shape != v.shape:
             v_grad = v_grad.view(v.shape)
         return v_grad, g_grad, None

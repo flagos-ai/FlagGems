@@ -192,9 +192,19 @@ def _wn_first_forward(output, norm, v, g, M, N):
             TILE_M = _wn_fwd_tile_m(M, N)
             need_mask = (M % TILE_M) != 0
             grid = (triton.cdiv(M, TILE_M),)
-            _wn_multirow_kernel[grid](
-                output, norm, v, g, M, N, TILE_M, need_mask, eps, num_warps=4
-            )
+            if v.dtype == torch.bfloat16 and (N & (N - 1)) != 0:
+                # XPU3 cannot lower an fp32->bf16 2-D store whose tile width is
+                # not a power of two (`ConvertTritonXPUToLLVM` fails on
+                # tensor<...,768x!tt.ptr<bf16>>), e.g. shape (4,256,3) dim=0
+                # -> N=768.  Fall back to the per-row 1-D kernel, whose bf16
+                # store lowers; the geometry (offsets, no padding) is exact, so
+                # there is no out-of-bounds access or precision change.
+                with torch_device_fn.device(v.device):
+                    _wn_row1d_kernel[(M,)](output, norm, v, g, N, eps, num_warps=2)
+            else:
+                _wn_multirow_kernel[grid](
+                    output, norm, v, g, M, N, TILE_M, need_mask, eps, num_warps=4
+                )
         else:
             # N > 8192: a triton per-row reduction needs >=2 chunks/row, but
             # tl.sum caps at 8192 lanes and a chunked [K, TILE] tile hits the

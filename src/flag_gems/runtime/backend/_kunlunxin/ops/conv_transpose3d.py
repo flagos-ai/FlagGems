@@ -16,38 +16,46 @@
 #
 # The generic Triton kernel (flag_gems/ops/conv_transpose3d.py) miscomputes on
 # this backend (max abs error 7.0e+02 against the CPU reference over the
-# official test matrix), so the whole test file fails.
+# official test matrix): its implicit-GEMM `tl.dot` operands are built from
+# masked 2-D loads, the documented "masked dot operand" codegen wall on XPU3.
 #
-# Delegate to the native aten convolution kernel instead, captured before
-# FlagGems registers its own overrides -- the same pattern as
-# flag_gems/ops/_linalg_eigvals.py.  The native kernel is correct here
-# (max abs error 1.0e-05 against the CPU reference) and keeps the full dtype,
-# bias, grouped, dilated and output_padding contract.
+# A transposed convolution is an output-centric gather: output position `o`
+# receives the taps whose input index `i = (o + pad - k * dilation) / stride`
+# is an integer in range.  The backend `convolution` override already carries a
+# proven scalar gather kernel for exactly this relation
+# (`_conv3d_t_fwd_kernel`, no `tl.dot`, no masked loads, clamped indices,
+# groups/bias aware), so this override reuses it -- the same approach as the
+# `slow_conv_transpose3d` override.  Every path below runs a real Triton
+# kernel; nothing is forwarded to aten/native/composite.
 import logging
 
 import torch
+import triton
 
-from flag_gems import runtime
+from .convolution import _conv3d_t_fwd_kernel
 
 logger = logging.getLogger(__name__)
 
-_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
-
-if _CAN_CAPTURE_NATIVE_KERNEL:
-    _NATIVE_CONVOLUTION = torch.library.get_kernel(
-        torch.ops.aten.convolution.default, runtime.device.dispatch_key
-    )
-
-_NATIVE_KEY_SET = torch._C.DispatchKeySet(
-    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
-)
+__all__ = ["conv_transpose3d"]
 
 
-def _three(v):
-    # the aten schemas pass the spatial args as length-3 lists
-    if isinstance(v, (list, tuple)):
-        return [int(x) for x in v]
-    return [int(v)] * 3
+def _triple(value, name, default):
+    if value is None:
+        value = default
+    if torch.is_tensor(value):
+        if value.dim() == 0:
+            value = [int(value.item())]
+        else:
+            value = [int(v) for v in value.tolist()]
+    elif isinstance(value, (int, float)):
+        value = [int(value)]
+    else:
+        value = [int(v) for v in value]
+    if len(value) == 1:
+        value = value * 3
+    if len(value) != 3:
+        raise RuntimeError("%s must be a single integer or a sequence of 3 integers" % name)
+    return value
 
 
 def conv_transpose3d(
@@ -60,47 +68,138 @@ def conv_transpose3d(
     groups=1,
     dilation=1,
 ):
+    """Applies a 3D transposed convolution (aten::conv_transpose3d.input)."""
     logger.debug("GEMS_KUNLUNXIN CONV_TRANSPOSE3D")
 
-    if _CAN_CAPTURE_NATIVE_KERNEL:
-        # Same reason as the 1D override: one fp16 ulp (7.8e-03 at a magnitude
-        # of 8) is wider than the tolerance this backend's test matrix allows
-        # (atol 1e-4 * 32 for the grouped cases), so an fp16 kernel fails
-        # whenever its partial sums round the other way -- observed as a single
-        # element at 0.0063 against 0.0032 allowed.  fp16 inputs run the same
-        # native kernel in float32 and are rounded once at the end, which makes
-        # the output the correctly rounded fp32 value.
-        if input.dtype == torch.float16:
-            out = _NATIVE_CONVOLUTION.call_boxed(
-                _NATIVE_KEY_SET,
-                input.to(torch.float32),
-                weight.to(torch.float32),
-                None if bias is None else bias.to(torch.float32),
-                _three(stride),
-                _three(padding),
-                _three(dilation),
-                True,
-                _three(output_padding),
-                groups,
-            )
-            return out.to(torch.float16)
-
-        return _NATIVE_CONVOLUTION.call_boxed(
-            _NATIVE_KEY_SET,
-            input,
-            weight,
-            bias,
-            _three(stride),
-            _three(padding),
-            _three(dilation),
-            True,
-            _three(output_padding),
-            groups,
+    if not torch.is_tensor(input) or not torch.is_tensor(weight):
+        raise TypeError("conv_transpose3d expects tensor inputs")
+    if weight.dim() != 5:
+        raise RuntimeError(
+            "conv_transpose3d: expected 5D weight, got %dD" % weight.dim()
+        )
+    if not input.is_floating_point() or not weight.is_floating_point():
+        raise RuntimeError(
+            "conv_transpose3d not implemented for non-floating point dtypes"
+        )
+    if input.dtype != weight.dtype:
+        raise RuntimeError(
+            "conv_transpose3d: expected input and weight to have the same dtype, "
+            "but got %s and %s" % (input.dtype, weight.dtype)
         )
 
-    # Older PyTorch without torch.library.get_kernel: keep the generic path.
-    from flag_gems.ops.conv_transpose3d import conv_transpose3d as _generic
+    st = _triple(stride, "stride", 1)
+    pa = _triple(padding, "padding", 0)
+    op = _triple(output_padding, "output_padding", 0)
+    dl = _triple(dilation, "dilation", 1)
+    if any(s <= 0 for s in st):
+        raise RuntimeError("conv_transpose3d: stride must be greater than zero")
+    if any(d <= 0 for d in dl):
+        raise RuntimeError("conv_transpose3d: dilation must be greater than zero")
+    if any(p < 0 for p in pa):
+        raise RuntimeError("conv_transpose3d: padding must be non-negative")
+    for i in range(3):
+        if op[i] >= max(st[i], dl[i]):
+            raise RuntimeError(
+                "conv_transpose3d: output padding must be smaller than either "
+                "stride or dilation"
+            )
 
-    return _generic(
-        input, weight, bias, stride, padding, output_padding, groups, dilation
+    unbatched = input.dim() == 4
+    if unbatched:
+        x = input.unsqueeze(0)
+    elif input.dim() == 5:
+        x = input
+    else:
+        raise RuntimeError(
+            "conv_transpose3d: expected 4D or 5D input, got %dD" % input.dim()
+        )
+
+    n, cin, din, hin, win = x.shape
+    cin_w, cout_pg, kd, kh, kw = weight.shape
+    groups = int(groups)
+    if groups <= 0 or cin % groups != 0:
+        raise RuntimeError(
+            "conv_transpose3d: input channels (%d) must be divisible by "
+            "groups (%d)" % (cin, groups)
+        )
+    if cin != cin_w:
+        raise RuntimeError(
+            "conv_transpose3d: input channels (%d) must match weight in "
+            "channels (%d)" % (cin, cin_w)
+        )
+    cout = int(cout_pg) * groups
+    if bias is not None:
+        if not torch.is_tensor(bias):
+            raise TypeError("conv_transpose3d: bias must be a Tensor or None")
+        if bias.numel() != cout:
+            raise RuntimeError(
+                "conv_transpose3d: bias size (%d) must match out channels (%d)"
+                % (bias.numel(), cout)
+            )
+
+    dout = (din - 1) * st[0] - 2 * pa[0] + dl[0] * (kd - 1) + op[0] + 1
+    hout = (hin - 1) * st[1] - 2 * pa[1] + dl[1] * (kh - 1) + op[1] + 1
+    wout = (win - 1) * st[2] - 2 * pa[2] + dl[2] * (kw - 1) + op[2] + 1
+    if dout <= 0 or hout <= 0 or wout <= 0:
+        raise RuntimeError(
+            "conv_transpose3d: calculated output size is too small: "
+            "(%d, %d, %d)" % (dout, hout, wout)
+        )
+
+    out = torch.empty((n, cout, dout, hout, wout), device=x.device, dtype=x.dtype)
+    total = n * cout * dout * hout * wout
+    if total == 0:
+        return out.squeeze(0) if unbatched else out
+
+    has_bias = bias is not None and bias.numel() > 0
+    b_ptr = bias if has_bias else x
+    BLOCK = 64
+    _conv3d_t_fwd_kernel[(triton.cdiv(total, BLOCK),)](
+        x,
+        weight,
+        b_ptr,
+        out,
+        total,
+        int(din),
+        int(hin),
+        int(win),
+        int(dout),
+        int(hout),
+        int(wout),
+        cout,
+        int(cin),
+        int(cin) // groups,  # CIPG
+        int(cout_pg),  # OPG
+        st[0],
+        st[1],
+        st[2],
+        pa[0],
+        pa[1],
+        pa[2],
+        dl[0],
+        dl[1],
+        dl[2],
+        int(x.stride(0)),
+        int(x.stride(1)),
+        int(x.stride(2)),
+        int(x.stride(3)),
+        int(x.stride(4)),
+        int(weight.stride(0)),
+        int(weight.stride(1)),
+        int(weight.stride(2)),
+        int(weight.stride(3)),
+        int(weight.stride(4)),
+        int(out.stride(0)),
+        int(out.stride(1)),
+        int(out.stride(2)),
+        int(out.stride(3)),
+        int(out.stride(4)),
+        HAS_BIAS=has_bias,
+        CIPG=int(cin) // groups,
+        OPG=int(cout_pg),
+        KD=int(kd),
+        KH=int(kh),
+        KW=int(kw),
+        BLOCK=BLOCK,
     )
+    return out.squeeze(0) if unbatched else out

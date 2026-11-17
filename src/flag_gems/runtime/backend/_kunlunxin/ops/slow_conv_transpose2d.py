@@ -28,6 +28,7 @@ exact zero, which is what the ``ok`` predicate encodes.
 """
 
 import logging
+import sys as _sys
 
 import torch
 import triton
@@ -241,3 +242,23 @@ def slow_conv_transpose2d(
     if out is not None:
         return out
     return out4
+
+
+# --------------------------------------------------------------------------- #
+# Make the *generic* module path resolve to this implementation.
+#
+# benchmark/test_slow_conv_transpose2d.py binds
+# ``gems_op=flag_gems.ops.slow_conv_transpose2d`` (the generic package
+# attribute), which bypasses this vendor override; the generic dot kernel
+# cannot compile here (SDNN event budget), so the benchmark reported FAILED
+# instead of measuring the kernel that actually runs.  Rebind the generic
+# submodule attribute and the package attribute to this implementation so both
+# the test and benchmark entry points hit the vendor kernel (same pattern as
+# ``_kunlunxin/ops/_native_batch_norm_legit.py`` and
+# ``slow_conv2d_backward.py``).
+_generic_module = _sys.modules.get("flag_gems.ops.slow_conv_transpose2d")
+if _generic_module is not None:
+    _generic_module.slow_conv_transpose2d = slow_conv_transpose2d
+_ops_package = _sys.modules.get("flag_gems.ops")
+if _ops_package is not None:
+    _ops_package.slow_conv_transpose2d = slow_conv_transpose2d

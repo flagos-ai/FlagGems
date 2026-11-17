@@ -258,4 +258,10 @@ def _weight_norm(v: torch.Tensor, g: torch.Tensor, dim: int = 0) -> torch.Tensor
     logger.debug("GEMS_KUNLUNXIN _WEIGHT_NORM")
     if v.dtype not in (torch.float16, torch.bfloat16, torch.float32):
         raise TypeError(f"_weight_norm does not support {v.dtype}")
-    return weight_norm(v, g, dim)
+    # `aten::_weight_norm` (no eps) gets the dedicated fused forward in
+    # ops/_weight_norm.py: its `dim == last` and `dim == 0` large-N paths avoid
+    # the serial / launch-bound kernels of `weight_norm_interface`.  The generic
+    # `weight_norm` autograd path above is kept for the non-underscore op.
+    from ._weight_norm import _weight_norm as _weight_norm_fused
+
+    return _weight_norm_fused(v, g, dim)

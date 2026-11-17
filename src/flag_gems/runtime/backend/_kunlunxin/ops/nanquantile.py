@@ -52,6 +52,126 @@ INTERPOLATION_METHODS = ("linear", "lower", "higher", "nearest", "midpoint")
 INTERPOLATION_CODES = {name: code for code, name in enumerate(INTERPOLATION_METHODS)}
 MAX_REDUCTION_SIZE = 1 << 24
 
+# Order-statistic selection fast path (single reduction row).  Measured on
+# XPU3/P800: a per-row kernel that keeps the row resident and walks a *runtime*
+# binary-search loop costs ~25 us for 32 steps at grid=1, but the very same
+# loop at grid>=128 spends ~1 ms (the resident tile is spilled once the loop is
+# dynamic and many programs contend).  So the selection path is enabled only
+# when the reduction is a single row and the row fits one tile; everything else
+# keeps the radix-sort path.
+SELECT_MAX_REDUCTION_SIZE = 4096
+SELECT_MAX_Q = 16
+# Canonical NaN key in the signed-comparable key space below (0xFFC00000
+# unsigned).  Every finite/inf value maps strictly below it.
+_NAN_SKEY = tl.constexpr(0x7FC00000)
+_MIN_SKEY = tl.constexpr(-(1 << 31))
+_BIG_SKEY = tl.constexpr(1 << 62)
+SEARCH_STEPS = 32
+
+
+@triton.jit
+def _skey_to_value(k):
+    """Invert the monotone key back to the original float value."""
+    key_u = (k & 0xFFFFFFFF) ^ 0x80000000
+    neg = key_u < 0x80000000
+    bits = tl.where(neg, key_u ^ 0xFFFFFFFF, key_u ^ 0x80000000)
+    return (bits & 0xFFFFFFFF).to(tl.int32).to(tl.float32, bitcast=True)
+
+
+@libentry()
+@triton.jit
+def _nq_select_row_kernel(
+    inp,
+    q,
+    out,
+    q_scalar,
+    reduction_size,
+    q_size,
+    n_steps,
+    BLOCK_R: tl.constexpr,
+    Q_SCALAR: tl.constexpr,
+    interpolation: tl.constexpr,
+):
+    """Exact order-statistic selection for a single reduction row.
+
+    One program per ``q`` element (or a single program when ``q`` is a Python
+    scalar, passed by value so the host pays no device upload).  The row is
+    loaded once into a clamped (tail re-reads the last element, gated by
+    ``inb``) tile, NaNs are folded to the canonical key, and the floor/ceil
+    ranks are resolved with a runtime binary search over the monotone integer
+    key plus one successor reduction.  NaNs sort above every numeric key, so
+    the valid count is a single ``skey < NAN`` reduction and the search bound
+    excludes them for free.
+    """
+    if Q_SCALAR:
+        qi = 0
+        qv = q_scalar
+    else:
+        qi = tl.program_id(0)
+        qv = tl.load(q + qi)
+    offs = tl.arange(0, BLOCK_R)
+    inb = offs < reduction_size
+    off = tl.minimum(offs, reduction_size - 1)
+    v = tl.load(inp + off)
+    v = tl.where(v == v, v, float("nan"))
+    bits = v.to(tl.int32, bitcast=True)
+    key_u = bits ^ ((bits >> 31) | (-2147483648))
+    skey = (key_u ^ (-2147483648)).to(tl.int64)
+
+    cnt = tl.sum(tl.where(inb & (skey < _NAN_SKEY), 1, 0), axis=0)
+    all_nan = cnt == 0
+    cnt64 = tl.maximum(cnt, 1).to(tl.int64)
+    last = cnt64 - 1
+    qv = qv.to(tl.float32)
+    ranks = last.to(tl.float32) * qv
+    k_low = tl.floor(ranks).to(tl.int64)
+    k_high = tl.ceil(ranks).to(tl.int64)
+    k_low = tl.minimum(tl.maximum(k_low, 0), last)
+    k_high = tl.minimum(tl.maximum(k_high, 0), last)
+
+    # Smallest key K with count(skey <= K) > k_low  ==  the k_low-th value.
+    lo = tl.full((), _MIN_SKEY, tl.int64)
+    hi = tl.full((), _NAN_SKEY - 1, tl.int64)
+    for _ in range(0, n_steps):
+        mid = lo + (hi - lo) // 2
+        c = tl.sum(tl.where(inb & (skey <= mid), 1, 0), axis=0).to(tl.int64)
+        take = c > k_low
+        lo = tl.where(take, lo, mid + 1)
+        hi = tl.where(take, mid, hi)
+    k_lo = lo
+
+    # Rank ``k_high`` is either ``k_low`` or ``k_low + 1`` (ceil of a rank).
+    # With ties the (k_low + 1)-th order statistic can still be the *same*
+    # value, so it only advances to the next distinct key when k_low was the
+    # last index of its equal group (k_high >= count(key <= k_lo)).
+    cnt_le = tl.sum(
+        tl.where(inb & (skey <= k_lo), 1, 0), axis=0
+    ).to(tl.int64)
+    succ = tl.min(
+        tl.where(inb & (skey > k_lo) & (skey < _NAN_SKEY), skey, _BIG_SKEY),
+        axis=0,
+    )
+    same = k_high < cnt_le
+    k_hi = tl.where(same, k_lo, succ)
+
+    lower_values = _skey_to_value(k_lo)
+    upper_values = _skey_to_value(k_hi)
+
+    if interpolation == 0:
+        result = lower_values + (upper_values - lower_values) * (ranks - k_low.to(tl.float32))
+    elif interpolation == 1:
+        result = lower_values
+    elif interpolation == 2:
+        result = upper_values
+    elif interpolation == 3:
+        rounded = tl.extra.xpu.libdevice.rint(ranks).to(tl.int64)
+        result = tl.where(rounded == k_high, upper_values, lower_values)
+    else:
+        result = lower_values + (upper_values - lower_values) * 0.5
+
+    result = tl.where(all_nan, float("nan"), result)
+    tl.store(out + qi, result)
+
 
 @libentry()
 @triton.jit
@@ -201,14 +321,21 @@ def _nanquantile_impl(
 
     q_is_tensor = isinstance(q, torch.Tensor)
     q_is_scalar = not q_is_tensor or q.dim() == 0
+    # A Python-scalar q is kept on the host so the selection path can pass it
+    # by value (a per-call ``torch.tensor(..., device=)`` upload costs ~70 us
+    # on this backend, comparable to the whole kernel).
+    q_scalar_value = None
     if not q_is_tensor:
-        q_value = float(q)
-        if not 0.0 <= q_value <= 1.0:
+        q_scalar_value = float(q)
+        if not 0.0 <= q_scalar_value <= 1.0:
             raise RuntimeError(
-                f"quantile() q must be in the range [0, 1] but got {q_value}"
+                f"quantile() q must be in the range [0, 1] but got {q_scalar_value}"
             )
-        q = torch.tensor(q_value, dtype=inp.dtype, device=inp.device)
-    q_contiguous = contiguous(q).reshape(-1)
+        q_size = 1
+        q_contiguous = None
+    else:
+        q_contiguous = contiguous(q).reshape(-1)
+        q_size = q_contiguous.numel()
     if q_is_tensor and q_contiguous.numel():
         block_size = 256
         with torch_device_fn.device(inp.device):
@@ -225,7 +352,6 @@ def _nanquantile_impl(
             f"must not exceed {MAX_REDUCTION_SIZE} elements"
         )
     n_rows = reduced.numel() // reduction_size
-    q_size = q_contiguous.numel()
     internal_shape = (*reduced.shape[:-1], q_size)
     if q_is_scalar:
         result_shape = list(reduced.shape[:-1])
@@ -261,29 +387,57 @@ def _nanquantile_impl(
         internal = torch.empty(internal_shape, dtype=inp.dtype, device=inp.device)
 
     if q_size and reduction_size:
+        use_select = (
+            reduced.ndim == 1
+            and reduced.dtype == torch.float32
+            and reduction_size <= SELECT_MAX_REDUCTION_SIZE
+            and q_size <= SELECT_MAX_Q
+        )
+        if not use_select and q_contiguous is None:
+            q_contiguous = contiguous(
+                torch.tensor(
+                    q_scalar_value, dtype=inp.dtype, device=inp.device
+                )
+            ).reshape(-1)
         with torch_device_fn.device(inp.device):
-            canonical = torch.empty_like(reduced)
-            block = 1024
-            _canonicalize_nan_kernel[(triton.cdiv(reduced.numel(), block),)](
-                reduced, canonical, reduced.numel(), BLOCK_SIZE=block
-            )
-            sorted_values, _ = sort_stable(
-                canonical, stable=False, dim=-1, descending=False
-            )
-            block_q = _gather_blocks(q_size)
-            _nanquantile_gather_kernel[
-                (triton.cdiv(q_size, block_q), n_rows)
-            ](
-                sorted_values,
-                q_contiguous,
-                internal,
-                n_rows,
-                reduction_size,
-                q_size,
-                max(1, int(reduction_size).bit_length()),
-                BLOCK_Q=block_q,
-                interpolation=INTERPOLATION_CODES[interpolation],
-            )
+            if use_select:
+                block_r = triton.next_power_of_2(max(reduction_size, 2))
+                q_scalar_arg = 0.0 if q_scalar_value is None else q_scalar_value
+                _nq_select_row_kernel[(1 if q_is_scalar else q_size,)](
+                    reduced,
+                    reduced if q_scalar_value is not None else q_contiguous,
+                    internal,
+                    q_scalar_arg,
+                    reduction_size,
+                    q_size,
+                    SEARCH_STEPS,
+                    BLOCK_R=block_r,
+                    Q_SCALAR=q_scalar_value is not None,
+                    interpolation=INTERPOLATION_CODES[interpolation],
+                )
+            else:
+                canonical = torch.empty_like(reduced)
+                block = 1024
+                _canonicalize_nan_kernel[(triton.cdiv(reduced.numel(), block),)](
+                    reduced, canonical, reduced.numel(), BLOCK_SIZE=block
+                )
+                sorted_values, _ = sort_stable(
+                    canonical, stable=False, dim=-1, descending=False
+                )
+                block_q = _gather_blocks(q_size)
+                _nanquantile_gather_kernel[
+                    (triton.cdiv(q_size, block_q), n_rows)
+                ](
+                    sorted_values,
+                    q_contiguous,
+                    internal,
+                    n_rows,
+                    reduction_size,
+                    q_size,
+                    max(1, int(reduction_size).bit_length()),
+                    BLOCK_Q=block_q,
+                    interpolation=INTERPOLATION_CODES[interpolation],
+                )
 
     if q_is_scalar:
         result = internal.squeeze(-1)

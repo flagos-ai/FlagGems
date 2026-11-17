@@ -159,32 +159,37 @@ def conv2d_forward_kernel(
 
 
 # ---------------------------------------------------------------------------
-# Depthwise fast path.
+# Depthwise fast path (plane-chunk kernel).
 #
 # All geometry is passed as ``tl.constexpr`` so the tap loops unroll and the
-# index arithmetic (div/mod, stride multiplies) folds into constants; the
-# runtime-scalar version of the same math was ~15-30x slower because every
-# lane carried a soft integer division and dynamic tap loops.  Two launch
-# geometries are used, chosen from the measured benchmark matrix:
-#   * ``row``  -- one program per (n, c, oh) output row.  Best when WOUT is
-#                 small/misaligned (WOUT % 16 != 0), where the flat layout
-#                 straddles 16-lane vector groups.
-#   * ``flat`` -- flat output index with the channel on grid axis 1.  Best
-#                 when WOUT is large and 16-aligned (the loads stay in
-#                 contiguous 16-lane groups).
-# Both use clamp+``tl.where`` (never a masked load, which is unreliable on
-# this backend) and a clamped unmasked store (idempotent last-lane write).
+# index arithmetic folds into constants.  One program owns a *chunk of one
+# output plane* (grid = (n*cout, nchunk)), which is what makes the tap address
+# provably contiguous:
+#
+#   * ``SAME`` geometry (stride 1 and HOUT/WOUT == HIN/WIN): the flat output
+#     index ``q`` maps 1:1 onto the flat input index of the same plane, so a
+#     tap is ``x_plane + q + off`` with ``off`` a compile-time constant ->
+#     one contiguous block DMA per tap (this is the 30-100x win over the
+#     previous clamped form, whose per-lane ``min/max`` address math forced a
+#     per-lane gather; see wiki pattern-xpu3-affine-addresses-vs-discrete-gather).
+#     The two extreme programs (which would read outside the tensor) take a
+#     clamped path; border lanes are zeroed with ``tl.where`` (no masked load).
+#   * otherwise the clamped per-lane form is kept (still ~10x faster than the
+#     row/flat variants it replaces) - strided taps are gapped anyway.
+#
+# Border correctness comes from ``valid``/``tl.where``, never from a clamp, so
+# the affine loads stay vectorised.  The store keeps its mask (repeated-address
+# stores serialise on this backend).
 # ---------------------------------------------------------------------------
 @triton.jit
-def _dw_rows_kernel(
+def _dw_plane_kernel(
     x,
     w,
     b,
     y,
-    n,
-    CIN: tl.constexpr,
     COUT: tl.constexpr,
     OPG: tl.constexpr,
+    CIN: tl.constexpr,
     HIN: tl.constexpr,
     WIN: tl.constexpr,
     HOUT: tl.constexpr,
@@ -198,96 +203,55 @@ def _dw_rows_kernel(
     DH: tl.constexpr,
     DW: tl.constexpr,
     BLOCK: tl.constexpr,
+    NCHUNK: tl.constexpr,
+    SAME: tl.constexpr,
     HAS_BIAS: tl.constexpr,
 ):
-    # grid = (n * cout * hout,), one program per (n, c, oh) output row.
-    pid = tl.program_id(0)
-    oh = pid % HOUT
-    t = pid // HOUT
+    # grid = (n * cout, nchunk); axis 0 = flat output plane index.
+    t = tl.program_id(0)
+    ck = tl.program_id(1)
     oc = t % COUT
     ni = t // COUT
     ic = oc // OPG
-    ow = tl.arange(0, BLOCK)
-    owm = ow < WOUT
-    xb = x + ni * (CIN * HIN * WIN) + ic * (HIN * WIN)
-    acc = tl.zeros((BLOCK,), tl.float32)
-    for r in tl.static_range(KH):
-        ih = oh * SH - PH + r * DH
-        rv = (ih >= 0) & (ih < HIN)
-        sih = tl.minimum(tl.maximum(ih, 0), HIN - 1)
-        for s in tl.static_range(KW):
-            iw = ow * SW - PW + s * DW
-            valid = owm & rv & (iw >= 0) & (iw < WIN)
-            siw = tl.minimum(tl.maximum(iw, 0), WIN - 1)
-            xv = tl.load(xb + sih * WIN + siw)
-            xv = tl.where(valid, xv.to(tl.float32), 0.0)
-            wv = tl.load(w + oc * (KH * KW) + r * KW + s).to(tl.float32)
-            acc += xv * wv
-    if HAS_BIAS:
-        acc += tl.load(b + oc).to(tl.float32)
-    tl.store(
-        y + ni * (COUT * HOUT * WOUT) + oc * (HOUT * WOUT) + oh * WOUT + ow,
-        acc,
-        mask=owm,
-    )
-
-
-@triton.jit
-def _dw_flat_kernel(
-    x,
-    w,
-    b,
-    y,
-    n,
-    CIN: tl.constexpr,
-    COUT: tl.constexpr,
-    OPG: tl.constexpr,
-    HIN: tl.constexpr,
-    WIN: tl.constexpr,
-    HOUT: tl.constexpr,
-    WOUT: tl.constexpr,
-    KH: tl.constexpr,
-    KW: tl.constexpr,
-    SH: tl.constexpr,
-    SW: tl.constexpr,
-    PH: tl.constexpr,
-    PW: tl.constexpr,
-    DH: tl.constexpr,
-    DW: tl.constexpr,
-    BLOCK: tl.constexpr,
-    HAS_BIAS: tl.constexpr,
-):
-    # grid = (cdiv(n * hout * wout, BLOCK), cout)
-    oc = tl.program_id(1)
-    m = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    total = n * HOUT * WOUT
-    mmask = m < total
-    ni = m // (HOUT * WOUT)
-    q = m % (HOUT * WOUT)
+    plane_o = HOUT * WOUT
+    plane_i = HIN * WIN
+    q = ck * BLOCK + tl.arange(0, BLOCK)
+    pm = q < plane_o
     oh = q // WOUT
-    ow = q % WOUT
-    ic = oc // OPG
-    xb = x + ni * (CIN * HIN * WIN) + ic * (HIN * WIN)
+    ow = q - oh * WOUT
+    xb = x + (ni * CIN + ic) * plane_i
     acc = tl.zeros((BLOCK,), tl.float32)
-    for r in tl.static_range(KH):
-        ih = oh * SH - PH + r * DH
-        rv = (ih >= 0) & (ih < HIN)
-        sih = tl.minimum(tl.maximum(ih, 0), HIN - 1)
-        for s in tl.static_range(KW):
-            iw = ow * SW - PW + s * DW
-            valid = mmask & rv & (iw >= 0) & (iw < WIN)
-            siw = tl.minimum(tl.maximum(iw, 0), WIN - 1)
-            xv = tl.load(xb + sih * WIN + siw)
-            xv = tl.where(valid, xv.to(tl.float32), 0.0)
-            wv = tl.load(w + oc * (KH * KW) + r * KW + s).to(tl.float32)
-            acc += xv * wv
+    safe = (t == 0 and ck == 0) or (
+        t == tl.num_programs(0) - 1 and ck == NCHUNK - 1
+    )
+    if SAME and not safe:
+        for r in tl.static_range(KH):
+            ih = oh - PH + r * DH
+            rv = pm & (ih >= 0) & (ih < HIN)
+            for s in tl.static_range(KW):
+                iw = ow - PW + s * DW
+                valid = rv & (iw >= 0) & (iw < WIN)
+                off = (r * DH - PH) * WIN + (s * DW - PW)
+                xv = tl.load(xb + q + off)
+                xv = tl.where(valid, xv.to(tl.float32), 0.0)
+                wv = tl.load(w + oc * (KH * KW) + r * KW + s).to(tl.float32)
+                acc += xv * wv
+    else:
+        for r in tl.static_range(KH):
+            ih = oh * SH - PH + r * DH
+            rv = pm & (ih >= 0) & (ih < HIN)
+            sih = tl.minimum(tl.maximum(ih, 0), HIN - 1)
+            for s in tl.static_range(KW):
+                iw = ow * SW - PW + s * DW
+                valid = rv & (iw >= 0) & (iw < WIN)
+                siw = tl.minimum(tl.maximum(iw, 0), WIN - 1)
+                xv = tl.load(xb + sih * WIN + siw)
+                xv = tl.where(valid, xv.to(tl.float32), 0.0)
+                wv = tl.load(w + oc * (KH * KW) + r * KW + s).to(tl.float32)
+                acc += xv * wv
     if HAS_BIAS:
         acc += tl.load(b + oc).to(tl.float32)
-    tl.store(
-        y + ni * (COUT * HOUT * WOUT) + oc * (HOUT * WOUT) + q,
-        acc,
-        mask=mmask,
-    )
+    tl.store(y + t * plane_o + q, acc, mask=pm)
 
 
 # Tap-count cap for the fully-unrolled constexpr path; larger kernels keep the
@@ -307,66 +271,51 @@ def _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups):
     out = torch.empty((n, cout, hout, wout), device=input.device, dtype=input.dtype)
     opg = cout // groups
     if cpg == 1 and 0 < kh * kw <= _DW_STATIC_TAPS_MAX and hout > 0 and wout > 0:
-        # flat needs the whole plane to divide the block so the last block has
-        # no out-of-range lanes (the kernel indexes ``ni`` without a clamp,
-        # which is what keeps the loads vectorized).
-        flat_block = 1024
-        use_flat = wout >= 128 and (n * hout * wout) % flat_block == 0
-        row_block = max(256, triton.next_power_of_2(max(wout, 1)))
-        if not use_flat and row_block <= 2048:
-            block = row_block
-            _dw_rows_kernel[(n * cout * hout,)](
-                input,
-                weight,
-                bias,
-                out,
-                n,
-                cin,
-                cout,
-                opg,
-                hin,
-                win,
-                hout,
-                wout,
-                kh,
-                kw,
-                sh,
-                sw,
-                ph,
-                pw,
-                dh,
-                dw,
-                BLOCK=block,
-                HAS_BIAS=True,
-                num_warps=4,
-            )
-        elif use_flat:
-            block = flat_block
-            _dw_flat_kernel[(triton.cdiv(n * hout * wout, block), cout)](
-                input,
-                weight,
-                bias,
-                out,
-                n,
-                cin,
-                cout,
-                opg,
-                hin,
-                win,
-                hout,
-                wout,
-                kh,
-                kw,
-                sh,
-                sw,
-                ph,
-                pw,
-                dh,
-                dw,
-                BLOCK=block,
-                HAS_BIAS=True,
-                num_warps=4,
-            )
+        plane = hout * wout
+        # SAME geometry == the flat output index maps 1:1 to the flat input
+        # index of the same plane, so every tap is a constant-offset
+        # contiguous load.  The affine branch needs >=16 elements per thread
+        # (measured on this backend: fp16 vector packing fails to lower for
+        # narrower tiles) and breaks the vector packer once the unrolled tap
+        # count exceeds 9, so tiny planes / large kernels keep the clamped form.
+        same = (
+            sh == 1
+            and sw == 1
+            and hout == hin
+            and wout == win
+            and kh * kw <= 9
+        )
+        if plane >= 2048:
+            block = 2048
+        else:
+            block = max(128, triton.next_power_of_2(max(plane, 1)))
+            same = False
+        _dw_plane_kernel[(n * cout, triton.cdiv(plane, block))](
+            input,
+            weight,
+            bias,
+            out,
+            cout,
+            opg,
+            cin,
+            hin,
+            win,
+            hout,
+            wout,
+            kh,
+            kw,
+            sh,
+            sw,
+            ph,
+            pw,
+            dh,
+            dw,
+            BLOCK=block,
+            NCHUNK=triton.cdiv(plane, block),
+            SAME=same,
+            HAS_BIAS=True,
+            num_warps=4,
+        )
         return out
 
     block = 64

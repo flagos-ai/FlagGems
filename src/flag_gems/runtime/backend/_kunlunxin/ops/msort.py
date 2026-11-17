@@ -26,9 +26,12 @@ This override provides two *real kernel* paths (no ATen/CPU fallback):
   plane 2D loads/stores and element-wise ``tl.where`` (the only pattern the XPU
   compiler lowers reliably).  One kernel launch per network step with a host
   side ping-pong of scratch buffers, which keeps every kernel free of
-  cross-thread read-after-write hazards.  Selected for the benchmark regime
-  (float dtypes, power-of-two first dim, wide column count) where it is the
-  fastest of the two paths.
+  cross-thread read-after-write hazards.  The seed pass is folded into the first
+  step (``_first_kernel``) and the write-back into the last step
+  (``_last_kernel``), so the launch count equals the number of network steps
+  (down from steps + 2).  Selected for the benchmark regime (float dtypes,
+  power-of-two first dim, wide column count) where it is the fastest of the two
+  paths.
 * ``_radix_msort`` — the proven backend radix sorter (``sort_stable``) with a
   NaN canonicalisation + index gather so that NaN payloads and the
   NaNs-sort-last contract are preserved.  Used for every other shape/dtype and
@@ -141,41 +144,6 @@ def _mono_key(v, DT: tl.constexpr):
 
 @libentry()
 @triton.jit
-def _seed_kernel(
-    inp,
-    k0,
-    v0,
-    n_rows,
-    n_cols,
-    cpad,
-    BLOCK_ROWS: tl.constexpr,
-    BLOCK_COLS: tl.constexpr,
-    DT: tl.constexpr,
-):
-    col = tl.program_id(0) * BLOCK_COLS + tl.arange(0, BLOCK_COLS)
-    cmask = col < n_cols
-    rows = tl.arange(0, BLOCK_ROWS)
-    numel = n_rows * n_cols
-    off_in = rows[:, None] * n_cols + col[None, :]
-    off_ld = tl.minimum(off_in, numel - 1)
-    m = (rows[:, None] < n_rows) & cmask[None, :]
-    vals = tl.load(inp + off_ld, mask=m, other=0)
-    if DT == 2:
-        NAN_KEY: tl.constexpr = 0xFFFE
-    else:
-        NAN_KEY: tl.constexpr = 0xFFFFFFFE
-    mono = _mono_key(vals, DT)
-    nank = tl.full(mono.shape, value=NAN_KEY, dtype=tl.int64)
-    keyed = tl.where(vals != vals, nank, mono)
-    padk = tl.full(mono.shape, value=9223372036854775807, dtype=tl.int64)
-    keys = tl.where(m, keyed, padk)
-    boff = rows[:, None] * cpad + col[None, :]
-    tl.store(k0 + boff, keys)
-    tl.store(v0 + boff, vals)
-
-
-@libentry()
-@triton.jit
 def _step_kernel(
     src_k,
     src_v,
@@ -205,6 +173,105 @@ def _step_kernel(
     tl.store(dst_k + off_b, tl.where(cond, ka, kb))
     tl.store(dst_v + off_a, tl.where(cond, vb, va))
     tl.store(dst_v + off_b, tl.where(cond, va, vb))
+
+
+@libentry()
+@triton.jit
+def _first_kernel(
+    inp,
+    dst_k,
+    dst_v,
+    n_rows,
+    n_cols,
+    cpad,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_COLS: tl.constexpr,
+    DT: tl.constexpr,
+):
+    """Bitonic ``(stage=1, step=0)`` folded with the seed pass.
+
+    Reads the *raw* input at the two rows of every ``step=0`` pair, derives the
+    monotonic ordering key inline, performs the first compare-exchange and
+    writes to scratch.  This removes the standalone ``_seed_kernel`` launch
+    (launch count scales with the number of network steps; every launch pays a
+    fixed 2-D per-row DMA floor on XPU3).
+    """
+    col = tl.program_id(0) * BLOCK_COLS + tl.arange(0, BLOCK_COLS)
+    cmask = col < n_cols
+    half: tl.constexpr = BLOCK_ROWS // 2
+    j = tl.arange(0, half)
+    a_rows = j << 1
+    b_rows = a_rows | 1
+    numel = n_rows * n_cols
+    oa = a_rows[:, None] * n_cols + col[None, :]
+    ob = b_rows[:, None] * n_cols + col[None, :]
+    ma = (a_rows[:, None] < n_rows) & cmask[None, :]
+    mb = (b_rows[:, None] < n_rows) & cmask[None, :]
+    va = tl.load(inp + tl.minimum(oa, numel - 1), mask=ma, other=0)
+    vb = tl.load(inp + tl.minimum(ob, numel - 1), mask=mb, other=0)
+    if DT == 2:
+        NAN_KEY: tl.constexpr = 0xFFFE
+    else:
+        NAN_KEY: tl.constexpr = 0xFFFFFFFE
+    nank = tl.full(va.shape, value=NAN_KEY, dtype=tl.int64)
+    padk = tl.full(va.shape, value=9223372036854775807, dtype=tl.int64)
+    ka = tl.where(va != va, nank, _mono_key(va, DT))
+    kb = tl.where(vb != vb, nank, _mono_key(vb, DT))
+    ka = tl.where(ma, ka, padk)
+    kb = tl.where(mb, kb, padk)
+    # stage 1: alternating asc/desc direction per pair block.
+    take_min = ((a_rows & 2) == 0)[:, None]
+    cond = tl.where(take_min, ka > kb, ka < kb)
+    off_a = a_rows[:, None] * cpad + col[None, :]
+    off_b = b_rows[:, None] * cpad + col[None, :]
+    tl.store(dst_k + off_a, tl.where(cond, kb, ka))
+    tl.store(dst_k + off_b, tl.where(cond, ka, kb))
+    tl.store(dst_v + off_a, tl.where(cond, vb, va))
+    tl.store(dst_v + off_b, tl.where(cond, va, vb))
+
+
+@libentry()
+@triton.jit
+def _last_kernel(
+    src_k,
+    src_v,
+    out,
+    n_rows,
+    n_cols,
+    cpad,
+    STAGE: tl.constexpr,
+    STEP: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_COLS: tl.constexpr,
+):
+    """Final network step folded with the write-back pass.
+
+    Performs the last compare-exchange and writes the sorted values straight to
+    ``out`` (the two row sets together cover all rows), removing the standalone
+    ``_final_kernel`` launch.
+    """
+    col = tl.program_id(0) * BLOCK_COLS + tl.arange(0, BLOCK_COLS)
+    cmask = col < n_cols
+    half: tl.constexpr = BLOCK_ROWS // 2
+    bit: tl.constexpr = 1 << STEP
+    j = tl.arange(0, half)
+    a_rows = ((j >> STEP) << (STEP + 1)) | (j & (bit - 1))
+    b_rows = a_rows | bit
+    off_a = a_rows[:, None] * cpad + col[None, :]
+    off_b = b_rows[:, None] * cpad + col[None, :]
+    ka = tl.load(src_k + off_a)
+    kb = tl.load(src_k + off_b)
+    va = tl.load(src_v + off_a)
+    vb = tl.load(src_v + off_b)
+    take_min = ((a_rows & (1 << STAGE)) == 0)[:, None]
+    cond = tl.where(take_min, ka > kb, ka < kb)
+    numel = n_rows * n_cols
+    oa = a_rows[:, None] * n_cols + col[None, :]
+    ob = b_rows[:, None] * n_cols + col[None, :]
+    ma = (a_rows[:, None] < n_rows) & cmask[None, :]
+    mb = (b_rows[:, None] < n_rows) & cmask[None, :]
+    tl.store(out + tl.minimum(oa, numel - 1), tl.where(cond, vb, va), mask=ma)
+    tl.store(out + tl.minimum(ob, numel - 1), tl.where(cond, va, vb), mask=mb)
 
 
 @libentry()
@@ -259,24 +326,45 @@ def _network_msort(inp, out):
     v0 = torch.empty(block_rows * cpad, device=dev, dtype=inp.dtype)
     v1 = torch.empty(block_rows * cpad, device=dev, dtype=inp.dtype)
     dt = _NETWORK_DT[inp.dtype]
+    log_rows = block_rows.bit_length() - 1
+    steps = [
+        (stage, step)
+        for stage in range(1, log_rows + 1)
+        for step in range(stage - 1, -1, -1)
+    ]
     with torch_device_fn.device(dev):
-        _seed_kernel[grid](
+        if len(steps) == 1:
+            # n_rows == 2: a single compare-exchange step.  Seed (folded into
+            # _first_kernel) then write back into ``out`` (one extra launch, but
+            # this shape never reaches the launch-bound regime).
+            _first_kernel[grid](
+                inp, k0, v0, n_rows, n_cols, cpad,
+                BLOCK_ROWS=block_rows, BLOCK_COLS=block_cols, DT=dt,
+            )
+            _final_kernel[grid](
+                v0, out, n_rows, n_cols, cpad,
+                BLOCK_ROWS=block_rows, BLOCK_COLS=block_cols,
+            )
+            return
+        # First step (and seed) folded -> writes to (k0, v0).
+        _first_kernel[grid](
             inp, k0, v0, n_rows, n_cols, cpad,
             BLOCK_ROWS=block_rows, BLOCK_COLS=block_cols, DT=dt,
         )
         cur = (k0, v0)
         dst = (k1, v1)
-        log_rows = block_rows.bit_length() - 1
-        for stage in range(1, log_rows + 1):
-            for step in range(stage - 1, -1, -1):
-                _step_kernel[grid](
-                    cur[0], cur[1], dst[0], dst[1], cpad,
-                    STAGE=stage, STEP=step,
-                    BLOCK_ROWS=block_rows, BLOCK_COLS=block_cols,
-                )
-                cur, dst = dst, cur
-        _final_kernel[grid](
-            cur[1], out, n_rows, n_cols, cpad,
+        for stage, step in steps[1:-1]:
+            _step_kernel[grid](
+                cur[0], cur[1], dst[0], dst[1], cpad,
+                STAGE=stage, STEP=step,
+                BLOCK_ROWS=block_rows, BLOCK_COLS=block_cols,
+            )
+            cur, dst = dst, cur
+        # Last step folded with the write-back -> reads cur, writes to ``out``.
+        stage, step = steps[-1]
+        _last_kernel[grid](
+            cur[0], cur[1], out, n_rows, n_cols, cpad,
+            STAGE=stage, STEP=step,
             BLOCK_ROWS=block_rows, BLOCK_COLS=block_cols,
         )
 
