@@ -21,6 +21,8 @@
 # 服务配置   : TP=8  max-model-len=40960  max-num-seqs=64
 #              max-num-batched-tokens=8192  util=0.95
 #
+# 模型架构   : DeepSeek-V3.2（285B MoE）
+#
 # 收录原则
 #   仅收录 FlagGems 已注册且 CSV 中有 concrete tensor shape 的算子。
 #   decode 阶段走 CUDA Graph，shape 由 eager 模式推导。

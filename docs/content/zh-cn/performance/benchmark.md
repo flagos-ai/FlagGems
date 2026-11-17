@@ -65,7 +65,7 @@ GPU 时间的比例（`pct`）和调用次数（`calls`）。通过 `--model-pro
 
 | 文件 | 模型 | 硬件 | 采集日期 |
 |------|------|------|----------|
-| `benchmark/model_shapes/285B.yaml` | 285B MoE（DeepSeek-V4 架构） | 8×H100 80GB，TP=8 | 2026-11-16 |
+| `benchmark/model_shapes/285B.yaml` | 285B MoE（DeepSeek-V3.2 架构） | 8×H100 80GB，TP=8 | 2026-11-16 |
 
 ### 使用方式
 

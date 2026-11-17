@@ -87,7 +87,7 @@ operator.  Using `--model-profile` runs only those shapes and adds a
 
 | File | Model | Hardware | Collected |
 |------|-------|----------|-----------|
-| `benchmark/model_shapes/285B.yaml` | 285B MoE (DeepSeek-V4 architecture) | 8×H100 80GB, TP=8 | 2026-11-16 |
+| `benchmark/model_shapes/285B.yaml` | 285B MoE (DeepSeek-V3.2 architecture) | 8×H100 80GB, TP=8 | 2026-11-16 |
 
 ### Using `--model-profile`
 
