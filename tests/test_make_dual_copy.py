@@ -42,12 +42,10 @@ def _ref(primal, tangent, level=0, out=None):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_make_dual_copy(shape, dtype):
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     primal = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     tangent = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = _ref(primal, tangent)
+    ref_out = _ref(utils.to_reference(primal), utils.to_reference(tangent))
     res_out = flag_gems._make_dual_copy(primal, tangent, 0)
 
     assert res_out.shape == ref_out.shape
@@ -61,12 +59,10 @@ def test_make_dual_copy(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 def test_make_dual_copy_int(shape, dtype):
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     primal = torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
     tangent = torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = _ref(primal, tangent)
+    ref_out = _ref(utils.to_reference(primal), utils.to_reference(tangent))
     res_out = flag_gems._make_dual_copy(primal, tangent, 0)
 
     utils.gems_assert_equal(res_out, ref_out)
@@ -76,12 +72,10 @@ def test_make_dual_copy_int(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test_make_dual_copy_complex(shape, dtype):
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     primal = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     tangent = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = _ref(primal, tangent)
+    ref_out = _ref(utils.to_reference(primal), utils.to_reference(tangent))
     res_out = flag_gems._make_dual_copy(primal, tangent, 0)
 
     utils.gems_assert_equal(res_out, ref_out)
@@ -89,12 +83,10 @@ def test_make_dual_copy_complex(shape, dtype):
 
 @pytest.mark.make_dual_copy
 def test_make_dual_copy_noncontiguous():
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     primal = torch.randn((16, 32), device=flag_gems.device)[:, ::2]
     tangent = torch.randn((16, 32), device=flag_gems.device)[:, ::2]
 
-    ref_out = _ref(primal, tangent)
+    ref_out = _ref(utils.to_reference(primal), utils.to_reference(tangent))
     res_out = flag_gems._make_dual_copy(primal, tangent, 0)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
@@ -102,8 +94,6 @@ def test_make_dual_copy_noncontiguous():
 
 @pytest.mark.make_dual_copy
 def test_make_dual_copy_empty():
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     primal = torch.empty((0, 4), device=flag_gems.device)
     tangent = torch.empty((0, 4), device=flag_gems.device)
 
@@ -115,12 +105,10 @@ def test_make_dual_copy_empty():
 
 @pytest.mark.make_dual_copy_out
 def test_make_dual_copy_out():
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     primal = torch.randn((16, 16), device=flag_gems.device)
     tangent = torch.randn((16, 16), device=flag_gems.device)
 
-    ref_out = _ref(primal, tangent)
+    ref_out = _ref(utils.to_reference(primal), utils.to_reference(tangent))
     res_out = torch.empty_like(primal)
     res_ret = flag_gems._make_dual_copy_out(primal, tangent, 0, out=res_out)
 
