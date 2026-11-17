@@ -16,7 +16,7 @@
 import logging
 
 import flag_gems  # noqa: F401
-from flag_gems.ops.bitwise_left_shift import bitwise_left_shift
+from .bitwise_left_shift import bitwise_left_shift
 
 logger = logging.getLogger(__name__)
 

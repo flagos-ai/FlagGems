@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from functools import cache
 from typing import Callable, Optional
 
 import torch
@@ -27,13 +28,11 @@ logger = logging.getLogger(__name__)
 SCALE_BLOCK_K, SCALE_BLOCK_N = 128, 128
 
 
+@cache
 def get_sm_version_num():
-    logger.debug("GEMS_ENFLAME_GCU400 GET_SM_VERSION_NUM")
     major, minor = get_device_capability()
     return major * 10 + minor
 
-
-SM_VERSION_NUM = get_sm_version_num()
 
 # GCU grid.x hard limit (P19 family): 1D grids must stay within 65535
 # programs or the launch is rejected outright.
@@ -98,7 +97,6 @@ def _prune_block_wise_configs(configs, named_args, **kwargs):
 def grouped_launch(
     pid, M, N, TILE_M: tl.constexpr, TILE_N: tl.constexpr, SWIZZLE_GROUP_M: tl.constexpr
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 GROUPED_LAUNCH")
     grid_m = tl.cdiv(M, TILE_M)
     grid_n = tl.cdiv(N, TILE_N)
 
@@ -560,14 +558,14 @@ def dispatch_scaled_mm(
                 int8_func(c, a, b, a_scale, b_scale, bias)
             else:
                 raise RuntimeError(
-                    f"Int8 not supported on SM{SM_VERSION_NUM}. "
+                    f"Int8 not supported on SM{get_sm_version_num()}. "
                     f"Use FP8 quantization instead, or run on older arch (SM < 100)."
                 )
     else:
         assert a_scale.dim() == 2, "a_scale must be 2D tensor for blockwise scaling"
         assert b_scale.dim() == 2, "b_scale must be 2D tensor for blockwise scaling"
 
-        if SM_VERSION_NUM >= 90:
+        if get_sm_version_num() >= 90:
             assert a.size(0) == a_scale.size(0), (
                 f"a_scale must have same first dimension as a: "
                 f"a.shape[0]={a.size(0)}, a_scale.shape[0]={a_scale.size(0)}"
@@ -676,21 +674,22 @@ def cutlass_scaled_mm(
         assert bias.is_contiguous(), "Bias must be contiguous"
         assert bias.dim() == 1, "Bias must be a 1D tensor"
 
-    if SM_VERSION_NUM >= 120:
+    sm_version_num = get_sm_version_num()
+    if sm_version_num >= 120:
         cutlass_scaled_mm_sm120(c, a, b, a_scale, b_scale, bias)
 
-    elif SM_VERSION_NUM >= 100:
+    elif sm_version_num >= 100:
         cutlass_scaled_mm_sm100(c, a, b, a_scale, b_scale, bias)
 
-    elif SM_VERSION_NUM >= 90:
+    elif sm_version_num >= 90:
         # Hopper
         cutlass_scaled_mm_sm90(c, a, b, a_scale, b_scale, bias)
 
-    elif SM_VERSION_NUM >= 80:
+    elif sm_version_num >= 80:
         # Ampere
         cutlass_scaled_mm_sm80(c, a, b, a_scale, b_scale, bias)
 
-    elif SM_VERSION_NUM >= 75:
+    elif sm_version_num >= 75:
         # Turing
         cutlass_scaled_mm_sm75(c, a, b, a_scale, b_scale, bias)
 
@@ -699,7 +698,7 @@ def cutlass_scaled_mm(
         # sm90 path is pure Triton with no arch-specific instructions, so
         # reuse it instead of silently returning without computing.
         # Without this branch the public entry left `c` uninitialized
-        # (SM_VERSION_NUM=41 misses every arm of the chain).
+        # (sm_version_num=41 misses every arm of the chain).
         cutlass_scaled_mm_sm90(c, a, b, a_scale, b_scale, bias)
 
 

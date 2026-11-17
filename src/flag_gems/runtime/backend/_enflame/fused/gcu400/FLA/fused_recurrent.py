@@ -610,7 +610,7 @@ def fused_recurrent_gated_delta_rule_fwd(
             g.shape,
             beta.shape,
             initial_state.shape,
-            cu_seqlens.shape,
+            cu_seqlens.shape if cu_seqlens is not None else None,
             N,
             T,
             B,

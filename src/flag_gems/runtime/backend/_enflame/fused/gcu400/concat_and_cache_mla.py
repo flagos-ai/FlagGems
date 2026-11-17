@@ -50,6 +50,7 @@ def concat_and_cache_mla_kernel(
     # data type
     kv_dtype: tl.constexpr,  # one of Fp8KVCacheDataType
     BLOCK_SIZE: tl.constexpr,
+    PACKED: tl.constexpr,  # kv_lora_rank + pe_dim fits in one BLOCK_SIZE vector
 ):
     token_idx = tl.program_id(0)
     slot_idx = tl.load(slot_mapping_ptr + token_idx)
@@ -67,9 +68,11 @@ def concat_and_cache_mla_kernel(
     if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
         scale_val = tl.load(scale_ptr)
 
-    if kv_dtype == FP8_KV_CACHE_DATA_TYPE_AUTO:
+    if kv_dtype == FP8_KV_CACHE_DATA_TYPE_AUTO and PACKED:
         # The auto path packs kv_c and k_pe into one entry vector: select after two loads,
         # write back with a single store, avoiding two separate loops and two write-backs.
+        # Only valid when kv_lora_rank + pe_dim <= BLOCK_SIZE; larger entries fall
+        # through to the two-pass loop below so no element is left unwritten.
         idx = tl.arange(0, BLOCK_SIZE)
         kv_mask = idx < kv_lora_rank
         pe_offset = idx - kv_lora_rank
@@ -83,7 +86,8 @@ def concat_and_cache_mla_kernel(
         entry_val = tl.where(kv_mask, kv_val, pe_val)
         tl.store(kv_cache_ptr + cache_base + idx, entry_val, mask=kv_mask | pe_mask)
     else:
-        # The FP8 quantization path needs per-segment conversion, so keep the original two-pass loop.
+        # Fallback two-pass loop: FP8 paths need per-segment conversion, and
+        # auto entries larger than BLOCK_SIZE cannot be packed into one vector.
         # Process kv_c section
         for i in range(0, kv_lora_rank, BLOCK_SIZE):
             idx = i + tl.arange(0, BLOCK_SIZE)
@@ -179,6 +183,10 @@ class ConcatAndCacheMla(torch.autograd.Function):
         # configure kernel launch
         grid = (num_tokens,)
         BLOCK_SIZE = min(triton.next_power_of_2(kv_lora_rank + pe_dim), 2048)
+        # The single-vector auto path only works when the whole entry fits in
+        # one BLOCK_SIZE tile. When the 2048 cap makes it too small, fall back
+        # to the two-pass loop so no kv_c/k_pe tail is left unwritten.
+        PACKED = kv_lora_rank + pe_dim <= BLOCK_SIZE
 
         assert kv_cache.dim() == 3, "kv_cache must be a 3D tensor"
         assert (
@@ -200,6 +208,7 @@ class ConcatAndCacheMla(torch.autograd.Function):
                 scale,
                 kv_dtype=kv_dtype,
                 BLOCK_SIZE=BLOCK_SIZE,
+                PACKED=PACKED,
             )
         return None
 

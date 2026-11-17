@@ -12,23 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import logging
-import os
-import sys
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
-# GCU Triton casts and stores float8_e4m3fn bit-exactly (verified on L600),
-# so this backend-local copy declares fp8 support directly instead of
-# consulting the generic get_device_capability() >= (9, 0) check, which
-# reports (4, 1) on GCU and would silently degrade the op into a float32
-# pseudo-quant mode (assert fp8_dtype == torch.float8_e4m3fn would fire).
+# GCU Triton casts and stores float8_e4m3fn bit-exactly. Declare fp8 support
+# here instead of consulting get_device_capability() >= (9, 0), which reports
+# (4, 1) on GCU and would degrade this op into a float32 pseudo-quant mode.
 SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
 
 
@@ -316,112 +309,3 @@ def fused_inv_rope_fp8_quant(
 
     return fp8_q.transpose(0, 1), scale.transpose(0, 1)
 
-
-# ----------------------------------------------------------------------------
-# GCU compatibility overlays (installed at backend import time).
-# ----------------------------------------------------------------------------
-
-
-def _install_gcu_exp2_pow2_overlay() -> None:
-    """Install a torch.exp2 overlay restoring exact powers of two on GCU.
-
-    torch_gcu's device-side ``torch.exp2`` is a polynomial approximation
-    whose result deviates from the exact value by up to ~14 ulp; at integer
-    exponents it can land in the binade *below* ``2**k``, so UE8M0-style
-    packing (``(bits >> 23) & 0xFF``) yields an exponent byte one too small
-    (e.g. ``exp2(-33.0)`` -> 0x2EFFFFF7 instead of 0x2E800000, byte 93 vs 94).
-    FlagGems kernels use the exact ``tl.math.exp2``, so op outputs are
-    correct, but torch references computed on device (tests/benchmarks, and
-    host-side E8M0 decodes such as ``fused_marlin_moe._pack_scale_e8m0``)
-    silently disagree with the op at exactly those points.  Rebuild ``2**k``
-    from the exponent field for integer-valued float32 exponents in the
-    normal range and keep torch_gcu's approximation everywhere else.
-    See compiler_issues/torch_gcu_exp2_inaccuracy.md; remove once torch_gcu
-    implements exact powers of two in its device exp2 kernel.
-    """
-    if getattr(torch.exp2, "_flaggems_gcu_pow2_overlay", False):
-        return
-
-    original_exp2 = torch.exp2
-
-    def exp2_pow2_exact(x, *, out=None):
-        y = original_exp2(x)
-        if (
-            not isinstance(x, torch.Tensor)
-            or x.dtype != torch.float32
-            or x.device.type != "gcu"
-        ):
-            return y
-        if torch.is_grad_enabled() and x.requires_grad:
-            return y
-        exponent = flag_gems.floor(x)
-        is_pow2_exponent = (x == exponent) & (exponent >= -126.0) & (exponent <= 127.0)
-        code = (exponent.to(torch.int32) + 127) << 23
-        exact = code.contiguous().view(torch.float32)
-        result = torch.where(is_pow2_exponent, exact, y)
-        if out is not None:
-            return out.copy_(result)
-        return result
-
-    exp2_pow2_exact._flaggems_gcu_pow2_overlay = True
-    torch.exp2 = exp2_pow2_exact
-
-
-_install_gcu_exp2_pow2_overlay()
-
-
-def _correct_package_fp8_gate() -> None:
-    """Correct the package-level fp8 gate consumed by tests/benchmarks.
-
-    GCU Triton casts and stores float8_e4m3fn bit-exactly (verified on
-    L600), but the generic ``get_device_capability() >= (9, 0)`` gate does
-    not know enflame and reports (4, 1) on GCU, so the package-level
-    SUPPORTED_FP8_DTYPE that tests/benchmarks read resolves to float32 and
-    every fp8-quant test silently skips.  runtime's SpecOpRegistrar only
-    replaces functions, so this backend corrects the gate at import time.
-
-    All per_token_group_quant_fp8 implementations bound to the gate are
-    corrected together: the generic module that repo tests compose with
-    this op as the unfused reference path, and this backend's arch copy
-    that the package-level name resolves to.  The arch copy is imported by
-    the arch registrar under the top-level name "gcu400.ops..." only after
-    this module runs, so it is pre-imported here (idempotently reused by
-    the registrar) to make sure the correction reaches the instance whose
-    functions actually get bound.  Leaving any side at float32 would run
-    one side of a comparison in a float32 pseudo-quant mode while the
-    other runs real fp8.  Only float32 values are upgraded (idempotent,
-    never downgrades a deliberate override).
-    """
-    if getattr(torch, "float8_e4m3fn", None) is None:
-        return
-    package = sys.modules.get("flag_gems")
-    if package is not None and getattr(package, "SUPPORTED_FP8_DTYPE", None) is (
-        torch.float32
-    ):
-        package.SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
-    backend_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    sys.path.insert(0, backend_dir)
-    try:
-        importlib.import_module("gcu400.ops.per_token_group_quant_fp8")
-    except Exception:  # noqa: BLE001 — best-effort pre-import, see docstring
-        pass
-    finally:
-        try:
-            sys.path.remove(backend_dir)
-        except ValueError:
-            pass
-    for module_name in (
-        "flag_gems.ops.per_token_group_quant_fp8",
-        "flag_gems.runtime.backend._enflame.gcu400.ops.per_token_group_quant_fp8",
-        "gcu400.ops.per_token_group_quant_fp8",
-    ):
-        quant_module = sys.modules.get(module_name)
-        if quant_module is not None and getattr(
-            quant_module, "SUPPORTED_FP8_DTYPE", None
-        ) is (torch.float32):
-            quant_module.SUPPORTED_FP8_DTYPE = torch.float8_e4m3fn
-
-
-_correct_package_fp8_gate()

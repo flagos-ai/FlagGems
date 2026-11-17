@@ -25,6 +25,7 @@ from flag_gems.utils import libentry
 from .conv3d import conv3d
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
+from .conv_transpose3d import conv_transpose3d
 
 logger = logging.getLogger(__name__)
 
@@ -332,8 +333,12 @@ def _convolution_overrideable_impl(
             return conv_transpose2d(
                 input, weight, bias, stride, padding, output_padding, groups, dilation
             )
+        if spatial_dims == 3:
+            return conv_transpose3d(
+                input, weight, bias, stride, padding, output_padding, groups, dilation
+            )
         raise NotImplementedError(
-            "convolution_overrideable does not support 3D transposed convolution."
+            "convolution_overrideable only supports 1D/2D/3D transposed convolutions."
         )
 
     if spatial_dims == 1:
