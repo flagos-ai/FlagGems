@@ -54,7 +54,25 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 @pytest.mark.replication_pad1d_backward
 @pytest.mark.parametrize("shape", REPLICATION_PAD1D_BACKWARD_SHAPES)
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
-@pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        (
+            pytest.param(
+                dtype,
+                marks=pytest.mark.xfail(
+                    flag_gems.vendor_name == "iluvatar",
+                    raises=AssertionError,
+                    strict=True,
+                    reason="Iluvatar Complex128 replication_pad1d_backward returns zero gradients",
+                ),
+            )
+            if dtype == torch.complex128
+            else dtype
+        )
+        for dtype in REPLICATION_PAD1D_BACKWARD_DTYPES
+    ],
+)
 def test_replication_pad1d_backward(shape, padding, dtype):
     use_cpu_reference = flag_gems.vendor_name == "mthreads" and dtype == torch.complex64
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
