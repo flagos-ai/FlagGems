@@ -22,8 +22,8 @@ Reference semantics reproduced (measured on the target):
   * result dtype = promote(self, other) with 0-dim operands treated as weak
     scalars; an integral result dtype becomes float32; float64 is mapped to
     float32 because the device has no fp64 kernels.
-  * integral exponent: apply up to three representable power-of-two factors
-    directly to the input, avoiding overflow of an intermediate scale.
+  * integral exponent: adjust the IEEE representation directly, including
+    subnormal normalization and ties-to-even rounding; preserve signed zero.
   * complex inputs are rejected explicitly; this backend does not implement
     the complex ldexp contract.
   * floating exponent: x * exp2(y), with results strictly below the fp32
@@ -48,16 +48,37 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 @triton.jit
 def _scale_integral(x, n):
-    # Clamp before narrowing int64. Beyond this range every finite fp32 input
-    # has already overflowed/underflowed. Multiply x at each step rather than
-    # forming 2**n first: tiny x and n=128 can still have a finite result.
+    # Work on the IEEE representation: device multiplication flushes subnormal
+    # inputs and can lose the sign of zero, even when the final value is normal.
+    bits = x.to(tl.float32).to(tl.uint32, bitcast=True)
+    sign = bits & 0x80000000
+    exponent = ((bits >> 23) & 255).to(tl.int32)
+    fraction = bits & 0x7FFFFF
+    significand = tl.where(exponent == 0, fraction, fraction | 0x800000)
+    adjusted = tl.where(exponent == 0, 1, exponent)
+    # Normalize subnormal significands using integer shifts only. Zero is
+    # restored below, so its otherwise meaningless normalized exponent is safe.
+    for shift in tl.static_range(4, -1, -1):
+        step = 1 << shift
+        move = significand < (0x800000 >> (step - 1))
+        significand = tl.where(move, significand << step, significand)
+        adjusted -= tl.where(move, step, 0)
     n = tl.minimum(tl.maximum(n, -378), 378).to(tl.int32)
-    a = tl.minimum(tl.maximum(n, -126), 126)
-    b = tl.minimum(tl.maximum(n - a, -126), 126)
-    c = n - a - b
-    y = x.to(tl.float32) * ((a + 127) << 23).to(tl.float32, bitcast=True)
-    y = y * ((b + 127) << 23).to(tl.float32, bitcast=True)
-    return y * ((c + 127) << 23).to(tl.float32, bitcast=True)
+    target = adjusted + n
+    normal = (target.to(tl.uint32) << 23) | (significand & 0x7FFFFF)
+    # Round a subnormal result once, to nearest with ties to even.
+    shift = tl.minimum(tl.maximum(1 - target, 1), 24)
+    quotient = significand >> shift
+    remainder = significand & ((1 << shift) - 1)
+    halfway = 1 << (shift - 1)
+    increment = (remainder > halfway) | ((remainder == halfway) & ((quotient & 1) != 0))
+    subnormal = quotient + increment.to(tl.uint32)
+    subnormal = tl.where(target < -23, 0, subnormal)
+    magnitude = tl.where(target <= 0, subnormal, normal)
+    magnitude = tl.where(target >= 255, 0x7F800000, magnitude)
+    result = sign | magnitude
+    result = tl.where((exponent == 255) | ((bits & 0x7FFFFFFF) == 0), bits, result)
+    return result.to(tl.float32, bitcast=True)
 
 
 @libentry()

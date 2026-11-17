@@ -84,7 +84,14 @@ def test_ldexp_real_operands_complex_out(dtype):
     out = torch.empty(17, dtype=dtype, device=inp.device)
     result = flag_gems.ldexp_out(inp, other, out=out)
     assert result is out
-    utils.gems_assert_equal(result, reference)
+    assert result.device == inp.device
+    assert result.dtype == dtype
+    assert result.shape == reference.shape
+    if flag_gems.vendor_name == "kunlunxin":
+        # Native complex equality is unsupported; computation stays on device.
+        utils.gems_assert_equal(result.cpu(), reference.cpu())
+    else:
+        utils.gems_assert_equal(result, reference)
 
 
 @pytest.mark.ldexp
@@ -396,11 +403,11 @@ def test_ldexp_out_real_to_complex_regression(input_dtype, strided):
 @pytest.mark.parametrize("strided", [False, True])
 def test_ldexp_large_integral_exponents(strided):
     inp = torch.tensor(
-        [2.0**-126, 2.0**126, 1.0, 1.0, -0.0, -float("inf")],
+        [2.0**-126, 2.0**126, 1.0, 1.0, -0.0, -float("inf"), -1.0],
         device=flag_gems.device,
     )
     exponent = torch.tensor(
-        [128, -128, -(2**40), 2**40, 2**40, -(2**40)],
+        [128, -128, -(2**40), 2**40, 2**40, -(2**40), -(2**40)],
         dtype=torch.int64,
         device=inp.device,
     )
@@ -408,9 +415,9 @@ def test_ldexp_large_integral_exponents(strided):
         inp = inp.repeat(2, 1).T
         exponent = exponent[:, None]
     actual = flag_gems.ldexp(inp, exponent)
-    expected = torch.tensor([4.0, 0.25, 0.0, float("inf"), -0.0, -float("inf")])
+    expected = torch.tensor([4.0, 0.25, 0.0, float("inf"), -0.0, -float("inf"), -0.0])
     if strided:
-        expected = expected[:, None].expand(6, 2)
+        expected = expected[:, None].expand(7, 2)
     torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
     assert torch.equal(torch.signbit(actual.cpu()), torch.signbit(expected))
 
@@ -424,6 +431,6 @@ def test_ldexp_rejects_complex_operands(complex_operand):
     if complex_operand == "self":
         inp = inp.to(torch.complex64)
     else:
-        exponent = exponent.to(torch.complex64)
+        exponent = torch.ones(3, dtype=torch.complex64).to(inp.device)
     with pytest.raises(RuntimeError, match="does not support complex operands"):
         flag_gems.ldexp(inp, exponent)
