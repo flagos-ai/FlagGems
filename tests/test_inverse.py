@@ -12,12 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+
+
+def _inverse_reference(matrix):
+    if flag_gems.vendor_name == "mthreads" and matrix.device.type == "cpu":
+        # The MUSA PyTorch build has no CPU LAPACK. NumPy provides the same
+        # batched matrix inverse for these nonsingular inputs.
+        return torch.from_numpy(np.linalg.inv(matrix.detach().numpy()))
+    return torch.inverse(matrix)
 
 # torch.inverse rejects the low precision dtypes, so only fp32/fp64 are covered.
 INVERSE_DTYPES = [torch.float32]
@@ -76,7 +85,7 @@ def test_inverse(shape, dtype):
         ref_A = A.to(device="cpu", dtype=torch.float64)
     else:
         ref_A = utils.to_reference(A, upcast=True)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = _inverse_reference(ref_A).to(dtype)
     res_out = flag_gems.inverse(A)
 
     assert res_out.device == A.device
@@ -95,7 +104,8 @@ def test_inverse_batch(shape, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    assert res_out.device == A.device
+    ref_out = _inverse_reference(ref_A).to(dtype)
 
     assert res_out.shape == A.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -111,7 +121,8 @@ def test_inverse_requires_pivoting(matrix, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    assert res_out.device == A.device
+    ref_out = _inverse_reference(ref_A).to(dtype)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
 
@@ -148,7 +159,8 @@ def test_inverse_noncontiguous(dtype):
     ref_A = utils.to_reference(A_t, upcast=True)
 
     res_out = flag_gems.inverse(A_t)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    assert res_out.device == A_t.device
+    ref_out = _inverse_reference(ref_A).to(dtype)
 
     assert res_out.shape == A_t.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
