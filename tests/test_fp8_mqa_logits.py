@@ -124,15 +124,23 @@ def test_fp8_mqa_logits(clean_logits: bool):
         [1024, 2048, 3072, 4096], device=device, dtype=torch.int32
     )
 
-    if DEEPGEMM_AVAILABLE:
+    # Build the reference inputs on the reference device: under --ref cpu the
+    # pure-torch formula runs on CPU, while the DeepGEMM reference is CUDA-only.
+    ref_q = utils.to_reference(q)
+    ref_kv = (utils.to_reference(k_fp8), utils.to_reference(k_scales))
+    ref_weights = utils.to_reference(weights)
+    ref_ks = utils.to_reference(cu_seqlen_ks)
+    ref_ke = utils.to_reference(cu_seqlen_ke)
+
+    if DEEPGEMM_AVAILABLE and ref_q.device.type == "cuda":
         ref_out = fp8_mqa_logits(
-            q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
+            ref_q, ref_kv, ref_weights, ref_ks, ref_ke, clean_logits
         )
     else:
-        # vLLM's DeepGEMM reference is not available here; use the pure-torch
-        # reference instead of skipping the lane.
+        # vLLM's DeepGEMM reference is not available (or the CPU lane is
+        # requested); use the pure-torch reference instead of skipping the lane.
         ref_out = _torch_fp8_mqa_logits(
-            q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
+            ref_q, ref_kv, ref_weights, ref_ks, ref_ke, clean_logits
         )
 
     res_out = flag_gems.fp8_mqa_logits(
@@ -176,15 +184,23 @@ def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
         cu_seqlen_ks[m] = m * (N // M // 2)
         cu_seqlen_ke[m] = N - (M - m - 1) * (N // M // 2)
 
-    if DEEPGEMM_AVAILABLE:
+    # Build the reference inputs on the reference device: under --ref cpu the
+    # pure-torch formula runs on CPU, while the DeepGEMM reference is CUDA-only.
+    ref_q = utils.to_reference(q)
+    ref_kv = (utils.to_reference(k_fp8), utils.to_reference(k_scales))
+    ref_weights = utils.to_reference(weights)
+    ref_ks = utils.to_reference(cu_seqlen_ks)
+    ref_ke = utils.to_reference(cu_seqlen_ke)
+
+    if DEEPGEMM_AVAILABLE and ref_q.device.type == "cuda":
         ref_out = fp8_mqa_logits(
-            q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
+            ref_q, ref_kv, ref_weights, ref_ks, ref_ke, clean_logits
         )
     else:
-        # vLLM's DeepGEMM reference is not available here; use the pure-torch
-        # reference instead of skipping the lane.
+        # vLLM's DeepGEMM reference is not available (or the CPU lane is
+        # requested); use the pure-torch reference instead of skipping the lane.
         ref_out = _torch_fp8_mqa_logits(
-            q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
+            ref_q, ref_kv, ref_weights, ref_ks, ref_ke, clean_logits
         )
 
     res_out = flag_gems.fp8_mqa_logits(
