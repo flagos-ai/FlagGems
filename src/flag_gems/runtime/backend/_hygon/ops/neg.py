@@ -59,7 +59,9 @@ def _can_use_strided_fp32_path(A):
         and not A.is_neg()
         and not A.is_contiguous()
         and A.numel() <= _INT32_MAX
-        and torch.autograd.forward_ad.unpack_dual(A).tangent is None
+        # Read forward-AD metadata only; no tensor numerical computation.
+        and torch.autograd.forward_ad.unpack_dual(A).tangent
+        is None  # allow-torch-compute
     )
 
 
