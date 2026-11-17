@@ -42,11 +42,10 @@ def _rand_int(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", _QINT)
 def test_make_per_tensor_quantized_tensor(shape, dtype):
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _rand_int(shape, dtype)
 
-    ref_out = _ref(inp, 0.25, 7)
+    ref_inp = utils.to_reference(inp)
+    ref_out = _ref(ref_inp, 0.25, 7)
     res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 0.25, 7)
 
     assert res_out.shape == ref_out.shape
@@ -59,11 +58,10 @@ def test_make_per_tensor_quantized_tensor(shape, dtype):
 
 @pytest.mark.make_per_tensor_quantized_tensor
 def test_make_per_tensor_quantized_tensor_noncontiguous():
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _rand_int((16, 32), torch.uint8)[:, ::2]
 
-    ref_out = _ref(inp, 1.5, 0)
+    ref_inp = utils.to_reference(inp)
+    ref_out = _ref(ref_inp, 1.5, 0)
     res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 1.5, 0)
 
     assert res_out.shape == ref_out.shape
@@ -72,8 +70,6 @@ def test_make_per_tensor_quantized_tensor_noncontiguous():
 
 @pytest.mark.make_per_tensor_quantized_tensor
 def test_make_per_tensor_quantized_tensor_empty():
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = torch.empty((0, 4), dtype=torch.uint8, device=flag_gems.device)
 
     res_out = flag_gems._make_per_tensor_quantized_tensor(inp, 2.0, 5)
@@ -86,11 +82,10 @@ def test_make_per_tensor_quantized_tensor_empty():
 
 @pytest.mark.make_per_tensor_quantized_tensor_out
 def test_make_per_tensor_quantized_tensor_out():
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _rand_int((16, 16), torch.int8)
 
-    ref_out = _ref(inp, 0.5, 3)
+    ref_inp = utils.to_reference(inp)
+    ref_out = _ref(ref_inp, 0.5, 3)
     res_out = torch._empty_affine_quantized(
         inp.shape,
         dtype=torch.qint8,
