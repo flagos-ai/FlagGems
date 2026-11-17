@@ -56,10 +56,22 @@ def _ravel_gather_kernel(
         rem = rem // SHAPE[d]
         offset += index * STRIDES[d]
     # Tensor pointers already include storage_offset().
-    val = tl.load(src_ptr + offset, mask=mask, other=0)
-    if SIGNED:
-        val *= tl.where((offs & 1) == 0, S_RE, S_IM)
-    tl.store(dst_ptr + offs, val, mask=mask)
+    if src_ptr.dtype.element_ty == tl.bfloat16:
+        # Gather BF16 as 16-bit storage: KLX's BF16 load lowering can treat
+        # a stride-two vector as contiguous. Integer loads preserve the bits.
+        val = tl.load(
+            src_ptr.to(tl.pointer_type(tl.uint16)) + offset, mask=mask, other=0
+        )
+        if SIGNED:
+            value = val.to(tl.bfloat16, bitcast=True).to(tl.float32)
+            value *= tl.where((offs & 1) == 0, S_RE, S_IM)
+            val = value.to(tl.bfloat16).to(tl.uint16, bitcast=True)
+        tl.store(dst_ptr.to(tl.pointer_type(tl.uint16)) + offs, val, mask=mask)
+    else:
+        val = tl.load(src_ptr + offset, mask=mask, other=0)
+        if SIGNED:
+            val *= tl.where((offs & 1) == 0, S_RE, S_IM)
+        tl.store(dst_ptr + offs, val, mask=mask)
 
 
 def _launch(src, dst, signed, s_re, s_im):

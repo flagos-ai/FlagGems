@@ -265,13 +265,18 @@ def test_ravel_strided_offset_lazy_bits(rank, lazy):
     dtype = torch.complex64 if "conj" in lazy else torch.float32
     base = torch.randn((2,) * (rank - 1) + (6,), dtype=dtype, device=flag_gems.device)
     inp = base[..., 1::2]
+    # KLX native ravel and a device-to-CPU copy currently discard the lazy
+    # negative bit. Rebuild the reference view from the unmodified CPU base.
+    ref_inp = base.cpu()[..., 1::2]
     if "conj" in lazy:
         inp = inp.conj()
+        ref_inp = ref_inp.conj()
     if "neg" in lazy:
         inp = torch._neg_view(inp)
+        ref_inp = torch._neg_view(ref_inp)
     assert not inp.is_contiguous()
     assert inp.storage_offset() != 0
-    reference = torch.ravel(utils.to_reference(inp))
+    reference = torch.ravel(ref_inp)
     result = flag_gems.ravel(inp)
     assert result.is_contiguous()
     assert not result.is_conj() and not result.is_neg()
