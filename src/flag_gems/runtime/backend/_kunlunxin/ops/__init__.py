@@ -195,6 +195,9 @@ from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
+from ._padded_dense_to_jagged_forward import (  # noqa: F401
+    _padded_dense_to_jagged_forward,
+)
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
@@ -821,6 +824,7 @@ from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
+from .row_stack import row_stack  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -1198,6 +1202,7 @@ __all__ = [
     "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
+    "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
     "_resize_output",
@@ -1867,6 +1872,7 @@ __all__ = [
     "round_out",
     "row_indices_copy",
     "row_indices_copy_out",
+    "row_stack",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
