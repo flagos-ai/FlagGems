@@ -1,6 +1,7 @@
 # Copyright 2026 FlagOS Contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from importlib.util import find_spec
 
 import torch
@@ -11,6 +12,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from .bmm_w8a8 import MAX_INT32_REDUCTION
+
+logger = logging.getLogger(__name__)
 
 try:
     from triton.experimental import gluon
@@ -347,6 +350,7 @@ def grouped_gemm_w8a8(
     The caller supplies sorted INT32 expert indices and matching nonnegative
     row counts summing to M. All operands are contiguous and on one device.
     """
+    logger.debug("GEMS_HYGON GROUPED_GEMM_W8A8")
     tensors = (A, As, B, Bs, C, m_indices, m_rows)
     if not all(isinstance(tensor, torch.Tensor) for tensor in tensors):
         raise TypeError("grouped_gemm_w8a8 expects tensor operands")

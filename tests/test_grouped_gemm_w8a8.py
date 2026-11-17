@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import importlib
+import logging
 
 import pytest
 import torch
@@ -92,6 +93,27 @@ def test_grouped_gemm_w8a8(lengths, n, k):
     args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
     expected = grouped_gemm_cpu_reference(*args[:4], lengths)
     assert flag_gems.grouped_gemm_w8a8(*args) is None
+    gems_assert_equal(args[4].cpu(), expected)
+
+
+@pytest.mark.grouped_gemm_w8a8
+@requires_hygon
+def test_grouped_gemm_w8a8_split_k_fallback(monkeypatch, caplog):
+    op = flag_gems.grouped_gemm_w8a8
+    module = importlib.import_module(op.__module__)
+    monkeypatch.setattr(module, "_HAS_GEMV", False)
+
+    lengths = [1, 2, 0, 3, 0, 0]
+    args = make_grouped_gemm_case(lengths, 512, 6144, flag_gems.device)
+    expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+    with caplog.at_level(logging.DEBUG, logger=module.__name__):
+        assert op(*args) is None
+
+    assert (
+        module.__name__,
+        logging.DEBUG,
+        "GEMS_HYGON GROUPED_GEMM_W8A8",
+    ) in caplog.record_tuples
     gems_assert_equal(args[4].cpu(), expected)
 
 
