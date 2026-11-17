@@ -28,6 +28,12 @@ class WeightNormBenchmark(OperatorBenchmark):
         self.shapes = list(CASES)
         self.shape_desc = "shape, dim"
 
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "kunlunxin" and case.dtype == torch.float16:
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Kunlunxin native _weight_norm does not support Float16")
+        return super().build_inputs(case)
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -57,7 +63,6 @@ def test_underscore_weight_norm():
     WeightNormBenchmark(
         op_name="_weight_norm",
         torch_op=torch.ops.aten._weight_norm.default,
-        gems_op=flag_gems._weight_norm,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
