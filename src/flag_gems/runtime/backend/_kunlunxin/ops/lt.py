@@ -33,7 +33,7 @@ def lt_func(x, y):
 
 
 def lt_tensor(A, B):
-    logger.debug("GEMS_KUNLUNXIN LT")
+    logger.debug("GEMS_KUNLUNXIN LT_TENSOR")
     return _lt(A, B)
 
 

@@ -439,5 +439,5 @@ def true_divide_(A, B):
 
 def true_divide_tensor_(A, B):
     """Canonical Tensor overload for in-place true division."""
-    logger.debug("GEMS TRUE_DIVIDE_")
+    logger.debug("GEMS TRUE_DIVIDE_TENSOR_")
     return true_divide_(A, B)

@@ -29,7 +29,7 @@ def lt_func(x, y):
 
 
 def lt_tensor(A, B):
-    logger.debug("GEMS LT")
+    logger.debug("GEMS LT_TENSOR")
     return lt_func(A, B)
 
 

@@ -254,7 +254,7 @@ def div_tensor_mode(A, B, rounding_mode=None):
 
 
 def div__tensor_mode(A, B, rounding_mode=None):
-    logger.debug("GEMS_ILUVATAR DIV_TENSOR_MODE_")
+    logger.debug("GEMS_ILUVATAR DIV__TENSOR_MODE")
     return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 
@@ -264,7 +264,7 @@ def div_scalar_mode(A, B, rounding_mode=None):
 
 
 def div__scalar_mode(A, B, rounding_mode=None):
-    logger.debug("GEMS_ILUVATAR DIV_SCALAR_MODE_")
+    logger.debug("GEMS_ILUVATAR DIV__SCALAR_MODE")
     return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 

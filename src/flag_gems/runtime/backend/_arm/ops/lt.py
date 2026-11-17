@@ -74,7 +74,7 @@ def lt_block(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 def lt_tensor(A, B):
-    logger.debug("GEMS_ARM LT")
+    logger.debug("GEMS_ARM LT_TENSOR")
     return lt_block(A, B)
     # return lt_func(A, B)
 
