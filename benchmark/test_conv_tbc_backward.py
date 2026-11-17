@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -40,4 +38,4 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.conv_tbc_backward
 def test_conv_tbc_backward():
-    ConvTbcBackwardBenchmark(op_name="conv_tbc_backward", torch_op=torch.ops.aten.conv_tbc_backward.default, gems_op=flag_gems.conv_tbc_backward, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
+    ConvTbcBackwardBenchmark(op_name="conv_tbc_backward", torch_op=torch.ops.aten.conv_tbc_backward.default, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
