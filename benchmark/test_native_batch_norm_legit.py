@@ -15,6 +15,7 @@
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.ops._native_batch_norm_legit import (
     _native_batch_norm_legit,
     _native_batch_norm_legit_no_stats,
@@ -62,7 +63,11 @@ def _no_stats_input_fn(shape, dtype, device):
 def _out_input_fn(shape, dtype, device):
     inp, weight, bias = _make_common_inputs(shape, dtype, device)
     channels = shape[1]
+    # The torch reference keeps the saved statistics in the input dtype on
+    # kunlunxin; on other backends low-precision inputs still use fp32 stats.
     stats_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    if flag_gems.vendor_name == "kunlunxin":
+        stats_dtype = dtype
     running_mean = torch.zeros(channels, dtype=dtype, device=device)
     running_var = torch.ones(channels, dtype=dtype, device=device)
     outputs = {
@@ -77,6 +82,8 @@ def _no_stats_out_input_fn(shape, dtype, device):
     inp, weight, bias = _make_common_inputs(shape, dtype, device)
     channels = shape[1]
     stats_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    if flag_gems.vendor_name == "kunlunxin":
+        stats_dtype = dtype
     outputs = {
         "out": torch.empty_like(inp),
         "save_mean": torch.empty(channels, dtype=stats_dtype, device=device),
