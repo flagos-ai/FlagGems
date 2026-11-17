@@ -28,7 +28,7 @@ from . import base, consts, utils
 def test_div_tensor():
     bench = base.BinaryPointwiseBenchmark(
         op_name="div_tensor",
-        torch_op=torch.div,
+        torch_op=torch.ops.aten.div.Tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -41,7 +41,7 @@ def test_div_tensor():
 def test_div__tensor():
     bench = base.BinaryPointwiseBenchmark(
         op_name="div__tensor",
-        torch_op=lambda a, b: a.div_(b),
+        torch_op=torch.ops.aten.div_.Tensor,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
@@ -189,7 +189,7 @@ def test_div_out():
     bench = base.GenericBenchmark(
         op_name="div_out",
         input_fn=input_fn,
-        torch_op=torch.div,
+        torch_op=torch.ops.aten.div.out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
