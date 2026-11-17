@@ -128,9 +128,12 @@ def test_accuracy_poisson_nll_loss_empty(reduction):
         )
     input = torch.empty((0, 3), device=flag_gems.device)
     target = torch.empty_like(input)
+    ref_inp, ref_target = utils.to_reference(input), utils.to_reference(target)
+    if flag_gems.vendor_name == "mthreads" and reduction == 1:
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
     ref = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(input),
-        utils.to_reference(target),
+        ref_inp,
+        ref_target,
         True,
         False,
         1e-8,
@@ -142,6 +145,9 @@ def test_accuracy_poisson_nll_loss_empty(reduction):
         assert result.dtype == ref.dtype == torch.float32
         assert result.shape == ref.shape == torch.Size([])
         result, ref = result.cpu(), ref.cpu()
+    if flag_gems.vendor_name == "mthreads" and reduction == 1:
+        assert result.device == input.device
+        result = result.cpu()
     utils.gems_assert_close(result, ref, torch.float32, equal_nan=True)
 
 
@@ -330,9 +336,13 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     elif case == "real_target":
         target = target.real.abs() + 0.5
     full = case == "real_target"
+    ref_inp, ref_target = utils.to_reference(inp), utils.to_reference(target)
+    if flag_gems.vendor_name == "mthreads" and case == "empty" and reduction == 1:
+        # MUSA returns zero for an empty complex mean; the mean is undefined.
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
     reference = _complex_reference(
-        utils.to_reference(inp),
-        utils.to_reference(target),
+        ref_inp,
+        ref_target,
         log_input,
         full,
         1e-8,
@@ -343,7 +353,7 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape
     if flag_gems.vendor_name in ("ascend", "enflame") or (
-        flag_gems.vendor_name == "kunlunxin" and result.is_complex()
+        flag_gems.vendor_name in ("kunlunxin", "mthreads") and result.is_complex()
     ):
         result, reference = result.cpu(), reference.cpu()
     utils.gems_assert_close(
