@@ -58,6 +58,8 @@ def test_log2_backward():
     FlagGems autograd.Function instead of falling into the native ATen
     formula that the ATen-level ``torch.log2`` dispatch would keep.
     """
+    # For 64x64, Python autograd/launch overhead dominates; this case can be
+    # slower than the native path even when large workloads benefit.
     bench = base.UnaryPointwiseBenchmark(
         op_name="log2_backward",
         torch_op=torch.log2,

@@ -21,6 +21,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def log2_func(x):
     return tl.log2(x.to(tl.float32))
 
 
+@libentry()
 @triton.jit
 def log2_backward_kernel(
     grad_ptr,
@@ -164,11 +166,8 @@ class _Log2Function(torch.autograd.Function):
 def log2(A):
     logger.debug("GEMS LOG2")
     if isinstance(A, torch.Tensor) and A.requires_grad and torch.is_grad_enabled():
-        if A.is_complex():
-            raise NotImplementedError(
-                "log2 autograd is not implemented for complex tensors"
-            )
-        return _Log2Function.apply(A)
+        if not A.is_complex():
+            return _Log2Function.apply(A)
     return log2_func(A)
 
 
