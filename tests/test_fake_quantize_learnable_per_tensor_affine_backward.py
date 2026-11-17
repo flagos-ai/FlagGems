@@ -95,7 +95,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
     reason="fake-quantize learning accuracy issue",
 )
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", [*utils.POINTWISE_SHAPES, (8, 16)])
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype):
     """Exercise the clamp boundary: with a tiny scale many inputs fall outside
@@ -125,6 +125,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype
         grad_factor,
     )
 
+    assert all(value.device == self_t.device for value in res_out)
     # grad_self is element-wise; grad_scale / grad_zero_point are full
     # reductions (scale the atol by the reduction length, matching the sum/mean
     # accuracy-test convention for float32 reduction-order sensitivity).
