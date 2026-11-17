@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.addmm import addmm, addmm_out
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -140,10 +141,19 @@ def _sparse_addmm_impl(self, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
             f"_sparse_addmm: Expected self to have strided layout, "
             f"but got {self.layout}"
         )
-    # Dense mat1 falls back to the native addmm path, exactly like aten
-    # (the Triton kernel only covers the sparse x strided product).
+    # Dense mat1 falls back to the general FlagGems addmm path, exactly like
+    # aten (the Triton kernel only covers the sparse x strided product). The
+    # native torch.addmm is deliberately not used: production operator code
+    # must not call torch compute APIs.
     if mat1.layout == torch.strided:
-        return torch.addmm(self, mat1, mat2, beta=beta, alpha=alpha, out=out)
+        M, N = mat1.shape[0], mat2.shape[1]
+        if out is None:
+            return addmm(self, mat1, mat2, beta=beta, alpha=alpha)
+        if out.shape != (M, N):
+            # Native resize_out semantics: reuse the caller's storage and
+            # write the (M, N) result in place.
+            out.set_(out.untyped_storage(), 0, (M, N))
+        return addmm_out(self, mat1, mat2, beta=beta, alpha=alpha, out=out)
     if mat2.layout != torch.strided:
         raise RuntimeError(
             f"_sparse_addmm: Expected mat2 to have strided layout, "

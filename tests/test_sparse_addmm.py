@@ -205,9 +205,39 @@ def test_sparse_addmm_dense_mat1_fallback():
     bias = torch.randn((4, 4), device=device)
     mat1 = torch.randn((4, 4), device=device)
     mat2 = torch.randn((4, 4), device=device)
-    ref = utils.to_reference(torch.addmm(bias, mat1, mat2))
+    # The dense mat1 path now runs the FlagGems addmm kernel (fp32 accumulate),
+    # so the reference is built in fp64 with the same helper as the sparse
+    # cases; a plain torch.addmm reference on CUDA uses TF32 and is less
+    # accurate than the result under test.
+    ref = _reference(bias, mat1, mat2, 1.0, 1.0)
     res = flag_gems._sparse_addmm(bias, mat1, mat2)
     utils.gems_assert_close(res, ref, torch.float32, atol=1e-4)
+
+
+@pytest.mark.sparse_addmm
+def test_sparse_addmm_dense_mat1_uses_gems_addmm():
+    # The dense-mat1 branch must route through the FlagGems addmm kernel, not
+    # the native torch.addmm (production operator code must not call torch
+    # compute APIs). Structural assertion via a spy on the module-level symbol.
+    import sys
+
+    impl_module = sys.modules["flag_gems.ops._sparse_addmm"]
+    calls = {"count": 0}
+    real_addmm = impl_module.addmm
+
+    def spy(*args, **kwargs):
+        calls["count"] += 1
+        return real_addmm(*args, **kwargs)
+
+    device = flag_gems.device
+    bias = torch.randn(4, 4, device=device)
+    mat1 = torch.randn(4, 4, device=device)
+    mat2 = torch.randn(4, 4, device=device)
+    with unittest.mock.patch.object(impl_module, "addmm", spy):
+        res = flag_gems._sparse_addmm(bias, mat1, mat2)
+
+    assert calls["count"] == 1, "dense mat1 did not use the Gems addmm path"
+    assert res.shape == (4, 4)
 
 
 @pytest.mark.sparse_addmm
@@ -260,14 +290,14 @@ def test_dispatch_reaches_gems_impl():
 
 @pytest.mark.sparse_addmm
 def test_sparse_addmm_out_dense_mat1():
-    # The dense-mat1 branch must forward ``out`` to the native addmm (the
-    # registration covers the CUDA key too, so a dense mat1 with out= would
-    # otherwise silently discard the caller's tensor).
+    # The dense-mat1 branch must forward ``out`` to the FlagGems addmm .out
+    # path (the registration covers the CUDA key too, so a dense mat1 with
+    # out= would otherwise silently discard the caller's tensor).
     device = flag_gems.device
     bias = torch.randn(4, device=device)
     mat1 = torch.randn(4, 4, device=device)
     mat2 = torch.randn(4, 4, device=device)
-    ref = torch.addmm(bias, mat1, mat2)
+    ref = _reference(bias, mat1, mat2, 1.0, 1.0)
 
     out = torch.zeros(4, 4, device=device)
     res = flag_gems._sparse_addmm_out(bias, mat1, mat2, out=out)
