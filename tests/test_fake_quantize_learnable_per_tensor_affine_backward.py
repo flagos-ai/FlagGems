@@ -106,11 +106,12 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
+@pytest.mark.parametrize("shape", [*utils.POINTWISE_SHAPES, (8, 16)])
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
-def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
+def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype):
     _seed()
-    self_t = torch.randn((8, 16), dtype=dtype, device=flag_gems.device) * 100.0
-    grad = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
+    self_t = torch.randn(shape, dtype=dtype, device=flag_gems.device) * 100.0
+    grad = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     scale = torch.tensor([0.01], dtype=dtype, device=flag_gems.device)
     zero_point = torch.tensor([0.0], dtype=dtype, device=flag_gems.device)
     inputs = grad, self_t, scale, zero_point
@@ -119,9 +120,11 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
         *inputs, -3, 3, 1.0
     )
 
+    assert all(value.device == self_t.device for value in result)
+    reduce_size = max(1, self_t.numel())
     utils.gems_assert_close(result[0], ref_out[0], torch.float32)
-    utils.gems_assert_close(result[1], ref_out[1], torch.float32, reduce_dim=128)
-    utils.gems_assert_close(result[2], ref_out[2], torch.float32, reduce_dim=128)
+    utils.gems_assert_close(result[1], ref_out[1], torch.float32, reduce_dim=reduce_size)
+    utils.gems_assert_close(result[2], ref_out[2], torch.float32, reduce_dim=reduce_size)
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
