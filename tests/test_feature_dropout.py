@@ -45,19 +45,32 @@ def test_feature_dropout(shape, p, dtype):
     batch_size, num_channels = shape[0], shape[1]
     scale = 1.0 / (1.0 - p)
     # MetaX and Hygon native dropout may round the gain before multiplying.
-    rounded_scale = (
-        inp.new_tensor(scale) if flag_gems.vendor_name in ("metax", "hygon") else None
+    use_cpu_scale = flag_gems.vendor_name == "hygon" and dtype in (
+        torch.float16,
+        torch.bfloat16,
     )
-    inp_reshaped = inp.view(batch_size, num_channels, -1)
-    out_reshaped = res_out.view(batch_size, num_channels, -1)
+    # Hygon eager scalar multiplication can round the gain before multiplying.
+    # Compute the independent reference in FP32 before casting back to dtype.
+    check_inp = inp.cpu() if use_cpu_scale else inp
+    check_out = res_out.cpu() if use_cpu_scale else res_out
+    rounded_scale = (
+        check_inp.new_tensor(scale)
+        if flag_gems.vendor_name in ("metax", "hygon")
+        else None
+    )
+    inp_reshaped = check_inp.view(batch_size, num_channels, -1)
+    out_reshaped = check_out.view(batch_size, num_channels, -1)
     for b in range(batch_size):
         for c in range(num_channels):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                assert torch.allclose(
-                    channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
-                ) or (
+                expected = (
+                    (channel_inp.float() * scale).to(dtype)
+                    if use_cpu_scale
+                    else channel_inp * scale
+                )
+                assert torch.allclose(channel_out, expected, rtol=1e-4, atol=1e-5) or (
                     rounded_scale is not None
                     and torch.allclose(
                         channel_out, channel_inp * rounded_scale, rtol=1e-4, atol=1e-5
