@@ -22,6 +22,27 @@ from . import accuracy_utils as utils
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
 
+def _cpu_cholesky(matrix):
+    if flag_gems.vendor_name == "mthreads":
+        import numpy as np
+
+        return torch.from_numpy(np.linalg.cholesky(matrix.numpy()))
+    return torch.linalg.cholesky(matrix)
+
+
+def _solve_reference(rhs, factor, upper):
+    if flag_gems.vendor_name == "mthreads" and rhs.device.type == "cpu":
+        import numpy as np
+
+        triangle = np.triu(factor.numpy()) if upper else np.tril(factor.numpy())
+        transposed = triangle.swapaxes(-1, -2)
+        first, second = (transposed, triangle) if upper else (triangle, transposed)
+        return torch.from_numpy(
+            np.linalg.solve(second, np.linalg.solve(first, rhs.numpy()))
+        )
+    return torch.ops.aten._cholesky_solve_helper(rhs, factor, upper)
+
+
 def _factor(shape, dtype):
     matrix = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     identity = torch.eye(shape[-1], device=flag_gems.device, dtype=dtype)
@@ -51,7 +72,7 @@ def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
     rhs = torch.randn(rhs_shape, device=flag_gems.device, dtype=dtype)
     ref_rhs = utils.to_reference(rhs)
     ref_factor = utils.to_reference(factor)
-    expected = torch.ops.aten._cholesky_solve_helper(ref_rhs, ref_factor, upper)
+    expected = _solve_reference(ref_rhs, ref_factor, upper)
 
     actual = flag_gems._cholesky_solve_helper(rhs, factor, upper)
 
@@ -86,7 +107,7 @@ def test_cholesky_solve_helper_layouts(n, nrhs, batch_shape, upper, layout):
     # hide an error in the solver. Poison the unused triangle deliberately.
     generator = torch.Generator().manual_seed(100 * n + nrhs)
     matrix = torch.randn((*batch_shape, n, n), generator=generator)
-    factor = torch.linalg.cholesky(matrix @ matrix.mT + 0.5 * torch.eye(n))
+    factor = _cpu_cholesky(matrix @ matrix.mT + 0.5 * torch.eye(n))
     if upper:
         factor = factor.mT.contiguous()
         unused = torch.ones((n, n), dtype=torch.bool).tril(-1)
@@ -94,7 +115,7 @@ def test_cholesky_solve_helper_layouts(n, nrhs, batch_shape, upper, layout):
         unused = torch.ones((n, n), dtype=torch.bool).triu(1)
     factor[..., unused] = float("nan")
     rhs = torch.randn((*batch_shape, n, nrhs), generator=generator)
-    expected = torch.ops.aten._cholesky_solve_helper(rhs, factor, upper)
+    expected = _solve_reference(rhs, factor, upper)
 
     if layout == "transposed":
         device_rhs = rhs.mT.contiguous().to(flag_gems.device).mT
@@ -124,7 +145,7 @@ def test_cholesky_solve_helper_layouts(n, nrhs, batch_shape, upper, layout):
 def test_cholesky_solve_helper_batch_strides(upper, preexpanded):
     generator = torch.Generator().manual_seed(341)
     matrix = torch.randn((2, 1, 9, 9), generator=generator)
-    factor = torch.linalg.cholesky(matrix @ matrix.mT + torch.eye(9))
+    factor = _cpu_cholesky(matrix @ matrix.mT + torch.eye(9))
     if upper:
         factor = factor.mT
     rhs = torch.randn((3, 2, 9, 5), generator=generator).transpose(0, 1)
@@ -132,9 +153,7 @@ def test_cholesky_solve_helper_batch_strides(upper, preexpanded):
     device_factor = factor.to(flag_gems.device)
     if preexpanded:
         device_factor = device_factor.expand(2, 3, 9, 9)
-    expected = torch.ops.aten._cholesky_solve_helper(
-        rhs, factor.expand(2, 3, 9, 9), upper
-    )
+    expected = _solve_reference(rhs, factor.expand(2, 3, 9, 9), upper)
     actual = flag_gems._cholesky_solve_helper(device_rhs, device_factor, upper)
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-5)
 
