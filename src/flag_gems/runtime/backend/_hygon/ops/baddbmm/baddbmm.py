@@ -122,9 +122,7 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
                     a, b, bias, out, m, n, k, *bias_strides, alpha, beta, BATCH=batch
                 )
                 return out
-            algorithm = _algorithm(
-                batch, m, n, k, device, a.dtype, allow_ring=False
-            )
+            algorithm = _algorithm(batch, m, n, k, device, a.dtype, allow_ring=False)
         if algorithm == "packed":
             packed = torch.empty((batch, n, k), device=b.device, dtype=b.dtype)
             _pack_b[(triton.cdiv(k, 64), triton.cdiv(n, 64), batch)](
