@@ -52,7 +52,6 @@ class GroupedGemmInt8Benchmark(GroupedGemmBenchmark):
 
 
 class GroupedGemmFp8Benchmark(GroupedGemmBenchmark):
-    FALLBACK_SHAPE_CONFIG_KEYS = ("grouped_gemm_w8a8",)
     input_fn = staticmethod(make_grouped_fp8_case)
 
 
