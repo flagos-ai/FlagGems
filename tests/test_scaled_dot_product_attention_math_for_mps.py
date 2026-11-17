@@ -64,3 +64,73 @@ def test_scaled_dot_product_attention_math_for_mps(
     # (softmax normalization + weighted value sum), so scale atol accordingly.
     gems_assert_close(output, ref_output, dtype, reduce_dim=seq_len)
     gems_assert_close(attn_weights, ref_weights, dtype, reduce_dim=seq_len)
+
+
+@pytest.mark.scaled_dot_product_attention_math_for_mps
+@pytest.mark.parametrize("seq_len", [16, 32, 70])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_scaled_dot_product_attention_math_for_mps_all_negative_logits(seq_len, dtype):
+    """Rows whose logits are all far below zero must still be a plain softmax.
+
+    Regression: with every logit at -16 the result must be the uniform
+    distribution (output = 1, weight = 1 / seq_len). Backends that normalize
+    against ``max(rowmax, 0)`` instead of the true row maximum push the whole
+    row past their exponential cut-off and return output 0 / weights inf.
+    """
+    device = flag_gems.device
+    head_dim = 64
+    q = torch.ones((1, 1, seq_len, head_dim), dtype=dtype, device=device)
+    k = -2 * q
+    v = q
+
+    output, attn_weights = flag_gems._scaled_dot_product_attention_math_for_mps(q, k, v)
+
+    assert torch.isfinite(attn_weights).all(), "attention weights must be finite"
+    ref_output = utils.to_reference(torch.ones_like(output))
+    ref_weights = utils.to_reference(torch.full_like(attn_weights, 1.0 / seq_len))
+    gems_assert_close(output, ref_output, dtype, reduce_dim=seq_len)
+    gems_assert_close(attn_weights, ref_weights, dtype, reduce_dim=seq_len)
+
+
+@pytest.mark.scaled_dot_product_attention_math_for_mps
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_scaled_dot_product_attention_math_for_mps_weights_match_output(
+    dtype, is_causal
+):
+    """The returned weights must reproduce the returned output.
+
+    Regression: the output and the weights were normalized with different
+    truncation rules, so weights that the output pass did accumulate were
+    dropped from the returned matrix and ``weights @ value`` went to 0 while
+    the output stayed around 0.75.
+    """
+    device = flag_gems.device
+    seq_len, head_dim = 128, 64
+    half = seq_len // 2
+    # The first half of the keys sits ~9.5 logits below the second half: small
+    # enough to be truncated by a log-sum-exp based cut, large enough to carry
+    # the whole output because only those keys hold a non-zero value.
+    q = torch.ones((1, 1, seq_len, head_dim), dtype=dtype, device=device)
+    k = torch.zeros_like(q)
+    k[:, :, :half, :] = -1.1875
+    v = torch.zeros_like(q)
+    v[:, :, :half, :] = 10000.0
+
+    output, attn_weights = flag_gems._scaled_dot_product_attention_math_for_mps(
+        q, k, v, is_causal=is_causal
+    )
+
+    # ``weights @ value`` is the reference, evaluated on CPU in float64 because
+    # the device matmul may itself run at reduced precision.  The comparison is
+    # relative: the output is accumulated with a reduced-precision dot product,
+    # and the small weights are rounded to ``dtype`` on the way out (they are
+    # subnormal in float16), so only the relative agreement is meaningful here.
+    # The truncation bug this guards against turned the reference into 0.0.
+    ref_output = torch.matmul(
+        attn_weights.detach().double().cpu(), v.detach().double().cpu()
+    )
+    rtol = 5e-3 if dtype == torch.float32 else 5e-2
+    torch.testing.assert_close(
+        output.detach().double().cpu(), ref_output, rtol=rtol, atol=1e-3
+    )

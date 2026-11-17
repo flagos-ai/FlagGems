@@ -991,17 +991,10 @@ def scaled_dot_product_attention_forward(
                 **common_v,
             )
             d_off += 128
-        if return_lse or return_weights:
-            total = batch * q_head_num * q_len
-            _fa_lse_kernel[(triton.cdiv(total, 256),)](
-                m_buf,
-                lse,
-                total,
-                BLOCK=256,
-                num_warps=4,
-                num_stages=1,
-            )
 
+    # ``lse`` still holds the raw row sums kernel B stored; the weights kernel
+    # consumes them (and ``m_buf``) so that it reproduces kernel B's
+    # normalization exactly.  The in-place ln() conversion runs afterwards.
     if return_weights:
         weights = query.new_empty((batch, q_head_num, q_len, kv_len))
         w_grid = (
@@ -1012,6 +1005,7 @@ def scaled_dot_product_attention_forward(
         with torch_device_fn.device(device):
             _fa_weights_kernel[w_grid](
                 qk_buf,
+                m_buf,
                 lse,
                 weights,
                 weights.stride(0),
@@ -1024,6 +1018,18 @@ def scaled_dot_product_attention_forward(
                 q_head_num,
                 BLOCK_M=64,
                 BLOCK_N=64,
+                num_warps=4,
+                num_stages=1,
+            )
+
+    if return_lse:
+        total = batch * q_head_num * q_len
+        with torch_device_fn.device(device):
+            _fa_lse_kernel[(triton.cdiv(total, 256),)](
+                m_buf,
+                lse,
+                total,
+                BLOCK=256,
                 num_warps=4,
                 num_stages=1,
             )
@@ -1554,6 +1560,50 @@ def _scaled_dot_product_attention_math(
     return output, weights
 
 
+def _scaled_dot_product_attention_math_for_mps(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    dropout_mask=None,
+    *,
+    scale=None,
+):
+    """Vendor MPS-style math entry.
+
+    The generic ``_fused_attn_kernel`` produces wrong weights/output on XPU3
+    for several fp16/bf16 shapes, so route to the vendor Triton two-pass
+    kernels and materialize the weights with the top-left causal alignment
+    that the aten math contract expects.
+    """
+    logger.debug("GEMS_KUNLUNXIN _SCALED_DOT_PRODUCT_ATTENTION_MATH_FOR_MPS")
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math_for_mps: dropout > 0 is not "
+            "supported"
+        )
+    if attn_mask is not None:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math_for_mps: attn_mask is not supported"
+        )
+    if dropout_mask is not None:
+        raise NotImplementedError(
+            "_scaled_dot_product_attention_math_for_mps: dropout_mask is not supported"
+        )
+    output, weights = scaled_dot_product_attention_forward(
+        query,
+        key,
+        value,
+        is_causal=is_causal,
+        scale=scale,
+        causal_offset=0,
+        return_weights=True,
+    )
+    return output, weights
+
+
 def _scaled_dot_product_cudnn_attention(
     query,
     key,
@@ -1915,7 +1965,8 @@ def _fa_pad_d_kernel(
 @triton.jit
 def _fa_weights_kernel(
     QK,
-    LSE,
+    M,
+    L,
     W,
     stride_wb,
     stride_ws,
@@ -1928,11 +1979,14 @@ def _fa_weights_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """Materialize normalized attention weights from the qk/lse buffers.
+    """Materialize normalized attention weights from the qk/m/row-sum buffers.
 
-    ``qk`` holds the mask-applied logits and ``lse`` the natural-log row
-    normalizer, so ``w = exp(qk - lse)``.  The ``-12`` cut matches kernel B's
-    exact-zero rule for the exponential underflow range.
+    ``QK`` holds the mask-applied logits, ``M`` the row max and ``L`` the raw
+    row sum that kernel B accumulated, so ``w = exp(qk - m) / l``.  The cut and
+    the ``l`` clamp are kernel B's rules verbatim, which is what keeps
+    ``weights @ V`` equal to the returned output.  Normalizing by ``lse``
+    instead shifts the cut to ``(qk - m) < -12 + ln(l)`` and therefore drops
+    cells that the output pass did accumulate.
     """
     pid_m = tl.program_id(0)
     off_hz = tl.program_id(1)
@@ -1948,9 +2002,12 @@ def _fa_weights_kernel(
         mask=q_mask[:, None] & kv_mask[None, :],
         other=-1e30,
     )
-    lse = tl.load(LSE + off_hz * Q_CTX + offs_m, mask=q_mask, other=0.0)
-    p = tl.exp(qk - lse[:, None])
-    p = tl.where((qk - lse[:, None]) > -12.0, p, 0.0)
+    m_i = tl.load(M + off_hz * Q_CTX + offs_m, mask=q_mask, other=0.0)
+    l_i = tl.load(L + off_hz * Q_CTX + offs_m, mask=q_mask, other=0.0)
+    d = qk - m_i[:, None]
+    p = tl.where(d > -12.0, tl.exp(d), 0.0)
+    l_safe = tl.maximum(l_i, 1e-30)
+    p = p / l_safe[:, None]
     w_ptrs = (
         W
         + batch_id * stride_wb
@@ -1992,7 +2049,7 @@ def _fa_qk_m_kernel(
 
     When ``USE_CMASK``, the mask is folded into the stored qk here
     (``qk' = qk - cm``) from a dense ``(B*H, Q_CTX, K_PAD)`` f32 ``CMASK``:
-    0.0/50.0 for the FA3 causal/window masks, ``-attn_mask`` / ``+1e30`` for
+    0.0/1e30 for the FA3 causal/window masks, ``-attn_mask`` / ``+1e30`` for
     SDPA.  Masking must NOT happen in kernel B: the compiler corrupts that
     kernel's loop-carried ``l_i``/``acc`` when the loop body holds an in-loop
     load/branch.  ``QK`` is prefilled with -1e30 so cells with
@@ -2002,7 +2059,8 @@ def _fa_qk_m_kernel(
     ``m >= max(qk')``: the exponential overflows for positive arguments, and
     kernel B's ``(qk' - m)`` must stay ``<= 0`` (this matters for positive
     additive masks, e.g. ``attn_mask = +3``, which raise qk' above rowmax of
-    the raw qk).
+    the raw qk).  Rows whose cells are all at the mask sentinel fall back to
+    ``m = 0`` so that they keep evaluating to exactly zero.
     """
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
@@ -2032,11 +2090,28 @@ def _fa_qk_m_kernel(
         # exponential overflows for positive arguments, so kernel B relies on
         # the invariant (qk' - m) <= 0.  A positive additive mask
         # (attn_mask > 0) makes qk' > rowmax(raw qk), which would overflow.
+        if not USE_CMASK:
+            # The tail block loads zero-filled K for n >= KV_CTX, so those
+            # cells hold qk = 0 and would dominate the row max of an
+            # all-negative row.  Push them to the mask sentinel before
+            # reducing; the store below drops them anyway (QK keeps its -1e30
+            # prefill there).  With a CMASK the sentinel is already baked in
+            # (CMASK is 1e30 outside the valid region), and this select must
+            # stay out of that loop body: next to the in-loop CMASK load it
+            # hangs the XPU backend.
+            qk = tl.where(offs_n[None, :] < KV_CTX, qk, -1e30)
         m_i = tl.maximum(m_i, tl.max(qk, 1))
         qk_ptrs = qk_base + offs_m[:, None] * K_PAD + offs_n[None, :]
         # separable (1D-broadcast) store mask; n >= KV_CTX stays -1e30.
         tl.store(qk_ptrs, qk, mask=q_mask[:, None] & (offs_n[None, :] < KV_CTX))
-    m_safe = tl.maximum(m_i, 0.0)
+    # ``m`` is the plain row max of the mask-applied qk', NOT
+    # ``max(rowmax, 0)``.  Clamping to 0 pushes every cell of an all-negative
+    # row below kernel B's -12 cut, so the whole row collapses to zero
+    # (out = 0, row sum = 0, lse = -inf and hence weights = inf).  Fully
+    # masked rows are the one case that still needs the 0.0 fallback: their
+    # qk' sits at the -1e30 mask sentinel, and keeping m at 0.0 leaves
+    # (qk' - m) far below the cut, so those rows stay exactly zero.
+    m_safe = tl.where(m_i > -1e29, m_i, 0.0)
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_safe, mask=q_mask)
 
@@ -2237,13 +2312,15 @@ def flash_attention_forward(
         v_full[:, :k_len].copy_(v_in)
         v_in = v_full
 
-    # cmask (B*H, Q, K_PAD): 0.0 = valid, 50.0 = masked (causal bound
+    # cmask (B*H, Q, K_PAD): 0.0 = valid, 1e30 = masked (causal bound
     # n <= row+off, window bounds, and the n >= k_len padding).  Kernel A
-    # folds it into the stored qk (qk' = qk - 50); kernel B zeroes cells with
-    # (qk' - m) < -12 explicitly.
+    # folds it into the stored qk (qk' = qk - 1e30, the same sentinel the SDPA
+    # path uses); kernel B zeroes cells with (qk' - m) < -12 explicitly.  The
+    # sentinel must stay far below any real logit so that kernel A can tell a
+    # fully masked row from a row of merely very negative logits.
     cmask = None
     if is_causal or has_window:
-        cmask2d = torch.full((q_len, k_pad), 50.0, dtype=torch.float32, device=device)
+        cmask2d = torch.full((q_len, k_pad), 1e30, dtype=torch.float32, device=device)
         rows = torch.arange(q_len, device=device)[:, None]
         cols = torch.arange(k_pad, device=device)[None, :]
         off = k_len - q_len
@@ -2255,6 +2332,10 @@ def flash_attention_forward(
             valid = valid & (cols >= (rows + off - wl))
         if wr >= 0:
             valid = valid & (cols <= (rows + off + wr))
+        # Columns past k_len are padding: keep the sentinel so kernel A's row
+        # max never sees them (a window without a causal bound would otherwise
+        # mark them valid).
+        valid = valid & (cols < k_len)
         cmask2d[valid] = 0.0
         # Materialize the dense (B*H, Q, K_PAD) layout the kernel indexes
         # (off_hz * Q_CTX * K_PAD + m * K_PAD + n); head-independent.

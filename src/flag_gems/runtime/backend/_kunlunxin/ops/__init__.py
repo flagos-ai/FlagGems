@@ -301,6 +301,7 @@ from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
     _scaled_dot_product_attention_math,
+    _scaled_dot_product_attention_math_for_mps,
     _scaled_dot_product_cudnn_attention,
     _scaled_dot_product_flash_attention,
     cudnn_attention_forward,
