@@ -63,9 +63,8 @@ def _ravel_gather_kernel(
             src_ptr.to(tl.pointer_type(tl.uint16)) + offset, mask=mask, other=0
         )
         if SIGNED:
-            value = val.to(tl.bfloat16, bitcast=True).to(tl.float32)
-            value *= tl.where((offs & 1) == 0, S_RE, S_IM)
-            val = value.to(tl.bfloat16).to(tl.uint16, bitcast=True)
+            sign = tl.where((offs & 1) == 0, S_RE, S_IM)
+            val = val ^ tl.where(sign < 0, 0x8000, 0).to(tl.uint16)
         tl.store(dst_ptr.to(tl.pointer_type(tl.uint16)) + offs, val, mask=mask)
     else:
         val = tl.load(src_ptr + offset, mask=mask, other=0)
