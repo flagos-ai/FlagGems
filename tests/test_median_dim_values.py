@@ -193,6 +193,10 @@ def test_median_dim_values_strided_64bit(dtype, dim):
         ]
     reference = torch.tensor(data, dtype=dtype).t()
     inp = torch.tensor(data, dtype=dtype, device=flag_gems.device).t()
+    if inp.dtype != dtype:
+        pytest.skip(
+            f"Kunlunxin tensor factory narrows requested {dtype} to {inp.dtype}"
+        )
     expected = torch.median(reference, dim=dim)
     shape = tuple(expected.values.shape)
     values = torch.empty(shape, dtype=dtype, device=flag_gems.device)
