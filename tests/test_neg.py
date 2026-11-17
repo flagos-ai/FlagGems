@@ -57,6 +57,18 @@ def hygon_neg_module():
     return module
 
 
+@pytest.fixture
+def hygon_neg_library(hygon_neg_module, monkeypatch):
+    # Each ATen test owns its registration so an earlier autograd test cannot
+    # leave a Python kernel that prevents the route spy from being registered.
+    monkeypatch.setattr(flag_gems, "current_work_registrar", None)
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        yield library
+    finally:
+        library._destroy()
+
+
 @pytest.mark.neg
 @pytest.mark.parametrize(
     "shape", [(), (0,), (1,), (1023,), (1024,), (1025,), (3, 1024), (1024, 1024)]
@@ -212,12 +224,12 @@ def test_neg_hygon_fallback_boundary(hygon_neg_module, monkeypatch, kind):
 
 
 @pytest.mark.neg
-def test_neg_hygon_autograd(hygon_neg_module):
+def test_neg_hygon_autograd(hygon_neg_module, hygon_neg_library):
     inp = torch.randn((1025,), device=flag_gems.device, requires_grad=True)
     assert not hygon_neg_module._can_use_fast_path(inp)
     # ATen Autograd owns the derivative; direct flag_gems.neg calls do not
     # promise to build an autograd graph.
-    flag_gems.enable()
+    flag_gems.only_enable(lib=hygon_neg_library, include=["neg"])
     result = torch.neg(inp)
     (grad,) = torch.autograd.grad(result, inp, torch.ones_like(result))
     utils.gems_assert_equal(result, torch.neg(utils.to_reference(inp.detach())))
@@ -225,7 +237,7 @@ def test_neg_hygon_autograd(hygon_neg_module):
 
 
 @pytest.mark.neg
-def test_neg_hygon_aten_route(hygon_neg_module, monkeypatch):
+def test_neg_hygon_aten_route(hygon_neg_module, hygon_neg_library, monkeypatch):
     calls = []
     original = hygon_neg_module.neg
 
@@ -236,7 +248,7 @@ def test_neg_hygon_aten_route(hygon_neg_module, monkeypatch):
     monkeypatch.setattr(flag_gems, "neg", routed)
     inp = torch.randn((1025,), device=flag_gems.device)
     reference = torch.neg(utils.to_reference(inp))
-    flag_gems.enable()
+    flag_gems.only_enable(lib=hygon_neg_library, include=["neg"])
     result = torch.neg(inp)
     assert len(calls) == 1
     utils.gems_assert_equal(result, reference)
