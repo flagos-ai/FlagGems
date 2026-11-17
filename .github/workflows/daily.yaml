@@ -32,8 +32,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Note that the time is in UTC, so we want this to start at 00:03+8:00
-    - cron: '3 16 * * *'
+    # Note that the time is in UTC, so we want this to start at 01:30+8:00
+    - cron: '30 17 * * *'
 
 jobs:
   prepare:
@@ -67,6 +67,10 @@ jobs:
 
       - shell: bash
         run: tools/gpu_check_nvidia.sh
+
+      - name: Precompile flag_gems Python bytecode
+        shell: bash
+        run: python3 -m compileall -q src/flag_gems/
 
       - shell: bash
         env:
