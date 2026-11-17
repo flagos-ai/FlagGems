@@ -21,6 +21,7 @@ import triton.language as tl
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -116,16 +117,17 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 
 
 @triton.jit
-def _i1_approx(x_f32):
+def _i1_approx(x):
     """Modified Bessel function of the first kind, order one, I1(x).
 
     Uses the Abramowitz & Stegun / Cephes piecewise expansion shared with
-    ``special_i1``; computed in fp32 and returned in fp32.
+    ``special_i1``. The caller upcasts ``x`` to fp32, or to fp64 for fp64
+    inputs, so the expansion runs at the input precision.
     """
-    ax = tl.abs(x_f32)
+    ax = tl.abs(x)
 
     # Small region: |x| <= 3.75
-    y = x_f32 / 3.75
+    y = x / 3.75
     y2 = y * y
     p = 0.00032411
     p = 0.00301532 + y2 * p
@@ -134,7 +136,7 @@ def _i1_approx(x_f32):
     p = 0.51498869 + y2 * p
     p = 0.87890594 + y2 * p
     p = 0.5 + y2 * p
-    ans_small = x_f32 * p
+    ans_small = x * p
 
     # Large region: |x| > 3.75
     t = 3.75 / tl.maximum(ax, 1e-20)
@@ -150,22 +152,38 @@ def _i1_approx(x_f32):
     pref = tl.exp(ax) / tl.sqrt(tl.maximum(ax, 1e-20))
     ans_large = pref * q
     # I1 is an odd function.
-    ans_large = tl.where(x_f32 < 0, -ans_large, ans_large)
+    ans_large = tl.where(x < 0, -ans_large, ans_large)
 
     return tl.where(ax <= 3.75, ans_small, ans_large)
 
 
+@libentry()
 @triton.jit
-def _i0_backward_kernel(grad_ptr, x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _i0_backward_kernel(
+    grad_ptr,
+    x_ptr,
+    out_ptr,
+    n_elements,
+    IS_FP64: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+
+    # Keep fp64 inputs at fp64; everything else computes in fp32.
+    if IS_FP64:
+        x_c = x.to(tl.float64)
+        grad_c = grad.to(tl.float64)
+    else:
+        x_c = x.to(tl.float32)
+        grad_c = grad.to(tl.float32)
 
     # d/dx I0(x) = I1(x)
-    dx = _i1_approx(x) * grad
+    dx = _i1_approx(x_c) * grad_c
     tl.store(out_ptr + offsets, dx, mask=mask)
 
 
@@ -193,7 +211,14 @@ def i0_backward(grad_out: torch.Tensor, x: torch.Tensor):
     BLOCK_SIZE = 1024
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):
-        _i0_backward_kernel[grid](grad_c, x_c, out, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        _i0_backward_kernel[grid](
+            grad_c,
+            x_c,
+            out,
+            n_elements,
+            IS_FP64=x_c.dtype == torch.float64,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
     return out
 
 

@@ -69,8 +69,6 @@ def test_i0_backward():
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
     )
-    # Use the FlagGems autograd wrapper as the candidate so the timed backward
-    # is our i0_backward kernel; aten::i0's native backward is not replaced by
-    # the FlagGems registration.
-    bench.set_gems(flag_gems.i0)
+    # i0 registers the Autograd fallthrough, so the default use_gems() path
+    # routes torch.i0 through I0Function and times our i0_backward kernel.
     bench.run()

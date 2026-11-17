@@ -67,7 +67,7 @@ def test_i0_out(shape, dtype):
 
 @pytest.mark.i0_backward
 @pytest.mark.parametrize("shape", I0_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_i0_backward(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
