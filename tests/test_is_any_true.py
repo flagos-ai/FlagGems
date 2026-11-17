@@ -57,7 +57,9 @@ def test_is_any_true_arbitrary_rank(rank):
     inp[(1,) * rank] = True
     inp = inp.transpose(0, -1)
     reference = torch.ops.aten._is_any_true.default(utils.to_reference(inp))
-    utils.gems_assert_equal(flag_gems._is_any_true(inp), reference)
+    result = flag_gems._is_any_true(inp)
+    assert result.device == inp.device
+    utils.gems_assert_equal(result, reference)
 
 
 @pytest.mark.is_any_true
@@ -67,8 +69,10 @@ def test_is_any_true_scalar_and_expand():
         torch.tensor(False, device=flag_gems.device),
         torch.tensor(True, device=flag_gems.device).expand(17, 19),
     ):
+        result = flag_gems._is_any_true(inp)
+        assert result.device == inp.device
         utils.gems_assert_equal(
-            flag_gems._is_any_true(inp),
+            result,
             torch.ops.aten._is_any_true.default(utils.to_reference(inp)),
         )
 
