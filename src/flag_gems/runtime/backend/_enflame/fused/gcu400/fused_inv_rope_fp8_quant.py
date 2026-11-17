@@ -309,4 +309,3 @@ def fused_inv_rope_fp8_quant(
     )
 
     return fp8_q.transpose(0, 1), scale.transpose(0, 1)
-
