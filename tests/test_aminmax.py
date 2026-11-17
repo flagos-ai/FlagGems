@@ -296,8 +296,11 @@ def _global_aminmax_view(dtype, layout):
         "expand": storage[2:3, 3:4].expand(3, 5),
     }
     inp = views[layout]
-    inp.fill_(1)
-    inp[(0,) * inp.ndim] = 0
+    # Initialize an expanded view through its unique storage element. This
+    # preserves the same backing bytes without an overlapping device write.
+    writable = storage[2:3, 3:4] if layout == "expand" else inp
+    writable.fill_(1)
+    writable[(0,) * writable.ndim] = 0
     return storage, inp
 
 
