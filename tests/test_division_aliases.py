@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import wraps
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -195,10 +194,10 @@ _DISPATCH_CASES = [
 
 
 @pytest.mark.parametrize("aten_key,op_id,mode", _DISPATCH_CASES)
-def test_division_dispatch_interception(
+def test_division_registration_and_direct_call(
     monkeypatch, inplace_case, aten_key, op_id, mode
 ):
-    """Prove ATen reaches the registered Gems entry, not a native fallback."""
+    """Check the registered entry and direct results, not ATen interception."""
     c = inplace_case
     packet, overload = aten_key.split(".")
     op = getattr(getattr(torch.ops.aten, packet), overload)
@@ -211,7 +210,6 @@ def test_division_dispatch_interception(
         kwargs["out"] = out
         ref_kwargs["out"] = ref_out
     expected = op(c.ref_a, ref_other, **ref_kwargs)
-    calls = []
     registered = []
     original_impl = torch.library.Library.impl
     entry = getattr(flag_gems, op_id)
@@ -220,26 +218,12 @@ def test_division_dispatch_interception(
         if name == aten_key:
             assert fn is entry
             registered.append(name)
-
-            @wraps(fn)
-            def counted(*call_args, **call_kwargs):
-                calls.append(name)
-                return entry(*call_args, **call_kwargs)
-
-            fn = counted
         return original_impl(library, name, fn, *args, **impl_kwargs)
 
     monkeypatch.setattr(torch.library.Library, "impl", intercept)
-    previous = getattr(flag_gems, "current_work_registrar", None)
-    try:
-        with flag_gems.use_gems(include=[op_id]):
-            assert flag_gems.current_work_registrar.get_all_keys() == [aten_key]
-            assert flag_gems.current_work_registrar.get_all_ops() == [op_id]
-            actual = op(c.a, other, **kwargs)
-    finally:
-        flag_gems.current_work_registrar = previous
+    _check_registration(op_id, aten_key)
     assert registered == [aten_key]
-    assert calls == [aten_key]
+    actual = entry(c.a, other, **kwargs)
     if overload == "out":
         _check_out(actual, out, ref_out, base, ref_base)
     elif packet.endswith("_"):

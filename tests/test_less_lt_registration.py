@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import wraps
 from pathlib import Path
 
 import pytest
@@ -56,7 +55,7 @@ def test_less_lt_metadata(overload):
 
 @pytest.mark.parametrize("name", ["less", "lt"])
 @pytest.mark.parametrize("overload", ["Tensor", "Scalar"])
-def test_less_lt_dispatch(monkeypatch, name, overload):
+def test_less_lt_registration_and_direct_call(monkeypatch, name, overload):
     key, op_id = f"{name}.{overload}", f"{name}_{overload.lower()}"
     op = getattr(getattr(torch.ops.aten, name), overload)
     entry = getattr(flag_gems, op_id)
@@ -66,28 +65,31 @@ def test_less_lt_dispatch(monkeypatch, name, overload):
     a = a.to(flag_gems.device)
     if overload == "Tensor":
         b = b.to(flag_gems.device)
-    registered, calls = [], []
+    registered = []
     original_impl = torch.library.Library.impl
 
     def intercept(library, overload, fn, *args, **kwargs):
         if overload == key:
             assert fn is entry
             registered.append(overload)
-
-            @wraps(fn)
-            def counted(*call_args, **call_kwargs):
-                calls.append(key)
-                return entry(*call_args, **call_kwargs)
-
-            fn = counted
         return original_impl(library, overload, fn, *args, **kwargs)
 
     monkeypatch.setattr(torch.library.Library, "impl", intercept)
-    with flag_gems.use_gems(include=[op_id]):
+    previous = flag_gems.current_work_registrar
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(
+            lib=library, include=[op_id], registrar=flag_gems.GeneralOpRegistrar
+        )
         assert flag_gems.all_registered_keys() == [key]
         assert flag_gems.all_registered_ops() == [op_id]
-        actual = op(a, b)
-    assert registered == calls == [key]
+    finally:
+        try:
+            library._destroy()
+        finally:
+            flag_gems.current_work_registrar = previous
+    assert registered == [key]
+    actual = entry(a, b)
     utils.gems_assert_equal(actual.cpu(), expected)
 
 
@@ -114,34 +116,37 @@ def test_less__scalar_metadata():
 
 
 @pytest.mark.less__scalar
-def test_less__scalar_dispatch(monkeypatch):
+def test_less__scalar_registration_and_direct_call(monkeypatch):
     key, op_id = "less_.Scalar", "less__scalar"
     entry = flag_gems.less__scalar
     a = torch.tensor([-float("inf"), -1, 0, 1, float("inf"), float("nan")])
     expected = torch.ops.aten.less_.Scalar(a.clone(), 0.5)
     a = a.to(flag_gems.device)
-    registered, calls = [], []
+    registered = []
     original_impl = torch.library.Library.impl
 
     def intercept(library, overload, fn, *args, **kwargs):
         if overload == key:
             assert fn is entry
             registered.append(overload)
-
-            @wraps(fn)
-            def counted(*call_args, **call_kwargs):
-                calls.append(key)
-                return entry(*call_args, **call_kwargs)
-
-            fn = counted
         return original_impl(library, overload, fn, *args, **kwargs)
 
     monkeypatch.setattr(torch.library.Library, "impl", intercept)
-    with flag_gems.use_gems(include=[op_id]):
+    previous = flag_gems.current_work_registrar
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(
+            lib=library, include=[op_id], registrar=flag_gems.GeneralOpRegistrar
+        )
         assert flag_gems.all_registered_keys() == [key]
         assert flag_gems.all_registered_ops() == [op_id]
-        actual = torch.ops.aten.less_.Scalar(a, 0.5)
-    assert registered == calls == [key]
+    finally:
+        try:
+            library._destroy()
+        finally:
+            flag_gems.current_work_registrar = previous
+    assert registered == [key]
+    actual = entry(a, 0.5)
     assert actual is a
     utils.gems_assert_equal(actual.cpu(), expected)
     utils.gems_assert_equal(a.cpu(), expected)

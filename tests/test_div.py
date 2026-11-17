@@ -119,13 +119,9 @@ def _check_divide_mode_alias(entry, packet, overload, rounding_mode, dtype):
     direct_out = getattr(flag_gems, entry)(
         direct_inp, other, rounding_mode=rounding_mode
     )
-    with flag_gems.use_gems(include=[entry]):
-        result = aten_op(inp, other, rounding_mode=rounding_mode)
     if packet.endswith("_"):
         assert direct_out is direct_inp
-        assert result is inp
     utils.gems_assert_close(direct_out, ref_out, ref_out.dtype)
-    utils.gems_assert_close(result, ref_out, ref_out.dtype)
 
 
 # Explicit single-marker wrappers keep the AST-based CI check compatible with

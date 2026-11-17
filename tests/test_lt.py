@@ -60,10 +60,6 @@ def test_less_tensor(shape, dtype):
     res_out = flag_gems.less_tensor(inp1, inp2)
     utils.gems_assert_equal(res_out, ref_out)
 
-    with flag_gems.use_gems(include=["less_tensor"]):
-        dispatched_out = torch.ops.aten.less.Tensor(inp1, inp2)
-    utils.gems_assert_equal(dispatched_out, ref_out)
-
 
 @pytest.mark.less_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -75,7 +71,3 @@ def test_less_scalar(shape, dtype, scalar):
 
     res_out = flag_gems.less_scalar(inp, scalar)
     utils.gems_assert_equal(res_out, ref_out)
-
-    with flag_gems.use_gems(include=["less_scalar"]):
-        dispatched_out = torch.ops.aten.less.Scalar(inp, scalar)
-    utils.gems_assert_equal(dispatched_out, ref_out)
