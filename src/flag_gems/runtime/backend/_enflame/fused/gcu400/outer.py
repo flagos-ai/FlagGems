@@ -44,9 +44,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
+
 from ...gcu400.ops.mul import mul
 from ...gcu400.ops.mv import mv
-from flag_gems.runtime import device as runtime_device
 
 logger = logging.getLogger(__name__)
 
