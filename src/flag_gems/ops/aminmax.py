@@ -39,6 +39,24 @@ def _maximum_with_nan(a, b):
     return tl.maximum(a, b, propagate_nan=tl.PropagateNan.ALL)
 
 
+@triton.jit
+def _reduce_min_with_nan(x):
+    if x.dtype.is_floating():
+        if x.dtype.primitive_bitwidth < 32:
+            x = x.to(tl.float32)
+        return tl.reduce(x, 0, _minimum_with_nan)
+    return tl.min(x, 0)
+
+
+@triton.jit
+def _reduce_max_with_nan(x):
+    if x.dtype.is_floating():
+        if x.dtype.primitive_bitwidth < 32:
+            x = x.to(tl.float32)
+        return tl.reduce(x, 0, _maximum_with_nan)
+    return tl.max(x, 0)
+
+
 @libentry()
 @triton.jit
 def aminmax_kernel_1(
@@ -58,8 +76,8 @@ def aminmax_kernel_1(
     min_val = tl.load(inp_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(inp_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.reduce(min_val, 0, _minimum_with_nan)
-    max_val = tl.reduce(max_val, 0, _maximum_with_nan)
+    min_val = _reduce_min_with_nan(min_val)
+    max_val = _reduce_max_with_nan(max_val)
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
@@ -81,8 +99,8 @@ def aminmax_kernel_2(
     min_val = tl.load(min_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(max_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.reduce(min_val, 0, _minimum_with_nan)
-    max_val = tl.reduce(max_val, 0, _maximum_with_nan)
+    min_val = _reduce_min_with_nan(min_val)
+    max_val = _reduce_max_with_nan(max_val)
 
     tl.store(min_out, min_val)
     tl.store(max_out, max_val)
