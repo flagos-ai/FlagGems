@@ -47,6 +47,12 @@ def _make_coo(nnd, nnz, size, seed=0):
     return torch.sparse_coo_tensor(indices, values, size)
 
 
+def _sparse_dim_dispatch_keys():
+    device_type = torch.device(flag_gems.device).type
+    backend = torch._C._dispatch_key_for_device(device_type)
+    return backend, "Sparse" + backend, "SparseCsr" + backend
+
+
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize("shape", STRIDED_SHAPES)
 def test_sparse_dim_strided(shape):
@@ -97,7 +103,8 @@ def test_sparse_dim_sparse_compressed():
     val = torch.randn(4, device=flag_gems.device)
 
     csr = torch.sparse_csr_tensor(c, cc, val, (2, 3))
-    csc = torch.sparse_csc_tensor(cc, c, val, (2, 3))
+    ccol = torch.tensor([0, 2, 4, 4], dtype=torch.int64, device=flag_gems.device)
+    csc = torch.sparse_csc_tensor(ccol, cc, val, (2, 3), check_invariants=True)
     for name, t in [("csr", csr), ("csc", csc)]:
         res_out = flag_gems.sparse_dim(t)
         # ATen contract: compressed layouts always have sparse_dim == 2,
@@ -187,22 +194,25 @@ def test_sparse_dim_dispatch_sentinel():
         return flag_gems.sparse_dim(self)
 
     lib = torch.library.Library("aten", "IMPL")
-    for key in ("CUDA", "SparseCUDA", "SparseCsrCUDA"):
-        lib.impl("sparse_dim", sentinel, key)
+    try:
+        for key in _sparse_dim_dispatch_keys():
+            lib.impl("sparse_dim", sentinel, key)
 
-    dev = flag_gems.device
-    t = torch.randn(2, 3, device=dev)
-    coo = _make_coo(2, 3, (2, 3), seed=13).to(dev)
-    row = torch.tensor([0, 2, 4], dtype=torch.int64, device=dev)
-    col = torch.tensor([0, 1, 0, 1], dtype=torch.int64, device=dev)
-    csr = torch.sparse_csr_tensor(row, col, torch.randn(4, device=dev), (2, 3))
+        dev = flag_gems.device
+        t = torch.randn(2, 3, device=dev)
+        coo = _make_coo(2, 3, (2, 3), seed=13).to(dev)
+        row = torch.tensor([0, 2, 4], dtype=torch.int64, device=dev)
+        col = torch.tensor([0, 1, 0, 1], dtype=torch.int64, device=dev)
+        csr = torch.sparse_csr_tensor(row, col, torch.randn(4, device=dev), (2, 3))
 
-    assert torch.ops.aten.sparse_dim(t) == 0
-    assert torch.ops.aten.sparse_dim(coo) == 2
-    assert torch.ops.aten.sparse_dim(csr) == 2
+        assert torch.ops.aten.sparse_dim(t) == 0
+        assert torch.ops.aten.sparse_dim(coo) == 2
+        assert torch.ops.aten.sparse_dim(csr) == 2
 
-    assert set(hits) == {"torch.strided", "torch.sparse_coo", "torch.sparse_csr"}
-    assert len(hits) == 3
+        assert set(hits) == {"torch.strided", "torch.sparse_coo", "torch.sparse_csr"}
+        assert len(hits) == 3
+    finally:
+        lib._destroy()
 
 
 def _resolve_dense_dim():
@@ -234,39 +244,42 @@ def test_sparse_dim_coexistence():
     dense_dim = _resolve_dense_dim()
 
     lib = torch.library.Library("aten", "IMPL")
-    for key in ("CUDA", "SparseCUDA", "SparseCsrCUDA"):
-        lib.impl("sparse_dim", flag_gems.sparse_dim, key)
-        lib.impl("dense_dim", dense_dim, key)
+    try:
+        for key in _sparse_dim_dispatch_keys():
+            lib.impl("sparse_dim", flag_gems.sparse_dim, key)
+            lib.impl("dense_dim", dense_dim, key)
 
-    t = torch.randn(3, 4, device=flag_gems.device)
-    sparse = _make_coo(2, 5, (2, 3), seed=11).to(flag_gems.device)
-    csr = sparse.to_sparse_csr()
-    hybrid = torch.sparse_coo_tensor(
-        torch.tensor([[0, 1]]), torch.randn(2, 3), (2, 3)
-    ).to(flag_gems.device)
+        t = torch.randn(3, 4, device=flag_gems.device)
+        sparse = _make_coo(2, 5, (2, 3), seed=11).to(flag_gems.device)
+        csr = sparse.to_sparse_csr()
+        hybrid = torch.sparse_coo_tensor(
+            torch.tensor([[0, 1]]), torch.randn(2, 3), (2, 3)
+        ).to(flag_gems.device)
 
-    # Repeated dispatcher-routed calls: a recursion bug surfaces here.
-    for _ in range(3):
-        assert torch.ops.aten.sparse_dim(t) == 0
-        assert torch.ops.aten.sparse_dim(sparse) == 2
-        assert torch.ops.aten.sparse_dim(csr) == 2
-        assert torch.ops.aten.sparse_dim(hybrid) == 1
+        # Repeated dispatcher-routed calls: a recursion bug surfaces here.
+        for _ in range(3):
+            assert torch.ops.aten.sparse_dim(t) == 0
+            assert torch.ops.aten.sparse_dim(sparse) == 2
+            assert torch.ops.aten.sparse_dim(csr) == 2
+            assert torch.ops.aten.sparse_dim(hybrid) == 1
 
-        assert torch.ops.aten.dense_dim(t) == 2
-        assert torch.ops.aten.dense_dim(sparse) == 0
-        assert torch.ops.aten.dense_dim(csr) == 0
-        assert torch.ops.aten.dense_dim(hybrid) == 1
+            assert torch.ops.aten.dense_dim(t) == 2
+            assert torch.ops.aten.dense_dim(sparse) == 0
+            assert torch.ops.aten.dense_dim(csr) == 0
+            assert torch.ops.aten.dense_dim(hybrid) == 1
 
-        # Cross-op dispatch in between must not re-route either operator.
-        assert torch.ops.aten._nnz(sparse) == 5
-        assert torch.ops.aten.sparse_dim(sparse) == 2
+            # Cross-op dispatch in between must not re-route either operator.
+            assert torch.ops.aten._nnz(sparse) == 5
+            assert torch.ops.aten.sparse_dim(sparse) == 2
 
-    # Bound accessors on the tensors themselves must also reach the
-    # registered implementations (this is the path that used to recurse).
-    assert sparse.sparse_dim() == 2
-    assert sparse.dense_dim() == 0
-    assert t.sparse_dim() == 0
-    assert flag_gems.sparse_dim(hybrid) == 1
+        # Bound accessors on the tensors themselves must also reach the
+        # registered implementations (this is the path that used to recurse).
+        assert sparse.sparse_dim() == 2
+        assert sparse.dense_dim() == 0
+        assert t.sparse_dim() == 0
+        assert flag_gems.sparse_dim(hybrid) == 1
+    finally:
+        lib._destroy()
 
 
 @pytest.mark.sparse_dim
