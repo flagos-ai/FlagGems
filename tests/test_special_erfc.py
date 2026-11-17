@@ -64,3 +64,15 @@ def test_erfc_byte(shape, dtype):
     ref_out = torch.ops.aten.erfc(ref_x)
     act_out = flag_gems.erfc(x)
     utils.gems_assert_close(act_out, ref_out, torch.float32, equal_nan=True)
+
+
+@pytest.mark.erfc_
+def test_erfc_int_rejects_inplace():
+    # torch.erfc_ rejects integral inputs -- "result type Float can't be
+    # cast to the desired output type Int"; so does FlagGems.
+    x = torch.tensor([1, 2, 3], dtype=torch.int32, device=flag_gems.device)
+    ref_x = x.cpu()
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.erfc_(ref_x)
+    with pytest.raises(RuntimeError):
+        flag_gems.erfc_(x)

@@ -108,3 +108,34 @@ def test_greater_equal__byte_scalar(shape, dtype):
 
     assert res_out.dtype == ref_out.dtype
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.greater_equal_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_greater_equal_scalar_(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = 0
+    ref_inp1 = utils.to_reference(inp1.clone())
+
+    ref_out = ref_inp1.greater_equal_(inp2)
+    res_out = flag_gems.greater_equal_scalar_(inp1, inp2)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.greater_equal_scalar_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_greater_equal_scalar__byte(shape, dtype):
+    # In-place compare with an integral tensor keeps the tensor dtype.
+    inp1 = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = 4
+    ref_inp1 = utils.to_reference(inp1.clone())
+
+    ref_out = ref_inp1.greater_equal_(inp2)
+    res_out = flag_gems.greater_equal_scalar_(inp1, inp2)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out, ref_out)

@@ -939,6 +939,8 @@ from flag_gems.ops.greater_equal import (
     greater_equal,
     greater_equal_,
     greater_equal_scalar,
+    greater_equal_scalar_,
+    greater_equal_tensor_,
 )
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler import grid_sampler
@@ -2641,6 +2643,8 @@ __all__ = [
     "greater_equal",
     "greater_equal_",
     "greater_equal_scalar",
+    "greater_equal_scalar_",
+    "greater_equal_tensor_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",

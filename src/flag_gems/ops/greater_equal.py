@@ -47,3 +47,17 @@ def greater_equal_(A, B):
     if isinstance(B, torch.Tensor):
         return ge_func(A, B, out0=A)
     return ge_func_scalar(A, B, out0=A)
+
+
+def greater_equal_tensor_(A, B):
+    logger.debug("GEMS GREATER_EQUAL_TENSOR_")
+    return greater_equal_(A, B)
+
+
+def greater_equal_scalar_(A, B):
+    logger.debug("GEMS GREATER_EQUAL_SCALAR_")
+    # Triton's generated store path cannot cast the bool result back to a
+    # float8 element type, matching the native not-implemented behaviour.
+    if A.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        raise NotImplementedError("greater_equal_ is not implemented for fp8 inputs")
+    return ge_func_scalar(A, B, out0=A)

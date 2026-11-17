@@ -94,3 +94,34 @@ def test_clamp_max_uint8_int_scalar(shape, max, dtype):
         ref_out = torch.clamp_max(ref_inp, max)
         res_out = flag_gems.clamp_max(inp, max)
         utils.gems_assert_close(res_out, ref_out, torch.int8)
+
+
+@pytest.mark.clamp_max
+def test_clamp_max_int8_overflow_scalar():
+    # Values outside the dtype range are rejected before dispatch, matching
+    # native "value cannot be converted to type int8_t without overflow".
+    inp = torch.tensor([1, 2, 3], dtype=torch.int8, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.clamp_max(inp, 200)
+    with pytest.raises(RuntimeError):
+        flag_gems.clamp_max(inp, 200)
+
+
+@pytest.mark.clamp_max
+def test_clamp_max_uint8_overflow_scalar():
+    # Negative scalars outside [-255, 255] are rejected for uint8 as well.
+    inp = torch.tensor([1, 2, 3], dtype=torch.uint8, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.clamp_max(inp, -256)
+    with pytest.raises(RuntimeError):
+        flag_gems.clamp_max(inp, -256)
+
+
+@pytest.mark.clamp_max
+def test_clamp_max_uint8_boundary_scalar():
+    # The accepted range endpoints for uint8 integral scalars.
+    inp = torch.tensor([1, 2, 3], dtype=torch.uint8, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.clamp_max(ref_inp, 255)
+    res_out = flag_gems.clamp_max(inp, 255)
+    utils.gems_assert_close(res_out, ref_out, torch.uint8)

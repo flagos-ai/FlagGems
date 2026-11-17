@@ -114,15 +114,17 @@ def test_lgamma_(shape, dtype):
     utils.gems_assert_close(inp.cpu(), ref_inp, dtype)
 
 
-@pytest.mark.lgamma
+@pytest.mark.lgamma_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
-def test_lgamma_byte(shape, dtype):
-    # torch promotes integral lgamma inputs to float32.
+def test_lgamma_byte_(shape, dtype):
+    # torch promotes integral lgamma inputs to float32, so the in-place
+    # variant rejects them -- matching native "result type Float can't
+    # be cast to the desired output type Int".
     inp = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.lgamma(ref_inp)
-    res_out = flag_gems.lgamma(inp)
-
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    with pytest.raises(RuntimeError):
+        ref_inp.lgamma_()
+    with pytest.raises(RuntimeError):
+        flag_gems.lgamma_(inp)
