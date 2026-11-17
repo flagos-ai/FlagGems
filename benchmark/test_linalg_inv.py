@@ -33,6 +33,17 @@ _BENCH_SHAPES = [
     (16, 7, 57, 32, 32),
 ]
 
+_MASTER_SHAPES = [
+    (2, 2),
+    (1, 3, 3),
+    (2, 4, 4),
+    (2, 3, 5, 5),
+    (1, 7, 7),
+    (3, 3, 3),
+    (2, 2, 4, 4),
+    (4, 6, 6),
+]
+
 # Measured dtype support on the active backend: float32 / complex64 always,
 # float64 / complex128 when the device reports fp64 support. fp16 and bf16 are
 # rejected ('Low precision dtypes not supported') and int / bool raise
@@ -71,8 +82,9 @@ def _validated_shape(descriptor):
 
 
 def _case_fn(shape, dtype):
-    del dtype
     shape = _validated_shape(shape)
+    if shape in _MASTER_SHAPES and dtype not in (torch.float32, torch.float64):
+        return
     yield base.BenchmarkCasePlan(
         shape={"input": shape},
         params={"matrix_size": shape[-1]},
@@ -87,6 +99,10 @@ def _build_inputs_fn(plan, dtype, device):
         # An empty matrix or an empty batch is a valid input; there is nothing to
         # condition, and a reduction over the empty matrix dimensions would fail.
         return torch.empty(shape, dtype=dtype, device=device), {}
+    if shape in _MASTER_SHAPES:
+        raw = torch.randn(shape, dtype=dtype, device=device)
+        eye = torch.eye(n, dtype=dtype, device=device)
+        return raw @ raw.transpose(-1, -2) + 3.0 * eye, {}
     # Well-conditioned dense input: unit-scaled values shifted by (n + 0.5) * I
     # keep the benchmark matrix invertible for every supported dtype.
     inp = torch.randn(shape, dtype=dtype, device=device)
@@ -102,7 +118,7 @@ class LinalgInvBenchmark(OperatorBenchmark):
         # Defaults live here and stay overridable by an op / class entry in the
         # shapes file, which also keeps the generic extra shapes out of this
         # operator's case list.
-        super().set_shapes(shape_file_path, default_shapes=_BENCH_SHAPES)
+        super().set_shapes(shape_file_path, default_shapes=_BENCH_SHAPES + _MASTER_SHAPES)
 
 
 @pytest.mark.linalg_inv
@@ -112,7 +128,6 @@ def test_linalg_inv():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.linalg_inv,
-        gems_op=getattr(flag_gems, "linalg_inv", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()
