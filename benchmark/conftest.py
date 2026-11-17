@@ -391,7 +391,7 @@ def pytest_addoption(parser):
         required=False,
         help=(
             "Path to a model-profiling shapes YAML "
-            "(e.g. benchmark/model_shapes/285B.yaml). "
+            "(e.g. benchmark/models_shapes/285B.yaml). "
             "When provided: (1) --shape_file is overridden with this path, "
             "so only shapes defined in the YAML are benchmarked; "
             "(2) each op's profiling.prefill/decode metadata (pct, calls) "
