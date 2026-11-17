@@ -163,6 +163,9 @@ MaxOut = namedtuple("max", ["values", "indices"])
 class MaxFunction(torch.autograd.Function):
     """Autograd wrapper for ``torch.max(inp)``.
 
+    The Triton backward is first-order and does not build a graph for a
+    further derivative with respect to the incoming gradient.
+
     ATen's global ``max`` derivative is the C++ helper
     ``evenly_distribute_backward``; it is not a registered ATen operator, so the
     only way to route this backward through a Triton kernel is to carry the
@@ -187,6 +190,8 @@ class MaxFunction(torch.autograd.Function):
 
 class MaxDimFunction(torch.autograd.Function):
     """Autograd wrapper for ``torch.max(inp, dim, keepdim)``.
+
+    The Triton backward is first-order and does not build a double-backward graph.
 
     ``indices`` is an integer output and is marked non-differentiable, matching
     the native contract. ``backward`` scatters the values gradient onto the
@@ -245,7 +250,7 @@ def max_backward_lastdim_kernel(
     row count easily exceeds the 65535 limit of a CUDA y dimension.
     """
     row = ext.program_id(0)
-    offsets = ext.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    offsets = ext.program_id(1).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < N
     grad = tl.load(grad_ptr + row)
     index = tl.load(index_ptr + row)
@@ -284,9 +289,9 @@ def max_backward_tile_kernel(
     grad = tl.load(grad_ptr + flat, mask=column_mask, other=0.0)
     zero = tl.zeros_like(grad)
     base = out_ptr + outer.to(tl.int64) * (reduction * inner) + column
-    start = pid_r * chunk
+    start = pid_r.to(tl.int64) * chunk
     for offset_r in range(start, start + chunk, BR):
-        rows = offset_r + tl.arange(0, BR)
+        rows = offset_r.to(tl.int64) + tl.arange(0, BR)
         row_mask = rows < reduction
         hit = (rows.to(tl.int64)[:, None] == index[None, :]) & row_mask[:, None]
         value = tl.where(hit, grad[None, :], zero[None, :])
@@ -307,7 +312,7 @@ def evenly_distribute_count_kernel(
     BLOCK: tl.constexpr,
 ):
     pid = ext.program_id(0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
     result = tl.load(result_ptr)
     nan_result = result != result
@@ -328,7 +333,7 @@ def evenly_distribute_fill_kernel(
     BLOCK: tl.constexpr,
 ):
     pid = ext.program_id(0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
     result = tl.load(result_ptr)
     nan_result = result != result
@@ -375,7 +380,7 @@ def evenly_distribute_slab_kernel(
     single-match block.
     """
     pid = ext.program_id(0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_elements
     result = tl.load(result_ptr)
     nan_result = result != result
@@ -425,7 +430,7 @@ def evenly_distribute_scale_kernel(
     elif local > 1:
         result = tl.load(result_ptr)
         nan_result = result != result
-        offsets = pid * BLOCK + tl.arange(0, BLOCK)
+        offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
         mask = offsets < n_elements
         values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
         match = ((values == result) | ((values != values) & nan_result)) & mask
@@ -566,7 +571,8 @@ def evenly_distribute_backward(grad_output, self, result):
                 block_partials,
             )
         else:
-            count = torch.zeros([], dtype=torch.int32, device=inp.device)
+            count_dtype = torch.int64 if n_elements > 2147483647 else torch.int32
+            count = torch.zeros([], dtype=count_dtype, device=inp.device)
             grid = (n_partials,)
             evenly_distribute_count_kernel[grid](inp, value, count, n_elements, block)
             evenly_distribute_fill_kernel[grid](
