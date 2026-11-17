@@ -216,3 +216,222 @@ def test__shape_as_tensor_rejects_non_tensor_input():
             torch.ops.aten._shape_as_tensor(bad)
         with pytest.raises((TypeError, ValueError, RuntimeError)):
             flag_gems._shape_as_tensor(bad)
+
+
+def _make_coo(nnd, nnz, size, seed=0):
+    gen = torch.Generator().manual_seed(seed)
+    numel = 1
+    for s in size[:nnd]:
+        numel *= s
+    flat = torch.randperm(numel, generator=gen)[:nnz]
+    indices = torch.empty((nnd, nnz), dtype=torch.int64)
+    for d in reversed(range(nnd)):
+        indices[d] = flat % size[d]
+        flat = flat // size[d]
+    # Deliberately unsorted: uncoalesced COO must return the same metadata.
+    values = torch.randn(nnz, generator=gen)
+    return torch.sparse_coo_tensor(indices, values, size)
+
+
+@pytest.mark.underscore_shape_as_tensor
+@pytest.mark.parametrize("shape", [(), (5,), (2, 3), (2, 3, 4), (2, 3, 4, 5, 6)])
+def test__shape_as_tensor_master_strided(shape):
+    inp = torch.randn(shape, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
+    res_out = flag_gems._shape_as_tensor(inp)
+
+    assert res_out.shape == (inp.dim(),)
+    assert res_out.dtype == torch.int64
+    assert res_out.device.type == "cpu"
+    assert res_out.is_contiguous()
+    assert res_out._base is None
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_noncontiguous():
+    inp = torch.randn(4, 6, device=flag_gems.device).t()
+    assert not inp.is_contiguous()
+
+    ref_out = torch.ops.aten._shape_as_tensor(utils.to_reference(inp))
+    res_out = flag_gems._shape_as_tensor(inp)
+    assert res_out.tolist() == [6, 4]
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_sparse_coo():
+    cases = [
+        ("plain", _make_coo(2, 3, (2, 3), seed=1).coalesce(), [2, 3]),
+        ("1d", _make_coo(1, 3, (3,), seed=2), [3]),
+        (
+            "hybrid",
+            torch.sparse_coo_tensor(torch.tensor([[0, 1]]), torch.randn(2, 3), (2, 3)),
+            [2, 3],
+        ),
+        (
+            "zero-nnz",
+            torch.sparse_coo_tensor(
+                torch.zeros(2, 0, dtype=torch.int64),
+                torch.zeros(0),
+                (2, 3),
+            ),
+            [2, 3],
+        ),
+        ("uncoalesced", _make_coo(2, 4, (2, 3), seed=3), [2, 3]),
+    ]
+    for name, sparse, expected in cases:
+        sparse = sparse.to(flag_gems.device)
+        ref_sparse = utils.to_reference(sparse)
+        ref_out = torch.ops.aten._shape_as_tensor(ref_sparse)
+        res_out = flag_gems._shape_as_tensor(sparse)
+        assert res_out.tolist() == expected, f"{name}: {res_out} != {expected}"
+        assert res_out.device.type == "cpu"
+        utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_sparse_compressed():
+    row = torch.tensor([0, 2, 4], dtype=torch.int64, device=flag_gems.device)
+    col = torch.tensor([0, 1, 0, 1], dtype=torch.int64, device=flag_gems.device)
+    val = torch.randn(4, device=flag_gems.device)
+
+    csr = torch.sparse_csr_tensor(row, col, val, (2, 3))
+    ccol = torch.tensor([0, 2, 4, 4], dtype=torch.int64, device=flag_gems.device)
+    csc = torch.sparse_csc_tensor(ccol, col, val, (2, 3), check_invariants=True)
+    bsr = torch.randn(4, 4, device=flag_gems.device).to_sparse_bsr((2, 2))
+    bsc = torch.randn(4, 4, device=flag_gems.device).to_sparse_bsc((2, 2))
+    empty_nnz = torch.sparse_csr_tensor(
+        torch.tensor([0, 0, 0], dtype=torch.int64, device=flag_gems.device),
+        torch.zeros(0, dtype=torch.int64, device=flag_gems.device),
+        torch.zeros(0, device=flag_gems.device),
+        (2, 3),
+    )
+    for name, t, expected in [
+        ("csr", csr, [2, 3]),
+        ("csc", csc, [2, 3]),
+        ("bsr", bsr, [4, 4]),
+        ("bsc", bsc, [4, 4]),
+        ("csr-empty", empty_nnz, [2, 3]),
+    ]:
+        res_out = flag_gems._shape_as_tensor(t)
+        assert res_out.tolist() == list(t.shape), f"{name}: {res_out} != {t.shape}"
+        assert res_out.tolist() == expected, f"{name}: {res_out} != {expected}"
+        assert res_out.device.type == "cpu"
+        ref_out = torch.ops.aten._shape_as_tensor(utils.to_reference(t))
+        utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_matches_reference_table():
+    # Reference values captured in a process that never imported flag_gems
+    # (un-substituted environment, H20 build): result values, dtype, device
+    # and rank pinned as literals.
+    dev = flag_gems.device
+
+    res = flag_gems._shape_as_tensor(torch.randn(2, 3, device=dev))
+    assert res.tolist() == [2, 3]
+    assert res.dtype == torch.int64
+    assert res.device.type == "cpu"
+
+    coo = _make_coo(2, 3, (2, 3), seed=5).to(dev)
+    assert flag_gems._shape_as_tensor(coo).tolist() == [2, 3]
+
+    hybrid = torch.sparse_coo_tensor(
+        torch.tensor([[0, 1]]), torch.randn(2, 3), (2, 3)
+    ).to(dev)
+    assert flag_gems._shape_as_tensor(hybrid).tolist() == [2, 3]
+
+    csr = coo.to_sparse_csr()
+    assert flag_gems._shape_as_tensor(csr).tolist() == [2, 3]
+
+    zero = flag_gems._shape_as_tensor(torch.tensor(2.5, device=dev))
+    assert zero.shape == (0,) and zero.dtype == torch.int64
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_fresh_storage_and_resize_independence():
+    # Native returns a freshly allocated tensor: it never aliases ``self``
+    # and later resizes of ``self`` must not retroactively change it.
+    t = torch.randn(6, 7, device=flag_gems.device)
+    res = flag_gems._shape_as_tensor(t)
+
+    assert res.dtype == torch.int64
+    assert res.shape == (2,)
+    assert res.device.type == "cpu"
+    assert res.is_contiguous()
+    assert res._base is None
+
+    t.resize_(3, 4)
+    assert res.tolist() == [6, 7]
+
+    ref = torch.ops.aten._shape_as_tensor(utils.to_reference(t))
+    assert ref.tolist() == [3, 4]
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_device_is_cpu_for_cuda_input():
+    # Measured native rule: the C++ kernel builds the result from
+    # TensorOptions(at::kLong) without a device, so the result is a CPU
+    # tensor even for accelerator inputs (and for meta inputs). This is the
+    # observable difference from device=self.device, which would be wrong.
+    dev = flag_gems.device
+    if dev == "cpu":
+        pytest.skip("requires an accelerator input to observe the rule")
+    res = flag_gems._shape_as_tensor(torch.randn(2, 3, device=dev))
+    ref = torch.ops.aten._shape_as_tensor(
+        utils.to_reference(torch.randn(2, 3, device=dev))
+    )
+    assert res.device.type == "cpu"
+    assert ref.device.type == "cpu"
+    assert res.device == ref.device
+    assert res.tolist() == [2, 3]
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_quantized():
+    dev = flag_gems.device
+    q = torch.quantize_per_tensor(torch.randn(2, 3, device=dev), 0.1, 10, torch.quint8)
+    res_q = flag_gems._shape_as_tensor(q)
+    ref_q = torch.ops.aten._shape_as_tensor(utils.to_reference(q))
+    assert res_q.tolist() == [2, 3]
+    utils.gems_assert_equal(res_q, ref_q)
+
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_pinned():
+    # A pinned CPU tensor is still a plain strided tensor.
+    pinned = torch.empty(5, pin_memory=True)
+    res_p = flag_gems._shape_as_tensor(pinned)
+    ref_p = torch.ops.aten._shape_as_tensor(pinned)
+    assert res_p.tolist() == [5]
+    assert res_p.device.type == "cpu"
+    utils.gems_assert_equal(res_p, ref_p)
+
+
+@pytest.mark.underscore_shape_as_tensor
+def test__shape_as_tensor_master_disjoint_from_native_neighbors():
+    # The implementation must not re-dispatch the operator it implements
+    # (registered on backend keys, an internal aten re-entry would recurse
+    # into this very kernel), and it must not depend on related metadata ops
+    # being overridden. Dispatch a related aten op around the calls: no
+    # shared mutable state exists, results must stay correct.
+    dev = flag_gems.device
+    t = torch.randn(3, 4, device=dev)
+    sparse = _make_coo(2, 5, (2, 3), seed=7).to(dev)
+    csr = sparse.to_sparse_csr()
+
+    for _ in range(3):
+        assert flag_gems._shape_as_tensor(t).tolist() == [3, 4]
+        assert flag_gems._shape_as_tensor(sparse).tolist() == [2, 3]
+        assert flag_gems._shape_as_tensor(csr).tolist() == [2, 3]
+
+    # Cross-op sanity: dispatching a related metadata op afterwards must not
+    # corrupt or re-route shape_as_tensor.
+    nnz = torch.ops.aten._nnz(sparse)
+    assert nnz == 5
+    assert flag_gems._shape_as_tensor(sparse).tolist() == [2, 3]
+    assert flag_gems._shape_as_tensor(t).tolist() == [3, 4]

@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -34,10 +32,12 @@ _SHAPE_AS_TENSOR_SHAPES = [
     (16, 1024, 1024, 16),
     (16, 7, 57, 32, 29),
 ]
+_MASTER_SHAPES = [(16,), (1024,), (65536,), (1048576,)]
 
 
 def _case_fn(shape, dtype):
-    del dtype
+    if dtype not in consts.FLOAT_DTYPES and shape not in _MASTER_SHAPES:
+        return
     yield base.BenchmarkCasePlan(
         shape={"input": shape},
         params={},
@@ -55,7 +55,8 @@ class ShapeAsTensorBenchmark(OperatorBenchmark):
     """Two-phase GenericBenchmark with shapes tuned for _shape_as_tensor."""
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_SHAPE_AS_TENSOR_SHAPES)
+        shapes = list(dict.fromkeys(_SHAPE_AS_TENSOR_SHAPES + _MASTER_SHAPES))
+        super().set_shapes(shape_file_path, default_shapes=shapes)
 
 
 @pytest.mark.underscore_shape_as_tensor
@@ -65,11 +66,6 @@ def test__shape_as_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._shape_as_tensor,
-        # flag_gems has no public ``_shape_as_tensor`` direct callable yet; the
-        # candidate is supplied by the KernelGen process-local override keyed on
-        # the public operator name (resolved via
-        # Benchmark._candidate_call inside the benchmark runner).
-        gems_op=getattr(flag_gems, "_shape_as_tensor", None),
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
