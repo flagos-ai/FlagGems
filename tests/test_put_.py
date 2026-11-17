@@ -419,8 +419,7 @@ def test_put__index_out_of_range(bad):
     # than `tl.device_assert` (which is compiled out unless TRITON_DEBUG=1).
     # A tripped device assert poisons the CUDA context for the whole process, so
     # the failure is exercised in an isolated subprocess.
-    code = textwrap.dedent(
-        f"""
+    code = textwrap.dedent(f"""
         import torch
         import flag_gems
 
@@ -433,8 +432,7 @@ def test_put__index_out_of_range(bad):
         inp.put_(index, source)
         torch.cuda.synchronize()
         print("NO_ERROR")
-        """
-    )
+        """)
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
     # The GCU driver dumps a ~500 MB device coredump when the SIP assert this test
     # deliberately trips fires; disable it so the crash subprocess doesn't litter
