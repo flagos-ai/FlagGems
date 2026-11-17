@@ -162,3 +162,31 @@ def test_igammac_out():
         dtypes=_IGAMMAC_DTYPES,
     )
     bench.run()
+
+
+def igammac_backward_input_fn(shape, dtype, device):
+    grad = torch.randn(shape, dtype=dtype, device=device)
+    a = torch.rand(shape, dtype=dtype, device=device) * 10 + 0.1
+    x = torch.rand(shape, dtype=dtype, device=device) * 10 + 0.1
+    yield grad, a, x
+
+
+def igammac_backward_ref(grad, a, x):
+    # aten registers no igammac gradient; the analytic derivative is the baseline.
+    a_f = a.float()
+    x_f = x.float()
+    grad_f = grad.float()
+    dx = -grad_f * torch.exp((a_f - 1.0) * torch.log(x_f) - x_f - torch.lgamma(a_f))
+    return dx.to(grad.dtype)
+
+
+@pytest.mark.igammac_backward
+def test_igammac_backward():
+    bench = base.GenericBenchmark(
+        op_name="igammac_backward",
+        torch_op=igammac_backward_ref,
+        input_fn=igammac_backward_input_fn,
+        dtypes=[torch.float32],
+    )
+    bench.set_gems(flag_gems.igammac_backward)
+    bench.run()
