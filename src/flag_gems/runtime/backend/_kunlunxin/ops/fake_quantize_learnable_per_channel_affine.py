@@ -294,6 +294,9 @@ def _fake_quantize_learnable_per_channel_affine(
             if si is not None and so is not None:
                 if (
                     inner >= _CHANNEL_MIN_INNER
+                    # KLX FP16 scalar-scale splats fail XPU unpack lowering.
+                    # The flat path loads vector scales and supports FP16.
+                    and x.dtype != torch.float16
                     and C <= _GRID_MAX_YZ
                     and outer <= _GRID_MAX_YZ
                 ):
