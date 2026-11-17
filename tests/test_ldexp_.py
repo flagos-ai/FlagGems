@@ -279,7 +279,13 @@ def test_ldexp_rejects_integer_self_(self_dtype):
 @pytest.mark.ldexp_
 def test_ldexp_rejects_complex_to_real_():
     self = torch.ones((17,), dtype=torch.float32, device=flag_gems.device)
-    other = torch.ones((17,), dtype=torch.complex64, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        # torch.ones on the XPU lowers to fill.Scalar, which the CI runtime
+        # does not implement for complex64; the test only checks that ldexp_
+        # raises, so build the tensor on CPU and copy it over.
+        other = torch.ones((17,), dtype=torch.complex64).to(flag_gems.device)
+    else:
+        other = torch.ones((17,), dtype=torch.complex64, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.ldexp_(self, other)
 
