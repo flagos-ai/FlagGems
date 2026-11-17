@@ -167,3 +167,15 @@ def test_inverse_unsupported_dtype():
 
     with pytest.raises(AssertionError):
         flag_gems.inverse(A)
+
+
+@pytest.mark.inverse
+@pytest.mark.parametrize("dtype", INVERSE_DTYPES)
+def test_inverse_singular(dtype):
+    # Singular inputs must raise LinAlgError (matching torch.inverse), not
+    # silently return an inf/NaN-filled result.  This rank-1 matrix only hits
+    # its zero pivot partway through the elimination.
+    A = torch.tensor([[1.0, 1.0], [2.0, 2.0]], dtype=dtype, device=flag_gems.device)
+
+    with pytest.raises(torch.linalg.LinAlgError):
+        flag_gems.inverse(A)

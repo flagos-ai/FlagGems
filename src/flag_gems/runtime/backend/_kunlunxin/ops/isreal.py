@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ _COMPLEX_DTYPES = (torch.complex64, torch.complex128)
 # fill and a near-block-DMA-rate fill (measured: 16.7M bool 21.8us vs 26us for
 # the byte-wide store).
 # ---------------------------------------------------------------------------
+@libentry()
 @triton.jit
 def isreal_true_pack_kernel(out_ptr, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
@@ -53,6 +55,7 @@ def isreal_true_pack_kernel(out_ptr, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, 0x01010101)
 
 
+@libentry()
 @triton.jit
 def isreal_true_pack_masked_kernel(out_ptr, n32, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
@@ -60,6 +63,7 @@ def isreal_true_pack_masked_kernel(out_ptr, n32, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, 0x01010101, mask=offsets < n32)
 
 
+@libentry()
 @triton.jit
 def isreal_true_kernel(out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
@@ -75,6 +79,7 @@ def isreal_true_kernel(out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 # stride-2 plane view cannot vectorize).  The bit-level test
 # `(imag_bits & 0x7FFFFFFF) == 0` keeps negative zero classified as real.
 # ---------------------------------------------------------------------------
+@libentry()
 @triton.jit
 def isreal_complex64_kernel(in_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
@@ -84,6 +89,7 @@ def isreal_complex64_kernel(in_ptr, out_ptr, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, imag_bits == 0)
 
 
+@libentry()
 @triton.jit
 def isreal_complex64_masked_kernel(
     in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
@@ -100,6 +106,7 @@ def isreal_complex64_masked_kernel(
 # complex128 path: no 16-byte integer supertype exists in Triton, so the
 # imaginary component is loaded with a stride-2 fp64 load and tested bitwise.
 # ---------------------------------------------------------------------------
+@libentry()
 @triton.jit
 def isreal_complex128_kernel(
     in_real_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr

@@ -129,6 +129,7 @@ def _inv_pivot_scan_kernel(
     PR,
     AP,
     AK,
+    SING,
     N,
     K,
     LDA: tl.constexpr,
@@ -149,7 +150,12 @@ def _inv_pivot_scan_kernel(
     b = tl.program_id(0).to(tl.int64)
     base = b * (ROWS * LDA)
     ridx = tl.arange(0, LDA)
-    col_k_sp = tl.load(W + base + ridx * LDA + K)
+    # LDA exceeds ROWS once small n is padded up; clamp the load's row index so
+    # the padding lanes read the last valid row instead of past the ROWS x LDA
+    # buffer.  The flagtree 0.7.0 compiler computes the address before the
+    # mask, so an unmasked out-of-bounds index would fault.
+    sidx = tl.minimum(ridx, ROWS - 1)
+    col_k_sp = tl.load(W + base + sidx * LDA + K)
     cand = tl.where((ridx >= K) & (ridx < N), tl.abs(col_k_sp), -1.0)
     best = tl.max(cand, axis=0)
     prow = tl.min(tl.where(cand == best, ridx, LDA), axis=0)
@@ -158,6 +164,11 @@ def _inv_pivot_scan_kernel(
     tl.store(PR + b, prow)
     tl.store(AP + b, apk)
     tl.store(AK + b, akk)
+    # A zero pivot at any step means the matrix is singular (apk is the signed
+    # pivot value W[prow, K]; it is exactly 0.0 once the column is exhausted).
+    # OR it into the per-matrix flag so the host can raise LinAlgError instead
+    # of returning an inf/NaN-filled inverse.
+    tl.store(SING + b, tl.load(SING + b) | tl.where(apk == 0.0, 1, 0))
 
 
 @libentry()
@@ -251,13 +262,14 @@ def _inverse_kernel_impl(A):
         prow = torch.empty(batch, dtype=torch.int32, device=device)
         apk = torch.empty(batch, dtype=A.dtype, device=device)
         akk = torch.empty(batch, dtype=A.dtype, device=device)
+        sing = torch.zeros(batch, dtype=torch.int32, device=device)
         for k in range(n):
             if k % 2 == 0:
                 sw, dw, sx, dx = w0, w1, x0, x1
             else:
                 sw, dw, sx, dx = w1, w0, x1, x0
             _inv_pivot_scan_kernel[(batch,)](
-                sw, prow, apk, akk, n, k, LDA=lda, ROWS=rows, num_warps=1
+                sw, prow, apk, akk, sing, n, k, LDA=lda, ROWS=rows, num_warps=1
             )
             _inv_elim_step_kernel[(batch, nblk)](
                 sw,
@@ -274,6 +286,10 @@ def _inverse_kernel_impl(A):
                 BLK=blk,
                 num_warps=1,
             )
+        # A zero pivot at any step means at least one matrix is singular; raise
+        # LinAlgError (matching torch.inverse) instead of returning inf/NaN.
+        if sing.any().item():
+            raise torch.linalg.LinAlgError("inverse: the input matrix is singular")
         # After the loop the result lives in the buffer written by the last
         # iteration (k = n - 1).  Even k writes to X1 (xdst = X1 for even k),
         # odd k writes to X0, so the final buffer is X0 when n is even
@@ -295,19 +311,14 @@ def inverse(A):
 
     assert A.dim() >= 2, "inverse: input must be at least 2D"
     assert A.shape[-1] == A.shape[-2], "inverse: input must be a square matrix"
+    # The Kunlunxin kernel only implements the real dtypes; complex inputs are
+    # rejected by the dtype assertion rather than claimed as supported.
     assert A.dtype in (
         torch.float32,
         torch.float64,
-        torch.complex64,
-        torch.complex128,
     ), f"inverse: unsupported dtype {A.dtype}"
 
     if A.numel() == 0:
         return torch.empty_like(A)
-
-    if A.dtype in (torch.complex64, torch.complex128):
-        raise NotImplementedError(
-            "inverse: complex dtype is not supported by the Kunlunxin kernel"
-        )
 
     return _inverse_kernel_impl(A)

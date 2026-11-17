@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
@@ -147,16 +148,17 @@ def kaiser_window(
 
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(window_length, BLOCK_SIZE),)
-    kaiser_window_kernel[grid](
-        out,
-        window_length,
-        float(full_length / 2.0),
-        float(beta),
-        float(_i0_host(beta)),
-        dtype == torch.bfloat16,
-        dtype == torch.float16,
-        BLOCK_SIZE=BLOCK_SIZE,
-    )
+    with torch_device_fn.device(device):
+        kaiser_window_kernel[grid](
+            out,
+            window_length,
+            float(full_length / 2.0),
+            float(beta),
+            float(_i0_host(beta)),
+            dtype == torch.bfloat16,
+            dtype == torch.float16,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
     return out
 
 
