@@ -285,3 +285,15 @@ def test_ravel_strided_offset_lazy_bits(rank, lazy):
         _assert_ravel_complex_values(result, reference, inp, dtype)
     else:
         utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.ravel
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+def test_ravel_bfloat16_lazy_neg_copy():
+    base = torch.randn((4, 6), dtype=torch.bfloat16)
+    reference = torch.ravel(torch._neg_view(base[..., 1::2]))
+    inp = torch._neg_view(base.to(flag_gems.device)[..., 1::2])
+    result = flag_gems.ravel(inp)
+    assert result.dtype == inp.dtype and result.device == inp.device
+    assert not result.is_neg()
+    utils.gems_assert_close(result, reference, torch.bfloat16)
