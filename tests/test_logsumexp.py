@@ -113,6 +113,7 @@ def test_accuracy_logsumexp_backward(shape, dtype, dim, keepdim):
     out_grad = torch.randn(ref_out.shape, dtype=ref_out.dtype, device=flag_gems.device)
 
     res_out = flag_gems.logsumexp(inp, dim=dim, keepdim=keepdim)
+    assert type(res_out.grad_fn).__name__ == "_LogSumExpBackward"
     assert res_out.shape == ref_out.shape
     (ref_grad,) = torch.autograd.grad(ref_out, (ref_inp,), (to_reference(out_grad),))
     (res_grad,) = torch.autograd.grad(res_out, (inp,), (out_grad,))
