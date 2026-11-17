@@ -18,7 +18,6 @@ import pytest
 import torch
 
 import flag_gems
-
 from flag_gems.ops.quantized_max_pool2d import (
     _parse_pool_params,
     max_pool2d_output_size,

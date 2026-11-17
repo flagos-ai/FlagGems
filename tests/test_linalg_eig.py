@@ -22,6 +22,22 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _eigenpair_for_residual(inp, eigenvalues, eigenvectors):
+    assert eigenvalues.device == eigenvectors.device == inp.device
+    assert eigenvalues.dtype == eigenvectors.dtype == torch.complex64
+    assert eigenvalues.shape == inp.shape[:-1]
+    assert eigenvectors.shape == inp.shape
+    if flag_gems.vendor_name == "thead":
+        inp, eigenvalues, eigenvectors = (
+            inp.cpu(),
+            eigenvalues.cpu(),
+            eigenvectors.cpu(),
+        )
+    norms = torch.linalg.vector_norm(eigenvectors, dim=-2)
+    torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
+    return inp.to(eigenvectors.dtype), eigenvalues, eigenvectors
+
+
 @pytest.mark.linalg_eig
 @pytest.mark.parametrize("shape", [(2, 2), (3, 3), (5, 5), (8, 8), (16, 16)])
 # linalg_eig computes a general (non-symmetric) eigendecomposition; the Triton
@@ -35,7 +51,7 @@ def test_linalg_eig(shape, dtype):
     A @ V == V @ diag(eigenvalues).
     """
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = inp.cpu() if flag_gems.vendor_name == "thead" else utils.to_reference(inp)
 
     ref_w, _ = torch.linalg.eig(ref_inp)
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
@@ -45,8 +61,8 @@ def test_linalg_eig(shape, dtype):
     # both lists by a scalar key is not enough: two eigenvalues with close real
     # parts can still be ordered differently on the two sides.
     assert len(res_w) == len(ref_w)
-    ref_cpu = ref_w.to(torch.complex128).cpu()
-    res_cpu = res_w.to(torch.complex128).cpu()
+    ref_cpu = ref_w.cpu().to(torch.complex128)
+    res_cpu = res_w.cpu().to(torch.complex128)
     remaining = list(range(len(res_cpu)))
     matched = []
     for ref_val in ref_cpu:
@@ -55,14 +71,14 @@ def test_linalg_eig(shape, dtype):
         remaining.remove(best)
         matched.append(res_cpu[best])
     utils.gems_assert_close(
-        torch.stack(matched).to(res_w.dtype).to(res_w.device),
-        ref_w,
+        torch.stack(matched).to(res_w.dtype),
+        ref_w.cpu(),
         res_w.dtype,
         atol=1e-3,
     )
 
     # reconstruction residual A @ V - V @ diag(w)
-    a_c = inp.to(res_v.dtype)
+    a_c, res_w, res_v = _eigenpair_for_residual(inp, res_w, res_v)
     recon = a_c @ res_v - res_v @ torch.diag(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (shape[0] ** 0.5 + 1.0)
 
@@ -76,6 +92,6 @@ def test_linalg_eig_batched(batch, n, dtype):
 
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
 
-    a_c = inp.to(res_v.dtype)
+    a_c, res_w, res_v = _eigenpair_for_residual(inp, res_w, res_v)
     recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (batch * n) ** 0.5
