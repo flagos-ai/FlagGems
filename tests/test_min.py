@@ -221,8 +221,7 @@ def test_min_backward_nan_forward_gap(shape, dtype):
     # with whatever the forward returned: the upstream gradient is split evenly
     # between the entries equal to that value and the gradient still sums to
     # `grad_output`.  ATen's own NaN rule (NaN wins, split between the NaN
-    # entries) is covered by artifacts/probe_min_autograd.py and by the NaN
-    # workloads of the backward catalog, which receive ATen's `result`.
+    # entries) differs from the result produced by this forward kernel.
     inp = _nan_input(shape, dtype)
     assert bool(torch.isnan(torch.min(inp)))
 
@@ -274,3 +273,23 @@ def test_min_backward_dim_non_contiguous(dtype):
     assert not inp.is_contiguous()
     _grad_dim(inp, 0, False, dtype)
     _grad_dim(inp, 1, False, dtype)
+
+
+@pytest.mark.min_backward
+def test_min_backward_grid_stride_and_large_grid_limit(monkeypatch):
+    import importlib
+
+    module = importlib.import_module("flag_gems.ops.min")
+    assert module._global_plan(65536 * 4096)[2] == 65535
+    original_plan = module._global_plan
+
+    def force_grid_stride(n_elements):
+        count_grid, count_block, _, fill_block, wide = original_plan(n_elements)
+        return count_grid, count_block, 1, fill_block, wide
+
+    monkeypatch.setattr(module, "_global_plan", force_grid_stride)
+    inp = torch.randn(8193, device=flag_gems.device, requires_grad=True)
+    ref_inp = inp.detach().clone().requires_grad_(True)
+    (grad,) = torch.autograd.grad(flag_gems.min(inp), inp)
+    (ref_grad,) = torch.autograd.grad(torch.min(ref_inp), ref_inp)
+    torch.testing.assert_close(grad, ref_grad, rtol=0, atol=0)

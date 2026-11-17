@@ -221,18 +221,19 @@ def min_backward_global_fill_kernel(
     pid = tl.program_id(0)
     if INT64_OFFSET:
         pid = pid.to(tl.int64)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
     dtype = inp.type.element_ty
     acc_dtype = tl.float64 if dtype is tl.float64 else tl.float32
     min_value = tl.load(result)
     value_is_nan = min_value != min_value
-    count = tl.sum(tl.load(partials + tl.arange(0, NUM_PARTIALS)), axis=0)
+    count = tl.sum(tl.load(partials + tl.arange(0, NUM_PARTIALS)).to(tl.int64), axis=0)
     scale = tl.load(grad_output).to(acc_dtype) / count.to(acc_dtype)
-    value = tl.load(inp + offset, mask=mask, other=0)
-    is_min = (value == min_value) | ((value != value) & value_is_nan)
-    grad_input = tl.where(is_min, scale, 0.0)
-    tl.store(out + offset, grad_input.to(dtype), mask=mask)
+    for start in range(pid * BLOCK_SIZE, n_elements, tl.num_programs(0) * BLOCK_SIZE):
+        offset = start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+        value = tl.load(inp + offset, mask=mask, other=0)
+        is_min = (value == min_value) | ((value != value) & value_is_nan)
+        grad_input = tl.where(is_min, scale, 0.0)
+        tl.store(out + offset, grad_input.to(dtype), mask=mask)
 
 
 @libentry(cache_binding=True)
@@ -306,6 +307,8 @@ def _global_plan(n_elements):
             count_grid = 1024
         fill_block = 4096
         fill_grid = triton.cdiv(n_elements, fill_block)
+        if fill_grid > 65535:
+            fill_grid = 65535
         wide = n_elements >= 2147483648
         plan = (count_grid, count_block, fill_grid, fill_block, wide)
         if len(_GLOBAL_PLAN_CACHE) < _PLAN_CACHE_LIMIT:
