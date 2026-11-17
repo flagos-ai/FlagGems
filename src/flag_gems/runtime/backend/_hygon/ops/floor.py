@@ -61,7 +61,10 @@ def _can_use_contiguous_path(A):
     n = A.numel()
     if type(n) is not int or not 0 < n <= _MAX_ELEMENTS:
         return False
-    return torch.autograd.forward_ad.unpack_dual(A).tangent is None
+    # Read forward-AD metadata only; no tensor numerical computation.
+    return (
+        torch.autograd.forward_ad.unpack_dual(A).tangent is None
+    )  # allow-torch-compute
 
 
 def floor(A):
