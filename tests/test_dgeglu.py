@@ -28,7 +28,7 @@ except ImportError:
 
 
 def _reference_dgeglu(
-    grad_output: torch.Tensor, input_tensor: torch.Tensor
+    grad_output: torch.Tensor, input_tensor: torch.Tensor, quantizer=None
 ) -> torch.Tensor:
     """High-precision (fp64) reference for dGeGLU backward.
 
@@ -37,10 +37,11 @@ def _reference_dgeglu(
     where ``gelu`` uses the tanh approximation
     ``gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * x * (1 + 0.044715 * x^2)))``.
 
-    Used where the native call cannot serve as a reference: on kunlunxin the
-    vendored TransformerEngine takes the output dtype as its third argument
-    instead of a quantizer, and TE's own fp16/bf16 output rounds at low
-    precision anyway.
+    Takes the same arguments as TransformerEngine's entry point so it can stand
+    in for it. Used where the native call cannot serve as a reference: when TE
+    is not installed, and on kunlunxin, whose vendored TransformerEngine takes
+    the output dtype as its third argument instead of a quantizer (TE's own
+    fp16/bf16 output also rounds at low precision anyway).
     """
     n = input_tensor.shape[-1] // 2
     a = input_tensor[..., :n].to(torch.float64)
@@ -61,8 +62,13 @@ def _reference_dgeglu(
     return torch.cat([grad_a, grad_b], dim=-1)
 
 
+if TE_OP is None:
+    # TransformerEngine is not installed: bind the fp64 torch reference in
+    # place of the TE entry point so the accuracy test runs instead of skipping.
+    TE_OP = _reference_dgeglu
+
+
 @pytest.mark.dgeglu
-@pytest.mark.skipif(TE_OP is None, reason="'dgeglu' not found in TransformerEngine")
 @pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dgeglu(shape, dtype):
