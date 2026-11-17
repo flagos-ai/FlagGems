@@ -276,7 +276,6 @@ from .arctan2 import arctan2, arctan2_
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort, argsort_stable
-from .argwhere import argwhere
 from .as_strided_copy import as_strided_copy, as_strided_copy_out
 from .as_strided_scatter import as_strided_scatter
 from .asin import asin, asin_
@@ -1262,7 +1261,6 @@ __all__ = [
     "argmin",
     "argsort",
     "argsort_stable",
-    "argwhere",
     "as_strided_copy",
     "as_strided_copy_out",
     "as_strided_scatter",

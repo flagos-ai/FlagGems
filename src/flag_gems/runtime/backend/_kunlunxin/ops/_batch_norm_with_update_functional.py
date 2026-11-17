@@ -39,11 +39,23 @@ def _batch_norm_with_update_functional(
     (which is validated and updates the running statistics for every dtype with
     unbiased variance).  The input running statistics are not mutated: they are
     cloned and the updated clones are returned.
+
+    ``aten`` declares ``running_mean_out``/``running_var_out`` as non-optional
+    tensors, so this function always returns tensors: when the caller does not
+    provide running statistics, the update starts from the zero-mean /
+    unit-variance initialisation used by ``torch.nn.BatchNorm*d``.
     """
     logger.debug("GEMS_KUNLUNXIN _BATCH_NORM_WITH_UPDATE_FUNCTIONAL")
 
-    rm = running_mean.clone() if running_mean is not None else None
-    rv = running_var.clone() if running_var is not None else None
+    num_features = input.shape[1]
+    if running_mean is None:
+        rm = torch.zeros(num_features, dtype=input.dtype, device=input.device)
+    else:
+        rm = running_mean.clone()
+    if running_var is None:
+        rv = torch.ones(num_features, dtype=input.dtype, device=input.device)
+    else:
+        rv = running_var.clone()
 
     output, save_mean, save_invstd = batch_norm(
         input,
