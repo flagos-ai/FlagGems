@@ -255,3 +255,28 @@ def test_ravel_rejects_sparse_layout():
 
     with pytest.raises(RuntimeError):
         flag_gems.ravel(sparse)
+
+
+@pytest.mark.ravel
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("rank", [2, 8, 9])
+@pytest.mark.parametrize("lazy", ["none", "neg", "conj", "conj_neg"])
+def test_ravel_strided_offset_lazy_bits(rank, lazy):
+    dtype = torch.complex64 if "conj" in lazy else torch.float32
+    base = torch.randn((2,) * (rank - 1) + (6,), dtype=dtype, device=flag_gems.device)
+    inp = base[..., 1::2]
+    if "conj" in lazy:
+        inp = inp.conj()
+    if "neg" in lazy:
+        inp = torch._neg_view(inp)
+    assert not inp.is_contiguous()
+    assert inp.storage_offset() != 0
+    reference = torch.ravel(utils.to_reference(inp))
+    result = flag_gems.ravel(inp)
+    assert result.is_contiguous()
+    assert not result.is_conj() and not result.is_neg()
+    assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    if dtype.is_complex:
+        _assert_ravel_complex_values(result, reference, inp, dtype)
+    else:
+        utils.gems_assert_close(result, reference, dtype)

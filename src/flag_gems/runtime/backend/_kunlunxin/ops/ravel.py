@@ -24,11 +24,15 @@ Contract summary (derived from the bound Definition):
   * non-Tensor / non-strided input -> reject.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-_MAX_RANK = 8
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -36,121 +40,42 @@ def _ravel_gather_kernel(
     src_ptr,
     dst_ptr,
     n,
-    base_off,
-    d0,
-    d1,
-    d2,
-    d3,
-    d4,
-    d5,
-    d6,
-    d7,
-    s0,
-    s1,
-    s2,
-    s3,
-    s4,
-    s5,
-    s6,
-    s7,
-    RANK: tl.constexpr,
+    SHAPE: tl.constexpr,
+    STRIDES: tl.constexpr,
     BLOCK: tl.constexpr,
     SIGNED: tl.constexpr,
     S_RE: tl.constexpr,
     S_IM: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    offs = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n
     rem = offs
-    so = tl.zeros([BLOCK], dtype=tl.int64)
-
-    if RANK >= 1:
-        i0 = rem % d0
-        rem = rem // d0
-        so = so + i0.to(tl.int64) * s0
-    if RANK >= 2:
-        i1 = rem % d1
-        rem = rem // d1
-        so = so + i1.to(tl.int64) * s1
-    if RANK >= 3:
-        i2 = rem % d2
-        rem = rem // d2
-        so = so + i2.to(tl.int64) * s2
-    if RANK >= 4:
-        i3 = rem % d3
-        rem = rem // d3
-        so = so + i3.to(tl.int64) * s3
-    if RANK >= 5:
-        i4 = rem % d4
-        rem = rem // d4
-        so = so + i4.to(tl.int64) * s4
-    if RANK >= 6:
-        i5 = rem % d5
-        rem = rem // d5
-        so = so + i5.to(tl.int64) * s5
-    if RANK >= 7:
-        i6 = rem % d6
-        rem = rem // d6
-        so = so + i6.to(tl.int64) * s6
-    if RANK >= 8:
-        i7 = rem % d7
-        rem = rem // d7
-        so = so + i7.to(tl.int64) * s7
-
-    val = tl.load(src_ptr + (so + base_off), mask=mask)
+    offset = tl.zeros([BLOCK], dtype=tl.int64)
+    for d in tl.static_range(len(SHAPE) - 1, -1, -1):
+        index = rem % SHAPE[d]
+        rem = rem // SHAPE[d]
+        offset += index * STRIDES[d]
+    # Tensor pointers already include storage_offset().
+    val = tl.load(src_ptr + offset, mask=mask, other=0)
     if SIGNED:
-        # The real view of a complex tensor has last dim (re, im) with stride 1,
-        # so even flat indices carry the real lane and odd ones the imaginary
-        # lane: fold the lazy conj/neg bits here.
-        lane = tl.where((offs & 1) == 0, S_RE, S_IM)
-        val = val * lane
+        val *= tl.where((offs & 1) == 0, S_RE, S_IM)
     tl.store(dst_ptr + offs, val, mask=mask)
 
 
 def _launch(src, dst, signed, s_re, s_im):
-    """Gather `src` (arbitrary strides) into the flat contiguous `dst`."""
-    n = src.numel()
-    rank = src.dim()
-    if rank > _MAX_RANK:
-        raise RuntimeError("ravel: rank too large for this kernel")
-    sizes = src.shape
-    strides = src.stride()
-    ds = [1] * _MAX_RANK
-    ss = [0] * _MAX_RANK
-    for k in range(rank):
-        r = rank - 1 - k
-        ds[k] = sizes[r]
-        ss[k] = strides[r]
-    BLOCK = 1024
-    grid = (triton.cdiv(n, BLOCK),)
-    _ravel_gather_kernel[grid](
-        src,
-        dst,
-        n,
-        src.storage_offset(),
-        ds[0],
-        ds[1],
-        ds[2],
-        ds[3],
-        ds[4],
-        ds[5],
-        ds[6],
-        ds[7],
-        ss[0],
-        ss[1],
-        ss[2],
-        ss[3],
-        ss[4],
-        ss[5],
-        ss[6],
-        ss[7],
-        RANK=rank,
-        BLOCK=BLOCK,
-        SIGNED=signed,
-        S_RE=s_re,
-        S_IM=s_im,
-    )
+    block = 1024
+    with torch_device_fn.device(src.device):
+        _ravel_gather_kernel[(triton.cdiv(src.numel(), block),)](
+            src,
+            dst,
+            src.numel(),
+            tuple(src.shape),
+            tuple(src.stride()),
+            block,
+            signed,
+            s_re,
+            s_im,
+        )
 
 
 def _ravel_complex(t):
@@ -183,7 +108,9 @@ def _ravel_copy_raw(t):
     n = t.numel()
     out = torch.empty(n, dtype=t.dtype, device=t.device)
     if n:
-        _launch(t, out, False, 1.0, 1.0)
+        neg = t.is_neg()
+        src = torch._neg_view(t) if neg else t
+        _launch(src, out, neg, -1.0 if neg else 1.0, -1.0 if neg else 1.0)
     return out
 
 
@@ -199,6 +126,7 @@ class _RavelCopy(torch.autograd.Function):
 
 
 def ravel(self):
+    logger.debug("GEMS_KUNLUNXIN RAVEL")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "ravel(): argument 'self' (position 1) must be Tensor, not "
