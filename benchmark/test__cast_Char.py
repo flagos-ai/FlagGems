@@ -175,7 +175,6 @@ def test__cast_Char():
         op_name="_cast_Char",
         torch_op=torch.ops.aten._cast_Char,
         dtypes=_benchmark_dtypes(),
-        gems_op=getattr(flag_gems, "_cast_Char", None),
     )
     bench.run()
 
@@ -186,6 +185,48 @@ def test__cast_Char_views():
         op_name="_cast_Char",
         torch_op=torch.ops.aten._cast_Char,
         dtypes=_benchmark_dtypes(),
-        gems_op=getattr(flag_gems, "_cast_Char", None),
     )
     bench.run()
+
+
+_MASTER_WORKLOADS = [
+    ((1024,), "contiguous"),
+    ((65536,), "contiguous"),
+    ((1048576,), "contiguous"),
+    ((16777216,), "contiguous"),
+    ((1024, 1024), "transpose"),
+    ((1024, 1024), "stride_slice"),
+]
+
+
+class CastCharMasterBenchmark(base.Benchmark):
+    def get_case_iter(self, dtype):
+        for ordinal, (shape, layout) in enumerate(_MASTER_WORKLOADS):
+            input_shape = (1024, 512) if layout == "stride_slice" else shape
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(input_shape)},
+                    params={"layout": layout},
+                    builder_args=(shape, layout),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape, layout = case.builder_args[0].builder_args
+        inp = torch.randn(shape, device=self.device, dtype=case.dtype)
+        if layout == "transpose":
+            inp = inp.t()
+        elif layout == "stride_slice":
+            inp = inp[:, ::2]
+        return (inp,)
+
+
+@pytest.mark.underscore_cast_Char
+def test__cast_Char_master():
+    CastCharMasterBenchmark(
+        op_name="_cast_Char",
+        torch_op=torch.ops.aten._cast_Char.default,
+        dtypes=_benchmark_dtypes(),
+    ).run()
