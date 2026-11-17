@@ -1224,6 +1224,7 @@ _FULL_CONFIG = (
     ("detach_copy", detach_copy),
     ("diag", diag),
     ("diag_embed", diag_embed),
+    ("diag_embed_backward", diag_embed_backward),
     ("diagflat", diagflat),
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
