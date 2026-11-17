@@ -63,7 +63,7 @@ def _assert_result_equal(result, reference, *, device=None):
         or reference.is_conj()
     ):
         result, reference = _cpu_values(result), _cpu_values(reference)
-    elif flag_gems.vendor_name == "ascend" and result.is_complex():
+    elif flag_gems.vendor_name in ("ascend", "mthreads") and result.is_complex():
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
@@ -588,6 +588,16 @@ def test_new_zeros_host_pinned_output(dtype):
 def test_new_zeros_rejects_pinned_device_output(dtype):
     inp = tu.make_input(dtype, _SMALL_SOURCE, _SOURCE_RANGE)
 
+    if flag_gems.vendor_name == "mthreads":
+        kwargs = {"device": inp.device, "pin_memory": True}
+        expected = torch.ops.aten.new_zeros(inp, _TARGET_SIZE, **kwargs)
+        actual = flag_gems.new_zeros(inp, _TARGET_SIZE, **kwargs)
+
+        assert actual.device == expected.device == inp.device
+        assert actual.is_pinned() == expected.is_pinned()
+        _assert_result_equal(actual, tu.to_reference(expected))
+        return
+
     error = (
         (RuntimeError, ValueError)
         if flag_gems.vendor_name == "kunlunxin"
@@ -660,3 +670,120 @@ def test_new_zeros_special_value_source(dtype, scenario):
     # NaN/Inf source contents must not leak into the freshly zeroed output
     _assert_result_equal(res_out, ref_out)
     _assert_result_equal(inp, ref_inp)
+
+
+_MASTER_SIZES = [(), (0,), (1,), (256,), (1024, 1024), (16, 7, 57), (16, 128, 64, 60)]
+_MASTER_DTYPES = list(dict.fromkeys(
+    utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+    + _BF16_DTYPES + _FP64_DTYPES + _INT64_DTYPES
+))
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("size", tu.selected_cases(_MASTER_SIZES, quick=[]))
+@pytest.mark.parametrize("dtype", _MASTER_DTYPES)
+def test_new_zeros_master_size_and_dtype(size, dtype):
+    inp = torch.empty(1, dtype=dtype, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), list(size))
+    actual = flag_gems.new_zeros(inp, list(size))
+
+    _assert_result_equal(actual, expected)
+    assert actual.dtype == inp.dtype and actual.device == inp.device
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("size", tu.selected_cases(_MASTER_SIZES, quick=[]))
+def test_new_zeros_master_inherits_metadata(size):
+    inp = torch.empty((2, 3), dtype=torch.float32, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), list(size))
+    actual = flag_gems.new_zeros(inp, list(size))
+
+    _assert_result_equal(actual, expected)
+    assert actual.layout == inp.layout
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("source_shape", [(), (1,), (4, 5)])
+def test_new_zeros_master_ignores_source_payload(source_shape):
+    inp = torch.full(source_shape, float("nan"), device=flag_gems.device)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.new_zeros(reference, [2, 3])
+    actual = flag_gems.new_zeros(inp, [2, 3])
+
+    _assert_result_equal(actual, expected)
+    _assert_result_equal(inp, reference)
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("dtype", _MASTER_DTYPES)
+def test_new_zeros_master_dtype_override(dtype):
+    inp = torch.empty(2, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), [4, 2], dtype=dtype)
+    actual = flag_gems.new_zeros(inp, [4, 2], dtype=dtype)
+
+    _assert_result_equal(actual, expected)
+    assert actual.dtype == dtype
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("size", [(), (0,), (1,), (2, 3), (16, 128, 64, 60)])
+def test_new_zeros_master_explicit_device(size):
+    inp = torch.empty((2, 3), device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), list(size))
+    actual = flag_gems.new_zeros(inp, list(size), device=inp.device)
+
+    _assert_result_equal(actual, expected, device=inp.device)
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("form", [torch.Size, list, tuple, torch.tensor])
+@pytest.mark.parametrize("size", [(), (0,), (1,), (2, 3)])
+def test_new_zeros_master_size_forms(form, size):
+    inp = torch.empty((2, 3), device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), list(size))
+    size_arg = torch.tensor(size, dtype=torch.int64) if form is torch.tensor else form(size)
+    actual = flag_gems.new_zeros(inp, size_arg)
+
+    _assert_result_equal(actual, expected)
+
+
+@pytest.mark.new_zeros
+def test_new_zeros_master_false_extent():
+    inp = torch.empty(2, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), [False, 2])
+    actual = flag_gems.new_zeros(inp, [False, 2])
+
+    _assert_result_equal(actual, expected)
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("size", [(), (0,), (2, 3), (1024, 1024)])
+def test_new_zeros_master_out(size):
+    inp = torch.empty(2, device=flag_gems.device)
+    out = torch.full(size, 7.0, device=inp.device)
+    reference = tu.to_reference(inp)
+    ref_out = torch.full(size, 7.0, device=reference.device)
+    expected = torch.ops.aten.new_zeros.out(reference, list(size), out=ref_out)
+    actual = flag_gems.new_zeros(inp, list(size), out=out)
+
+    assert actual is out
+    _assert_result_equal(actual, expected)
+
+
+@pytest.mark.new_zeros
+def test_new_zeros_master_empty_source():
+    inp = torch.empty(0, dtype=torch.int32, device=flag_gems.device)
+    expected = torch.ops.aten.new_zeros(tu.to_reference(inp), [2, 3])
+    actual = flag_gems.new_zeros(inp, [2, 3])
+
+    _assert_result_equal(actual, expected)
+    assert actual.dtype == inp.dtype
+
+
+@pytest.mark.new_zeros
+@pytest.mark.parametrize("bad_arg", ["self", "size"])
+def test_new_zeros_master_invalid_schema(bad_arg):
+    inp = torch.empty(2, device=flag_gems.device)
+    args = ([1, 2, 3], [2]) if bad_arg == "self" else (inp, 3.14)
+    with pytest.raises((RuntimeError, TypeError, ValueError, AttributeError)):
+        flag_gems.new_zeros(*args)
