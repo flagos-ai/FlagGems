@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import builtins
+import logging
 import math
 
 import torch
@@ -28,6 +29,8 @@ from .rms_norm import (
     rms_norm_multirow_kernel,
     rms_norm_tile2d_kernel,
 )
+
+logger = logging.getLogger(__name__)
 
 # Launch-bound / 2D-tile dispatch for the fused forward. Same structural fixes as
 # rms_norm (constexpr-N unmasked [TILE_M, N] tile -> block DMA; flat kernel for
@@ -64,6 +67,7 @@ def _fused_rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     Dispatch mirrors rms_norm_forward but keeps the tile selection in this file
     (TILE_M=32 preference) without touching the shared rms_norm.py kernels.
     """
+    logger.debug("GEMS_KUNLUNXIN _FUSED_RMS_NORM_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -143,13 +147,28 @@ class _FusedRmsNorm(torch.autograd.Function):
     @staticmethod
     def backward(ctx, dy, d_inv_rms):
         x, inv_rms, weight = ctx.saved_tensors
-        dx, dw = rms_norm_backward(
-            dy, x, inv_rms, ctx.normalized_shape, weight, ctx.eps
+        dx, dw = _fused_rms_norm_backward(
+            dy,
+            x,
+            ctx.normalized_shape,
+            inv_rms,
+            weight,
+            (True, weight is not None),
         )
         return dx, None, dw, None
 
 
 def _fused_rms_norm(x, normalized_shape, weight=None, eps=1e-5):
+    normalized_shape = list(normalized_shape)
+    assert x.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ), f"_fused_rms_norm does not support dtype {x.dtype}"
+    # The aten schema declares eps as ``float?``; the dispatcher may forward
+    # ``None`` when the caller omits it, so fall back to the PyTorch default.
+    if eps is None:
+        eps = 1e-5
     if weight is not None:
         return _FusedRmsNorm.apply(x, normalized_shape, weight, eps)
 
@@ -170,6 +189,7 @@ def _fused_rms_norm_backward(
     dx formula equals the weight=ones result, so a unit weight is passed and
     the weight gradient is discarded.
     """
+    logger.debug("GEMS_KUNLUNXIN _FUSED_RMS_NORM_BACKWARD")
     if len(output_mask) != 2:
         raise ValueError("output_mask must contain two booleans")
     if output_mask[1] and weight is None:
