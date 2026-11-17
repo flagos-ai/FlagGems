@@ -31,7 +31,9 @@ def log1p_func(x):
 
 
 class Log1pFunction(torch.autograd.Function):
-    """Autograd wrapper that gives log1p a fused FlagGems backward.
+    """Autograd wrapper that gives log1p a fused first-order backward.
+
+    The Triton backward does not construct a graph for higher-order gradients.
 
     ATen declares ``aten::log1p`` CompositeImplicitAutograd with a generated
     ``Log1PBackward0`` formula, so serving its CUDA implementation from

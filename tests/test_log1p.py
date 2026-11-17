@@ -55,6 +55,7 @@ BACKWARD_SHAPES = (
 # `1 + x` is exactly representable at these points, so the ATen formula
 # (rounded denominator, float32 opmath quotient) and the analytic dx agree.
 BACKWARD_SPECIAL_VALUES = [
+    -2.0,  # outside the forward domain; backward still uses grad / (1 + x)
     -1.0,  # log1p domain boundary: 1 + x == 0 -> +inf gradient
     -0.9999999403953552,  # nearest float32 below -1 + 2**-24
     -0.9999,
