@@ -107,7 +107,7 @@ def _choose_qparams_fp64(x_min, x_max, qmin, qmax, reduce_range):
         zero_point = qmax
     else:
         # nearbyint in the default rounding mode = round-half-to-even.
-        zero_point = int(torch.round(torch.tensor(initial, dtype=torch.float64)).item())
+        zero_point = round(initial)
     return float(scale), zero_point
 
 
