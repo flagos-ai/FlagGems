@@ -137,7 +137,21 @@ def test_row_stack_memory_format(shape, memory_format, dtype):
 
 
 @pytest.mark.row_stack
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            torch.float32,
+            marks=pytest.mark.xfail(
+                flag_gems.vendor_name == "iluvatar",
+                raises=AssertionError,
+                strict=True,
+                reason="Iluvatar row_stack candidate loses FP64 promoted values",
+            ),
+        ),
+        torch.int32,
+    ],
+)
 def test_row_stack_mixed_dtype_promotion(dtype):
     """Mixed dtypes follow ATen's type promotion instead of being rejected."""
     use_cpu_reference = flag_gems.vendor_name == "iluvatar" and dtype == torch.float32
@@ -279,6 +293,12 @@ def test_row_stack_out_resize(shape, dtype):
 
 
 @pytest.mark.row_stack_out
+@pytest.mark.xfail(
+    flag_gems.vendor_name == "iluvatar",
+    raises=AssertionError,
+    strict=True,
+    reason="Iluvatar row_stack.out candidate loses FP64 cast values",
+)
 def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
     if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
