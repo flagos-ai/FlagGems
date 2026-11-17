@@ -174,9 +174,7 @@ def ldexp_fp64_func(x, y):
     if y.dtype.is_int() and x.dtype.is_floating():
         exponent = tl.maximum(tl.minimum(y, 2147483647), -2147483648).to(tl.int32)
         return _sign_fix_f32(tl_extra_shim.ldexp(x.to(tl.float64), exponent), x)
-    return _sign_fix_f32(
-        x.to(tl.float64) * _exp2_xpu(y.to(tl.float64)), x
-    )
+    return _sign_fix_f32(x.to(tl.float64) * _exp2_xpu(y.to(tl.float64)), x)
 
 
 @pointwise_dynamic(
@@ -267,9 +265,7 @@ def ldexp_inplace_func(x, other):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_)
 @triton.jit
 def ldexp_inplace_fp64_func(x, other):
-    return _sign_fix_f32(
-        x.to(tl.float64) * _exp2_xpu(other.to(tl.float64)), x
-    )
+    return _sign_fix_f32(x.to(tl.float64) * _exp2_xpu(other.to(tl.float64)), x)
 
 
 @pointwise_dynamic(
@@ -425,7 +421,7 @@ def _validate_out(self, other, out, result_dtype):
         raise RuntimeError(
             f"Expected out tensor to be on {result_device}, but got {out.device}"
         )
-    if not torch.can_cast(result_dtype, out.dtype):
+    if not torch.can_cast(result_dtype, out.dtype):  # allow-torch-compute
         raise RuntimeError(
             f"result type {result_dtype} can't be cast to the desired output "
             f"type {out.dtype}"
@@ -446,7 +442,7 @@ def _validate_out(self, other, out, result_dtype):
 def _complex_parts(tensor, real_dtype):
     if tensor.is_complex():
         physical = tensor.conj() if tensor.is_conj() else tensor
-        parts = torch.view_as_real(physical)
+        parts = torch.view_as_real(physical)  # allow-torch-compute
         real = torch.empty(tensor.shape, dtype=real_dtype, device=tensor.device)
         imag = torch.empty_like(real)
         copy_(real, parts[..., 0])
@@ -460,7 +456,7 @@ def _complex_parts(tensor, real_dtype):
 def _copy_result(out, result):
     if out.is_complex():
         physical = out.conj() if out.is_conj() else out
-        parts = torch.view_as_real(physical)
+        parts = torch.view_as_real(physical)  # allow-torch-compute
         real, imag = _complex_parts(result, parts.dtype)
         copy_(parts[..., 0], real)
         copy_(parts[..., 1], neg(imag) if out.is_conj() else imag)
@@ -480,7 +476,7 @@ def _complex_ldexp(self, other, result_dtype):
     )
     real, imag = func(xr, xi, yr, yi)
     result = torch.empty(real.shape, dtype=result_dtype, device=real.device)
-    parts = torch.view_as_real(result)
+    parts = torch.view_as_real(result)  # allow-torch-compute
     copy_(parts[..., 0], real)
     copy_(parts[..., 1], imag)
     return result
@@ -518,7 +514,8 @@ def _ldexp_impl(self, other, out=None):
         )
     if (
         out is not None
-        and tuple(out.shape) == torch.broadcast_shapes(self.shape, other.shape)
+        and tuple(out.shape)
+        == torch.broadcast_shapes(self.shape, other.shape)  # allow-torch-compute
         and out.dtype == result_dtype
         and out.is_contiguous()
         and not out.is_conj()
@@ -567,7 +564,7 @@ def _ldexp_result_dtype(self, other):
 
 def _write_complex(self, real, imag):
     physical = self.conj() if self.is_conj() else self
-    output = torch.view_as_real(physical)
+    output = torch.view_as_real(physical)  # allow-torch-compute
     copy_(output[..., 0], real)
     copy_(output[..., 1], neg(imag) if self.is_conj() else imag)
 
@@ -623,13 +620,15 @@ def ldexp_(self, other):
         other = temporary
 
     result_dtype = _ldexp_result_dtype(self, other)
-    if not torch.can_cast(result_dtype, self.dtype):
+    if not torch.can_cast(result_dtype, self.dtype):  # allow-torch-compute
         raise RuntimeError(
             f"result type {result_dtype} can't be cast to the desired output "
             f"type {self.dtype}"
         )
 
-    output_shape = torch.broadcast_shapes(self.shape, other.shape)
+    output_shape = torch.broadcast_shapes(  # allow-torch-compute
+        self.shape, other.shape
+    )
     if output_shape != self.shape:
         raise RuntimeError(
             f"output with shape {self.shape} doesn't match the broadcast shape "

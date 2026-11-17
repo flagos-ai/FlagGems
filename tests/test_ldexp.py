@@ -26,10 +26,29 @@ from .accuracy_utils import _SKIP_FP64
 # never construct their own reference.  Gate them on that backend only; other
 # vendors keep their previous behaviour.
 _skip_if_kunlunxin_no_fp64 = pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin"
-    and not flag_gems.runtime.device.support_fp64,
+    flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
     reason="Kunlunxin does not support FP64",
 )
+
+# Kunlunxin's eager ldexp is the implementation this backend override
+# replaces: it loses the sign of zero, flushes subnormal scales, overflows
+# extreme integral exponents, and its real->complex / fp16 ``out=`` overloads
+# are missing or write garbage.  Compute the reference on CPU there (the same
+# path ``--ref cpu`` takes); other vendors keep their on-device reference.
+_cpu_reference = flag_gems.vendor_name == "kunlunxin"
+
+
+def _to_reference(inp, upcast=False):
+    if not _cpu_reference:
+        return utils.to_reference(inp, upcast)
+    ref_inp = inp.cpu()
+    if upcast:
+        # CPU always has fp64; mirror ``--ref cpu`` and keep the reference
+        # exact even though the device under test cannot represent it.
+        ref_inp = ref_inp.to(
+            torch.complex128 if ref_inp.is_complex() else torch.float64
+        )
+    return ref_inp
 
 
 @pytest.mark.ldexp
@@ -86,15 +105,18 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
 def test_ldexp_real_operands_complex_out(dtype):
     inp = torch.randn(17, device=flag_gems.device)
     other = torch.randint(-3, 4, (17,), device=inp.device)
-    reference_input = utils.to_reference(inp)
-    reference = torch.empty(17, dtype=dtype, device=reference_input.device)
-    if cfg.TO_CPU:
+    reference_input = _to_reference(inp)
+    reference_other = _to_reference(other)
+    if cfg.TO_CPU or _cpu_reference:
         # PyTorch 2.11 CPU integer-exponent out kernels assert internally when
         # casting a real result to complex; validate the values via functional
-        # ldexp plus the output cast. CUDA still exercises the native overload.
-        reference = torch.ldexp(reference_input, utils.to_reference(other)).to(dtype)
+        # ldexp plus the output cast.  Kunlunxin's native real->complex out
+        # kernel writes garbage instead of zeroing the imaginary part, so its
+        # reference takes the same path.
+        reference = torch.ldexp(reference_input, reference_other).to(dtype)
     else:
-        torch.ldexp(reference_input, utils.to_reference(other), out=reference)
+        reference = torch.empty(17, dtype=dtype, device=reference_input.device)
+        torch.ldexp(reference_input, reference_other, out=reference)
     out = torch.empty(17, dtype=dtype, device=inp.device)
     result = flag_gems.ldexp_out(inp, other, out=out)
     assert result is out
@@ -244,8 +266,8 @@ def test_ldexp_special_values(dtype):
         dtype=dtype,
         device=flag_gems.device,
     )
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other, True)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -319,15 +341,20 @@ def test_ldexp_out_dtype_casting(out_dtype):
         pytest.skip("ATen CPU ldexp.out does not support dynamic output dtype casting")
     self = torch.randn((17,), dtype=torch.float32, device=flag_gems.device)
     other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
-    ref_out_buf = torch.empty((17,), dtype=out_dtype, device=ref_self.device)
-    ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
+    if _cpu_reference:
+        # Kunlunxin's native out kernel raises for a dtype-casting output, so
+        # validate the cast through the functional overload instead.
+        ref_out = torch.ldexp(ref_self, ref_other).to(out_dtype)
+    else:
+        ref_out_buf = torch.empty((17,), dtype=out_dtype, device=ref_self.device)
+        ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
+        assert ref_out is ref_out_buf
     out = torch.empty((17,), dtype=out_dtype, device=flag_gems.device)
 
     result = flag_gems.ldexp_out(self, other, out=out)
 
-    assert ref_out is ref_out_buf
     assert result is out
     assert result.dtype == ref_out.dtype
     utils.gems_assert_close(result, ref_out, out_dtype)
