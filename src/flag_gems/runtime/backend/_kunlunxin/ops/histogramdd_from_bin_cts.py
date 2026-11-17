@@ -55,7 +55,8 @@ def histogramdd_from_bin_cts_kernel(
     inp_ptr,  # (M, N) contiguous float input
     weight_ptr,  # (M,) contiguous weights, or None
     out_ptr,  # (num_bins,) flattened histogram buffer (accumulator)
-    M,
+    M,  # padded row count (a multiple of BLOCK_SIZE)
+    REAL_M,  # original point count; rows >= REAL_M are padding
     N,
     left_ptr,  # (N,) left edges
     right_ptr,  # (N,) right edges
@@ -82,12 +83,14 @@ def histogramdd_from_bin_cts_kernel(
     acc = tl.zeros((), dtype=ACC_DTYPE)
 
     for start in range(0, M, BLOCK_SIZE):
-        # M is pre-padded to a multiple of BLOCK_SIZE and the padding rows hold
-        # NaN, so there are no partial (tail) blocks and no masked loads -- the
-        # tail masked-load is unreliable on this backend. NaN rows fall out of
-        # range naturally below.
+        # M is pre-padded to a multiple of BLOCK_SIZE, so there are no partial
+        # (tail) blocks and no masked loads -- the tail masked-load is
+        # unreliable on this backend. Padding rows are dropped by REAL_M, not by
+        # their NaN value: unordered (NaN) comparisons are not reliable on every
+        # compiler this kernel ships to, and a NaN row that compares true would
+        # land in the last bin and inflate it by up to BLOCK_SIZE.
         offs = start + tl.arange(0, BLOCK_SIZE)
-        valid = tl.full((BLOCK_SIZE,), 1, dtype=tl.int1)
+        valid = offs < REAL_M
         linear_idx = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
         # Walk over each dimension (unrolled at compile time via N_CONST).
@@ -105,8 +108,17 @@ def histogramdd_from_bin_cts_kernel(
             left_cmp = left
             right_cmp = right
 
-            # Only count points inside [left, right] (NaN fails both comparisons).
-            in_range = (coord_cmp >= left_cmp) & (coord_cmp <= right_cmp)
+            # Only count points inside [left, right]. A NaN coordinate must fail
+            # the range test, but an unordered float compare is not reliable on
+            # every compiler this kernel ships to (it can be folded to true), so
+            # drop NaN coordinates with an integer bit-pattern test first.
+            if ACC_DTYPE == tl.float64:
+                abs_bits = coord_cmp.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
+                not_nan = abs_bits <= 0x7FF0000000000000
+            else:
+                abs_bits = coord_cmp.to(tl.int32, bitcast=True) & 0x7FFFFFFF
+                not_nan = abs_bits <= 0x7F800000
+            in_range = not_nan & (coord_cmp >= left_cmp) & (coord_cmp <= right_cmp)
             valid = valid & in_range
 
             # Last edge <= coord, i.e. ATen's upper_bound - 1. Padding lanes hold
@@ -194,15 +206,27 @@ def histogramdd_col_range_kernel(
         for r in range(0, M):
             v = tl.load(inp_ptr + r * N + d).to(ACC_DTYPE)
             if r < real_M:
-                # tl.minimum/tl.maximum lower to fmin/fmax, which ignore NaN and
-                # keep +-Inf; ATen propagates NaN into both range bounds, so the
-                # NaN is re-applied explicitly below.
-                acc_min = tl.minimum(acc_min, v)
-                acc_max = tl.maximum(acc_max, v)
-                if v != v:
+                # NaN must not enter the min/max (ATen propagates NaN into both
+                # bounds, which is re-applied explicitly below), and NaN must be
+                # detected without an unordered compare -- some compilers fold
+                # ``v != v`` to true. Test the IEEE bit pattern instead.
+                if ACC_DTYPE == tl.float64:
+                    abs_bits = v.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
+                    is_nan = abs_bits > 0x7FF0000000000000
+                    is_inf = abs_bits == 0x7FF0000000000000
+                else:
+                    abs_bits = v.to(tl.int32, bitcast=True) & 0x7FFFFFFF
+                    is_nan = abs_bits > 0x7F800000
+                    is_inf = abs_bits == 0x7F800000
+                if is_nan:
                     nan_seen = nan_seen + 1
-                elif tl.abs(v) == float("inf"):
-                    inf_seen = inf_seen + 1
+                else:
+                    # tl.minimum/tl.maximum lower to fmin/fmax, which keep
+                    # +-Inf; NaN never reaches them now.
+                    acc_min = tl.minimum(acc_min, v)
+                    acc_max = tl.maximum(acc_max, v)
+                    if is_inf:
+                        inf_seen = inf_seen + 1
 
         # ATen propagates NaN into both bounds; +-Inf stays in whichever bound it
         # landed (fmin keeps -inf, fmax keeps +inf).
@@ -584,9 +608,10 @@ def _histogramdd_from_bin_cts_impl(
 
         # Pad the point count up to a full block so the kernel never issues a
         # partial (tail) masked load, which this backend handles unreliably.
-        # Padding rows are NaN (and padding weights are 0), so they fall out of
-        # range and contribute nothing.
+        # The padding rows are NaN (and padding weights are 0), and the kernel
+        # also masks them out by row index, so they never contribute.
         padded_M = triton.cdiv(M, BLOCK_SIZE) * BLOCK_SIZE
+        real_M = M
         if padded_M != M:
             padded = torch.empty((padded_M, N), dtype=inp.dtype, device=inp.device)
             padded[:M].copy_(inp)
@@ -609,6 +634,7 @@ def _histogramdd_from_bin_cts_impl(
                 weight_ptr,
                 hist_ptr,
                 M,
+                real_M,
                 N,
                 lefts,
                 rights,
