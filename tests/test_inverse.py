@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import pytest
 import torch
 
@@ -70,7 +71,19 @@ def ref_inverse(a):
     if flag_gems.vendor_name == "thead" and tuple(a.shape) == (128, 128):
         return torch.inverse(a.cpu().double()).to(a.dtype)
     if flag_gems.vendor_name != "kunlunxin":
-        return torch.inverse(utils.to_reference(a, upcast=True)).to(a.dtype)
+        ref = utils.to_reference(a, upcast=True)
+        try:
+            return torch.inverse(ref).to(a.dtype)
+        except RuntimeError as error:
+            # The MUSA PyTorch build has no CPU LAPACK. NumPy provides the
+            # same batched matrix inverse for these nonsingular inputs.
+            if not (
+                flag_gems.vendor_name == "mthreads"
+                and ref.device.type == "cpu"
+                and "requires compiling PyTorch with LAPACK" in str(error)
+            ):
+                raise
+            return torch.from_numpy(np.linalg.inv(ref.detach().numpy())).to(a.dtype)
     a_cpu = (
         a.cpu().to(torch.complex128) if a.is_complex() else a.cpu().to(torch.float64)
     )
@@ -113,6 +126,7 @@ def test_inverse(shape, dtype, request):
 def test_inverse_batch(shape, dtype):
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
     res_out = flag_gems.inverse(A)
+    assert res_out.device == A.device
     ref_out = ref_inverse(A)
 
     assert res_out.shape == A.shape
@@ -127,6 +141,7 @@ def test_inverse_requires_pivoting(matrix, dtype):
     # partial pivoting step rather than just the elimination arithmetic.
     A = torch.tensor(matrix, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.inverse(A)
+    assert res_out.device == A.device
     ref_out = ref_inverse(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
@@ -160,6 +175,7 @@ def test_inverse_noncontiguous(dtype):
     A_t = A.t()
 
     res_out = flag_gems.inverse(A_t)
+    assert res_out.device == A_t.device
     ref_out = ref_inverse(A_t)
 
     assert res_out.shape == A_t.shape
