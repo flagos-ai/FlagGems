@@ -137,10 +137,24 @@ def test_convolution_overrideable_transposed(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
+@pytest.fixture
+def _full_precision_musa_convolution_out():
+    if flag_gems.vendor_name == "mthreads":
+        from torch_musa.core import mudnn
+
+        # Match the CPU reference at the original FP32 precision.
+        with mudnn.flags(allow_tf32=False):
+            yield
+    else:
+        yield
+
+
 @pytest.mark.convolution_overrideable_out
 @pytest.mark.parametrize("shape, kernel, groups", CONV_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_convolution_overrideable_out(shape, kernel, groups, dtype):
+def test_convolution_overrideable_out(
+    shape, kernel, groups, dtype, _full_precision_musa_convolution_out
+):
     torch.backends.cudnn.allow_tf32 = False
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
