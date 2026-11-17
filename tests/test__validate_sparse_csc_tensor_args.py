@@ -138,7 +138,9 @@ def _assert_result_equal(result, reference, required_device):
         result.is_complex() or reference.is_complex()
     ):
         result, reference = _cpu_physical(result), _cpu_physical(reference)
-    elif flag_gems.vendor_name == "ascend" and (result.is_complex() or result.ndim > 8):
+    elif (
+        flag_gems.vendor_name in ("ascend", "mthreads") and result.is_complex()
+    ) or (flag_gems.vendor_name == "ascend" and result.ndim > 8):
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
