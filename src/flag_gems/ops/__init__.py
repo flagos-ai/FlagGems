@@ -646,6 +646,7 @@ from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
 from flag_gems.ops.cast_Double import cast_Double
+from flag_gems.ops.cast_Float import cast_Float
 from flag_gems.ops.cast_Long import cast_Long
 from flag_gems.ops.cast_Short import cast_Short
 from flag_gems.ops.cat import cat, cat_out
@@ -2366,6 +2367,7 @@ __all__ = [
     "cast_Byte",
     "cast_Char",
     "cast_Double",
+    "cast_Float",
     "cast_Long",
     "cast_Short",
     "cat",
