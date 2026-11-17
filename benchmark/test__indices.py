@@ -15,7 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
 
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
@@ -36,29 +35,47 @@ _INDICES_SHAPES = [
     ((4096, 4096), (8,), 262144),
 ]
 
+_MASTER_SHAPES = [
+    (shape, (), nnz)
+    for nnz, shape in (
+        (8, (4, 4)),
+        (1024, (32, 32)),
+        (4096, (64, 64)),
+        (16384, (128, 128)),
+        (65536, (256, 256)),
+    )
+]
+
 
 def _case_fn(shape, dtype):
-    del dtype
+    if shape in _MASTER_SHAPES and dtype != torch.float32:
+        return
     sparse_shape, dense_shape, nnz = shape
     yield base.BenchmarkCasePlan(
         shape={"input": tuple(sparse_shape) + tuple(dense_shape)},
-        params={"nnz": nnz},
+        params={"nnz": nnz, "coalesced": True} if shape in _MASTER_SHAPES else {"nnz": nnz},
         builder_args=(sparse_shape, dense_shape, nnz),
     )
 
 
 def _build_inputs_fn(plan, dtype, device):
     sparse_shape, dense_shape, nnz = plan.builder_args
-    indices = torch.stack(
-        [
-            torch.randint(0, dim, (nnz,), dtype=torch.long, device=device)
-            for dim in sparse_shape
-        ]
-    )
     values_shape = (nnz,) + tuple(dense_shape)
     values = utils.generate_tensor_input(values_shape, dtype, device)
     size = tuple(sparse_shape) + tuple(dense_shape)
-    inp = torch.sparse_coo_tensor(indices, values, size, device=device)
+    if plan.params.get("coalesced", False):
+        # Master enumerates unique coordinates and coalesces before timing.
+        flat = torch.randperm(sparse_shape[0] * sparse_shape[1])[:nnz]
+        indices = torch.stack((flat // sparse_shape[1], flat % sparse_shape[1]))
+        inp = torch.sparse_coo_tensor(indices.to(device), values, size).coalesce()
+    else:
+        indices = torch.stack(
+            [
+                torch.randint(0, dim, (nnz,), dtype=torch.long, device=device)
+                for dim in sparse_shape
+            ]
+        )
+        inp = torch.sparse_coo_tensor(indices, values, size, device=device)
     return inp, {}
 
 
@@ -66,7 +83,9 @@ class IndicesBenchmark(OperatorBenchmark):
     """Two-phase GenericBenchmark whose inputs are sparse COO tensors."""
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_INDICES_SHAPES)
+        super().set_shapes(
+            shape_file_path, default_shapes=_INDICES_SHAPES + _MASTER_SHAPES
+        )
 
 
 @pytest.mark.underscore_indices
@@ -76,11 +95,6 @@ def test__indices():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._indices,
-        # flag_gems has no public ``_indices`` direct callable; the candidate is
-        # supplied by the KernelGen process-local override keyed on the public
-        # operator name "_indices" (resolved via
-        # Benchmark._candidate_call inside the benchmark runner).
-        gems_op=getattr(flag_gems, "_indices", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
