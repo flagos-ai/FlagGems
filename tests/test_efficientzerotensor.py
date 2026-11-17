@@ -421,3 +421,53 @@ def test_efficientzerotensor_out_dispatch_zero_tensor_rejected():
     )
     with pytest.raises(RuntimeError, match="ZeroTensors are immutable"):
         torch.ops.aten._efficientzerotensor.out([2, 3], out=out)
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_downstream_dispatch():
+    # The ZeroTensor key makes native materialize a zeros.expand(sizes) and
+    # redispatch below the key, so consumer ops run inside the Gems kernels.
+    _ensure_gems_enabled()
+    t = torch.ops.aten._efficientzerotensor.default(
+        (4, 4), dtype=torch.float32, device=flag_gems.device
+    )
+    assert t._is_zerotensor()
+    assert t.sum().item() == 0.0
+
+    zeroed = torch.zeros_like(t)
+    assert not zeroed._is_zerotensor()
+    assert torch.count_nonzero(zeroed) == 0
+
+    host = t.to("cpu")
+    assert host.device.type == "cpu"
+    assert torch.count_nonzero(host) == 0
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_inplace_view_rejected():
+    # Immutability must survive a view: the ZeroTensor key is propagated by
+    # view ops, so writes through the view raise the native error.
+    _ensure_gems_enabled()
+    t = torch.ops.aten._efficientzerotensor.default(
+        (2, 3), dtype=torch.float32, device=flag_gems.device
+    )
+    with pytest.raises(RuntimeError, match="immutable"):
+        t.t().add_(1)
+    with pytest.raises(RuntimeError, match="immutable"):
+        t[0] = 1
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_out_dispatch_resize_growth():
+    # A mismatched out resizes in place. Under enable() this re-enters the
+    # FlagGems resize_ override, which must grow the storage before the fill.
+    _ensure_gems_enabled()
+    out = torch.empty((4,), dtype=torch.float32, device=flag_gems.device)
+    res = torch.ops.aten._efficientzerotensor.out([2, 2], out=out)
+    assert res is out
+    assert out.shape == torch.Size([2, 2])
+    assert out.stride() == (2, 1)
+    assert torch.count_nonzero(out) == 0

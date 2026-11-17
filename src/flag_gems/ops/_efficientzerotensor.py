@@ -155,8 +155,8 @@ _TRITON_FILL_DTYPES = frozenset(
 @triton.jit
 def _efficientzerotensor_out_kernel(out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = ext.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    block_start = pid.to(tl.int64) * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE).to(tl.int64)
     mask = offsets < n_elements
     tl.store(out_ptr + offsets, 0.0, mask=mask)
 
@@ -185,7 +185,7 @@ def _efficientzerotensor_out_strided_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
-    rem = (pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)).to(tl.int64)
+    rem = pid.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
     mask = rem < n_elements
     addr = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
     # Decompose the flat logical index innermost-dim first. Unused dims are
