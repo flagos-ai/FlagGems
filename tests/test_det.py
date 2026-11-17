@@ -99,6 +99,12 @@ def _small_ops_det(A):
 
 
 def _ref_det(A):
+    if flag_gems.vendor_name == "mthreads" and A.device.type == "cpu":
+        # The MUSA PyTorch build has no CPU LAPACK for determinant.
+        import numpy as np
+
+        matrix = A.numpy()
+        return torch.from_numpy(np.asarray(np.linalg.det(matrix), dtype=matrix.dtype))
     if A.device.type == "npu":
         return _small_ops_det(A)
     if A.device.type != "cpu":
@@ -123,6 +129,7 @@ def test_det_random(shape, dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -138,6 +145,7 @@ def test_det_random_batch(shape, dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -156,6 +164,7 @@ def test_det_positive_definite(shape, dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -174,6 +183,7 @@ def test_det_negative_determinant(shape, dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -193,6 +203,7 @@ def test_det_diagonal(shape, dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -208,6 +219,7 @@ def test_det_singular(shape, dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -218,11 +230,16 @@ def test_det_singular(shape, dtype):
 def test_det_empty(shape, dtype):
     A = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A, True)
+    if flag_gems.vendor_name == "mthreads":
+        # The determinant of an empty square matrix is the empty product, 1.
+        ref_A = ref_A.cpu()
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    observed = res_out.cpu() if flag_gems.vendor_name == "mthreads" else res_out
+    utils.gems_assert_close(observed, ref_out, dtype)
 
 
 @pytest.mark.det
@@ -232,6 +249,7 @@ def test_det_empty_batch(dtype):
     reference = _ref_det(utils.to_reference(A, True))
 
     result = flag_gems.det(A)
+    assert result.device == A.device
 
     utils.gems_assert_close(result, reference, dtype)
     assert result.shape == (0,)
@@ -250,6 +268,7 @@ def test_det_non_contiguous(dtype):
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
+    assert res_out.device == A.device
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
