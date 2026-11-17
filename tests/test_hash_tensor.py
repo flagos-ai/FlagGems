@@ -46,8 +46,9 @@ def _assert_equal(res_out, ref_out, input_device):
     (torch_xmlir's eq/equal reject it), so reinterpret the same bits as int64.
     The dtype view keeps the comparison bit-exact.
     """
-    if flag_gems.vendor_name == "iluvatar":
-        assert res_out.device == input_device
+    assert res_out.device == input_device
+    assert res_out.dtype == ref_out.dtype == torch.uint64
+    assert res_out.shape == ref_out.shape
     if ref_out.device != res_out.device:
         res_out = res_out.cpu()
     utils.gems_assert_equal(res_out.view(torch.int64), ref_out.view(torch.int64))
