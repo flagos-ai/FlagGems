@@ -22,6 +22,49 @@ from .conftest import QUICK_MODE
 
 _HAS_ATEN_SQRTH = hasattr(torch.ops.aten, "linalg_matrix_sqrth")
 
+
+@pytest.fixture(autouse=True)
+def _ieee_fp32_matmul():
+    # The reconstruction GEMM must run in IEEE fp32.  Runners that start torch
+    # with TF32 enabled (TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1 is set on CI's
+    # a100-worker-1) turn that GEMM into a 10-bit-mantissa one, which moves the
+    # fp32 result ~5e-4 away from the fp64 reference -- past the
+    # atol=1e-4*reduce_dim budget on (4, 4) float32.  That is an ambient
+    # precision policy, not a property of the kernel under test, so pin both
+    # precision APIs off (torch >= 2.9 new API plus the legacy flag, which older
+    # versions only have) and restore the process state afterwards.  Same
+    # approach as tests/test_chain_matmul.py.
+    saved_precision = None
+    try:
+        saved_precision = torch.backends.cuda.matmul.fp32_precision
+    except (AttributeError, RuntimeError):
+        pass
+    saved_tf32 = None
+    try:
+        saved_tf32 = torch.backends.cuda.matmul.allow_tf32
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "ieee"
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+    except (AttributeError, RuntimeError):
+        pass
+    yield
+    if saved_precision is not None:
+        try:
+            torch.backends.cuda.matmul.fp32_precision = saved_precision
+        except (AttributeError, RuntimeError):
+            pass
+    if saved_tf32 is not None:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = saved_tf32
+        except (AttributeError, RuntimeError):
+            pass
+
+
 DTYPES = [torch.float32, torch.complex64]
 if not QUICK_MODE:
     DTYPES += [torch.float64, torch.complex128]
