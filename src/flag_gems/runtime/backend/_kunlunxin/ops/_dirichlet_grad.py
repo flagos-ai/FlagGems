@@ -385,16 +385,8 @@ def _dirichlet_grad_func(x, alpha, total):
     return _dirichlet_grad_tile(x, alpha, total).to(x.dtype)
 
 
-def _dirichlet_grad(x, alpha, total):
-    logger.debug("GEMS_KUNLUNXIN DIRICHLET_GRAD")
-    # The ATen reference only implements the AT_DISPATCH_FLOATING_TYPES path.
-    assert x.dtype in (
-        torch.float32,
-        torch.float64,
-    ), f"_dirichlet_grad only supports float32/float64, got {x.dtype}"
-    return _dirichlet_grad_func(x, alpha, total)
-
-
+# The functional override lives in dirichlet_grad.py. The pointwise kernel
+# above remains required by the out variant below.
 def _dirichlet_grad_into(x, alpha, total, *, out):
     logger.debug("GEMS_KUNLUNXIN DIRICHLET_GRAD_OUT")
     assert x.dtype in (

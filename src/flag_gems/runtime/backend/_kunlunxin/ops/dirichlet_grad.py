@@ -39,6 +39,8 @@ digamma(alpha)``) are computed once and hoisted, and every branch keeps the
 reference's exact operation order and correctly-rounded divisions.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -47,6 +49,11 @@ import triton.language as tl
 # asymptotic expansions need the same libdevice primitives as the reference;
 # import the backend-provided libdevice module directly.
 from triton.language.extra import libdevice as _ld
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -315,6 +322,7 @@ def _dirichlet_grad_one(x, alpha, total):
     )
 
 
+@libentry()
 @triton.jit
 def _dirichlet_grad_kernel(x_ptr, a_ptr, t_ptr, o_ptr, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
@@ -328,6 +336,7 @@ def _dirichlet_grad_kernel(x_ptr, a_ptr, t_ptr, o_ptr, n, BLOCK: tl.constexpr):
 
 
 def _dirichlet_grad(x, alpha, total):
+    logger.debug("GEMS_KUNLUNXIN DIRICHLET_GRAD")
     out = torch.empty_like(x)
     n = x.numel()
     if n == 0:
@@ -338,18 +347,19 @@ def _dirichlet_grad(x, alpha, total):
     # multi-program shapes prefer four elements per thread to amortise program
     # overhead and expose ILP (30.93us vs 45.86us at N=8192).  Dispatch on the
     # element count, which is pure launch metadata; the kernel is identical.
-    if n <= 4096:
-        _dirichlet_grad_kernel[((n + 127) >> 7,)](
-            x, alpha, total, out, n, BLOCK=128, num_warps=4
-        )
-    elif n <= 65536:
-        _dirichlet_grad_kernel[((n + 511) >> 9,)](
-            x, alpha, total, out, n, BLOCK=512, num_warps=4
-        )
-    else:
-        # Enough programs remain to fill all 8 SMs, so spend the extra per-thread
-        # work on fewer, longer programs (8 elements per thread).
-        _dirichlet_grad_kernel[((n + 1023) >> 10,)](
-            x, alpha, total, out, n, BLOCK=1024, num_warps=4
-        )
+    with torch_device_fn.device(x.device):
+        if n <= 4096:
+            _dirichlet_grad_kernel[((n + 127) >> 7,)](
+                x, alpha, total, out, n, BLOCK=128, num_warps=4
+            )
+        elif n <= 65536:
+            _dirichlet_grad_kernel[((n + 511) >> 9,)](
+                x, alpha, total, out, n, BLOCK=512, num_warps=4
+            )
+        else:
+            # Enough programs remain to fill all 8 SMs, so spend the extra per-thread
+            # work on fewer, longer programs (8 elements per thread).
+            _dirichlet_grad_kernel[((n + 1023) >> 10,)](
+                x, alpha, total, out, n, BLOCK=1024, num_warps=4
+            )
     return out
