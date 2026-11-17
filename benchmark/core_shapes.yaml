@@ -1545,8 +1545,6 @@ grouped_gemm_w8a8:
   shape_desc: "M,N,K,E"
 # Keep these structured cases separate from the generic NormBenchmark shapes.
 LayernormBenchmark:
-
-layernorm:
   shape_desc: "input_shape, normalized_shape, eps"
   shapes:
     - [[200, 36], [36], 1e-05]
