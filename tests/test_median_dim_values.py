@@ -175,34 +175,31 @@ def test_median_dim_values_invalid_dim(dim):
 @pytest.mark.skipif(
     flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin 64-bit regression"
 )
-@pytest.mark.parametrize("dtype", [torch.int64, torch.float64])
 @pytest.mark.parametrize("dim", [0, 1])
-def test_median_dim_values_strided_64bit(dtype, dim):
-    # Binary64 values differ below FP32 precision; int64 values exceed 32 bits.
-    if dtype == torch.float64:
-        data = [
-            [1.0000000001, -2.0, float("nan")],
-            [1.0000000002, -3.0, float("inf")],
-            [1.0000000003, -4.0, -float("inf")],
-        ]
-    else:
-        data = [
-            [2**40, -(2**40), 3],
-            [2**40 + 1, -(2**40) - 1, 2],
-            [2**40 + 2, -(2**40) - 2, 1],
-        ]
-    reference = torch.tensor(data, dtype=dtype).t()
-    inp = torch.tensor(data, dtype=dtype, device=flag_gems.device).t()
-    if inp.dtype != dtype:
-        pytest.skip(
-            f"Kunlunxin tensor factory narrows requested {dtype} to {inp.dtype}"
-        )
+def test_median_dim_values_strided_int64(dim):
+    data = [
+        [2**40, -(2**40), 3],
+        [2**40 + 1, -(2**40) - 1, 2],
+        [2**40 + 2, -(2**40) - 2, 1],
+    ]
+    reference = torch.tensor(data, dtype=torch.int64).t()
+    inp = torch.tensor(data, dtype=torch.int64, device=flag_gems.device).t()
     expected = torch.median(reference, dim=dim)
     shape = tuple(expected.values.shape)
-    values = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    values = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
     indices = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
     result = flag_gems.median_dim_values(inp, dim, values=values, indices=indices)
-    torch.testing.assert_close(
-        result.values.cpu(), expected.values, rtol=0, atol=0, equal_nan=True
-    )
+    torch.testing.assert_close(result.values.cpu(), expected.values, rtol=0, atol=0)
     torch.testing.assert_close(result.indices.cpu(), expected.indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin FP64 capability"
+)
+def test_median_dim_values_rejects_float64_before_launch():
+    # This runtime narrows device FP64 allocations to FP32. A CPU tensor keeps
+    # the requested dtype and verifies rejection before any device/kernel use.
+    inp = torch.tensor([1.0, 2.0], dtype=torch.float64, device="cpu")
+    with pytest.raises(NotImplementedError, match="float64 is not supported"):
+        flag_gems.median_dim_values(inp)

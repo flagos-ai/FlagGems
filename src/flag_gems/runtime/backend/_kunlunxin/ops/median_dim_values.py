@@ -60,7 +60,6 @@ def _median_i64_kernel(
     SHAPE: tl.constexpr,
     STRIDES: tl.constexpr,
     DIM: tl.constexpr,
-    IS_FLOAT: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     m = tl.program_id(0)
@@ -77,16 +76,8 @@ def _median_i64_kernel(
     else:
         offsets = base + tl.minimum(cols, N - 1).to(tl.int64) * STRIDES[DIM]
     data = tl.load(inp_ptr + offsets)
-    if IS_FLOAT:
-        # Order IEEE-754 binary64 using integer bits, without lossy FP32 casts.
-        key = data.to(tl.uint64, bitcast=True)
-        negative = data < 0
-        key = tl.where(negative, ~key, key ^ 0x8000000000000000)
-        hi_key = (key >> 32).to(tl.uint32)
-        lo_key = key.to(tl.uint32)
-    else:
-        hi_key = (data >> 32).to(tl.uint32) ^ 0x80000000
-        lo_key = data.to(tl.uint32)
+    hi_key = (data >> 32).to(tl.uint32) ^ 0x80000000
+    lo_key = data.to(tl.uint32)
 
     rank = (N - 1) // 2
     lo = tl.full((), 0, dtype=tl.uint32)
@@ -114,13 +105,6 @@ def _median_i64_kernel(
 
     hit = cand & (lo_key == lo2)
     first = tl.min(tl.where(hit, cols, BLOCK_N), axis=0)
-    if IS_FLOAT:
-        bits = data.to(tl.uint64, bitcast=True)
-        is_nan = ((bits & 0x7FF0000000000000) == 0x7FF0000000000000) & (
-            (bits & 0x000FFFFFFFFFFFFF) != 0
-        )
-        nan_index = tl.min(tl.where(valid & is_nan, cols, BLOCK_N), 0)
-        first = tl.where(nan_index < BLOCK_N, nan_index, first)
     if len(SHAPE) == 0:
         selected_offset = 0
     else:
@@ -448,6 +432,10 @@ def _num_warps(bn):
 
 def median_dim_values(inp, dim=-1, keepdim=False, *out_args, values=None, indices=None):
     logger.debug("GEMS_KUNLUNXIN MEDIAN_DIM_VALUES")
+    if inp.dtype == torch.float64:
+        raise NotImplementedError(
+            "median_dim_values: float64 is not supported on Kunlunxin"
+        )
     with torch_device_fn.device(inp.device):
         return _median_dim_values(
             inp, dim, keepdim, *out_args, values=values, indices=indices
@@ -475,7 +463,7 @@ def _median_dim_values(
     dt = inp.dtype
 
     kind_bits = KIND_AND_BITS.get(dt)
-    if kind_bits is None and dt not in (torch.int64, torch.float64):
+    if kind_bits is None and dt != torch.int64:
         raise NotImplementedError(f"median_dim_values: unsupported dtype {dt}")
     kind, keybits = kind_bits if kind_bits is not None else (K_I64, None)
 
@@ -552,7 +540,6 @@ def _median_dim_values(
             tuple(shape),
             tuple(inp.stride()),
             dim,
-            dt == torch.float64,
             BLOCK_N=bn,
             num_warps=warps,
         )
