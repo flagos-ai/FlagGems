@@ -48,6 +48,21 @@ def _make_qinput(shape, device, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE
 
 
 def _make_qout(shape, device, scale, zero_point, dtype):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and torch.device(device).type == "musa"
+        and tuple(shape) == (1, 1, 1, 1, 1)
+    ):
+        # Materialize the scalar quantized zero without a tiny quantize kernel.
+        host = _make_qout(shape, "cpu", scale, zero_point, dtype)
+        out = torch._empty_affine_quantized(
+            shape, scale=scale, zero_point=zero_point, dtype=dtype, device=device
+        )
+        bits = host.int_repr()
+        torch.empty(0, dtype=bits.dtype, device=device).set_(
+            out.untyped_storage(), out.storage_offset(), out.shape, out.stride()
+        ).copy_(bits)
+        return out
     return torch.quantize_per_tensor(
         torch.zeros(shape, dtype=torch.float32, device=device),
         scale,
