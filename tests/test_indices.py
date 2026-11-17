@@ -454,3 +454,54 @@ def test_indices_rejects_non_tensor():
 def test_indices_requires_operand():
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.indices()
+
+
+@pytest.mark.indices
+@pytest.mark.parametrize(
+    "sparse_shape,dense_shape,nnz",
+    [
+        ((16,), (), 8),
+        ((2, 2), (), 4),
+        ((4, 4), (), 8),
+        ((16, 16), (), 64),
+        ((5, 7, 9), (), 32),
+        ((2, 2), (3, 4), 2),
+        ((4, 4), (), 0),
+    ],
+)
+def test_indices_master_coalesced_shapes(sparse_shape, dense_shape, nnz):
+    inp, src = _make_coo(sparse_shape, dense_shape, nnz, torch.float32, _VALUE_RANGE)
+    expected = torch.ops.aten.indices(tu.to_reference(inp))
+    actual = flag_gems.indices(inp)
+
+    _assert_indices_result(actual, expected, inp, src)
+
+
+@pytest.mark.indices
+@pytest.mark.parametrize("layout", ["csr", "csc", "strided"])
+def test_indices_master_layout_rejection(layout):
+    device = flag_gems.device
+    values = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)
+    if layout == "csr":
+        inp = torch.sparse_csr_tensor(
+            torch.tensor([0, 2, 4], device=device),
+            torch.tensor([0, 1, 2, 3], device=device),
+            values,
+            (2, 4),
+        )
+    elif layout == "csc":
+        inp = torch.sparse_csc_tensor(
+            torch.tensor([0, 2, 4, 4, 4], device=device),
+            torch.tensor([0, 1, 0, 1], device=device),
+            values,
+            (2, 4),
+        )
+    else:
+        inp = torch.randn(2, 3, device=device)
+
+    # Compare on the same device because dispatcher diagnostics can be device-specific.
+    with pytest.raises(RuntimeError) as expected:
+        torch.ops.aten.indices.default(inp)
+    with pytest.raises(RuntimeError) as actual:
+        flag_gems.indices(inp)
+    assert str(actual.value) == str(expected.value)
