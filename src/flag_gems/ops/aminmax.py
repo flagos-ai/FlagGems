@@ -29,6 +29,16 @@ from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _minimum_with_nan(a, b):
+    return tl.minimum(a, b, propagate_nan=tl.PropagateNan.ALL)
+
+
+@triton.jit
+def _maximum_with_nan(a, b):
+    return tl.maximum(a, b, propagate_nan=tl.PropagateNan.ALL)
+
+
 @libentry()
 @triton.jit
 def aminmax_kernel_1(
@@ -48,8 +58,8 @@ def aminmax_kernel_1(
     min_val = tl.load(inp_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(inp_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.min(min_val, propagate_nan=tl.PropagateNan.ALL)
-    max_val = tl.max(max_val, propagate_nan=tl.PropagateNan.ALL)
+    min_val = tl.reduce(min_val, 0, _minimum_with_nan)
+    max_val = tl.reduce(max_val, 0, _maximum_with_nan)
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
@@ -71,8 +81,8 @@ def aminmax_kernel_2(
     min_val = tl.load(min_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(max_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.min(min_val, propagate_nan=tl.PropagateNan.ALL)
-    max_val = tl.max(max_val, propagate_nan=tl.PropagateNan.ALL)
+    min_val = tl.reduce(min_val, 0, _minimum_with_nan)
+    max_val = tl.reduce(max_val, 0, _maximum_with_nan)
 
     tl.store(min_out, min_val)
     tl.store(max_out, max_val)
