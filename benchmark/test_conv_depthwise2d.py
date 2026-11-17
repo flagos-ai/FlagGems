@@ -195,15 +195,15 @@ class _ExternalMetrics(base.BenchmarkMetrics):
 
 class ConvDepthwise2DBenchmark(OperatorBenchmark):
     @property
-    def _uses_master_core(self):
+    def _uses_musa_core(self):
         return (
             flag_gems.vendor_name == "mthreads"
             and base.Config.bench_level == consts.BenchLevel.CORE
         )
 
     def set_shapes(self, shape_file_path=None):
-        if self._uses_master_core:
-            self.shapes = list(_MUSA_MASTER_CASES)
+        if self._uses_musa_core:
+            self.shapes = list(dict.fromkeys([*CASES, *_MUSA_MASTER_CASES]))
             self.shape_desc = "N, C, H, W, Kh, Kw, stride, padding, dilation"
         elif (
             flag_gems.vendor_name in ("enflame", "mthreads", "kunlunxin")
@@ -223,8 +223,6 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
     @cached_property
     def _external_records(self):
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
-        if self._uses_master_core:
-            return self._master_external_records(path)
         payload = _aten_read_bytes(
             path, ("pr43:op_depthwise_current_core_h800_baseline")
         )
@@ -258,7 +256,9 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
             ("pr43:op_depthwise_current_core_h800_baseline"),
         )
 
-    def _master_external_records(self, path):
+    @cached_property
+    def _master_external_records(self):
+        path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
         source_id = "legacy:pytorch-h800-primary"
         payload = _read_legacy_baseline(path, source_id)
         if hashlib.sha256(payload).hexdigest() != _MASTER_H800_SHA:
@@ -343,10 +343,12 @@ class ConvDepthwise2DBenchmark(OperatorBenchmark):
                 seed=0, input="torch.randn", weight="torch.randn", bias=None
             ),
         )
-        if self._uses_master_core:
+        if self._uses_musa_core and tuple(descriptor) in _MUSA_MASTER_CASES:
             config["source_commit"] = "9d57a23b4386bd669152a935fe88a96db907da7c"
             del config["input_recipe"]
-        records, source = self._external_records
+            records, source = self._master_external_records
+        else:
+            records, source = self._external_records
         matches = [
             r
             for ds in records.values()
