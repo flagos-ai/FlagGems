@@ -169,7 +169,9 @@ def test_fully_masked_rows_are_exact_zero(dtype):
     actual = flag_gems.cross_attention(q, k, v, mask)
     assert torch.count_nonzero(actual[:, :, 2]).item() == 0
     assert torch.isfinite(actual).all().item()
-    _assert_close(actual, _reference(q, k, v, mask), dtype)
+    # CUDA SDPA (flash) does not resolve fully masked rows to zero, so compare
+    # against a CPU reference, which does.
+    _assert_close(actual, _reference(q.cpu(), k.cpu(), v.cpu(), mask.cpu()), dtype)
 
 
 @pytest.mark.cross_attention
