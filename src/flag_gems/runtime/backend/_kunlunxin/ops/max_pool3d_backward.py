@@ -397,6 +397,13 @@ def max_pool3d_backward(
     if in_n * in_c * in_d * in_h * in_w == 0:
         return torch.zeros_like(input, dtype=original_dtype)
 
+    # The kernels address grad_output/grad_input storage linearly under an
+    # NCDHW-contiguous assumption.  ``torch.zeros_like(input)`` would preserve
+    # a channels_last_3d input's memory format (NDHWC physical order), which
+    # makes every flat store land at the wrong address.  Allocate the working
+    # buffer in contiguous NCDHW order unconditionally, and restore the
+    # input's memory format on the returned tensor below (ATen returns the
+    # gradient in the input's memory format).
     # Two-phase slot path (no atomics, deterministic) for the common small
     # slot-count case on large-enough tensors; falls back to the flat gather
     # kernel otherwise. Note: the XPU backend miscompiles data-dependent
@@ -408,7 +415,7 @@ def max_pool3d_backward(
     N_SLOT = KDN * KHN * KWN
     n_out_total = in_n * in_c * out_d * out_h * out_w
     if N_SLOT <= 9 and n_out_total >= 8192:
-        return _max_pool3d_backward_slot(
+        result = _max_pool3d_backward_slot(
             grad_output,
             indices,
             in_n,
@@ -432,43 +439,54 @@ def max_pool3d_backward(
             dh,
             dw,
         ).to(original_dtype)
-
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
-    total = grad_input.numel()
-    block = 64
-    grid = (triton.cdiv(total, block),)
-
-    with torch_device_fn.device(grad_input.device):
-        max_pool3d_backward_flat_kernel[grid](
-            grad_output,
-            indices,
-            grad_input,
-            total,
-            in_d,
-            in_h,
-            in_w,
-            out_d,
-            out_h,
-            out_w,
-            kd,
-            kh,
-            kw,
-            sd,
-            sh,
-            sw,
-            pd,
-            ph,
-            pw,
-            dd,
-            dh,
-            dw,
-            block,
-            num_warps=1,
-            buffer_size_limit=2048,
-            isCloseVectorization=True,
+    else:
+        grad_input = torch.zeros(
+            (in_n, in_c, in_d, in_h, in_w),
+            device=input.device,
+            dtype=torch.float32,
         )
+        total = grad_input.numel()
+        block = 64
+        grid = (triton.cdiv(total, block),)
 
-    return grad_input.to(original_dtype)
+        with torch_device_fn.device(grad_input.device):
+            max_pool3d_backward_flat_kernel[grid](
+                grad_output,
+                indices,
+                grad_input,
+                total,
+                in_d,
+                in_h,
+                in_w,
+                out_d,
+                out_h,
+                out_w,
+                kd,
+                kh,
+                kw,
+                sd,
+                sh,
+                sw,
+                pd,
+                ph,
+                pw,
+                dd,
+                dh,
+                dw,
+                block,
+                num_warps=1,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
+            )
+
+        result = grad_input.to(original_dtype)
+
+    # Match ATen: the gradient inherits the input's memory format.
+    if not input.is_contiguous() and input.is_contiguous(
+        memory_format=torch.channels_last_3d
+    ):
+        result = result.to(memory_format=torch.channels_last_3d)
+    return result
 
 
 def max_pool3d_with_indices_backward(

@@ -657,11 +657,14 @@ from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward  # noqa: F401
+from .matmul_backward import matmul_backward  # noqa: F401
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
 from .matrix_power import matrix_power, matrix_power_out
 from .max import max, max_dim
+from .max_pool1d import max_pool1d  # noqa: F401
 from .max_pool1d_with_indices import max_pool1d_with_indices  # noqa: F401
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -1655,6 +1658,8 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "masked_select_backward",
+    "matmul_backward",
     "matmul_bf16",
     "matmul_int8",
     "matmuladd",
@@ -1662,6 +1667,7 @@ __all__ = [
     "matrix_power_out",
     "max",
     "max_dim",
+    "max_pool1d",
     "max_pool1d_with_indices",
     "max_pool2d_backward",
     "max_pool2d_with_indices",
@@ -2176,6 +2182,45 @@ def _patch_adaptive_max_pool3d_aten():
 
 
 _patch_adaptive_max_pool3d_aten()
+
+
+_max_pool3d_with_indices_aten_lib = None
+
+
+def _patch_max_pool3d_with_indices_aten():
+    """Route torch.ops.aten.max_pool3d_with_indices (CUDA) to the Gems
+    forward.
+
+    The vendor XDNN wrapper on this stack returns zeroed index memory (the
+    output values are correct, the indices are all zeros -- same family as the
+    adaptive_max_pool{2,3}d vendor index bug), so any consumer of those
+    indices on the device (e.g. torch.nn.MaxPool3d(return_indices=True)
+    feeding max_unpool3d, or a max_pool3d_with_indices_backward whose
+    reference consumes them) disagrees with ATen.  The Gems
+    max_pool3d_with_indices kernel computes ATen-exact flat spatial indices
+    (d * H * W + h * W + w, same window math and tie-break -- strict
+    > keeps the earliest tap); registering it for the CUDA dispatch key
+    makes every torch.ops.aten.max_pool3d_with_indices call produce valid
+    indices, both inside and outside use_gems() scopes.  The registration
+    is process-global (the Library handle is held in this module); the
+    use_gems() registrar re-registers the same op for the same key, so
+    there is no conflict.
+    """
+    global _max_pool3d_with_indices_aten_lib
+    if _max_pool3d_with_indices_aten_lib is not None:
+        return
+
+    import torch
+
+    from .max_pool3d_with_indices import max_pool3d_with_indices as _gems_fwd
+
+    _max_pool3d_with_indices_aten_lib = torch.library.Library("aten", "IMPL")
+    _max_pool3d_with_indices_aten_lib.impl(
+        "max_pool3d_with_indices", _gems_fwd, "CUDA", allow_override=True
+    )
+
+
+_patch_max_pool3d_with_indices_aten()
 
 
 _sobol_engine_ff_ops_patched = False

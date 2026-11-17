@@ -89,7 +89,12 @@ def max_pool3d_forward_kernel(
     base_off = nc_idx * (in_d * in_hw)
 
     max_val = tl.full((BLOCK,), float("-inf"), dtype=tl.float32)
-    max_off = tl.zeros((BLOCK,), dtype=tl.int64)
+    # Keep the argmax accumulator in int32 and cast once at store time:
+    # int64-typed tl.where/tl.zeros are unreliable on this backend (the
+    # argmax stayed 0 / garbage), while an int32 select + a single int64
+    # cast at store is the pattern used by the working adaptive_max_pool3d
+    # kernel.
+    max_off = tl.zeros((BLOCK,), dtype=tl.int32)
     for k in range(0, kcount):
         kd = k // ncfg
         kh = (k // kernel_w) % kernel_h
@@ -114,12 +119,10 @@ def max_pool3d_forward_kernel(
         value = tl.where(active, value, float("-inf"))
         is_max = value > max_val
         max_val = tl.where(is_max, value, max_val)
-        max_off = tl.where(
-            is_max, (id_s * in_hw + ih_s * in_w + iw_s).to(tl.int64), max_off
-        )
+        max_off = tl.where(is_max, id_s * in_hw + ih_s * in_w + iw_s, max_off)
 
     tl.store(output_ptr + offsets, max_val, mask=output_mask)
-    tl.store(indices_ptr + offsets, max_off, mask=output_mask)
+    tl.store(indices_ptr + offsets, max_off.to(tl.int64), mask=output_mask)
 
 
 @libentry()
