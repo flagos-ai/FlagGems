@@ -6,12 +6,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 # gels fast path covers overdetermined (m >= n) float32. Shapes are (m, n).
 _SHAPES = [(16, 4), (64, 8), (128, 16), (200, 8), (256, 32)]

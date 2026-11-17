@@ -377,7 +377,7 @@ def test_accuracy_crow_indices_copy_repeated_dispatch():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse CSR layout not supported on this device",
 )
 @pytest.mark.crow_indices_copy
 def test_accuracy_crow_indices_copy_dispatch_sentinel():

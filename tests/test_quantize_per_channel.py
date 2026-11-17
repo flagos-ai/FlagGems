@@ -128,7 +128,7 @@ def _reference(inp, scales, zero_points, axis, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
@@ -150,7 +150,7 @@ def test_quantize_per_channel(shape, axis, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
@@ -168,7 +168,7 @@ def test_quantize_per_channel_last_axis(shape, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
@@ -199,7 +199,7 @@ def test_quantize_per_channel_extremes(dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
@@ -236,7 +236,7 @@ def test_quantize_per_channel_tie_cases(dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
@@ -266,7 +266,7 @@ def test_quantize_per_channel_round_trip(shape, axis, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
@@ -297,7 +297,7 @@ def test_quantize_per_channel_float_zero_points(shape, axis, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 @pytest.mark.parametrize("dtype", FLOAT_QPARAM_DTYPES)
@@ -680,7 +680,7 @@ def test_quantize_per_channel_rejects_out_of_range_zero_point(qtype, zp, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantize_per_channel
 def test_quantize_per_channel_zero_point_error_matches_native():

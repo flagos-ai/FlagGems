@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import random
 import time
 from importlib import import_module
@@ -27,13 +26,6 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 random.seed(time.time() // 100)
-
-# MRADIX topk bring-up matrix. It is a functional debugging aid, not a
-# regression gate: every shape compiles its own kernel, so the run is slow and
-# it fills the compile cache with shapes the performance suite never uses.
-# Enable it only while working on that kernel:
-#   FLAGGEMS_TOPK_MRADIX_FULL_TESTS=1 pytest tests/test_topk.py -k mradix
-MRADIX_FULL_TESTS = os.environ.get("FLAGGEMS_TOPK_MRADIX_FULL_TESTS") == "1"
 
 
 @pytest.mark.topk

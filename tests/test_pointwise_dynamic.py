@@ -39,13 +39,7 @@ else:
 
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]

@@ -4,12 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 _COMPLEX_DTYPES = (
     [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]

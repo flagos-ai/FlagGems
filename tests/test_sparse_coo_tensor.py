@@ -21,11 +21,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
+from .accuracy_utils import _SKIP_FP64
 
 
 def _components(nnz=37, sparse_dim=2, dense_shape=(), dtype=torch.float32):
@@ -46,7 +42,7 @@ def _assert_components(actual, expected):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse COO tensor not supported on this device",
 )
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("nnz", [0, 1, 37, 2051])

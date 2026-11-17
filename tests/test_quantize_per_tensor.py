@@ -22,12 +22,7 @@ import flag_gems
 from flag_gems.ops.quantize_per_tensor import _quantize_per_tensor_impl
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 # ``quantize_per_tensor`` only accepts float32 tensors on the quantized CUDA
 # backend (Half/BFloat16/Double raise "Quantize only works on Float Tensor"),

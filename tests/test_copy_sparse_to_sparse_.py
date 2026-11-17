@@ -26,7 +26,7 @@ from . import accuracy_utils as utils
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse layout not supported on this device",
 )
 @pytest.mark.copy_sparse_to_sparse_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -74,7 +74,7 @@ def test_copy_sparse_to_sparse_self_alias():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse layout not supported on this device",
 )
 @pytest.mark.copy_sparse_to_sparse_
 def test_copy_sparse_to_sparse_dtype_conversion():

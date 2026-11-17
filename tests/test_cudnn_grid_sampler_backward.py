@@ -31,12 +31,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 # cuDNN accepts float16/float32/float64 only; bfloat16 still goes through the
 # Triton kernel but must be compared against a float32 reference.

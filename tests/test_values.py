@@ -68,7 +68,7 @@ if QUICK_MODE:
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 @pytest.mark.parametrize(
@@ -95,7 +95,7 @@ def test_accuracy_values_coo(name, make, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 def test_values_mutation_through_view():
@@ -164,7 +164,7 @@ def test_values_sparse_compressed():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 def test_values_unsupported_layouts_reject_like_native():
@@ -210,7 +210,7 @@ def test_values_unsupported_layouts_reject_like_native():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 @pytest.mark.parametrize("dtype", [torch.int64, torch.int32, torch.bool])
@@ -241,7 +241,7 @@ def test_values_non_float_dtypes_alias(dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 def test_values_int_hybrid_alias():
@@ -265,7 +265,7 @@ def test_values_int_hybrid_alias():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 def test_values_requires_grad_nondifferentiable_contract():
@@ -318,7 +318,7 @@ def test_values_sparse_requires_grad_view_contract():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse tensor layout not supported on this device",
 )
 @pytest.mark.values
 def test_values_dispatch_stability():

@@ -21,12 +21,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 _DENSE_DTYPES = [
     torch.float16,
@@ -155,7 +150,7 @@ def test_padded_dense_to_jagged_forward_noncontiguous_dense():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="float64 not supported on this device",
 )
 @pytest.mark.padded_dense_to_jagged_forward
 def test_padded_dense_to_jagged_forward_float64_preserves_bits():

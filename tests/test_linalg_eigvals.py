@@ -18,12 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 # Eigenvalue decomposition needs a square matrix. The native CUDA kernel
 # accepts float32/complex64/complex128 (float64 upcasts to complex128).

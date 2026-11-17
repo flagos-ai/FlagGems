@@ -19,12 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 # torch.rand / torch.randn have no FP8 implementation, so FP8 inputs are built
 # in FP32 and cast; FP8 results are also compared bitwise because torch rejects

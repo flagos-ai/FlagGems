@@ -31,12 +31,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
+from .accuracy_utils import _SKIP_FP64
 
 # Path A: closed-form 2x2 kernel (real). fp16/bf16 are widened to fp32 on
 # device, an enhancement over native torch.linalg.eigh (which raises

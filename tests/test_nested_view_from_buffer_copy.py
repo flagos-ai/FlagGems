@@ -60,7 +60,7 @@ def test_nested_view_from_buffer_copy(dtype, metadata_placement):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="nested tensor not supported on this device",
 )
 @pytest.mark.nested_view_from_buffer_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

@@ -70,7 +70,7 @@ else:
     reason="Issue #4131 on tsingmicro",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame"),
+    flag_gems.vendor_name in ("enflame",),
     reason="Aten gcu backend not supported on enflame",
 )
 def test_conv3d(
@@ -128,7 +128,7 @@ def test_conv3d(
     reason="Issue #4131 on tsingmicro",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame"),
+    flag_gems.vendor_name in ("enflame",),
     reason="Aten gcu backend not supported on enflame",
 )
 def test_conv3d_padding(

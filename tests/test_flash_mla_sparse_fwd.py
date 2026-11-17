@@ -327,7 +327,7 @@ class FlashmlaSparseTestKit:
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse MLA forward not supported on this device",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "sunrise",

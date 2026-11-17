@@ -355,7 +355,7 @@ def test_put__bool_accumulate_is_logical_or():
 @pytest.mark.parametrize("rank", [1, 2, 5, 6, 7, 8, 9])
 @pytest.mark.parametrize("contiguous", [True, False])
 def test_put__high_rank(rank, contiguous):
-    if flag_gems.vendor_name == "enflame" & rank == 9:
+    if flag_gems.vendor_name == "enflame" and rank == 9:
         pytest.skip("enflame not support rank 9 yet")
     utils.init_seed(0)
     shape = tuple(range(2, 2 + rank))
@@ -419,7 +419,8 @@ def test_put__index_out_of_range(bad):
     # than `tl.device_assert` (which is compiled out unless TRITON_DEBUG=1).
     # A tripped device assert poisons the CUDA context for the whole process, so
     # the failure is exercised in an isolated subprocess.
-    code = textwrap.dedent(f"""
+    code = textwrap.dedent(
+        f"""
         import torch
         import flag_gems
 
@@ -432,7 +433,8 @@ def test_put__index_out_of_range(bad):
         inp.put_(index, source)
         torch.cuda.synchronize()
         print("NO_ERROR")
-        """)
+        """
+    )
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
     # The GCU driver dumps a ~500 MB device coredump when the SIP assert this test
     # deliberately trips fires; disable it so the crash subprocess doesn't litter

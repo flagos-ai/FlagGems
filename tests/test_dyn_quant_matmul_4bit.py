@@ -73,7 +73,7 @@ def _case(m, n, k, group, dtype, bias, noncontiguous=False):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="4-bit quantization not supported on this device",
 )
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
@@ -98,7 +98,7 @@ def test_dyn_quant_matmul_4bit_channelwise(m, n, k, dtype, bias):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="4-bit quantization not supported on this device",
 )
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize(
@@ -119,7 +119,7 @@ def test_dyn_quant_matmul_4bit_groupwise(m, n, k, group, bias):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="4-bit quantization not supported on this device",
 )
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
@@ -129,7 +129,7 @@ def test_dyn_quant_matmul_4bit_noncontiguous(dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="4-bit quantization not supported on this device",
 )
 @pytest.mark.dyn_quant_matmul_4bit
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
@@ -228,7 +228,7 @@ def test_dyn_quant_matmul_4bit_invalid(fault, match):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="4-bit quantization not supported on this device",
 )
 @pytest.mark.dyn_quant_matmul_4bit
 def test_dyn_quant_matmul_4bit_compile():

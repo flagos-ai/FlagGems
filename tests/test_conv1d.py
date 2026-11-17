@@ -60,7 +60,7 @@ else:
     reason="Issue #4131 on tsingmicro",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame"),
+    flag_gems.vendor_name in ("enflame",),
     reason="Aten gcu backend not supported on enflame",
 )
 def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
@@ -88,7 +88,7 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     reason="Issue #4131 on tsingmicro",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame"),
+    flag_gems.vendor_name in ("enflame",),
     reason="Aten gcu backend not supported on enflame",
 )
 def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
@@ -117,7 +117,7 @@ def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     reason="Issue #4131 on tsingmicro",
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame"),
+    flag_gems.vendor_name in ("enflame",),
     reason="Aten gcu backend not supported on enflame",
 )
 def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):

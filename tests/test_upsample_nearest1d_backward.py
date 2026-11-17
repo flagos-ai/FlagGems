@@ -4,13 +4,8 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 from .conftest import QUICK_MODE, TO_CPU
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
-
 
 # QUICK_MODE limits to float32 for fast smoke runs; full runs cover
 # utils.FLOAT_DTYPES plus float64 since the native reference supports double.

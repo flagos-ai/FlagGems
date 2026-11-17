@@ -19,11 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
-
-_SKIP_FP64 = pytest.mark.skipif(
-    not utils.fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
-)
+from .accuracy_utils import _SKIP_FP64
 
 
 @pytest.mark.ldexp
@@ -94,7 +90,7 @@ def test_ldexp_real_operands_complex_out(dtype):
 @pytest.mark.ldexp
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame GCU400 设备侧 complex64 造数（randn_like）触发 aten abort",
+    reason="complex64 tensor creation via randn_like aborts on this device",
 )
 @pytest.mark.parametrize(
     "conj_input,conj_other", [(True, False), (False, True), (True, True)]

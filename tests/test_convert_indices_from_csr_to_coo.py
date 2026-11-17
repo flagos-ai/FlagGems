@@ -85,7 +85,7 @@ def _make_csr(lead, rows, nnz, dtype, seed=0):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse index conversion accuracy issue",
 )
 @pytest.mark.convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("lead,rows,nnz", BLOCK_CASES)
@@ -138,7 +138,7 @@ def test_convert_indices_from_csr_to_coo_empty():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse index conversion accuracy issue",
 )
 @pytest.mark.convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("layout", ["offset_view", "batch_strided"])

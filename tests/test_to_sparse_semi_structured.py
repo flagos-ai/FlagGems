@@ -94,7 +94,7 @@ def _assert_sss(dense, equal_nan=False):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="semi-structured sparse tensor not supported on this device",
 )
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -105,7 +105,7 @@ def test_to_sparse_semi_structured(shape, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="semi-structured sparse tensor not supported on this device",
 )
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -128,7 +128,7 @@ def test_to_sparse_semi_structured_strided(dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="semi-structured sparse tensor not supported on this device",
 )
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])

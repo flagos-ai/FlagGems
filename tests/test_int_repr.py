@@ -450,7 +450,7 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.int_repr
 @pytest.mark.parametrize("layout,shape,qdtype", LAYOUT_ROWS)

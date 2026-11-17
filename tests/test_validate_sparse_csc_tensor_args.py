@@ -92,7 +92,7 @@ def test_validate_sparse_csc_tensor_args(index_dtype, shape, strided_batch, dtyp
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="sparse CSC layout not supported on this device",
 )
 @pytest.mark.validate_sparse_csc_tensor_args
 @pytest.mark.underscore_validate_sparse_csc_tensor_args

@@ -464,7 +464,7 @@ def test_quantized_max_pool3d_out(
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantized_max_pool3d_out
 @pytest.mark.parametrize(
@@ -503,7 +503,7 @@ def test_quantized_max_pool3d_out_resizes(out_shape):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantized_max_pool3d_out
 @pytest.mark.parametrize("out_qparams", [(0.9, 7), (1.0, 0), (0.02, 200)])
@@ -584,7 +584,7 @@ def test_quantized_max_pool3d_out_preserves_storage_offset():
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantized_max_pool3d_out
 def test_quantized_max_pool3d_out_non_contiguous():

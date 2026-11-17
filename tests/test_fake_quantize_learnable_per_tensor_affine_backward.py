@@ -39,7 +39,7 @@ QUANT_PARAMS = [
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="fake-quantize learning accuracy issue",
 )
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -92,7 +92,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="fake-quantize learning accuracy issue",
 )
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)

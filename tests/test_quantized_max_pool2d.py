@@ -177,7 +177,7 @@ def test_quantized_max_pool2d(
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantized_max_pool2d
 @pytest.mark.parametrize("dtype", QUANT_DTYPES)
@@ -443,7 +443,7 @@ def test_quantized_max_pool2d_default_stride(stride):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support work",
+    reason="quantized tensor creation not supported on this device",
 )
 @pytest.mark.quantized_max_pool2d
 def test_quantized_max_pool2d_runs_triton_kernel(monkeypatch):
