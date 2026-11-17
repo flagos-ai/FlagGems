@@ -107,7 +107,9 @@ def test_fallback_lgamma(request):
         actual = torch.empty_like(inp)
         block_size = triton.next_power_of_2(inp.numel())
         with torch_device_fn.device(inp.device):
-            fallback_lgamma_kernel[(1,)](inp, actual, inp.numel(), BLOCK_SIZE=block_size)
+            fallback_lgamma_kernel[(1,)](
+                inp, actual, inp.numel(), BLOCK_SIZE=block_size
+            )
     _assert_lgamma_contract(actual, device, dtype, shape)
     utils.gems_assert_close(
         actual.cpu(), expected, torch.float32, atol=2e-5, equal_nan=True

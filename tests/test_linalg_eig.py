@@ -28,7 +28,11 @@ def _eigenpair_for_residual(inp, eigenvalues, eigenvectors):
     assert eigenvalues.shape == inp.shape[:-1]
     assert eigenvectors.shape == inp.shape
     if flag_gems.vendor_name == "thead":
-        inp, eigenvalues, eigenvectors = inp.cpu(), eigenvalues.cpu(), eigenvectors.cpu()
+        inp, eigenvalues, eigenvectors = (
+            inp.cpu(),
+            eigenvalues.cpu(),
+            eigenvectors.cpu(),
+        )
     norms = torch.linalg.vector_norm(eigenvectors, dim=-2)
     torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
     return inp.to(eigenvectors.dtype), eigenvalues, eigenvectors
