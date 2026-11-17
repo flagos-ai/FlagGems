@@ -29,7 +29,14 @@ def test_scaled_dot_product_fused_attention_overrideable(
         batch, num_head, seq_len, head_dim, dtype=dtype, device=device
     ).uniform_(-0.1, 0.1)
 
-    ref_q, ref_k, ref_v = (utils.to_reference(x) for x in (q, k, v))
+    use_musa_cpu_reference = (
+        flag_gems.vendor_name == "mthreads" and dtype == torch.bfloat16
+    )
+    if use_musa_cpu_reference:
+        # MUSA native BF16 SDPA loses precision on some causal workloads.
+        ref_q, ref_k, ref_v = (x.cpu().float() for x in (q, k, v))
+    else:
+        ref_q, ref_k, ref_v = (utils.to_reference(x) for x in (q, k, v))
     if (
         flag_gems.vendor_name in ("iluvatar", "hygon", "metax")
         and dtype == torch.bfloat16
@@ -56,7 +63,8 @@ def test_scaled_dot_product_fused_attention_overrideable(
     )
 
     assert output.device == q.device
-    gems_assert_close(output, ref_output, dtype)
+    actual = output.cpu() if use_musa_cpu_reference else output
+    gems_assert_close(actual, ref_output, dtype)
 
     # Verify return values shape and content
     assert cum_seq_q.shape == (batch, 2)
