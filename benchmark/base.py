@@ -814,6 +814,148 @@ class Benchmark:
             target_device=self.device,
         )
 
+    @staticmethod
+    def _profile_invokes_kernel(fn):
+        """Profile *fn* once and return whether any device kernel was launched.
+
+        Runs *fn* under ``torch.profiler.profile`` and checks for at least one
+        non-CPU event with recorded device time.  This is the single source of
+        truth for kernel-launch detection, used by both the inline baseline
+        guard (``_verify_base_invokes_kernel``) and the standalone
+        ``--kernel-check`` mode.
+        """
+        from torch.autograd import DeviceType
+
+        with torch.profiler.profile() as prof:
+            fn()
+            torch_device_fn.synchronize()
+
+        return any(
+            event.device_type != DeviceType.CPU and event.self_device_time_total > 0
+            for event in prof.key_averages()
+        )
+
+    def _verify_base_invokes_kernel(self, op, args, kwargs):
+        """Confirm the native baseline actually launches a device kernel.
+
+        A baseline that silently falls back to a no-op or CPU-only path
+        would make latency_base (and derived metrics like speedup) report
+        comparisons against something that never touched the device.
+
+        When no kernel is detected the test is *skipped* rather than failed,
+        so it shows as SKIPPED in CI reports and does not pollute the FAILED
+        count that is reserved for genuine benchmark errors.
+
+        The result is cached per Benchmark instance so the profiling overhead
+        is incurred at most once, even when multiple cases share the same op.
+        """
+        if hasattr(self, "_base_kernel_verified"):
+            if not self._base_kernel_verified:
+                pytest.skip(
+                    f"Benchmark baseline for '{self.op_name}' did not invoke any "
+                    "device kernel; latency_base would not reflect real execution"
+                )
+            return
+
+        fn, _ = self._benchmark_callable(op, *args, **kwargs)
+        invoked = self._profile_invokes_kernel(fn)
+        self._base_kernel_verified = invoked
+        if not invoked:
+            pytest.skip(
+                f"Benchmark baseline for '{self.op_name}' did not invoke any "
+                "device kernel; latency_base would not reflect real execution"
+            )
+
+    def _run_kernel_check_cases(self, case_ids=None):
+        """Check that the baseline invokes at least one device kernel.
+
+        Runs the torch baseline once per selected case under
+        ``_profile_invokes_kernel`` and records whether a device kernel was
+        observed.  The session passes as long as at least one case across the
+        whole benchmark run launched a kernel (checked in pytest_sessionfinish).
+
+        Legacy benchmarks (those using ``input_fn`` / ``get_input_iter`` rather
+        than the case-based API) are also supported: the first input from the
+        first dtype is profiled once and recorded as a single synthetic case.
+        """
+        if not self.supports_cases():
+            return self._run_kernel_check_legacy()
+        cases = self._collect_cases()
+        if not cases:
+            raise ValueError(f"Operator '{self.op_name}' has no kernel-check cases.")
+        Config.available_case_ids.update(case.case_id for case in cases)
+        selected = None if case_ids is None else set(case_ids)
+        executed = []
+        for case in cases:
+            if selected is not None and case.case_id not in selected:
+                continue
+            record = {
+                "operator": self.op_name,
+                "nodeid": Config.current_nodeid,
+                "case_id": case.case_id,
+                "invoked_kernel": False,
+                "status": "failed",
+            }
+            Config.kernel_check_records.append(record)
+            try:
+                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                record["invoked_kernel"] = self._profile_invokes_kernel(fn)
+            except Exception as exc:
+                record["error"] = str(exc)
+                raise
+            finally:
+                del args, kwargs
+            record["status"] = "passed"
+            Config.executed_case_ids.add(case.case_id)
+            executed.append(case.case_id)
+        return executed
+
+    def _run_kernel_check_legacy(self):
+        """Kernel-check fallback for legacy benchmarks that use ``input_fn``.
+
+        Legacy benchmarks expose ``get_input_iter(dtype)`` instead of the
+        case-based API (``get_case_iter`` / ``build_inputs``).  For each dtype
+        we grab the *first* input, profile it, and record a synthetic case so
+        that ``pytest_sessionfinish`` can aggregate the result.
+
+        Returns:
+            list[str]: synthetic case-ids that were executed.
+        """
+        executed = []
+        for dtype in self.to_bench_dtypes:
+            case_id = f"{self.op_name}-legacy-{dtype}"
+            record = {
+                "operator": self.op_name,
+                "nodeid": Config.current_nodeid,
+                "case_id": case_id,
+                "invoked_kernel": False,
+                "status": "failed",
+            }
+            Config.kernel_check_records.append(record)
+            try:
+                input_iter = self.get_input_iter(dtype)
+                input_data = next(input_iter)
+                args, kwargs = self.unpack_to_args_kwargs(input_data)
+                fn, _ = self._benchmark_callable(self.torch_op, *args, **kwargs)
+                record["invoked_kernel"] = self._profile_invokes_kernel(fn)
+            except Exception as exc:
+                record["error"] = str(exc)
+                raise
+            finally:
+                # release references to potentially large tensors
+                try:
+                    del args, kwargs
+                except NameError:
+                    pass
+            record["status"] = "passed"
+            Config.available_case_ids.add(case_id)
+            Config.executed_case_ids.add(case_id)
+            executed.append(case_id)
+            # One dtype is enough to determine kernel behaviour; stop early.
+            break
+        return executed
+
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
         try:
@@ -878,6 +1020,8 @@ class Benchmark:
                     * 1e3
                 )
                 # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+        except pytest.skip.Exception:
+            raise  # let pytest.skip() propagate as SKIPPED
         except (RuntimeError, Exception) as e:
             metric.error_msg = str(e)
             pytest.fail(str(e))  # raise exception again
@@ -915,6 +1059,9 @@ class Benchmark:
 
         if getattr(Config, "preflight_only", False):
             return self._run_preflight_cases(selected_case_ids)
+
+        if getattr(Config, "kernel_check", False):
+            return self._run_kernel_check_cases(selected_case_ids)
 
         if getattr(Config, "profile_only", False):
             return self._run_profile_cases(selected_case_ids or [])
