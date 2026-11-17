@@ -72,7 +72,7 @@ def test_neg_hygon_contiguous(hygon_neg_module, monkeypatch, shape):
 
     monkeypatch.setattr(hygon_neg_module, "_generic_neg", unexpected_fallback)
     result = flag_gems.neg(inp)
-    utils.gems_assert_equal(result.cpu(), reference)
+    utils.gems_assert_equal(result, reference)
     utils.gems_assert_equal(inp, before)
     assert result.shape == inp.shape
     assert result.dtype == inp.dtype
@@ -220,7 +220,7 @@ def test_neg_hygon_autograd(hygon_neg_module):
     flag_gems.enable()
     result = torch.neg(inp)
     (grad,) = torch.autograd.grad(result, inp, torch.ones_like(result))
-    utils.gems_assert_equal(result.cpu(), torch.neg(utils.to_reference(inp.detach())))
+    utils.gems_assert_equal(result, torch.neg(utils.to_reference(inp.detach())))
     utils.gems_assert_equal(grad, utils.to_reference(-torch.ones_like(inp)))
 
 
@@ -239,4 +239,4 @@ def test_neg_hygon_aten_route(hygon_neg_module, monkeypatch):
     flag_gems.enable()
     result = torch.neg(inp)
     assert len(calls) == 1
-    utils.gems_assert_equal(result.cpu(), reference)
+    utils.gems_assert_equal(result, reference)
