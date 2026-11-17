@@ -157,11 +157,20 @@ def test_floor_hygon_aten_registration(monkeypatch):
         calls.append(A)
         return original(A)
 
-    monkeypatch.setattr(provider, "floor", routed)
-    flag_gems.only_enable(include=["floor"])
+    # GeneralOpRegistrar resolves live overrides from the public export, not
+    # from the provider module whose function was captured at import time.
+    monkeypatch.setattr(flag_gems, "floor", routed)
     inp = torch.tensor([[-1.25, 0.5]], dtype=torch.float32, device=flag_gems.device)
-    result = torch.floor(inp)
-    torch.testing.assert_close(result.cpu(), torch.floor(inp.cpu()), rtol=0, atol=0)
+    reference = torch.floor(inp.cpu())
+    with monkeypatch.context() as registration:
+        registration.setattr(flag_gems, "current_work_registrar", None)
+        library = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=library, include=["floor"])
+            result = torch.floor(inp)
+        finally:
+            library._destroy()
+    torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
     assert len(calls) == 1 and calls[0] is inp
 
 
