@@ -82,7 +82,7 @@ def _scale_integral(x, n):
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["numel"])
 def _ldexp_flat(
     X, N, OUT, numel, BLOCK: tl.constexpr, FN: tl.constexpr, EVEN: tl.constexpr
 ):
@@ -234,6 +234,10 @@ def _ldexp_impl(self, other):
         if numel == 0:
             return out
         block, warps = _config(numel)
+        # XPU's unmasked half-load -> fp32 -> bitcast vector lowering can
+        # produce an unpack without a buffer. Keep a runtime bounds predicate
+        # for integral scaling; numel is not specialized in the kernel.
+        masked_half = self.dtype == torch.float16 and not other.dtype.is_floating_point
         _ldexp_flat[((numel + block - 1) // block,)](
             self,
             other,
@@ -241,7 +245,7 @@ def _ldexp_impl(self, other):
             numel,
             BLOCK=block,
             FN=1 if other.dtype.is_floating_point else 0,
-            EVEN=(numel % block == 0),
+            EVEN=(numel % block == 0 and not masked_half),
             num_warps=warps,
         )
         return out
