@@ -132,8 +132,9 @@ def _assert_equal(actual, expected):
     assert actual.layout == expected.layout == torch.strided
     assert actual.device == _device(flag_gems.device)
     assert expected.device == (torch.device("cpu") if utils.TO_CPU else actual.device)
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and (
-        actual.dtype in _FP8_DTYPES or actual.dtype.is_complex
+    vendor = flag_gems.vendor_name
+    if (actual.dtype.is_complex and vendor in ("ascend", "kunlunxin", "mthreads")) or (
+        actual.dtype in _FP8_DTYPES and vendor in ("ascend", "kunlunxin")
     ):
         actual = _copy_to(actual, "cpu")
         expected = _copy_to(expected, "cpu")
@@ -559,6 +560,32 @@ def test_values(case, dtype, value_range):
     res_out = flag_gems.values(inp)
 
     _assert_values_view(res_out, ref_out, inp, ref_inp)
+
+
+@pytest.mark.values
+@pytest.mark.parametrize(
+    "indices,size,stored_shape",
+    [
+        ([[0, 1, 1], [1, 0, 1]], (2, 3), (3,)),
+        ([[0, 1]], (2, 2), (2, 2)),
+        ([[], []], (2, 3), (0,)),
+    ],
+    ids=["plain", "hybrid", "zero-nnz"],
+)
+@pytest.mark.parametrize(
+    "dtype", [dtype for dtype in utils.FLOAT_DTYPES if dtype in _COO_DTYPES]
+)
+def test_values_master_coalesced_coo(indices, size, stored_shape, dtype):
+    values = _make_values(dtype, stored_shape, ["-1", "1"])
+    ref_values = _to_reference(values)
+    index = torch.tensor(indices, dtype=torch.int64, device=values.device)
+    inp = torch.sparse_coo_tensor(index, values, size, is_coalesced=True)
+    ref_inp = torch.sparse_coo_tensor(
+        index.to(ref_values.device), ref_values, size, is_coalesced=True
+    )
+    reference = torch.ops.aten.values.default(ref_inp)
+    result = flag_gems.values(inp)
+    _assert_values_view(result, reference, inp, ref_inp)
 
 
 @pytest.mark.values
