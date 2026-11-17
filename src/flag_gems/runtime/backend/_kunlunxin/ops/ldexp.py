@@ -81,14 +81,31 @@ _EXP2_OVERFLOW = tl.constexpr(128.0)
 
 @triton.jit
 def _exp2_xpu(x):
-    """2**x with the two TritonXPU ``exp2`` quirks repaired."""
-    return tl.where(x >= _EXP2_OVERFLOW, float("inf"), tl_extra_shim.exp2(x))
+    """2**x built from ``tl.exp``.
+
+    Neither ``exp2`` flavour is usable on this backend: ``tl.exp2`` lowers to
+    the natural exponential (``tl.exp2(3.0) == 20.0855``) and the libdevice
+    ``exp2f`` extern has no XPU3 device symbol in the CI FlagTree build
+    (``undefined symbol: Unsupported`` at link time).  ``tl.exp`` lowers on
+    every build, so the scale is rebuilt as ``exp(x * ln2)`` and the overflow
+    range (where ``exp2f`` used to return 0) is resolved explicitly.
+    """
+    return tl.where(x >= _EXP2_OVERFLOW, float("inf"), tl.exp(x * 0.6931471805599453))
 
 
 @triton.jit
 def _signed_f32(value, sign):
-    """|value| with the sign of ``sign`` (``copysign`` for the fp32 path)."""
-    return tl_extra_shim.copysign(value.to(tl.float32), sign.to(tl.float32))
+    """|value| with the sign of ``sign`` (``copysign`` as fp32 bit ops).
+
+    ``libdevice.copysign`` has no XPU3 device symbol in the CI FlagTree build
+    (the link fails with ``undefined symbol: Unsupported``), so the sign bit
+    is OR-ed explicitly, as done in ``_ldexp32_xpu``.
+    """
+    value_bits = value.to(tl.float32).to(tl.int32, bitcast=True)
+    sign_bits = sign.to(tl.float32).to(tl.int32, bitcast=True)
+    return ((value_bits & 0x7FFFFFFF) | (sign_bits & -2147483648)).to(
+        tl.float32, bitcast=True
+    )
 
 
 @triton.jit
