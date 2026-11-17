@@ -32,9 +32,15 @@ Backend notes that matter for bit-exactness on this target:
     emitted as ``fma(x, inv, 0.0)`` - the same correctly rounded product.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 try:  # portable libdevice access (cuda / xpu / hip namespaces all expose nearbyint)
     from triton.language.extra import libdevice as _libdevice
@@ -255,6 +261,7 @@ def _next_pow2(n):
 def _fake_quantize_learnable_per_channel_affine(
     self, scale, zero_point, axis, quant_min, quant_max, grad_factor=1.0
 ):
+    logger.debug("GEMS_KUNLUNXIN FAKE_QUANTIZE_LEARNABLE_PER_CHANNEL_AFFINE")
     x = self
     ndim = x.dim()
     ax = axis + ndim if axis < 0 else axis
@@ -280,82 +287,85 @@ def _fake_quantize_learnable_per_channel_affine(
     qmax = float(quant_max)
     i64 = numel > _INT32_MAX
 
-    if tuple(out.stride()) == tuple(strides):
-        si = _inner_stride(shape, strides, ax, ndim)
-        so = _outer_stride(shape, strides, ax)
-        if si is not None and so is not None:
-            if (
-                inner >= _CHANNEL_MIN_INNER
-                and C <= _GRID_MAX_YZ
-                and outer <= _GRID_MAX_YZ
-            ):
-                block = _CHANNEL_BLOCK if inner >= _CHANNEL_BLOCK else _next_pow2(inner)
-                grid = (triton.cdiv(inner, block), C, outer)
-                _fq_channel_kernel[grid](
-                    x,
-                    s_flat,
-                    z_flat,
-                    out,
-                    inner,
-                    so,
-                    strides[ax],
-                    qmin,
-                    qmax,
-                    si,
-                    _RMODE,
-                    _HAS_FMA,
-                    _HAS_DIV_RN,
-                    i64,
-                    block,
-                    num_warps=max(1, min(8, block // 128)),
-                )
-            else:
-                if numel <= 16:
-                    block = _FLAT_MIN_BLOCK
-                elif numel <= 512:
-                    block = _FLAT_MID_BLOCK
+    with torch_device_fn.device(x.device):
+        if x.is_contiguous() and out.is_contiguous():
+            si = _inner_stride(shape, strides, ax, ndim)
+            so = _outer_stride(shape, strides, ax)
+            if si is not None and so is not None:
+                if (
+                    inner >= _CHANNEL_MIN_INNER
+                    and C <= _GRID_MAX_YZ
+                    and outer <= _GRID_MAX_YZ
+                ):
+                    block = (
+                        _CHANNEL_BLOCK if inner >= _CHANNEL_BLOCK else _next_pow2(inner)
+                    )
+                    grid = (triton.cdiv(inner, block), C, outer)
+                    _fq_channel_kernel[grid](
+                        x,
+                        s_flat,
+                        z_flat,
+                        out,
+                        inner,
+                        so,
+                        strides[ax],
+                        qmin,
+                        qmax,
+                        si,
+                        _RMODE,
+                        _HAS_FMA,
+                        _HAS_DIV_RN,
+                        i64,
+                        block,
+                        num_warps=max(1, min(8, block // 128)),
+                    )
                 else:
-                    block = _FLAT_BLOCK
-                grid = (triton.cdiv(numel, block),)
-                _fq_flat_kernel[grid](
-                    x,
-                    s_flat,
-                    z_flat,
-                    out,
-                    numel,
-                    C,
-                    inner,
-                    qmin,
-                    qmax,
-                    _RMODE,
-                    _HAS_FMA,
-                    _HAS_DIV_RN,
-                    i64,
-                    block,
-                    num_warps=max(1, min(8, block // 128)),
-                )
-            return out
+                    if numel <= 16:
+                        block = _FLAT_MIN_BLOCK
+                    elif numel <= 512:
+                        block = _FLAT_MID_BLOCK
+                    else:
+                        block = _FLAT_BLOCK
+                    grid = (triton.cdiv(numel, block),)
+                    _fq_flat_kernel[grid](
+                        x,
+                        s_flat,
+                        z_flat,
+                        out,
+                        numel,
+                        C,
+                        inner,
+                        qmin,
+                        qmax,
+                        _RMODE,
+                        _HAS_FMA,
+                        _HAS_DIV_RN,
+                        i64,
+                        block,
+                        num_warps=max(1, min(8, block // 128)),
+                    )
+                return out
 
-    # Exotic layout: per-dimension unravel with independent read/write strides.
-    block = _FLAT_BLOCK
-    grid = (triton.cdiv(numel, block),)
-    _fq_generic_kernel[grid](
-        x,
-        s_flat,
-        z_flat,
-        out,
-        numel,
-        tuple(shape),
-        tuple(strides),
-        tuple(out.stride()),
-        ax,
-        ndim,
-        qmin,
-        qmax,
-        _RMODE,
-        _HAS_FMA,
-        _HAS_DIV_RN,
-        block,
-        num_warps=max(1, min(8, block // 128)),
-    )
-    return out
+        # Exotic layout: per-dimension unravel with independent read/write strides.
+        block = _FLAT_BLOCK
+        grid = (triton.cdiv(numel, block),)
+        _fq_generic_kernel[grid](
+            x,
+            s_flat,
+            z_flat,
+            out,
+            numel,
+            tuple(shape),
+            tuple(strides),
+            tuple(out.stride()),
+            ax,
+            ndim,
+            qmin,
+            qmax,
+            _RMODE,
+            _HAS_FMA,
+            _HAS_DIV_RN,
+            block,
+            num_warps=max(1, min(8, block // 128)),
+        )
+        return out
