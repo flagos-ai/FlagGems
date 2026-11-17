@@ -50,7 +50,12 @@ class LogcumsumexpBenchmark(base.GenericBenchmark2DOnly):
     def build_inputs(self, case):
         inputs = super().build_inputs(case)
         args, kwargs = self.unpack_to_args_kwargs(inputs)
-        if _musa_bf16_without_native(args[0]):
+        # Candidate-only traversal does not consume a native timing record.
+        if _musa_bf16_without_native(args[0]) and not (
+            base.Config.preflight_only or base.Config.profile_only
+        ):
+            if base.Config.reference_only:
+                pytest.skip("MUSA native logcumsumexp lacks nonempty BFloat16")
             context = self._capture_external_baseline(args, kwargs)
             if context is not None:
                 baseline, call, named_call = context
