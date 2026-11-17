@@ -40,7 +40,7 @@ def lgamma_(A):
     # The kernel promotes integral inputs to float32, so the in-place variant
     # cannot write the result back -- matching native "result type Float
     # can't be cast to the desired output type Int".
-    if not torch.can_cast(torch.float32, A.dtype):
+    if not torch.is_floating_point(A):
         raise RuntimeError(
             f"result type Float can't be cast to the desired output type " f"{A.dtype}"
         )
