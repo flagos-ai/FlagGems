@@ -35,6 +35,7 @@ from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .compute_linear_combination import _compute_linear_combination
 from .conv_tbc_backward import conv_tbc_backward
+from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose3d import conv_transpose3d
 from .cross_attention import cross_attention
@@ -136,6 +137,7 @@ __all__ = [
     "bmm_out",
     "bmm_w8a8",
     "cholesky_inverse",
+    "conv2d",
     "conv_tbc_backward",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
