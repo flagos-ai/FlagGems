@@ -29,7 +29,7 @@
 #   算子命名与 FlagGems op_name 对齐，shape 格式匹配各 Benchmark 子类约定：
 #     - BlasBenchmark (mm/bmm)      : [b, m, n, k]
 #     - GenericBenchmark2DOnly      : [M, N]  (rms_norm)
-#     - GenericBenchmark / binary   : [M, N]  (add, mul, copy_, silu_and_mul)
+#     - GenericBenchmark / binary   : [M, N]  (add, mul, copy_)
 #     - GenericBenchmark unary      : [M, N]  (silu, zeros)
 #     - GenericBenchmark scalar     : [N]     (fill_scalar, zeros scalar)
 #     - UnaryReductionBenchmark     : [M, N]  (softmax)
@@ -40,7 +40,7 @@
 #          benchmark/test_rms_norm.py benchmark/test_add.py \
 #          benchmark/test_mul.py benchmark/test_copy.py \
 #          benchmark/test_fill.py benchmark/test_zeros.py \
-#          benchmark/test_silu.py benchmark/test_silu_and_mul.py \
+#          benchmark/test_silu.py \
 #          benchmark/test_softmax.py \
 #          --model-profile benchmark/model_shapes/285B.yaml --level core
 #
@@ -231,9 +231,9 @@ rms_norm:
   shape_desc: "M, N"
 
 # ── silu (aten::silu) ─────────────────────────────────────────────────────────
-# MoE 专家激活；prefill silu_and_mul 合计约 0.06%，silu 单独 < 0.1%。
+# MoE 专家激活；prefill 约 0.06%。
 # shape 格式: [M, N] — 与 UnaryPointwiseBenchmark 约定一致。
-# 优化建议: 与 MoE GEMM 融合；见 silu_and_mul。
+# 优化建议: 与 MoE GEMM 融合。
 silu:
   profiling:
     prefill:
@@ -246,25 +246,6 @@ silu:
     # shared-expert path:   intermediate_size=256
     - [8192, 256]
     # routed-expert path:   intermediate_size=2304
-    - [8192, 2304]
-  shape_desc: "M, N"
-
-# ── silu_and_mul ──────────────────────────────────────────────────────────────
-# MoE 专家内部 gate+activation 融合；profiling 归属 SiluAndMul kernel。
-# shape 格式: [M, N] — 与 GenericBenchmark / binary_input_fn 约定一致。
-# 优化建议: 与 MoE GEMM 融合；decode M=1 时合并专家。
-silu_and_mul:
-  profiling:
-    prefill:
-      pct: 0.06
-      calls: 720
-    decode:
-      pct: 0.0
-      calls: 0
-  shapes:
-    # shared-expert:  intermediate_size=256
-    - [8192, 256]
-    # routed-expert:  intermediate_size=2304
     - [8192, 2304]
   shape_desc: "M, N"
 
