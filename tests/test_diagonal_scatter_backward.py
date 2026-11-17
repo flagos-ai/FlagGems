@@ -98,26 +98,27 @@ def test_diagonal_scatter_backward_empty_diagonal():
 
     res_input, res_src = flag_gems.diagonal_scatter_backward(grad_output, src, 6, 1, 2)
 
-    utils.gems_assert_equal(res_input, grad_output)
+    # ``grad_output`` is the expected ``grad_input`` here (the diagonal is empty,
+    # so the copy kernel returns it unchanged).  Move both operands to the CPU
+    # explicitly: ``gems_assert_equal`` only relocates ``res`` under ``--ref=cpu``,
+    # which would leave ``ref`` on the device and trip a device mismatch.
+    utils.gems_assert_equal(res_input.cpu(), grad_output.cpu())
     assert res_src.shape == src.shape
 
 
 @pytest.mark.diagonal_scatter_backward
 def test_diagonal_scatter_backward_use_gems_entry():
-    """``flag_gems.diagonal_scatter_backward`` is the registered Triton entry.
+    """``flag_gems.diagonal_scatter_backward`` is exposed via its explicit entry.
 
-    ``aten::diagonal_scatter`` is CompositeExplicitAutograd, so ``use_gems()``
-    keeps ATen's ``DiagonalScatterBackward0`` node above the device kernel;
-    this operator is exposed through its explicit entry point.
+    ``aten::diagonal_scatter`` is CompositeExplicitAutograd and there is no
+    ``aten::diagonal_scatter_backward`` schema, so the operator is called
+    through the explicit ``flag_gems.diagonal_scatter_backward`` entry point.
     """
     grad_output = torch.randn((8, 32, 32), dtype=torch.float32, device=flag_gems.device)
     src = torch.randn((8, 32), dtype=torch.float32, device=flag_gems.device)
 
     ref_input, ref_src = _diagonal_scatter_backward_reference(grad_output, src, 0, 1, 2)
-    with flag_gems.use_gems():
-        res_input, res_src = flag_gems.diagonal_scatter_backward(
-            grad_output, src, 0, 1, 2
-        )
+    res_input, res_src = flag_gems.diagonal_scatter_backward(grad_output, src, 0, 1, 2)
 
     utils.gems_assert_equal(res_input, ref_input)
     utils.gems_assert_equal(res_src, ref_src)
