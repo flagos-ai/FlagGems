@@ -89,7 +89,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}-shard${{ inputs.shard_index }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}-shard${{ inputs.shard_index }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -100,6 +100,12 @@ jobs:
           backend: ${{ inputs.backend }}
           vllm-version: '0.21.0'
           gpu-check-script: ${{ inputs.gpu_check_script }}
+
+      - name: Precompile flag_gems Python bytecode
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          python3 -m compileall -q src/flag_gems/
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
@@ -140,7 +146,7 @@ jobs:
   # driver/runtime it needs is only set up inside this image.
   # Equivalent to:
   #   docker run --rm -it \
-  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-kunlunxin:
     if: ${{ inputs.backend == 'kunlunxin-xre5371' }}
@@ -150,7 +156,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       # klx-p800 reuses its workspace across jobs. Stale skip-worktree bits
@@ -224,7 +230,7 @@ jobs:
   #     --device /dev/mxcd \
   #     --device /dev/dri \
   #     --group-add video \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-metax:
     if: ${{ inputs.backend == 'metax-maca3810' }}
@@ -237,7 +243,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -299,7 +305,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -339,7 +345,7 @@ jobs:
   # enflame-s60-1. Equivalent to:
   #   docker run --rm -it --privileged -v /dev:/dev \
   #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
-  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   #
   # NOTE: image/options/runner labels all come from .github/backends.json via
@@ -371,7 +377,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -416,7 +422,7 @@ jobs:
   #     --group-add video \
   #     -v /opt/hyhal:/opt/hyhal \
   #     --security-opt seccomp=unconfined \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-hygon:
     if: ${{ inputs.backend == 'hygon-dtk2604' }}
@@ -429,7 +435,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -481,7 +487,7 @@ jobs:
   #     --device /dev/mtgpu.0 /dev/mtgpu.1 /dev/mtgpu.2 /dev/mtgpu.3 /dev/mtgpu.4 /dev/mtgpu.5 /dev/mtgpu.6 /dev/mtgpu.7 \
   #     --device /dev/dri \
   #     -v /usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro \
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-mthreads-musa5.2.0:2.3.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-mthreads:
     if: ${{ inputs.backend == 'mthreads-musa520' }}
@@ -494,7 +500,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -542,7 +548,7 @@ jobs:
   #   docker run --rm -it --device /dev/iluvatar0 --device /dev/itrctl \
   #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
   # with GitHub Actions creating/starting the container and exec'ing each step.
-  #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.2.0 bash
+  #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.3.0 bash
   test-iluvatar:
     if: ${{ inputs.backend == 'iluvatar-corex450' }}
     runs-on: >-
@@ -554,7 +560,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
