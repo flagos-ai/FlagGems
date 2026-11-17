@@ -20,13 +20,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-pytestmark = pytest.mark.skipif(
-    not hasattr(torch.ops.aten, "linalg_matrix_sqrth"),
-    reason=(
-        "linalg_matrix_sqrth requires PyTorch nightly 2026-06-27 or newer, "
-        "or PyTorch 2.15+"
-    ),
-)
+_HAS_ATEN_SQRTH = hasattr(torch.ops.aten, "linalg_matrix_sqrth")
 
 DTYPES = [torch.float32, torch.complex64]
 if not QUICK_MODE:
@@ -47,7 +41,17 @@ def _make_hpd(shape, dtype, device):
 
 def _reference(inp):
     ref_inp = utils.to_reference(inp)
-    return torch.ops.aten.linalg_matrix_sqrth(ref_inp)
+    if _HAS_ATEN_SQRTH:
+        return torch.ops.aten.linalg_matrix_sqrth(ref_inp)
+    # PyTorch 2.11 has no aten::linalg_matrix_sqrth.  Reconstruct the same
+    # principal square root from the lower-triangle eigendecomposition the ATen
+    # kernel performs: V diag(sqrt(clamp(lambda, 0))) V^H, Hermitian-projected.
+    if ref_inp.numel() == 0:
+        return ref_inp.clone()
+    eigenvalues, eigenvectors = torch.linalg.eigh(ref_inp, UPLO="L")
+    sqrt_eigenvalues = eigenvalues.clamp_min(0).sqrt()
+    result = (eigenvectors * sqrt_eigenvalues.unsqueeze(-2)) @ eigenvectors.mH
+    return (result + result.mH) * 0.5
 
 
 @pytest.mark.linalg_matrix_sqrth
