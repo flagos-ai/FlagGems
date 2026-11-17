@@ -342,6 +342,7 @@ def grouped_fp8_consumer(
     tle.gpu.barrier_wait(finish[0], phaseIdx=0)
 
 
+@libentry()
 @triton.jit(do_not_specialize=["M", "TILES"])
 def grouped_fp8_ws_kernel(
     A,
@@ -549,6 +550,7 @@ def grouped_fp8_multicast_consumer(
         )
 
 
+@libentry()
 @triton.jit
 def grouped_fp8_multicast_kernel(
     A,

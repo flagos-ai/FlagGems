@@ -97,6 +97,7 @@ class Benchmark:
     DEFAULT_SHAPES = consts.DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    FALLBACK_SHAPE_CONFIG_KEYS = ()
     EPS = 1e-7
     """
     the base class for the operations benchmark
@@ -212,6 +213,15 @@ class Benchmark:
             user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
 
+    def _default_shape_config_keys(self):
+        keys = [self.op_name]
+        for cls in type(self).__mro__:
+            if cls is Benchmark:
+                # Operator-specific fallbacks precede the generic Benchmark entry.
+                keys.extend(self.FALLBACK_SHAPE_CONFIG_KEYS)
+            keys.append(cls.__name__)
+        return keys
+
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
 
@@ -221,26 +231,17 @@ class Benchmark:
         try:
             with open(shape_file_path, "r") as file:
                 yaml_config = yaml.safe_load(file)
-                if self.op_name in yaml_config:
-                    self.shapes = yaml_config[self.op_name].get(
-                        "shapes", self.DEFAULT_SHAPES
-                    )
-                    self.shape_desc = yaml_config[self.op_name].get(
-                        "shape_desc", self.DEFAULT_SHAPE_DESC
-                    )
+                for key in self._default_shape_config_keys():
+                    if key in yaml_config:
+                        self.shapes = yaml_config[key].get(
+                            "shapes", self.DEFAULT_SHAPES
+                        )
+                        self.shape_desc = yaml_config[key].get(
+                            "shape_desc", self.DEFAULT_SHAPE_DESC
+                        )
+                        break
                 else:
-                    for cls in type(self).__mro__:
-                        class_name = cls.__name__
-                        if class_name in yaml_config:
-                            self.shapes = yaml_config[class_name].get(
-                                "shapes", self.DEFAULT_SHAPES
-                            )
-                            self.shape_desc = yaml_config[class_name].get(
-                                "shape_desc", self.DEFAULT_SHAPE_DESC
-                            )
-                            break
-                    else:
-                        self.shapes = self.DEFAULT_SHAPES
+                    self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
             if vendor_name == "kunlunxin":

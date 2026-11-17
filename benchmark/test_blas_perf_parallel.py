@@ -743,8 +743,7 @@ class ParallelBenchmarkMixin:
         return metrics
 
     def _get_shape_config_keys(self):
-        keys = list(self.SHAPE_CONFIG_KEYS) + [self.op_name]
-        keys.extend(cls.__name__ for cls in type(self).__mro__)
+        keys = (*self.SHAPE_CONFIG_KEYS, *self._default_shape_config_keys())
         return list(dict.fromkeys(key for key in keys if key))
 
     def _resolve_shape_config_key(self, yaml_config):

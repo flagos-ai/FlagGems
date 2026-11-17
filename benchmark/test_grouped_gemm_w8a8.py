@@ -14,7 +14,6 @@
 
 import pytest
 import torch
-import yaml
 
 import flag_gems
 from tests.test_grouped_gemm_w8a8 import (
@@ -28,27 +27,10 @@ from .base import Benchmark
 from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
-class GroupedGemmBenchmark(ParallelBenchmarkMixin, Benchmark):
-    RECORD_PARALLEL_RESULTS = True
+class GroupedGemmBenchmark(Benchmark):
     DEFAULT_SHAPES = [(45, 512, 6144, 257), (45, 6144, 256, 257)]
     DEFAULT_SHAPE_DESC = "M,N,K,E"
-
-    def __init__(self, *args, input_fn=make_grouped_gemm_case, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.input_fn = input_fn
-
-    def _get_shape_config_keys(self):
-        return list(dict.fromkeys((self.op_name, "grouped_gemm_w8a8")))
-
-    def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
-        # Both precisions share the core catalog; explicit precision-specific exports take priority.
-        with open(shape_file_path) as source:
-            config = yaml.safe_load(source)
-        if self.op_name not in config and "grouped_gemm_w8a8" in config:
-            entry = config["grouped_gemm_w8a8"]
-            self.shapes = [tuple(shape) for shape in entry["shapes"]]
-            self.shape_desc = entry.get("shape_desc", self.DEFAULT_SHAPE_DESC)
+    input_fn = staticmethod(make_grouped_gemm_case)
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
@@ -66,6 +48,16 @@ class GroupedGemmBenchmark(ParallelBenchmarkMixin, Benchmark):
             yield self.input_fn(lengths, n, k, self.device)
 
 
+class GroupedGemmInt8Benchmark(GroupedGemmBenchmark):
+    pass
+
+
+class GroupedGemmFp8Benchmark(ParallelBenchmarkMixin, GroupedGemmBenchmark):
+    RECORD_PARALLEL_RESULTS = True
+    FALLBACK_SHAPE_CONFIG_KEYS = ("grouped_gemm_w8a8",)
+    input_fn = staticmethod(make_grouped_fp8_case)
+
+
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     "grouped_gemm_w8a8" not in vars(flag_gems),
@@ -73,7 +65,7 @@ class GroupedGemmBenchmark(ParallelBenchmarkMixin, Benchmark):
 )
 def test_grouped_gemm_w8a8():
     pytest.importorskip("deep_gemm")
-    bench = GroupedGemmBenchmark(
+    bench = GroupedGemmInt8Benchmark(
         op_name="grouped_gemm_w8a8",
         torch_op=deepgemm_grouped_gemm,
         gems_op=flag_gems.grouped_gemm_w8a8,
@@ -89,11 +81,10 @@ def test_grouped_gemm_w8a8():
 )
 def test_grouped_gemm_w8a8_fp8():
     pytest.importorskip("mate.gemm")
-    bench = GroupedGemmBenchmark(
+    bench = GroupedGemmFp8Benchmark(
         op_name="grouped_gemm_w8a8_fp8",
         torch_op=mate_grouped_fp8,
         gems_op=flag_gems.grouped_gemm_w8a8_fp8,
-        input_fn=make_grouped_fp8_case,
         dtypes=[torch.bfloat16],
     )
     bench.run()
