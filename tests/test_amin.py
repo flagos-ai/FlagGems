@@ -64,14 +64,10 @@ FULL_MATRIX_DTYPES = (
     ]
 )
 
-# fp8 reductions compile only on the dim=None path on the NVIDIA backend:
-# amin_kernel (the dim-reduction kernel) fails to lower with fp8 element types
-# (ConvertTritonGPUToLLVM pass failure), while amin_kernel_1/_2 lower fine.
-FP8_DTYPES = (
-    [torch.float8_e4m3fn, torch.float8_e5m2]
-    if utils.fp8_is_supported and not QUICK_MODE
-    else []
-)
+# fp8 reductions compile only on the dim=None (full-reduction) path; the
+# dtype list is gated on the actual device capability in accuracy_utils
+# (fp8e4nv pointers only lower to Triton kernels on sm89+).
+FP8_DTYPES = utils.FP8_DTYPES if not QUICK_MODE else []
 
 
 def _make_input(shape, dtype, value_range):
