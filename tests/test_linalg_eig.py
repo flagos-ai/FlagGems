@@ -20,6 +20,18 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .test_linalg_svd import _from_numpy, _missing_cpu_lapack
+
+
+def _reference_eigvals(inp):
+    try:
+        return torch.linalg.eig(inp).eigenvalues
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    return _from_numpy(np.linalg.eigvals(inp.detach().numpy()).astype(np.complex64))
 
 
 def _check_eigenpair_metadata(inp, eigenvalues, eigenvectors):
@@ -43,10 +55,10 @@ def test_linalg_eig(shape, dtype):
     """
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    use_cpu = flag_gems.vendor_name == "thead"
+    use_cpu = flag_gems.vendor_name in {"thead", "mthreads"}
     ref_inp = inp.cpu() if use_cpu else utils.to_reference(inp)
 
-    ref_w, _ = torch.linalg.eig(ref_inp)
+    ref_w = _reference_eigvals(ref_inp)
     res_w, res_v = flag_gems.linalg_eig(inp)
     _check_eigenpair_metadata(inp, res_w, res_v)
 
@@ -72,7 +84,7 @@ def test_linalg_eig(shape, dtype):
     )
 
     # reconstruction residual A @ V - V @ diag(w)
-    if flag_gems.vendor_name == "thead":
+    if flag_gems.vendor_name in {"thead", "mthreads"}:
         inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
     norms = torch.linalg.vector_norm(res_v, dim=-2)
     torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
@@ -92,7 +104,7 @@ def test_linalg_eig_batched(batch, n, dtype):
     res_w, res_v = flag_gems.linalg_eig(inp)
     _check_eigenpair_metadata(inp, res_w, res_v)
 
-    if flag_gems.vendor_name == "thead":
+    if flag_gems.vendor_name in {"thead", "mthreads"}:
         inp, res_w, res_v = inp.cpu(), res_w.cpu(), res_v.cpu()
     norms = torch.linalg.vector_norm(res_v, dim=-2)
     torch.testing.assert_close(norms, torch.ones_like(norms), rtol=1e-3, atol=1e-3)
