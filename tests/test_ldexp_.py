@@ -36,9 +36,10 @@ def _comparison_result(result):
 
 
 @pytest.mark.ldexp_
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", [*utils.POINTWISE_SHAPES, (2, 0, 3)])
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_ldexp_(shape, dtype):
+    torch.manual_seed(0)
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, shape, dtype=torch.int32, device=flag_gems.device)
     ref_self = utils.to_reference(self.clone(), True)
@@ -52,13 +53,16 @@ def test_ldexp_(shape, dtype):
 
     assert result is self
     assert result.data_ptr() == ptr
-    utils.gems_assert_close(_comparison_result(result), ref_out, dtype)
+    assert result.dtype == dtype
+    utils.gems_assert_close(result.cpu(), ref_out.cpu(), dtype)
 
 
 @pytest.mark.ldexp_
 @pytest.mark.parametrize("other_dtype", [torch.int64, torch.float32, torch.float64])
 @pytest.mark.parametrize("self_dtype", utils.FLOAT_DTYPES)
 def test_ldexp_mixed_dtype_(self_dtype, other_dtype):
+    if other_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("FP64 exponent is not supported")
     shape = (37, 53)
     self = torch.randn(shape, dtype=self_dtype, device=flag_gems.device)
     if other_dtype.is_floating_point:
@@ -129,6 +133,52 @@ def test_ldexp_special_values_(dtype):
     utils.gems_assert_equal(
         torch.signbit(result_cpu)[valid], torch.signbit(ref_cpu)[valid]
     )
+
+
+@pytest.mark.ldexp_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_noncontiguous_broadcast_(dtype):
+    torch.manual_seed(0)
+    inp = torch.randn((19, 7), dtype=dtype, device=flag_gems.device).T
+    exponent = torch.randint(-4, 5, (19,), dtype=torch.int64, device=inp.device)
+    original_pointer = inp.data_ptr()
+    original_stride = inp.stride()
+    reference = _functional_reference(
+        utils.to_reference(inp.clone(), True), utils.to_reference(exponent, False)
+    )
+
+    expected_device = inp.device
+    result = flag_gems.ldexp_(inp, exponent)
+
+    assert result is inp
+    assert result.device == expected_device
+    assert result.data_ptr() == original_pointer
+    assert result.stride() == original_stride
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype)
+
+
+@pytest.mark.ldexp_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_special_values_integral_exponent_(dtype):
+    inp = torch.tensor(
+        [0.0, -0.0, 1.0, -1.0, float("inf"), -float("inf"), float("nan")],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    exponent = torch.tensor([128, -128, 0, 1, -1, 0, 2], device=inp.device)
+    # On MUSA, FP32 scaling overflows at 128 before multiply. Keep that
+    # behavior when comparing against CPU in the original input dtype.
+    upcast = not (flag_gems.vendor_name == "mthreads" and utils.TO_CPU)
+    reference = _functional_reference(
+        utils.to_reference(inp.clone(), upcast), utils.to_reference(exponent, False)
+    )
+
+    expected_device = inp.device
+    result = flag_gems.ldexp_(inp, exponent)
+
+    assert result is inp
+    assert result.device == expected_device
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype, equal_nan=True)
 
 
 @pytest.mark.ldexp_
@@ -292,6 +342,7 @@ def test_ldexp_rejects_expanding_self_():
 
 
 @pytest.mark.ldexp_
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 exponent is not supported")
 def test_ldexp_mixed_precision_extreme_exponent_():
     self = torch.tensor(
         [2.0**-126, 2.0**-127, 0.0, float("inf")], device=flag_gems.device
@@ -333,6 +384,8 @@ def test_ldexp_int64_exponent_outside_int32_range_():
     reason="MUSA native ldexp_ does not support these complex dtypes",
 )
 def test_ldexp_complex_integral_extremes_(dtype, conjugated):
+    if dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("Complex128 is not supported")
     self = torch.tensor(
         [
             complex(0, 1),
