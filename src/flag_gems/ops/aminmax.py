@@ -48,8 +48,8 @@ def aminmax_kernel_1(
     min_val = tl.load(inp_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(inp_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    min_val = tl.min(min_val, propagate_nan=tl.PropagateNan.ALL)
+    max_val = tl.max(max_val, propagate_nan=tl.PropagateNan.ALL)
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
@@ -71,8 +71,8 @@ def aminmax_kernel_2(
     min_val = tl.load(min_ptrs, mask=mask, other=min_fill)
     max_val = tl.load(max_ptrs, mask=mask, other=max_fill)
 
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    min_val = tl.min(min_val, propagate_nan=tl.PropagateNan.ALL)
+    max_val = tl.max(max_val, propagate_nan=tl.PropagateNan.ALL)
 
     tl.store(min_out, min_val)
     tl.store(max_out, max_val)
@@ -151,11 +151,6 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
             shape = (1,) * inp.ndim if keepdim else ()
             min_out = torch.empty(shape, dtype=dtype, device=inp.device)
             max_out = torch.empty(shape, dtype=dtype, device=inp.device)
-
-        if inp.is_floating_point() and bool(torch.isnan(inp).any().item()):
-            min_out.fill_(float("nan"))
-            max_out.fill_(float("nan"))
-            return min_out, max_out
 
         with torch_device_fn.device(inp.device):
             aminmax_kernel_1[(mid_size, 1)](

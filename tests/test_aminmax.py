@@ -410,8 +410,17 @@ def test_aminmax_global_scalar(keepdim):
 
 @pytest.mark.aminmax
 @pytest.mark.parametrize("strided", [False, True])
-def test_aminmax_global_logical_nan_contract(strided):
-    storage = torch.tensor([1, 99, float("nan"), 99, -3, 99], device=flag_gems.device)
+@pytest.mark.parametrize("n", [3, 1025, 65537])
+@pytest.mark.parametrize("nan_index", [0, -1])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+def test_aminmax_global_logical_nan_contract(strided, n, nan_index, dtype):
+    # Exercise NaNs in first/last partial blocks and the second reduction stage.
+    cpu_storage = torch.full((2 * n if strided else n,), 99, dtype=dtype)
+    cpu_inp = cpu_storage[::2] if strided else cpu_storage
+    cpu_inp[nan_index] = float("nan")
+    storage = cpu_storage.to(device=flag_gems.device)
     inp = storage[::2] if strided else storage
     expected = torch.aminmax(utils.to_reference(inp))
     actual = flag_gems.aminmax(inp)
