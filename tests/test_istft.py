@@ -314,6 +314,14 @@ PARAMETER_CASES = tu.selected_cases(
 PARAMETER_IDS = [f"{name}-{str(dtype)[6:]}" for name, _, _, _, dtype in PARAMETER_CASES]
 
 
+def _assert_istft_close(actual, expected, expected_device):
+    assert actual.device == expected_device
+    assert actual.dtype == expected.dtype and actual.shape == expected.shape
+    if flag_gems.vendor_name == "mthreads" and actual.is_complex():
+        actual, expected = actual.cpu(), expected.cpu()
+    tu.assert_result_close(actual, expected)
+
+
 @pytest.mark.istft
 @pytest.mark.parametrize(
     "name,shape,n_fft,kwargs,dtype", PARAMETER_CASES, ids=PARAMETER_IDS
@@ -330,7 +338,7 @@ def test_istft_parameters(name, shape, n_fft, kwargs, dtype):
     ref_out = torch.ops.aten.istft(ref_inp, n_fft, window=ref_window, **kwargs)
     res_out = flag_gems.istft(inp, n_fft, window=window, **kwargs)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_istft_close(res_out, ref_out, inp.device)
 
 
 # Boundary geometries: the shortest transforms, both frame extents of a single
@@ -634,9 +642,9 @@ def test_istft_backward(name, shape, kwargs, window_kind, dtype):
     res_wrt = (inp,) if window is None else (inp, window)
     res_grads = torch.autograd.grad(res_out, res_wrt, grad_outputs=upstream)
 
-    tu.assert_result_close(res_out, ref_out)
-    for res_grad, ref_grad in zip(res_grads, ref_grads):
-        tu.assert_result_close(res_grad, ref_grad)
+    _assert_istft_close(res_out, ref_out, inp.device)
+    for res_grad, ref_grad, operand in zip(res_grads, ref_grads, res_wrt):
+        _assert_istft_close(res_grad, ref_grad, operand.device)
 
 
 @pytest.mark.istft
