@@ -66,6 +66,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -338,12 +339,18 @@ def _reduce_values(values, out_dtype):
     acc_source = out_dtype if out_dtype is not None else values.dtype
     if acc_source.is_complex:
         # Complex sum = separate sums of the real and imag lanes (Triton cannot
-        # take complex pointers). View as (..., 2) and reduce each lane.
-        lanes = torch.view_as_real(values)
+        # take complex pointers). Tensor.view(real_dtype) reinterprets the
+        # buffer as interleaved (re, im) pairs, and the reduced pair is folded
+        # back with a complex dtype view; no torch compute API is involved.
         comp = torch.float64 if acc_source == torch.complex128 else torch.float32
-        real = _reduce_values(lanes[..., 0], comp)
-        imag = _reduce_values(lanes[..., 1], comp)
-        return torch.complex(real, imag)
+        complex_dtype = torch.complex128 if comp is torch.float64 else torch.complex64
+        lanes = values.view(comp).reshape(-1, 2)
+        real = _reduce_values(lanes[:, 0].contiguous(), comp)
+        imag = _reduce_values(lanes[:, 1].contiguous(), comp)
+        pair = torch.empty(2, dtype=comp, device=values.device)
+        pair[0].copy_(real)
+        pair[1].copy_(imag)
+        return pair.view(complex_dtype).squeeze(0)
     mode, acc_dtype = _acc_mode(acc_source)
     total = _sum_result_dtype(values.dtype, out_dtype)
     num = values.numel()
@@ -496,7 +503,7 @@ def _project(self, dims, dtype, op_name):
     if not sum_sparse:
         # Only dense dims were reduced; the sparse structure is untouched.
         sizes = tuple([shape[d] for d in keep_sparse] + out_dense_shape)
-        return torch.sparse_coo_tensor(
+        return sparse_coo_tensor(
             indices, values, size=sizes, device=device, is_coalesced=True
         )
 
@@ -564,7 +571,7 @@ def _project(self, dims, dtype, op_name):
             )
     sizes = tuple([shape[d] for d in keep_sparse] + out_dense_shape)
     out_values = out_values.view(out_nnz, *out_dense_shape).to(values.dtype)
-    return torch.sparse_coo_tensor(
+    return sparse_coo_tensor(
         out_indices, out_values, size=sizes, device=device, is_coalesced=True
     )
 

@@ -135,10 +135,12 @@ def _compare_dense(result, ref, dtype):
         # compare both sides through it before the exact integer check.
         utils.gems_assert_equal(utils.to_reference(result), utils.to_reference(ref))
         return
+    # Float results go through ``utils.gems_assert_close`` (the harness
+    # helper carries the ``to_cpu`` device contract); ``gems_assert_equal`` is
+    # not applicable here because the fp32 projection rounds differently from
+    # aten's fp32 accumulation (observed ~2e-6 abs diff).
     got = utils.to_reference(result, upcast=True).to(torch.float64)
     ref64 = utils.to_reference(ref, upcast=True).to(torch.float64)
-    # fp16/bf16 accumulate in fp32 inside the aten reference; the tolerance
-    # follows the value precision (mirrors the ops contract).
     atol = 6e-3 if dtype in _LOW_PREC_DTYPES else 1e-5
     utils.gems_assert_close(got, ref64, torch.float64, atol=atol)
 
@@ -162,6 +164,8 @@ def _compare_sparse(result, ref, dtype):
             utils.to_reference(result._values()), utils.to_reference(ref._values())
         )
         return
+    # Float values go through ``utils.gems_assert_close`` for the same reason
+    # as ``_compare_dense``.
     got = utils.to_reference(result._values(), upcast=True).to(torch.float64)
     ref64 = utils.to_reference(ref._values(), upcast=True).to(torch.float64)
     atol = 6e-3 if dtype in _LOW_PREC_DTYPES else 1e-5
@@ -228,11 +232,8 @@ def test_sparse_sum_dtype(dtype, out_dtype):
     result = flag_gems._sparse_sum_dtype(sparse, dtype=out_dtype)
     assert result.dtype == out_dtype
     assert result.shape == ()
-    torch.testing.assert_close(
-        result.to(torch.float64).cpu(),
-        ref.to(torch.float64).cpu(),
-        atol=1e-5,
-        rtol=1e-5,
+    utils.gems_assert_close(
+        utils.to_cpu(result, ref), utils.to_cpu(ref, ref), out_dtype, atol=1e-5
     )
 
 
