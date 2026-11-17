@@ -1262,7 +1262,7 @@ def median_backward_count_kernel(
     median_value = tl.load(value)
     nan_value = median_value != median_value
     match = valid & ((data == median_value) | ((data != data) & nan_value))
-    tl.atomic_add(count, tl.sum(match.to(tl.int64), axis=0))
+    tl.atomic_add(count, tl.sum(match.to(tl.int32), axis=0))
 
 
 @libentry()
@@ -1336,7 +1336,7 @@ def _median_backward(grad_output, src, value):
                 num_warps=num_warps,
             )
         else:
-            count = torch.zeros((), dtype=torch.int64, device=src.device)
+            count = torch.zeros((), dtype=torch.int32, device=src.device)
             grid = (triton.cdiv(n_elements, _MEDIAN_BACKWARD_BLOCK),)
             median_backward_count_kernel[grid](
                 src,
