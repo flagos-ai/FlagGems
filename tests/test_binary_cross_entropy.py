@@ -116,12 +116,20 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
             "Kunlunxin native binary-cross-entropy reference rejects empty input"
         )
     inp, target, weight = _inputs(shape, dtype, weighted)
-    reference = torch.nn.functional.binary_cross_entropy(
-        utils.to_reference(inp, True),
-        utils.to_reference(target, True),
-        weight=utils.to_reference(weight, True) if weight is not None else None,
-        reduction=reduction,
+    ref_inp = utils.to_reference(inp, True)
+    ref_target = utils.to_reference(target, True)
+    ref_weight = utils.to_reference(weight, True) if weight is not None else None
+    musa_empty_mean = (
+        flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == "mean"
     )
+    if musa_empty_mean:
+        ref_inp, ref_target = ref_inp.cpu(), ref_target.cpu()
+        if ref_weight is not None:
+            ref_weight = ref_weight.cpu()
+    reference = torch.nn.functional.binary_cross_entropy(
+        ref_inp, ref_target, weight=ref_weight, reduction=reduction
+    )
+
     out_shape = shape if reduction == "none" else ()
     out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     pointer = out.data_ptr()
@@ -132,7 +140,10 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
 
     assert result is out
     assert out.data_ptr() == pointer
-    _assert_loss(out, reference, dtype, reduction, inp.numel())
+    if musa_empty_mean:
+        assert out.device == inp.device
+    observed = out.cpu() if musa_empty_mean else out
+    _assert_loss(observed, reference, dtype, reduction, inp.numel())
 
 
 @pytest.mark.binary_cross_entropy

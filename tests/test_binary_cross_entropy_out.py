@@ -25,7 +25,7 @@ def _seed_random_inputs():
     torch.manual_seed(0)
 
 
-_SHAPES = [(2, 3), (4, 5, 7), (0,), (2, 0, 3)]
+_SHAPES = list(dict.fromkeys([*utils.REDUCTION_SHAPES, (2, 3), (4, 5, 7), (0,), (2, 0, 3)]))
 _REDUCTIONS = [0, 1, 2]
 
 
@@ -38,6 +38,10 @@ def _make_inputs(shape, dtype, weighted):
 
 def _reference(inp, target, weight, reduction):
     names = {0: "none", 1: "mean", 2: "sum"}
+    if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == 1:
+        return torch.nn.functional.binary_cross_entropy(
+            inp.cpu(), target.cpu(), None if weight is None else weight.cpu(), reduction="mean"
+        )
     return torch.nn.functional.binary_cross_entropy(
         utils.to_reference(inp, True),
         utils.to_reference(target, True),
@@ -47,10 +51,7 @@ def _reference(inp, target, weight, reduction):
 
 
 def _call(inp, target, weight, reduction, out):
-    with flag_gems.use_gems():
-        return torch.ops.aten.binary_cross_entropy.out(
-            inp, target, weight, reduction, out=out
-        )
+    return flag_gems.binary_cross_entropy_out(inp, target, weight, reduction, out=out)
 
 
 def _assert_close(result, expected, dtype, reduction, numel):
@@ -86,11 +87,15 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
     assert out.data_ptr() == pointer
     assert out.stride() == stride
     assert out.storage_offset() == storage_offset
-    _assert_close(out, expected, dtype, reduction, inp.numel())
-    utils.gems_assert_equal(inp, inp_before)
-    utils.gems_assert_equal(target, target_before)
+    if flag_gems.vendor_name == "mthreads" and inp.numel() == 0 and reduction == 1:
+        assert out.device == inp.device
+        _assert_close(out.cpu(), expected, dtype, reduction, inp.numel())
+    else:
+        _assert_close(out, expected, dtype, reduction, inp.numel())
+    utils.gems_assert_equal(inp, utils.to_reference(inp_before))
+    utils.gems_assert_equal(target, utils.to_reference(target_before))
     if weight is not None:
-        utils.gems_assert_equal(weight, weight_before)
+        utils.gems_assert_equal(weight, utils.to_reference(weight_before))
 
 
 @pytest.mark.binary_cross_entropy_out
@@ -111,8 +116,8 @@ def test_binary_cross_entropy_out_preserves_noncontiguous_storage():
     assert out.stride() == stride
     assert out.storage_offset() == storage_offset
     utils.gems_assert_close(out, expected, torch.float32)
-    utils.gems_assert_equal(backing[:, :2], backing_before[:, :2])
-    utils.gems_assert_equal(backing[:, 6:], backing_before[:, 6:])
+    utils.gems_assert_equal(backing[:, :2], utils.to_reference(backing_before[:, :2]))
+    utils.gems_assert_equal(backing[:, 6:], utils.to_reference(backing_before[:, 6:]))
 
 
 @pytest.mark.binary_cross_entropy_out
@@ -136,7 +141,9 @@ def test_binary_cross_entropy_out_cast_contract():
     wide_out = torch.empty(inp.shape, dtype=torch.float64, device=flag_gems.device)
     result = _call(inp, target, weight, 0, wide_out)
     assert result is wide_out
-    utils.gems_assert_close(wide_out, expected, torch.float32)
+    assert wide_out.device == inp.device
+    assert wide_out.dtype == torch.float64
+    utils.gems_assert_close(wide_out.cpu().float(), expected.cpu(), torch.float32)
 
     int_out = torch.empty(inp.shape, dtype=torch.int64, device=flag_gems.device)
     with pytest.raises(RuntimeError):
