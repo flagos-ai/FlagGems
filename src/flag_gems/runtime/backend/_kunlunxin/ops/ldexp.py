@@ -22,25 +22,45 @@ Reference semantics reproduced (measured on the target):
   * result dtype = promote(self, other) with 0-dim operands treated as weak
     scalars; an integral result dtype becomes float32; float64 is mapped to
     float32 because the device has no fp64 kernels.
-  * integral exponent: 2**n is built directly from the IEEE exponent field of
-    a single clamped chunk, so the result is the exact power-of-two scale for
-    |n| <= 127 (every tested exponent) and saturates to +-inf / +-0 beyond,
-    with no special-function error.
+  * integral exponent: apply up to three representable power-of-two factors
+    directly to the input, avoiding overflow of an intermediate scale.
+  * complex inputs are rejected explicitly; this backend does not implement
+    the complex ldexp contract.
   * floating exponent: x * exp2(y), with results strictly below the fp32
     normal range flushed to +0.0 to match the native kernel's underflow
     behavior (including its sign-of-zero).
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-_MIN_NORMAL_F32 = 1.1754943508222875e-38
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
 # kernels
 # --------------------------------------------------------------------------- #
+@triton.jit
+def _scale_integral(x, n):
+    # Clamp before narrowing int64. Beyond this range every finite fp32 input
+    # has already overflowed/underflowed. Multiply x at each step rather than
+    # forming 2**n first: tiny x and n=128 can still have a finite result.
+    n = tl.minimum(tl.maximum(n, -378), 378).to(tl.int32)
+    a = tl.minimum(tl.maximum(n, -126), 126)
+    b = tl.minimum(tl.maximum(n - a, -126), 126)
+    c = n - a - b
+    y = x.to(tl.float32) * ((a + 127) << 23).to(tl.float32, bitcast=True)
+    y = y * ((b + 127) << 23).to(tl.float32, bitcast=True)
+    return y * ((c + 127) << 23).to(tl.float32, bitcast=True)
+
+
+@libentry()
 @triton.jit
 def _ldexp_flat(
     X, N, OUT, numel, BLOCK: tl.constexpr, FN: tl.constexpr, EVEN: tl.constexpr
@@ -66,18 +86,14 @@ def _ldexp_flat(
         r = x.to(tl.float32) * s
         y = tl.where(tl.abs(r) < 1.1754943508222875e-38, 0.0, r)
     else:
-        if n.dtype == tl.int64:
-            ni = tl.maximum(tl.minimum(n, 127), -127).to(tl.int32)
-        else:
-            ni = tl.maximum(tl.minimum(n.to(tl.int32), 127), -127)
-        s = ((ni + 127) << 23).to(tl.float32, bitcast=True)
-        y = x.to(tl.float32) * s
+        y = _scale_integral(x, n)
     if EVEN:
         tl.store(OUT + offs, y.to(OUT.dtype.element_ty))
     else:
         tl.store(OUT + offs, y.to(OUT.dtype.element_ty), mask=mask)
 
 
+@libentry()
 @triton.jit
 def _ldexp_strided(
     X,
@@ -134,12 +150,7 @@ def _ldexp_strided(
         r = x.to(tl.float32) * s
         y = tl.where(tl.abs(r) < 1.1754943508222875e-38, 0.0, r)
     else:
-        if n.dtype == tl.int64:
-            ni = tl.maximum(tl.minimum(n, 127), -127).to(tl.int32)
-        else:
-            ni = tl.maximum(tl.minimum(n.to(tl.int32), 127), -127)
-        s = ((ni + 127) << 23).to(tl.float32, bitcast=True)
-        y = x.to(tl.float32) * s
+        y = _scale_integral(x, n)
     tl.store(OUT + offs, y.to(OUT.dtype.element_ty), mask=mask)
 
 
@@ -179,7 +190,10 @@ def _config(numel):
     return 16384, 16
 
 
-def ldexp(self, other):
+def _ldexp_impl(self, other):
+    logger.debug("GEMS_KUNLUNXIN LDEXP")
+    if self.dtype.is_complex or other.dtype.is_complex:
+        raise RuntimeError("Kunlunxin ldexp does not support complex operands")
     a0 = self.dim() == 0
     b0 = other.dim() == 0
     out_dtype = _result_dtype(self.dtype, other.dtype, a0, b0)
@@ -249,7 +263,7 @@ def ldexp(self, other):
             snf = float(other)
         else:
             scn = 1
-            sn = int(other)
+            sn = max(-378, min(378, int(other)))
     fn = 1 if (other.dtype.is_floating_point or scn == 2) else 0
 
     xsh = list(self.shape)
@@ -323,3 +337,9 @@ def ldexp(self, other):
         num_warps=warps,
     )
     return out
+
+
+def ldexp(self, other):
+    device = self.device if self.device.type != "cpu" else other.device
+    with torch_device_fn.device(device):
+        return _ldexp_impl(self, other)
