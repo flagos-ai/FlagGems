@@ -925,8 +925,7 @@ class Conv2d(torch.autograd.Function):
 
         revert_padding_height = dilation_height * (weight_height - 1) - padding_height
         revert_padding_width = dilation_width * (weight_width - 1) - padding_width
-        revert_weight = weight.clone()
-        revert_weight = torch.flip(revert_weight, dims=[2, 3]).contiguous()
+        revert_weight = weight.flip(2, 3).contiguous()
 
         if groups != 1:
             revert_weight = revert_weight.reshape(
