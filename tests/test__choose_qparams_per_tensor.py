@@ -108,6 +108,8 @@ def test__choose_qparams_per_tensor_value_ranges(
     utils.init_seed(0)
     inp = _make_input(shape, dtype, value_range)
     ref_inp = tu.to_reference(inp)
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.int16 and inp.numel() > 1:
+        ref_inp = ref_inp.cpu()
 
     ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
     res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
@@ -202,6 +204,9 @@ def test__choose_qparams_per_tensor_rejects_nan():
 def test__choose_qparams_per_tensor_rejects_empty():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
+    if flag_gems.vendor_name == "mthreads":
+        # The device native path accepts an empty input; CPU enforces the reduction contract.
+        ref_inp = ref_inp.cpu()
 
     with pytest.raises(RuntimeError):
         torch.ops.aten._choose_qparams_per_tensor(ref_inp, False)
@@ -237,3 +242,27 @@ def test__choose_qparams_per_tensor_rejects_non_tensor():
         torch.ops.aten._choose_qparams_per_tensor(3.14, False)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._choose_qparams_per_tensor(3.14, False)
+
+
+_CQPT_F32_SCALE_EDGE_CASES = [
+    ([0.0, 1e-38], False),
+    ([0.0, 5e-37], False),
+    ([0.0, 1e-37], False),
+    ([0.0, 1e-37], True),
+    ([-1e-38, 0.0], False),
+    ([-1e-38, 0.0], True),
+    ([-0.005, 0.005], False),
+    ([-0.005, 0.005], True),
+]
+
+
+@pytest.mark.underscore_choose_qparams_per_tensor
+@pytest.mark.parametrize("values,reduce_range", _CQPT_F32_SCALE_EDGE_CASES)
+def test__choose_qparams_per_tensor_f32_scale_edges(values, reduce_range):
+    inp = torch.tensor(values, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = tu.to_reference(inp)
+
+    ref_pair = torch.ops.aten._choose_qparams_per_tensor(ref_inp, reduce_range)
+    res_pair = flag_gems._choose_qparams_per_tensor(inp, reduce_range)
+
+    _assert_pair(res_pair, ref_pair)
