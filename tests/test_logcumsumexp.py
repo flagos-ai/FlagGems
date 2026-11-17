@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.logcumsumexp import logcumsumexp_backward
 
 from . import accuracy_utils as utils
 
@@ -218,7 +219,7 @@ def test_logcumsumexp_backward_negative_and_middle_dim(dim):
 
 @pytest.mark.logcumsumexp_backward
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-def test_logcumsumexp_backward_wide_range(dtype):
+def test_logcumsumexp_backward_wide_range(dtype, monkeypatch):
     """Rows spanning ~2000 must stay finite.
 
     The native backward needs this: ``result`` can exceed the fp32 exponent
@@ -234,7 +235,13 @@ def test_logcumsumexp_backward_wide_range(dtype):
     grad_out = _alternating_grad(shape, dim, dtype)
     out = torch.logcumsumexp(inp, dim)
 
-    res_grad = logcumsumexp_backward(grad_out, inp, out, dim)
+    # Inject the native forward result to isolate the wide-range backward
+    # while still exercising the public FlagGems autograd entry.
+    module = importlib.import_module("flag_gems.ops.logcumsumexp")
+    monkeypatch.setattr(module, "logcumsumexp_wrapper", lambda *args: out)
+    res_inp = inp.detach().requires_grad_(True)
+    res_out = flag_gems.logcumsumexp(res_inp, dim)
+    (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_out)
     ref_grad = _native_backward_fp64(grad_out, inp, out, dim)
 
     assert torch.isfinite(res_grad).all()
