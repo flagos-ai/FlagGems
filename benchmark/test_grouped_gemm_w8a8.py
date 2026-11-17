@@ -24,7 +24,6 @@ from tests.test_grouped_gemm_w8a8 import (
 )
 
 from .base import Benchmark
-from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
 class GroupedGemmBenchmark(Benchmark):
@@ -52,8 +51,7 @@ class GroupedGemmInt8Benchmark(GroupedGemmBenchmark):
     pass
 
 
-class GroupedGemmFp8Benchmark(ParallelBenchmarkMixin, GroupedGemmBenchmark):
-    RECORD_PARALLEL_RESULTS = True
+class GroupedGemmFp8Benchmark(GroupedGemmBenchmark):
     FALLBACK_SHAPE_CONFIG_KEYS = ("grouped_gemm_w8a8",)
     input_fn = staticmethod(make_grouped_fp8_case)
 
