@@ -24,6 +24,18 @@ def _nan_input(shape, dtype, device, nan_ratio=0.3):
     return x
 
 
+def _nanmean_complex_cpu_reference(inp, dim, dtype):
+    # Neither MUSA's native nanmean (no complex support) nor the CPU build
+    # (no complex nansum) can serve as the reference here, so reduce on CPU by
+    # hand, dropping any element with a NaN component.
+    values = inp.cpu().to(dtype)
+    missing = torch.isnan(values.real) | torch.isnan(values.imag)
+    filled = values.masked_fill(missing, 0)
+    if dim is None:
+        return filled.sum() / (~missing).sum()
+    return filled.sum(dim=dim) / (~missing).sum(dim=dim)
+
+
 @pytest.mark.nanmean
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -31,7 +43,17 @@ def test_nanmean(shape, dtype):
     inp = _nan_input(shape, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.nanmean(ref_inp)
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and ref_inp.device.type != "cpu"
+        and dtype == torch.float16
+        and shape == (200, 40999, 3)
+    ):
+        # At this size native MUSA FP16 overflows or rounds the sum/count
+        # before division. Keep the original FP16 input and output.
+        ref_out = torch.nanmean(ref_inp, dtype=torch.float32).to(dtype)
+    else:
+        ref_out = torch.nanmean(ref_inp)
     res_out = flag_gems.nanmean(inp)
 
     utils.gems_assert_close(
@@ -173,11 +195,19 @@ def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     inp = _nan_input((7, 11), torch.float32, flag_gems.device)
-    reference = torch.nanmean(inp.clone(), dim=1, dtype=dtype)
+    if flag_gems.vendor_name == "mthreads":
+        # MUSA's native complex-output nanmean returns non-finite values.
+        reference = _nanmean_complex_cpu_reference(inp, 1, dtype)
+    else:
+        reference = torch.nanmean(inp.clone(), dim=1, dtype=dtype)
 
     result = flag_gems.nanmean(inp, dim=1, dtype=dtype)
 
     assert result.dtype == dtype
+    if flag_gems.vendor_name == "mthreads":
+        assert result.device == inp.device
+        # MUSA can produce complex64 here, but cannot run complex isclose.
+        result = result.cpu()
     torch.testing.assert_close(result, reference, equal_nan=True)
 
 
@@ -292,9 +322,14 @@ def test_nanmean_complex_input():
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    torch.testing.assert_close(
-        flag_gems.nanmean(inp), torch.nanmean(inp), equal_nan=True
-    )
+    result = flag_gems.nanmean(inp)
+    if flag_gems.vendor_name == "mthreads":
+        assert result.device == inp.device
+        result = result.cpu()
+        reference = _nanmean_complex_cpu_reference(inp, None, torch.complex64)
+    else:
+        reference = torch.nanmean(inp)
+    torch.testing.assert_close(result, reference, equal_nan=True)
 
 
 @pytest.mark.nanmean
