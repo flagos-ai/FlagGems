@@ -175,8 +175,8 @@ def _reached_through_dispatch():
     reaches this device kernel.
     """
     probe = getattr(torch._C, "_dispatch_tls_is_dispatch_key_excluded", None)
-    if probe is None:  # pragma: no cover - defensive for older PyTorch
-        return False
+    if probe is None:  # pragma: no cover - depends on the PyTorch version
+        raise RuntimeError("Cannot determine the in-place dispatch version contract")
     return probe(torch._C.DispatchKey.ADInplaceOrView)
 
 
