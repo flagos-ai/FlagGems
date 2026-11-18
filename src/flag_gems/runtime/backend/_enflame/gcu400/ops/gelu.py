@@ -14,88 +14,130 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, tl_extra_shim
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
-
-erf = tl_extra_shim.erf
-exp = tl_extra_shim.exp
-pow = tl_extra_shim.pow
-tanh = tl_extra_shim.tanh
-
+_erf = tl_extra_shim.erf
+_exp = tl_extra_shim.exp
+_tanh = tl_extra_shim.tanh
 
 logger = logging.getLogger(__name__)
 
-
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def gelu_none(x):
-    scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    output = 0.5 * x * (1 + erf(x.to(tl.float32) * scale))
-    return output
+NUM_SIPS = 24
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def gelu_tanh(x):
-    x_fp32 = x.to(tl.float32)
-    output = 0.5 * x * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * pow(x_fp32, 2))))
-    return output
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _gelu_kernel(X, Out, N, APPROX: tl.constexpr, BLOCK: tl.constexpr):
+    inv_sqrt2: tl.constexpr = 0.7071067811865476
+    sqrt_2_over_pi: tl.constexpr = 0.7978845608028654
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    num_blocks = (N + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + tl.arange(0, BLOCK)
+        mask = off < N
+        x = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
+        if APPROX == 0:
+            y = 0.5 * x * (1.0 + _erf(x * inv_sqrt2))
+        else:
+            z = sqrt_2_over_pi * x * (1.0 + 0.044715 * x * x)
+            y = 0.5 * x * (1.0 + _tanh(z))
+        tl.store(Out + off, y, mask=mask)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
-@triton.jit
-def gelu_backward_none(x, dy):
-    scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
-    x_fp32 = x.to(tl.float32)
-    dydx = (
-        scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2))
-        + 0.5 * erf(scale1 * x_fp32)
-        + 0.5
-    )
-    dx = dydx * dy
-    return dx
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _gelu_backward_kernel(DY, X, Out, N, APPROX: tl.constexpr, BLOCK: tl.constexpr):
+    inv_sqrt2: tl.constexpr = 0.7071067811865476
+    inv_sqrt_2pi: tl.constexpr = 0.3989422804014327
+    sqrt_2_over_pi: tl.constexpr = 0.7978845608028654
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    num_blocks = (N + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + tl.arange(0, BLOCK)
+        mask = off < N
+        dy = tl.load(DY + off, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
+        if APPROX == 0:
+            dydx = (
+                inv_sqrt_2pi * x * _exp(-0.5 * x * x) + 0.5 * _erf(x * inv_sqrt2) + 0.5
+            )
+        else:
+            t = _tanh(sqrt_2_over_pi * x * (1.0 + 0.044715 * x * x))
+            dydx = 0.5 * x * (1.0 - t * t) * (
+                sqrt_2_over_pi + 0.1070322243 * x * x
+            ) + 0.5 * (1.0 + t)
+        tl.store(Out + off, dydx * dy, mask=mask)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
-@triton.jit
-def gelu_backward_tanh(x, dy):
-    x_fp32 = x.to(tl.float32)
-    # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * pow(x_fp32, 2)))
-    dydx = 0.5 * x_fp32 * (
-        (1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
-    ) + 0.5 * (1 + tanh_out)
-    dx = dydx * dy
-    return dx
+def _choose_block(N, is_fp32):
+    if N <= 1024:
+        return 1024
+    if N <= 32768:
+        return triton.next_power_of_2(N)
+    if is_fp32:
+        return 65536
+    return 4096
+
+
+def _approx_code(approximate):
+    return 1 if approximate == "tanh" else 0
+
+
+def _launch_forward(inp, out, approximate):
+    N = inp.numel()
+    is_fp32 = inp.dtype == torch.float32
+    BLOCK = _choose_block(N, is_fp32)
+    grid_size = min(triton.cdiv(N, BLOCK), NUM_SIPS * 2)
+    with torch_device_fn.device(inp.device):
+        _gelu_kernel[(grid_size,)](
+            inp,
+            out,
+            N,
+            _approx_code(approximate),
+            BLOCK=BLOCK,
+            num_warps=4,
+        )
+    return out
 
 
 def gelu(self, *, approximate="none"):
     logger.debug("GEMS_ENFLAME GELU")
-    if approximate == "tanh":
-        out = gelu_tanh(self)
-    else:
-        out = gelu_none(self)
-    return out
-
-
-def gelu_backward(grad_output, self, *, approximate="none"):
-    logger.debug("GEMS_ENFLAME GELU_BACKWARD")
-    if approximate == "tanh":
-        in_grad = gelu_backward_tanh(self, grad_output)
-    else:
-        in_grad = gelu_backward_none(self, grad_output)
-    return in_grad
+    inp = self if self.is_contiguous() else self.contiguous()
+    out = torch.empty_like(inp)
+    return _launch_forward(inp, out, approximate)
 
 
 def gelu_(A, *, approximate="none"):
     logger.debug("GEMS_ENFLAME GELU_")
-    if approximate == "tanh":
-        out = gelu_tanh(A, out0=A)
-    else:
-        out = gelu_none(A, out0=A)
+    if not A.is_contiguous():
+        A.copy_(gelu(A, approximate=approximate))
+        return A
+    return _launch_forward(A, A, approximate)
+
+
+def gelu_backward(grad_output, self, *, approximate="none"):
+    logger.debug("GEMS_ENFLAME GELU_BACKWARD")
+    dy = grad_output if grad_output.is_contiguous() else grad_output.contiguous()
+    inp = self if self.is_contiguous() else self.contiguous()
+    out = torch.empty_like(dy)
+    N = dy.numel()
+    BLOCK = _choose_block(N, False)
+    grid_size = min(triton.cdiv(N, BLOCK), NUM_SIPS * 2)
+    with torch_device_fn.device(dy.device):
+        _gelu_backward_kernel[(grid_size,)](
+            dy,
+            inp,
+            out,
+            N,
+            _approx_code(approximate),
+            BLOCK=BLOCK,
+            num_warps=4,
+        )
     return out
