@@ -131,12 +131,9 @@ def test_exp_backward_boundary():
     )
     res_grad = flag_gems.exp_backward(grad_output, x)
 
-    res_cpu = res_grad.cpu()
-    ref_cpu = ref_grad.cpu()
-    both_nan = torch.isnan(res_cpu) & torch.isnan(ref_cpu)
-    same_inf = torch.isinf(res_cpu) & torch.isinf(res_cpu == ref_cpu)
-    finite_close = torch.isclose(res_cpu, ref_cpu, rtol=1e-4, atol=0.0)
-    assert (both_nan | same_inf | finite_close).all()
+    # ``equal_nan=True`` treats matching NaNs as equal; inf==inf is handled by
+    # the underlying assert_close. No clamping is done, matching ATen.
+    utils.gems_assert_close(res_grad, ref_grad, res_grad.dtype, equal_nan=True)
 
 
 @pytest.mark.exp_backward
