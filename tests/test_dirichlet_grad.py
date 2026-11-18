@@ -114,7 +114,11 @@ def test_dirichlet_grad_layout(layout):
         x = x[:1, :1]
     reference = torch.ops.aten._dirichlet_grad(x, alpha, total)
     result = flag_gems._dirichlet_grad(x, alpha, total)
-    utils.gems_assert_close(result, reference, torch.float32, atol=DIRICHLET_GRAD_ATOL)
+    assert result.device == x.device and result.dtype == x.dtype
+    assert result.shape == reference.shape
+    utils.gems_assert_close(
+        result, utils.to_reference(reference), torch.float32, atol=DIRICHLET_GRAD_ATOL
+    )
     out = torch.empty(result.shape[::-1], dtype=result.dtype, device=result.device).t()
     assert not out.is_contiguous()
     from flag_gems.runtime.backend._kunlunxin.ops._dirichlet_grad import (
@@ -123,7 +127,11 @@ def test_dirichlet_grad_layout(layout):
 
     actual = _dirichlet_grad_into(x, alpha, total, out=out)
     assert actual is out
-    utils.gems_assert_close(out, result, torch.float32, atol=DIRICHLET_GRAD_ATOL)
+    assert out.device == result.device and out.dtype == result.dtype
+    assert out.shape == result.shape
+    utils.gems_assert_close(
+        out, utils.to_reference(result), torch.float32, atol=DIRICHLET_GRAD_ATOL
+    )
 
 
 @pytest.mark.dirichlet_grad
