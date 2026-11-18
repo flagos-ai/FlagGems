@@ -28,8 +28,13 @@ import torch
 import triton
 import triton.language as tl
 from triton.backends.metax.compiler import MACAOptions
-from triton.experimental.tle import is_primitive_supported
-from triton.experimental.tle import language as tle_async
+
+try:
+    import triton.experimental.tle as _tle
+    from triton.experimental.tle import language as tle_async
+except ImportError:
+    _tle = None
+    tle_async = None
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -59,7 +64,14 @@ _STREAM_SHARED_MMA_SMALL_AVAILABLE = (
     "stream_shared_mma_mn" in MACAOptions.__dataclass_fields__
 )
 
-_TLE_LOAD_AVAILABLE = is_primitive_supported("metax", "load")
+if _tle is None:
+    _TLE_LOAD_AVAILABLE = False
+elif hasattr(_tle, "is_primitive_supported"):
+    _TLE_LOAD_AVAILABLE = _tle.is_primitive_supported("metax", "load")
+elif hasattr(_tle, "is_tle_supported"):
+    _TLE_LOAD_AVAILABLE = _tle.is_tle_supported(tle_async.load)
+else:
+    _TLE_LOAD_AVAILABLE = False
 
 
 @triton.jit
@@ -1033,7 +1045,8 @@ def _run_mm(a, b, scale_a, scale_b, out, m, n, k):
     a = a.contiguous()
     b = b.t().contiguous().t()
     if (
-        m == 1
+        _TLE_LOAD_AVAILABLE
+        and m == 1
         and n <= 1024
         and 128 <= k <= 4096
         and k % 16 == 0

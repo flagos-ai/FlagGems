@@ -62,9 +62,9 @@ def index_select_kernel(
 
 
 def make_contiguous_with_correct_stride(tensor):
-    """确保 contiguous 后的 tensor 具有正确的 stride"""
+    """Ensure the tensor has the correct stride after calling contiguous."""
     if tensor.numel() == 0:
-        # 对于空 tensor，手动创建具有正确 stride 的版本
+        # For empty tensors, manually build a version with the correct stride
         new_tensor = tensor.flatten().view(tensor.shape)
         return new_tensor.contiguous()
     return tensor.contiguous()
