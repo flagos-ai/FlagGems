@@ -16,12 +16,11 @@
 
 """Triton implementation of ATen ``ldexp.out``: ``out = self * 2 ** other``.
 
-``other`` is an integral tensor (or a Python/0-dim-CPU integer scalar).  The
-scaling is IEEE-754 exact: powers of two are assembled with integer bit math and
-applied as a chain of exact multiplies, so no rounding is introduced beyond the
-final cast into the output dtype.  The exponent is clamped to a range that is
-provably equivalent to full saturation for every finite input of the compute
-dtype, which removes any branch from the hot path.
+``other`` is an integral tensor (or a Python/0-dim-CPU integer scalar).
+FP32 computation shares the functional overload's IEEE exponent adjustment,
+including subnormal rounding and signed zero. Runtime scalar exponents do not
+create a separate specialization for each value. Strided outputs use 64-bit
+address arithmetic and reject overlapping input/output storage spans.
 """
 
 import logging

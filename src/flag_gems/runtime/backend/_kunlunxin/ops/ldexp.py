@@ -27,8 +27,7 @@ Reference semantics reproduced (measured on the target):
   * complex inputs are rejected explicitly; this backend does not implement
     the complex ldexp contract.
   * floating exponent: x * exp2(y), with results strictly below the fp32
-    normal range flushed to +0.0 to match the native kernel's underflow
-    behavior (including its sign-of-zero).
+    normal range flushed to zero while preserving the input sign.
 """
 
 import logging
