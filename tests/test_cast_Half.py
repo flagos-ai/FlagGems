@@ -113,6 +113,35 @@ def test_cast_Half_special_values(dtype):
 
 
 @pytest.mark.cast_Half
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("layout", ["contiguous", "transpose", "slice", "expand"])
+def test_cast_Half_complex_layout(dtype, layout):
+    x = torch.randn((4, 5, 6), device=flag_gems.device, dtype=dtype)
+    if layout == "transpose":
+        x = x.transpose(0, 2)
+    elif layout == "slice":
+        x = x[:, :, ::2]
+    elif layout == "expand":
+        x = x[:1].expand(7, -1, -1)
+    assert_cast(x)
+
+
+@pytest.mark.cast_Half
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_cast_Half_complex_noncontiguous_grad(dtype):
+    x = torch.randn((4, 5), device=flag_gems.device, dtype=dtype, requires_grad=True)
+    x = x.t()
+    actual, expected = assert_cast(x)
+    grad = torch.randn_like(expected).t().contiguous().t()
+    torch.testing.assert_close(
+        torch.autograd.grad(actual, x, grad)[0],
+        torch.autograd.grad(expected, x, grad)[0],
+        rtol=0,
+        atol=0,
+    )
+
+
+@pytest.mark.cast_Half
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.complex64])
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Half_autograd(dtype, non_blocking):

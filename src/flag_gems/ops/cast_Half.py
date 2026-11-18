@@ -29,9 +29,9 @@ Native semantics reproduced here:
 * the backward pass converts the upstream float16 gradient back to the input
   dtype, exposed through a differentiable forward so autograd can reach it.
 
-The conversions run entirely in Triton kernels.  Host-side work is limited to
-output allocation, zero-copy ``view_as_real``/``narrow``/``squeeze`` layout
-views, scalar arithmetic and the launch.
+Conversions run entirely in Triton kernels. Shape and stride metadata is passed
+as compile-time constants and complex real components are read in the kernel.
+Output allocation still needs a tensor allocator.
 """
 
 from __future__ import annotations
@@ -41,6 +41,9 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.ops.empty import empty as gems_empty
+from flag_gems.ops.empty_permuted import empty_permuted as gems_empty_permuted
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +106,7 @@ def _cast_flat(
     OUT_MODE: tl.constexpr,
     WIDE: tl.constexpr,
     ALIGNED: tl.constexpr,
+    COMPLEX_INPUT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """Contiguous source: one flat load and one converted store per element.
@@ -115,12 +119,13 @@ def _cast_flat(
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     if WIDE:
         offs = offs.to(tl.int64)
+    src_offs = offs * 2 if COMPLEX_INPUT else offs
     if ALIGNED:
-        x = tl.load(src + offs)
+        x = tl.load(src + src_offs)
         tl.store(dst + offs, _convert(x, OUT_MODE))
     else:
         mask = offs < n
-        x = tl.load(src + offs, mask=mask)
+        x = tl.load(src + src_offs, mask=mask)
         tl.store(dst + offs, _convert(x, OUT_MODE), mask=mask)
 
 
@@ -128,42 +133,43 @@ def _cast_flat(
 def _cast_strided(
     src,
     dst,
-    shape_ptr,
-    src_stride_ptr,
-    dst_stride_ptr,
     n,
-    R: tl.constexpr,
+    SHAPE: tl.constexpr,
+    SRC_STRIDES: tl.constexpr,
+    DST_STRIDES: tl.constexpr,
     OUT_MODE: tl.constexpr,
+    COMPLEX_INPUT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Strided source: unravel each linear index into both the source multi-index
-    and the output multi-index, so the destination keeps the layout ``empty_like``
-    allocated rather than collapsing to contiguous."""
+    """Unravel indices using compile-time shape and stride metadata."""
     pid = tl.program_id(0)
     offs = (pid * BLOCK + tl.arange(0, BLOCK)).to(tl.int64)
     mask = offs < n
     rem = offs
     src_off = tl.zeros([BLOCK], dtype=tl.int64)
     dst_off = tl.zeros([BLOCK], dtype=tl.int64)
-    for i in tl.static_range(R):
-        d = R - 1 - i
-        extent = tl.load(shape_ptr + d).to(tl.int64)
-        sstep = tl.load(src_stride_ptr + d).to(tl.int64)
-        dstep = tl.load(dst_stride_ptr + d).to(tl.int64)
+    for d in tl.static_range(len(SHAPE) - 1, -1, -1):
+        extent = SHAPE[d]
         q = rem // extent
-        src_off += (rem - q * extent) * sstep
-        dst_off += (rem - q * extent) * dstep
+        src_off += (rem - q * extent) * SRC_STRIDES[d]
+        dst_off += (rem - q * extent) * DST_STRIDES[d]
         rem = q
-    x = tl.load(src + src_off, mask=mask)
+    if COMPLEX_INPUT:
+        src_off *= 2
+    x = tl.load(src + src_off, mask=mask, other=0)
     tl.store(dst + dst_off, _convert(x, OUT_MODE), mask=mask)
 
 
-def _cast_into(source, out, out_mode):
+def _cast_into(source, out, out_mode, complex_input=False):
     """Run the elementwise conversion of ``source`` into ``out``."""
     n = source.numel()
     if n == 0:
         return out
-    if source.is_contiguous():
+    source_ptr = source
+    if complex_input:
+        component_dtype = tl.float64 if source.dtype == torch.complex128 else tl.float32
+        source_ptr = triton.reinterpret(source, component_dtype)
+    if source.is_contiguous() and out.is_contiguous():
         if source.dtype == torch.bfloat16:
             # bfloat16 prefers the 2048-element tile at every size: repeated
             # measurement on both 1 G-element shapes puts it 0.4-0.6% ahead of
@@ -189,39 +195,73 @@ def _cast_into(source, out, out_mode):
         )
         grid = (triton.cdiv(n, block),)
         _cast_flat[grid](
-            source,
+            source_ptr,
             out,
             n,
             OUT_MODE=out_mode,
             WIDE=n >= _INT32_LIMIT,
             ALIGNED=aligned,
+            COMPLEX_INPUT=complex_input,
             BLOCK=block,
             num_warps=warps,
         )
     else:
-        shape = torch.tensor(
-            list(source.shape), dtype=torch.int64, device=source.device
-        )
-        src_stride = torch.tensor(
-            list(source.stride()), dtype=torch.int64, device=source.device
-        )
-        dst_stride = torch.tensor(
-            list(out.stride()), dtype=torch.int64, device=source.device
-        )
         grid = (triton.cdiv(n, _STRIDED_BLOCK),)
         _cast_strided[grid](
-            source,
+            source_ptr,
             out,
-            shape,
-            src_stride,
-            dst_stride,
             n,
-            R=source.dim(),
+            SHAPE=tuple(source.shape),
+            SRC_STRIDES=tuple(source.stride()),
+            DST_STRIDES=tuple(out.stride()),
             OUT_MODE=out_mode,
+            COMPLEX_INPUT=complex_input,
             BLOCK=_STRIDED_BLOCK,
             num_warps=_STRIDED_WARPS,
         )
     return out
+
+
+def _empty_like_gems(source, dtype, preserve_format=True):
+    """Allocate through FlagGems while preserving dense input layouts."""
+    shape = tuple(source.shape)
+    if preserve_format and source.numel() and source.ndim > 1:
+        # empty_like(preserve_format) keeps strides for dense permutations, but
+        # allocates contiguous storage for slices and expanded views.
+        layout = sorted(
+            range(source.ndim), key=lambda d: source.stride(d), reverse=True
+        )
+        stride = 1
+        strides = [0] * source.ndim
+        for dim in reversed(layout):
+            strides[dim] = stride
+            stride *= shape[dim]
+        if tuple(strides) == tuple(source.stride()):
+            return gems_empty_permuted(shape, layout, dtype=dtype, device=source.device)
+    return gems_empty(shape, dtype=dtype, device=source.device)
+
+
+@triton.jit
+def _complex_grad(
+    grad,
+    dst,
+    n,
+    SHAPE: tl.constexpr,
+    GRAD_STRIDES: tl.constexpr,
+    OUT_MODE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    rem = offs
+    grad_off = tl.full((BLOCK,), 0, tl.int64)
+    for d in tl.static_range(len(SHAPE) - 1, -1, -1):
+        q = rem // SHAPE[d]
+        grad_off += (rem - q * SHAPE[d]) * GRAD_STRIDES[d]
+        rem = q
+    value = tl.load(grad + grad_off, mask=mask, other=0)
+    tl.store(dst + 2 * offs, _convert(value, OUT_MODE), mask=mask)
+    tl.store(dst + 2 * offs + 1, 0, mask=mask)
 
 
 class _CastHalf(torch.autograd.Function):
@@ -230,12 +270,31 @@ class _CastHalf(torch.autograd.Function):
     @staticmethod
     def forward(ctx, source, forward_mode, backward_mode):
         ctx.backward_mode = backward_mode
-        out = torch.empty_like(source, dtype=torch.float16)
-        return _cast_into(source, out, forward_mode)
+        ctx.input_dtype = source.dtype
+        ctx.complex_input = source.is_complex()
+        out = _empty_like_gems(source, torch.float16)
+        return _cast_into(source, out, forward_mode, ctx.complex_input)
 
     @staticmethod
     def backward(ctx, grad):
-        out = torch.empty_like(grad, dtype=_MODE_DTYPE[ctx.backward_mode])
+        if ctx.complex_input:
+            out = gems_empty(grad.shape, dtype=ctx.input_dtype, device=grad.device)
+            if grad.numel():
+                component_dtype = (
+                    tl.float64 if ctx.input_dtype == torch.complex128 else tl.float32
+                )
+                dst = triton.reinterpret(out, component_dtype)
+                _complex_grad[(triton.cdiv(grad.numel(), _STRIDED_BLOCK),)](
+                    grad,
+                    dst,
+                    grad.numel(),
+                    SHAPE=tuple(grad.shape),
+                    GRAD_STRIDES=tuple(grad.stride()),
+                    OUT_MODE=ctx.backward_mode,
+                    BLOCK=_STRIDED_BLOCK,
+                )
+            return out, None, None
+        out = _empty_like_gems(grad, _MODE_DTYPE[ctx.backward_mode])
         return _cast_into(grad, out, ctx.backward_mode), None, None
 
 
@@ -255,20 +314,16 @@ def cast_Half(self, non_blocking=False):
     if self.dtype == torch.float16:
         return self
 
-    if self.is_complex():
-        # Zero-copy real-component view; the imaginary part is discarded.
-        source = torch.view_as_real(self).narrow(-1, 0, 1).squeeze(-1)
-    else:
-        source = self
-
-    # float64 (and the float64 real part of complex128) must round through
-    # float32 to match the native double-rounding boundary.
-    forward_mode = _OUT_FP16_VIA32 if source.dtype == torch.float64 else _OUT_FP16
+    forward_mode = (
+        _OUT_FP16_VIA32
+        if self.dtype in (torch.float64, torch.complex128)
+        else _OUT_FP16
+    )
 
     if self.requires_grad and torch.is_grad_enabled():
         backward_mode = _BACKWARD_MODE.get(self.dtype)
         if backward_mode is not None:
-            return _CastHalf.apply(source, forward_mode, backward_mode)
+            return _CastHalf.apply(self, forward_mode, backward_mode)
 
-    out = torch.empty_like(source, dtype=torch.float16)
-    return _cast_into(source, out, forward_mode)
+    out = _empty_like_gems(self, torch.float16)
+    return _cast_into(self, out, forward_mode, self.is_complex())
