@@ -38,8 +38,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.copy import copy_
 from flag_gems.ops.col_indices import col_indices as gems_col_indices
+from flag_gems.ops.copy import copy_
 from flag_gems.ops.crow_indices import crow_indices as gems_crow_indices
 from flag_gems.ops.cumsum import cumsum
 from flag_gems.ops.empty import empty as gems_empty
@@ -292,7 +292,18 @@ def sparse_csr_prod_out(self, dim, keepdim=False, *, dtype=None, out):
     """Out form: rewrite ``out`` with the reduced descriptor and return it."""
     logger.debug("GEMS SPARSE_CSR_PROD OUT")
     built = sparse_csr_prod(self, dim, keepdim, dtype=dtype)
-    # ``copy_`` between compressed tensors requires an identical stored-element
-    # count; anything else raises exactly like the native out kernel.
-    copy_(out, built)
+    # Sparse CSR tensors have no strided storage for the generic copy_ helper.
+    # Copy their three dense components through FlagGems instead. The out tensor
+    # must already have the same descriptor sizes, as for native CSR copy_.
+    if (
+        out.layout != torch.sparse_csr
+        or out.shape != built.shape
+        or out._nnz() != built._nnz()
+    ):
+        raise RuntimeError(
+            "sparse CSR out must have the result shape and stored-element count"
+        )
+    copy_(gems_crow_indices(out), gems_crow_indices(built))
+    copy_(gems_col_indices(out), gems_col_indices(built))
+    copy_(out.values(), built.values())
     return out
