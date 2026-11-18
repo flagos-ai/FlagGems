@@ -70,7 +70,7 @@ def test_histc_automatic_range(shape, bins, dtype):
     inp = _make_histc_input(
         shape, dtype, flag_gems.device, 0.0, 10.0, include_endpoints=True
     )
-    inp_before = inp.clone()
+    inp_before = utils.to_reference(inp.clone())
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.histc(ref_inp, bins=bins, min=0, max=0)
