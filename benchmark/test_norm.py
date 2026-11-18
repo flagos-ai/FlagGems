@@ -53,7 +53,7 @@ def test_norm_scalar():
         case_fn=norm_scalar_case_fn,
         build_inputs_fn=norm_scalar_build_inputs_fn,
         op_name="norm_scalar",
-        torch_op=torch.norm,
+        torch_op=torch.ops.aten.norm.Scalar,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
