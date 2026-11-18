@@ -24,7 +24,9 @@ from . import accuracy_utils as utils
 # Test shapes: (n, k) pairs. Sizes through 32 take the register-resident
 # kernel; larger ones take the blocked kernel, including n values that are not
 # a multiple of its diagonal block (48, 100) and RHS widths narrower than or
-# straddling the blocked tile width.
+# straddling the blocked tile width.  n = 256 crosses the Kunlunxin
+# register-resident limit (_REGISTER_MAX_N = 128) with k > 1, so several solve
+# programs run concurrently on the wider path.
 LU_SOLVE_SHAPES = [
     (4, 4),
     (8, 8),
@@ -35,6 +37,7 @@ LU_SOLVE_SHAPES = [
     (64, 64),
     (100, 40),
     (128, 128),
+    (256, 64),
     (32, 7),
     (16, 1),
     (64, 1),
