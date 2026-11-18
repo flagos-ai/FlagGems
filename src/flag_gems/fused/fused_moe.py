@@ -14,6 +14,8 @@
 
 import functools
 import logging
+import math
+import numbers
 import os
 from enum import Enum
 from typing import Any, Optional
@@ -571,6 +573,7 @@ class MoEActivation(Enum):
     GELU = "gelu"
     RELU2 = "relu2"
     SWIGLUOAI = "swigluoai"
+    SWIGLUOAI_UNINTERLEAVE = "swigluoai_uninterleave"
     SWIGLUSTEP = "swiglustep"
 
     # Non-gated: input [..., d] -> output [..., d]
@@ -605,10 +608,98 @@ class MoEActivation(Enum):
         return N if not activation.is_gated else N // 2
 
 
+def _validate_swigluoai_uninterleave_params(
+    gemm1_alpha: float | None,
+    gemm1_beta: float | None,
+    gemm1_clamp_limit: float | None,
+) -> tuple[float, float, float]:
+    """Validate the scalar gate parameters before launching an MoE kernel."""
+    params = {
+        "gemm1_alpha": gemm1_alpha,
+        "gemm1_beta": gemm1_beta,
+        "gemm1_clamp_limit": gemm1_clamp_limit,
+    }
+    validated = {}
+    for name, value in params.items():
+        if not isinstance(value, numbers.Real) or isinstance(value, bool):
+            raise ValueError(
+                f"swigluoai_uninterleave requires a finite scalar {name}, got {value!r}"
+            )
+        try:
+            converted = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(
+                f"swigluoai_uninterleave requires a finite scalar {name}, got {value!r}"
+            ) from exc
+        # Runtime scalar arguments are passed to Triton as FP32. A finite
+        # Python float can still overflow to infinity at that boundary.
+        if (
+            not math.isfinite(converted)
+            or abs(converted) > torch.finfo(torch.float32).max
+        ):
+            raise ValueError(
+                f"swigluoai_uninterleave requires a finite FP32 scalar {name}, got {value!r}"
+            )
+        validated[name] = converted
+    if validated["gemm1_clamp_limit"] < 0:
+        raise ValueError("swigluoai_uninterleave requires gemm1_clamp_limit >= 0")
+    return (
+        validated["gemm1_alpha"],
+        validated["gemm1_beta"],
+        validated["gemm1_clamp_limit"],
+    )
+
+
+@triton.jit
+def _swigluoai_uninterleave_kernel(
+    input_ptr,
+    output_ptr,
+    n_inter,
+    stride_im,
+    stride_in,
+    stride_om,
+    stride_on,
+    alpha,
+    beta,
+    clamp_limit,
+    BLOCK_I: tl.constexpr,
+):
+    """Split gate/up layout; compute in FP32 and round on output store."""
+    # Promote before multiplying: valid tensor strides can exceed int32
+    # offsets even when the logical activation has only a few elements.
+    row = tl.program_id(0).to(tl.int64)
+    cols = tl.program_id(1).to(tl.int64) * BLOCK_I + tl.arange(0, BLOCK_I)
+    mask = cols < n_inter
+    gate = tl.load(
+        input_ptr + row * stride_im + cols * stride_in, mask=mask, other=0.0
+    ).to(tl.float32)
+    up = tl.load(
+        input_ptr + row * stride_im + (n_inter + cols) * stride_in,
+        mask=mask,
+        other=0.0,
+    ).to(tl.float32)
+    gate = tl.minimum(gate, clamp_limit, propagate_nan=tl.PropagateNan.ALL)
+    up = tl.minimum(
+        tl.maximum(up, -clamp_limit, propagate_nan=tl.PropagateNan.ALL),
+        clamp_limit,
+        propagate_nan=tl.PropagateNan.ALL,
+    )
+    activated = gate * tl.sigmoid(alpha * gate) * (up + beta)
+    tl.store(
+        output_ptr + row * stride_om + cols * stride_on,
+        activated.to(output_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
 def apply_moe_activation(
     activation: MoEActivation,
     output: torch.Tensor,
     input: torch.Tensor,
+    *,
+    gemm1_alpha: float | None = None,
+    gemm1_beta: float | None = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> torch.Tensor:
     """Apply MoE activation (pure PyTorch / FlagGems Triton)."""
     assert input.dim() == 2, "Input must be 2D"
@@ -628,6 +719,30 @@ def apply_moe_activation(
         N = output.size(-1)
         x, y = input[:, :N], input[:, N:]
         _silu_and_mul_kernel(x, y, out0=output)
+    elif activation == MoEActivation.SWIGLUOAI_UNINTERLEAVE:
+        alpha, beta, limit = _validate_swigluoai_uninterleave_params(
+            gemm1_alpha, gemm1_beta, gemm1_clamp_limit
+        )
+        assert input.dtype == output.dtype and input.device == output.device
+        assert input.size(0) == output.size(0)
+        if output.numel() == 0:
+            return output
+        block_i = 256
+        _swigluoai_uninterleave_kernel[
+            (output.size(0), triton.cdiv(output.size(1), block_i))
+        ](
+            input,
+            output,
+            output.size(1),
+            input.stride(0),
+            input.stride(1),
+            output.stride(0),
+            output.stride(1),
+            alpha,
+            beta,
+            limit,
+            BLOCK_I=block_i,
+        )
     elif activation == MoEActivation.GELU:
         N = output.size(-1)
         gate, up = input[:, :N], input[:, N:]
@@ -1872,13 +1987,31 @@ def fused_experts_impl(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    *,
+    gemm1_alpha: float | None = None,
+    gemm1_beta: float | None = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> torch.Tensor:
     logger.debug("GEMS FUSED_MOE")
-    assert (
-        activation == "silu"
-    ), f"Only 'silu' activation is supported, got {activation}"
-
     activation_enum = MoEActivation.from_str(activation)
+    if activation_enum == MoEActivation.SWIGLUOAI_UNINTERLEAVE:
+        gemm1_alpha, gemm1_beta, gemm1_clamp_limit = (
+            _validate_swigluoai_uninterleave_params(
+                gemm1_alpha, gemm1_beta, gemm1_clamp_limit
+            )
+        )
+    elif activation_enum == MoEActivation.SILU:
+        if any(
+            value is not None for value in (gemm1_alpha, gemm1_beta, gemm1_clamp_limit)
+        ):
+            raise ValueError(
+                "gemm1_alpha/beta/clamp_limit require swigluoai_uninterleave"
+            )
+    else:
+        raise ValueError(
+            f"Only 'silu' and 'swigluoai_uninterleave' activations are supported, "
+            f"got {activation!r}"
+        )
 
     # Check constraints
     if use_int4_w4a16:
@@ -2015,7 +2148,7 @@ def fused_experts_impl(
 
     # Check if we can safely fuse the activation with the first GEMM pass
     can_use_fused_silu = (
-        activation_enum in (MoEActivation.SILU, MoEActivation.SWIGLUOAI)
+        activation_enum == MoEActivation.SILU
         and w1_bias is None
         and expert_map is None  # Fused kernel doesn't handle EP -1 experts
     )
@@ -2137,7 +2270,12 @@ def fused_experts_impl(
         # 4. Apply activation separately if the fused path was not taken
         if not do_fuse_silu:
             apply_moe_activation(
-                activation_enum, intermediate_cache2, intermediate_cache1.view(-1, N)
+                activation_enum,
+                intermediate_cache2,
+                intermediate_cache1.view(-1, N),
+                gemm1_alpha=gemm1_alpha,
+                gemm1_beta=gemm1_beta,
+                gemm1_clamp_limit=gemm1_clamp_limit,
             )
 
         # 5. Quantize activated intermediate for GEMM2
@@ -2239,6 +2377,10 @@ def inplace_fused_experts(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    *,
+    gemm1_alpha: float | None = None,
+    gemm1_beta: float | None = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> None:
     """
     In-place fused MoE: writes output directly into ``hidden_states``.
@@ -2268,6 +2410,9 @@ def inplace_fused_experts(
         block_shape=block_shape,
         w1_bias=w1_bias,
         w2_bias=w2_bias,
+        gemm1_alpha=gemm1_alpha,
+        gemm1_beta=gemm1_beta,
+        gemm1_clamp_limit=gemm1_clamp_limit,
     )
 
 
@@ -2292,6 +2437,10 @@ def outplace_fused_experts(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    *,
+    gemm1_alpha: float | None = None,
+    gemm1_beta: float | None = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> torch.Tensor:
     """
     Out-of-place fused MoE: allocates and returns a new output tensor.
@@ -2320,4 +2469,7 @@ def outplace_fused_experts(
         block_shape=block_shape,
         w1_bias=w1_bias,
         w2_bias=w2_bias,
+        gemm1_alpha=gemm1_alpha,
+        gemm1_beta=gemm1_beta,
+        gemm1_clamp_limit=gemm1_clamp_limit,
     )
