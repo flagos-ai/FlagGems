@@ -65,3 +65,33 @@ def test_elu_backward():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class EluBackwardOutBenchmark(base.UnaryPointwiseBenchmark):
+    def get_input_iter(self, dtype: torch.dtype) -> Generator:
+        for shape in self.shapes:
+            inp = utils.generate_tensor_input(shape, dtype, self.device)
+            grad_out = torch.randn_like(inp)
+            alpha = 1.0
+            scale = 1.0
+            input_scale = 1.0
+            is_result = False
+            grad_input = torch.empty_like(inp)
+
+            yield grad_out, alpha, scale, input_scale, is_result, inp, {
+                "grad_input": grad_input
+            }
+
+
+@pytest.mark.elu_backward_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_elu_backward_out():
+    bench = EluBackwardOutBenchmark(
+        op_name="elu_backward_out",
+        torch_op=torch.ops.aten.elu_backward.grad_input,
+        gems_op=flag_gems.elu_backward_out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
