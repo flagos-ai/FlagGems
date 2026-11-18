@@ -64,14 +64,16 @@ def check_unary(name, dtype, shape, strided, expanded_grad):
     if name.endswith("_"):
         assert actual_out is x
     if name not in RANDOM_OPS:
-        utils.gems_assert_close(actual_out, expected_out, dtype, equal_nan=True)
+        utils.gems_assert_close(
+            actual_out, utils.to_reference(expected_out), dtype, equal_nan=True
+        )
     if expanded_grad:
         grad = torch.randn((), device=x.device, dtype=dtype).expand(shape)
     else:
         grad = torch.randn((*shape, 3), device=x.device, dtype=dtype)[..., 1]
     actual = torch.autograd.grad(actual_out, root, grad)[0]
     expected = torch.autograd.grad(expected_out, ref_root, grad)[0]
-    utils.gems_assert_close(actual, expected, dtype, equal_nan=True)
+    utils.gems_assert_close(actual, utils.to_reference(expected), dtype, equal_nan=True)
     if name in ZERO_OPS:
         torch.testing.assert_close(actual, torch.zeros_like(actual), atol=0, rtol=0)
     torch.testing.assert_close(root.detach(), before, atol=0, rtol=0)
