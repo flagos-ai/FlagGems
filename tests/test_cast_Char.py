@@ -148,7 +148,9 @@ def _require_dtype(dtype):
 
 def make_input(shape, dtype):
     if dtype.is_floating_point:
-        return torch.randint(-128, 128, shape, dtype=torch.int32, device=flag_gems.device).to(dtype)
+        return torch.randint(
+            -128, 128, shape, dtype=torch.int32, device=flag_gems.device
+        ).to(dtype)
     return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
 
 
