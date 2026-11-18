@@ -1189,6 +1189,10 @@ def index_add(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        # An empty index applies no updates. Return a copy of the input instead
+        # of dividing by zero below, matching PyTorch's no-op semantics (#6657).
+        return inp.clone()
     M = src.numel() // N
 
     # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
@@ -1256,6 +1260,10 @@ def index_add_(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        # An empty index applies no updates; the input is returned unchanged,
+        # matching PyTorch's no-op semantics instead of dividing by zero (#6657).
+        return inp
     M = src.numel() // N
 
     # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
