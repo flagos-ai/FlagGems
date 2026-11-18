@@ -51,3 +51,24 @@ def test_im2col():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class Im2colBackwardBenchmark(Im2colBenchmark):
+    def __init__(self, op_name, torch_op, dtypes):
+        base.Benchmark.__init__(
+            self,
+            op_name=op_name,
+            torch_op=torch_op,
+            dtypes=dtypes,
+            is_backward=True,
+        )
+
+
+@pytest.mark.im2col_backward
+def test_im2col_backward():
+    bench = Im2colBackwardBenchmark(
+        op_name="im2col",
+        torch_op=torch.ops.aten.im2col,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
