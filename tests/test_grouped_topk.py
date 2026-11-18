@@ -71,6 +71,38 @@ def get_tolerance(dtype, scoring_func, renormalize):
 
 @pytest.mark.grouped_topk
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.parametrize("topk", [3, 6, 7])
+@pytest.mark.parametrize("renormalize", [True, False])
+@pytest.mark.parametrize("scoring_func", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+def test_grouped_topk_non_power_of_two(topk, renormalize, scoring_func, dtype):
+    # Keep routing order unambiguous so this catches padding/normalization errors
+    # independently of vendor tie-breaking and optional vLLM CUDA extensions.
+    scores = torch.linspace(-2, 2, 128, dtype=dtype, device=flag_gems.device).reshape(
+        1, -1
+    )
+    bias = torch.zeros(128, dtype=dtype, device=flag_gems.device)
+    weights, ids = flag_gems.grouped_topk(
+        scores, 1, 1, topk, renormalize, 2.0, bias, scoring_func
+    )
+    processed = torch.sigmoid(scores.float()).to(dtype) if scoring_func else scores
+    # Stable order is the kernel contract when lower precision creates ties.
+    expected_ids = processed.float().argsort(dim=-1, descending=True, stable=True)[
+        :, :topk
+    ]
+    expected_weights = processed.gather(1, expected_ids).float()
+    if renormalize:
+        expected_weights = expected_weights / (
+            expected_weights.sum(-1, keepdim=True) + 1e-20
+        )
+    torch.testing.assert_close(ids, expected_ids.to(torch.int32))
+    atol, rtol = get_tolerance(dtype, scoring_func, renormalize)
+    torch.testing.assert_close(weights, expected_weights * 2.0, atol=atol, rtol=rtol)
+    assert weights.shape == (1, topk) and ids.shape == (1, topk)
+
+
+@pytest.mark.grouped_topk
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(not HAS_VLLM, reason="vLLM is not installed")
 @pytest.mark.parametrize("n_token", N_TOKEN_LIST)
 @pytest.mark.parametrize("n_expert", N_EXPERT_LIST)
