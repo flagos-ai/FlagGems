@@ -12369,6 +12369,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
+- id: log10_backward
+  description: The backward computation of `log10()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log10
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log10_out
   description: A variant of `log10()` that assigns the output to the provided `out`.
   for:
