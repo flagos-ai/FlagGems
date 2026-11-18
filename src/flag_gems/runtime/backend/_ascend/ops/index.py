@@ -50,8 +50,12 @@ def index_kernel_func(
         offset = pid0 * BLOCK_SIZE + i
 
         if offset < index_len:
-            in_start_index = tl.load(index_ptr + offset) * stride
-            out_start_offset = offset * stride
+            # Keep the offsets in int64: `index * stride` already reaches 2**31
+            # for a (2**28, 8) int8 payload, and int32 arithmetic wrapped
+            # around, turning the load into an out-of-bounds read (#4153,
+            # caught by test_index_int32_offset_overflow on Ascend).
+            in_start_index = tl.load(index_ptr + offset).to(tl.int64) * stride
+            out_start_offset = offset.to(tl.int64) * stride
             loop_num = (stride - 1) // MAX_DATA_SIZE + 1
 
             for loop_idx in range(0, loop_num):
@@ -81,9 +85,11 @@ def index_wrapper(input, indices, out):
     if index_len <= 0:
         return
 
-    actual_index = indices[0]
+    actual_index = indices[0].to(torch.int64)
     for idx in range(0, indices_dim - 1):
-        actual_index = actual_index * input_shape[idx + 1] + indices[idx + 1]
+        actual_index = actual_index * input_shape[idx + 1] + indices[idx + 1].to(
+            torch.int64
+        )
 
     BLOCK_SIZE = 32
     MAX_DATA_SIZE = 8 * 1024
@@ -718,7 +724,17 @@ def index(inp, indices):
     # Note: kernel needs to handle the fact that input was potentially permuted
     # and output shape includes None dimensions
     if inp.ndim == 1 and len(tensor_indices) == 1:
-        return torch.gather(inp, 0, tensor_indices[0])
+        # `torch.gather` requires `index.ndim == inp.ndim`, so passing a
+        # multi-dimensional index straight through fails with
+        # "Index tensor must have the same number of dimensions as input
+        # tensor" (issue #9126). Flatten the index, gather, then restore the
+        # index shape -- that is exactly `x[idx]` semantics.
+        index = tensor_indices[0]
+        flat = index.reshape(-1)
+        # Native gather for the 1-D lowering predates this change; only the
+        # shape handling is fixed here, a dedicated Triton kernel is separate.
+        gathered = torch.gather(inp, 0, flat)  # allow-torch-compute
+        return gathered.reshape(index.shape)
 
     index_wrapper(inp, tensor_indices, out)
     return out

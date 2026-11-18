@@ -292,6 +292,37 @@ def test_index_1d_special_case(dtype):
 
 
 @pytest.mark.index
+@pytest.mark.parametrize("dtype", [torch.int64, torch.float32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_1d_multi_dim_index(dtype):
+    """`x[idx]` on a 1-D `x` must keep the shape of `idx` (issue #9126).
+
+    The Ascend backend lowers the 1-D input case to `torch.gather`, which
+    rejects an index whose ndim differs from the input's, so a 2-D index used
+    to raise "Index tensor must have the same number of dimensions as input
+    tensor". The float path below exercises the specialised adjacent kernel,
+    the int64 path the gather lowering.
+    """
+    if dtype == torch.int64:
+        inp = torch.randint(0, 512, (512,), dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randn((512,), dtype=dtype, device=flag_gems.device)
+    idx = torch.randint(0, 512, (4, 32), device=flag_gems.device)
+    idx_expanded = (
+        torch.arange(0, 32, device=flag_gems.device).reshape(1, 32).expand(4, 32)
+    )
+
+    ref_inp = utils.to_reference(inp)
+    for index in (idx, idx_expanded):
+        ref_out = torch.ops.aten.index(ref_inp, [utils.to_reference(index)])
+        out = flag_gems.index(inp, [index])
+        assert out.shape == index.shape
+        utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.index
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -324,6 +355,16 @@ def test_index_error_too_many_indices(dtype):
         flag_gems.index(inp, indices)
 
 
+def _free_device_bytes():
+    """Free memory of the active device, whatever the vendor namespace is."""
+    if flag_gems.device == "cuda":
+        return torch.cuda.mem_get_info(flag_gems.device)
+    mem_get_info = getattr(getattr(torch, flag_gems.device), "mem_get_info", None)
+    if mem_get_info is None:
+        pytest.skip(f"no mem_get_info() for device {flag_gems.device}")
+    return mem_get_info()
+
+
 @pytest.mark.index
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -336,7 +377,7 @@ def test_index_int32_offset_overflow():
     overflow int32 arithmetic in the generated kernels and caused
     out-of-bounds reads ("illegal memory access").
     """
-    free_bytes, _ = torch.cuda.mem_get_info(flag_gems.device)
+    free_bytes, _ = _free_device_bytes()
     if free_bytes < 3 * 2**30:
         pytest.skip("not enough free device memory for the int32-offset case")
 
