@@ -13592,6 +13592,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.0'
+- id: min_backward
+  description: The backward computation of `min()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - min
+  - min.dim
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.4'
 - id: min_dim
   description: 'Returns a namedtuple `(values, indices)` where `values` is the minimum
     value of
