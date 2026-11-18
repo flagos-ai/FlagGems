@@ -17,6 +17,8 @@ import math
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 INDEX_RATIOS = ("1/16", "1/2", "full")
@@ -136,5 +138,38 @@ def test_index_fill_():
         input_fn=index_fill_input_fn,
         torch_op=torch.Tensor.index_fill_,
         dtypes=INDEX_FILL_DTYPES,
+    )
+    bench.run()
+
+
+INDEX_FILL_BACKWARD_CASES = [(1024, 64), (1, 2048, 8), (2, 8, 2048, 16)]
+
+
+def index_fill_backward_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    dim = 0 if len(shape) == 1 else 1
+    index_len = shape[dim] // 2 if shape[dim] >= 2 else 1
+    index = torch.randperm(shape[dim], device=device)[:index_len]
+    value = torch.tensor(2.0, dtype=dtype, device=device)
+    value.requires_grad_(True)
+    yield inp, dim, index, value
+
+
+class IndexFillBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [(1024, 64), (1, 2048, 8), (2, 8, 2048, 16)]
+
+
+@pytest.mark.index_fill_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_fill_backward():
+    bench = IndexFillBackwardBenchmark(
+        op_name="index_fill",
+        torch_op=torch.index_fill,
+        input_fn=index_fill_backward_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
