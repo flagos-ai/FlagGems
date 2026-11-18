@@ -72,9 +72,7 @@ def test_binary_resolver_uses_live_candidate(key, public, private):
 def test_unary_resolver_uses_live_candidate(inplace):
     suffix = "_" if inplace else ""
     module = SimpleNamespace(**{f"_foreach_sin{suffix}": _original})
-    namespace = _resolver(
-        "test_foreach_unary.py", {"_gems_op"}, flag_gems=module
-    )
+    namespace = _resolver("test_foreach_unary.py", {"_gems_op"}, flag_gems=module)
     assert namespace["_gems_op"]("sin", inplace)() == "original"
     setattr(module, f"foreach_sin{suffix}", _candidate)
     with pytest.raises(RuntimeError, match="injected candidate was called"):
