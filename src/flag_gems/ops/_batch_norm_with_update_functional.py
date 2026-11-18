@@ -21,7 +21,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 
 logger = logging.getLogger(__name__)
 
@@ -335,11 +335,21 @@ def _batch_norm_with_update_functional(
     M = N * L
 
     out = torch.empty(shape, device=x3.device, dtype=x3.dtype)
-    pack = torch.empty((4, C), device=x3.device, dtype=x3.dtype)
-    save_mean = pack[0]
-    save_invstd = pack[1]
-    running_mean_out = pack[2]
-    running_var_out = pack[3]
+    saved_dtype = x3.dtype
+    if device.vendor_name == "nvidia" and x3.dtype in (torch.float16, torch.bfloat16):
+        saved_dtype = torch.float32
+    mean_dtype = running_mean.dtype if running_mean is not None else x3.dtype
+    var_dtype = running_var.dtype if running_var is not None else x3.dtype
+    if saved_dtype == mean_dtype == var_dtype:
+        pack = torch.empty((4, C), device=x3.device, dtype=saved_dtype)
+        save_mean, save_invstd, running_mean_out, running_var_out = pack.unbind(0)
+    else:
+        # CUDA saves accumulated statistics in FP32; updated running statistics
+        # retain their input parameter dtype, including mixed-precision inputs.
+        saved = torch.empty((2, C), device=x3.device, dtype=saved_dtype)
+        save_mean, save_invstd = saved.unbind(0)
+        running_mean_out = torch.empty((C,), device=x3.device, dtype=mean_dtype)
+        running_var_out = torch.empty((C,), device=x3.device, dtype=var_dtype)
 
     reserve = torch.empty((0,), dtype=torch.uint8, device=x3.device)
 
