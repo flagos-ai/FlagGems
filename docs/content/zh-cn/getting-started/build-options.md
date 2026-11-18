@@ -45,7 +45,7 @@ flaggems-setup --list
 | `nvidia-cuda133` | NVIDIA GPU (CUDA 13.3) | 3.12 | `CUDA` | FlagTree / Triton |
 | `ascend-cann900` | 华为昇腾 NPU (CANN 9.0.0) | 3.11 | `NPU` | FlagTree / Triton |
 | `ascend-cann850` | 华为昇腾 NPU (CANN 8.5.0) | 3.11 | `NPU` | FlagTree / Triton |
-| `hygon` | 海光 DCU (DTK) | 3.10 | 纯 Python / 扩展适配中 | Triton |
+| `hygon-dtk2604` | 海光 DCU (DTK) | 3.10 | 纯 Python / 扩展适配中 | Triton |
 | `metax-maca3810` | 沐曦 GPU (MACA 3.8.1) | 3.12 | 纯 Python | Triton |
 | `metax-maca3720` | 沐曦 GPU (MACA 3.7.2) | 3.12 | 纯 Python | Triton |
 | `mthreads-musa520` | 摩尔线程 GPU (MUSA 5.2.0) | 3.10 | `MUSA` | FlagTree / Triton |
@@ -53,8 +53,8 @@ flaggems-setup --list
 | `enflame-tops1910` | 燧原 GCU (TopsRider 1.9.1) | 3.12 | `GCU` | Triton |
 | `cambricon-neuware472`| 寒武纪 MLU (Neuware 4.7.2)| 3.12 | `MLU` | Triton |
 | `cambricon-neuware443`| 寒武纪 MLU (Neuware 4.4.3)| 3.10 | `MLU` | Triton |
-| `iluvatar` | 天数智芯 GPU (BI-V) | 3.12 | `IX` | Triton |
-| `kunlunxin` | 昆仑芯 XPU | 3.10 | 纯 Python | Triton |
+| `iluvatar-corex450` | 天数智芯 GPU (BI-V) | 3.12 | `IX` | Triton |
+| `kunlunxin-xre5371` | 昆仑芯 XPU | 3.10 | 纯 Python | Triton |
 | `biren-br2xx` | 壁仞科技 GPU (BR2xx) | 3.10 | 纯 Python | Triton |
 
 每个后端在 `backends.yaml` 中精确规定了：

@@ -124,6 +124,47 @@ def test_normal_tensor_float(shape, dtype):
     assert torch.abs(std - 10.0) < 0.2
 
 
+@pytest.mark.normal_
+@pytest.mark.parametrize(
+    "entry",
+    ["normal_", "normal_tensor_tensor", "normal_tensor_float", "normal_float_tensor"],
+)
+def test_normal_honors_generator(entry):
+    """An explicit generator must drive the sample stream (Issue #7179).
+
+    Every entry point used to call `normal_distribution` with `generator=None`,
+    so a caller-supplied `torch.Generator` was ignored and two identically
+    seeded runs diverged. Drawing from two generators seeded the same way must
+    give bit-identical tensors.
+    """
+    shape = (256,)
+    mean = torch.zeros(shape, device=flag_gems.device)
+    std = torch.ones(shape, device=flag_gems.device)
+
+    def draw(generator):
+        if entry == "normal_":
+            return flag_gems.normal_(
+                torch.empty(shape, device=flag_gems.device),
+                0.0,
+                1.0,
+                generator=generator,
+            )
+        if entry == "normal_tensor_tensor":
+            return flag_gems.normal_tensor_tensor(mean, std, generator=generator)
+        if entry == "normal_tensor_float":
+            return flag_gems.normal_tensor_float(mean, 1.0, generator=generator)
+        return flag_gems.normal_float_tensor(0.0, std, generator=generator)
+
+    def seeded():
+        generator = torch.Generator(device=flag_gems.device)
+        generator.manual_seed(1234)
+        return draw(generator)
+
+    first, second = seeded(), seeded()
+    assert torch.equal(first, second)
+    assert first.std().item() > 0.5  # a real draw, not a constant fill
+
+
 @pytest.mark.normal_tensor_tensor
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

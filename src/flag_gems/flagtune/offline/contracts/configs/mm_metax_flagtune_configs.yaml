@@ -36,13 +36,13 @@ pretune:
     policy: first_match
     explicit_variant_selection: true
     order:
-      - metax_gemv_k_parallel
-      - metax_gemv
-      - metax_splitk_two_step
-      - metax_splitk
-      - metax_nn
-      - metax_nt
-      - metax_general
+      - metax_gemm
+      - metax_dense
+      - metax_nt_rows
+      - metax_wide
+      - metax_simt_row
+      - metax_simt_column
+      - metax_syrk
   benchmark:
     tensors:
       a: {factory: randn, shape: [M, K], dtype: runtime, layout: A_layout}
@@ -51,219 +51,296 @@ pretune:
       kind: flag_gems_public
       args: [a, b]
 
+# Runtime routing selects the kernel; these predicates only validate inputs.
+# Packing is represented by captured kernel strides. SPLIT_K is a model input,
+# and FP32 partial stages have identities separate from public output stages.
 variants:
-  metax_general:
-    inputs: &dense_inputs
+
+  metax_gemm:
+    inputs: &strided_inputs
       M: {min: 1}
-      N: {min: 2}
+      N: {min: 1}
       K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: N}
-      stride_bn: {default: 1}
-    when: {op: gt, args: [N, 1]}
-    params: &dense_params
-      BLOCK_M: {values: [16, 32, 64, 128, 256]}
-      BLOCK_N: {values: [32, 64, 128, 256]}
-      BLOCK_K: {values: [16, 32, 64, 128]}
-      pipeline: {values: ["null", basic, cpasync]}
-      scenario: {values: [""]}
+      SAM: {default: K}
+      SAK: {default: 1}
+      SBK: {default: N}
+      SBN: {default: 1}
+      SCM: {default: N}
+      SCN: {default: 1}
+      SPLIT_K: {default: 1, min: 1}
+    when: {op: gt, args: [K, 0]}
+    params: &gemm_params
+      BM: {values: [16, 32, 64, 128, 256]}
+      BN: {values: [16, 32, 64, 128, 256]}
+      BK: {values: [16, 32, 64, 128]}
+      GROUP_M: {values: [1, 8]}
+      TRANSPOSE: {values: [false, true]}
+      STATIC_K: {values: [false, true]}
+      pipeline: {values: [basic, cpasync]}
+      scenario: {values: ['', reduceSmemUsage, unprefetch]}
       num_stages: {values: [2, 3, 4]}
       num_warps: {values: [2, 4, 8]}
+    features: &gemm_features
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SAM, op: ident, args: [SAM]}
+      - {name: SAK, op: ident, args: [SAK]}
+      - {name: SBK, op: ident, args: [SBK]}
+      - {name: SBN, op: ident, args: [SBN]}
+      - {name: SCM, op: ident, args: [SCM]}
+      - {name: SCN, op: ident, args: [SCN]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: BM, op: ident, args: [BM]}
+      - {name: BN, op: ident, args: [BN]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: GROUP_M, op: ident, args: [GROUP_M]}
+      - {name: TRANSPOSE, op: ident, args: [TRANSPOSE]}
+      - {name: STATIC_K, op: ident, args: [STATIC_K]}
+      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
+      - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
+      - {name: scenario_is_empty, op: eq, args: [scenario, {literal: ''}]}
+      - {name: scenario_is_reduceSmemUsage, op: eq, args: [scenario, {literal: reduceSmemUsage}]}
+      - {name: scenario_is_unprefetch, op: eq, args: [scenario, {literal: unprefetch}]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_m, op: cdiv, args: [M, BM]}
+      - {name: grid_n, op: cdiv, args: [N, BN]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
+
+  metax_gemm_partial:
+    stage: partial
+    dtype_roles: {A: input, B: input, C: workspace}
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: *gemm_params
+    features: *gemm_features
+
+  metax_dense:
+    inputs: &dense_inputs
+      M: {min: 1}
+      N: {min: 1}
+      K: {min: 1}
+    when: {op: gt, args: [K, 0]}
+    params: &dense_params
+      BM: {values: [128]}
+      BN: {values: [128]}
+      BK: {values: [128]}
+      GROUP_M: {values: [8]}
+      TRANSPOSE: {values: [false]}
+      STATIC_K: {values: [false]}
+      pipeline: {values: [cpasync]}
+      scenario: {values: ['']}
+      num_stages: {values: [4]}
+      num_warps: {values: [4]}
     features: &dense_features
       - {name: M, op: ident, args: [M]}
       - {name: N, op: ident, args: [N]}
       - {name: K, op: ident, args: [K]}
-      - {name: stride_am, op: ident, args: [stride_am]}
-      - {name: stride_ak, op: ident, args: [stride_ak]}
-      - {name: stride_bk, op: ident, args: [stride_bk]}
-      - {name: stride_bn, op: ident, args: [stride_bn]}
-      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
-      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
-      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: BM, op: ident, args: [BM]}
+      - {name: BN, op: ident, args: [BN]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: GROUP_M, op: ident, args: [GROUP_M]}
+      - {name: TRANSPOSE, op: ident, args: [TRANSPOSE]}
+      - {name: STATIC_K, op: ident, args: [STATIC_K]}
+      - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
+      - {name: scenario_is_empty, op: eq, args: [scenario, {literal: ''}]}
       - {name: num_stages, op: ident, args: [num_stages]}
       - {name: num_warps, op: ident, args: [num_warps]}
-      - {name: pipeline_is_null, op: eq, args: [pipeline, {literal: "null"}]}
-      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
-      - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
-      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
-      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
-      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
-      - {name: tile_mn, op: mul, args: [BLOCK_M, BLOCK_N]}
-      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
-      - {name: tile_nk, op: mul, args: [BLOCK_N, BLOCK_K]}
+      - {name: grid_m, op: cdiv, args: [M, BM]}
+      - {name: grid_n, op: cdiv, args: [N, BN]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
 
-  metax_nn:
-    inputs:
-      M: {min: 1}
-      N: {min: 2}
-      K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: N}
-      stride_bn: {default: 1}
-    when: {op: gt, args: [N, 1]}
-    params: *dense_params
-    features: *dense_features
-
-  metax_nt:
-    inputs:
-      M: {min: 1}
-      N: {min: 2}
-      K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: 1}
-      stride_bn: {default: K}
-    when: {op: gt, args: [N, 1]}
-    params:
-      BLOCK_M: {values: [16, 32, 64, 128, 256]}
-      BLOCK_N: {values: [32, 64, 128, 256]}
-      BLOCK_K: {values: [32, 64, 128]}
+  metax_nt_rows:
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: &nt_rows_params
+      BM: {values: [16, 32, 64, 128, 256]}
+      BN: {values: [16, 32, 64, 128, 256]}
+      BK: {values: [32, 64, 128]}
+      GROUP_M: {values: [1, 8]}
+      TRANSPOSE: {values: [false]}
+      STATIC_K: {values: [false]}
       pipeline: {values: [basic, cpasync]}
-      scenario: {values: [""]}
+      scenario: {values: ['', reduceSmemUsage, unprefetch]}
       num_stages: {values: [2, 3, 4]}
-      num_warps: {values: [4, 8]}
-    features: *dense_features
-
-  metax_gemv:
-    inputs: &gemv_inputs
-      M: {min: 1}
-      N: {default: 1, min: 1, max: 1}
-      K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: 1}
-    when: {op: eq, args: [N, 1]}
-    params:
-      BLOCK_M: {values: [8, 16, 32]}
-      BLOCK_K: {values: [256]}
-      num_stages: {values: [2, 3, 4, 5, 6, 7, 8]}
-      num_warps: {values: [1, 2, 4, 8]}
-    features: &gemv_features
-      - {name: M, op: ident, args: [M]}
-      - {name: K, op: ident, args: [K]}
-      - {name: stride_am, op: ident, args: [stride_am]}
-      - {name: stride_ak, op: ident, args: [stride_ak]}
-      - {name: stride_bk, op: ident, args: [stride_bk]}
-      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
-      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
-      - {name: num_stages, op: ident, args: [num_stages]}
-      - {name: num_warps, op: ident, args: [num_warps]}
-      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
-      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
-      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
-
-  metax_gemv_k_parallel:
-    stage: public
-    route_binding: metax_gemv_k_parallel_partial
-    dtype_roles: {A: input, B: input, P: workspace}
-    inputs:
-      M: {min: 1}
-      N: {default: 1, min: 1, max: 1}
-      K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: 1}
-      SPLIT_K: {default: 1, min: 1}
-    when: {op: eq, args: [N, 1]}
-    params:
-      BLOCK_M: {values: [4, 8, 16, 32]}
-      BLOCK_K: {values: [128, 256]}
-      num_stages: {values: [2, 4]}
-      num_warps: {values: [1, 2, 4]}
-    features:
-      - {name: M, op: ident, args: [M]}
-      - {name: K, op: ident, args: [K]}
-      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
-      - {name: stride_am, op: ident, args: [stride_am]}
-      - {name: stride_ak, op: ident, args: [stride_ak]}
-      - {name: stride_bk, op: ident, args: [stride_bk]}
-      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
-      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
-      - {name: num_stages, op: ident, args: [num_stages]}
-      - {name: num_warps, op: ident, args: [num_warps]}
-      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
-      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
-      - {name: split_grid, op: mul, args: [grid_m, SPLIT_K]}
-
-  metax_splitk:
-    inputs: &splitk_inputs
-      M: {min: 1}
-      N: {min: 2}
-      K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: N}
-      stride_bn: {default: 1}
-    when: {op: gt, args: [N, 1]}
-    params:
-      BLOCK_M: {values: [16]}
-      BLOCK_N: {values: [16, 64]}
-      BLOCK_K: {values: [64, 128, 256]}
-      SPLIT_K: {values: [8, 16]}
-      pipeline: {values: ["null", basic]}
-      num_stages: {values: [2, 3, 6, 8]}
-      num_warps: {values: [2, 4]}
-    features: &splitk_features
+      num_warps: {values: [2, 4, 8]}
+    features: &nt_rows_features
       - {name: M, op: ident, args: [M]}
       - {name: N, op: ident, args: [N]}
       - {name: K, op: ident, args: [K]}
-      - {name: stride_am, op: ident, args: [stride_am]}
-      - {name: stride_ak, op: ident, args: [stride_ak]}
-      - {name: stride_bk, op: ident, args: [stride_bk]}
-      - {name: stride_bn, op: ident, args: [stride_bn]}
-      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
-      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
-      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: SAM, op: ident, args: [SAM]}
+      - {name: SAK, op: ident, args: [SAK]}
+      - {name: SBK, op: ident, args: [SBK]}
+      - {name: SBN, op: ident, args: [SBN]}
+      - {name: SCM, op: ident, args: [SCM]}
+      - {name: SCN, op: ident, args: [SCN]}
       - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
-      - {name: num_stages, op: ident, args: [num_stages]}
-      - {name: num_warps, op: ident, args: [num_warps]}
-      - {name: pipeline_is_null, op: eq, args: [pipeline, {literal: "null"}]}
-      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
-      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
-      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
-      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
-      - {name: split_grid, op: mul, args: [SPLIT_K, grid_m]}
-
-  metax_splitk_two_step:
-    stage: public
-    route_binding: metax_splitk_two_step_partial
-    dtype_roles: {A: input, B: input, P: workspace}
-    # SPLIT_K is derived deterministically by the MetaX runtime from the
-    # shape, device, and this fixed tile space.  It is therefore not a model
-    # input; the runtime still supplies it to the kernel dispatch itself.
-    inputs:
-      M: {min: 1}
-      N: {min: 2}
-      K: {min: 1}
-      stride_am: {default: K}
-      stride_ak: {default: 1}
-      stride_bk: {default: N}
-      stride_bn: {default: 1}
-    when: {op: gt, args: [N, 1]}
-    params:
-      BLOCK_M: {values: [16, 32]}
-      BLOCK_N: {values: [16, 32, 64, 128]}
-      BLOCK_K: {values: [64]}
-      pipeline: {values: ["null", basic, cpasync]}
-      num_stages: {values: [2, 4]}
-      num_warps: {values: [2, 4]}
-    features:
-      - {name: M, op: ident, args: [M]}
-      - {name: N, op: ident, args: [N]}
-      - {name: K, op: ident, args: [K]}
-      - {name: stride_am, op: ident, args: [stride_am]}
-      - {name: stride_ak, op: ident, args: [stride_ak]}
-      - {name: stride_bk, op: ident, args: [stride_bk]}
-      - {name: stride_bn, op: ident, args: [stride_bn]}
-      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
-      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
-      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
-      - {name: num_stages, op: ident, args: [num_stages]}
-      - {name: num_warps, op: ident, args: [num_warps]}
-      - {name: pipeline_is_null, op: eq, args: [pipeline, {literal: "null"}]}
+      - {name: BM, op: ident, args: [BM]}
+      - {name: BN, op: ident, args: [BN]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: GROUP_M, op: ident, args: [GROUP_M]}
+      - {name: TRANSPOSE, op: ident, args: [TRANSPOSE]}
+      - {name: STATIC_K, op: ident, args: [STATIC_K]}
       - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
       - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
-      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
-      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
+      - {name: scenario_is_empty, op: eq, args: [scenario, {literal: ''}]}
+      - {name: scenario_is_reduceSmemUsage, op: eq, args: [scenario, {literal: reduceSmemUsage}]}
+      - {name: scenario_is_unprefetch, op: eq, args: [scenario, {literal: unprefetch}]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_m, op: cdiv, args: [M, BM]}
+      - {name: grid_n, op: cdiv, args: [N, BN]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
+
+  metax_wide:
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: &wide_params
+      BM: {values: [16, 32, 64, 128, 256]}
+      BN: {values: [16, 32, 64, 128, 256]}
+      BK: {values: [32, 64, 128]}
+      GROUP_M: {values: [1, 8]}
+      TRANSPOSE: {values: [false, true]}
+      STATIC_K: {values: [false, true]}
+      pipeline: {values: [basic, cpasync]}
+      scenario: {values: ['', reduceSmemUsage, unprefetch]}
+      num_stages: {values: [2, 3, 4]}
+      num_warps: {values: [2, 4, 8]}
+    features: &wide_features
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SAM, op: ident, args: [SAM]}
+      - {name: SAK, op: ident, args: [SAK]}
+      - {name: SBK, op: ident, args: [SBK]}
+      - {name: SBN, op: ident, args: [SBN]}
+      - {name: SCM, op: ident, args: [SCM]}
+      - {name: SCN, op: ident, args: [SCN]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: BM, op: ident, args: [BM]}
+      - {name: BN, op: ident, args: [BN]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: GROUP_M, op: ident, args: [GROUP_M]}
+      - {name: TRANSPOSE, op: ident, args: [TRANSPOSE]}
+      - {name: STATIC_K, op: ident, args: [STATIC_K]}
+      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
+      - {name: pipeline_is_cpasync, op: eq, args: [pipeline, {literal: cpasync}]}
+      - {name: scenario_is_empty, op: eq, args: [scenario, {literal: ''}]}
+      - {name: scenario_is_reduceSmemUsage, op: eq, args: [scenario, {literal: reduceSmemUsage}]}
+      - {name: scenario_is_unprefetch, op: eq, args: [scenario, {literal: unprefetch}]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_m, op: cdiv, args: [M, BM]}
+      - {name: grid_n, op: cdiv, args: [N, BN]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
+
+  metax_wide_partial:
+    stage: partial
+    dtype_roles: {A: input, B: input, C: workspace}
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: *wide_params
+    features: *wide_features
+
+  metax_simt_row:
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: &simt_row_params
+      BN: {values: [8, 16, 32, 64, 128]}
+      BK: {values: [64, 128, 256, 512, 1024]}
+      num_stages: {values: [1]}
+      num_warps: {values: [2, 4, 8]}
+    features: &simt_row_features
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SAM, op: ident, args: [SAM]}
+      - {name: SAK, op: ident, args: [SAK]}
+      - {name: SBK, op: ident, args: [SBK]}
+      - {name: SBN, op: ident, args: [SBN]}
+      - {name: SCM, op: ident, args: [SCM]}
+      - {name: SCN, op: ident, args: [SCN]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: BN, op: ident, args: [BN]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_n, op: cdiv, args: [N, BN]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
+
+  metax_simt_row_partial:
+    stage: partial
+    dtype_roles: {A: input, B: input, C: workspace}
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: *simt_row_params
+    features: *simt_row_features
+
+  metax_simt_column:
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: &simt_column_params
+      BM: {values: [8, 16, 32, 64, 128]}
+      BK: {values: [64, 128, 256, 512, 1024]}
+      num_stages: {values: [1]}
+      num_warps: {values: [2, 4, 8]}
+    features: &simt_column_features
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SAM, op: ident, args: [SAM]}
+      - {name: SAK, op: ident, args: [SAK]}
+      - {name: SBK, op: ident, args: [SBK]}
+      - {name: SBN, op: ident, args: [SBN]}
+      - {name: SCM, op: ident, args: [SCM]}
+      - {name: SCN, op: ident, args: [SCN]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: BM, op: ident, args: [BM]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_m, op: cdiv, args: [M, BM]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
+
+  metax_simt_column_partial:
+    stage: partial
+    dtype_roles: {A: input, B: input, C: workspace}
+    inputs: *strided_inputs
+    when: {op: gt, args: [K, 0]}
+    params: *simt_column_params
+    features: *simt_column_features
+
+  metax_syrk:
+    dtype_roles: {A: input, B: input, C: output}
+    inputs: &syrk_inputs
+      M: {min: 1}
+      K: {min: 1}
+      SAM: {default: K}
+      SAK: {default: 1}
+      SCN: {default: 1}
+      SCM: {default: M}
+    when: {op: gt, args: [K, 0]}
+    params: &syrk_params
+      BT: {values: [32, 64, 128, 256]}
+      BK: {values: [32, 64]}
+      pipeline: {values: [basic]}
+      scenario: {values: ['', reduceSmemUsage]}
+      num_stages: {values: [2, 4]}
+      num_warps: {values: [4, 8]}
+    features: &syrk_features
+      - {name: M, op: ident, args: [M]}
+      - {name: K, op: ident, args: [K]}
+      - {name: SAM, op: ident, args: [SAM]}
+      - {name: SAK, op: ident, args: [SAK]}
+      - {name: SCN, op: ident, args: [SCN]}
+      - {name: SCM, op: ident, args: [SCM]}
+      - {name: BT, op: ident, args: [BT]}
+      - {name: BK, op: ident, args: [BK]}
+      - {name: pipeline_is_basic, op: eq, args: [pipeline, {literal: basic}]}
+      - {name: scenario_is_empty, op: eq, args: [scenario, {literal: ''}]}
+      - {name: scenario_is_reduceSmemUsage, op: eq, args: [scenario, {literal: reduceSmemUsage}]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: grid_k, op: cdiv, args: [K, BK]}
+      - {name: grid_m, op: cdiv, args: [M, BT]}

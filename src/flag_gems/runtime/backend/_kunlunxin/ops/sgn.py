@@ -13,10 +13,12 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-from .sign import _SIGN_CONFIG, _sign_bit
+from .sign import _SIGN_CONFIG, _sign_bit, _sign_sat
 
-# Wider 1D-tile grid for the large-numel path only.
+# 1D-tile grid width for the large-numel path only.  float16/float32 want the wide
+# grid; bfloat16 is ~1.9x slower on it and keeps the default width.
 _SGN_CONFIG = dataclasses.replace(_SIGN_CONFIG, num_ctas_1d=128)
+_SGN_CONFIG_BF16 = dataclasses.replace(_SIGN_CONFIG, num_ctas_1d=12)
 
 logger = logging.getLogger(__name__)
 
@@ -191,18 +193,34 @@ def _sgn_complex_strided_kernel(
     )
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_SGN_CONFIG)
 @triton.jit
-def _sgn_func(x):
-    # vectorized 1D-tile path for numel > _SMALL_NUMEL.  The compare/select body
-    # is cheaper than the bit-domain one, but its literals only exist for
-    # floating dtypes; integer tensors keep the shared bit-domain body.
-    if x.dtype.is_floating():
+def _sgn_real(x):
+    # float16 is fastest with the compare/select body; the other floating dtypes are
+    # fastest with the saturating-multiply body.  Both agree with torch.sgn on every
+    # input of their dtype, including the values this device flushes to zero.
+    # Integer tensors keep the shared bit-domain body, whose literals the
+    # compare/select form does not have.
+    if x.dtype == tl.float16:
         one = tl.full(x.shape, 1.0, x.dtype)
         none = tl.full(x.shape, -1.0, x.dtype)
         zero = tl.full(x.shape, 0.0, x.dtype)
         return tl.where(x > 0, one, tl.where(x < 0, none, zero))
+    if x.dtype.is_floating():
+        return _sign_sat(x)
     return _sign_bit(x)
+
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_SGN_CONFIG)
+@triton.jit
+def _sgn_func(x):
+    # vectorized 1D-tile path for numel > _SMALL_NUMEL
+    return _sgn_real(x)
+
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_SGN_CONFIG_BF16)
+@triton.jit
+def _sgn_func_bf16(x):
+    return _sgn_real(x)
 
 
 def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
@@ -265,6 +283,9 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
             x.numel(),
             BLOCK_SIZE=1024,
         )
+        return out
+    if x.dtype == torch.bfloat16:
+        _sgn_func_bf16(x, out0=out)
         return out
     _sgn_func(x, out0=out)
     return out

@@ -235,6 +235,10 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         x.dtype = torch.int32
     if dtype is None:
         dtype = x.dtype
+    if isinstance(dim, int):
+        # `torch.mean(x, dim=1)` passes a bare int; everything below indexes and
+        # iterates `dim`, so normalise it once here.
+        dim = (dim,)
     if dim is None:
         out = mean(x, dtype=dtype)
         if not keepdim:

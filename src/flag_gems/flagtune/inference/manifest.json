@@ -6,6 +6,10 @@
         "1.0.0": {
           "sha256": "5af5202f9354b9a09f34ff5c8e35ffce5868462def9a70729cb050a68bb0db33",
           "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-hygon-bw_v1.0.0.tar.gz"
+        },
+        "1.0.1": {
+          "sha256": "19e9b2862dd8ecc2342618d7d23687f984ecba6c64be47636fb4c36589943dad",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-hygon-bw_v1.0.1.tar.gz"
         }
       }
     },
@@ -14,6 +18,10 @@
         "1.1.1": {
           "sha256": "9ed44a3701e0b0b2fc0d966130ad5f2f6254d79029f3c8c33bc7acff828ae99b",
           "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-metax-c550_v1.1.1.tar.gz"
+        },
+        "1.1.2": {
+          "sha256": "ef59c1b84521c7355e240d6104ac53a70bcf5c4e65a5a2a4ca959c400102f252",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-metax-c550_v1.1.2.tar.gz"
         }
       }
     },
@@ -22,6 +30,10 @@
         "1.0.0": {
           "sha256": "7e8ab01abedded60c7d564b550e094fea2497e45b3cad92038b7dde64b8ad8d9",
           "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-mthreads-s5000_v1.0.0.tar.gz"
+        },
+        "1.0.1": {
+          "sha256": "f3f1b19e2639b7a8a6816924bf86a8f4f153bbf6b8691e5a773a42f8018d763e",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-mthreads-s5000_v1.0.1.tar.gz"
         }
       }
     },
@@ -30,6 +42,10 @@
         "1.1.1": {
           "sha256": "7d27f04a55dffd4f916120355d6df496c1335b5e4256bc7c7bef021cc4ed3d33",
           "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-nvidia-h20_v1.1.1.tar.gz"
+        },
+        "1.1.2": {
+          "sha256": "89f782d7793b8a9f227b7e748fdc60c2adfcea8d2acbbdb5051f8d1df23bff09",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-nvidia-h20_v1.1.2.tar.gz"
         }
       }
     },
@@ -38,6 +54,10 @@
         "1.1.0": {
           "sha256": "0a089ab5cba39867a0ce57992a65e7991e33ca26549dcf893e736bcff3feb0cc",
           "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-thead-zw810e_v1.1.0.tar.gz"
+        },
+        "1.1.1": {
+          "sha256": "a460783ab65c43d5b99c27d555cb5ff6f0cfdd487b03e240dc783c1a186ac55f",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-thead-zw810e_v1.1.1.tar.gz"
         }
       }
     }

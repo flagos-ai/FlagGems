@@ -35,3 +35,29 @@ def test_randn(shape, dtype):
 
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
+
+
+@pytest.mark.randn
+def test_randn_large_output_offsets():
+    """Store offsets past 2**31 elements must not wrap in int32 (Issue #7269).
+
+    `pid * BLOCK * 4` used to be an int32 product, so the first store past
+    2**31 elements became a negative offset that still satisfied `off < N` for
+    a 64-bit N: it wrote 4 GiB before the allocation and left the tail unset.
+    """
+    if flag_gems.device != "cuda":
+        pytest.skip("requires a CUDA-compatible device")
+
+    n = 2**31 + 4 * 512 * 4
+    needed = n * 2  # bfloat16
+    if torch.cuda.mem_get_info()[0] < needed + 2**30:
+        pytest.skip(f"requires ~{needed / 2**30:.1f} GiB of free device memory")
+
+    out = flag_gems.randn((n,), dtype=torch.bfloat16, device=flag_gems.device)
+
+    # Blocks around the int32 boundary and at the tail must hold real samples;
+    # a wrapped store leaves them as `torch.empty` leftovers instead.
+    for start in (2**31 - 4096, 2**31, n - 4096):
+        window = out[start : start + 4096].float()
+        assert torch.isfinite(window).all()
+        assert window.abs().max().item() > 0.01

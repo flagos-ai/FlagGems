@@ -57,6 +57,63 @@ attention_bwd:
     stages:
       - 1
 bmm:
+  # Skinny M (e.g. M=1/2/4): keep TILE_M close to M; num_warps=1 for TX81.
+  - META:
+      TILE_M: 4
+      TILE_N: 512
+      TILE_K: 16
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 4
+      TILE_N: 1024
+      TILE_K: 16
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 4
+      TILE_N: 2048
+      TILE_K: 16
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 4
+      TILE_N: 4096
+      TILE_K: 16
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 8
+      TILE_N: 512
+      TILE_K: 16
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 8
+      TILE_N: 1024
+      TILE_K: 16
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 16
+      TILE_N: 512
+      TILE_K: 32
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
+  - META:
+      TILE_M: 16
+      TILE_N: 1024
+      TILE_K: 32
+      GROUP_M: 1
+    num_warps: 1
+    num_stages: 1
   - META:
       TILE_M: 32
       TILE_N: 32
