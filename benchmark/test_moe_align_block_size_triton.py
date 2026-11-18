@@ -36,6 +36,12 @@ except ImportError:
     HAS_VLLM = False
     WARP_SIZE = 0
 
+# vLLM can be importable while its compiled kernels are not registered: the
+# _moe_C extension ships only with a CUDA vLLM build.  Checking HAS_VLLM alone
+# lets the benchmark reach vllm_ops.moe_align_block_size and fail inside
+# torch.ops._moe_C with `_OpNamespace has no attribute 'moe_align_block_size'`.
+HAS_MOE_C = HAS_VLLM and hasattr(torch.ops._moe_C, "moe_align_block_size")
+
 
 def _input_fn(shape, dtype, device):
     num_experts = shape[0]
@@ -114,6 +120,10 @@ class MoeAlignBlockSizeFastPathBenchmark(base.GenericBenchmark):
 
 @pytest.mark.moe_align_block_size_triton
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm not installed")
+@pytest.mark.skipif(
+    HAS_VLLM and not HAS_MOE_C,
+    reason="vllm is installed without the _moe_C kernels (torch.ops._moe_C.moe_align_block_size)",
+)
 def test_moe_align_block_size_triton():
     gems_op = flag_gems.moe_align_block_size_triton
     bench = MoeAlignBlockSizeBenchmark(
