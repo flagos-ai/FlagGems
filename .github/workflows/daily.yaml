@@ -77,6 +77,7 @@ jobs:
           CHANGED_FILES: '__ALL__'
           TOTAL_SHARDS: '8'
           SHARD_INDEX: ${{ matrix.shard_index }}
+          QUICK_TESTS: '1'
         run: |
           # Invoke script to run full-range unit tests,
           # Use datetime timestamp as the fake PR ID, with optional affix if
@@ -115,6 +116,7 @@ jobs:
       pr_id: ${{ needs.prepare.outputs.datetime }}${{ github.event_name == 'workflow_dispatch' && '-manual' || '' }}-ascend-shard${{ matrix.shard_index }}
       total_shards: '8'
       shard_index: ${{ format('{0}', matrix.shard_index) }}
+      quick_tests: 'true'
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
