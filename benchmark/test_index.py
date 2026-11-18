@@ -94,3 +94,29 @@ def test_index_acc_perf():
     bench.set_gems(flag_gems.index)
 
     bench.run()
+
+
+class IndexBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            ((2**20,), ((2**12,),)),
+            ((32, 32), ((8,), (8,))),
+            ((512, 512, 512), ((2, 128),)),
+            ((64, 64, 64), ((2, 8), (2, 8))),
+        ]
+
+    def get_input_iter(self, cur_dtype):
+        for shapes in self.shapes:
+            yield from self.input_fn(shapes, cur_dtype, self.device)
+
+
+@pytest.mark.index_backward
+def test_index_backward():
+    bench = IndexBackwardBenchmark(
+        op_name="index",
+        torch_op=torch.ops.aten.index,
+        input_fn=_input_fn,
+        dtypes=[torch.float32],
+        is_backward=True,
+    )
+    bench.run()
