@@ -50,7 +50,7 @@ def _choose_block(N, is_fp32):
         return triton.next_power_of_2(N)
     if is_fp32:
         return 65536
-    return 2048
+    return 8192
 
 
 def atan(A):

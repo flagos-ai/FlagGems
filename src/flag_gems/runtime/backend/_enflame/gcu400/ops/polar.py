@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.pointwise_dynamic import CodeGenConfig, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
         ((0, 1), "DEFAULT"),
     ],
     num_outputs=2,
+    # gcu400: two outputs share the DSM budget.  The vendor default tile of
+    # 65536 needs 1 MiB (hardware limit 896 KiB) and raises OutOfResources.
+    config=CodeGenConfig(8192, (48, 1, 1), 4, True, prefer_1d_tile=False),
 )
 @triton.jit
 def polar_kernel(abs, angle):
