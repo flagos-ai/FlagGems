@@ -45,15 +45,43 @@ def test_tanh_inplace():
     bench.run()
 
 
+class TanhBackwardBenchmark(base.UnaryPointwiseBenchmark):
+    def _inputs_for_shape(self, shape, dtype):
+        inp = base.generate_tensor_input(shape, dtype, self.device)
+        # Preserve the old forward-produced output and random upstream gradient.
+        # Preparation stays outside the direct backward timer.
+        output = torch.tanh(inp)
+        grad_output = torch.randn_like(output)
+        return grad_output, output
+
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            yield self._inputs_for_shape(shape, dtype)
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"grad_output": shape, "output": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        return self._inputs_for_shape(shape, case.dtype)
+
+
 @pytest.mark.tanh_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_tanh_backward():
-    bench = base.UnaryPointwiseBenchmark(
+    bench = TanhBackwardBenchmark(
         op_name="tanh_backward",
-        torch_op=torch.tanh,
+        torch_op=torch.ops.aten.tanh_backward.default,
         dtypes=consts.FLOAT_DTYPES,
-        is_backward=True,
     )
     bench.run()

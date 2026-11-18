@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "tanh_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes grad_output * (1 - output * output), where output is the saved tanh forward result. Callable signature matches flag_gems.tanh_backward(grad_output, output). Original correctness tests also exercise arbitrary normally distributed output values; this description does not restrict that existing coverage. Returns a newly allocated input gradient without mutating either input.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
