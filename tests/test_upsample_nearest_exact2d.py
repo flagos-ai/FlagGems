@@ -6,6 +6,11 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _candidate(name):
+    candidate = getattr(flag_gems, name, None)
+    return candidate if callable(candidate) else getattr(flag_gems, "_" + name)
+
+
 @pytest.mark.upsample_nearest_exact2d
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -15,7 +20,7 @@ def test_upsample_nearest_exact2d(shape, dtype, factor):
     ref_x = utils.to_reference(x)
     out_size = [shape[2] * factor, shape[3] * factor]
     ref_out = torch.ops.aten._upsample_nearest_exact2d(ref_x, out_size, None, None)
-    res_out = flag_gems._upsample_nearest_exact2d(x, out_size, None, None)
+    res_out = _candidate("upsample_nearest_exact2d")(x, out_size, None, None)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -35,6 +40,8 @@ def test_upsample_nearest_exact2d_out(shape, dtype, factor):
         ref_x, out_size, None, None, out=ref_out
     )
     out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-    res_out = flag_gems._upsample_nearest_exact2d_out(x, out_size, None, None, out=out)
+    res_out = _candidate("upsample_nearest_exact2d_out")(
+        x, out_size, None, None, out=out
+    )
     assert res_out.data_ptr() == out.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype)
