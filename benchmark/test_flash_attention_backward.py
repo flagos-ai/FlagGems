@@ -149,7 +149,7 @@ def cudnn_attn_forward_native(
     philox_seed = results[2]
     philox_offset = results[3]
 
-    lse = lse_4d.squeeze(-1).float()
+    lse = lse_4d.float()
     return out, lse, philox_seed, philox_offset
 
 
@@ -720,13 +720,16 @@ def _cudnn_attn_bwd_gems(
     is_causal,
     scale=None,
 ):
+    # FlagGems Triton kernel expects 3-D lse (B, H, S); the forward now
+    # returns the raw 4-D tensor so that the aten reference (cuDNN) is happy.
+    lse_3d = lse.squeeze(-1) if lse.dim() == 4 else lse
     return flag_gems.ops.scaled_dot_product_cudnn_attention_backward(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse,
+        lse_3d,
         philox_seed,
         philox_offset,
         attn_bias,

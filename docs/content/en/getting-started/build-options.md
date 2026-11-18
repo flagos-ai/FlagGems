@@ -45,7 +45,7 @@ The table below summarizes the mainstream hardware accelerator platforms, recomm
 | `nvidia-cuda133` | NVIDIA GPU (CUDA 13.3) | 3.12 | `CUDA` | FlagTree / Triton |
 | `ascend-cann900` | Huawei Ascend NPU (CANN 9.0.0) | 3.11 | `NPU` | FlagTree / Triton |
 | `ascend-cann850` | Huawei Ascend NPU (CANN 8.5.0) | 3.11 | `NPU` | FlagTree / Triton |
-| `hygon` | Hygon DCU (DTK) | 3.10 | Python-only / Under adaptation | Triton |
+| `hygon-dtk2604` | Hygon DCU (DTK) | 3.10 | Python-only / Under adaptation | Triton |
 | `metax-maca3810` | MetaX GPU (MACA 3.8.1) | 3.12 | Python-only | Triton |
 | `metax-maca3720` | MetaX GPU (MACA 3.7.2) | 3.12 | Python-only | Triton |
 | `mthreads-musa520` | Moore Threads GPU (MUSA 5.2.0) | 3.10 | `MUSA` | FlagTree / Triton |
@@ -53,8 +53,8 @@ The table below summarizes the mainstream hardware accelerator platforms, recomm
 | `enflame-tops1910` | Enflame GCU (TopsRider 1.9.1) | 3.12 | `GCU` | Triton |
 | `cambricon-neuware472`| Cambricon MLU (Neuware 4.7.2)| 3.12 | `MLU` | Triton |
 | `cambricon-neuware443`| Cambricon MLU (Neuware 4.4.3)| 3.10 | `MLU` | Triton |
-| `iluvatar` | Iluvatar CoreX GPU (BI-V) | 3.12 | `IX` | Triton |
-| `kunlunxin` | Kunlunxin XPU | 3.10 | Python-only | Triton |
+| `iluvatar-corex450` | Iluvatar CoreX GPU (BI-V) | 3.12 | `IX` | Triton |
+| `kunlunxin-xre5371` | Kunlunxin XPU | 3.10 | Python-only | Triton |
 | `biren-br2xx` | Biren Technology GPU (BR2xx) | 3.10 | Python-only | Triton |
 
 Each entry in `backends.yaml` specifies:

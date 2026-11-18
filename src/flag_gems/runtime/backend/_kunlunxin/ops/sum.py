@@ -428,9 +428,42 @@ def _flat_tail_kernel(
     tl.store(out, total.to(out.dtype.element_ty))
 
 
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _row_reduce_kernel(
+    inp,
+    out,
+    N,
+    SCALE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+):
+    """`out[pid] = sum(inp[pid * N : (pid + 1) * N])`, one program per row.
+
+    Pointer counterpart of the tle row kernel, for toolchains that cannot compile
+    the latter (its 2D local_ptr range lowers to an illegal `tt.make_range`). `N` is
+    streamed in `BLOCK`-sized masked tiles so the reduction never needs a tile wider
+    than the LM budget: unlike the flat tail, a dim reduce can be handed a row of tens
+    of thousands of elements, and one `tl.load` of the whole row would not compile.
+    """
+    pid = tl.program_id(0)
+    base = pid * N
+    offs = tl.arange(0, BLOCK)
+    total = tl.zeros([], dtype=ACC_DTYPE)
+    for start in range(0, N, BLOCK):
+        vals = tl.load(inp + base + start + offs, mask=start + offs < N, other=0).to(
+            ACC_DTYPE
+        )
+        total += tl.sum(vals)
+    if SCALE != 1.0:
+        total = total * SCALE
+    tl.store(out + pid, total.to(out.dtype.element_ty))
+
+
 def _tle_sum_dim(inp, out, M, N, scale=1.0):
     """Row-reduce `inp` into `out` with tle; False if tle cannot express it."""
-    if not _TLE_AVAILABLE:
+    global _TLE_BROKEN
+    if not _TLE_AVAILABLE or _TLE_BROKEN:
         return False
     # N == 1 makes `inp.view(M, 1)` a descriptor whose last stride is M, not 1 (torch
     # is free to pick any stride for an extent-1 dimension), which
@@ -447,7 +480,17 @@ def _tle_sum_dim(inp, out, M, N, scale=1.0):
     a = inp if inp.ndim == 2 and inp.shape[0] == M else inp.view(M, N)
     c = out if out.ndim == 1 else out.view(M)
     with torch_device_fn.device(inp.device):
-        _tle_row_reduce(a, c, plan)
+        try:
+            _tle_row_reduce(a, c, plan)
+        except Exception as exc:  # noqa: BLE001
+            # flagtree cannot legalize the tle row kernel's 2D local_ptr range; a
+            # failed launch leaves `out` untouched, so retry on the pointer path and
+            # latch it off for the process.
+            _TLE_BROKEN = True
+            logger.debug(
+                "GEMS_KUNLUNXIN SUM_DIM tle unavailable (%s); pointer path", exc
+            )
+            return False
     return True
 
 
@@ -764,7 +807,8 @@ def _tle_sum_mid(inp, out, dims, N, scale=1.0):
     transposes anything, and the second touches N/NBLOCK times fewer bytes than the
     first.
     """
-    if not _TLE_AVAILABLE:
+    global _TLE_BROKEN
+    if not _TLE_AVAILABLE or _TLE_BROKEN:
         return False
     d = dims[0]
     if inp.dtype not in _TLE_TL_DTYPE or out.dtype not in _TLE_TL_DTYPE:
@@ -810,8 +854,18 @@ def _tle_sum_mid(inp, out, dims, N, scale=1.0):
     while kblock2 > 1 and (kblock2 > plane or plane // kblock2 < 4):
         kblock2 >>= 1
     with torch_device_fn.device(inp.device):
-        _tle_fold(inp, part, B, N, K, nblock, kblock, scale)
-        _tle_fold(part, out, 1, nblock, plane, 1, kblock2)
+        try:
+            _tle_fold(inp, part, B, N, K, nblock, kblock, scale)
+            _tle_fold(part, out, 1, nblock, plane, 1, kblock2)
+        except Exception as exc:  # noqa: BLE001
+            # flagtree cannot legalize the fold kernel's 2D local_ptr range either; a
+            # failed launch leaves `out` untouched, so fall back to dim_compress + the
+            # row path and latch tle off for the process.
+            _TLE_BROKEN = True
+            logger.debug(
+                "GEMS_KUNLUNXIN SUM_DIM tle fold unavailable (%s); row path", exc
+            )
+            return False
     logger.debug(
         "GEMS_KUNLUNXIN SUM_DIM tle fold B=%d N=%d K=%d tile=%dx%d then %dx%d",
         B,
@@ -860,9 +914,21 @@ def _launch_sum_dim(inp, out, M, N, scale=1.0):
         # A descriptor needs the last stride to be 1.
         inp = inp.contiguous()
     if not _tle_sum_dim(inp, out, M, N, scale):
-        raise NotImplementedError(
-            f"kunlunxin sum: no tle path for dtype {inp.dtype} -> {out.dtype}"
-        )
+        if inp.dtype not in _TLE_ACC_DTYPE or out.dtype not in _TLE_TL_DTYPE:
+            raise NotImplementedError(
+                f"kunlunxin sum: no tle path for dtype {inp.dtype} -> {out.dtype}"
+            )
+        # The tle row kernel failed to compile (or is absent): the pointer kernel is
+        # the faithful replacement -- one program per row, streaming the reduced dim.
+        with torch_device_fn.device(inp.device):
+            _row_reduce_kernel[(M,)](
+                inp,
+                out,
+                N,
+                scale,
+                min(_npo2(N), _TLE_FLAT_COLS),
+                _TLE_ACC_DTYPE[inp.dtype],
+            )
 
 
 def _reduce_view(inp, dims):
