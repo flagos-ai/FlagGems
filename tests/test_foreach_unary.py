@@ -24,6 +24,7 @@ import flag_gems
 from flag_gems.ops._foreach_unary import UNARY_OPS
 
 from .accuracy_utils import (
+    fp64_is_supported,
     gems_assert_close,
     gems_assert_equal,
     gems_log_logger,
@@ -603,10 +604,16 @@ def test_foreach_unary_launch_count_scales_with_dtype_groups():
         pytest.skip("kunlunxin backend has no float64, so this dtype list cannot group")
     from flag_gems.utils.foreach import launch_stats
 
+    # A backend without fp64 (enflame/gcu400, kunlunxin, ...) must not build a
+    # float64 tensor just to count dtype groups; the three real groups remain.
+    wide_dtypes = [torch.float32, torch.float16, torch.bfloat16]
+    if fp64_is_supported:
+        wide_dtypes.append(torch.float64)
+
     for dtypes in (
         [torch.float32],
         [torch.float32, torch.float16],
-        [torch.float32, torch.float16, torch.bfloat16, torch.float64],
+        wide_dtypes,
     ):
         ts = [
             (torch.rand(512, device=flag_gems.device) + 0.1).to(d)
@@ -649,13 +656,16 @@ LARGE_COMPLEX = {
     torch.complex128: 1e200,
 }
 
+# ``complex128`` carries double components, so it follows fp64 availability.
+COMPLEX_DTYPES = [torch.complex64] + ([torch.complex128] if fp64_is_supported else [])
+
 # The subset whose complex kernel routes through the modulus.
 MODULUS_OPS = ["abs", "log", "log1p", "log2", "log10", "sqrt", "rsqrt"]
 
 
 @pytest.mark.foreach_unary
 @pytest.mark.parametrize("name", _op_params(MODULUS_OPS))
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_accuracy_foreach_unary_complex_large(name, dtype):
     """A large finite complex input must not overflow the modulus."""
     if not _supports(name, dtype) or UNARY_OPS[name].complex_fn is None:
@@ -673,7 +683,7 @@ def test_accuracy_foreach_unary_complex_large(name, dtype):
 
 @pytest.mark.foreach_abs
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_accuracy_foreach_abs_complex_large(dtype):
     """``abs`` of a large finite complex value stays finite.
 

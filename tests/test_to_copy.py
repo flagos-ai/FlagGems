@@ -33,6 +33,11 @@ def test_to_dtype(shape, dtype):
         pytest.skip("#2855: Skiping complex to_copy test on tsingmicro platform")
     if flag_gems.vendor_name == "ascend" and dtype in utils.COMPLEX_DTYPES:
         pytest.skip("Issues #3267: Ascend NPU does not support complex32 dtype")
+    if flag_gems.vendor_name == "enflame" and dtype in utils.COMPLEX_DTYPES:
+        pytest.skip(
+            "Enflame GCU400 has no native complex dtype support: "
+            "aten::_to_copy complex redispatch aborts"
+        )
     x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = ref_x.to(dtype)
@@ -48,6 +53,11 @@ def test_to_copy_dtype_cast(shape, target_dtype):
         pytest.skip("#2855: Skiping complex to_copy test on tsingmicro platform")
     if flag_gems.vendor_name == "ascend" and target_dtype in utils.COMPLEX_DTYPES:
         pytest.skip("Issues #3267: Ascend NPU does not support complex32 dtype")
+    if flag_gems.vendor_name == "enflame" and target_dtype in utils.COMPLEX_DTYPES:
+        pytest.skip(
+            "Enflame GCU400 has no native complex dtype support: "
+            "aten::_to_copy complex redispatch aborts"
+        )
     src_dtype = torch.float32 if target_dtype != torch.float32 else torch.float16
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)

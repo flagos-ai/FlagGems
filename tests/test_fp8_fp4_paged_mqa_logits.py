@@ -156,7 +156,14 @@ def _reference_fn(q_fp8, kv_fp8, weights, context_lens, block_table):
     TEST_SHAPES,
     ids=[f"B{b}_N{n}_L{l}" for b, n, l in TEST_SHAPES],
 )
-@pytest.mark.skipif(not _HAS_VLLM, reason="vLLM not available")
+@pytest.mark.skipif(
+    not _HAS_VLLM,
+    reason="vLLM not available",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame/GCU does not support FP4",
+)
 def test_fp8_fp4_paged_mqa_logits(batch_size, next_n, avg_kv):
     torch.manual_seed(0)
     q_fp8, kv_fp8, weights, context_lens, block_table = _make_inputs(

@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # The registered ATen variant exercised here is ``aten::_fused_sgd_`` (in-place).
 # pytest forbids marker names that start with ``_``, so the leading-underscore
@@ -314,7 +315,9 @@ def test_fused_sgd__found_inf(found_inf_val):
 
 @pytest.mark.fused_sgd_
 @pytest.mark.parametrize("lr_shape", [(), (1,)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_fused_sgd__tensor_lr(lr_shape, dtype):
     """``_fused_sgd_.tensor_lr`` matches the native overload.
 
@@ -600,7 +603,9 @@ def _assert_replay_matches_eager(op, params, grads, mbs, opts):
 
 
 @pytest.mark.fused_sgd_
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_fused_sgd__cuda_graph_capture(dtype):
     """One captured step replays correctly, including the fp64 float-lr path.
 
@@ -625,7 +630,9 @@ def test_fused_sgd__cuda_graph_capture(dtype):
 
 
 @pytest.mark.fused_sgd_
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_fused_sgd__cuda_graph_capture_amp(dtype):
     """An AMP step (grad_scale + found_inf) captures and replays correctly.
 

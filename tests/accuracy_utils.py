@@ -18,6 +18,7 @@ import random
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 import flag_gems
@@ -29,6 +30,11 @@ bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
+
+_SKIP_FP64 = pytest.mark.skipif(
+    not fp64_is_supported,
+    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+)
 
 
 def TestForwardOnly():
