@@ -17,7 +17,9 @@ def test_make_dep_token(dtype):
     """
     ref = utils.to_reference(torch.ops.aten._make_dep_token(dtype=dtype))
     res_out = flag_gems._make_dep_token(dtype=dtype)
-    ref_numel = torch.tensor(ref.numel(), dtype=torch.int64, device=res_out.device)
+    ref_numel = utils.to_reference(
+        torch.tensor(ref.numel(), dtype=torch.int64, device=res_out.device)
+    )
     res_numel = torch.tensor(res_out.numel(), dtype=torch.int64, device=res_out.device)
     utils.gems_assert_close(res_numel, ref_numel, torch.int64)
     assert res_out.shape == torch.Size(
@@ -31,7 +33,9 @@ def test_make_dep_token_default():
     """Test _make_dep_token with default parameters."""
     ref = utils.to_reference(torch.ops.aten._make_dep_token())
     res_out = flag_gems._make_dep_token()
-    ref_numel = torch.tensor(ref.numel(), dtype=torch.int64, device=res_out.device)
+    ref_numel = utils.to_reference(
+        torch.tensor(ref.numel(), dtype=torch.int64, device=res_out.device)
+    )
     res_numel = torch.tensor(res_out.numel(), dtype=torch.int64, device=res_out.device)
     utils.gems_assert_close(res_numel, ref_numel, torch.int64)
     assert (
