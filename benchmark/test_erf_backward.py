@@ -20,12 +20,37 @@ from flag_gems.ops.erf_backward import ErfFunction
 from . import base, consts
 
 
+class ErfBackwardBenchmark(base.UnaryPointwiseBenchmark):
+    # The backward pass keeps the input, the forward output, the upstream
+    # gradient and the input gradient live at once. Measured fp32 peak for
+    # one case: 16 GiB at 2**30 elements, 8 GiB at 2**29, 4 GiB at 2**28. The two
+    # 2**30-element "from perf" shapes in ``consts.DEFAULT_SHAPES`` /
+    # ``core_shapes.yaml`` cannot fit the ~39 GiB of a shared CI GPU (the run
+    # OOMs allocating the 4 GiB fp32 grad_output). Keep the same layout
+    # coverage with both large shapes capped at 2**28 elements, which
+    # leaves roughly 9x headroom and still exercises the memory-bound
+    # path.
+    SHAPES = [
+        (268435456,),
+        (64, 64),
+        (4096, 4096),
+        (64, 512, 512),
+        (256, 1024, 1024),
+    ]
+
+    def set_shapes(self, shape_file_path=None):
+        # Bypass the shared shape YAML: ``set_shapes`` walks the class MRO and
+        # would otherwise pick up the catch-all ``Benchmark:`` entry, which
+        # carries the billion-element shapes this op cannot afford.
+        self.shapes = list(self.SHAPES)
+
+
 @pytest.mark.erf_backward
 def test_erf_backward():
     # ``aten::erf`` keeps its own autograd formula node (pow/neg/exp/mul), so
     # drive the gradient through the FlagGems autograd bridge explicitly --
     # otherwise this would time the native four-kernel chain, not this kernel.
-    bench = base.UnaryPointwiseBenchmark(
+    bench = ErfBackwardBenchmark(
         op_name="erf_backward",
         torch_op=torch.erf,
         gems_op=ErfFunction.apply,
