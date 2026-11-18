@@ -81,3 +81,37 @@ def test_cast_Int_strided(dtype, layout):
     else:
         x = x.contiguous(memory_format=torch.channels_last)
     assert_cast(x)
+
+
+@pytest.mark.cast_Int
+@pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
+@pytest.mark.parametrize("layout", ["contiguous", "transpose", "slice"])
+def test_cast_Int_dense_extra(dtype, layout):
+    x = torch.randn((3, 4, 5), device=flag_gems.device, dtype=dtype)
+    if layout == "transpose":
+        x = x.transpose(0, 2)
+    elif layout == "slice":
+        x = x[:, :, ::2]
+    assert_cast(x)
+
+
+@pytest.mark.cast_Int
+def test_cast_Int_sparse_coo():
+    indices = torch.tensor([[1, 0, 1], [0, 2, 0]], device=flag_gems.device)
+    values = torch.tensor([2.5, -3.75, 4.5], device=flag_gems.device)
+    x = torch.sparse_coo_tensor(indices, values, (2, 3), is_coalesced=False)
+    expected = torch.ops.aten._cast_Int(x)
+    actual = flag_gems.cast_Int(x)
+    torch.testing.assert_close(actual._indices(), expected._indices())
+    torch.testing.assert_close(actual._values(), expected._values())
+    assert actual.is_coalesced() == expected.is_coalesced()
+
+
+@pytest.mark.cast_Int
+def test_cast_Int_sparse_empty():
+    indices = torch.empty((2, 0), device=flag_gems.device, dtype=torch.int64)
+    values = torch.empty((0,), device=flag_gems.device, dtype=torch.float32)
+    x = torch.sparse_coo_tensor(indices, values, (2, 3))
+    actual = flag_gems.cast_Int(x)
+    assert actual._nnz() == 0
+    assert actual.dtype == torch.int32

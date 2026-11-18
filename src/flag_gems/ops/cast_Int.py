@@ -34,6 +34,13 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops._indices import _indices as gems_indices
+from flag_gems.ops.empty import empty as gems_empty
+from flag_gems.ops.empty_permuted import empty_permuted as gems_empty_permuted
+from flag_gems.ops.real import real as gems_real
+from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor as gems_sparse_coo_tensor
+from flag_gems.ops.values import _values as gems_values
+
 logger = logging.getLogger(__name__)
 
 _BLOCK = 512
@@ -230,13 +237,30 @@ def _launch(src, out):
     )
 
 
+def _empty_like_gems(source, dtype):
+    """Allocate with FlagGems, preserving dense permuted strides."""
+    shape = tuple(source.shape)
+    if source.numel() and source.ndim > 1:
+        layout = sorted(
+            range(source.ndim), key=lambda d: source.stride(d), reverse=True
+        )
+        strides = [0] * source.ndim
+        stride = 1
+        for dim in reversed(layout):
+            strides[dim] = stride
+            stride *= shape[dim]
+        if tuple(strides) == tuple(source.stride()):
+            return gems_empty_permuted(shape, layout, dtype=dtype, device=source.device)
+    return gems_empty(shape, dtype=dtype, device=source.device)
+
+
 def _sparse_run(self):
-    indices = self._indices()
-    values = self._values()
-    out_values = torch.empty_like(values, dtype=torch.int32)
+    indices = gems_indices(self)
+    values = gems_values(self)
+    out_values = _empty_like_gems(values, torch.int32)
     if out_values.numel():
         _launch(values, out_values)
-    return torch.sparse_coo_tensor(
+    return gems_sparse_coo_tensor(
         indices, out_values, self.shape, is_coalesced=self.is_coalesced()
     )
 
@@ -263,9 +287,9 @@ def cast_Int(self, non_blocking=False):
         return _sparse_run(self)
 
     if self.numel() == 0:
-        return torch.empty_like(self, dtype=torch.int32)
+        return _empty_like_gems(self, torch.int32)
 
-    src = self.real if self.is_complex() else self
-    out = torch.empty_like(self, dtype=torch.int32)
+    src = gems_real(self) if self.is_complex() else self
+    out = _empty_like_gems(self, torch.int32)
     _launch(src, out)
     return out
