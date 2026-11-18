@@ -26,7 +26,17 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-from .bmm import bmm
+from .bmm import (
+    _launch_narrow_gemv,
+    _launch_narrow_pack,
+    _launch_nt_gemm,
+    _launch_tiled_gemm,
+    _select_rectangular_tile,
+    _use_narrow_gemv,
+    _use_narrow_pack,
+    _use_nt_gemm,
+    bmm,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -213,20 +223,60 @@ def baddbmm_kernel(
     tl.store(o_ptrs, o, mask=mask_c)
 
 
+def _dense_forward_tile(a, b):
+    tile = _select_rectangular_tile(a, b, rectangular_nn=False)
+    batch, m, k = a.shape
+    n = b.shape[-1]
+    if (
+        tile is not None
+        or a.dtype != b.dtype
+        or a.dtype not in (torch.float16, torch.bfloat16)
+        or not b.is_contiguous()
+        or b.shape != (batch, k, n)
+        or batch < 8
+        or not (256 <= n <= 512 and n % 256 == 0)
+        or not (2048 <= k <= 4096 and k % 256 == 0)
+    ):
+        return tile
+    # Larger batches supply enough tiles to use a wide RHS load.
+    if 32 <= m <= 64 and m % 32 == 0:
+        return 32, 256, 256, 1, True
+    if 256 <= m <= 1024 and m % 128 == 0:
+        return 128, 256, 256, 1, True
+    return None
+
+
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
         logger.debug("GEMS_ASCEND BADDBMM_FORWARD")
 
-        ctx.save_for_backward(A, B, bias)
-        ctx.alpha = alpha
-        ctx.beta = beta
-
         batch, M, K = A.shape
         _, _, N = B.shape
         A = A.contiguous()
-        B = B.contiguous()
+        dense_bias = (
+            alpha == beta == 1
+            and bias.shape == (batch, M, N)
+            and bias.dtype == A.dtype
+            and bias.is_contiguous()
+        )
+        nt_gemm = dense_bias and _use_nt_gemm(A, B)
+        tile = _dense_forward_tile(A, B) if dense_bias and not nt_gemm else None
+        if not nt_gemm and tile is None:
+            B = B.contiguous()
+
+        ctx.save_for_backward(A, B, bias)
+        ctx.alpha = alpha
+        ctx.beta = beta
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+        if nt_gemm:
+            return _launch_nt_gemm(A, B, out, bias)
+        if tile is not None:
+            return _launch_tiled_gemm(A, B, out, tile, bias)
+        if dense_bias and _use_narrow_gemv(A, B):
+            return _launch_narrow_gemv(A, B, out, bias)
+        if dense_bias and _use_narrow_pack(A, B):
+            return _launch_narrow_pack(A, B, out, bias)
 
         bias_batch_stride, bias_M_stride, bias_N_stride = _broadcast_strides(
             bias, (batch, M, N)
@@ -327,7 +377,7 @@ def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
     return BaddbmmFunction.apply(
         bias.contiguous(),
         A.contiguous(),
-        B.contiguous(),
+        B,
         beta,
         alpha,
     )
