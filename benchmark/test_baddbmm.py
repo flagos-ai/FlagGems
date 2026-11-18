@@ -77,6 +77,23 @@ def test_baddbmm():
     bench.run()
 
 
+@pytest.mark.baddbmm_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_baddbmm_backward():
+    # Benchmark's backward path creates grad-enabled inputs and times
+    # autograd.grad on a graph built before timing.
+    bench = BaddbmmBenchmark(
+        op_name="baddbmm",
+        input_fn=baddbmm_input_fn,
+        torch_op=torch.baddbmm,
+        dtypes=consts.FP16_BF16_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
     inp1 = torch.randn([b, m, k], dtype=dtype, device=device)
 

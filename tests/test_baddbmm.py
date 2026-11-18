@@ -85,7 +85,7 @@ def test_baddbmm_out(M, N, K, scalar, dtype):
     gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.baddbmm
+@pytest.mark.baddbmm_backward
 @pytest.mark.parametrize("M, N, K", BACKWARD_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", GEMM_DTYPES)
@@ -117,7 +117,7 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     )
 
 
-@pytest.mark.baddbmm
+@pytest.mark.baddbmm_backward
 @pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_baddbmm_backward_broadcast(dtype):
     batch, M, N, K = 2, 4, 16, 128
