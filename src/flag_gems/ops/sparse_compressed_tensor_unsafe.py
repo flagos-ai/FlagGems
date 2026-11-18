@@ -105,20 +105,16 @@ def sparse_compressed_tensor_unsafe(
         device=out_values.device if device is None else device,
         pin_memory=pin_memory,
     )
-    if _NATIVE_COMPRESSED_UNSAFE is not None:
-        # The captured native kernel is invoked directly, bypassing the
-        # dispatcher so the FlagGems registration of this operator (and of the
-        # per-layout unsafe constructors that assemble through it) cannot
-        # recurse into this wrapper.
-        return _NATIVE_COMPRESSED_UNSAFE.call_boxed(
-            _DEVICE_KEYSET,
-            compressed_indices,
-            plain_indices,
-            out_values,
-            size,
-            **kwargs,
+    if _NATIVE_COMPRESSED_UNSAFE is None:
+        raise RuntimeError(
+            "sparse_compressed_tensor_unsafe requires torch.library.get_kernel"
         )
-    return torch.ops.aten._sparse_compressed_tensor_unsafe(
+    # The captured native kernel is invoked directly, bypassing the dispatcher
+    # so the FlagGems registration of this operator (and of the per-layout
+    # unsafe constructors that assemble through it) cannot recurse into this
+    # wrapper. No torch compute-layer fallback is used.
+    return _NATIVE_COMPRESSED_UNSAFE.call_boxed(
+        _DEVICE_KEYSET,
         compressed_indices,
         plain_indices,
         out_values,
