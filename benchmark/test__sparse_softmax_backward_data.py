@@ -668,8 +668,14 @@ _NV_COLLECTION_ENVIRONMENT = {
         "repo": "pytorch",
         "device": None,
         "ncu_enabled": False,
-        "report_dir": "/data/tj/workspace/ops-baseline-softmax-run-v4-20261022/h800.json.work/_sparse_softmax_backward_data/ea18805d11ce4f6fa35910e59cd9b236/ncu_reports",
-        "output_path": "/data/tj/workspace/ops-baseline-softmax-run-v4-20261022/h800.json.work/_sparse_softmax_backward_data/ea18805d11ce4f6fa35910e59cd9b236/result.json",
+        "report_dir": (
+            "/data/tj/workspace/ops-baseline-softmax-run-v4-20261022/h800.json.work/_sparse_softma"
+            "x_backward_data/ea18805d11ce4f6fa35910e59cd9b236/ncu_reports"
+        ),
+        "output_path": (
+            "/data/tj/workspace/ops-baseline-softmax-run-v4-20261022/h800.json.work/_sparse_softma"
+            "x_backward_data/ea18805d11ce4f6fa35910e59cd9b236/result.json"
+        ),
         "op_timeout_seconds": 1800.0,
         "reference_chip": "H800",
         "only": ["_sparse_softmax_backward_data"],
