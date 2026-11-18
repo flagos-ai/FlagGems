@@ -14,6 +14,8 @@
 
 import triton
 
+from .addmm import addmm_out  # noqa: F401
+
 if triton.__version__ >= "3.4":
     from .fill import (  # noqa: F401
         fill_scalar,
