@@ -42,6 +42,20 @@ MAXPOOL3D_WITH_INDICES_CONFIGS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _cpu_reference_on_kunlunxin(monkeypatch):
+    """Compute the reference on CPU on Kunlunxin.
+
+    CI runs this file without ``--ref cpu``. torch_xmlir's on-device eager
+    ``max_pool3d_with_indices`` returns all-zero indices (and raises NOT
+    IMPLEMENTED for ceil_mode/dilation) on XPU, so it cannot serve as the
+    device reference. Flip the shared ``--ref cpu`` switch for the duration
+    of each test, so the oracle is computed on CPU like that mode does.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        monkeypatch.setattr(utils, "TO_CPU", True)
+
+
 @pytest.mark.max_pool3d_with_indices
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode",

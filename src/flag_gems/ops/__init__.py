@@ -71,7 +71,10 @@ from flag_gems.ops._dimI import _dimI
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
-from flag_gems.ops._efficientzerotensor import _efficientzerotensor
+from flag_gems.ops._efficientzerotensor import (
+    _efficientzerotensor,
+    _efficientzerotensor_out,
+)
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
@@ -1528,6 +1531,10 @@ from flag_gems.ops.sparse_coo_tensor_with_dims import (
     sparse_coo_tensor_with_dims,
     sparse_coo_tensor_with_dims_out,
 )
+from flag_gems.ops.sparse_coo_tensor_with_dims_and_tensors import (
+    sparse_coo_tensor_with_dims_and_tensors,
+    sparse_coo_tensor_with_dims_and_tensors_out,
+)
 from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
@@ -1535,6 +1542,7 @@ from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_mask import sparse_mask, sparse_mask_out
 from flag_gems.ops.sparse_resize_ import sparse_resize_
+from flag_gems.ops.sparse_resize_and_clear_ import sparse_resize_and_clear_
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -1864,6 +1872,7 @@ __all__ = [
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
     "_efficientzerotensor",
+    "_efficientzerotensor_out",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_dense_backward",
@@ -3292,6 +3301,8 @@ __all__ = [
     "sparse_compressed_tensor",
     "sparse_coo_tensor",
     "sparse_coo_tensor_with_dims",
+    "sparse_coo_tensor_with_dims_and_tensors",
+    "sparse_coo_tensor_with_dims_and_tensors_out",
     "sparse_coo_tensor_with_dims_out",
     "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
@@ -3302,6 +3313,7 @@ __all__ = [
     "sparse_mask",
     "sparse_mask_out",
     "sparse_resize_",
+    "sparse_resize_and_clear_",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",
