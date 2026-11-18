@@ -1416,6 +1416,7 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
+    ("digamma_backward", digamma_backward),
     ("dim", dim),
     ("dist", dist),
     ("div.out", true_divide_out),
