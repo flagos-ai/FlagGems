@@ -448,6 +448,11 @@ def test_triangular_solve_out_rejected_dtype(dtype):
 def test_triangular_solve_rejected_float64():
     B = torch.empty(0, 2, dtype=torch.float64, device=flag_gems.device)
     A = torch.empty(0, 0, dtype=torch.float64, device=flag_gems.device)
+    if B.dtype != torch.float64 or A.dtype != torch.float64:
+        # Some device builds (kunlunxin/torch_xmlir) silently convert float64
+        # tensors to float32 at creation, so the operator never sees an
+        # unsupported dtype and there is nothing to reject.
+        pytest.skip("device silently converts float64 tensors to another dtype")
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
         _functional(B, A, (True, False, False))
 

@@ -59,6 +59,8 @@ from flag_gems.runtime.backend._kunlunxin.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
 )
 
+from .copy import copy_
+
 logger = logging.getLogger(__name__)
 
 # A whole RHS column stays in registers only below this block width; larger
@@ -193,10 +195,30 @@ def _solve_dense(A, B, *, upper, unitriangular, out=None):
     return result
 
 
+def _copy_output(dst, src):
+    """Copy a solver result into an output buffer through the FlagGems copy.
+
+    The generic ``_copy_matrix`` Triton kernel miscompiles on XTriton when the
+    source is column-major with more than one batch element and the row count
+    is not a multiple of the copy block (129 rows: every batch after the first
+    lands with shifted values), and the ``out=`` solution is exactly such a
+    column-major buffer. The FlagGems ``copy_`` handles the strided, expanded
+    and sliced layouts of both outputs exactly.
+    """
+    copy_(dst, src)
+
+
 def triangular_solve(B, A, upper=True, transpose=False, unitriangular=False):
     logger.debug("GEMS TRIANGULAR_SOLVE")
     return _triangular_solve(
-        B, A, upper, transpose, unitriangular, _solve_dense, solver_out=True
+        B,
+        A,
+        upper,
+        transpose,
+        unitriangular,
+        _solve_dense,
+        solver_out=True,
+        copy_fn=_copy_output,
     )
 
 
@@ -205,5 +227,14 @@ def triangular_solve_out(
 ):
     logger.debug("GEMS TRIANGULAR_SOLVE_OUT")
     return _triangular_solve(
-        B, A, upper, transpose, unitriangular, _solve_dense, X, M, solver_out=True
+        B,
+        A,
+        upper,
+        transpose,
+        unitriangular,
+        _solve_dense,
+        X,
+        M,
+        solver_out=True,
+        copy_fn=_copy_output,
     )

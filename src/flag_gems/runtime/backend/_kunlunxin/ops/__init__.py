@@ -178,6 +178,7 @@ from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
 )
+from ._linalg_solve_ex import _linalg_solve_ex
 from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out  # noqa: F401
 from ._lu_with_info import _lu_with_info
 from ._masked_scale import _masked_scale  # noqa: F401
@@ -638,6 +639,7 @@ from .linalg_multi_dot import linalg_multi_dot_out
 from .linalg_multi_dot_kernel import linalg_multi_dot
 from .linalg_polar import linalg_polar, linalg_polar_out
 from .linalg_slogdet import linalg_slogdet
+from .linalg_solve_ex import linalg_solve_ex
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -1205,6 +1207,7 @@ __all__ = [
     "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
     "_is_all_true",
+    "_linalg_solve_ex",
     "_logcumsumexp",
     "_logcumsumexp_out",
     "_lu_with_info",
@@ -1664,6 +1667,7 @@ __all__ = [
     "linalg_polar",
     "linalg_polar_out",
     "linalg_slogdet",
+    "linalg_solve_ex",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
