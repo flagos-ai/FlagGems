@@ -840,9 +840,9 @@ def test_foreach_clamp_scalar_rejects_bool(core):
 @pytest.mark.foreach_max
 def test_foreach_max_noncontiguous():
     tensors = [
-        torch.arange(
-            24, dtype=torch.float32, device=flag_gems.device
-        ).reshape(4, 6).transpose(0, 1)
+        torch.arange(24, dtype=torch.float32, device=flag_gems.device)
+        .reshape(4, 6)
+        .transpose(0, 1)
     ]
     refs = [to_reference(tensor, True) for tensor in tensors]
     expected = torch._foreach_max(refs)
