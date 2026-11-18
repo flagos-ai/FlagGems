@@ -146,7 +146,7 @@ def _log1p(v):
     # Taylor series; otherwise ``1 + v`` is far enough from 1 that the plain
     # log keeps full relative accuracy.
     small = tl.abs(v) < 0.25
-    # Taylor series, truncated after v^10 (error < 1e-8 at |v| = 0.25).
+    # Taylor series, truncated after v^10 (truncation error < 3e-8 for |v| <= 0.25).
     poly = tl.zeros_like(v)
     term = v
     for k in range(1, 11):

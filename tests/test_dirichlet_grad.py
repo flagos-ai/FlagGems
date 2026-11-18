@@ -101,9 +101,10 @@ def test_dirichlet_grad(shape_kind, dtype, alpha_range, k):
 )
 @pytest.mark.parametrize("layout", ["broadcast", "strided", "expand_x"])
 def test_dirichlet_grad_layout(layout):
-    x = torch.full((4, 6), 0.2, device=flag_gems.device)
-    alpha = torch.full((4, 6), 2.0, device=flag_gems.device)
-    total = torch.full((4, 6), 8.0, device=flag_gems.device)
+    positions = torch.arange(24, device=flag_gems.device).reshape(4, 6).float()
+    x = 0.05 + positions * 0.01
+    alpha = 1.0 + positions * 0.05
+    total = 8.0 + positions * 0.1
     if layout == "broadcast":
         alpha = alpha[:1, :1]
         total = total[:, :1]
@@ -114,7 +115,8 @@ def test_dirichlet_grad_layout(layout):
     reference = torch.ops.aten._dirichlet_grad(x, alpha, total)
     result = flag_gems._dirichlet_grad(x, alpha, total)
     utils.gems_assert_close(result, reference, torch.float32, atol=DIRICHLET_GRAD_ATOL)
-    out = torch.empty_like(result.t()).t()
+    out = torch.empty(result.shape[::-1], dtype=result.dtype, device=result.device).t()
+    assert not out.is_contiguous()
     from flag_gems.runtime.backend._kunlunxin.ops._dirichlet_grad import (
         _dirichlet_grad_into,
     )
