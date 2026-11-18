@@ -317,12 +317,37 @@ def _flash_attn_bwd_dq_fused(
     )
 
 
+_SPLIT_DV_CONFIG = triton.Config(
+    {"BLOCK_M": 32 if device.vendor_name == "metax" else 64, "BLOCK_N": 64},
+    num_warps=8,
+    num_stages=1,
+)
+
+
+def _prune_dense_dkv_configs(configs, named_args, **kwargs):
+    s5000 = kwargs.get("S5000", False)
+    split_dv = kwargs.get("DV_PRECISION") == "split" and (
+        s5000 or (device.vendor_name == "metax" and kwargs["HEAD_DIM"] == 128)
+    )
+    configs = [cfg for cfg in configs if cfg != _SPLIT_DV_CONFIG or split_dv]
+    if not s5000 or kwargs["HEAD_DIM"] != 64:
+        return configs
+    # This exact tile faults or returns corrupt gradients on S5000.
+    return [
+        cfg
+        for cfg in configs
+        if (cfg.kwargs["BLOCK_M"], cfg.kwargs["BLOCK_N"], cfg.num_warps, cfg.num_stages)
+        != (64, 128, 4, 2)
+    ]
+
+
 @triton.autotune(
-    configs=_DKV_CONFIGS,
+    configs=[*_DKV_CONFIGS, _SPLIT_DV_CONFIG],
+    prune_configs_by={"early_config_prune": _prune_dense_dkv_configs},
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
     # device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS"],
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "S5000", "DV_PRECISION"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -379,6 +404,8 @@ def _flash_attn_bwd_dkv(
     HAS_WINDOW: tl.constexpr,
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
+    S5000: tl.constexpr,
+    DV_PRECISION: tl.constexpr,
 ):
     start_n = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -534,7 +561,15 @@ def _flash_attn_bwd_dkv(
 
         ds = p * (dp - Di[:, None]) * sm_scale
         dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-        dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+        if DV_PRECISION == "ieee":
+            dv += tl.dot(tl.trans(p), do.to(tl.float32), input_precision="ieee")
+        else:
+            p_hi = p.to(q.dtype)
+            dv += tl.dot(tl.trans(p_hi), do)
+            if DV_PRECISION == "split":
+                # Preserve the residual from rounding the probability to the MMA dtype.
+                p_lo = (p - p_hi.to(tl.float32)).to(q.dtype)
+                dv += tl.dot(tl.trans(p_lo), do)
 
     tl.store(
         dK + k_base + offs_n[:, None] * stride_km + offs_d[None, :] * stride_kd,
@@ -1054,6 +1089,7 @@ def flash_attn_backward(
     softmax_scale=None,
     attn_bias=None,
     bias_requires_grad=False,
+    compensate_dv=False,
 ):
     if is_dropout and dropout_p > 0.0 and rng_state is None:
         raise ValueError("开启 dropout 时，必须传入 rng_state")
@@ -1291,6 +1327,13 @@ def flash_attn_backward(
             )
 
             grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
+            dv_precision = "input"
+            if (
+                compensate_dv
+                and not use_dropout
+                and Q.dtype in (torch.float16, torch.bfloat16)
+            ):
+                dv_precision = "ieee" if device.vendor_name == "ascend" else "split"
             _flash_attn_bwd_dkv[grid_dkv](
                 Q,
                 K,
@@ -1343,20 +1386,37 @@ def flash_attn_backward(
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
+                DV_PRECISION=dv_precision,
+                S5000=(
+                    Q.device.type == "musa"
+                    and Head_Dim in (64, 128)
+                    and Q.dtype in (torch.float16, torch.bfloat16)
+                    and "S5000" in torch.musa.get_device_name(Q.device)
+                ),
             )
 
     return dQ, dK, dV, dBias
+
+
+_PPU_DROPOUT_LAYOUT = tl.constexpr(device.vendor_name == "thead")
 
 
 @triton.jit
 def _aten_flash_dropout(
     RNG, batch, head, m, n, HQ: tl.constexpr, threshold, drop_scale
 ):
-    # FlashAttention CUDA dropout.h + SM80 MMA CLayout (Philox4x32, 7 rounds).
+    # Native forward assigns Philox bytes by its MMA accumulator layout.
     # Counter coordinates are local to each sequence, independent of our tiles.
     seed = tl.load(RNG).to(tl.uint64)
     offset = tl.load(RNG + 1).to(tl.uint64)
-    lane = 4 * (m[:, None] % 8) + (n[None, :] % 8) // 2
+    if _PPU_DROPOUT_LAYOUT:
+        lane = 4 * (m[:, None] % 8) + n[None, :] % 4
+        word = 2 * ((n[None, :] % 32) // 16) + (m[:, None] % 16) // 8
+        shift = 8 * ((n[None, :] % 16) // 4)
+    else:
+        lane = 4 * (m[:, None] % 8) + (n[None, :] % 8) // 2
+        word = (n[None, :] % 32) // 8
+        shift = 8 * (2 * ((m[:, None] % 16) // 8) + n[None, :] % 2)
     offset = offset + ((batch * HQ + head) * 32 + lane).to(tl.uint64)
     c0, c1 = offset.to(tl.uint32), (offset >> 32).to(tl.uint32)
     c2 = tl.broadcast_to((m[:, None] // 16).to(tl.uint32), c0.shape)
@@ -1370,9 +1430,7 @@ def _aten_flash_dropout(
         c0, c1, c2, c3 = hi1 ^ c1 ^ k0, lo1, hi0 ^ c3 ^ k1, lo0
         k0 = (k0 + 0x9E3779B9).to(tl.uint32)
         k1 = (k1 + 0xBB67AE85).to(tl.uint32)
-    word = (n[None, :] % 32) // 8
     bits = tl.where(word == 0, c0, tl.where(word == 1, c1, tl.where(word == 2, c2, c3)))
-    shift = 8 * (2 * ((m[:, None] % 16) // 8) + n[None, :] % 2)
     random_byte = (bits >> shift.to(tl.uint32)) & 255
     return (random_byte <= threshold).to(tl.float32) * drop_scale
 
@@ -1941,24 +1999,25 @@ def _aten_flash_backward(
         keep32 = struct.unpack("f", struct.pack("f", 1.0 - p32))[0]
         threshold = int(keep32 * 255.0)
         drop_scale = struct.unpack("f", struct.pack("f", 1.0 / keep32))[0]
-        if device.vendor_name != "nvidia" or torch.version.cuda is None:
+        if device.vendor_name not in ("nvidia", "thead") or torch.version.cuda is None:
             raise NotImplementedError(
-                "native dropout ABI is only implemented for NVIDIA CUDA"
+                "native dropout ABI is only implemented for NVIDIA CUDA and PPU"
             )
         schema = torch.ops.aten._flash_attention_backward.default._schema
         if schema.arguments[12].name != "rng_state":
             raise NotImplementedError(
                 "legacy seed/offset dropout ABI is not implemented"
             )
+        rng_dtype = torch.int64 if device.vendor_name == "thead" else torch.uint64
         if (
             rng_state is None
-            or rng_state.dtype != torch.uint64
+            or rng_state.dtype != rng_dtype
             or rng_state.device != query.device
             or rng_state.shape != (2,)
             or not rng_state.is_contiguous()
         ):
             raise ValueError(
-                "CUDA FlashAttention requires a contiguous device uint64[2] saved rng_state"
+                f"FlashAttention requires a contiguous device {rng_dtype}[2] saved rng_state"
             )
     wl = -1 if window_size_left is None else window_size_left
     wr = -1 if window_size_right is None else window_size_right
@@ -2030,7 +2089,8 @@ def _aten_flash_backward(
         # This mapping is validated for every multiple of 8 through D=256.
         lse_scale = -math.log2(math.e) if dim in (32, 96, 160, 192, 256) else -1.0
     launch_options = {"FULL_PRECISION": True} if _full_precision else {}
-    if device.vendor_name in ("nvidia", "iluvatar"):
+    cuda_flash_arithmetic = device.vendor_name in ("nvidia", "thead")
+    if cuda_flash_arithmetic or device.vendor_name == "iluvatar":
         try:
             scale32 = struct.unpack("f", struct.pack("f", scale))[0]
             scale_log2 = struct.unpack(
@@ -2038,7 +2098,11 @@ def _aten_flash_backward(
             )[0]
         except OverflowError:
             scale_log2 = math.copysign(math.inf, scale)
-    if device.vendor_name == "nvidia":
+    # Nonpositive scales on PPU use mathematical gradients, including an
+    # unrounded GQA head reduction. Positive scales follow native flash arithmetic.
+    if device.vendor_name == "thead" and scale <= 0:
+        launch_options["FULL_PRECISION"] = True
+    if cuda_flash_arithmetic:
         launch_options["enable_fp_fusion"] = False
     q, k, v, o, do = (t.contiguous() for t in (query, key, value, out, grad_out))
     dq, dk, dv = (torch.empty_like(t) for t in (q, k, v))
@@ -2086,9 +2150,17 @@ def _aten_flash_backward(
         dropout_p > 0,
         wide_sequence_indices,
     )
-    tile = 32
+    ppu_small_math = (
+        device.vendor_name == "thead"
+        and not varlen
+        and scale <= 0
+        and dim <= 128
+        and max(max_q, max_k) <= 128
+    )
+    tile = 16 if ppu_small_math else 32
     num_warps = 4
-    if device.vendor_name == "ascend" and dim >= 224:
+    # Head dimensions above 128 pad to 256 lanes; a 32-row tile exceeds Ascend UB.
+    if device.vendor_name == "ascend" and dim > 128:
         tile = 16
     if (
         (
@@ -2114,7 +2186,8 @@ def _aten_flash_backward(
     # NVIDIA GQA reuses the saved delta across KV tiles; recomputing it in
     # the fused entry is slower than the second launch for these native shapes.
     if (
-        (device.vendor_name == "nvidia" and hq == hk and max(max_q, max_k) <= 256)
+        ppu_small_math
+        or (device.vendor_name == "nvidia" and hq == hk and max(max_q, max_k) <= 256)
         or (device.vendor_name in ("iluvatar", "hygon") and max(max_q, max_k) <= 128)
         or (
             musa_dense
@@ -2387,6 +2460,8 @@ def scaled_dot_product_cudnn_attention_backward(
         softmax_scale=scale,
         attn_bias=attn_bias,
         bias_requires_grad=bias_requires_grad,
+        compensate_dv=device.vendor_name
+        in ("mthreads", "metax", "hygon", "ascend", "thead"),
     )
 
     dQ = dQ_bshd.permute(0, 2, 1, 3).contiguous()
@@ -2506,6 +2581,8 @@ def scaled_dot_product_efficient_attention_backward(
         softmax_scale=scale,
         attn_bias=attn_bias,
         bias_requires_grad=bias_req_grad,
+        compensate_dv=need_dv
+        and device.vendor_name in ("mthreads", "metax", "hygon", "ascend"),
     )
 
     dQ_bhsd = dQ_bshd.permute(0, 2, 1, 3).contiguous()
