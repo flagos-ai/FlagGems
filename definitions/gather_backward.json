@@ -1,0 +1,45 @@
+{
+  "api_version": "v6.0",
+  "name": "gather_backward",
+  "requires_triton_kernel": true,
+  "description": "Backward of gather: accumulates grad into the input shape using index along dim. Repeated indices accumulate their gradients. The callable contract is (grad, self, dim, index, sparse_grad); original pytest owns supported overloads, errors, dtype, shape and mutation assertions. The current original correctness and benchmark suites exercise sparse_grad=False; this does not redefine the public sparse_grad argument or claim coverage of sparse output. Inputs are not mutated and the result is newly allocated.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "sparse_grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

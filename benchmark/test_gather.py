@@ -75,6 +75,31 @@ def test_gather():
     bench.run()
 
 
+
+def gather_backward_case_fn(shape, dtype):
+    del dtype
+    shape = tuple(shape)
+    index_shape = (*shape[:-1], 2 * shape[-1])
+    yield base.BenchmarkCasePlan(
+        shape={"grad": list(index_shape), "self": list(shape), "index": list(index_shape)},
+        params={"dim": -1, "sparse_grad": False},
+        builder_args=(shape,),
+    )
+
+
+def build_gather_backward_inputs(plan, dtype, device):
+    (shape,) = plan.builder_args
+    inp, dim, index = next(gather_input_fn(shape, dtype, device))
+    # Match the random upstream gradient previously built by the autograd timer.
+    grad = torch.randn(index.shape, dtype=dtype, device=device)
+    return grad, inp, dim, index, False
+
+
+def _get_gather_backward_gbps(bench_fn_args, latency):
+    _, inp, dim, index, _ = bench_fn_args
+    return _get_gbps((inp, dim, index), latency)
+
+
 @pytest.mark.gather_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -82,11 +107,11 @@ def test_gather():
 def test_gather_backward():
     bench = TensorSelectBenchmark(
         op_name="gather_backward",
-        torch_op=torch.gather,
-        input_fn=gather_input_fn,
-        get_gbps=_get_gbps,
+        torch_op=torch.ops.aten.gather_backward.default,
+        case_fn=gather_backward_case_fn,
+        build_inputs_fn=build_gather_backward_inputs,
+        get_gbps=_get_gather_backward_gbps,
         dtypes=[torch.float32, torch.float16],
-        is_backward=True,
     )
 
     bench.run()
