@@ -183,6 +183,10 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
+    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU and case != "empty":
+        pytest.skip(
+            "MUSA Poisson NLL reference does not support nonempty complex tensors"
+        )
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)

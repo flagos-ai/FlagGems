@@ -159,6 +159,8 @@ def test_triplet_margin_loss_empty_feature_dim(margin, reduction):
 @pytest.mark.triplet_margin_loss
 def test_triplet_margin_loss_broadcast_and_promotion():
     # ATen accepts same-rank broadcastable shapes and promotes mixed dtypes.
+    if flag_gems.vendor_name == "iluvatar":
+        pytest.skip("Iluvatar float32-to-float64 promotion returns incorrect values")
     dtype_a = torch.float32
     dtype_p = torch.float64
     anchor = torch.randn(4, 16, dtype=dtype_a, device=flag_gems.device)

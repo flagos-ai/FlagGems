@@ -69,6 +69,8 @@ def test_orgqr_complex_is_explicitly_unsupported(dtype):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr_out(shape, dtype):
+    if flag_gems.vendor_name == "mthreads" and shape[-1] == 0:
+        pytest.skip("MUSA geqrf input preparation does not support zero columns")
     input, tau = make_reflectors(shape, dtype)
     ref_input = utils.to_reference(input)
     ref_tau = utils.to_reference(tau)

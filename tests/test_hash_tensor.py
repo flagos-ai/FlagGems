@@ -46,6 +46,10 @@ def test_hash_tensor(shape, dtype, dim, keepdim):
     dim_arg = [] if dim is None else [dim]
 
     ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=keepdim, mode=0)
+    if flag_gems.vendor_name == "iluvatar" and ref_out.dtype == torch.uint32:
+        pytest.skip(
+            "Iluvatar ATen hash_tensor returns uint32; this test requires uint64"
+        )
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=keepdim, mode=0)
 
     _assert_equal(res_out, ref_out)
@@ -65,6 +69,10 @@ def test_hash_tensor_int_dtypes(shape, dtype, dim):
     dim_arg = [] if dim is None else [dim]
 
     ref_out = torch.ops.aten.hash_tensor(ref_inp, dim_arg, keepdim=False, mode=0)
+    if flag_gems.vendor_name == "iluvatar" and ref_out.dtype == torch.uint32:
+        pytest.skip(
+            "Iluvatar ATen hash_tensor returns uint32; this test requires uint64"
+        )
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=False, mode=0)
 
     _assert_equal(res_out, ref_out)
@@ -87,6 +95,10 @@ def test_hash_tensor_multidim(shape, dim, keepdim):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.hash_tensor(ref_inp, dim, keepdim=keepdim, mode=0)
+    if flag_gems.vendor_name == "iluvatar" and ref_out.dtype == torch.uint32:
+        pytest.skip(
+            "Iluvatar ATen hash_tensor returns uint32; this test requires uint64"
+        )
     res_out = flag_gems.hash_tensor(inp, dim, keepdim=keepdim, mode=0)
 
     _assert_equal(res_out, ref_out)
@@ -98,6 +110,10 @@ def test_hash_tensor_scalar():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.hash_tensor(ref_inp, [], keepdim=False, mode=0)
+    if flag_gems.vendor_name == "iluvatar" and ref_out.dtype == torch.uint32:
+        pytest.skip(
+            "Iluvatar ATen hash_tensor returns uint32; this test requires uint64"
+        )
     res_out = flag_gems.hash_tensor(inp, [], keepdim=False, mode=0)
 
     _assert_equal(res_out, ref_out)

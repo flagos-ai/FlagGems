@@ -196,6 +196,10 @@ def test_logdet_empty(dtype):
 @pytest.mark.logdet
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_logdet_rejects_complex(dtype):
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip(
+            "Ascend cannot construct the complex eye input for this rejection test"
+        )
     real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
     real = torch.randn((2, 4, 4), dtype=real_dtype, device=flag_gems.device)
     imag = torch.randn_like(real)
