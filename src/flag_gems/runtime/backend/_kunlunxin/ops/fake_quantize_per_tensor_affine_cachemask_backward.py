@@ -23,15 +23,14 @@
 # via an int32 bitcast OR.  Only float32 needs this (the mask_semantics signbit
 # check is float32-only).
 #
-# Performance: the previous override computed the result with
-# `tl.where(mask != 0, grad, ...)` (a per-element select).  Measured on
-# 8192x8192 the i1 select is ~1.5-2x slower than a plain multiply:
-#   fp16  select 0.61 ms vs grad*mask 0.31 ms
-#   fp32  select 0.81 ms vs grad*mask 0.54 ms
-#   bf16  select 1.01 ms vs grad*mask 0.62 ms
-# So the kernel is rewritten as `grad * mask.to(f32)` (the mask is an int8 0/1
-# view, and int8->f32 widening is the fast path), with the fp32 signed-zero
-# rebuilt by an integer OR instead of a select.
+# Performance / portability: the fp16/bf16 path uses
+# `tl.where(mask != 0, grad, grad * 0.0)`.  The alternative
+# `grad * mask.to(tl.float32)` is ~1.5-2x faster on paper, but int8->float32
+# widening does NOT compile on the XPU compiler (ConvertTritonXPUToLLVM:
+# "size mismatch when packing elements for LLVM struct"), so a select is
+# required there.  The fp32 path keeps the select and additionally rebuilds the
+# IEEE signed zero of `grad * 0.0` via an int32 bitcast OR (this backend folds
+# the multiply's -0.0 to +0.0 for finite values).
 
 import logging
 
@@ -78,7 +77,12 @@ def _fq_ptacmb_backward_mul_kernel(
         false_val = (prod_bits | (grad_bits & -2147483648)).to(tl.float32, bitcast=True)
         out = tl.where(quant_mask != 0, grad, false_val)
     else:
-        out = grad * quant_mask.to(tl.float32)
+        # XPU: int8->float32 widening (`quant_mask.to(tl.float32)`) does not
+        # compile (ConvertTritonXPUToLLVM: "size mismatch when packing elements
+        # for LLVM struct"). Select in grad's own dtype instead; fp16/bf16 do not
+        # need the fp32 signed-zero rebuild, and `grad * 0.0` keeps inf -> NaN
+        # matching the reference.
+        out = tl.where(quant_mask != 0, grad, grad * 0.0)
     tl.store(output_ptr + offset, out, mask=bound)
 
 
@@ -101,7 +105,12 @@ def _fq_ptacmb_backward_mul_unmasked(
         false_val = (prod_bits | (grad_bits & -2147483648)).to(tl.float32, bitcast=True)
         out = tl.where(quant_mask != 0, grad, false_val)
     else:
-        out = grad * quant_mask.to(tl.float32)
+        # XPU: int8->float32 widening (`quant_mask.to(tl.float32)`) does not
+        # compile (ConvertTritonXPUToLLVM: "size mismatch when packing elements
+        # for LLVM struct"). Select in grad's own dtype instead; fp16/bf16 do not
+        # need the fp32 signed-zero rebuild, and `grad * 0.0` keeps inf -> NaN
+        # matching the reference.
+        out = tl.where(quant_mask != 0, grad, grad * 0.0)
     tl.store(output_ptr + offset, out)
 
 
