@@ -161,13 +161,13 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
 @pytest.mark.parametrize("observer_on", [True, False])
 @pytest.mark.parametrize("fake_quant_on", [True, False])
 @pytest.mark.parametrize("symmetric_quant", [False, True])
+@pytest.mark.parametrize("ch_axis", [0, 1])
 def test_fused_moving_avg_obs_fake_quant_per_row_contract(
-    observer_on, fake_quant_on, symmetric_quant
+    observer_on, fake_quant_on, symmetric_quant, ch_axis
 ):
     """Preserve native per-row semantics for a nontrivial channel axis."""
     torch.manual_seed(0)
     shape = (3, 4, 5)
-    ch_axis = 1
     channels = shape[ch_axis]
     quant_min, quant_max = (-128, 127) if symmetric_quant else (0, 255)
     averaging_const = 0.01
@@ -179,8 +179,12 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     # Native fused fake quant requires FP32 activations with these FP32 states.
     input_ref = utils.to_reference(input_tensor, False)
     ref_device = input_ref.device
-    if observer_on and (
-        ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin")
+    if (
+        observer_on
+        and ch_axis != 0
+        and (
+            ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin")
+        )
     ):
         pytest.skip(
             "Configured native reference only supports per-row observer "
@@ -190,6 +194,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
         flag_gems.vendor_name in ("nvidia", "iluvatar", "thead", "metax")
         and ref_device.type == "cuda"
         and fake_quant_on
+        and ch_axis != 0
     ):
         pytest.skip(
             "Configured reference per-row fake quant rejects ch_axis=1 "
@@ -200,10 +205,10 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
         [int(fake_quant_on)], dtype=torch.long, device=ref_device
     )
     running_min_ref = torch.tensor(
-        [-1.25, -0.75, -0.5, -1.0], dtype=torch.float32, device=ref_device
+        [-1.25, -0.75, -0.5, -1.0][:channels], dtype=torch.float32, device=ref_device
     )
     running_max_ref = torch.tensor(
-        [0.5, 1.0, 1.5, 0.75], dtype=torch.float32, device=ref_device
+        [0.5, 1.0, 1.5, 0.75][:channels], dtype=torch.float32, device=ref_device
     )
     scale_ref = torch.ones(channels, dtype=torch.float32, device=ref_device)
     zp_ref = torch.zeros(channels, dtype=torch.int32, device=ref_device)
@@ -228,10 +233,10 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     observer_tri = torch.tensor([int(observer_on)], dtype=torch.long, device=device)
     fake_quant_tri = torch.tensor([int(fake_quant_on)], dtype=torch.long, device=device)
     running_min_tri = torch.tensor(
-        [-1.25, -0.75, -0.5, -1.0], dtype=torch.float32, device=device
+        [-1.25, -0.75, -0.5, -1.0][:channels], dtype=torch.float32, device=device
     )
     running_max_tri = torch.tensor(
-        [0.5, 1.0, 1.5, 0.75], dtype=torch.float32, device=device
+        [0.5, 1.0, 1.5, 0.75][:channels], dtype=torch.float32, device=device
     )
     scale_tri = torch.ones(channels, dtype=torch.float32, device=device)
     zp_tri = torch.zeros(channels, dtype=torch.int32, device=device)
