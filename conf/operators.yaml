@@ -6041,6 +6041,17 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
   cpp: '4.0'
+- id: exponential_backward_
+  description: Backward of in-place exponential sampling through autograd.
+  for:
+  - exponential_
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.4'
 - id: eye
   description: Returns a 2-D tensor with ones on the diagonal and zeros elsewhere.
   for:
@@ -6345,6 +6356,30 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: fill_backward
+  description: Backward of fill for scalar and tensor values through autograd.
+  for:
+  - fill.Scalar
+  - fill.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
+- id: fill_backward_
+  description: Backward of in-place fill for scalar and tensor values through autograd.
+  for:
+  - fill_.Scalar
+  - fill_.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -6577,6 +6612,17 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.1'
+- id: flip_backward
+  description: Backward of flip through autograd using the same reversed dimensions.
+  for:
+  - flip
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fliplr
   description: 'Flips a tensor in the left-to-right direction by reversing dimension
     1.
@@ -6722,6 +6768,17 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: floor_backward
+  description: Backward of floor through autograd; input gradients are zero.
+  for:
+  - floor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: floor_divide_scalar
   description: Computes `input` divided by `other`, elementwise, and floors the result.
   for:

@@ -125,6 +125,154 @@ def test_fill_scalar_(value, shape, dtype):
     flag_gems.fill_scalar_(x, value)
 
 
+@pytest.mark.fill_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(0,), (3, 4)])
+@pytest.mark.parametrize("tensor_value", [False, True])
+def test_fill_backward(dtype, shape, tensor_value):
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    grad = torch.ones_like(inp)
+    ref = inp.detach().requires_grad_()
+    actual = inp.detach().requires_grad_()
+    if tensor_value:
+        ref_value = torch.tensor(
+            2.0, device=flag_gems.device, dtype=dtype, requires_grad=True
+        )
+        value = ref_value.detach().clone().requires_grad_()
+        expected = torch.autograd.grad(
+            torch.fill(ref, ref_value), (ref, ref_value), grad
+        )
+        result = torch.autograd.grad(
+            flag_gems.fill_tensor(actual, value), (actual, value), grad
+        )
+        utils.gems_assert_close(result[1], expected[1], dtype)
+    else:
+        expected = torch.autograd.grad(torch.fill(ref, 2.0), ref, grad)
+        result = torch.autograd.grad(flag_gems.fill_scalar(actual, 2.0), actual, grad)
+    utils.gems_assert_equal(result[0], expected[0])
+
+
+@pytest.mark.fill_backward_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(0,), (3, 4)])
+@pytest.mark.parametrize("tensor_value", [False, True])
+@pytest.mark.parametrize("view", [False, True])
+def test_fill_backward_(dtype, shape, tensor_value, view):
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    grad = torch.ones_like(inp)
+    ref = inp.detach().requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_target = ref.clone()
+    target = actual.clone()
+    if view and len(shape) > 1:
+        ref_target = ref_target.T
+        target = target.T
+        grad = grad.T
+    if tensor_value:
+        ref_value = torch.tensor(
+            2.0, device=flag_gems.device, dtype=dtype, requires_grad=True
+        )
+        value = ref_value.detach().clone().requires_grad_()
+        expected = torch.autograd.grad(
+            ref_target.fill_(ref_value), (ref, ref_value), grad
+        )
+        result = torch.autograd.grad(
+            flag_gems.fill_tensor_(target, value), (actual, value), grad
+        )
+        utils.gems_assert_close(result[1], expected[1], dtype)
+    else:
+        expected = torch.autograd.grad(ref_target.fill_(2.0), ref, grad)
+        result = torch.autograd.grad(flag_gems.fill_scalar_(target, 2.0), actual, grad)
+    utils.gems_assert_equal(result[0], expected[0])
+
+
+@pytest.mark.fill_backward
+@pytest.mark.fill_backward_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("value_device", ["cpu", "gpu"])
+def test_fill_tensor_value_gradient_mixed_dtype(inplace, value_device):
+    inp = torch.randn((3, 4), device=flag_gems.device, dtype=torch.float16)
+    grad = torch.ones_like(inp)
+    ref = inp.detach().requires_grad_()
+    actual = inp.detach().requires_grad_()
+    ref_value = torch.tensor(
+        2.0,
+        device="cpu" if value_device == "cpu" else flag_gems.device,
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    value = ref_value.detach().clone().requires_grad_()
+    native_input = ref.clone() if inplace else ref
+    gems_input = actual.clone() if inplace else actual
+    native_result = (
+        native_input.fill_(ref_value)
+        if inplace
+        else torch.fill(native_input, ref_value)
+    )
+    gems_result = (
+        flag_gems.fill_tensor_(gems_input, value)
+        if inplace
+        else flag_gems.fill_tensor(gems_input, value)
+    )
+    expected = torch.autograd.grad(native_result, (ref, ref_value), grad)
+    result = torch.autograd.grad(gems_result, (actual, value), grad)
+    utils.gems_assert_equal(result[0], expected[0])
+    utils.gems_assert_equal(result[1], expected[1])
+
+
+@pytest.mark.fill_backward_
+@pytest.mark.parametrize("tensor_value", [False, True])
+@pytest.mark.parametrize("grad_enabled", [False, True])
+def test_fill_inplace_view_version(tensor_value, grad_enabled):
+    def run(op, x, value):
+        target = x.clone().T
+        with torch.set_grad_enabled(grad_enabled):
+            before = target._version
+            op(target, value)
+        return target, target._version - before
+
+    inp = torch.randn((3, 4), device=flag_gems.device, requires_grad=True)
+    if tensor_value:
+        value = torch.tensor(2.0, device=flag_gems.device)
+        native = lambda x, v: x.fill_(v)
+        gems = flag_gems.fill_tensor_
+    else:
+        value = 2.0
+        native = lambda x, v: x.fill_(v)
+        gems = flag_gems.fill_scalar_
+    torch_result, torch_bumps = run(native, inp, value)
+    gems_result, gems_bumps = run(gems, inp, value)
+    utils.gems_assert_equal(gems_result, torch_result)
+    assert gems_bumps == torch_bumps == 1
+
+
+@pytest.mark.fill_backward
+@pytest.mark.fill_backward_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("value_device", ["cpu", "gpu"])
+def test_fill_tensor_double_backward(inplace, value_device):
+    x = torch.randn((3, 4), device=flag_gems.device, requires_grad=True)
+    value = torch.tensor(
+        2.0,
+        device="cpu" if value_device == "cpu" else flag_gems.device,
+        requires_grad=True,
+    )
+    dout = torch.randn_like(x, requires_grad=True)
+
+    def gradient(op, inp, scalar, upstream):
+        result = op(inp.clone(), scalar) if inplace else op(inp, scalar)
+        first = torch.autograd.grad(result, scalar, upstream, create_graph=True)[0]
+        return torch.autograd.grad(first, upstream)[0]
+
+    native = lambda inp, scalar: (
+        inp.fill_(scalar) if inplace else torch.fill(inp, scalar)
+    )
+    gems = flag_gems.fill_tensor_ if inplace else flag_gems.fill_tensor
+    expected = gradient(native, x, value, dout)
+    actual = gradient(gems, x, value, dout)
+    utils.gems_assert_equal(actual, expected)
+
+
 FILL_SLICE_CASES = [
     # (shape, slice)
     ((4, 128), (slice(None), slice(64, None))),
