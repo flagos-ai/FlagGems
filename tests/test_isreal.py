@@ -30,7 +30,9 @@ def _make_complex(shape, dtype, device):
     """Build a complex tensor whose imaginary part is zero on ~half of it."""
     float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
     factory = (
-        "cpu" if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128 else device
+        "cpu"
+        if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128
+        else device
     )
     real = torch.randn(shape, dtype=float_dtype, device=factory)
     imag = torch.randn(shape, dtype=float_dtype, device=factory)
@@ -70,7 +72,8 @@ def test_isreal_special_values(dtype):
     if dtype.is_complex:
         float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
         factory = (
-            "cpu" if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128
+            "cpu"
+            if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128
             else flag_gems.device
         )
         real = [0.0, -0.0, 1.0, -1.0, float("nan"), float("inf"), 1.0, 1.0, -0.0]
