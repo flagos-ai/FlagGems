@@ -21,6 +21,9 @@ import triton
 import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
+from flag_gems.ops.fused_moving_avg_obs_fake_quant import _round_half_even
+from flag_gems.runtime import device
+
 logger = logging.getLogger(__name__)
 
 # out = (clamp(rint(x / scale) + zero_point, qmin, qmax) - zero_point) * scale
@@ -83,6 +86,7 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
     qmax_val,
     BLOCK: tl.constexpr,
     PERSIST: tl.constexpr,
+    PORTABLE_ROUND: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
@@ -101,7 +105,10 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
     for tile in range(pid, n_full, PERSIST):
         offsets = tile * BLOCK + offs
         x = tl.load(x_ptr + offsets).to(tl.float32)
-        q = libdevice.nearbyint(x * inv)  # rint, ties-to-even; no FMA rewrite
+        if PORTABLE_ROUND:
+            q = _round_half_even(x * inv)
+        else:
+            q = libdevice.nearbyint(x * inv)
         q = q + zpf
         q = tl.minimum(tl.maximum(q, qmin_val), qmax_val)
         y = (q - zpf) * s
@@ -111,7 +118,10 @@ def _fake_quantize_learnable_per_tensor_affine_kernel(
         offsets = n_full * BLOCK + offs
         mask = offsets < n_elements
         x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        q = libdevice.nearbyint(x * inv)
+        if PORTABLE_ROUND:
+            q = _round_half_even(x * inv)
+        else:
+            q = libdevice.nearbyint(x * inv)
         q = q + zpf
         q = tl.minimum(tl.maximum(q, qmin_val), qmax_val)
         y = (q - zpf) * s
@@ -158,6 +168,7 @@ def _fake_quantize_learnable_per_tensor_affine(
         float(qmax),
         BLOCK=block,
         PERSIST=nblocks,
+        PORTABLE_ROUND=device.vendor_name == "kunlunxin",
         num_warps=_pick_warps(block, nblocks),
     )
     return out
