@@ -203,3 +203,47 @@ def test_median_dim_values_rejects_float64_before_launch():
     inp = torch.tensor([1.0, 2.0], dtype=torch.float64, device="cpu")
     with pytest.raises(NotImplementedError, match="float64 is not supported"):
         flag_gems.median_dim_values(inp)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin wrapper regression"
+)
+def test_median_dim_values_default_dim():
+    inp = _unique_input((3, 5), 0, torch.float32)
+    expected = torch.median(inp.cpu(), dim=0)
+    values = torch.empty((5,), device=flag_gems.device)
+    indices = torch.empty((5,), dtype=torch.int64, device=flag_gems.device)
+    result = flag_gems.median_dim_values(inp, values=values, indices=indices)
+    torch.testing.assert_close(result.values.cpu(), expected.values)
+    torch.testing.assert_close(result.indices.cpu(), expected.indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin output-stride regression"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_median_dim_values_strided_output(dtype):
+    inp = _unique_input((3, 5, 7), 1, dtype)
+    expected = torch.median(inp.cpu(), dim=1)
+    values = torch.empty((7, 3), dtype=dtype, device=flag_gems.device).t()
+    indices = torch.empty((7, 3), dtype=torch.int64, device=flag_gems.device).t()
+    strides = (values.stride(), indices.stride())
+    result = flag_gems.median_dim_values(inp, 1, values=values, indices=indices)
+    assert result.values is values and result.indices is indices
+    assert (values.stride(), indices.stride()) == strides
+    torch.testing.assert_close(values.cpu(), expected.values)
+    torch.testing.assert_close(indices.cpu(), expected.indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin wrapper limits"
+)
+def test_median_dim_values_large_reduction_and_unknown_name():
+    inp = torch.empty((4097,), device=flag_gems.device)
+    with pytest.raises(NotImplementedError, match="limit 4096"):
+        flag_gems.median_dim_values(inp)
+    with pytest.raises(RuntimeError, match="Name 'missing' not found"):
+        flag_gems.median_dim_values(inp, "missing")

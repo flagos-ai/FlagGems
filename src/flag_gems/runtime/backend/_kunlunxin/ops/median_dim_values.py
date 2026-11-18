@@ -22,6 +22,9 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+from .copy import copy_
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,7 @@ KIND_AND_BITS = {
 K_I64 = 7
 
 
+@libentry()
 @triton.jit
 def _median_i64_kernel(
     inp_ptr,
@@ -130,6 +134,7 @@ _LOWEST = {
 _NEG_ZERO = -0.0
 
 
+@libentry()
 @triton.jit
 def _median_contig_kernel(
     inp_ptr,
@@ -252,6 +257,7 @@ def _median_contig_kernel(
     tl.store(idx_ptr + m, first.to(tl.int64))
 
 
+@libentry()
 @triton.jit
 def _median_strided_kernel(
     inp_ptr,
@@ -430,7 +436,7 @@ def _num_warps(bn):
     return 8
 
 
-def median_dim_values(inp, dim=-1, keepdim=False, *out_args, values=None, indices=None):
+def median_dim_values(inp, dim=0, keepdim=False, *out_args, values=None, indices=None):
     logger.debug("GEMS_KUNLUNXIN MEDIAN_DIM_VALUES")
     if inp.dtype == torch.float64:
         raise NotImplementedError(
@@ -442,9 +448,7 @@ def median_dim_values(inp, dim=-1, keepdim=False, *out_args, values=None, indice
         )
 
 
-def _median_dim_values(
-    inp, dim=-1, keepdim=False, *out_args, values=None, indices=None
-):
+def _median_dim_values(inp, dim=0, keepdim=False, *out_args, values=None, indices=None):
     if out_args:
         if len(out_args) == 1 and isinstance(out_args[0], (tuple, list)):
             values, indices = out_args[0]
@@ -453,7 +457,10 @@ def _median_dim_values(
     shape = inp.shape
     nd = len(shape)
     if isinstance(dim, str):
-        dim = inp.names.index(dim)
+        names = getattr(inp, "names", (None,) * nd)
+        if dim not in names:
+            raise RuntimeError(f"Name '{dim}' not found in Tensor{names}.")
+        dim = names.index(dim)
     limit = max(nd, 1)
     if dim < -limit or dim >= limit:
         raise IndexError(
@@ -522,6 +529,26 @@ def _median_dim_values(
     if M == 0:
         return MedianResult(values, indices)
 
+    # This backend uses one tile per reduction; larger tiles have not been
+    # validated and must not fail later in the device compiler.
+    if N > 4096:
+        raise NotImplementedError(
+            "median_dim_values: reduction size exceeds supported limit 4096"
+        )
+
+    result_values, result_indices = values, indices
+    if not values.is_contiguous():
+        values = torch.empty(values.shape, dtype=values.dtype, device=values.device)
+    if not indices.is_contiguous():
+        indices = torch.empty(indices.shape, dtype=indices.dtype, device=indices.device)
+
+    def finish():
+        if values is not result_values:
+            copy_(result_values, values)
+        if indices is not result_indices:
+            copy_(result_indices, indices)
+        return MedianResult(result_values, result_indices)
+
     bn = _next_pow2(N)
     if bn < 64:
         bn = 64
@@ -533,8 +560,8 @@ def _median_dim_values(
 
     if kind == K_I64:
         _median_i64_kernel[(M,)](
-            triton.reinterpret(inp, tl.int64),
-            triton.reinterpret(values, tl.int64),
+            inp,
+            values,
             indices,
             N,
             tuple(shape),
@@ -543,7 +570,7 @@ def _median_dim_values(
             BLOCK_N=bn,
             num_warps=warps,
         )
-        return MedianResult(values, indices)
+        return finish()
 
     if contig:
         _median_contig_kernel[(M,)](
@@ -594,4 +621,4 @@ def _median_dim_values(
             NOPAD=nopad,
             num_warps=warps,
         )
-    return MedianResult(values, indices)
+    return finish()
