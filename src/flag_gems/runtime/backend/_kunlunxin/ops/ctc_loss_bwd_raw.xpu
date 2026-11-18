@@ -1,0 +1,275 @@
+// ctc_loss with-grad forward + backward payloads (xpu3 cluster path), R2:
+// GM2LM_ASYNC double buffering of per-t input rows + 3x unrolled state loops
+// (independent states -> ILP).
+//
+// One core per batch element.  raw layout:
+//   [0,832) alpha A | [832,1664) alpha B | [1664,2240) lp A | [2240,2816) lp B
+// Host guards: full length (all input_lengths==T), zero_infinity=False,
+// state_count_max <= 256, C <= 128, targets >= 8.
+
+#include "xpu/kernel/xtdk.h"
+
+#define MAXS   256
+#define MAXC   128
+#define NEG (-__builtin_inff())
+#define AWB0   0
+#define AWB1   832
+#define LPB0   1664
+#define LPB1   2240
+#define RAWSZ  2816
+
+static __device__ __attribute__((always_inline)) float lse3(float a, float b, float c, int use_c) {
+  float cc = use_c ? c : NEG;
+  float m = __builtin_fmaxf(a, __builtin_fmaxf(b, cc));
+  if (m == NEG) return NEG;  // exp(-inf)=0 verified; only the all-NEG case is special
+  return m + __builtin_xpu_log2f(
+      __builtin_xpu_exp2f(a - m) + __builtin_xpu_exp2f(b - m) + __builtin_xpu_exp2f(cc - m));
+}
+
+static __device__ __attribute__((always_inline)) void fwd_state(
+    int s, float *ca, float *na, const float *lp, int sc, const signed char *labels) {
+  float a = ca[s];
+  float b1 = (s > 0) ? ca[s - 1] : NEG;
+  float b2 = NEG;
+  int skip = (s & 1) && (s >= 3) && (labels[s] != labels[s - 2]);
+  if (skip) b2 = (s >= 2) ? ca[s - 2] : NEG;
+  na[s] = lse3(a, b1, b2, skip) + lp[labels[s]];
+}
+
+static __device__ __attribute__((always_inline)) void bwd_state(
+    int s, const float *arow, const float *lp, float *bcur, float *bnxt,
+    float *lacc, float loglik, int sc, const signed char *labels) {
+  float log_post = arow[s] + bcur[s] - loglik;
+  float post = __builtin_xpu_exp2f(log_post);
+  int lab0 = labels[s];
+  lacc[lab0] += post;
+  float stay = bcur[s] + lp[lab0];
+  float n1 = NEG;
+  if (s + 1 < sc) n1 = bcur[s + 1] + lp[labels[s + 1]];
+  int skip = (s & 1) && (s + 2 < sc) && (labels[s] != labels[s + 2]);
+  float n2 = NEG;
+  if (skip) n2 = bcur[s + 2] + lp[labels[s + 2]];
+  bnxt[s] = lse3(stay, n1, n2, skip);
+}
+
+static __device__ __attribute__((always_inline)) long long win_info_f32(long long elem_off, int n, int *mis, int *wlen) {
+  long long byte = elem_off * 4;
+  *mis = (int)(byte & 63);
+  *wlen = (n * 4 + *mis + 63) & ~63;
+  return (byte - *mis) / 4;
+}
+
+static __device__ __attribute__((always_inline)) void block_read_f32(
+    _global_ptr_ const float *base, long long start_elem, int wlen,
+    __attribute__((aligned(64))) __local__ char *dst) {
+  GM2LM(base + start_elem, (char *)dst, wlen);
+}
+
+static __device__ __attribute__((always_inline)) void async_read_f32(
+    _global_ptr_ const float *base, long long start_elem, int wlen,
+    __attribute__((aligned(64))) __local__ char *dst) {
+  GM2LM_ASYNC(base + start_elem, (char *)dst, wlen);
+}
+
+extern "C" __device__ void ctc_fwd_grad_f32(
+    _global_ptr_ const float *log_probs,
+    _global_ptr_ const long long *targets,
+    _global_ptr_ const long long *target_lengths,
+    _global_ptr_ const long long *target_offsets,
+    _global_ptr_ float *nll_out,
+    _global_ptr_ float *log_alpha,
+    int T, int N, int C, int STRIDE, int blank, int target_1d) {
+  __attribute__((aligned(64))) __local__ char raw[RAWSZ];
+  __local__ signed char labels[MAXS];
+  __local__ float a0[MAXS];
+  __local__ float a1[MAXS];
+
+  int cid = core_id();
+  int ncores = core_num();
+  for (int b = cid; b < N; b += ncores) {
+    int tl = (int)target_lengths[b];
+    int sc = 2 * tl + 1;
+    long long toff = target_1d ? target_offsets[b] : (long long)b * STRIDE;
+
+    {
+      long long byte = toff * 8;
+      int mis = (int)(byte & 63);
+      GM2LM(targets + (byte - mis) / 8, raw, (tl * 8 + mis + 63) & ~63);
+      const long long *tt = (const long long *)((char *)raw + mis);
+      for (int s = 0; s < sc; ++s) {
+        int is_blank = (s & 1) == 0;
+        int ti = (s - 1) >> 1;
+        labels[s] = (signed char)(is_blank ? blank : ((ti < tl) ? (int)tt[ti] : blank));
+      }
+    }
+
+    int mis0, wlen0;
+    {
+      long long st = win_info_f32((long long)b * C, C, &mis0, &wlen0);
+      block_read_f32(log_probs, st, wlen0, raw + LPB0);
+    }
+    {
+      const float *lp0 = (const float *)((char *)raw + LPB0 + mis0);
+      for (int s = 0; s < sc; ++s) {
+        int init = (s == 0) || (s == 1 && tl > 0);
+        a0[s] = init ? lp0[labels[s]] : NEG;
+      }
+    }
+    LM2GM(a0, log_alpha + ((long long)b * T + 0) * MAXS, sc * 4);
+    float *ca = a0, *na = a1;
+
+    if (T > 1) {
+      int mis, wlen;
+      long long st = win_info_f32(((long long)1 * N + b) * C, C, &mis, &wlen);
+      block_read_f32(log_probs, st, wlen, raw + LPB1);
+    }
+    for (int t = 1; t < T; ++t) {
+      int lp_slot = (t & 1) ? LPB1 : LPB0;
+      if (t + 1 < T) {
+        int mis, wlen;
+        long long st = win_info_f32(((long long)(t + 1) * N + b) * C, C, &mis, &wlen);
+        int nslot = ((t + 1) & 1) ? LPB1 : LPB0;
+        if (mis == 0) async_read_f32(log_probs, st, wlen, raw + nslot);
+        else block_read_f32(log_probs, st, wlen, raw + nslot);
+      }
+      int mis_c;
+      {
+        long long byt = ((long long)t * N + b) * C * 4;
+        mis_c = (int)(byt & 63);
+      }
+      const float *lp = (const float *)((char *)raw + lp_slot + mis_c);
+      for (int s0 = 0; s0 < sc; s0 += 3) {
+        fwd_state(s0, ca, na, lp, sc, labels);
+        if (s0 + 1 < sc) fwd_state(s0 + 1, ca, na, lp, sc, labels);
+        if (s0 + 2 < sc) fwd_state(s0 + 2, ca, na, lp, sc, labels);
+      }
+      float *tmp = ca; ca = na; na = tmp;
+      LM2GM(ca, log_alpha + ((long long)b * T + t) * MAXS, sc * 4);
+      mfence_lm();
+    }
+
+    float last = ca[sc - 1];
+    float prev = (tl > 0) ? ca[sc - 2] : NEG;
+    float loss = -lse3(last, prev, NEG, 0);
+    LM2GM(&loss, nll_out + b, 4);
+  }
+  mfence();
+}
+
+extern "C" __device__ void ctc_bwd_f32(
+    _global_ptr_ const float *log_probs,
+    _global_ptr_ const long long *targets,
+    _global_ptr_ const long long *target_lengths,
+    _global_ptr_ const long long *target_offsets,
+    _global_ptr_ const float *neg_log_likelihood,
+    _global_ptr_ const float *log_alpha,
+    _global_ptr_ const float *grad_output,
+    _global_ptr_ float *grad_input,
+    int T, int N, int C, int STRIDE, int blank,
+    int reduction, int target_1d) {
+  __attribute__((aligned(64))) __local__ char raw[RAWSZ];
+  __local__ signed char labels[MAXS];
+  __local__ float beta0[MAXS];
+  __local__ float beta1[MAXS];
+  __local__ float lacc[MAXC];
+  __local__ float graw[MAXC];
+
+  int cid = core_id();
+  int ncores = core_num();
+  for (int b = cid; b < N; b += ncores) {
+    int tl = (int)target_lengths[b];
+    int sc = 2 * tl + 1;
+    long long toff = target_1d ? target_offsets[b] : (long long)b * STRIDE;
+
+    {
+      long long byte = toff * 8;
+      int mis = (int)(byte & 63);
+      GM2LM(targets + (byte - mis) / 8, raw, (tl * 8 + mis + 63) & ~63);
+      const long long *tt = (const long long *)((char *)raw + mis);
+      for (int s = 0; s < sc; ++s) {
+        int is_blank = (s & 1) == 0;
+        int ti = (s - 1) >> 1;
+        labels[s] = (signed char)(is_blank ? blank : ((ti < tl) ? (int)tt[ti] : blank));
+      }
+    }
+
+    float nll = neg_log_likelihood[b];
+    float scale;
+    if (reduction == 0) {
+      scale = grad_output[b];
+    } else {
+      scale = grad_output[0];
+      if (reduction == 1) {
+        int den = tl > 1 ? tl : 1;
+        scale = scale / (float)den / (float)N;
+      }
+    }
+    float loglik = (scale != 0.0f) ? -nll : 0.0f;
+
+    float *bcur = beta0;
+    float *bnxt = beta1;
+    for (int s = 0; s < sc; ++s) {
+      bcur[s] = ((s == sc - 1) || (s == sc - 2 && tl > 0)) ? 0.0f : NEG;
+    }
+
+    // preload t = T-1 (blocking) + t = T-2 (async)
+    {
+      int pb = (T - 1) & 1;
+      int mis, wlen;
+      long long st = win_info_f32(((long long)b * T + (T - 1)) * MAXS, sc, &mis, &wlen);
+      block_read_f32(log_alpha, st, wlen, raw + (pb ? AWB1 : AWB0));
+      st = win_info_f32(((long long)(T - 1) * N + b) * C, C, &mis, &wlen);
+      block_read_f32(log_probs, st, wlen, raw + (pb ? LPB1 : LPB0));
+      if (T > 1) {
+        int nb = (T - 2) & 1;
+        st = win_info_f32(((long long)b * T + (T - 2)) * MAXS, sc, &mis, &wlen);
+        if (mis == 0) async_read_f32(log_alpha, st, wlen, raw + (nb ? AWB1 : AWB0));
+        else block_read_f32(log_alpha, st, wlen, raw + (nb ? AWB1 : AWB0));
+        st = win_info_f32(((long long)(T - 2) * N + b) * C, C, &mis, &wlen);
+        if (mis == 0) async_read_f32(log_probs, st, wlen, raw + (nb ? LPB1 : LPB0));
+        else block_read_f32(log_probs, st, wlen, raw + (nb ? LPB1 : LPB0));
+      }
+    }
+
+    for (int step = 0; step < T; ++step) {
+      int t = T - 1 - step;
+      int aslot = (t & 1) ? AWB1 : AWB0;
+      int lslot = (t & 1) ? LPB1 : LPB0;
+      int mis_a, mis_p;
+      long long bya = ((long long)b * T + t) * MAXS * 4;
+      long long byp = ((long long)t * N + b) * C * 4;
+      mis_a = (int)(bya & 63);
+      mis_p = (int)(byp & 63);
+      const float *arow = (const float *)((char *)raw + aslot + mis_a);
+      const float *lp = (const float *)((char *)raw + lslot + mis_p);
+
+      {
+        int nt = t - 1;
+        if (nt >= 0) {
+          int naslot = (nt & 1) ? AWB1 : AWB0;
+          int nlslot = (nt & 1) ? LPB1 : LPB0;
+          int mis, wlen;
+          long long st = win_info_f32(((long long)b * T + nt) * MAXS, sc, &mis, &wlen);
+          if (mis == 0) async_read_f32(log_alpha, st, wlen, raw + naslot);
+          else block_read_f32(log_alpha, st, wlen, raw + naslot);
+          st = win_info_f32(((long long)nt * N + b) * C, C, &mis, &wlen);
+          if (mis == 0) async_read_f32(log_probs, st, wlen, raw + nlslot);
+          else block_read_f32(log_probs, st, wlen, raw + nlslot);
+        }
+      }
+
+      for (int c = 0; c < C; ++c) lacc[c] = 0.0f;
+      for (int s0 = 0; s0 < sc; s0 += 3) {
+        bwd_state(s0, arow, lp, bcur, bnxt, lacc, loglik, sc, labels);
+        if (s0 + 1 < sc) bwd_state(s0 + 1, arow, lp, bcur, bnxt, lacc, loglik, sc, labels);
+        if (s0 + 2 < sc) bwd_state(s0 + 2, arow, lp, bcur, bnxt, lacc, loglik, sc, labels);
+      }
+      float *tmp = bcur; bcur = bnxt; bnxt = tmp;
+
+      for (int c = 0; c < C; ++c) graw[c] = __builtin_xpu_exp2f(lp[c]) * scale - scale * lacc[c];
+      LM2GM(graw, grad_input + ((long long)t * N + b) * C, C * 4);
+      mfence_lm();   // prefetch issued at loop top has landed by now (hidden by compute)
+    }
+  }
+  mfence();
+}

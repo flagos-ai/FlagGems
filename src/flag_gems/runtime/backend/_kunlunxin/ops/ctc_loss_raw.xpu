@@ -1,0 +1,118 @@
+// ctc_loss forward payload (xpu3 cluster path), one core per batch element.
+//
+// The whole CTC alpha DP for one batch runs on ONE core with the alpha rows and
+// the current logp row resident in local memory (LM), so there is no per-node
+// global-memory round trip (the Triton scalar kernel pays ~14us per node).
+// All GM traffic is via DMA (GM2LM/LM2GM): per timestep we stream one logp row
+// (C floats) and, once per batch, the targets row. No barriers, no shared
+// memory, no masked/other semantics: the payload is a plain serial C loop.
+//
+// Only the full-length fast path is covered (all input_lengths == T,
+// reduction in {mean, sum}, no grad) - the host keeps the scalar Triton kernel
+// as fallback for everything else. Numerically identical recurrence to the
+// Triton kernel: logsumexp in base-2 (ln2 factor folded at the end).
+
+#include "xpu/kernel/xtdk.h"
+
+#define MAXS   256   // max state_count (= 2*max_target+1); host guards <= 256
+#define MAXC   160   // max classes; host guards C <= 160
+#define RAWW   1024  // 64B-aligned staging window (targets row + logp row)
+
+#define NEG (-__builtin_inff())
+#define LN2 0.6931471805599453f
+
+static __device__ __attribute__((always_inline)) float lse3(float a, float b, float c, int use_c) {
+  float cc = use_c ? c : NEG;
+  float m = __builtin_fmaxf(a, __builtin_fmaxf(b, cc));
+  if (m == NEG) return NEG;
+  float sa = (a == NEG) ? 0.0f : __builtin_xpu_exp2f(a - m);
+  float sb = (b == NEG) ? 0.0f : __builtin_xpu_exp2f(b - m);
+  float sc = (cc == NEG) ? 0.0f : __builtin_xpu_exp2f(cc - m);
+  float s = sa + sb + sc;
+  return m + __builtin_xpu_log2f(s);
+}
+
+extern "C" __device__ void ctc_fwd_f32(
+    _global_ptr_ const float *log_probs,        // [T*N*C] fp32 (compute dtype)
+    _global_ptr_ const long long *targets,      // [N*S] padded or [sum] (int64)
+    _global_ptr_ const long long *target_lengths,
+    _global_ptr_ const long long *target_offsets,
+    _global_ptr_ float *contrib,                // [N] per-batch loss
+    int T, int N, int C, int STRIDE, int blank, int reduction, int target_1d) {
+  __attribute__((aligned(64))) __local__ char raw[RAWW];
+  __local__ short labels[MAXS];
+  __local__ float a0[MAXS];
+  __local__ float a1[MAXS];
+
+  int cid = core_id();
+  int ncores = core_num();
+
+  for (int b = cid; b < N; b += ncores) {
+    int tl = (int)target_lengths[b];
+    int sc = 2 * tl + 1;
+    long long toff = target_1d ? target_offsets[b] : (long long)b * STRIDE;
+
+    // ---- stream this batch's targets row (int64) through an aligned window ----
+    long long tbyte = toff * 8;
+    int tmis = (int)(tbyte & 63);
+    long long tstart = tbyte - tmis;
+    int tlen = tl * 8;
+    int twlen = (tlen + tmis + 63) & ~63;
+    if (twlen > RAWW) twlen = RAWW;
+    GM2LM(targets + (tstart >> 3), raw, twlen);
+    const long long *tt = (const long long *)((char *)raw + tmis);
+
+    for (int s = 0; s < sc; ++s) {
+      int is_blank = (s & 1) == 0;
+      int ti = (s - 1) >> 1;
+      int lab = is_blank ? blank : ((ti < tl) ? (int)tt[ti] : blank);
+      labels[s] = (short)lab;
+    }
+
+    // ---- t = 0: init ----
+    long long obyte = (long long)b * C * 4;              // (0*N + b)*C floats
+    int omis = (int)(obyte & 63);
+    int owlen = (C * 4 + omis + 63) & ~63;
+    if (owlen > RAWW) owlen = RAWW;
+    GM2LM(log_probs + ((obyte - omis) >> 2), raw, owlen);
+    const float *lp = (const float *)((char *)raw + omis);
+
+    float *cur = a0;
+    float *nxt = a1;
+    for (int s = 0; s < sc; ++s) {
+      int init = (s == 0) || (s == 1 && tl > 0);
+      cur[s] = init ? lp[labels[s]] : NEG;
+    }
+
+    // ---- t = 1 .. T-1 ----
+    for (int t = 1; t < T; ++t) {
+      long long byte = ((long long)t * N + b) * C * 4;
+      int mis = (int)(byte & 63);
+      int wlen = (C * 4 + mis + 63) & ~63;
+      if (wlen > RAWW) wlen = RAWW;
+      GM2LM(log_probs + ((byte - mis) >> 2), raw, wlen);
+      lp = (const float *)((char *)raw + mis);
+
+      for (int s = 0; s < sc; ++s) {
+        float a = cur[s];
+        float b1 = (s > 0) ? cur[s - 1] : NEG;
+        float b2 = NEG;
+        int skip = (s & 1) && (s >= 3) && (labels[s] != labels[s - 2]);
+        if (skip) b2 = (s >= 2) ? cur[s - 2] : NEG;
+        float acc = lse3(a, b1, b2, skip);
+        nxt[s] = acc + lp[labels[s]];
+      }
+      float *tmp = cur; cur = nxt; nxt = tmp;
+    }
+
+    float last = cur[sc - 1];
+    float prev = (tl > 0) ? cur[sc - 2] : NEG;
+    float loss = -lse3(last, prev, NEG, 0);
+    if (reduction == 1) {
+      int den = tl > 1 ? tl : 1;
+      loss = loss / (float)den / (float)N;
+    }
+    LM2GM(&loss, contrib + b, 4);
+  }
+  mfence();
+}

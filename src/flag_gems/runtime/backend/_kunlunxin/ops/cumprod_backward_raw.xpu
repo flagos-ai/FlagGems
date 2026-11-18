@@ -1,0 +1,88 @@
+// cumprod_backward cluster payload, fp32 only (Round 1).
+// per-row reverse-single-pass:  rev[i] = carry + sum_{j in chunk, j>=i} go[j]
+// grad[i] = rev[i] / inp[i] (inp[i]==0 -> 0; the first zero k gets a forward
+// rescan that computes the exact zero_val and overwrites gi[k]).
+// LM budget: 3 x 1KB in-tiles + 1 x 1KB out tile = 4KB.
+#include "xpu/kernel/xtdk.h"
+
+#define C 256   // fp32 elements per tile (1 KB)
+
+extern "C" __device__ void cb_row_f32(
+    _global_ptr_ const float *grad,
+    _global_ptr_ const float *out,
+    _global_ptr_ const float *inp,
+    _global_ptr_ float *gi,
+    int M, int N) {
+  __attribute__((aligned(64))) __local__ float lg[C];
+  __attribute__((aligned(64))) __local__ float lo[C];   // go, then grad
+  __attribute__((aligned(64))) __local__ float li[C];   // inp
+  __attribute__((aligned(64))) __local__ float lout[C];
+
+  int cid = core_id();
+  int ncores = core_num();
+  int nch = (N + C - 1) / C;
+
+  for (int r = cid; r < M; r += ncores) {
+    const int row = r * N;
+    int k = -1;
+    int has_zero = 0;
+    float carry = 0.0f;
+
+    // ---- reverse pass -------------------------------------------------
+    for (int q = 0; q < nch; ++q) {
+      int hi = N - q * C;
+      int lo0 = hi - C;
+      if (lo0 < 0) lo0 = 0;
+      int cnt = hi - lo0;
+      _global_ptr_ const float *gb = grad + row + lo0;
+      _global_ptr_ const float *ob = out + row + lo0;
+      _global_ptr_ const float *ib = inp + row + lo0;
+      GM2LM(gb, lg, cnt * sizeof(float));
+      GM2LM(ob, lo, cnt * sizeof(float));
+      GM2LM(ib, li, cnt * sizeof(float));
+      float pre = carry;
+      for (int i = cnt - 1; i >= 0; --i) {
+        float gv = lg[i];
+        float ov = lo[i];
+        pre += gv * ov;              // running reverse sum
+        float iv = li[i];
+        float g = (iv == 0.0f) ? 0.0f : pre / iv;
+        lout[i] = g;
+        if (iv == 0.0f && !has_zero) { k = lo0 + i; has_zero = 1; }
+      }
+      carry = pre;
+      LM2GM(lout, gi + row + lo0, cnt * sizeof(float));
+    }
+
+    // ---- zero fix (runtime branch, only for rows containing zeros) -----
+    if (has_zero) {
+      float P = 1.0f;               // prod of inp[0..k-1]
+      float S = 0.0f;
+      float zv = 0.0f;
+      for (int q = 0; q < nch; ++q) {
+        int lo0 = q * C;
+        int cnt = N - lo0;
+        if (cnt > C) cnt = C;
+        _global_ptr_ const float *ib = inp + row + lo0;
+        _global_ptr_ const float *gb = grad + row + lo0;
+        GM2LM(ib, li, cnt * sizeof(float));
+        GM2LM(gb, lo, cnt * sizeof(float));
+        for (int i = 0; i < cnt; ++i) {
+          int idx = lo0 + i;
+          if (idx < k) {
+            P *= li[i];
+          } else {
+            if (idx == k) S = P;
+            else S *= li[i];
+            zv += lo[i] * S;
+          }
+        }
+      }
+      // overwrite gi[k] (scalar store; zero rows are rare)
+      float tmp[1];
+      tmp[0] = zv;
+      LM2GM(tmp, gi + row + k, sizeof(float));
+    }
+  }
+  mfence();
+}
