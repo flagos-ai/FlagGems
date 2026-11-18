@@ -201,6 +201,15 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          # The runtime image bakes flagtree OUTSIDE the venv (e.g. /opt/flagtree)
+          # and ahead of it on sys.path. reconcile reinstalls the backends.yaml pin
+          # INTO the venv but pip cannot uninstall the baked copy, so the stale
+          # version still wins at runtime. enforce_pinned_compiler deletes any copy
+          # that is both stale (!= pin) and outside the venv, then hard-verifies the
+          # pinned version resolves — failing the job instead of testing the wrong
+          # compiler build. Mirrors ops-test.yaml's reconcile+enforce pair.
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -264,6 +273,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -323,6 +334,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -395,6 +408,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -463,6 +478,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -521,6 +538,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -581,6 +600,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}

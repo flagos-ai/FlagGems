@@ -14,6 +14,7 @@
 
 import logging
 import math
+from functools import lru_cache
 from numbers import Number
 
 import torch
@@ -34,6 +35,90 @@ _DEVICE_NAME = runtime_device.name
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
+
+
+@lru_cache(maxsize=None)
+def _mul_vector_cores(device_index):
+    properties = triton.runtime.driver.active.utils.get_device_properties(device_index)
+    return properties["num_vectorcore"]
+
+
+@libentry()
+@triton.jit
+def mul_persistent_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    scalar,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    SCALAR: tl.constexpr,
+    FULL_BLOCKS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    programs = tl.num_programs(0)
+    tiles = tl.cdiv(n_elements, BLOCK_SIZE)
+    base = tiles // programs
+    remainder = tiles % programs
+    start = pid * base + tl.minimum(pid, remainder)
+    stop = start + base + (pid < remainder).to(tl.int32)
+    for block in range(start, stop):
+        offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = True if FULL_BLOCKS else offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        if SCALAR:
+            y = scalar
+        else:
+            y = tl.load(y_ptr + offsets, mask=mask, other=0)
+        tl.store(output_ptr + offsets, x * y, mask=mask)
+
+
+def _launch_persistent_mul(tensor, other, output, *, scalar=False):
+    n = output.numel()
+    if n == 0:
+        return output
+    cores = _mul_vector_cores(output.device.index)
+    # Bound both the UB footprint and the number of scheduled programs.
+    # Balance adjacent blocks across programs to keep HBM accesses contiguous.
+    block = min(16384, max(128, triton.next_power_of_2(triton.cdiv(n, cores))))
+    tiles = triton.cdiv(n, block)
+    grid = min(tiles, cores)
+    with torch_device_fn.device(output.device):
+        mul_persistent_kernel[(grid,)](
+            tensor,
+            tensor if scalar else other,
+            output,
+            other if scalar else 0,
+            n,
+            BLOCK_SIZE=block,
+            SCALAR=scalar,
+            FULL_BLOCKS=n % block == 0,
+            num_warps=4,
+            num_stages=1,
+        )
+    return output
+
+
+@libentry()
+@triton.jit
+def mul_narrow_broadcast_kernel(
+    row_ptr,
+    col_ptr,
+    out_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    ROW_STRIDE: tl.constexpr,
+    COL_STRIDE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = tl.arange(0, BLOCK_N)
+    a = tl.load(row_ptr + rows * ROW_STRIDE, mask=rows < M, other=0)
+    b = tl.load(col_ptr + cols * COL_STRIDE, mask=cols < N, other=0)
+    values = a[:, None] * b[None, :]
+    offsets = rows[:, None] * N + cols[None, :]
+    tl.store(out_ptr + offsets, values, mask=(rows[:, None] < M) & (cols[None, :] < N))
 
 
 def _prune_mul_flat_configs(configs, named_args, **kwargs):
@@ -569,6 +654,13 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
+    # Persistent blocks help medium tensors; keep the original pipelined
+    # path for large FP32 working sets and the grid-safe streaming path.
+    persistent = n_elements >= 8192 and n_elements <= 65535 * 8192
+    if dtype == torch.float32 and n_elements * output.element_size() > 32 * 1024 * 1024:
+        persistent = False
+    if persistent and dtype in (torch.float16, torch.float32, torch.bfloat16):
+        return _launch_persistent_mul(a_t, b_t, output)
     if dtype in (torch.float16, torch.float32, torch.bfloat16) and n_elements % 64 == 0:
         max_programs = 65535
 
@@ -618,6 +710,8 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
+    if dtype in (torch.float16, torch.float32, torch.bfloat16):
+        return _launch_persistent_mul(tensor, scalar, output, scalar=True)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(output.device):
         mul_scalar_kernel[grid](
@@ -760,6 +854,32 @@ def _launch_2d_broadcast(
         and output.untyped_storage().data_ptr() != a_t.untyped_storage().data_ptr()
         and output.untyped_storage().data_ptr() != b_t.untyped_storage().data_ptr()
     ):
+        outer = (a_stride[1] == 0 and b_stride[0] == 0) or (
+            b_stride[1] == 0 and a_stride[0] == 0
+        )
+        if out_shape[1] < 32 and outer:
+            row, col = (a_t, b_t) if a_stride[1] == 0 else (b_t, a_t)
+            row_stride, col_stride = (
+                (a_stride[0], b_stride[1])
+                if a_stride[1] == 0
+                else (b_stride[0], a_stride[1])
+            )
+            block_m = min(256, triton.next_power_of_2(out_shape[0]))
+            with torch_device_fn.device(output.device):
+                mul_narrow_broadcast_kernel[(triton.cdiv(out_shape[0], block_m),)](
+                    row,
+                    col,
+                    output,
+                    out_shape[0],
+                    N=out_shape[1],
+                    ROW_STRIDE=row_stride,
+                    COL_STRIDE=col_stride,
+                    BLOCK_M=block_m,
+                    BLOCK_N=triton.next_power_of_2(out_shape[1]),
+                    num_warps=4,
+                    num_stages=1,
+                )
+            return output
         grid = lambda meta: (
             triton.cdiv(out_shape[0], meta["BLOCK_M"])
             * triton.cdiv(out_shape[1], meta["BLOCK_N"]),
