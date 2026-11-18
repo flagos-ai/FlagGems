@@ -23,8 +23,17 @@ from . import accuracy_utils as utils
 # in the implementation, so it is covered on both sides.
 SLOGDET_SHAPES = [(2, 3, 3), (4, 4), (8, 8), (16, 16), (32, 32), (64, 64)]
 
-REAL_DTYPES = [torch.float32, torch.float64]
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+# Only collect the dtypes the current device can actually run: complex128 needs
+# both complex and fp64 support.
+REAL_DTYPES = [torch.float32]
+if utils.fp64_is_supported:
+    REAL_DTYPES.append(torch.float64)
+
+COMPLEX_DTYPES = []
+if utils.complex_is_supported:
+    COMPLEX_DTYPES.append(torch.complex64)
+    if utils.fp64_is_supported:
+        COMPLEX_DTYPES.append(torch.complex128)
 
 
 def _tols(dtype, n):
@@ -295,6 +304,10 @@ def test_slogdet_nan_inf(dtype):
 
 
 @pytest.mark.slogdet
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="tiled-path parity is checked at fp64 precision",
+)
 @pytest.mark.parametrize("n", [65, 128, 257])
 def test_slogdet_large(n):
     """Matrices above the register-tile boundary use the tiled path.
@@ -319,6 +332,10 @@ def test_slogdet_large(n):
 
 
 @pytest.mark.slogdet
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="tiled-path parity is checked at fp64 precision",
+)
 def test_slogdet_large_1025():
     """The exact size called out in review: 1025x1025."""
     n = 1025

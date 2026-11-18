@@ -168,6 +168,10 @@ def test_embedding_bag_sparse_backward_mean(num_bags, embedding_dim, dtype):
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse COO layout not supported on this device",
+)
 @pytest.mark.embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
