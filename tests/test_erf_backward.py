@@ -60,7 +60,11 @@ def test_erf_backward_bit_exact(shape, dtype):
     ref_grad = _erf_backward_reference(grad_output, x)
     res_grad = flag_gems.erf_backward(grad_output, x)
 
-    utils.gems_assert_equal(res_grad, ref_grad)
+    # The reference is built on ``flag_gems.device`` from the on-device inputs,
+    # so move both sides to the CPU explicitly: in ``--ref=cpu`` mode
+    # ``utils.to_cpu`` only relocates ``res`` and would otherwise leave ``ref``
+    # on the accelerator.
+    utils.gems_assert_equal(res_grad.cpu(), ref_grad.cpu())
 
 
 @pytest.mark.erf_backward
@@ -78,7 +82,7 @@ def test_erf_backward_autograd(dtype):
     (res_grad,) = torch.autograd.grad(out, (inp,), (grad_output,))
 
     ref_grad = _erf_backward_reference(grad_output, inp)
-    utils.gems_assert_equal(res_grad, ref_grad)
+    utils.gems_assert_equal(res_grad.cpu(), ref_grad.cpu())
 
 
 @pytest.mark.erf_backward
@@ -93,7 +97,7 @@ def test_erf_backward_non_contiguous(dtype):
     ref_grad = _erf_backward_reference(grad_output, x)
     res_grad = flag_gems.erf_backward(grad_output, x)
 
-    utils.gems_assert_equal(res_grad, ref_grad)
+    utils.gems_assert_equal(res_grad.cpu(), ref_grad.cpu())
 
 
 @pytest.mark.erf_backward
