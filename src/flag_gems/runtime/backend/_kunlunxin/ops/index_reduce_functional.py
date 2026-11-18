@@ -32,8 +32,9 @@ FAST path (floating dtypes, include_self, contiguous self/source): the columns o
   columns exclusively, so each hit is applied with a plain load/combine/store
   inside one kernel - no atomics at all (this backend's atomics lose updates
   under contention and fp16/bf16 atomic_max/min do not compile).  Work is
-  O(numel + numel(source)) instead of the O(numel * index_len) of a gather, and
-  'prod' works natively because no atomic multiply is needed.
+  O(numel + C*S) element work, where C=numel/self.size(dim) and S=index.numel().
+  Each column-block program scans all S indices; mean additionally performs
+  O(self.size(dim)*S) index-count work. 'prod' needs no atomic multiply.
 
 FALLBACK path (non-contiguous layouts, include_self == False, integer dtypes):
   an atomic-free tiled gather over arbitrary strides (correctness first).
@@ -414,8 +415,6 @@ def _index_reduce(self, dim, index, source, reduce, include_self):
     for k in range(d + 1, nd):
         inner *= self.shape[k]
     istride = index.stride(0) if index.dim() > 0 else 1
-    if S * istride < 0:
-        istride = 1
 
     inc = bool(include_self)
     acc_int = not self.dtype.is_floating_point
