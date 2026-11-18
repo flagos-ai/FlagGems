@@ -28,7 +28,9 @@ the payload is passed through untouched and ``dtype`` is forwarded verbatim.
 
 import logging
 
-import torch
+from flag_gems.ops.sparse_coo_tensor_with_dims_and_tensors import (
+    sparse_coo_tensor_with_dims_and_tensors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +46,17 @@ def sparse_coo_tensor_unsafe(
 ):
     logger.debug("GEMS SPARSE COO TENSOR UNSAFE")
 
-    return torch.ops.aten._sparse_coo_tensor_unsafe(
+    # Delegate to the FlagGems low-level COO constructor instead of calling the
+    # native aten op. The native unsafe constructor ignores `dtype` and keeps
+    # the payload dtype, so the payload's dtype is forwarded explicitly.
+    return sparse_coo_tensor_with_dims_and_tensors(
+        indices.shape[0],
+        values.dim() - 1,
+        size,
         indices,
         values,
-        size,
-        dtype=dtype,
-        device=device,
-        pin_memory=pin_memory,
+        dtype=values.dtype,
+        device=values.device if device is None else device,
+        pin_memory=bool(pin_memory),
+        is_coalesced=False,
     )
