@@ -241,15 +241,13 @@ def _empty_like_gems(source, dtype):
     """Allocate with FlagGems, preserving dense permuted strides."""
     shape = tuple(source.shape)
     if source.numel() and source.ndim > 1:
-        layout = sorted(
-            range(source.ndim), key=lambda d: source.stride(d), reverse=True
-        )
-        strides = [0] * source.ndim
-        stride = 1
-        for dim in reversed(layout):
-            strides[dim] = stride
-            stride *= shape[dim]
-        if tuple(strides) == tuple(source.stride()):
+        # Non-overlapping sliced views retain their dimension order when
+        # empty_like(preserve_format) compacts strides. Expanded views overlap
+        # and receive a contiguous allocation instead.
+        if all(source.stride(d) > 0 or shape[d] == 1 for d in range(source.ndim)):
+            layout = sorted(
+                range(source.ndim), key=lambda d: source.stride(d), reverse=True
+            )
             return gems_empty_permuted(shape, layout, dtype=dtype, device=source.device)
     return gems_empty(shape, dtype=dtype, device=source.device)
 
