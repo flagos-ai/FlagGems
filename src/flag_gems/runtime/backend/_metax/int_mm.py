@@ -26,6 +26,63 @@ _METAX_SPLIT_LAUNCHERS = {}
 
 @libentry(cache_binding=True)
 @triton.jit
+def _int_mm_large_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    tiles_n: tl.constexpr = N // BN
+    tile_m = pid // (GROUP_M * tiles_n) * GROUP_M + pid % GROUP_M
+    tile_n = pid // GROUP_M % tiles_n
+    rows = tile_m * BM + tl.arange(0, BM)
+    cols = tile_n * BN + tl.arange(0, BN)
+    ks = tl.arange(0, 64)
+    a = a_ptr + rows[:, None] * K + ks[None, :]
+    b = b_ptr + ks[:, None] * N + cols[None, :]
+    # Compute (AB)^T in registers to give the MMA a K-contiguous RHS.
+    acc = tl.full((BN, BM), 0, tl.int32)
+    for _ in range(K // 64):
+        acc = tl.dot(
+            tl.trans(tl.load(b)), tl.trans(tl.load(a)), acc, out_dtype=tl.int32
+        )
+        a += 64
+        b += 64 * N
+    tl.store(out_ptr + rows[:, None] * N + cols[None, :], tl.trans(acc))
+
+
+def _launch_large(self, mat2, out, M, N, K):
+    small_m = M <= 128
+    bm, bn = (16, 64) if small_m else (64, 128)
+    tiles_m = M // bm
+    group = min(8, tiles_m)
+    if tiles_m % group:
+        group = 1
+    _int_mm_large_kernel[(tiles_m * (N // bn),)](
+        self,
+        mat2,
+        out,
+        N,
+        K,
+        bm,
+        bn,
+        group,
+        num_warps=4 if small_m else 8,
+        num_stages=3 if small_m else 2,
+        pipeline="cpasync-mixed",
+        pipeline_load_num=2,
+        scenario="unroll" if small_m else "",
+        enable_fp_fusion=False,
+    )
+
+
+@libentry(cache_binding=True)
+@triton.jit
 def _int_mm_metax_split_partial(a_ptr, b_ptr, partial_ptr, M, K, PART_K: tl.constexpr):
     # The launcher selects contiguous inputs with N=64 and 64-aligned K slices.
     pid = tl.program_id(0)
@@ -68,10 +125,19 @@ def _is_c550(device):
     return "C550" in torch_device_fn.get_device_name(device)
 
 
-def _metax_split_device_supported(device):
+def _can_launch_c550(self, mat2, out):
     # FlagTree lite mode can become active after a normal launcher is cached.
     context = getattr(triton.runtime.jit, "DistributedRtContext", None)
-    return _is_c550(device) and (context is None or not context().is_lite_mode)
+    return (
+        self.is_contiguous()
+        and mat2.is_contiguous()
+        and out.is_contiguous()
+        and self.data_ptr() % 16 == 0
+        and mat2.data_ptr() % 16 == 0
+        and out.data_ptr() % 16 == 0
+        and _is_c550(self.device)
+        and (context is None or not context().is_lite_mode)
+    )
 
 
 def _launch_metax_split(self, mat2, out, M, N, K, **compiler_options):

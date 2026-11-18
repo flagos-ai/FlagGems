@@ -24,8 +24,9 @@ from flag_gems.utils import libentry
 
 if runtime.device.vendor_name == "metax":
     from flag_gems.runtime.backend._metax.int_mm import (
+        _can_launch_c550,
+        _launch_large,
         _launch_metax_split,
-        _metax_split_device_supported,
     )
 
 
@@ -390,15 +391,20 @@ def _launch_metax(self, mat2, out, M, N, K):
         and N == 64
         and 1536 <= K <= 2560
         and K % 512 == 0
-        and self.is_contiguous()
-        and mat2.is_contiguous()
-        and out.is_contiguous()
-        and self.data_ptr() % 16 == 0
-        and mat2.data_ptr() % 16 == 0
-        and out.data_ptr() % 16 == 0
-        and _metax_split_device_supported(self.device)
+        and _can_launch_c550(self, mat2, out)
     ):
         _launch_metax_split(self, mat2, out, M, N, K, **mixed)
+    elif (
+        M >= 64
+        and M % 64 == 0
+        and N >= 1024
+        and N % 128 == 0
+        and K >= 1024
+        and K % 64 == 0
+        and max(M * K, K * N, M * N) <= 2**31 - 1
+        and _can_launch_c550(self, mat2, out)
+    ):
+        _launch_large(self, mat2, out, M, N, K)
     elif M <= 128 and N <= 64:
         _launch_dot(
             self,
