@@ -169,7 +169,7 @@ class LayernormBenchmark(base.Benchmark):
 @pytest.mark.layer_norm
 def test_layernorm():
     bench = LayernormBenchmark(
-        op_name="layernorm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
+        op_name="layer_norm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
     )
     bench.set_gems(lambda *args, **kwargs: flag_gems.layer_norm(*args, **kwargs)[0])
     bench.run()
@@ -268,9 +268,9 @@ def benchmark_manifest_case(record, nodes, replays, samples):
         "count": record["count"],
         "sources": record["sources"],
         "native_us": native_us,
-        "layernorm_us": candidate_us,
+        "layer_norm_us": candidate_us,
         "speedup": native_us / candidate_us,
-        "samples_us": {"native": native_samples, "layernorm": candidate_samples},
+        "samples_us": {"native": native_samples, "layer_norm": candidate_samples},
         "max_abs": max_abs,
         "atol": tolerance,
         "rtol": tolerance,
@@ -281,7 +281,7 @@ def benchmark_manifest_case(record, nodes, replays, samples):
 
 def core_layernorm_records(dtypes, shape_file):
     with shape_file.open() as stream:
-        cases = yaml.safe_load(stream)["layernorm"]["shapes"]
+        cases = yaml.safe_load(stream)["LayernormBenchmark"]["shapes"]
     records = []
     for shape, normalized_shape, eps in cases:
         for dtype in dtypes:
@@ -355,7 +355,7 @@ def run_manifest_benchmark():
         "src/flag_gems/runtime/backend/_metax/ops/layernorm.py"
     )
     report = {
-        "operator": "layernorm",
+        "operator": "layer_norm",
         "baseline": "device-native torch.nn.functional.layer_norm",
         "torch": torch.__version__,
         "triton": triton.__version__,
