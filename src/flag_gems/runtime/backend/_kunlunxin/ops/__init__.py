@@ -209,6 +209,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
+from ._sparse_mm_reduce_impl import _sparse_mm_reduce_impl  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
     _thnn_differentiable_gru_cell_backward,
@@ -391,6 +392,10 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_csr_to_coo import (  # noqa: F401
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
@@ -969,6 +974,7 @@ from .sqrt import sqrt, sqrt_
 from .square import square, square_out
 from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
+from .sspaddmm import sspaddmm, sspaddmm_out  # noqa: F401
 from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract, subtract_

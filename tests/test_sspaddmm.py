@@ -5,6 +5,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # torch's sspaddmm has no CUDA kernel, so the reference is always computed on
 # CPU (in fp64 for accuracy) and compared against the FlagGems dense result.
 
@@ -71,7 +73,12 @@ def test_sspaddmm(mnk, sparsity, alpha_beta, dtype):
     res = flag_gems.sspaddmm(inp, mat1, mat2, beta=beta, alpha=alpha)
 
     assert res.layout == torch.sparse_coo
-    res_dense = res.to_dense().to("cpu")
+    if IS_KUNLUNXIN:
+        index = res.indices().to("cpu")
+        res_dense = torch.zeros(res.shape, dtype=res.dtype)
+        res_dense[index[0], index[1]] = res.values().to("cpu")
+    else:
+        res_dense = res.to_dense().to("cpu")
 
     utils.gems_assert_close(
         res_dense, ref_dense.to(res_dense.dtype), dtype, reduce_dim=k
@@ -101,7 +108,12 @@ def test_sspaddmm_out(mnk, alpha_beta, dtype):
     res = flag_gems.sspaddmm_out(inp, mat1, mat2, beta=beta, alpha=alpha, out=out)
 
     assert res.layout == torch.sparse_coo
-    res_dense = res.to_dense().to("cpu")
+    if IS_KUNLUNXIN:
+        index = res.indices().to("cpu")
+        res_dense = torch.zeros(res.shape, dtype=res.dtype)
+        res_dense[index[0], index[1]] = res.values().to("cpu")
+    else:
+        res_dense = res.to_dense().to("cpu")
 
     utils.gems_assert_close(
         res_dense, ref_dense.to(res_dense.dtype), dtype, reduce_dim=k
