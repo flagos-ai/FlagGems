@@ -6345,6 +6345,18 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: fill_backward
+  description: Backward of fill for scalar and tensor values through autograd.
+  for:
+  - fill.Scalar
+  - fill.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
