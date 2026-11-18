@@ -19,9 +19,9 @@ import inspect
 import json
 import os
 import re
-import textwrap
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -86,9 +86,7 @@ def test_validate_sparse_csc_tensor_args(index_dtype, shape, strided_batch, dtyp
     ref = torch.ops.aten._validate_sparse_csc_tensor_args.default(
         comp, plain, values, size, check_pinning=False
     )
-    res = flag_gems._validate_sparse_csc_tensor_args(
-        comp, plain, values, size, check_pinning=False
-    )
+    res = _csc_candidate()(comp, plain, values, size, check_pinning=False)
     assert res is ref is None
     flag_gems.runtime.torch_device_fn.synchronize()
     for tensor, snapshot in zip((comp, plain, values), snapshots):
@@ -100,6 +98,13 @@ _CSC_INDEX_ERRORS = {
     "bounds": r"0 <= row_indices < nrows",
     "duplicate": r"sorted and distinct",
 }
+
+
+def _csc_candidate():
+    candidate = getattr(flag_gems, "validate_sparse_csc_tensor_args", None)
+    if callable(candidate):
+        return candidate
+    return flag_gems._validate_sparse_csc_tensor_args
 
 
 def _required_device():
@@ -127,7 +132,9 @@ def _csc_child_override(request):
     for spec in getattr(options, "override", None) or ():
         name, path, symbol = parse_override_spec(spec)
         overrides[name] = (path, symbol)
-    selected = overrides.get("_validate_sparse_csc_tensor_args")
+    selected = overrides.get("validate_sparse_csc_tensor_args") or overrides.get(
+        "_validate_sparse_csc_tensor_args"
+    )
     if selected is None:
         return None
     path, symbol = selected
@@ -136,7 +143,7 @@ def _csc_child_override(request):
 
 
 def _csc_candidate_binding():
-    candidate = inspect.unwrap(flag_gems._validate_sparse_csc_tensor_args)
+    candidate = inspect.unwrap(_csc_candidate())
     code = getattr(candidate, "__code__", None)
     return {
         "name": getattr(candidate, "__qualname__", None),
@@ -162,7 +169,7 @@ def _run_csc_index_child(case, override):
         from flag_gems.dynamic_registry import DynamicOpOverride
         from tests import conftest, accuracy_utils
         from tests.test_validate_sparse_csc_tensor_args import (
-            _csc_candidate_binding, _csc_index_inputs, _required_device,
+            _csc_candidate, _csc_candidate_binding, _csc_index_inputs, _required_device,
         )
 
         args = json.loads(sys.argv[1])
@@ -174,7 +181,7 @@ def _run_csc_index_child(case, override):
             assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest
             assert registry.override_from_file(key, path, symbol)
         assert _csc_candidate_binding() == args["binding"]
-        candidate = flag_gems._validate_sparse_csc_tensor_args
+        candidate = _csc_candidate()
         device = _required_device()
         assert candidate(*_csc_index_inputs("valid", device)) is None
         flag_gems.runtime.torch_device_fn.synchronize()
@@ -230,9 +237,7 @@ def test_validate_sparse_csc_tensor_args_invalid_indices(case, request):
     # The legal control is observable by parent dummy checks. The child below
     # separately proves that the real candidate rejects the malformed inputs.
     device = _required_device()
-    result = flag_gems._validate_sparse_csc_tensor_args(
-        *_csc_index_inputs("valid", device)
-    )
+    result = _csc_candidate()(*_csc_index_inputs("valid", device))
     assert result is None
     flag_gems.runtime.torch_device_fn.synchronize()
 
@@ -258,6 +263,4 @@ def test_validate_sparse_csc_tensor_args_invalid_metadata():
             comp, plain, values, size, check_pinning=False
         )
     with pytest.raises(RuntimeError):
-        flag_gems._validate_sparse_csc_tensor_args(
-            comp, plain, values, size, check_pinning=False
-        )
+        _csc_candidate()(comp, plain, values, size, check_pinning=False)
