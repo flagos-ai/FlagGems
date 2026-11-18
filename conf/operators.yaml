@@ -6722,6 +6722,17 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: floor_backward
+  description: Backward of floor through autograd; input gradients are zero.
+  for:
+  - floor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: floor_divide_scalar
   description: Computes `input` divided by `other`, elementwise, and floors the result.
   for:
