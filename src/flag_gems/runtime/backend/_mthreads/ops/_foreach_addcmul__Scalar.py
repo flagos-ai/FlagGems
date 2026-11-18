@@ -17,11 +17,12 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver as _driver
+
 from flag_gems.ops._foreach_binary import (
     _foreach_addcmul__Scalar as default__foreach_addcmul__Scalar,
 )
 from flag_gems.runtime import torch_device_fn
-from triton.runtime import driver as _driver
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
