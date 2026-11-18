@@ -448,6 +448,10 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
     utils.gems_assert_equal(torch.ops.aten.int_repr(inp), before, equal_nan=True)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.int_repr
 @pytest.mark.parametrize("layout,shape,qdtype", LAYOUT_ROWS)
 def test_int_repr_reads_layout(layout, shape, qdtype):

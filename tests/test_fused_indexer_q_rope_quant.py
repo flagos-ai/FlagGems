@@ -22,8 +22,11 @@ from . import accuracy_utils as utils
 FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
 
 pytestmark = pytest.mark.skipif(
-    not FP8_DTYPES,
-    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+    not FP8_DTYPES or flag_gems.vendor_name == "enflame",
+    reason=(
+        "kunlunxin does not support FP8 (no FP8 hardware); "
+        "enflame/GCU does not support FP4"
+    ),
 )
 
 HEAD_DIM = 128
