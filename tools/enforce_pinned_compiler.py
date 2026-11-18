@@ -244,6 +244,31 @@ def main() -> None:
         log(f"removing stale shadow {dist_name} {ver} at {root}")
         remove_dist(dist)
 
+    # When the pin is flagtree, also evict any triton distribution baked outside
+    # the venv. flagtree installs into the same 'triton' import namespace, so a
+    # standalone triton package ahead of the venv on sys.path shadows flagtree
+    # even after flagtree is pinned correctly. setup.sh handles this with an
+    # explicit 'uv pip uninstall triton' before installing flagtree; the
+    # reconcile path has no such step, so we do it here.
+    # We only remove copies outside the venv (never touch a triton the venv
+    # itself installed) and only when flagtree is the declared compiler — if the
+    # backend uses triton directly, we leave triton installs alone.
+    if dist_name == "flagtree":
+        triton_shadows = [
+            d for d in find_installs("triton") if not _under(_dist_root(d), venv)
+        ]
+        if triton_shadows:
+            log(
+                f"flagtree is the pinned compiler; removing {len(triton_shadows)} "
+                f"triton shadow(s) outside the venv that would shadow the triton "
+                f"namespace:"
+            )
+            for d in triton_shadows:
+                log(f"  removing triton {_dist_version(d)} at {_dist_root(d)}")
+                remove_dist(d)
+        else:
+            log("no triton shadows outside the venv found")
+
     # Hard gate: what resolves now must be the pin.
     have, root = resolved_version(dist_name)
     if have is None:
