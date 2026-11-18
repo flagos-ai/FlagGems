@@ -304,6 +304,37 @@ for item in "${PERF_TEST_CASES[@]}"; do
   fi
 done
 
+# Derive benchmark files for changed operators (from unit-test files and
+# marker-derived ops) that were NOT already covered by PERF_TEST_CASES above.
+# This ensures that a PR adding/modifying an operator implementation or its
+# unit tests still gets a kernel-check even when the PR does not touch the
+# benchmark file itself.
+KERNEL_CHECK_EXTRAS=()
+_already_checked=" ${PERF_TEST_CASES[*]} "
+for item in "${TEST_CASES[@]}"; do
+  bench="benchmark/$(basename "$item")"
+  if [[ -f "$bench" ]] && [[ ! "$_already_checked" =~ " ${bench} " ]]; then
+    KERNEL_CHECK_EXTRAS+=("$bench")
+    _already_checked+="${bench} "
+  fi
+done
+for marker in "${OPS_MARKERS[@]}"; do
+  [[ -z "$marker" ]] && continue
+  bench="benchmark/test_${marker}.py"
+  if [[ -f "$bench" ]] && [[ ! "$_already_checked" =~ " ${bench} " ]]; then
+    KERNEL_CHECK_EXTRAS+=("$bench")
+    _already_checked+="${bench} "
+  fi
+done
+
+for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
+  echo "Running kernel-check for ${item} (derived from changed operator)"
+  if ! pytest -s ${item} --kernel-check; then
+    if $FAIL_FAST; then exit 1; fi
+    FAILURES+=("${item} (kernel-check)")
+  fi
+done
+
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
 if [ -n "$COLLECT_COVERAGE" ]; then
