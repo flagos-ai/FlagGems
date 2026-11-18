@@ -236,6 +236,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .quant_batch_matmul_mxfp8 import quant_batch_matmul_mxfp8
 from .randperm import randperm
 from .relu6_ import relu6_
 from .renorm import renorm
@@ -587,6 +588,7 @@ __all__ = [
     "pow_tensor_scalar_",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
+    "quant_batch_matmul_mxfp8",
     "randperm",
     "relu6_",
     "renorm",
