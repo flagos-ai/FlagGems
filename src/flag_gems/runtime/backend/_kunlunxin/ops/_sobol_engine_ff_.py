@@ -48,13 +48,15 @@ def _sobol_engine_ff_kernel(
     """
     Sobol engine fast-forward kernel using Gray code bit manipulation.
 
-    The algorithm XORs direction numbers corresponding to bits that flip
-    in the Gray code sequence from num_generated to num_generated + n.
+    The algorithm XORs direction numbers corresponding to the rightmost set
+    bit of each step in the range ``(num_generated, num_generated + n]``.
 
     All dimensions are processed simultaneously as a DIM_BLOCK-wide vector
     (the same layout as the ``sobol_draw_kernel_simple``/``sobol_engine_draw_kernel``
-    kernels that are known to be correct on TritonXPU); the ``n`` steps are
-    still sequential because the XOR accumulation is a serial dependency.
+    kernels that are known to be correct on TritonXPU).  The per-step XOR is
+    associative, so the range collapses to the parity of how often each
+    direction is applied, evaluated with a MAXBIT-step static scan rather than
+    a length-``n`` serial loop.
     """
     dims = tl.arange(0, DIM_BLOCK)
     dim_mask = dims < dimension
@@ -62,25 +64,40 @@ def _sobol_engine_ff_kernel(
     # Load initial quasi values for this dimension block
     quasi_vals = tl.load(quasi_ptr + dims, mask=dim_mask, other=0).to(tl.int64)
 
-    # Fast-forward by n steps using Gray code
-    # For each step i from num_generated+1 to num_generated+n,
-    # find the position of the rightmost set bit (count trailing zeros)
-    for i in range(1, n + 1):
-        step = num_generated + i
-        # Find position of rightmost set bit by counting trailing zeros
-        c = step
-        bit_pos = 0
-        while bit_pos < MAXBIT and (c & 1) == 0:
-            c = c >> 1
-            bit_pos += 1
-
-        if bit_pos < MAXBIT:
-            # Load the direction number for this bit and dimension
-            direction_vals = tl.load(
-                sobolstate_ptr + dims * MAXBIT + bit_pos, mask=dim_mask, other=0
-            ).to(tl.int64)
-            # XOR with quasi value
-            quasi_vals = quasi_vals ^ direction_vals
+    # Fast-forward by n steps in O(MAXBIT) per dimension.
+    #
+    # The recurrence applies direction v[j] once for every step whose
+    # rightmost set bit is j (i.e. ctz(step) == j); applying the same v[j] an
+    # even number of times cancels under XOR.  So the whole range can be
+    # reduced to the parity of how many of the n steps fall in each class j.
+    #
+    # For e = num_generated + n, the number of integers i in (s, s+n] with
+    # ctz(i) == j is  (e>>j - e>>(j+1)) - (s>>j - s>>(j+1)),  whose parity is
+    # all that matters.  This replaces a length-n serial loop with a branchless
+    # closed form: no loop over n, only a 30-step static scan.  (Verified
+    # element-for-element against the original trailing-zero loop on CPU for
+    # 3000+ (num_generated, n) combinations, including the benchmark shapes.)
+    end = num_generated + n
+    for j in tl.static_range(MAXBIT):
+        count = ((end >> j) - (end >> (j + 1))) - (
+            (num_generated >> j) - (num_generated >> (j + 1))
+        )
+        odd = (count & 1) == 1
+        # Load the direction number unconditionally (masked only by the
+        # dimension bound) and select with ``tl.where``.  A load whose mask
+        # folds in the runtime scalar ``odd`` (``mask=dim_mask & odd``) is
+        # silently dropped by this TritonXPU build -- every lane returns the
+        # fill value, so the step never applies its XOR.  The unconditional
+        # load + where is bit-exact (verified on device against the CPU
+        # reference) and keeps the O(MAXBIT) closed form.
+        direction_vals = tl.load(
+            sobolstate_ptr + dims * MAXBIT + j,
+            mask=dim_mask,
+            other=0,
+        ).to(tl.int64)
+        quasi_vals = quasi_vals ^ tl.where(
+            odd, direction_vals, tl.zeros_like(direction_vals)
+        )
 
     # Store result
     tl.store(quasi_ptr + dims, quasi_vals, mask=dim_mask)

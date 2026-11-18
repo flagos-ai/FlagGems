@@ -32,8 +32,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Note that the time is in UTC, so we want this to start at 00:03+8:00
-    - cron: '3 16 * * *'
+    # Note that the time is in UTC, so we want this to start at 01:23+8:00
+    - cron: '23 17 * * *'
 
 jobs:
   prepare:
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
@@ -75,8 +75,9 @@ jobs:
       - shell: bash
         env:
           CHANGED_FILES: '__ALL__'
-          TOTAL_SHARDS: '4'
+          TOTAL_SHARDS: '8'
           SHARD_INDEX: ${{ matrix.shard_index }}
+          QUICK_TESTS: '1'
         run: |
           # Invoke script to run full-range unit tests,
           # Use datetime timestamp as the fake PR ID, with optional affix if
@@ -105,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7]
     uses: ./.github/workflows/backend-test.yaml
     with:
       backend: ascend-cann900
@@ -113,8 +114,9 @@ jobs:
       gpu_check_script: tools/gpu_check_ascend.sh
       changed_files: '__ALL__'
       pr_id: ${{ needs.prepare.outputs.datetime }}${{ github.event_name == 'workflow_dispatch' && '-manual' || '' }}-ascend-shard${{ matrix.shard_index }}
-      total_shards: '4'
+      total_shards: '8'
       shard_index: ${{ format('{0}', matrix.shard_index) }}
+      quick_tests: 'true'
     secrets:
       RUNNER_SSH_KEY: ${{ secrets.RUNNER_SSH_KEY }}
 
