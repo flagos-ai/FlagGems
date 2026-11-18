@@ -94,7 +94,9 @@ def _make_inputs(shapes, dtype):
             for s in shapes
         ]
     return [
-        torch.randint(0, min(0x7FFF, torch.iinfo(dtype).max + 1), s, dtype=dtype, device="cpu").to(flag_gems.device)
+        torch.randint(
+            0, min(0x7FFF, torch.iinfo(dtype).max + 1), s, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
         for s in shapes
     ]
 
