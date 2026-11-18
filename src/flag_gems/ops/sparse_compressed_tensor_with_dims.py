@@ -33,7 +33,26 @@ import logging
 
 import torch
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
+
+# Capture the native assembly kernel once at import time (the same
+# ``torch.library.get_kernel`` pattern as the sibling unsafe constructors):
+# the flaggems registration overrides this operator, so re-entering it through
+# the dispatcher would recurse into this wrapper. The captured kernel is
+# invoked directly, with no torch compute-layer fallback.
+_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    _NATIVE_WITH_DIMS = torch.library.get_kernel(
+        torch.ops.aten._sparse_compressed_tensor_with_dims.default,
+        runtime.device.dispatch_key,
+    )
+    _DEVICE_KEYSET = torch._C.DispatchKeySet(
+        getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+    )
+else:
+    _NATIVE_WITH_DIMS = None
 
 
 def sparse_compressed_tensor_with_dims(
@@ -50,7 +69,12 @@ def sparse_compressed_tensor_with_dims(
 ):
     logger.debug("GEMS SPARSE COMPRESSED TENSOR WITH DIMS")
 
-    return torch.ops.aten._sparse_compressed_tensor_with_dims(
+    if _NATIVE_WITH_DIMS is None:
+        raise RuntimeError(
+            "sparse_compressed_tensor_with_dims requires torch.library.get_kernel"
+        )
+    return _NATIVE_WITH_DIMS.call_boxed(
+        _DEVICE_KEYSET,
         nnz,
         dense_dim,
         size,
