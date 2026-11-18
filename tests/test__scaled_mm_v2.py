@@ -57,7 +57,15 @@ ALIGNED_SHAPES = [
 ]
 
 
-def _cuda_fp8_available():
+def _fp8_available():
+    """Whether ``float8_e4m3fn`` operands can be materialised on this backend.
+
+    The enflame GCU backend reports no CUDA compute capability; its fp8
+    capability comes from the runtime capability table instead.  Every other
+    vendor keeps the original SM89+ CUDA check unchanged.
+    """
+    if flag_gems.vendor_name == "enflame":
+        return flag_gems.runtime.device.support_fp8 and hasattr(torch, "float8_e4m3fn")
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
     if not hasattr(torch, "float8_e4m3fn"):
@@ -66,10 +74,10 @@ def _cuda_fp8_available():
     return major * 10 + minor >= 89
 
 
-# float8_e4m3fn operands are CUDA-only (sm89+); this operator has no
-# float16/float32/bfloat16 form, so the dtype set is hardcoded.
+# This operator has no float16/float32/bfloat16 form, so the dtype set is
+# hardcoded; the enflame branch of _fp8_available() also serves it on GCU.
 def _dtype_cases():
-    return [torch.float8_e4m3fn] if _cuda_fp8_available() else []
+    return [torch.float8_e4m3fn] if _fp8_available() else []
 
 
 def _make_tensor(shape, dtype):
