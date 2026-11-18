@@ -75,6 +75,7 @@ def _median_input_snapshot(inp):
     values = logical.contiguous().reshape(-1).view(torch.uint8).clone()
     return metadata, values
 
+
 def _checked_median(inp):
     snapshot, original_bytes = _median_input_snapshot(inp)
 
