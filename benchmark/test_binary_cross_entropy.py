@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -41,7 +43,13 @@ def _build_inputs_fn(plan, dtype, device):
     shape, weighted, reduction = plan.builder_args
     torch.manual_seed(0)
     inp = torch.sigmoid(utils.generate_tensor_input(shape, dtype, device))
-    target = torch.randint(0, 2, shape, device=device).to(dtype)
+    raw_target = torch.randint(0, 2, shape, device=device)
+    # Keep the original GPU RNG sequence while converting binary targets exactly.
+    target = (
+        raw_target.cpu().to(dtype).to(device)
+        if flag_gems.vendor_name == "enflame"
+        else raw_target.to(dtype)
+    )
     weight = torch.rand(shape, dtype=dtype, device=device) if weighted else None
     return inp, target, weight, reduction
 

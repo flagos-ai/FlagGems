@@ -30,10 +30,16 @@ _REDUCTIONS = ["none", "mean", "sum"]
 _REDUCTION_ENUM = {"none": 0, "mean": 1, "sum": 2}
 
 
-def _inputs(shape, dtype, weighted):
+def _inputs(shape, dtype, weighted, *, cast_target_on_cpu=False):
     torch.manual_seed(0)
     inp = torch.sigmoid(torch.randn(shape, dtype=dtype, device=flag_gems.device))
-    target = torch.randint(0, 2, shape, device=flag_gems.device).to(dtype)
+    raw_target = torch.randint(0, 2, shape, device=flag_gems.device)
+    # Preserve target RNG draws; Enflame currently corrupts Long-to-float casts.
+    target = (
+        raw_target.cpu().to(dtype).to(flag_gems.device)
+        if cast_target_on_cpu
+        else raw_target.to(dtype)
+    )
     weight = (
         torch.rand(shape, dtype=dtype, device=flag_gems.device) if weighted else None
     )
@@ -64,7 +70,9 @@ def test_binary_cross_entropy(shape, dtype, reduction, weighted):
         pytest.skip(
             "Kunlunxin native binary-cross-entropy reference rejects empty input"
         )
-    inp, target, weight = _inputs(shape, dtype, weighted)
+    inp, target, weight = _inputs(
+        shape, dtype, weighted, cast_target_on_cpu=flag_gems.vendor_name == "enflame"
+    )
     inp_before = inp.clone()
     target_before = target.clone()
     ref_inp = utils.to_reference(inp, True)
