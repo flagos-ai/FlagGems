@@ -15,29 +15,18 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from .sinh import _launch_sinh_flat, sinh, sinh_kernel
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
-
-
-@libentry()
-@triton.jit(do_not_specialize=["N_total"])
-def sinh_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
-        off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        y = 0.5 * (tl.exp(x) - tl.exp(-x))
-        tl.store(x_ptr + off, y, mask=mask)
+# In-place sinh on GCU400: the flat grid-stride kernels (dtype-split math
+# bodies) live in sinh.py; this module keeps only the aten-facing argument
+# handling.  Non-float16/bfloat16/float32 dtypes fall back to the codegen
+# pointwise kernel, non-contiguous tensors to a copy_ round-trip, instead of
+# raising like the previous fixed-config (BLOCK=8192, nw4, 2-exp body)
+# implementation, which also left the large 512M bucket 2.7x above the
+# tuned flat config.
 
 
 def sinh_(*args, **kwargs):
@@ -47,21 +36,16 @@ def sinh_(*args, **kwargs):
         raise TypeError("sinh_ expected a Tensor as the first argument")
     if not isinstance(x, torch.Tensor):
         raise TypeError("sinh_ expected a torch.Tensor")
-    if x.numel() == 0:
+
+    if x.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        sinh_kernel(x, out0=x)
         return x
     if not x.is_contiguous():
-        raise RuntimeError(
-            "sinh_ Triton kernel currently supports only contiguous tensors"
-        )
-    supported_dtypes = (torch.float16, torch.float32, torch.bfloat16)
-    if x.dtype not in supported_dtypes:
-        raise RuntimeError(
-            f"sinh_ Triton kernel supports dtypes {supported_dtypes}, but got {x.dtype}"
-        )
-
+        x.copy_(sinh(x))
+        return x
     N_total = x.numel()
-    BLOCK = 8192
-    grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
-    with torch_device_fn.device(x.device):
-        sinh_kernel_[(grid_size,)](x, N_total, BLOCK=BLOCK, num_warps=4)
+    if N_total == 0:
+        return x
+
+    _launch_sinh_flat(x, x, N_total, x.element_size(), x.dtype)
     return x

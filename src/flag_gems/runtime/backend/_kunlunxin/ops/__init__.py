@@ -172,7 +172,7 @@ from ._functional_sym_constrain_range_for_size import (
 )
 from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
-from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
+from ._fused_rms_norm import _fused_rms_norm, _fused_rms_norm_backward  # noqa: F401
 from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
@@ -455,6 +455,9 @@ from .exponential import exponential  # noqa: F401
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_learnable_per_channel_affine import (
+    _fake_quantize_learnable_per_channel_affine,
+)
 from .fake_quantize_per_channel_affine import (  # noqa: F401
     fake_quantize_per_channel_affine,
 )
@@ -790,6 +793,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .range import range  # noqa: F401
+from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad1d_backward import reflection_pad1d_backward
@@ -1074,6 +1078,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
+    "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_abs_",
@@ -1830,6 +1835,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "ravel",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",

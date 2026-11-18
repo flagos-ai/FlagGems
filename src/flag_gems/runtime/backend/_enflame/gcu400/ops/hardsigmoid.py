@@ -39,8 +39,12 @@ def hardsigmoid_kernel(x_ptr, out_ptr, N_total, BLOCK_SIZE: tl.constexpr):
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask)
         xf = x.to(tl.float32)
-        y = xf * (1.0 / 6.0) + 0.5
+        y = tl.fma(xf, 1.0 / 6.0, 0.5)
         y = tl.minimum(tl.maximum(y, 0.0), 1.0)
+        # aten.hardsigmoid propagates NaN while tl.minimum/tl.maximum swallow it,
+        # so restore the original value based on whether the input is NaN, keeping out / non-out path semantics aligned
+        # with the reference.
+        y = tl.where(xf != xf, xf, y)
         tl.store(out_ptr + off, y.to(x.dtype), mask=mask)
 
 
