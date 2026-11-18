@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -45,6 +47,7 @@ def test_cosh_backward():
         build_inputs_fn=cosh_backward_build_inputs_fn,
         op_name="cosh_backward",
         torch_op=cosh_backward_torch_op,
+        gems_op=flag_gems.cosh_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
