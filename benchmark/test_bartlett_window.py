@@ -19,8 +19,9 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     (window_length,) = plan.builder_args
-    return (), {
-        "window_length": window_length,
+    if base.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame cannot preserve native Float64 window storage")
+    return window_length, {
         "periodic": plan.params["periodic"],
         "dtype": dtype,
         "device": device,

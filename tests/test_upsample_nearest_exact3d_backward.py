@@ -33,6 +33,8 @@ CASES = [
 @pytest.mark.parametrize("input_size,output_size,scales", CASES)
 @pytest.mark.parametrize("dtype", [*utils.FLOAT_DTYPES, torch.float64])
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame cannot preserve float64 input storage")
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin cannot preserve float64 input storage")
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float64:
@@ -74,7 +76,7 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 @pytest.mark.upsample_nearest_exact3d_backward
 @pytest.mark.underscore_upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
-    if flag_gems.vendor_name in ("ascend", "kunlunxin"):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin", "enflame"):
         pytest.skip(
             "Native nearest-exact3d backward does not support uint8 on this backend"
         )
