@@ -60,12 +60,12 @@ def test_exponential_backward_(dtype, noncontiguous):
     if noncontiguous:
         inp = inp.T
     grad = torch.randn_like(inp)
-    ref = inp.detach().clone().requires_grad_()
+    ref = utils.to_reference(inp.detach().clone(), False).requires_grad_()
     actual = inp.detach().clone().requires_grad_()
     torch_out = ref.clone().exponential_(1.5)
     gems_out = flag_gems.exponential_(actual.clone(), 1.5)
     assert gems_out.data_ptr() != actual.data_ptr()
-    ref_grad = torch.autograd.grad(torch_out, ref, grad)[0]
+    ref_grad = torch.autograd.grad(torch_out, ref, utils.to_reference(grad, False))[0]
     gems_grad = torch.autograd.grad(gems_out, actual, grad)[0]
     utils.gems_assert_equal(gems_grad, ref_grad)
 
