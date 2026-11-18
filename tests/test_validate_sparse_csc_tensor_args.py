@@ -90,6 +90,10 @@ def test_validate_sparse_csc_tensor_args(index_dtype, shape, strided_batch, dtyp
         utils.gems_assert_equal(tensor, utils.to_reference(snapshot))
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSC layout not supported on this device",
+)
 @pytest.mark.validate_sparse_csc_tensor_args
 @pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize("case", ["endpoint", "bounds", "duplicate"])

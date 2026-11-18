@@ -172,7 +172,7 @@ from ._functional_sym_constrain_range_for_size import (
 )
 from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
-from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
+from ._fused_rms_norm import _fused_rms_norm, _fused_rms_norm_backward  # noqa: F401
 from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
@@ -187,11 +187,17 @@ from ._native_batch_norm_legit import (
     _native_batch_norm_legit_out,
 )
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._nested_tensor_from_mask_left_aligned import (  # noqa: F401
+    _nested_tensor_from_mask_left_aligned,
+)
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
+from ._padded_dense_to_jagged_forward import (  # noqa: F401
+    _padded_dense_to_jagged_forward,
+)
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
@@ -449,6 +455,9 @@ from .exponential import exponential  # noqa: F401
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_learnable_per_channel_affine import (
+    _fake_quantize_learnable_per_channel_affine,
+)
 from .fake_quantize_per_channel_affine import (  # noqa: F401
     fake_quantize_per_channel_affine,
 )
@@ -553,6 +562,10 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
 from .histogramdd import histogramdd
+from .histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -571,7 +584,7 @@ from .index_copy_ import (  # noqa: F401  (registered via _FULL_CONFIG)
 from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
-from .index_reduce import index_reduce_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inverse import inverse
@@ -584,9 +597,11 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .isreal import isreal  # noqa: F401
 from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
@@ -606,6 +621,7 @@ from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_householder_product import linalg_householder_product
 from .linalg_inv import linalg_inv
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
@@ -666,6 +682,7 @@ from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
@@ -783,6 +800,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .range import range  # noqa: F401
+from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad1d_backward import reflection_pad1d_backward
@@ -817,6 +835,7 @@ from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
+from .row_stack import row_stack  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -967,6 +986,9 @@ from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
+from .thnn_differentiable_lstm_cell_backward import (  # noqa: F401
+    _thnn_differentiable_lstm_cell_backward,
+)
 from .threshold import threshold, threshold_, threshold_backward
 from .tile import tile
 from .to import to_copy
@@ -1063,6 +1085,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
+    "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_abs_",
@@ -1173,6 +1196,8 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
     "_is_all_true",
     "_logcumsumexp",
@@ -1185,11 +1210,13 @@ __all__ = [
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
     "_nested_tensor_from_mask",
+    "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
+    "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
     "_resize_output",
@@ -1553,7 +1580,9 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
+    "index_reduce",
     "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
@@ -1568,9 +1597,13 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "isreal",
     "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kron",
     "kthvalue",
@@ -1608,6 +1641,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_householder_product",
     "linalg_inv",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu",
@@ -1681,6 +1715,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "masked_select_backward",
     "matmul_bf16",
     "matmul_int8",
     "matmuladd",
@@ -1816,6 +1851,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "ravel",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
@@ -1858,6 +1894,7 @@ __all__ = [
     "round_out",
     "row_indices_copy",
     "row_indices_copy_out",
+    "row_stack",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
