@@ -94,10 +94,10 @@ def test_embedding_renorm_backward(shape, dtype, norm_type, max_norm):
 
 @pytest.mark.embedding_renorm_backward
 def test_embedding_renorm_backward_use_gems_entry():
-    """Dispatch path: under ``use_gems`` the flag_gems entry point runs the
-    Triton kernel; compare against the eager VJP computed from the same
-    inputs (the op is non-differentiable in ATen, so there is no native
-    autograd path to race against).
+    """Dispatch path: the flag_gems entry point runs the Triton kernel; compare
+    against the eager VJP computed from the same inputs (the op is
+    non-differentiable in ATen, so there is no native autograd path to race
+    against).
     """
     torch.manual_seed(0)
     V, D = 128, 256
@@ -108,5 +108,8 @@ def test_embedding_renorm_backward_use_gems_entry():
     res_grad = flag_gems.embedding_renorm_backward(
         grad_output, weight, indices, 1.0, 2.0
     )
-    ref_grad = _renorm_vjp_reference(grad_output, weight, indices, 1.0, 2.0)
+    ref_grad_output = utils.to_reference(grad_output)
+    ref_weight = utils.to_reference(weight)
+    ref_indices = utils.to_reference(indices)
+    ref_grad = _renorm_vjp_reference(ref_grad_output, ref_weight, ref_indices, 1.0, 2.0)
     utils.gems_assert_close(res_grad, ref_grad, torch.float32)

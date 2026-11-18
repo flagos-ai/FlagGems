@@ -81,8 +81,17 @@ def _mark_i8(ptr, idx_ptr, n, BLOCK: tl.constexpr):
 
 @triton.jit
 def _p2(base, e):
-    # base ** e via exp2/log2 (base == 0 -> 0)
+    # base ** e via exp2/log2; the caller guards base == 0 (log2(0) = -inf
+    # would poison the multiply with NaN before exp2 clamps it back).
     return tl.exp2(e * tl.log2(base))
+
+
+@triton.jit
+def _p2_safe(base, e):
+    # base ** e with base == 0 defined as 0 for e > 0, 1 for e == 0.
+    is_zero = base == 0.0
+    safe = tl.where(is_zero, 1.0, base)
+    return tl.where(is_zero, 0.0, tl.exp2(e * tl.log2(safe)))
 
 
 @triton.jit
@@ -122,7 +131,7 @@ def _renorm_bwd_row(
     if IS_P2:
         n = tl.sqrt(tl.sum(xw * xw, axis=0))
     else:
-        n = _p2(tl.sum(_p2(tl.abs(xw), p), axis=0), 1.0 / p)
+        n = _p2_safe(tl.sum(_p2_safe(tl.abs(xw), p), axis=0), 1.0 / p)
 
     denom = n + 1e-7
     rescaled = n > max_norm
@@ -133,9 +142,11 @@ def _renorm_bwd_row(
         t = tl.sum(gw * xw, axis=0)
         grad = c * gw - coef * t * xw
     else:
-        coef = tl.where(rescaled, (max_norm / (denom * denom)) * _p2(n, 1.0 - p), zero)
+        coef = tl.where(
+            rescaled, (max_norm / (denom * denom)) * _p2_safe(n, 1.0 - p), zero
+        )
         sgn = tl.where(xw > 0, one, tl.where(xw < 0, -one, zero))
-        apm = _p2(tl.abs(xw), p - 1.0)
+        apm = _p2_safe(tl.abs(xw), p - 1.0)
         t = tl.sum(gw * apm * sgn, axis=0)
         grad = c * gw - coef * t * apm * sgn
 
@@ -186,7 +197,7 @@ def _renorm_bwd_fused(
     if IS_P2:
         n = tl.sqrt(tl.sum(xw * xw, axis=1))
     else:
-        n = _p2(tl.sum(_p2(tl.abs(xw), p), axis=1), 1.0 / p)
+        n = _p2_safe(tl.sum(_p2_safe(tl.abs(xw), p), axis=1), 1.0 / p)
 
     n_safe = tl.maximum(n, 1.0e-30)
     denom = n + 1e-7
@@ -204,11 +215,11 @@ def _renorm_bwd_fused(
     else:
         coef = tl.where(
             rescaled,
-            (max_norm / (denom * denom))[:, None] * _p2(n_safe, 1.0 - p)[:, None],
+            (max_norm / (denom * denom))[:, None] * _p2_safe(n_safe, 1.0 - p)[:, None],
             zero,
         )
         sgn = tl.where(xw > 0, one, tl.where(xw < 0, -one, zero))
-        apm = _p2(tl.abs(xw), p - 1.0)
+        apm = _p2_safe(tl.abs(xw), p - 1.0)
         t = tl.sum(gw * apm * sgn, axis=1)
         grad = c * gw - coef * t[:, None] * apm * sgn
 
