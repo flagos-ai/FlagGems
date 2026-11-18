@@ -67,7 +67,9 @@ def test_slogdet(shape, dtype):
 def test_slogdet_complex(shape, dtype):
     """Complex input: sign is a unit-modulus complex number, logabsdet is real."""
     if flag_gems.vendor_name == "ascend":
-        pytest.skip("Ascend torch.randn input construction does not support complex dtypes")
+        pytest.skip(
+            "Ascend torch.randn input construction does not support complex dtypes"
+        )
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
