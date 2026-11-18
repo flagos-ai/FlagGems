@@ -319,8 +319,9 @@ def test_dtype_param(ord):
     A = _make_input((3, 4), torch.float32, flag_gems.device)
     out_dtype = (
         torch.float32
-        # The backend of ASCEND and iluvatar do not support f64
-        if flag_gems.vendor_name in ("ascend", "iluvatar")
+        # fp64 output only on fp64-capable backends (support_fp64 False on
+        # ascend/iluvatar/kunlunxin); a hardcoded vendor list would rot.
+        if not flag_gems.runtime.device.support_fp64
         else torch.float64
     )
     ref = _compute_ref(A, ord, dtype=out_dtype)

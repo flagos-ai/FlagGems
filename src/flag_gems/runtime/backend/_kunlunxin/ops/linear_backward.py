@@ -17,7 +17,8 @@ import math
 
 import torch
 
-from .mm import mm
+from ._gemm_tuned import nn as _gemm_nn
+from ._gemm_tuned import tn as _gemm_tn
 from .sum import sum_dim
 
 logger = logging.getLogger(__name__)
@@ -42,16 +43,26 @@ def linear_backward(input, grad_output, weight, output_mask):
         # GEMM in the native 16-bit matrix engine is both faster and as accurate
         # as the previous fp32 upcast (which doubled memory traffic and forced
         # the slow fp32 engine).
-        grad_input = mm(grad_output_flat, weight)
+        # _gemm_nn keeps the same mask-free kernel but with tiles tuned for the
+        # (small M, large K) shapes of a linear backward (see _gemm_tuned).
+        grad_input = _gemm_nn(grad_output_flat, weight)
         grad_input = grad_input.reshape(*batch_dims, in_features)
 
     grad_weight = None
     if output_mask[1]:
-        grad_output_transposed = grad_output_flat.t().contiguous()
-        grad_weight = mm(grad_output_transposed, input_flat)
+        # grad_weight = grad_output.T @ input_flat.  ``grad_output_flat`` is
+        # already row-major, so the transposed source needs no materialised
+        # copy: _gemm_tn reads it K-contiguous and transposes in registers.
+        grad_weight = _gemm_tn(grad_output_flat, input_flat)
+        if grad_weight is None:
+            grad_weight = _gemm_nn(grad_output_flat.t().contiguous(), input_flat)
 
     grad_bias = None
     if output_mask[2]:
+        # Column sum of the gradient.  ``sum_dim`` reduces dim 0 through a
+        # host-side transpose + TLE row-reduce; a direct 2-D tile reduce
+        # (``tl.sum(axis=0/1)``) does not lower on this backend (uni_sram
+        # OutOfResources in TritonXPUVectorize), so this is the faithful path.
         if weight.dtype in (torch.float16, torch.bfloat16):
             grad_bias = sum_dim(grad_output_flat.to(torch.float32), dim=(0,)).to(
                 weight.dtype

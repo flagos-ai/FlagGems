@@ -39,6 +39,32 @@ def _make_input(shape, dtype, device):
     return inp, target
 
 
+def _make_ref_pair(inp, target):
+    """Reference operands: the fp64 gold standard, on CPU where needed.
+
+    ``utils.to_reference(..., upcast=True)`` only reaches fp64 on a backend
+    that can hold fp64; elsewhere it silently settles for fp32, which makes the
+    backend's own ``kl_div`` the oracle.  The contract here is ATen's xlogy
+    (``target == 0`` contributes exactly 0), so backends without fp64 take the
+    CPU fp64 computation instead -- the same gold standard the other linalg
+    tests use.
+    """
+    if not flag_gems.runtime.device.support_fp64:
+        return inp.cpu().double(), target.cpu().double()
+    return utils.to_reference(inp, True), utils.to_reference(target, True)
+
+
+def _assert_close(res, ref, dtype, equal_nan=True):
+    """``gems_assert_close``, moving the result to the reference's device.
+
+    The fp64-less path above puts the reference on CPU; ``to_cpu`` only moves
+    the result there under ``--ref cpu``, so do it here when needed.
+    """
+    if ref.device != res.device:
+        res = res.cpu()
+    utils.gems_assert_close(res, ref, dtype, equal_nan=equal_nan)
+
+
 @pytest.mark.kl_div
 @pytest.mark.parametrize("shape", KL_DIV_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -49,15 +75,14 @@ def test_kl_div(shape, dtype, reduction, log_target):
 
     # Upcast the reference so that it is computed in higher precision than the
     # Triton kernel, which accumulates in float32.
-    ref_inp = utils.to_reference(inp, True)
-    ref_target = utils.to_reference(target, True)
+    ref_inp, ref_target = _make_ref_pair(inp, target)
 
     ref_out = torch.ops.aten.kl_div(
         ref_inp, ref_target, reduction, log_target=log_target
     )
     res_out = flag_gems.kl_div(inp, target, reduction, log_target=log_target)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.kl_div
@@ -70,13 +95,12 @@ def test_kl_div_zero_target(shape, dtype, reduction):
     target = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     target = torch.where(target < 0.5, torch.zeros_like(target), target)
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_target = utils.to_reference(target, True)
+    ref_inp, ref_target = _make_ref_pair(inp, target)
 
     ref_out = torch.ops.aten.kl_div(ref_inp, ref_target, reduction)
     res_out = flag_gems.kl_div(inp, target, reduction)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.kl_div
@@ -85,13 +109,12 @@ def test_kl_div_broadcast(dtype):
     inp = torch.randn((2, 3), dtype=dtype, device=flag_gems.device)
     target = torch.rand(3, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_target = utils.to_reference(target, True)
+    ref_inp, ref_target = _make_ref_pair(inp, target)
 
     ref_out = torch.ops.aten.kl_div(ref_inp, ref_target, 0)
     res_out = flag_gems.kl_div(inp, target, 0)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.kl_div
@@ -100,11 +123,10 @@ def test_kl_div_functional(dtype):
     # F.kl_div 'batchmean' == aten sum divided by the batch size
     inp, target = _make_input((4, 8), dtype, flag_gems.device)
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_target = utils.to_reference(target, True)
+    ref_inp, ref_target = _make_ref_pair(inp, target)
 
     ref_out = torch.nn.functional.kl_div(ref_inp, ref_target, reduction="batchmean")
     # batchmean == aten sum divided by the batch size (reduction=2 is SUM)
     res_out = flag_gems.kl_div(inp, target, 2) / inp.shape[0]
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype, equal_nan=False)
