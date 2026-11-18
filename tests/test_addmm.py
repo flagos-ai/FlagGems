@@ -56,7 +56,7 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "mthreads",
     "metax",
 )
-_ADDMM_BETA_ZERO_VENDORS = ("nvidia", "hygon", "thead", "metax")
+_ADDMM_BETA_ZERO_VENDORS = ("ascend", "nvidia", "hygon", "thead", "metax")
 
 if IS_KUNLUNXIN:
     _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)
@@ -717,3 +717,127 @@ def test_addmm_fallback_autotuning(monkeypatch, dtype, b_column_major, vector_bi
     utils.gems_assert_close(actual, expected, dtype, reduce_dim=K)
     assert tuner.benchmark_success_count > 0
     assert tuner.benchmark_cache_hit_count == 0
+
+
+@pytest.mark.addmm
+@pytest.mark.addmm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addmm")
+@pytest.mark.parametrize("N", [128, 512])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_addmm_ascend_beta_cache_transitions(N, dtype):
+    # Cover both the small-square path and the larger fused tiles that used to
+    # overflow UB. Reusing shapes must not reuse the wrong bias/beta variant.
+    mat1 = torch.randn((N, N), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((N, N), dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(mat1)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    for bias_shape in [(N, N), (N,), ()]:
+        finite_bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+        for beta in [1.0, 0.0, -0.5, 0.0, 1.0]:
+            bias = (
+                torch.full_like(finite_bias, float("nan")) if beta == 0 else finite_bias
+            )
+            expected = torch.addmm(
+                utils.to_reference(bias, True), ref_mat1, ref_mat2, alpha=0.5, beta=beta
+            )
+            actual = flag_gems.addmm(bias, mat1, mat2, alpha=0.5, beta=beta)
+            utils.gems_assert_close(actual, expected, dtype, reduce_dim=N)
+            result = flag_gems.addmm_out(
+                bias, mat1, mat2, alpha=0.5, beta=beta, out=out
+            )
+            assert result is out
+            utils.gems_assert_close(out, expected, dtype, reduce_dim=N)
+
+
+@pytest.mark.addmm
+@pytest.mark.addmm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addmm")
+@pytest.mark.parametrize("M,N", [(0, 32), (16, 0), (0, 0)])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_addmm_ascend_review_empty(monkeypatch, M, N, use_out):
+    ops = flag_gems.addmm.__globals__
+
+    class NoLaunch:
+        def __getitem__(self, grid):
+            pytest.fail(f"empty addmm launched grid {grid}")
+
+    monkeypatch.setitem(ops, "addmm_kernel", NoLaunch())
+    a = torch.empty((M, 128), device=flag_gems.device)
+    b = torch.empty((128, N), device=a.device)
+    bias = torch.empty((N,), device=a.device)
+    if use_out:
+        out = torch.empty(0, device=a.device)
+        result = flag_gems.addmm_out(bias, a, b, out=out)
+        assert result is out
+    else:
+        result = flag_gems.addmm(bias, a, b)
+    torch.npu.synchronize()
+    assert result.shape == (M, N) and result.numel() == 0
+
+
+@pytest.mark.addmm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addmm")
+@pytest.mark.parametrize(
+    "layout", ["empty", "wrong_shape", "strided", "bias_alias", "mat_alias"]
+)
+def test_addmm_ascend_review_out_resize(layout):
+    a = torch.randn((33, 128), device=flag_gems.device)
+    b = torch.randn((128, 17), device=a.device)
+    bias = torch.randn((17,), device=a.device)
+    expected = torch.addmm(bias.cpu(), a.cpu(), b.cpu(), alpha=0.5, beta=2)
+    if layout == "strided":
+        out = torch.empty((17, 33), device=a.device).t()
+    elif layout == "bias_alias":
+        out = bias
+    elif layout == "mat_alias":
+        out = a
+    else:
+        out = torch.empty((0,) if layout == "empty" else (1, 3), device=a.device)
+    old_stride = out.stride()
+    assert flag_gems.addmm_out(bias, a, b, out=out, alpha=0.5, beta=2) is out
+    torch.npu.synchronize()
+    if layout == "strided":
+        assert out.stride() == old_stride
+    utils.gems_assert_close(out, expected, out.dtype, reduce_dim=128)
+
+
+@pytest.mark.addmm
+@pytest.mark.addmm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addmm")
+@pytest.mark.parametrize("shape", [(3, 5, 16), (128, 128, 128)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_addmm_ascend_review_beta_zero(shape, dtype, use_out):
+    M, N, K = shape
+    a = torch.ones((M, K), dtype=dtype, device=flag_gems.device)
+    b = torch.ones((K, N), dtype=dtype, device=a.device)
+    bias = torch.full((M, N), float("nan"), dtype=dtype, device=a.device)
+    bias[:, ::2] = float("inf")
+    if use_out:
+        result = torch.empty(0, dtype=dtype, device=a.device)
+        assert flag_gems.addmm_out(bias, a, b, beta=0, alpha=0.5, out=result) is result
+    else:
+        result = flag_gems.addmm(bias, a, b, beta=0, alpha=0.5)
+    torch.npu.synchronize()
+    expected = torch.addmm(
+        bias.cpu().float(), a.cpu().float(), b.cpu().float(), beta=0, alpha=0.5
+    ).to(dtype)
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.addmm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addmm")
+@pytest.mark.parametrize("invalid", ["dtype", "device"])
+def test_addmm_ascend_review_out_validation(invalid):
+    a = torch.ones((3, 128), device=flag_gems.device)
+    b = torch.ones((128, 5), device=a.device)
+    bias = torch.ones(5, device=a.device)
+    out = torch.empty(
+        0,
+        device="cpu" if invalid == "device" else a.device,
+        dtype=torch.float16 if invalid == "dtype" else a.dtype,
+    )
+    with pytest.raises(RuntimeError, match=invalid):
+        flag_gems.addmm_out(bias, a, b, out=out)
+    assert out.shape == (0,)

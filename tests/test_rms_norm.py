@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import numpy as np
 import pytest
 import torch
@@ -217,3 +219,69 @@ def test_rms_norm_ascend_core_dim_capped(ascend_rms_norm, monkeypatch, dtype):
 def test_rms_norm_ascend_small_shapes(ascend_rms_norm, M, N):
     # M below the cap must keep the one-row-per-program path intact.
     _check(M, N, torch.float32)
+
+
+@pytest.mark.rms_norm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend RMSNorm")
+@pytest.mark.parametrize(
+    "shape,normalized_shape", [((0, 128), (128,)), ((2, 0), (0,)), ((0, 3, 4), (3, 4))]
+)
+def test_rms_norm_ascend_review_empty(
+    ascend_rms_norm, monkeypatch, shape, normalized_shape
+):
+    class NoLaunch:
+        def __getitem__(self, grid):
+            pytest.fail(f"empty RMSNorm launched grid {grid}")
+
+    for name in (
+        "rms_norm_kernel",
+        "rms_norm_grad_dx_kernel",
+        "rms_norm_grad_dw_kernel",
+    ):
+        monkeypatch.setitem(ascend_rms_norm, name, NoLaunch())
+    x = torch.empty(
+        shape, device=flag_gems.device, dtype=torch.float16, requires_grad=True
+    )
+    weight = torch.ones(
+        normalized_shape, device=x.device, dtype=torch.float32, requires_grad=True
+    )
+    y, inv = ascend_rms_norm["rms_norm_forward"](x, normalized_shape, weight)
+    assert y.shape == x.shape
+    dx, dw = ascend_rms_norm["rms_norm_backward"](
+        torch.empty_like(x), x, inv, normalized_shape, weight
+    )
+    assert dx.shape == x.shape and dw.shape == weight.shape and dw.dtype == weight.dtype
+    result = flag_gems.rms_norm(x, normalized_shape, weight)
+    result.backward(torch.empty_like(x))
+    torch.npu.synchronize()
+    torch.testing.assert_close(dw.cpu(), torch.zeros_like(weight.cpu()))
+    torch.testing.assert_close(weight.grad.cpu(), torch.zeros_like(weight.cpu()))
+
+
+@pytest.mark.rms_norm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend RMSNorm")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize(
+    "shape,normalized_shape", [((1024, 16), (16,)), ((2, 3, 4), (3, 4))]
+)
+def test_rms_norm_ascend_review_weight_gradient(dtype, shape, normalized_shape):
+    x_cpu = torch.ones(shape, dtype=torch.float64, requires_grad=True)
+    w_cpu = torch.ones(normalized_shape, dtype=torch.float64, requires_grad=True)
+    ref = torch.nn.functional.rms_norm(x_cpu, normalized_shape, w_cpu, eps=1e-5)
+    ref.backward(torch.full_like(ref, 128))
+    x = x_cpu.detach().to(device=flag_gems.device, dtype=dtype).requires_grad_()
+    weight = w_cpu.detach().to(device=x.device, dtype=torch.float32).requires_grad_()
+    result = flag_gems.rms_norm(x, normalized_shape, weight, eps=1e-5)
+    result.backward(torch.full_like(result, 128))
+    torch.npu.synchronize()
+    assert weight.grad.shape == weight.shape and weight.grad.dtype == weight.dtype
+    assert torch.isfinite(weight.grad).all()
+    utils.gems_assert_close(
+        result, ref.detach().float(), dtype, reduce_dim=math.prod(normalized_shape)
+    )
+    torch.testing.assert_close(
+        weight.grad.cpu(), w_cpu.grad.float(), rtol=1e-5, atol=1e-4
+    )
+    torch.testing.assert_close(
+        x.grad.cpu().float(), x_cpu.grad.float(), rtol=1e-2, atol=3e-5
+    )

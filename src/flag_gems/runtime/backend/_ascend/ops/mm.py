@@ -26,6 +26,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry, libtuner
 
+from .copy import copy as copy_tensor
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,9 +133,13 @@ def _mm_heur_divisible_n(args):
     return args["N"] % args["BLOCK_N"] == 0
 
 
+def _mm_capped_grid(num_tiles):
+    return (min(num_tiles, _MAX_CORE_DIM),)
+
+
 def _mm_grid(M, N, meta):
     num_tiles = triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"])
-    return (min(num_tiles * meta.get("SPLIT_K", 1), _MAX_CORE_DIM),)
+    return _mm_capped_grid(num_tiles * meta.get("SPLIT_K", 1))
 
 
 # Ascend's launch coreDim is uint16. Keep the grid bounded even when the
@@ -257,19 +263,20 @@ def _mm_narrow_n_kernel(
 ):
     # A few output columns do not fill a Cube tile. Reduce independent
     # output elements on Vector cores, accumulating products in FP32.
-    rows = tl.program_id(0) * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
-    rk = tl.arange(0, BLOCK_K)
-    row_acc = tl.zeros((BLOCK_OUT, BLOCK_K), tl.float32)
-    for start in range(tl.cdiv(K, BLOCK_K)):
-        kk = start * BLOCK_K + rk
-        a_rows = tl.load(
-            A + rows[:, None] * K + kk[None, :],
-            mask=(rows < M)[:, None] & (kk < K)[None, :],
-            other=0.0,
-        ).to(tl.float32)
-        b_vec = tl.load(B + kk, mask=kk < K, other=0.0).to(tl.float32)
-        row_acc += a_rows * b_vec[None, :]
-    tl.store(C + rows, tl.sum(row_acc, axis=1), mask=rows < M)
+    for pid in range(tl.program_id(0), tl.cdiv(M, BLOCK_OUT), tl.num_programs(0)):
+        rows = pid * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+        rk = tl.arange(0, BLOCK_K)
+        row_acc = tl.zeros((BLOCK_OUT, BLOCK_K), tl.float32)
+        for start in range(tl.cdiv(K, BLOCK_K)):
+            kk = start * BLOCK_K + rk
+            a_rows = tl.load(
+                A + rows[:, None] * K + kk[None, :],
+                mask=(rows < M)[:, None] & (kk < K)[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            b_vec = tl.load(B + kk, mask=kk < K, other=0.0).to(tl.float32)
+            row_acc += a_rows * b_vec[None, :]
+        tl.store(C + rows, tl.sum(row_acc, axis=1), mask=rows < M)
 
 
 @libentry()
@@ -285,62 +292,68 @@ def _mm_rectangular_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    rows = pid // tl.cdiv(N, BLOCK_N) * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid % tl.cdiv(N, BLOCK_N) * BLOCK_N + tl.arange(0, BLOCK_N)
-    rk = tl.arange(0, BLOCK_K)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-    for start in tl.range(tl.cdiv(K, BLOCK_K)):
-        kk = start * BLOCK_K + rk
-        a = tl.load(
-            A + rows[:, None] * K + kk[None, :],
-            mask=(rows < M)[:, None] & (kk < K)[None, :],
-            other=0.0,
+    for pid in range(
+        tl.program_id(0), tl.cdiv(M, BLOCK_M) * tl.cdiv(N, BLOCK_N), tl.num_programs(0)
+    ):
+        rows = pid // tl.cdiv(N, BLOCK_N) * BLOCK_M + tl.arange(0, BLOCK_M)
+        cols = pid % tl.cdiv(N, BLOCK_N) * BLOCK_N + tl.arange(0, BLOCK_N)
+        rk = tl.arange(0, BLOCK_K)
+        acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for start in tl.range(tl.cdiv(K, BLOCK_K)):
+            kk = start * BLOCK_K + rk
+            a = tl.load(
+                A + rows[:, None] * K + kk[None, :],
+                mask=(rows < M)[:, None] & (kk < K)[None, :],
+                other=0.0,
+            )
+            b = tl.load(
+                B + kk[:, None] * N + cols[None, :],
+                mask=(kk < K)[:, None] & (cols < N)[None, :],
+                other=0.0,
+            )
+            al.compile_hint(a, "dot_pad_only_k")
+            al.compile_hint(b, "dot_pad_only_k")
+            acc = tl.dot(a, b, acc, allow_tf32=False)
+        tl.store(
+            C + rows[:, None] * N + cols[None, :],
+            acc.to(C.dtype.element_ty),
+            mask=(rows < M)[:, None] & (cols < N)[None, :],
         )
-        b = tl.load(
-            B + kk[:, None] * N + cols[None, :],
-            mask=(kk < K)[:, None] & (cols < N)[None, :],
-            other=0.0,
-        )
-        al.compile_hint(a, "dot_pad_only_k")
-        al.compile_hint(b, "dot_pad_only_k")
-        acc = tl.dot(a, b, acc, allow_tf32=False)
-    tl.store(
-        C + rows[:, None] * N + cols[None, :],
-        acc.to(C.dtype.element_ty),
-        mask=(rows < M)[:, None] & (cols < N)[None, :],
-    )
 
 
 @triton.jit
 def _mm_pack_narrow4_split_kernel(B, P, K: tl.constexpr, BK: tl.constexpr):
-    base = tl.program_id(0) * BK
-    idx = tl.arange(0, BK * 4)
-    b = tl.load(B + base * 4 + idx).reshape((BK, 2, 2))
-    b02, b13 = tl.split(b)
-    b0, b2 = tl.split(b02)
-    b1, b3 = tl.split(b13)
-    k = base + tl.arange(0, BK)
-    tl.store(P + k, b0)
-    tl.store(P + K + k, b1)
-    tl.store(P + 2 * K + k, b2)
-    tl.store(P + 3 * K + k, b3)
+    for pid in range(tl.program_id(0), tl.cdiv(K, BK), tl.num_programs(0)):
+        base = pid * BK
+        idx = tl.arange(0, BK * 4)
+        b = tl.load(B + base * 4 + idx).reshape((BK, 2, 2))
+        b02, b13 = tl.split(b)
+        b0, b2 = tl.split(b02)
+        b1, b3 = tl.split(b13)
+        k = base + tl.arange(0, BK)
+        tl.store(P + k, b0)
+        tl.store(P + K + k, b1)
+        tl.store(P + 2 * K + k, b2)
+        tl.store(P + 3 * K + k, b3)
 
 
 @triton.jit
 def _mm_pack_narrow_b_kernel(
     B, P, N: tl.constexpr, K: tl.constexpr, BK: tl.constexpr, BN: tl.constexpr
 ):
-    k = tl.program_id(0) * BK + tl.arange(0, BK)
-    n = tl.arange(0, BN)
-    b = tl.load(
-        B + k[:, None] * N + n[None, :], (k < K)[:, None] & (n < N)[None, :], other=0
-    )
-    tl.store(
-        P + n[:, None] * K + k[None, :],
-        tl.trans(b),
-        (n < N)[:, None] & (k < K)[None, :],
-    )
+    for pid in range(tl.program_id(0), tl.cdiv(K, BK), tl.num_programs(0)):
+        k = pid * BK + tl.arange(0, BK)
+        n = tl.arange(0, BN)
+        b = tl.load(
+            B + k[:, None] * N + n[None, :],
+            (k < K)[:, None] & (n < N)[None, :],
+            other=0,
+        )
+        tl.store(
+            P + n[:, None] * K + k[None, :],
+            tl.trans(b),
+            (n < N)[:, None] & (k < K)[None, :],
+        )
 
 
 @triton.jit
@@ -367,30 +380,31 @@ def _mm_packed_narrow_kernel(
     BM: tl.constexpr,
     BK: tl.constexpr,
 ):
-    rows = tl.program_id(0) * BM + tl.arange(0, BM)
-    cols = tl.arange(0, 16)
-    rk = tl.arange(0, BK)
-    acc = tl.zeros((BM, 16), tl.float32)
-    for s in tl.range(tl.cdiv(K, BK)):
-        k = s * BK + rk
-        a = tl.load(
-            A + rows[:, None] * K + k[None, :],
-            (rows < M)[:, None] & (k < K)[None, :],
-            other=0,
+    for pid in range(tl.program_id(0), tl.cdiv(M, BM), tl.num_programs(0)):
+        rows = pid * BM + tl.arange(0, BM)
+        cols = tl.arange(0, 16)
+        rk = tl.arange(0, BK)
+        acc = tl.zeros((BM, 16), tl.float32)
+        for s in tl.range(tl.cdiv(K, BK)):
+            k = s * BK + rk
+            a = tl.load(
+                A + rows[:, None] * K + k[None, :],
+                (rows < M)[:, None] & (k < K)[None, :],
+                other=0,
+            )
+            bt = tl.load(
+                P + cols[:, None] * K + k[None, :],
+                (cols < N)[:, None] & (k < K)[None, :],
+                other=0,
+            )
+            al.compile_hint(a, "dot_pad_only_k")
+            al.compile_hint(bt, "dot_pad_only_k")
+            acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
+        tl.store(
+            C + rows[:, None] * N + cols[None, :],
+            acc.to(C.dtype.element_ty),
+            (rows < M)[:, None] & (cols < N)[None, :],
         )
-        bt = tl.load(
-            P + cols[:, None] * K + k[None, :],
-            (cols < N)[:, None] & (k < K)[None, :],
-            other=0,
-        )
-        al.compile_hint(a, "dot_pad_only_k")
-        al.compile_hint(bt, "dot_pad_only_k")
-        acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
-    tl.store(
-        C + rows[:, None] * N + cols[None, :],
-        acc.to(C.dtype.element_ty),
-        (rows < M)[:, None] & (cols < N)[None, :],
-    )
 
 
 @triton.jit
@@ -440,15 +454,18 @@ def _mm_materialize_broadcast_kernel(
     S1: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    val = tl.load(X + (idx // C) * S0 + (idx % C) * S1, idx < R * C, other=0)
-    tl.store(Y + idx, val, idx < R * C)
+    for pid in range(tl.program_id(0), tl.cdiv(R * C, BLOCK), tl.num_programs(0)):
+        idx = pid * BLOCK + tl.arange(0, BLOCK)
+        val = tl.load(X + (idx // C) * S0 + (idx % C) * S1, idx < R * C, other=0)
+        tl.store(Y + idx, val, idx < R * C)
 
 
 def _mm_materialize_broadcast(x):
     y = torch.empty(x.shape, dtype=x.dtype, device=x.device)
+    if x.numel() == 0:
+        return y
     with torch_device_fn.device(x.device):
-        _mm_materialize_broadcast_kernel[(triton.cdiv(x.numel(), 1024),)](
+        _mm_materialize_broadcast_kernel[_mm_capped_grid(triton.cdiv(x.numel(), 1024))](
             x,
             y,
             x.shape[0],
@@ -465,13 +482,13 @@ def _mm_materialize_broadcast(x):
 def _mm_pack_wide_panels_kernel(
     B, P, N: tl.constexpr, K: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr
 ):
-    pid = tl.program_id(0)
-    panel = pid // (K // BK)
-    block_k = pid % (K // BK)
-    k = block_k * BK + tl.arange(0, BK)
-    n = tl.arange(0, BN)
-    b = tl.load(B + k[:, None] * N + panel * BN + n[None, :])
-    tl.store(P + panel * K * BN + k[:, None] * BN + n[None, :], b)
+    for pid in range(tl.program_id(0), (N // BN) * (K // BK), tl.num_programs(0)):
+        panel = pid // (K // BK)
+        block_k = pid % (K // BK)
+        k = block_k * BK + tl.arange(0, BK)
+        n = tl.arange(0, BN)
+        b = tl.load(B + k[:, None] * N + panel * BN + n[None, :])
+        tl.store(P + panel * K * BN + k[:, None] * BN + n[None, :], b)
 
 
 @triton.jit
@@ -486,41 +503,41 @@ def _mm_wide_panel_cube_kernel(
     BN: tl.constexpr,
     BK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    panel = pid % (N // BN)
-    rows = (pid // (N // BN)) * BM + tl.arange(0, BM)
-    cols = tl.arange(0, BN)
-    rk = tl.arange(0, BK)
-    acc = tl.zeros((BM, BN), tl.float32)
-    for step in range(K // BK):
-        k = step * BK + rk
-        a = tl.load(A + rows[:, None] * K + k[None, :], rows[:, None] < M, other=0)
-        b = tl.load(P + panel * K * BN + k[:, None] * BN + cols[None, :])
-        al.compile_hint(a, "dot_pad_only_k")
-        al.compile_hint(b, "dot_pad_only_k")
-        acc = tl.dot(a, b, acc, allow_tf32=False)
-    tl.store(
-        C + rows[:, None] * N + panel * BN + cols[None, :],
-        acc.to(C.dtype.element_ty),
-        rows[:, None] < M,
-    )
+    for pid in range(tl.program_id(0), tl.cdiv(M, BM) * (N // BN), tl.num_programs(0)):
+        panel = pid % (N // BN)
+        rows = (pid // (N // BN)) * BM + tl.arange(0, BM)
+        cols = tl.arange(0, BN)
+        rk = tl.arange(0, BK)
+        acc = tl.zeros((BM, BN), tl.float32)
+        for step in range(K // BK):
+            k = step * BK + rk
+            a = tl.load(A + rows[:, None] * K + k[None, :], rows[:, None] < M, other=0)
+            b = tl.load(P + panel * K * BN + k[:, None] * BN + cols[None, :])
+            al.compile_hint(a, "dot_pad_only_k")
+            al.compile_hint(b, "dot_pad_only_k")
+            acc = tl.dot(a, b, acc, allow_tf32=False)
+        tl.store(
+            C + rows[:, None] * N + panel * BN + cols[None, :],
+            acc.to(C.dtype.element_ty),
+            rows[:, None] < M,
+        )
 
 
 @triton.jit
 def _mm_pack_large_panels_kernel(
     B, P, N: tl.constexpr, K: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr
 ):
-    pid = tl.program_id(0)
-    panel = pid // (K // BK)
-    block_k = pid % (K // BK)
-    k = block_k * BK + tl.arange(0, BK)
-    n = tl.arange(0, BN)
-    b = tl.load(
-        B + k[:, None] * N + panel * BN + n[None, :],
-        (panel * BN + n[None, :]) < N,
-        other=0,
-    )
-    tl.store(P + panel * K * BN + k[:, None] * BN + n[None, :], b)
+    for pid in range(tl.program_id(0), tl.cdiv(N, BN) * (K // BK), tl.num_programs(0)):
+        panel = pid // (K // BK)
+        block_k = pid % (K // BK)
+        k = block_k * BK + tl.arange(0, BK)
+        n = tl.arange(0, BN)
+        b = tl.load(
+            B + k[:, None] * N + panel * BN + n[None, :],
+            (panel * BN + n[None, :]) < N,
+            other=0,
+        )
+        tl.store(P + panel * K * BN + k[:, None] * BN + n[None, :], b)
 
 
 @triton.jit
@@ -535,24 +552,26 @@ def _mm_large_panel_cube_kernel(
     BN: tl.constexpr,
     BK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    panel = pid % tl.cdiv(N, BN)
-    rows = (pid // tl.cdiv(N, BN)) * BM + tl.arange(0, BM)
-    cols = tl.arange(0, BN)
-    rk = tl.arange(0, BK)
-    acc = tl.zeros((BM, BN), tl.float32)
-    for step in range(K // BK):
-        k = step * BK + rk
-        a = tl.load(A + rows[:, None] * K + k[None, :], rows[:, None] < M, other=0)
-        b = tl.load(P + panel * K * BN + k[:, None] * BN + cols[None, :])
-        al.compile_hint(a, "dot_pad_only_k")
-        al.compile_hint(b, "dot_pad_only_k")
-        acc = tl.dot(a, b, acc, allow_tf32=False)
-    tl.store(
-        C + rows[:, None] * N + panel * BN + cols[None, :],
-        acc.to(C.dtype.element_ty),
-        (rows[:, None] < M) & (panel * BN + cols[None, :] < N),
-    )
+    for pid in range(
+        tl.program_id(0), tl.cdiv(M, BM) * tl.cdiv(N, BN), tl.num_programs(0)
+    ):
+        panel = pid % tl.cdiv(N, BN)
+        rows = (pid // tl.cdiv(N, BN)) * BM + tl.arange(0, BM)
+        cols = tl.arange(0, BN)
+        rk = tl.arange(0, BK)
+        acc = tl.zeros((BM, BN), tl.float32)
+        for step in range(K // BK):
+            k = step * BK + rk
+            a = tl.load(A + rows[:, None] * K + k[None, :], rows[:, None] < M, other=0)
+            b = tl.load(P + panel * K * BN + k[:, None] * BN + cols[None, :])
+            al.compile_hint(a, "dot_pad_only_k")
+            al.compile_hint(b, "dot_pad_only_k")
+            acc = tl.dot(a, b, acc, allow_tf32=False)
+        tl.store(
+            C + rows[:, None] * N + panel * BN + cols[None, :],
+            acc.to(C.dtype.element_ty),
+            (rows[:, None] < M) & (panel * BN + cols[None, :] < N),
+        )
 
 
 @triton.jit
@@ -612,6 +631,13 @@ def get_higher_dtype(a, b):
 def mm(a, b):
     logger.debug("GEMS_ASCEND MM")
     device = a.device
+    assert a.ndim == b.ndim == 2 and a.shape[1] == b.shape[0], "incompatible dimensions"
+    if a.shape[0] == 0 or b.shape[1] == 0:
+        return torch.empty(
+            (a.shape[0], b.shape[1]),
+            device=device,
+            dtype=get_higher_dtype(a.dtype, b.dtype),
+        )
     # Materialize broadcast operands to avoid a zero-stride Cube lowering failure.
     if a.dtype == b.dtype == torch.bfloat16:
         if 0 in a.stride():
@@ -641,7 +667,7 @@ def mm(a, b):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         packed_b = torch.empty((N, K), device=device, dtype=b.dtype)
         with torch_device_fn.device(device), _blockified():
-            _mm_pack_narrow_b_kernel[(triton.cdiv(K, 512),)](
+            _mm_pack_narrow_b_kernel[_mm_capped_grid(triton.cdiv(K, 512))](
                 b,
                 packed_b,
                 N,
@@ -650,7 +676,7 @@ def mm(a, b):
                 16,
                 multibuffer=False,
             )
-            _mm_packed_narrow_kernel[(triton.cdiv(M, block_m),)](
+            _mm_packed_narrow_kernel[_mm_capped_grid(triton.cdiv(M, block_m))](
                 a,
                 packed_b,
                 c,
@@ -676,14 +702,14 @@ def mm(a, b):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         packed_b = torch.empty((4, K), device=device, dtype=b.dtype)
         with torch_device_fn.device(device), _blockified():
-            _mm_pack_narrow4_split_kernel[(K // 512,)](
+            _mm_pack_narrow4_split_kernel[_mm_capped_grid(K // 512)](
                 b,
                 packed_b,
                 K,
                 512,
                 multibuffer=False,
             )
-            _mm_packed_narrow_kernel[(triton.cdiv(M, 16),)](
+            _mm_packed_narrow_kernel[_mm_capped_grid(triton.cdiv(M, 16))](
                 a,
                 packed_b,
                 c,
@@ -714,10 +740,12 @@ def mm(a, b):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         packed_b = torch.empty((N // block_n, K, block_n), device=device, dtype=b.dtype)
         with torch_device_fn.device(device), _blockified():
-            _mm_pack_wide_panels_kernel[(N // block_n * (K // 64),)](
+            _mm_pack_wide_panels_kernel[_mm_capped_grid(N // block_n * (K // 64))](
                 b, packed_b, N, K, block_n, 64, multibuffer=False
             )
-            _mm_wide_panel_cube_kernel[(triton.cdiv(M, block_m) * (N // block_n),)](
+            _mm_wide_panel_cube_kernel[
+                _mm_capped_grid(triton.cdiv(M, block_m) * (N // block_n))
+            ](
                 a,
                 packed_b,
                 c,
@@ -755,7 +783,9 @@ def mm(a, b):
             (triton.cdiv(N, 256), K, 256), device=device, dtype=b.dtype
         )
         with torch_device_fn.device(device), _blockified():
-            _mm_pack_large_panels_kernel[(triton.cdiv(N, 256) * (K // 64),)](
+            _mm_pack_large_panels_kernel[
+                _mm_capped_grid(triton.cdiv(N, 256) * (K // 64))
+            ](
                 b,
                 packed_b,
                 N,
@@ -764,7 +794,9 @@ def mm(a, b):
                 64,
                 multibuffer=False,
             )
-            _mm_large_panel_cube_kernel[(triton.cdiv(M, 128) * triton.cdiv(N, 256),)](
+            _mm_large_panel_cube_kernel[
+                _mm_capped_grid(triton.cdiv(M, 128) * triton.cdiv(N, 256))
+            ](
                 a,
                 packed_b,
                 c,
@@ -822,7 +854,9 @@ def mm(a, b):
     ):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         with torch_device_fn.device(device), _blockified():
-            _mm_rectangular_kernel[(triton.cdiv(M, 128) * triton.cdiv(N, 256),)](
+            _mm_rectangular_kernel[
+                _mm_capped_grid(triton.cdiv(M, 128) * triton.cdiv(N, 256))
+            ](
                 a,
                 b,
                 c,
@@ -857,7 +891,9 @@ def mm(a, b):
         bn = 64 if N == 64 else 256
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         with torch_device_fn.device(device), _blockified():
-            _mm_rectangular_kernel[(triton.cdiv(M, bm) * triton.cdiv(N, bn),)](
+            _mm_rectangular_kernel[
+                _mm_capped_grid(triton.cdiv(M, bm) * triton.cdiv(N, bn))
+            ](
                 a,
                 b,
                 c,
@@ -910,7 +946,7 @@ def mm(a, b):
         block_n = 32 if N <= 32 else (128 if N <= 128 else 256)
         with torch_device_fn.device(device), _blockified():
             _mm_rectangular_kernel[
-                (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+                _mm_capped_grid(triton.cdiv(M, block_m) * triton.cdiv(N, block_n))
             ](
                 a,
                 b,
@@ -936,7 +972,7 @@ def mm(a, b):
     ):
         if N == 1:
             with torch_device_fn.device(device):
-                _mm_narrow_n_kernel[(triton.cdiv(M, 4),)](
+                _mm_narrow_n_kernel[_mm_capped_grid(triton.cdiv(M, 4))](
                     a,
                     b,
                     c,
@@ -952,7 +988,7 @@ def mm(a, b):
             block_n = 256
             with torch_device_fn.device(device), _blockified():
                 _mm_rectangular_kernel[
-                    (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+                    _mm_capped_grid(triton.cdiv(M, block_m) * triton.cdiv(N, block_n))
                 ](
                     a,
                     b,
@@ -996,6 +1032,20 @@ def mm(a, b):
 
 def mm_out(a, b, *, out):
     logger.debug("GEMS_ASCEND MM_OUT")
+    assert a.ndim == b.ndim == 2 and a.shape[1] == b.shape[0], "incompatible dimensions"
+    if out.device != a.device or b.device != a.device:
+        raise RuntimeError("all tensors must be on the same device")
+    if out.dtype != get_higher_dtype(a.dtype, b.dtype):
+        raise RuntimeError("out dtype must match the result dtype")
+    # Save aliased operands before resizing or writing the destination.
+    if torch._C._is_alias_of(out, a):
+        a = copy_tensor(a, a)
+    if torch._C._is_alias_of(out, b):
+        b = copy_tensor(b, b)
+    if out.shape != (a.shape[0], b.shape[1]):
+        out.resize_(a.shape[0], b.shape[1])
+    if out.numel() == 0:
+        return out
     if not a.is_contiguous():
         a = a.contiguous()
     if not b.is_contiguous():

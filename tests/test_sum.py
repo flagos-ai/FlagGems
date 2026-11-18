@@ -261,12 +261,16 @@ def test_sum_launch_grid_limit(sum_ops, num_tiles, expected):
 @pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend coreDim limit")
 @pytest.mark.parametrize("dim", [(0,), (-1,), (0, 2)])
 @pytest.mark.parametrize("keepdim", [False, True])
-def test_sum_dim_empty_output_does_not_launch(sum_ops, monkeypatch, dim, keepdim):
+@pytest.mark.parametrize("use_out", [False, True])
+def test_sum_dim_empty_output_does_not_launch(
+    sum_ops, monkeypatch, checked_launches, dim, keepdim, use_out
+):
     def unexpected_zero_launch(out):
         pytest.fail("An empty output must not launch the zero_ kernel")
 
     monkeypatch.setattr(sum_ops, "zero_", unexpected_zero_launch)
-    _check_sum(torch.empty((2, 0, 3)), dim, keepdim, use_out=False)
+    _check_sum(torch.empty((2, 0, 3)), dim, keepdim, use_out=use_out)
+    assert not checked_launches
 
 
 @pytest.mark.sum
@@ -400,3 +404,197 @@ def test_sum_full_reduction_forced_grid_stride(
     torch.npu.synchronize()
     torch.testing.assert_close(result.cpu(), expected, rtol=1e-5, atol=1e-4)
     assert {name for name, _ in checked_launches} == {"sum_kernel_1", "sum_kernel_2"}
+
+
+@pytest.fixture
+def no_sum_reduction_launch(sum_ops, monkeypatch):
+    class UnexpectedKernel:
+        def __getitem__(self, grid):
+            pytest.fail("Empty input must not launch a reduction kernel")
+
+    for name in (
+        "sum_kernel_1",
+        "sum_kernel_2",
+        "sum_dim_kernel_non_inner",
+        "sum_dim_kernel_inner",
+        "sum_dim_kernel",
+    ):
+        monkeypatch.setattr(sum_ops, name, UnexpectedKernel())
+    zero = sum_ops.zero_
+
+    def checked_zero(out):
+        assert out.numel() > 0, "Empty output must not launch zero_"
+        return zero(out)
+
+    monkeypatch.setattr(sum_ops, "zero_", checked_zero)
+
+
+@pytest.mark.sum
+@pytest.mark.sum_out
+@pytest.mark.sum_dim
+@pytest.mark.sum_dim_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize(
+    "shape,dim",
+    [
+        ((2, 0, 3), 1),
+        ((2, 0, 3), (1,)),
+        ((2, 0, 3), (-2,)),
+        ((2, 0, 3), (0, 1)),
+        ((2, 0, 3), 0),
+        ((2, 0, 3), (0, 2)),
+        ((0, 2, 3), (1,)),
+        ((2, 0, 3), None),
+        ((2, 0, 3), ()),
+        ((2, 0, 3), []),
+    ],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize(
+    "dtype,output_dtype",
+    [
+        (torch.float32, None),
+        (torch.bool, None),
+        (torch.int32, None),
+        (torch.float16, torch.float32),
+        (torch.float32, torch.bool),
+    ],
+)
+def test_sum_dim_empty_review(
+    sum_ops, no_sum_reduction_launch, shape, dim, keepdim, use_out, dtype, output_dtype
+):
+    assert "_ascend" in sum_ops.__name__
+    inp_cpu = torch.empty(shape, dtype=dtype)
+    expected = torch.sum(inp_cpu, dim=dim, keepdim=keepdim, dtype=output_dtype)
+    inp = inp_cpu.to(flag_gems.device)
+    if use_out:
+        out = torch.empty(0, dtype=expected.dtype, device=inp.device)
+        result = flag_gems.sum_dim_out(
+            inp, dim=dim, keepdim=keepdim, dtype=output_dtype, out=out
+        )
+        assert result is out
+    else:
+        result = flag_gems.sum_dim(inp, dim=dim, keepdim=keepdim, dtype=output_dtype)
+    torch.npu.synchronize()
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.sum
+@pytest.mark.sum_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.bool, torch.int32]
+)
+@pytest.mark.parametrize("output_dtype", [None, torch.float32])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_sum_empty_review(no_sum_reduction_launch, dtype, output_dtype, use_out):
+    inp_cpu = torch.empty((2, 0, 3), dtype=dtype)
+    expected = torch.sum(inp_cpu, dtype=output_dtype)
+    inp = inp_cpu.to(flag_gems.device)
+    if use_out:
+        out = torch.empty(0, dtype=expected.dtype, device=inp.device)
+        result = flag_gems.sum_out(inp, dtype=output_dtype, out=out)
+        assert result is out
+    else:
+        result = flag_gems.sum(inp, dtype=output_dtype)
+    torch.npu.synchronize()
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.sum_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize("layout", ["transpose", "slice", "permute"])
+@pytest.mark.parametrize("output_dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("explicit_dtype", [False, True])
+def test_sum_out_noncontiguous_review(
+    sum_ops, monkeypatch, checked_launches, layout, output_dtype, explicit_dtype
+):
+    assert "_ascend" in sum_ops.__name__
+    monkeypatch.setattr(sum_ops, "_ASCEND_MAX_CORE_DIM", 3)
+    generator = torch.Generator().manual_seed(20261117)
+    base_cpu = torch.randn((17, 19, 23), generator=generator).half()
+    base = base_cpu.to(flag_gems.device)
+
+    def view(x):
+        if layout == "transpose":
+            return x.transpose(0, 1)
+        if layout == "slice":
+            return x[:, ::2]
+        return x.permute(2, 0, 1)
+
+    inp_cpu, inp = view(base_cpu), view(base)
+    assert not inp.is_contiguous()
+    expected = inp_cpu.double().sum().to(output_dtype)
+    out = torch.empty(0, dtype=output_dtype, device=inp.device)
+    result = flag_gems.sum_out(
+        inp, dtype=output_dtype if explicit_dtype else None, out=out
+    )
+    assert result is out
+    torch.npu.synchronize()
+    torch.testing.assert_close(
+        result.cpu(),
+        expected,
+        rtol=TOLERANCES[output_dtype][0],
+        atol=TOLERANCES[output_dtype][1],
+    )
+    assert {name for name, _ in checked_launches} == {"sum_kernel_1", "sum_kernel_2"}
+
+
+@pytest.mark.sum
+@pytest.mark.sum_out
+@pytest.mark.sum_dim
+@pytest.mark.sum_dim_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend sum reduction")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("case", ["overflow", "rounding"])
+@pytest.mark.parametrize("entry", ["full", None, ()])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_sum_partial_precision_review(
+    sum_ops, monkeypatch, dtype, case, entry, keepdim, use_out
+):
+    monkeypatch.setattr(sum_ops, "_ASCEND_MAX_CORE_DIM", 3)
+    if case == "overflow":
+        inp_cpu = torch.full((1024, 1024), 128.0, dtype=dtype)
+        inp_cpu[512:] = -128.0
+    else:
+        # First-stage tiles sum to +4097 and -4096. Rounding the positive
+        # partial to FP16/BF16 loses the residual before cancellation.
+        inp_cpu = torch.zeros((1024, 1024), dtype=dtype)
+        inp_cpu[:512, 0] = 4096
+        inp_cpu[:512, 1] = 1
+        inp_cpu[512:, 0] = -4096
+    expected = inp_cpu.double().sum().to(dtype)
+    if entry != "full" and keepdim:
+        expected = expected.reshape(1, 1)
+    inp = inp_cpu.to(flag_gems.device)
+    first_stage = sum_ops.sum_kernel_1
+    launches = []
+
+    class CheckedPartials:
+        def __getitem__(self, grid):
+            def launch(inp, mid, size, block):
+                assert mid.dtype == torch.float32
+                assert mid.numel() == math.ceil(size / block)
+                assert mid.numel() > math.prod(grid)
+                launches.append(grid)
+                return first_stage[grid](inp, mid, size, block)
+
+            return launch
+
+    monkeypatch.setattr(sum_ops, "sum_kernel_1", CheckedPartials())
+    if use_out:
+        out = torch.empty(0, dtype=dtype, device=inp.device)
+        if entry == "full":
+            result = flag_gems.sum_out(inp, out=out)
+        else:
+            result = flag_gems.sum_dim_out(inp, dim=entry, keepdim=keepdim, out=out)
+        assert result is out
+    elif entry == "full":
+        result = flag_gems.sum(inp)
+    else:
+        result = flag_gems.sum_dim(inp, dim=entry, keepdim=keepdim)
+    torch.npu.synchronize()
+    assert launches
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)

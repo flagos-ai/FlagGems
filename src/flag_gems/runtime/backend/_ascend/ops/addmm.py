@@ -118,8 +118,13 @@ def _prune_addmm_configs(configs, named_args, **kwargs):
         "stride_ak",
         "stride_bk",
         "stride_bn",
+        "stride_im",
+        "stride_in",
         "stride_cm",
         "stride_cn",
+        "BIAS_IS_VECTOR",
+        "BIAS_IS_SCALAR",
+        "BETA_IS_ZERO",
         "DOT_PAD_ONLY_K",
     ],
     prune_configs_by={"early_config_prune": _prune_addmm_configs},
@@ -155,6 +160,7 @@ def addmm_kernel(
     DIVISIBLE_N: tl.constexpr,
     BIAS_IS_VECTOR: tl.constexpr,
     BIAS_IS_SCALAR: tl.constexpr,
+    BETA_IS_ZERO: tl.constexpr,
     DOT_PAD_ONLY_K: tl.constexpr = False,
 ):
     grid_m = tl.cdiv(M, BLOCK_M)
@@ -234,25 +240,29 @@ def addmm_kernel(
             mask = mask_m[:, None]
         else:
             mask = mask_m[:, None] & mask_n[None, :]
-        if BIAS_IS_VECTOR:
-            # Load a 1-D bias once per output-column tile.
-            if DIVISIBLE_N:
-                bias_tile = tl.load(bias + stride_in * rbn)[None, :]
+        acc = acc * alpha
+        # A runtime branch here makes the large tiles exceed Ascend's UB.
+        # Specialize only the zero case so NaN/Inf bias is never loaded then.
+        if not BETA_IS_ZERO:
+            if BIAS_IS_VECTOR:
+                # Load a 1-D bias once per output-column tile.
+                if DIVISIBLE_N:
+                    bias_tile = tl.load(bias + stride_in * rbn)[None, :]
+                else:
+                    bias_tile = tl.load(
+                        bias + stride_in * rbn,
+                        mask=mask_n,
+                        other=0.0,
+                    )[None, :]
+            elif BIAS_IS_SCALAR:
+                bias_tile = tl.load(bias)
             else:
-                bias_tile = tl.load(
-                    bias + stride_in * rbn,
-                    mask=mask_n,
-                    other=0.0,
-                )[None, :]
-        elif BIAS_IS_SCALAR:
-            bias_tile = tl.load(bias)
-        else:
-            bias_ptr = bias + stride_im * ram[:, None] + stride_in * rbn[None, :]
-            if DIVISIBLE_M and DIVISIBLE_N:
-                bias_tile = tl.load(bias_ptr)
-            else:
-                bias_tile = tl.load(bias_ptr, mask=mask, other=0.0)
-        acc = acc * alpha + bias_tile.to(acc.dtype) * beta
+                bias_ptr = bias + stride_im * ram[:, None] + stride_in * rbn[None, :]
+                if DIVISIBLE_M and DIVISIBLE_N:
+                    bias_tile = tl.load(bias_ptr)
+                else:
+                    bias_tile = tl.load(bias_ptr, mask=mask, other=0.0)
+            acc += bias_tile.to(acc.dtype) * beta
         if DIVISIBLE_M and DIVISIBLE_N:
             tl.store(C_ptr, acc.to(C.dtype.element_ty))
         else:
@@ -299,23 +309,36 @@ def _addmm_small_add(P, Bias, C, N: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["alpha", "beta"])
-def _addmm_small_finish(P, Bias, C, alpha, beta, N: tl.constexpr, UNIT: tl.constexpr):
+def _addmm_small_finish(
+    P,
+    Bias,
+    C,
+    alpha,
+    beta,
+    N: tl.constexpr,
+    UNIT: tl.constexpr,
+    BETA_IS_ZERO: tl.constexpr,
+):
     total_elements = N * N
     total_blocks = tl.cdiv(total_elements, 8192)
     for block_id in range(tl.program_id(0), total_blocks, tl.num_programs(0)):
         idx = block_id * 8192 + tl.arange(0, 8192)
         value = tl.load(P + idx, idx < total_elements, other=0)
-        bias = tl.load(Bias + idx, idx < total_elements, other=0).to(tl.float32)
-        if UNIT:
-            result = value + bias
-        else:
-            result = value * alpha + bias * beta
+        result = value * alpha
+        if not BETA_IS_ZERO:
+            bias = tl.load(Bias + idx, idx < total_elements, other=0).to(tl.float32)
+            if UNIT:
+                result = value + bias
+            else:
+                result += bias * beta
         tl.store(C + idx, result, idx < total_elements)
 
 
 def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
     M, K = mat1.shape
     _, N = mat2.shape
+    if M == 0 or N == 0:
+        return out
     # Keep row- or column-contiguous views and materialize only general strides.
     if mat1.stride(0) > 1 and mat1.stride(1) > 1:
         mat1 = mat1.contiguous()
@@ -362,6 +385,7 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
                     beta,
                     N,
                     UNIT=False,
+                    BETA_IS_ZERO=beta == 0,
                     enable_auto_blockify=True,
                 )
         return out
@@ -435,6 +459,7 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
             enable_auto_blockify=True,
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
+            BETA_IS_ZERO=beta == 0,
             DOT_PAD_ONLY_K=(
                 mat1.dtype in (torch.float16, torch.bfloat16)
                 and mat1.stride(1) == 1
@@ -463,6 +488,12 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     logger.debug("GEMS_ASCEND ADDMM_OUT")
+    if out is not None and out.dtype != mat1.dtype:
+        raise RuntimeError("out dtype must match mat1 dtype")
+    return _addmm_out(bias, mat1, mat2, beta=beta, alpha=alpha, out=out)
+
+
+def _addmm_out(bias, mat1, mat2, *, beta, alpha, out):
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -472,7 +503,8 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     if out is None:
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
-        assert out.shape == (M, N), "Incompatible output shape"
+        if out.device != mat1.device:
+            raise RuntimeError("out must be on the same device as mat1")
         # Preserve aliased inputs before writing the output.
         if torch._C._is_alias_of(out, bias):
             bias = bias.clone()
@@ -480,6 +512,8 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
             mat1 = mat1.clone()
         if torch._C._is_alias_of(out, mat2):
             mat2 = mat2.clone()
+        if out.shape != (M, N):
+            out.resize_(M, N)
     return _launch_addmm(bias, mat1, mat2, out, alpha, beta)
 
 
@@ -516,4 +550,4 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
         raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
 
     bias_c = bias.to(out_dtype)
-    return addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)
+    return _addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)

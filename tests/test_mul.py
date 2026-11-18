@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
+from contextlib import nullcontext
 
 import numpy as np
 import pytest
 import torch
+import triton
 
 import flag_gems
 
@@ -452,3 +455,102 @@ def test_mul_large_tensor_scalar_inplace(n_elements, scalar):
     res_out = flag_gems.mul_(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend complex launch grid"
+)
+@pytest.mark.parametrize("runtime_meta", [False, True])
+@pytest.mark.parametrize("n_elements", [2051, 65535 * 1024 + 1])
+def test_mul_complex_grid_meta_review(monkeypatch, runtime_meta, n_elements):
+    mul_ops = importlib.import_module(flag_gems.mul.__module__)
+    assert "_ascend" in mul_ops.__name__
+    monkeypatch.setattr(
+        mul_ops, "_needs_runtime_meta_for_constexpr_tuple", lambda: runtime_meta
+    )
+    monkeypatch.setattr(mul_ops.torch_device_fn, "device", lambda device: nullcontext())
+    launches = []
+
+    class CaptureGrid:
+        def __getitem__(self, grid):
+            assert callable(grid)
+            for block in (256, 512, 1024):
+                expected = min(triton.cdiv(n_elements, block), 65535)
+                assert grid({"BLOCK_SIZE": block}) == (expected,)
+
+            def launch(*args, **kwargs):
+                launches.append(True)
+
+            return launch
+
+    kernel_name = (
+        "mul_complex_generic_nd_runtime_meta_kernel"
+        if runtime_meta
+        else "mul_complex_generic_nd_kernel"
+    )
+    monkeypatch.setattr(mul_ops, kernel_name, CaptureGrid())
+    # Meta tensors test the real launcher above the cap without allocating GBs.
+    output = torch.empty(n_elements, device="meta", dtype=torch.complex64)
+    part = torch.empty(n_elements, device="meta")
+    result = mul_ops._launch_complex_generic(
+        part,
+        part,
+        part,
+        part,
+        output,
+        (n_elements,),
+        [(1,)] * 4,
+        (2,),
+        (2,),
+        torch.complex64,
+    )
+    assert result is output
+    assert launches == [True]
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend complex launch grid"
+)
+@pytest.mark.parametrize("block_size", [256, 512])
+@pytest.mark.parametrize("runtime_meta", [False, True])
+@pytest.mark.parametrize("n_elements", [2051, 262147])
+def test_mul_complex_grid_stride_review(
+    monkeypatch, block_size, runtime_meta, n_elements
+):
+    mul_ops = importlib.import_module(flag_gems.mul.__module__)
+    monkeypatch.setattr(
+        mul_ops, "_needs_runtime_meta_for_constexpr_tuple", lambda: runtime_meta
+    )
+    kernel_name = (
+        "mul_complex_generic_nd_runtime_meta_kernel"
+        if runtime_meta
+        else "mul_complex_generic_nd_kernel"
+    )
+    kernel = getattr(mul_ops, kernel_name)
+    while not isinstance(kernel, triton.runtime.JITFunction):
+        kernel = kernel.fn
+    launches = []
+
+    class FixedTileKernel:
+        def __getitem__(self, grid):
+            def launch(*args, **kwargs):
+                resolved = grid({"BLOCK_SIZE": block_size})
+                assert resolved == (min(triton.cdiv(n_elements, block_size), 65535),)
+                # Exercise multiple grid strides and the masked last tile with
+                # both implementations, without requiring huge allocations.
+                launches.append(resolved)
+                return kernel[(3,)](*args, **kwargs, BLOCK_SIZE=block_size)
+
+            return launch
+
+    monkeypatch.setattr(mul_ops, kernel_name, FixedTileKernel())
+    generator = torch.Generator().manual_seed(20261117)
+    a_cpu = torch.randn((n_elements,), dtype=torch.complex64, generator=generator)
+    b_cpu = torch.tensor([1.5 - 0.5j], dtype=torch.complex64)
+    expected = a_cpu * b_cpu
+    result = flag_gems.mul(a_cpu.to(flag_gems.device), b_cpu.to(flag_gems.device))
+    torch.npu.synchronize()
+    assert launches
+    torch.testing.assert_close(result.cpu(), expected, rtol=1e-5, atol=1e-6)

@@ -459,3 +459,50 @@ def test_all_dim_nested_loops_accuracy(all_ops, dtype, workers):
         kernel = kernel.fn
     kernel[(workers,)](inp, out, 31, 259, BLOCK_M=4, BLOCK_N=128)
     _assert_exact(out, expected, torch.all(inp != 0, dim=1))
+
+
+@pytest.mark.all_dim
+@pytest.mark.all_dims
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend reduction masks")
+@pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
+@pytest.mark.parametrize("dim", [1, (0, 2)])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("has_zeros", [False, True])
+def test_all_dim_tail_masks_review(
+    all_ops, monkeypatch, dtype, dim, keepdim, has_zeros
+):
+    # Compressing either input yields M=31, N=259. Both masks are active
+    # in the last tile for BLOCK_M=4 and BLOCK_N=128.
+    shape = (31, 259) if isinstance(dim, int) else (7, 31, 37)
+    inp_cpu = torch.ones(shape, dtype=dtype)
+    if dtype != torch.bool:
+        inp_cpu[..., 1::2] = -2
+    if has_zeros:
+        inp_cpu[(0,) * len(shape)] = 0
+        inp_cpu[tuple(s - 1 for s in shape)] = 0
+    kernel = all_ops.all_kernel_dim
+    while not isinstance(kernel, triton.runtime.JITFunction):
+        kernel = kernel.fn
+    launches = []
+
+    class TailKernel:
+        def __getitem__(self, grid):
+            def launch(inp, out, m, n):
+                assert (m, n) == (31, 259)
+                assert m % 4 and n % 128
+                assert grid({"BLOCK_M": 4}) == (8,)
+                launches.append(True)
+                # Three programs also force multiple row grid strides.
+                return kernel[(3,)](inp, out, m, n, BLOCK_M=4, BLOCK_N=128)
+
+            return launch
+
+    monkeypatch.setattr(all_ops, "all_kernel_dim", TailKernel())
+    _check_all(
+        inp_cpu,
+        inp_cpu.to(flag_gems.device),
+        dim=dim,
+        keepdim=keepdim,
+        global_reduce=False,
+    )
+    assert launches == [True]

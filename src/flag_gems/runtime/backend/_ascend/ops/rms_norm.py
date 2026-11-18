@@ -218,12 +218,18 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    BLOCK_SIZE = min(triton.next_power_of_2(N), 12064)
-
     x = x.contiguous()
     weight = weight.contiguous()
     y = torch.empty_like(x)
     inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+    if M == 0 or N == 0:
+        if N == 0:
+            inv_rms = torch.full(
+                (M,), float("nan"), device=x.device, dtype=torch.float32
+            )
+        return y, inv_rms
+
+    BLOCK_SIZE = min(triton.next_power_of_2(N), 12064)
 
     with torch_device_fn.device(x.device):
         rms_norm_kernel[min(M, MAX_CORE_DIM),](
@@ -240,11 +246,14 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    BLOCK_SIZE = min(triton.next_power_of_2(N), 6912)
     x = x.contiguous()
     dy = dy.contiguous()
     weight = weight.contiguous()
     dx = torch.empty_like(x)
+    if M == 0 or N == 0:
+        return dx, torch.zeros_like(weight)
+
+    BLOCK_SIZE = min(triton.next_power_of_2(N), 6912)
 
     with torch_device_fn.device(x.device):
         rms_norm_grad_dx_kernel[min(M, MAX_CORE_DIM),](
@@ -277,6 +286,6 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
             ROW_BLOCK_SIZE,
             COL_BLOCK_SIZE,
         )
-        dw = sum_dim(partial_buffer, dim=[0], dtype=x.dtype)
+        dw = sum_dim(partial_buffer, dim=[0], dtype=weight.dtype).reshape(weight.shape)
 
     return dx, dw

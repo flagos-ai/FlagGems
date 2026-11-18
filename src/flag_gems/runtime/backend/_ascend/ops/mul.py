@@ -1032,9 +1032,9 @@ def _launch_complex_generic(
     out_r_stride = out_r_stride or (0,)
     out_i_stride = out_i_stride or (0,)
     MAX_CORE_DIM = 65535
-    num_blocks = triton.cdiv(n_elements, 256)
-    grid_size = min(num_blocks, MAX_CORE_DIM)
-    grid = lambda meta: (grid_size,)
+    grid = lambda meta: (
+        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), MAX_CORE_DIM),
+    )
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape

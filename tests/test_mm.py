@@ -306,3 +306,204 @@ def test_mm_ascend_large_shape_entrypoints(use_out):
     else:
         out = flag_gems.mm(a, b)
     utils.gems_assert_close(out, ref, a.dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.mm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+@pytest.mark.parametrize(
+    "M,N,K", [(0, 32, 128), (16, 0, 128), (0, 16, 2048), (0, 0, 0)]
+)
+@pytest.mark.parametrize("use_out", [False, True])
+def test_mm_ascend_review_empty(monkeypatch, M, N, K, use_out):
+    ops = flag_gems.mm.__globals__
+
+    class NoLaunch:
+        def __getitem__(self, grid):
+            pytest.fail(f"empty mm launched grid {grid}")
+
+    for name in list(ops):
+        if name.endswith("_kernel"):
+            monkeypatch.setitem(ops, name, NoLaunch())
+    a = torch.empty((M, K), dtype=torch.bfloat16, device=flag_gems.device)
+    b = torch.empty((K, N), dtype=a.dtype, device=a.device)
+    if use_out:
+        out = torch.empty(0, dtype=a.dtype, device=a.device)
+        result = flag_gems.mm_out(a, b, out=out)
+        assert result is out
+    else:
+        result = flag_gems.mm(a, b)
+    torch.npu.synchronize()
+    assert result.shape == (M, N) and result.numel() == 0
+
+
+@pytest.mark.mm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+@pytest.mark.parametrize("layout", ["empty", "wrong_shape", "strided", "alias"])
+def test_mm_ascend_review_out_resize(layout):
+    a = torch.randn((33, 128), device=flag_gems.device)
+    b = torch.randn((128, 17), device=a.device)
+    expected = a.cpu() @ b.cpu()
+    if layout == "strided":
+        out = torch.empty((17, 33), device=a.device).t()
+    elif layout == "alias":
+        out = a
+    else:
+        out = torch.empty((0,) if layout == "empty" else (1, 3), device=a.device)
+    old_stride = out.stride()
+    assert flag_gems.mm_out(a, b, out=out) is out
+    torch.npu.synchronize()
+    if layout == "strided":
+        assert out.stride() == old_stride
+    utils.gems_assert_close(out, expected, torch.float32, reduce_dim=128)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+@pytest.mark.parametrize(
+    "M,N,K,dtype,kernel_name",
+    [
+        (37, 1, 129, torch.float16, "_mm_narrow_n_kernel"),
+        (641, 33, 3, torch.float16, "_mm_rectangular_kernel"),
+        (257, 16, 2048, torch.bfloat16, "_mm_packed_narrow_kernel"),
+        (81, 4, 8704, torch.bfloat16, "_mm_packed_narrow_kernel"),
+        (145, 97, 257, torch.float32, "mm_kernel"),
+    ],
+)
+def test_mm_ascend_review_capped_routes(monkeypatch, M, N, K, dtype, kernel_name):
+    ops = flag_gems.mm.__globals__
+    monkeypatch.setitem(ops, "_MAX_CORE_DIM", 2)
+    kernel = ops[kernel_name]
+    grids = []
+
+    class CheckedKernel:
+        def __getitem__(self, grid):
+            def checked(meta):
+                resolved = grid(meta) if callable(grid) else grid
+                assert resolved == (2,)
+                grids.append(resolved)
+                return resolved
+
+            return kernel[checked]
+
+    monkeypatch.setitem(ops, kernel_name, CheckedKernel())
+    a = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=dtype, device=a.device)
+    expected = a.cpu().float() @ b.cpu().float()
+    result = flag_gems.mm(a, b)
+    torch.npu.synchronize()
+    assert grids
+    utils.gems_assert_close(result, expected, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+def test_mm_ascend_review_narrow_real_core_dim():
+    M, K = 262144, 128
+    a = torch.ones((M, K), dtype=torch.float16, device=flag_gems.device)
+    b = torch.ones((K, 1), dtype=a.dtype, device=a.device)
+    result = flag_gems.mm(a, b)
+    torch.npu.synchronize()
+    torch.testing.assert_close(
+        result.cpu(), torch.full((M, 1), K, dtype=a.dtype), rtol=0, atol=0
+    )
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+@pytest.mark.parametrize("family", ["wide", "large"])
+def test_mm_ascend_review_panel_loops(family):
+    ops = flag_gems.mm.__globals__
+    M, N, K = 145, 512 if family == "wide" else 513, 256
+    a = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=a.dtype, device=a.device)
+    packed = torch.empty(((N + 255) // 256, K, 256), dtype=a.dtype, device=a.device)
+    result = torch.empty((M, N), dtype=a.dtype, device=a.device)
+    with ops["_blockified"]():
+        ops[f"_mm_pack_{family}_panels_kernel"][(2,)](
+            b, packed, N, K, 256, 64, multibuffer=False
+        )
+        ops[f"_mm_{family}_panel_cube_kernel"][(2,)](
+            a,
+            packed,
+            result,
+            M,
+            N,
+            K,
+            128,
+            256,
+            128,
+            multibuffer=True,
+            unit_flag=True,
+            sync_solver=False,
+        )
+    torch.npu.synchronize()
+    expected = a.cpu().float() @ b.cpu().float()
+    utils.gems_assert_close(result, expected, a.dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+def test_mm_ascend_review_broadcast_materialize(monkeypatch):
+    ops = flag_gems.mm.__globals__
+    monkeypatch.setitem(ops, "_MAX_CORE_DIM", 2)
+    x = torch.arange(129, dtype=torch.float32).to(torch.bfloat16).to(flag_gems.device)
+    x = x.expand(73, 129)
+    result = ops["_mm_materialize_broadcast"](x)
+    torch.npu.synchronize()
+    torch.testing.assert_close(result.cpu(), x.cpu(), rtol=0, atol=0)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+@pytest.mark.parametrize(
+    "M,N,K",
+    [
+        (262144, 1, 128),
+        (8388608, 1, 1),
+        (4194304, 16, 2048),
+        (1048576, 4, 8704),
+        (16, 1048576, 2048),
+        (2048, 1048576, 2048),
+    ],
+)
+def test_mm_ascend_review_specialized_launch_cap(monkeypatch, M, N, K):
+    from contextlib import nullcontext
+
+    ops = flag_gems.mm.__globals__
+    grids = []
+
+    class Capture:
+        def __getitem__(self, grid):
+            def launch(*args, **kwargs):
+                assert not callable(grid)
+                grids.append(grid)
+
+            return launch
+
+    for name in list(ops):
+        if name.endswith("_kernel"):
+            monkeypatch.setitem(ops, name, Capture())
+    monkeypatch.setattr(ops["torch_device_fn"], "device", lambda *args: nullcontext())
+    a = torch.empty((M, K), device="meta", dtype=torch.bfloat16)
+    b = torch.empty((K, N), device="meta", dtype=a.dtype)
+    result = flag_gems.mm(a, b)
+    assert result.shape == (M, N)
+    assert grids and any(grid == (65535,) for grid in grids)
+    assert all(0 < grid[0] <= 65535 for grid in grids)
+
+
+@pytest.mark.mm_out
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend mm")
+@pytest.mark.parametrize("invalid", ["dtype", "device"])
+def test_mm_ascend_review_out_validation(invalid):
+    a = torch.ones((3, 128), device=flag_gems.device)
+    b = torch.ones((128, 5), device=a.device)
+    out = torch.empty(
+        0,
+        device="cpu" if invalid == "device" else a.device,
+        dtype=torch.float16 if invalid == "dtype" else a.dtype,
+    )
+    with pytest.raises(RuntimeError, match=invalid):
+        flag_gems.mm_out(a, b, out=out)
+    assert out.shape == (0,)

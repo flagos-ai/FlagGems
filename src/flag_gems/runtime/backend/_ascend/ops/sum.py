@@ -96,22 +96,36 @@ def _reduction_grid_size(num_tiles):
     return min(num_tiles, _ASCEND_MAX_CORE_DIM)
 
 
+def _sum_dtype(inp, dtype, out=None):
+    if out is not None:
+        if dtype is not None and dtype != out.dtype:
+            raise RuntimeError("sum: dtype must match out.dtype")
+        return out.dtype
+    if dtype is not None:
+        return dtype
+    if not inp.dtype.is_floating_point and not inp.dtype.is_complex:
+        return torch.int64
+    return inp.dtype
+
+
 def sum(inp, *, dtype=None):
     logger.debug("GEMS_ASCEND SUM")
+    dtype = _sum_dtype(inp, dtype)
+    out = torch.empty([], dtype=dtype, device=inp.device)
+    return sum_out(inp, dtype=dtype, out=out)
+
+
+def sum_out(inp, *, dtype=None, out):
+    logger.debug("GEMS_ASCEND SUM_OUT")
+    dtype = _sum_dtype(inp, dtype, out)
     inp = inp.contiguous()
     M = inp.numel()
-
+    out.resize_([])
     if M == 0:
-        if dtype is None:
-            dtype = inp.dtype
-        out = torch.zeros([], dtype=dtype, device=inp.device)
+        zero_(out)
         return out
-
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
+    if inp.dtype is torch.bool:
+        inp = inp.to(torch.int64)
     block_size = _reduction_block_size(M)
     mid_size = triton.cdiv(M, block_size)
     block_mid = _reduction_mid_block_size(mid_size)
@@ -121,28 +135,6 @@ def sum(inp, *, dtype=None):
     # overflow before the second stage can combine cancelling partial sums.
     mid_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     mid = torch.empty((mid_size,), dtype=mid_dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
-
-    with torch_device_fn.device(inp.device):
-        sum_kernel_1[(grid_size, 1, 1)](inp, mid, M, block_size)
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    return out
-
-
-def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS_ASCEND SUM_OUT")
-    M = inp.numel()
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
-    block_size = _reduction_block_size(M)
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = _reduction_mid_block_size(mid_size)
-    grid_size = _reduction_grid_size(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     with torch_device_fn.device(inp.device):
         sum_kernel_1[(grid_size, 1, 1)](inp, mid, M, block_size)
         sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
@@ -272,28 +264,38 @@ def sum_dim_kernel(
 
 
 def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
-
-    if dim is None:
+    dtype = _sum_dtype(inp, dtype, out)
+    if dim is None or dim == [] or dim == ():
+        if out is not None:
+            sum_out(inp, dtype=dtype, out=out)
+            if keepdim:
+                out.resize_([1] * inp.ndim)
+            return out
         result = sum(inp, dtype=dtype)
         if keepdim:
             result = result.reshape([1] * inp.ndim)
         return result
 
-    if dim == [] or dim == ():
-        if not keepdim:
-            return sum(inp, dtype=dtype)
-        else:
-            dim_num = inp.ndim
-            return torch.reshape(  # allow-torch-compute: scalar-to-singleton view only
-                sum(inp, dtype=dtype), [1] * dim_num
-            )
-
     shape = list(inp.shape)
+    dim = [dim] if isinstance(dim, int) else dim
     dim = [d % inp.ndim for d in dim]
+
+    # Handle both empty reductions and empty outputs before dividing by M/N
+    # or launching a reduction. Both public dim entry points share this guard.
+    if inp.numel() == 0:
+        dim_set = set(dim)
+        out_shape = (
+            [1 if i in dim_set else size for i, size in enumerate(shape)]
+            if keepdim
+            else [size for i, size in enumerate(shape) if i not in dim_set]
+        )
+        if out is None:
+            out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        else:
+            out.resize_(out_shape)
+        if out.numel() > 0:
+            zero_(out)
+        return out
 
     if len(dim) == 1:
         dim = dim[0]
@@ -365,42 +367,6 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_ASCEND SUM_DIM")
-    # support dim = 0, which are consistent with PyTorch
-    if inp.numel() == 0:
-        if dtype is None:
-            dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
-
-        out_shape = list(inp.shape)
-        if dim is None:
-            if keepdim:
-                out_shape = [1] * len(out_shape)
-            else:
-                out_shape = []
-        elif isinstance(dim, (list, tuple)) and len(dim) == 0:
-            if keepdim:
-                out_shape = [1] * len(out_shape)
-            else:
-                out_shape = []
-        else:
-            dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
-            if keepdim:
-                for d in dims_to_reduce:
-                    out_shape[d % inp.ndim] = 1
-            else:
-                sorted_dims_to_remove = sorted(
-                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
-                )
-                for d in sorted_dims_to_remove:
-                    index_to_remove = d % inp.ndim
-                    out_shape.pop(index_to_remove)
-        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
-        # Reducing an empty tensor can also produce an empty output. There is
-        # no data to initialize, and a zero-program launch is invalid on Ascend.
-        if out.numel() > 0:
-            zero_(out)
-        return out
     return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
 
 

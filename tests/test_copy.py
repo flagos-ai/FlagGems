@@ -1070,3 +1070,134 @@ def test_copy_real_large_input_exact(checked_launches, numel, dtype):
         chunk = slice(start, start + 2**24)
         _assert_same_bytes(result[chunk], src[chunk])
     assert checked_launches
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.complex64])
+@pytest.mark.parametrize("layout", ["contiguous", "transpose", "step", "broadcast"])
+@pytest.mark.parametrize(
+    "src_neg,dst_neg", [(False, True), (True, False), (True, True)]
+)
+@pytest.mark.parametrize("conjugate", [False, True])
+def test_copy_ascend_review_lazy_bits(dtype, layout, src_neg, dst_neg, conjugate):
+    shape = (3,) if layout == "contiguous" else (3, 5)
+    src_cpu = (
+        torch.arange(math.prod(shape), dtype=torch.float32).reshape(shape).to(dtype) - 2
+    )
+    if dtype == torch.complex64:
+        src_cpu += 1j * (src_cpu + 3)
+    src = src_cpu.to(flag_gems.device)
+    base_shape = (
+        (5, 3) if layout == "transpose" else ((3, 10) if layout == "step" else shape)
+    )
+    base = torch.full(base_shape, 7, dtype=dtype, device=flag_gems.device)
+    dst = (
+        base.t()
+        if layout == "transpose"
+        else (base[:, ::2] if layout == "step" else base)
+    )
+    if layout == "broadcast":
+        src = src[:1]
+    if src_neg:
+        src = src._neg_view()
+    if dst_neg:
+        dst = dst._neg_view()
+    if conjugate and dtype.is_complex:
+        dst = dst.conj()
+        # Exercise both source and destination conjugation in one of the cases.
+        if src_neg:
+            src = src.conj()
+    expected = src.resolve_neg().resolve_conj().cpu().expand(dst.shape).clone()
+    bits = dst.is_neg(), dst.is_conj()
+    assert flag_gems.copy_(dst, src) is dst
+    torch.npu.synchronize()
+    assert (dst.is_neg(), dst.is_conj()) == bits
+    torch.testing.assert_close(
+        dst.resolve_neg().resolve_conj().cpu(), expected, rtol=0, atol=0
+    )
+    if layout == "step":
+        torch.testing.assert_close(
+            base[:, 1::2].cpu(), torch.full((3, 5), 7, dtype=dtype)
+        )
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "case", ["partial", "transpose", "disjoint", "interleaved", "identical", "internal"]
+)
+def test_copy_ascend_review_overlap(case):
+    def views(base):
+        if case == "partial":
+            return base[1:], base[:-1]
+        if case == "transpose":
+            return base.reshape(4, 4), base.reshape(4, 4).t()
+        if case == "disjoint":
+            return base[:8], base[8:]
+        if case == "interleaved":
+            return base[::2], base[1::2]
+        if case == "internal":
+            return base[:1].expand(16), base.clone()
+        return base, base
+
+    cpu = torch.arange(16, dtype=torch.float32)
+    dev = cpu.to(flag_gems.device)
+    dst, src = views(dev)
+    dst_ref, src_ref = views(cpu)
+    if case in ("partial", "transpose", "internal"):
+        with pytest.raises(RuntimeError, match="single memory location"):
+            dst_ref.copy_(src_ref)
+        with pytest.raises(RuntimeError, match="single memory location"):
+            flag_gems.copy_(dst, src)
+    else:
+        dst_ref.copy_(src_ref)
+        assert flag_gems.copy_(dst, src) is dst
+        torch.npu.synchronize()
+        torch.testing.assert_close(dev.cpu(), cpu, rtol=0, atol=0)
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize(
+    "negate,conjugate", [(True, False), (False, True), (True, True)]
+)
+def test_copy_ascend_review_lazy_same_storage(negate, conjugate):
+    base = torch.tensor([1 + 2j, -3 + 4j, 5 - 6j], device=flag_gems.device)
+    dst = base._neg_view() if negate else base
+    if conjugate:
+        dst = dst.conj()
+    expected = base.cpu().clone()
+    assert flag_gems.copy_(dst, base) is dst
+    torch.npu.synchronize()
+    torch.testing.assert_close(
+        dst.resolve_neg().resolve_conj().cpu(), expected, rtol=0, atol=0
+    )
+
+
+@pytest.mark.copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend copy kernel")
+@pytest.mark.parametrize("wide", [False, True])
+def test_copy_ascend_review_component_capped_offsets(copy_ops, wide):
+    # Both offset widths must cover every tile and leave strided guard elements.
+    n = 9 * copy_ops._FLAT_COPY_BLOCK + 17
+    src_cpu = torch.randn(n, dtype=torch.float16)
+    src = src_cpu.to(flag_gems.device)
+    base = torch.full((2 * n,), 7, dtype=src.dtype, device=src.device)
+    dst = base[::2]
+    copy_ops._copy_component_kernel[(2,)](
+        src,
+        dst,
+        n,
+        (n,),
+        (1,),
+        (2,),
+        True,
+        False,
+        wide,
+        copy_ops._FLAT_COPY_BLOCK,
+    )
+    torch.npu.synchronize()
+    expected = torch.full((2 * n,), 7, dtype=src.dtype)
+    expected[::2] = -src_cpu
+    torch.testing.assert_close(base.cpu(), expected, rtol=0, atol=0)

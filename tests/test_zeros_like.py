@@ -131,3 +131,38 @@ def test_zeros_like_factory_capped_grid_exact(
     )
     assert checked_zeros_like_launches
     assert all(grid == (2,) for grid, _, _ in checked_zeros_like_launches)
+
+
+@pytest.mark.zeros_like
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend zero kernel")
+@pytest.mark.parametrize("shape", [(2, 3, 4, 5), (0, 3, 4, 5)])
+@pytest.mark.parametrize(
+    "memory_format",
+    [torch.preserve_format, torch.contiguous_format, torch.channels_last],
+)
+@pytest.mark.parametrize("target", ["same", "cpu"])
+def test_zeros_like_ascend_review_options(
+    zeros_like_ops, monkeypatch, shape, memory_format, target
+):
+    cpu_x = torch.empty(shape, memory_format=torch.channels_last)
+    x = torch.empty_strided(shape, cpu_x.stride(), device=flag_gems.device)
+    options = dict(
+        dtype=torch.float16,
+        layout=torch.strided,
+        memory_format=memory_format,
+        device=x.device if target == "same" else torch.device("cpu"),
+        pin_memory=False,
+    )
+    ref = torch.zeros_like(cpu_x, **{**options, "device": "cpu"})
+    if target == "cpu" or x.numel() == 0:
+
+        class NoLaunch:
+            def __getitem__(self, grid):
+                pytest.fail(f"factory request must not launch an NPU kernel: {grid}")
+
+        monkeypatch.setattr(zeros_like_ops, "zeros_kernel", NoLaunch())
+    result = flag_gems.zeros_like(x, **options)
+    torch.npu.synchronize()
+    assert result.device == options["device"]
+    assert result.stride() == ref.stride()
+    torch.testing.assert_close(result.cpu(), ref, rtol=0, atol=0)

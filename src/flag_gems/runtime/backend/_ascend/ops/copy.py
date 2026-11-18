@@ -53,6 +53,7 @@ from typing import Optional
 import torch
 import triton
 import triton.language as tl
+from torch._prims_common import is_non_overlapping_and_dense
 
 from flag_gems.ops.copy import _int32_viewable
 from flag_gems.ops.copy import copy_ as _generic_copy_
@@ -224,6 +225,113 @@ def _check_broadcastable(dst: torch.Tensor, src: torch.Tensor) -> None:
         )
 
 
+@triton.jit
+def _copy_component_kernel(
+    Src,
+    Dst,
+    N,
+    SHAPE: tl.constexpr,
+    SRC_STRIDES: tl.constexpr,
+    DST_STRIDES: tl.constexpr,
+    NEG: tl.constexpr,
+    ZERO: tl.constexpr,
+    WIDE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
+        if WIDE:
+            index = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        else:
+            index = tile * BLOCK + tl.arange(0, BLOCK)
+        remaining = index
+        src_offset = index * 0
+        dst_offset = index * 0
+        for dim in tl.static_range(len(SHAPE) - 1, -1, -1):
+            coord = remaining % SHAPE[dim]
+            remaining = remaining // SHAPE[dim]
+            src_offset += coord * SRC_STRIDES[dim]
+            dst_offset += coord * DST_STRIDES[dim]
+        if ZERO:
+            value = tl.full((BLOCK,), 0, Dst.dtype.element_ty)
+        else:
+            value = tl.load(Src + src_offset, index < N, other=0)
+        if NEG:
+            value = -value
+        tl.store(Dst + dst_offset, value, index < N)
+
+
+def _copy_lazy(dst, src):
+    # Toggle lazy flags on metadata views, then transform values in the kernel.
+    # Resolving the destination would allocate storage and lose the in-place write.
+    negate = src.is_neg() != dst.is_neg()
+    conjugate = src.is_conj() != dst.is_conj()
+    physical_src = src._neg_view() if src.is_neg() else src
+    physical_dst = dst._neg_view() if dst.is_neg() else dst
+    if physical_src.is_conj():
+        physical_src = physical_src.conj()
+    if physical_dst.is_conj():
+        physical_dst = physical_dst.conj()
+    physical_src = physical_src.expand(dst.shape)
+    src_real = physical_src.real if src.is_complex() else physical_src
+    dst_real = physical_dst.real if dst.is_complex() else physical_dst
+
+    def launch(source, target, neg, zero=False):
+        max_offset = max(
+            sum((size - 1) * stride for size, stride in zip(t.shape, t.stride()))
+            for t in (source, target)
+        )
+        wide = max(max_offset, dst.numel()) + _FLAT_COPY_BLOCK > 2**31 - 1
+        _copy_component_kernel[_flat_grid(dst.numel())](
+            source,
+            target,
+            dst.numel(),
+            tuple(dst.shape),
+            tuple(source.stride()),
+            tuple(target.stride()),
+            neg,
+            zero,
+            wide,
+            _FLAT_COPY_BLOCK,
+        )
+
+    with torch_device_fn.device(dst.device):
+        launch(src_real, dst_real, negate)
+        if dst.is_complex():
+            source = physical_src.imag if src.is_complex() else src_real
+            launch(source, physical_dst.imag, negate != conjugate, not src.is_complex())
+    return dst
+
+
+def _check_copy_overlap(dst, src):
+    # Match TensorIterator's checks: zero-stride destinations and partial
+    # overlap of dense operands are errors. Non-dense overlap can be TooHard.
+    overlap = torch._debug_has_internal_overlap(
+        dst
+    )  # allow-torch-compute: metadata only
+    if overlap == 1:
+        raise RuntimeError(
+            "unsupported operation: more than one element of the written-to tensor refers to a single memory location"
+        )
+    if not torch._C._is_alias_of(dst, src) or not dst.numel() or not src.numel():
+        return src
+    if is_non_overlapping_and_dense(dst) and is_non_overlapping_and_dense(src):
+        dst_begin, src_begin = dst.data_ptr(), src.data_ptr()
+        dst_end = dst_begin + dst.numel() * dst.element_size()
+        src_end = src_begin + src.numel() * src.element_size()
+        if dst_begin < src_end and src_begin < dst_end:
+            if (
+                dst_begin != src_begin
+                or dst_end != src_end
+                or dst.stride() != src.stride()
+            ):
+                raise RuntimeError(
+                    "unsupported operation: some elements of the input tensor and "
+                    "the written-to tensor refer to a single memory location"
+                )
+        return src
+    return src.clone()
+
+
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     if isinstance(src, (int, float, bool)):
         src = torch.tensor(src, device=dst.device)
@@ -245,11 +353,6 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         or src.is_quantized
     ):
         return _generic_copy_(dst, src, non_blocking)
-
-    # Materialise lazy math bits rather than handing them back: the fallback
-    # that would resolve them is the one that does not work here.
-    if src.is_neg() or src.is_conj():
-        src = src.resolve_neg().resolve_conj()
 
     if src.device != dst.device:
         # A transfer needs the runtime, not a kernel, and every primitive that
@@ -281,12 +384,15 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             and dst.is_neg() == src.is_neg()
         ):
             return dst
-        # A temporary is what PyTorch uses to make overlapping writes defined.
-        src = src.clone()
+
+    _check_broadcastable(dst, src)
+    src = _check_copy_overlap(dst, src)
 
     if dst.numel() == 0:
-        _check_broadcastable(dst, src)
         return dst
+
+    if src.is_neg() or src.is_conj() or dst.is_neg() or dst.is_conj():
+        return _copy_lazy(dst, src)
 
     # pointwise_dynamic mis-reads a strided operand narrower than 4 bytes, so
     # read it here instead. Writing straight into a contiguous destination is
