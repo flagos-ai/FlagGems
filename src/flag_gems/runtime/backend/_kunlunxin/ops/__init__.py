@@ -793,6 +793,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .range import range  # noqa: F401
+from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad1d_backward import reflection_pad1d_backward
@@ -1834,6 +1835,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "ravel",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
