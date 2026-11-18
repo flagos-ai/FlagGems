@@ -114,3 +114,36 @@ def test_kthvalue_empty_tensor():
         torch.kthvalue(ref_inp, 1, dim=1)
     with pytest.raises(IndexError, match="Expected reduction dim"):
         flag_gems.kthvalue(inp, 1, dim=1)
+
+
+KTHVALUE_BACKWARD_CASES = [
+    ((1024, 64), 0),
+    ((1, 2048, 8), 1),
+    ((2, 8, 2048, 16), 2),
+]
+
+
+@pytest.mark.kthvalue_backward
+@pytest.mark.parametrize("shape, dim", KTHVALUE_BACKWARD_CASES)
+@pytest.mark.parametrize("k", [1, 2])
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_kthvalue_backward(shape, dim, k, keepdim, dtype):
+    inp = _unique_along_dim(shape, dim, dtype, flag_gems.device)
+    inp.requires_grad_(True)
+
+    res_values, res_indices = flag_gems.kthvalue(inp, k, dim=dim, keepdim=keepdim)
+    ref_inp = utils.to_reference(inp, True)
+    ref_values, ref_indices = torch.kthvalue(ref_inp, k, dim=dim, keepdim=keepdim)
+
+    out_grad = torch.randn_like(res_values)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    (res_dinp,) = torch.autograd.grad(res_values, inp, out_grad)
+    (ref_dinp,) = torch.autograd.grad(ref_values, ref_inp, ref_out_grad)
+    utils.gems_assert_close(res_dinp, ref_dinp, dtype)
+
+    res_dinp_direct = flag_gems.kthvalue_backward(
+        out_grad, res_indices, shape, dim, keepdim
+    )
+    utils.gems_assert_close(res_dinp_direct, ref_dinp, dtype)
