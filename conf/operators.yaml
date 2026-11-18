@@ -4316,6 +4316,18 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '5.3'
+- id: cosh_backward
+  description: Computes the gradient of the hyperbolic cosine (cosh) with respect
+    to its input, returning grad_output * sinh(self).
+  for:
+    - cosh_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: cosh_out
   description: This is an variant of `cosh()` that assigns the output to the provided
     `out`.

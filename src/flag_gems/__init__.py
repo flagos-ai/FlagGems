@@ -1199,6 +1199,7 @@ _FULL_CONFIG = (
     ("cosh", cosh),
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
+    ("cosh_backward", cosh_backward),
     ("cosine_embedding_loss", cosine_embedding_loss),
     ("cosine_similarity", cosine_similarity),
     ("count_nonzero", count_nonzero),
