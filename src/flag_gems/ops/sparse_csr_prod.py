@@ -38,6 +38,18 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_
+from flag_gems.ops.col_indices import col_indices as gems_col_indices
+from flag_gems.ops.crow_indices import crow_indices as gems_crow_indices
+from flag_gems.ops.cumsum import cumsum
+from flag_gems.ops.empty import empty as gems_empty
+from flag_gems.ops.index_select import index_select
+from flag_gems.ops.nonzero import nonzero
+from flag_gems.ops.sort import sort
+from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
+from flag_gems.ops.to import to_copy
+from flag_gems.ops.zeros import zeros as gems_zeros
+
 logger = logging.getLogger(__name__)
 
 _BLOCK = 256
@@ -74,12 +86,13 @@ def _row_prod_kernel(crow_ptr, val_ptr, out_ptr, cnt_ptr, BLOCK: tl.constexpr):
 
 @triton.jit
 def _column_segment_prod_kernel(
-    start_ptr, count_ptr, val_ptr, out_ptr, BLOCK: tl.constexpr
+    prefix_ptr, count_ptr, col_ptr, val_ptr, out_ptr, BLOCK: tl.constexpr
 ):
     """One program per kept column: multiply its contiguous sorted segment."""
     i = tl.program_id(0)
-    lo = tl.load(start_ptr + i)
-    n = tl.load(count_ptr + i)
+    column = tl.load(col_ptr + i)
+    n = tl.load(count_ptr + column)
+    lo = tl.load(prefix_ptr + column) - n
 
     acc = tl.full((), 1.0, dtype=tl.float32)
     off = 0
@@ -95,6 +108,11 @@ def _column_segment_prod_kernel(
         off += BLOCK
 
     tl.store(out_ptr + i, acc)
+
+
+@triton.jit
+def _set_crow_end_kernel(crow_ptr, end):
+    tl.store(crow_ptr + 1, end)
 
 
 @triton.jit
@@ -148,9 +166,23 @@ def _normalise_dims(dim, ndim=2):
     return set(normalised)
 
 
+def _empty(size, dtype, device):
+    """Pass a shape sequence to FlagGems empty (including 0-D shapes)."""
+    shape = (size,) if isinstance(size, int) else size
+    return gems_empty(shape, dtype=dtype, device=device)
+
+
+def _zeros(size, dtype, device):
+    """Avoid a zero-sized grid in FlagGems zeros for empty descriptors."""
+    shape = (size,) if isinstance(size, int) else size
+    if any(extent == 0 for extent in shape):
+        return _empty(shape, dtype=dtype, device=device)
+    return gems_zeros(shape, dtype=dtype, device=device)
+
+
 def _assemble(crow, col, values, size, dtype):
     """Wrap the reduced components into a sparse CSR tensor."""
-    return torch.sparse_csr_tensor(crow, col, values, size, dtype=dtype)
+    return sparse_csr_tensor(crow, col, values, size, dtype=dtype)
 
 
 def sparse_csr_prod(self, dim, keepdim=False, *, dtype=None):
@@ -168,8 +200,8 @@ def sparse_csr_prod(self, dim, keepdim=False, *, dtype=None):
         )
 
     dims = _normalise_dims(dim)
-    crow = self.crow_indices()
-    col = self.col_indices()
+    crow = gems_crow_indices(self)
+    col = gems_col_indices(self)
     values = self.values()
     rows, cols = self.shape[-2], self.shape[-1]
     nnz = values.numel()
@@ -177,59 +209,82 @@ def sparse_csr_prod(self, dim, keepdim=False, *, dtype=None):
     device = values.device
 
     if dtype is not None and out_dtype != values.dtype:
-        values = values.to(out_dtype)
+        values = (
+            to_copy(values, dtype=out_dtype)
+            if nnz
+            else _empty(0, dtype=out_dtype, device=device)
+        )
 
     if dims == {1}:
         # Accumulate in fp32, like the native kernel's accumulator width.
-        row_prod32 = torch.empty(rows, dtype=torch.float32, device=device)
-        touched = torch.empty(rows, dtype=torch.int64, device=device)
+        row_prod32 = _empty(rows, dtype=torch.float32, device=device)
+        touched = _empty(rows, dtype=torch.int64, device=device)
         if rows:
             _row_prod_kernel[(rows,)](crow, values, row_prod32, touched, BLOCK=_BLOCK)
-        row_prod = row_prod32.to(out_dtype)
+        row_prod = (
+            to_copy(row_prod32, dtype=out_dtype)
+            if rows
+            else _empty(0, dtype=out_dtype, device=device)
+        )
         # Empty rows survive: the output crow mirrors the input layout with one
         # entry per storing row at its original row position.
-        keep = touched.bool()
-        kept = row_prod[keep]
-        new_crow = torch.zeros(rows + 1, dtype=crow.dtype, device=device)
-        torch.cumsum(keep.to(crow.dtype), 0, out=new_crow[1:])
-        new_col = torch.zeros(int(keep.sum()), dtype=col.dtype, device=device)
+        keep = (
+            nonzero(touched).reshape(-1)
+            if rows
+            else _empty(0, dtype=torch.int64, device=device)
+        )
+        kept = index_select(row_prod, 0, keep) if keep.numel() else row_prod[:0]
+        new_crow = _zeros(rows + 1, dtype=crow.dtype, device=device)
+        if rows:
+            row_prefix = cumsum(touched, 0)
+            copy_(new_crow[1:], row_prefix)
+        new_col = _zeros(keep.numel(), dtype=col.dtype, device=device)
         return _assemble(new_crow, new_col, kept, (rows, 1), out_dtype)
 
     if dims == {0}:
         # Stably sort the payload by column so each column owns one contiguous
         # segment -- products have no atomic primitive, so segments are folded
         # sequentially one program at a time.
-        order = torch.sort(col, stable=True).indices
-        sorted_values = values[order]
-        counts = torch.zeros(cols, dtype=torch.int64, device=device)
+        order = sort(col)[1] if nnz else _empty(0, dtype=torch.int64, device=device)
+        sorted_values = index_select(values, 0, order) if nnz else values
+        counts = _zeros(cols, dtype=torch.int64, device=device)
         if nnz:
             grid = (triton.cdiv(nnz, _BLOCK),)
             _col_count_kernel[grid](col, counts, nnz, BLOCK=_BLOCK)
-        # Exclusive prefix sum gives every column the start of its segment.
-        offsets = torch.cumsum(counts, 0) - counts
-        keep = torch.nonzero(counts).reshape(-1)
-        kept = torch.empty(keep.numel(), dtype=out_dtype, device=device)
+        # Inclusive prefix sum gives each column's segment end; subtract its
+        # count inside the reduction kernel to find the segment start.
+        prefix = cumsum(counts, 0) if cols else counts
+        keep = (
+            nonzero(counts).reshape(-1)
+            if cols
+            else _empty(0, dtype=torch.int64, device=device)
+        )
+        kept = _empty(keep.numel(), dtype=out_dtype, device=device)
         if keep.numel():
             _column_segment_prod_kernel[(keep.numel(),)](
-                offsets[keep], counts[keep], sorted_values, kept, BLOCK=_BLOCK
+                prefix, counts, keep, sorted_values, kept, BLOCK=_BLOCK
             )
-        new_col = keep.to(col.dtype)
-        new_crow = torch.zeros(2, dtype=crow.dtype, device=device)
-        new_crow[1] = keep.numel()
+        new_col = (
+            to_copy(keep, dtype=col.dtype)
+            if keep.numel()
+            else _empty(0, dtype=col.dtype, device=device)
+        )
+        new_crow = _zeros(2, dtype=crow.dtype, device=device)
+        _set_crow_end_kernel[(1,)](new_crow, keep.numel())
         return _assemble(new_crow, new_col, kept, (1, cols), out_dtype)
 
     # Fully reduced: a single stored value, present only if anything is stored.
     # With nothing stored the native kernel still allocates a 0-d value buffer
     # but leaves the descriptor empty (crow = [0, 0]).
-    new_crow = torch.zeros(2, dtype=crow.dtype, device=device)
+    new_crow = _zeros(2, dtype=crow.dtype, device=device)
     if nnz:
-        kept = torch.empty(1, dtype=out_dtype, device=device)
+        kept = _empty(1, dtype=out_dtype, device=device)
         _total_prod_kernel[(1,)](values, kept, nnz, BLOCK=_BLOCK)
-        new_crow[1] = 1
-        new_col = torch.zeros(1, dtype=col.dtype, device=device)
+        _set_crow_end_kernel[(1,)](new_crow, 1)
+        new_col = _zeros(1, dtype=col.dtype, device=device)
     else:
-        kept = torch.empty((), dtype=out_dtype, device=device)
-        new_col = torch.empty(0, dtype=torch.int64, device=device)
+        kept = _empty((), dtype=out_dtype, device=device)
+        new_col = _empty(0, dtype=torch.int64, device=device)
     return _assemble(new_crow, new_col, kept, (1, 1), out_dtype)
 
 
@@ -239,5 +294,5 @@ def sparse_csr_prod_out(self, dim, keepdim=False, *, dtype=None, out):
     built = sparse_csr_prod(self, dim, keepdim, dtype=dtype)
     # ``copy_`` between compressed tensors requires an identical stored-element
     # count; anything else raises exactly like the native out kernel.
-    out.copy_(built)
+    copy_(out, built)
     return out

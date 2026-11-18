@@ -152,6 +152,23 @@ def test_sparse_csr_prod_unsorted_columns():
 
 @pytest.mark.sparse_csr_prod
 @pytest.mark.parametrize("dim", [[0], [1]])
+def test_sparse_csr_prod_empty_rows_and_columns(dim):
+    """Reductions compact only stored rows or columns, preserving CSR pointers."""
+    crow = torch.tensor([0, 2, 2, 3, 3], device=flag_gems.device)
+    col = torch.tensor([0, 3, 3], dtype=torch.int64, device=flag_gems.device)
+    values = torch.tensor([2.0, 5.0, 7.0], device=flag_gems.device)
+    sp = torch.sparse_csr_tensor(crow, col, values, (4, 5))
+
+    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype(sp.cpu(), dim, True)
+    res_out = flag_gems.sparse_csr_prod(sp, dim, True)
+
+    _assert_csr_close(res_out, ref_out, torch.float32)
+    assert torch.equal(res_out.crow_indices().cpu(), ref_out.crow_indices())
+    assert torch.equal(res_out.col_indices().cpu(), ref_out.col_indices())
+
+
+@pytest.mark.sparse_csr_prod
+@pytest.mark.parametrize("dim", [[0], [1]])
 def test_sparse_csr_prod_out(dim):
     """The out form rewrites the caller's tensor and returns that same object."""
     ref_sp = _make_csr((16, 16), torch.float32, device="cpu")
