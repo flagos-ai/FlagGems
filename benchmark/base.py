@@ -442,7 +442,7 @@ class Benchmark:
         if self.is_backward:
             args = [
                 (
-                    a.clone().requires_grad_()
+                    a.detach().requires_grad_()
                     if torch.is_tensor(a) and torch.is_floating_point(a)
                     else a
                 )
