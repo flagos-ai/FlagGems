@@ -68,6 +68,8 @@ def _gen_input(shape, dtype):
     + ([torch.complex64, torch.complex128] if _HAS_COMPLEX else []),
 )
 def test_accuracy_detach_copy(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.complex128:
+        pytest.skip("complex128 requires an fp64 datapath; this device has none")
     inp = _gen_input(shape, dtype)
     # Guards the generation branch above: a silent BOOL fallthrough would
     # make this parametrization pass without testing the requested dtype.
@@ -200,6 +202,11 @@ def test_accuracy_detach_copy_dispatch_stability():
 
 
 @pytest.mark.detach_copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="native detach_copy keeps an inconsistent lazy neg bit on this "
+    "device (1-D/2-D keep it, 4-D materialises)",
+)
 @pytest.mark.parametrize(
     "make_inp",
     [

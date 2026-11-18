@@ -31,7 +31,7 @@ def relu_forward(x):
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def relu_backward(x, dy):
-    return tl.where(x > 0, dy, 0)
+    return tl.where(x > 0, dy, 0.0)
 
 
 def relu(self):

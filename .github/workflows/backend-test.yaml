@@ -56,6 +56,11 @@ on:
         required: false
         type: string
         default: ''
+      quick_tests:
+        description: 'Set to true to pass --quick to pytest (reduces test quantity for faster runs).'
+        required: false
+        type: string
+        default: ''
       container_image:
         description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (enflame-tops1106, hygon-dtk2604, iluvatar-corex450, kunlunxin-xre5371, metax-maca3810, mthreads-musa520). See .github/backends.json.'
         required: false
@@ -89,7 +94,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}-shard${{ inputs.shard_index }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}-shard${{ inputs.shard_index }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -100,6 +105,12 @@ jobs:
           backend: ${{ inputs.backend }}
           vllm-version: '0.21.0'
           gpu-check-script: ${{ inputs.gpu_check_script }}
+
+      - name: Precompile flag_gems Python bytecode
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          python3 -m compileall -q src/flag_gems/
 
       - name: Test alpha ops
         if: ${{ inputs.test_script != '' }}
@@ -122,6 +133,7 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
           TOTAL_SHARDS: ${{ inputs.total_shards }}
           SHARD_INDEX: ${{ inputs.shard_index }}
+          QUICK_TESTS: ${{ inputs.quick_tests }}
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
@@ -150,7 +162,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       # klx-p800 reuses its workspace across jobs. Stale skip-worktree bits
@@ -195,6 +207,15 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          # The runtime image bakes flagtree OUTSIDE the venv (e.g. /opt/flagtree)
+          # and ahead of it on sys.path. reconcile reinstalls the backends.yaml pin
+          # INTO the venv but pip cannot uninstall the baked copy, so the stale
+          # version still wins at runtime. enforce_pinned_compiler deletes any copy
+          # that is both stale (!= pin) and outside the venv, then hard-verifies the
+          # pinned version resolves — failing the job instead of testing the wrong
+          # compiler build. Mirrors ops-test.yaml's reconcile+enforce pair.
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -237,7 +258,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -254,6 +275,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -299,7 +322,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -313,6 +336,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -371,7 +396,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -385,6 +410,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -429,7 +456,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -453,6 +480,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -494,7 +523,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -511,6 +540,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
@@ -554,7 +585,7 @@ jobs:
       options: ${{ inputs.container_options }}
     concurrency:
       group: >-
-        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ inputs.pr_id }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -571,6 +602,8 @@ jobs:
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
+          BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+            python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
       - name: Check GPU availability
         if: ${{ inputs.gpu_check_script != '' }}
