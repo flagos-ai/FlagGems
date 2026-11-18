@@ -33,6 +33,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+from .ldexp import _scale_integral
+
 logger = logging.getLogger(__name__)
 
 _MAXDIM = 8
@@ -66,20 +68,6 @@ def _pick_warps(tile):
 
 
 @triton.jit
-def _scale_f32(x, n):
-    """x * 2**n for fp32 x, n int32.  Exact for normal results."""
-    nc = tl.minimum(tl.maximum(n, -378), 378)
-    a1 = tl.minimum(tl.maximum(nc, -126), 126)
-    r = nc - a1
-    a2 = tl.minimum(tl.maximum(r, -126), 126)
-    a3 = r - a2
-    y = x * ((a1 + 127) << 23).to(tl.float32, bitcast=True)
-    y = y * ((a2 + 127) << 23).to(tl.float32, bitcast=True)
-    y = y * ((a3 + 127) << 23).to(tl.float32, bitcast=True)
-    return y
-
-
-@triton.jit
 def _scale_f64(x, n):
     """x * 2**n for fp64 x, n int32.  Exact for normal results."""
     nc = tl.minimum(tl.maximum(n, -2099), 2099)
@@ -97,22 +85,6 @@ def _scale_f64(x, n):
 
 
 @triton.jit
-def _scale_f16(x, n):
-    """x * 2**n for a value that is finally rounded into float16.
-
-    The float16 container has exponent range [-24, 15], so for |n| > 41 the
-    result is +-inf (n > 41) or +-0 (n < -41) for every representable nonzero x:
-    the smallest float16 magnitude is 2**-24, so 2**-24 * 2**41 = 2**17 already
-    exceeds the float16 maximum, and the largest is below 2**16, so
-    2**16 * 2**-42 = 2**-26 already rounds to zero.  Clamping to +-41 is
-    therefore equivalent to full saturation and only one exact power of two is
-    needed, giving a single rounding exactly like ldexp.
-    """
-    nc = tl.minimum(tl.maximum(n, -41), 41)
-    return x * ((nc + 127) << 23).to(tl.float32, bitcast=True)
-
-
-@triton.jit
 def _exp_i32(n, E64: tl.constexpr):
     # int64 exponents are saturated (never truncated) before narrowing so that a
     # huge |n| becomes +-inf/0 instead of a wrapped small finite scale.
@@ -125,9 +97,7 @@ def _exp_i32(n, E64: tl.constexpr):
 def _apply(x, n, F64: tl.constexpr, F16C: tl.constexpr):
     if F64:
         return _scale_f64(x.to(tl.float64), n)
-    if F16C:
-        return _scale_f16(x.to(tl.float32), n)
-    return _scale_f32(x.to(tl.float32), n)
+    return _scale_integral(x, n)
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +106,7 @@ def _apply(x, n, F64: tl.constexpr, F16C: tl.constexpr):
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["NS", "N"])
 def _ldexp_flat(
     x_ptr,
     e_ptr,
@@ -146,19 +116,19 @@ def _ldexp_flat(
     F64: tl.constexpr,
     E64: tl.constexpr,
     ESCALAR: tl.constexpr,
-    NS: tl.constexpr,
+    NS,
     E_HALF: tl.constexpr,
     MASKED: tl.constexpr,
     F16C: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
     offs = tl.max_contiguous(tl.multiple_of(offs, BLOCK), BLOCK)
     if MASKED:
         m = offs < N
         x = tl.load(x_ptr + offs, mask=m, other=0.0)
         if ESCALAR:
-            n = tl.full([BLOCK], NS, tl.int32)
+            n = tl.full([BLOCK], 0, tl.int32) + NS
         else:
             if E_HALF:
                 # complex: the exponent is shared by the (re, im) pair
@@ -172,7 +142,7 @@ def _ldexp_flat(
         # comparison of the flat offset vector against the runtime extent.
         x = tl.load(x_ptr + offs)
         if ESCALAR:
-            n = tl.full([BLOCK], NS, tl.int32)
+            n = tl.full([BLOCK], 0, tl.int32) + NS
         else:
             if E_HALF:
                 n = _exp_i32(tl.load(e_ptr + (offs >> 1)), E64)
@@ -188,7 +158,7 @@ def _ldexp_flat(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["NS", "N"])
 def _ldexp_gen(
     x_ptr,
     e_ptr,
@@ -231,17 +201,17 @@ def _ldexp_gen(
     F64: tl.constexpr,
     E64: tl.constexpr,
     ESCALAR: tl.constexpr,
-    NS: tl.constexpr,
+    NS,
     F16C: tl.constexpr,
     REAL_TO_COMPLEX: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
     m = offs < N
     rem = offs
-    xi = tl.zeros([BLOCK], tl.int32)
-    ei = tl.zeros([BLOCK], tl.int32)
-    oi = tl.zeros([BLOCK], tl.int32)
+    xi = tl.zeros([BLOCK], tl.int64)
+    ei = tl.zeros([BLOCK], tl.int64)
+    oi = tl.zeros([BLOCK], tl.int64)
     if NDIM > 0:
         i = rem % n0
         rem = rem // n0
@@ -292,7 +262,7 @@ def _ldexp_gen(
         oi += i * os7
     x = tl.load(x_ptr + xi, mask=m, other=0.0)
     if ESCALAR:
-        n = tl.full([BLOCK], NS, tl.int32)
+        n = tl.full([BLOCK], 0, tl.int32) + NS
     else:
         n = _exp_i32(tl.load(e_ptr + ei, mask=m, other=0), E64)
     y = _apply(x, n, F64, F16C)
@@ -346,8 +316,12 @@ def _overlap(a, b):
     if a.numel() == 0 or b.numel() == 0:
         return "none"
     ab, bb = a.data_ptr(), b.data_ptr()
-    ae = ab + a.numel() * a.element_size()
-    be = bb + b.numel() * b.element_size()
+
+    def span(t):
+        return 1 + sum((size - 1) * stride for size, stride in zip(t.shape, t.stride()))
+
+    ae = ab + span(a) * a.element_size()
+    be = bb + span(b) * b.element_size()
     if ab == bb and ae == be and a.shape == b.shape and a.stride() == b.stride():
         return "full"
     if ab < be and bb < ae:
@@ -466,7 +440,7 @@ def _run(self, other, out):
         and tuple(x_t.shape) == tuple(o_t.shape)
     )
     grid = (triton.cdiv(nreal, tile),)
-    masked = (nreal % tile) != 0
+    masked = (nreal % tile) != 0 or sdt == torch.float16
     if flat_ok and scalar_exp is not None:
         _ldexp_flat[grid](
             x_t,

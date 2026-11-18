@@ -121,7 +121,10 @@ def _ldexp_flat(
         s = s * (((ni - hi) + 127) << 23).to(tl.float32, bitcast=True)
         s = s * tl.exp((yf - ni.to(tl.float32)) * 0.6931471805599453)
         r = x.to(tl.float32) * s
-        y = tl.where(tl.abs(r) < 1.1754943508222875e-38, 0.0, r)
+        signed_zero = (x.to(tl.float32).to(tl.uint32, bitcast=True) & 0x80000000).to(
+            tl.float32, bitcast=True
+        )
+        y = tl.where(tl.abs(r) < 1.1754943508222875e-38, signed_zero, r)
     else:
         y = _scale_integral(x, n)
     if EVEN:
@@ -185,7 +188,10 @@ def _ldexp_strided(
         s = s * (((ni - hi) + 127) << 23).to(tl.float32, bitcast=True)
         s = s * tl.exp((yf - ni.to(tl.float32)) * 0.6931471805599453)
         r = x.to(tl.float32) * s
-        y = tl.where(tl.abs(r) < 1.1754943508222875e-38, 0.0, r)
+        signed_zero = (x.to(tl.float32).to(tl.uint32, bitcast=True) & 0x80000000).to(
+            tl.float32, bitcast=True
+        )
+        y = tl.where(tl.abs(r) < 1.1754943508222875e-38, signed_zero, r)
     else:
         y = _scale_integral(x, n)
     tl.store(OUT + offs, y.to(OUT.dtype.element_ty), mask=mask)

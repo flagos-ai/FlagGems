@@ -434,3 +434,50 @@ def test_ldexp_rejects_complex_operands(complex_operand):
         exponent = torch.ones(3, dtype=torch.complex64).to(inp.device)
     with pytest.raises(RuntimeError, match="does not support complex operands"):
         flag_gems.ldexp(inp, exponent)
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+def test_ldexp_out_runtime_scalar_and_boundaries():
+    inp = torch.tensor([2.0**-127, -0.0, -1.0, float("inf")], device=flag_gems.device)
+    for n in [-300, -128, -2, 0, 1, 128, 300]:
+        exponent = torch.tensor(n, dtype=torch.int64)
+        out = torch.empty_like(inp)
+        actual = flag_gems.ldexp_out(inp, exponent, out=out)
+        expected = torch.ldexp(inp.cpu().double(), exponent).float()
+        assert actual is out
+        assert actual.dtype == inp.dtype and actual.device == inp.device
+        torch.testing.assert_close(actual.cpu(), expected, atol=0, rtol=0)
+        assert torch.equal(torch.signbit(actual.cpu()), torch.signbit(expected))
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+def test_ldexp_out_strided_overlap_span():
+    storage = torch.arange(12, dtype=torch.float32, device=flag_gems.device)
+    inp = storage[6:10]
+    out = storage[::3]
+    # The logical lengths suggest disjoint intervals; the actual out span
+    # reaches storage[9] and overlaps the input.
+    with pytest.raises(RuntimeError, match="single memory location"):
+        flag_gems.ldexp_out(
+            inp, torch.ones(4, dtype=torch.int32, device=inp.device), out=out
+        )
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("strided", [False, True])
+def test_ldexp_out_complex_input(strided):
+    inp = torch.tensor([[1 + 2j, -3 + 4j], [2 - 1j, -4 - 2j]], dtype=torch.complex64)
+    exponent = torch.tensor([[2, -1], [1, -2]], dtype=torch.int32)
+    expected = torch.tensor([[4 + 8j, -1.5 + 2j], [4 - 2j, -1 - 0.5j]])
+    inp, exponent = inp.to(flag_gems.device), exponent.to(flag_gems.device)
+    out = torch.empty_like(inp)
+    if strided:
+        inp, exponent, out, expected = inp.T, exponent.T, out.T, expected.T
+    result = flag_gems.ldexp_out(inp, exponent, out=out)
+    assert result is out
+    assert result.device == inp.device and result.dtype == torch.complex64
+    assert result.shape == expected.shape
+    torch.testing.assert_close(result.cpu(), expected, atol=0, rtol=0)
