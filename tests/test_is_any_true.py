@@ -53,6 +53,8 @@ def test_is_any_true(n, kind):
 @pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("rank", [2, 8, 9, 12])
 def test_is_any_true_arbitrary_rank(rank):
+    if flag_gems.vendor_name == "mthreads" and rank == 12:
+        pytest.skip("MUSA native _is_any_true rejects rank-12 tensor descriptors")
     inp = torch.zeros((2,) * rank, dtype=torch.bool, device=flag_gems.device)
     inp[(1,) * rank] = True
     inp = inp.transpose(0, -1)

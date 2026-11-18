@@ -39,6 +39,13 @@ EMPTY_SHAPES = [(0,), (2, 0), (0, 3), (3, 0), (2, 0, 4), (2, 4, 0)]
 @pytest.mark.parametrize("shape", LOGCUMSUMEXP_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__logcumsumexp(shape, dtype):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not utils.TO_CPU
+        and dtype == torch.bfloat16
+        and 0 not in shape
+    ):
+        pytest.skip("MUSA native logcumsumexp does not support nonempty BFloat16")
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)

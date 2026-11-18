@@ -198,6 +198,8 @@ def test_quantized_max_pool3d_qint_dtypes(
     ``qint32`` in particular has a 4-byte integer representation, so a kernel
     that assumed a 1-byte ``uint8`` storage would silently corrupt it.
     """
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.qint32:
+        pytest.skip("MUSA quantize_per_tensor supports only qint8 and quint8 inputs")
     zero_point = QINT_ZERO_POINTS[dtype]
     qx = _make_qinput(
         shape, device=flag_gems.device, zero_point=zero_point, dtype=dtype
@@ -215,6 +217,8 @@ def test_quantized_max_pool3d_qint_dtypes(
 @pytest.mark.parametrize("dtype", QINT_DTYPES)
 def test_quantized_max_pool3d_out_qint_dtypes(dtype):
     """The ``out=`` path must round-trip every supported dtype, not just quint8."""
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.qint32:
+        pytest.skip("MUSA quantize_per_tensor supports only qint8 and quint8 inputs")
     shape = (2, 3, 8, 8, 8)
     zero_point = QINT_ZERO_POINTS[dtype]
     qx = _make_qinput(
