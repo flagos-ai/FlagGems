@@ -634,7 +634,7 @@ def _f32_view(t):
 
 
 def _dtypes(t, cmp_dtype):
-    if cmp_dtype == torch.float64:
+    if cmp_dtype == torch.float64 and t.device.type == "gcu":
         return tl.float32, tl.float32
     return _cmp_tl_dtype(cmp_dtype), _tl_dtype(t.dtype)
 
@@ -680,7 +680,7 @@ def _run_tensor(t, other):
 
     cmp_dtype = torch.result_type(t, other)
     cmp_tl, out_tl = _dtypes(t, cmp_dtype)
-    if cmp_dtype == torch.float64:
+    if cmp_dtype == torch.float64 and t.device.type == "gcu":
         if t.dtype != torch.float64 or other.dtype != torch.float64:
             raise RuntimeError(
                 "greater_: mixed float64 comparison is not supported by this " "backend"
@@ -730,7 +730,11 @@ def _run_scalar(t, other):
                 )
 
     cmp_tl, out_tl = _dtypes(t, cmp_dtype)
-    if cmp_dtype == torch.float64 and t.dtype != torch.float64:
+    if (
+        cmp_dtype == torch.float64
+        and t.device.type == "gcu"
+        and t.dtype != torch.float64
+    ):
         raise RuntimeError(
             "greater_: mixed float64 comparison is not supported by this " "backend"
         )
@@ -745,7 +749,7 @@ def _run_scalar(t, other):
         return t
     merged = _collapse(t.shape, t.stride(), [0] * rank)
     launch = _emit(merged, s_off, 0, cmp_tl, out_tl)
-    if cmp_dtype == torch.float64:
+    if cmp_dtype == torch.float64 and t.device.type == "gcu":
         val = torch.tensor(other, dtype=torch.float32, device=t.device)
 
         def call(tt, _launch=launch, _val=val):

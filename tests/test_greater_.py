@@ -84,3 +84,33 @@ def test_greater_fp64_precision(dtype):
     assert result.dtype == dtype
     assert torch.equal(inp2, other_before)
     utils.gems_assert_equal(result.cpu() if use_cpu_oracle else result, ref_inp1)
+
+
+@pytest.mark.greater_
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+@pytest.mark.parametrize("other_kind", ["tensor", "scalar", "mixed"])
+def test_greater_fp64_strided_repeated_calls(other_kind):
+    # Genuine doubles must retain all eight bytes on every cached launch.
+    host = torch.tensor([16777216.5, -16777216.5], dtype=torch.float64)
+    other = 16777216.4
+    if other_kind == "tensor":
+        other = torch.tensor([16777216.4, -16777216.4], dtype=torch.float64)
+    elif other_kind == "mixed":
+        other = torch.tensor([16777216.0, -16777216.0], dtype=torch.float32)
+    reference = host.clone().greater_(other)
+    if isinstance(other, torch.Tensor):
+        other = other.to(flag_gems.device)
+        other_before = other.clone()
+    backing = torch.full((4,), 17.0, dtype=torch.float64, device=flag_gems.device)
+    inp = backing[::2]
+    for _ in range(2):
+        inp.copy_(host.to(flag_gems.device))
+        result = flag_gems.greater_(inp, other)
+        assert result is inp and result.dtype == torch.float64
+        assert result.device == backing.device and result.stride() == (2,)
+        utils.gems_assert_equal(result.cpu(), reference)
+        assert torch.equal(
+            backing[1::2].cpu(), torch.full((2,), 17.0, dtype=torch.float64)
+        )
+        if isinstance(other, torch.Tensor):
+            assert torch.equal(other, other_before)
