@@ -105,6 +105,10 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 def any(inp):
     logger.debug("GEMS ANY")
+    # Same flat-offset reduction as `all`: a non-contiguous view would be reduced
+    # over the wrong elements. See Issue #6961.
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     n_elements = inp.numel()
 
     if n_elements == 0:
