@@ -269,3 +269,14 @@ def test_underscore_aminmax_empty_matches_aten():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems._aminmax(inp)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
+def test_aminmax_empty_input_raises(shape):
+    # Issue #8596: an empty global reduction has no identity to return, so
+    # ATen raises RuntimeError; the kernel used to reach cdiv(0, 0) and crash
+    # with ZeroDivisionError instead
+    inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="cannot compute aminmax"):
+        flag_gems.aminmax(inp)

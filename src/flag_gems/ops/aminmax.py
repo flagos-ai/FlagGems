@@ -124,6 +124,14 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
     logger.debug("GEMS AMINMAX")
 
     if dim is None:
+        # Issue #8596: an empty global reduction has no identity element to
+        # return, so ATen raises; FlagGems used to reach triton.cdiv(0, 0)
+        # and crash with ZeroDivisionError instead
+        if inp.numel() == 0:
+            raise RuntimeError(
+                "aminmax(): cannot compute aminmax over an empty dimension as "
+                "there are no elements to compute over."
+            )
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
