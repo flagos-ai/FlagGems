@@ -2,7 +2,7 @@
   "api_version": "v6.0",
   "name": "nll_loss2d",
   "requires_triton_kernel": true,
-  "description": "Negative log likelihood loss for a 4D input (N, C, H, W) of log-probabilities\nand a 3D integer target (N, H, W). Returns only the loss tensor, applying the\nrequested reduction (none/mean/sum) with optional per-class weights and an\nignore_index.",
+  "description": "Negative log likelihood loss for a 4D input (N, C, H, W) of log-probabilities\nand a 3D integer target (N, H, W). Returns only the loss tensor, applying the\nrequested reduction (none/mean/sum) with optional per-class weights and an\nignore_index. Representative native ABI: aten::nll_loss2d(Tensor self, Tensor target, Tensor? weight=None, int reduction=1, SymInt ignore_index=-100) -> Tensor. The restored latest-master suite also differentiates this combined loss with respect to self for mean/sum, weighted/unweighted inputs and floating dtypes; preserve that autograd contract. This is not nll_loss2d_forward, which returns loss and total_weight, and is not the lower-level nll_loss2d_backward API requiring grad_output and total_weight. The benchmark measures the combined forward loss only. Original test parameters, reduction scaling and comparison tolerances remain authoritative.",
   "parameters": [
     {
       "name": "self",
