@@ -107,7 +107,8 @@ def _make_complex(shape, dtype, device):
     float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
     factory = (
         "cpu"
-        if flag_gems.vendor_name in ("iluvatar", "kunlunxin") and dtype == torch.complex128
+        if flag_gems.vendor_name in ("iluvatar", "kunlunxin")
+        and dtype == torch.complex128
         else device
     )
     real = torch.randn(shape, dtype=float_dtype, device=factory)
@@ -150,15 +151,19 @@ def test_isreal_special_values(dtype):
         float_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
         factory = (
             "cpu"
-            if flag_gems.vendor_name in ("iluvatar", "kunlunxin") and dtype == torch.complex128
+            if flag_gems.vendor_name in ("iluvatar", "kunlunxin")
+            and dtype == torch.complex128
             else flag_gems.device
         )
         real = [0.0, -0.0, 1.0, -1.0, float("nan"), float("inf"), 1.0, 1.0, -0.0]
         imag = [0.0, -0.0, 0.0, 0.0, 0.0, 0.0, float("nan"), float("inf"), -0.0]
-        inp = _complex_target(torch.complex(
-            torch.tensor(real, dtype=float_dtype, device=factory),
-            torch.tensor(imag, dtype=float_dtype, device=factory),
-        ).to(dtype=dtype), flag_gems.device)
+        inp = _complex_target(
+            torch.complex(
+                torch.tensor(real, dtype=float_dtype, device=factory),
+                torch.tensor(imag, dtype=float_dtype, device=factory),
+            ).to(dtype=dtype),
+            flag_gems.device,
+        )
     else:
         inp = torch.tensor(
             [0.0, -0.0, 1.0, -1.0, float("nan"), float("inf"), 1.0, 1.0, -0.0],

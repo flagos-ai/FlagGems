@@ -73,6 +73,16 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     res_out = flag_gems.baddbmm_(inp1, mat1, mat2, alpha=alpha, beta=beta)
 
     assert res_out.device == inp.device and res_out.dtype == dtype
-    gems_assert_close(res_out.cpu() if ref_out.device.type == "cpu" else res_out, ref_out, dtype, reduce_dim=K)
-    gems_assert_close(inp1.cpu() if ref_inp.device.type == "cpu" else inp1, ref_inp, dtype, reduce_dim=K)
+    gems_assert_close(
+        res_out.cpu() if ref_out.device.type == "cpu" else res_out,
+        ref_out,
+        dtype,
+        reduce_dim=K,
+    )
+    gems_assert_close(
+        inp1.cpu() if ref_inp.device.type == "cpu" else inp1,
+        ref_inp,
+        dtype,
+        reduce_dim=K,
+    )
     assert res_out is inp1
