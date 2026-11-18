@@ -23,6 +23,50 @@ from .. import backend, error
 from ..common import _VENDOR_TORCH_ATTR, vendors
 
 
+def _privateuse1_backend_name():
+    """Name the running PyTorch build gave to its PrivateUse1 backend."""
+    try:
+        return str(torch._C._get_privateuse1_backend_name())
+    except Exception:
+        return None
+
+
+def resolve_guard_device_name(declared_name: str) -> str:
+    """Return the device name that tensors on this build actually report.
+
+    Ops guard their inputs with ``x.device.type != flag_gems.device``, so
+    ``flag_gems.device`` has to name what tensors report, not what the vendor
+    descriptor assumes. Most vendors expose their accelerator as
+    ``torch.<declared_name>``, but some PyTorch builds register the same
+    hardware as a PrivateUse1 backend under a different name (Iluvatar's
+    ``torch_fl`` registers ``flagos``); there every guarded op would reject
+    every tensor the platform can hand it (issue #7135).
+
+    ``GEMS_DEVICE_NAME`` / ``FLAGGEMS_DEVICE_NAME`` force the name when the
+    probe cannot decide.
+    """
+    override = os.environ.get("GEMS_DEVICE_NAME") or os.environ.get(
+        "FLAGGEMS_DEVICE_NAME"
+    )
+    if override:
+        return override.strip().lower()
+
+    module = getattr(torch, declared_name, None)
+    if module is not None:
+        try:
+            is_available = getattr(module, "is_available", None)
+            if not callable(is_available) or is_available():
+                return declared_name
+        except Exception:
+            return declared_name
+
+    registered = _privateuse1_backend_name()
+    if registered and registered not in ("privateuseone", declared_name):
+        if getattr(torch, registered, None) is not None:
+            return registered
+    return declared_name
+
+
 # A singleton class to manage device context.
 class DeviceDetector:
     """Singleton class to manage device context."""
@@ -44,10 +88,16 @@ class DeviceDetector:
             self.info = self.get_vendor(vendor_name)
             # vendor_name is like 'nvidia', device_name is like 'cuda'.
             self.vendor_name = self.info.vendor_name
-            self.name = self.info.device_name
+            # ``name`` backs ``flag_gems.device`` and is compared against
+            # ``Tensor.device.type`` by every guarded op, so it follows the
+            # live build rather than the descriptor (issue #7135).
+            self.name = resolve_guard_device_name(self.info.device_name)
             self.vendor = vendors.get_all_vendors()[self.vendor_name]
+            # The dispatch key stays tied to the descriptor: torch registers
+            # PrivateUse1 kernels under the ``PrivateUse1`` key, never under
+            # the renamed backend name.
             self.dispatch_key = (
-                self.name.upper()
+                self.info.device_name.upper()
                 if self.info.dispatch_key is None
                 else self.info.dispatch_key
             )

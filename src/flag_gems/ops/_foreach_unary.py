@@ -78,6 +78,7 @@ from flag_gems.ops.tanh import tanh_kernel
 from flag_gems.ops.trunc_ import trunc_func
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
+    _FAST_MATH_OK,
     foreach_unary,
     int_to_float,
     real_dtype_of,
@@ -416,6 +417,9 @@ def _sign_func(x):
     # Mirrors ops/sign.py: NaN yields 0 because neither comparison holds.
     if x.dtype == tl.int1:
         return x
+    elif x.dtype == tl.bfloat16:
+        # Some backends cannot lower a direct i1-to-bf16 conversion.
+        return tl.where(x > 0, 1.0, tl.where(x < 0, -1.0, 0.0)).to(x.dtype)
     else:
         return (x > 0).to(x.dtype) - (x < 0).to(x.dtype)
 
@@ -727,7 +731,11 @@ def apply_unary(name: str, self, inplace: bool):
         # fast body stays hidden underneath it -- gated on that path the change
         # measured as a 1.3-3.7 us regression.  The accurate body costs it
         # nothing, so out-of-place keeps ``op.fn`` unconditionally.
-        fast = op.fn16 is not None
+        #
+        # Every ``fn16`` body below is built on a vendor libdevice ``fast_*``
+        # entry point, so the path is also gated on the backend being able to
+        # lower them at all -- see ``_FAST_MATH_OK``.
+        fast = op.fn16 is not None and _FAST_MATH_OK
         for t in self:
             if t.dtype.is_complex and op.out_dtype_fn is real_dtype_of:
                 raise RuntimeError(

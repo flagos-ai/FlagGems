@@ -106,8 +106,8 @@ def test_geqrf(shape, dtype):
     # R (= triu(a)) must match the reference R: for a full-rank well-
     # conditioned A the QR factor R is unique (positive/negative diagonal
     # convention may differ per column, so align signs first).
-    ref_R = torch.triu(ref_a.to(torch.float64))
-    res_R = torch.triu(utils.to_cpu(res_a, ref_a).to(torch.float64))
+    ref_R = torch.triu(ref_a.to("cpu").to(torch.float64))
+    res_R = torch.triu(utils.to_cpu(res_a, ref_a).to("cpu").to(torch.float64))
     k = min(shape[-2], shape[-1])
     sgn = torch.sign(res_R.diagonal(dim1=-2, dim2=-1))
     sgn = torch.where(sgn == 0, torch.ones_like(sgn), sgn)

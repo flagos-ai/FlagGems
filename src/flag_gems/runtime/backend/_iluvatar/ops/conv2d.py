@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -31,27 +31,36 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_AABS_AVAILABLE = _autotuning_knobs is not None and hasattr(
+    _autotuning_knobs, "adjust_block_size"
+)
 
-@contextlib.contextmanager
-def _disable_aabs():
-    """Keep the tuned block sizes for conv2d_forward_kernel.
+
+class _DisableAabs:
+    """Keep the tuned block sizes for the conv kernels.
 
     FlagTree's AABS pairs a BLOCK with the bare parameter a mask compares it
-    against and shrinks the BLOCK to next_power_of_2 of that parameter. Neither
-    pairing it finds in this kernel is the extent actually being tiled:
-    BLOCK_NI_HO_WO tiles in_n * out_height * out_width but gets matched to the
-    in_n of ``in_n_point_value < in_n``, and BLOCK_CI gets matched to weight_c,
-    which drops the dot below the K >= 16 the forward path relies on.
+    against and shrinks the BLOCK to next_power_of_2 of that parameter. That
+    pairing is not the extent actually being tiled, so the knob is switched off
+    around every launch. A plain class instead of a generator-based context
+    manager: this runs on every call and the generator costs a few microseconds.
     """
-    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
-        yield
-        return
-    previous = _autotuning_knobs.adjust_block_size
-    _autotuning_knobs.adjust_block_size = False
-    try:
-        yield
-    finally:
-        _autotuning_knobs.adjust_block_size = previous
+
+    __slots__ = ("_prev",)
+
+    def __enter__(self):
+        if _AABS_AVAILABLE:
+            self._prev = _autotuning_knobs.adjust_block_size
+            _autotuning_knobs.adjust_block_size = False
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if _AABS_AVAILABLE:
+            _autotuning_knobs.adjust_block_size = self._prev
+        return False
+
+
+_disable_aabs = _DisableAabs
 
 
 def conv2d_output_size(
@@ -111,6 +120,28 @@ _MAX_BLOCK_C = max(
 _CL_MIN_NUMEL = 1 << 22
 _CL_MIN_TAPS = 16
 _PACK_CACHE = True
+
+# ---------------------------------------------------------------------------
+# Merged-K forward path.
+#
+# On a channels_last (NHWC) input, the taps along kw of one kernel row are
+# adjacent pixels, so for a fixed kh the pair (kw, ci) is ONE contiguous run of
+# kw * C elements. The merged-K kernel treats that run as a single reduction
+# axis, K_ROW = kw * C, and only loops over kh and K blocks. Compared with the
+# per-tap kernel this
+#   * decouples the K block from the channel count (C = 16 no longer forces a
+#     16-deep dot; a 64-deep block spans four taps),
+#   * drops the per-iteration (tap, channel-block) div/mod and the spatial
+#     bounds mask (padding is already folded into the NHWC copy),
+#   * loads one long contiguous, aligned row per output pixel.
+# Eligible: channels_last path taken, groups == 1, dilation == 1. Everything
+# else (grouped, dilated, small inputs, dgrad) keeps using
+# conv2d_forward_kernel. FLAGGEMS_CONV2D_KMERGE=0 disables the merged path.
+# If the merged kernel fails to compile/launch it is switched off for the rest
+# of the process and the per-tap kernel takes over.
+# ---------------------------------------------------------------------------
+_KMERGE_ENABLED = os.environ.get("FLAGGEMS_CONV2D_KMERGE", "1") != "0"
+_KMERGE_STATE = {"broken": False}
 
 
 def _want_channels_last(input: torch.Tensor, kh: int, kw: int) -> bool:
@@ -376,8 +407,8 @@ def pack_weight(weight: torch.Tensor, groups: int):
     )
 
 
-def _pack_weight_cached(weight: torch.Tensor, groups: int):
-    """pack_weight, remembered on the weight tensor while it is unchanged.
+def _cached_pack(weight: torch.Tensor, groups: int, attr: str, pack_fn):
+    """Run ``pack_fn(weight, groups)`` and remember the result on the weight.
 
     The pack is a separate kernel launch (4-6 us) that shows up on small convs.
     The cache key is (storage pointer, version counter, shape, strides, dtype,
@@ -391,7 +422,7 @@ def _pack_weight_cached(weight: torch.Tensor, groups: int):
         or weight.is_inference()
         or (weight.requires_grad and torch.is_grad_enabled())
     ):
-        return pack_weight(weight, groups)
+        return pack_fn(weight, groups)
     key = (
         weight.data_ptr(),
         weight._version,
@@ -401,15 +432,329 @@ def _pack_weight_cached(weight: torch.Tensor, groups: int):
         weight.device,
         groups,
     )
-    cached = getattr(weight, "_gems_conv2d_pack", None)
+    cached = getattr(weight, attr, None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    result = pack_weight(weight, groups)
+    result = pack_fn(weight, groups)
     try:
-        weight._gems_conv2d_pack = (key, result)
+        setattr(weight, attr, (key, result))
     except Exception:  # tensor type without a __dict__
         pass
     return result
+
+
+def _pack_weight_cached(weight: torch.Tensor, groups: int):
+    return _cached_pack(weight, groups, "_gems_conv2d_pack", pack_weight)
+
+
+# ---------------------------------------------------------------------------
+# Merged-K weight packing: [out_c, C, kh, kw] -> [kh, kw * C, co_pad].
+# Row k = kw_idx * C + ci of kernel row kh, matching the NHWC input run
+# (pixel kw_idx, channel ci). Only co is padded (with zeros); K is exact.
+# ---------------------------------------------------------------------------
+_MERGED_MAX_CO = 64
+
+
+@triton.jit
+def _pack_weight_merged_kernel(
+    src,
+    dst,
+    out_c,
+    co_pad,
+    channels: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    k_row: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_kh = tl.program_id(0)
+    k = tl.program_id(1) * BLOCK_K + tl.arange(0, BLOCK_K)
+    co = tl.program_id(2) * BLOCK_CO + tl.arange(0, BLOCK_CO)
+
+    kw_idx = k // channels
+    ci = k % channels
+    k_ok = (k_row - k) > 0
+
+    src_off = (
+        co[None, :] * (channels * weight_height * weight_width)
+        + ci[:, None] * (weight_height * weight_width)
+        + pid_kh * weight_width
+        + kw_idx[:, None]
+    )
+    block = tl.load(
+        src + src_off,
+        mask=k_ok[:, None] & ((out_c - co) > 0)[None, :],
+        other=0.0,
+    )
+    tl.store(
+        dst + pid_kh * (k_row * co_pad) + k[:, None] * co_pad + co[None, :],
+        block,
+        mask=k_ok[:, None] & ((co_pad - co) > 0)[None, :],
+    )
+
+
+def pack_weight_merged(weight: torch.Tensor, groups: int = 1):
+    """Returns (packed [kh, kw*C, co_pad], k_row, co_pad). groups must be 1."""
+    out_c, channels, kh, kw = weight.shape
+    k_row = kw * channels
+    co_alignment = max(16, 64 // weight.element_size())
+    co_tile = min(_MERGED_MAX_CO, max(co_alignment, triton.next_power_of_2(out_c)))
+    co_pad = _round_up(out_c, co_tile)
+    packed = torch.empty((kh, k_row, co_pad), dtype=weight.dtype, device=weight.device)
+    block_k, block_co = 64, 32
+    grid = (kh, triton.cdiv(k_row, block_k), triton.cdiv(co_pad, block_co))
+    src = weight if weight.is_contiguous() else weight.contiguous()
+    _pack_weight_merged_kernel[grid](
+        src,
+        packed,
+        out_c,
+        co_pad,
+        channels,
+        kh,
+        kw,
+        k_row,
+        BLOCK_K=block_k,
+        BLOCK_CO=block_co,
+        num_warps=4,
+    )
+    return packed, k_row, co_pad
+
+
+def _pack_weight_merged_cached(weight: torch.Tensor):
+    return _cached_pack(weight, 1, "_gems_conv2d_pack_merged", pack_weight_merged)
+
+
+def _merged_configs():
+    # (BLOCK_M, BLOCK_K, BLOCK_CO, num_warps). Stage count stays 1: on this
+    # backend num_stages=2 was slower in every measured config. Tile footprints
+    # are capped to what the existing fp32 table already proves to fit.
+    specs = [
+        (64, 32, 32, 4),
+        (128, 32, 32, 4),
+        (128, 32, 32, 8),
+        (256, 32, 32, 4),
+        (256, 32, 32, 8),
+        (64, 64, 32, 4),
+        (128, 64, 32, 4),
+        (128, 64, 32, 8),
+        (64, 128, 32, 4),
+        (128, 32, 64, 8),
+        (256, 32, 64, 8),
+        (64, 64, 64, 4),
+        (128, 64, 64, 8),
+    ]
+    configs = []
+    for m, k, co, warps in specs:
+        if m * k > 8192 or k * co > 4096:
+            continue
+        configs.append(
+            triton.Config(
+                {"BLOCK_M": m, "BLOCK_K": k, "BLOCK_CO": co},
+                num_warps=warps,
+                num_stages=1,
+            )
+        )
+    return configs
+
+
+_MERGED_CONFIGS = _merged_configs()
+
+
+@libentry()
+@triton.autotune(
+    configs=_MERGED_CONFIGS,
+    key=[
+        "in_n",
+        "out_c",
+        "out_height",
+        "out_width",
+        "channels",
+        "weight_height",
+        "weight_width",
+        "stride_height",
+        "stride_width",
+    ],
+)
+@triton.jit
+def conv2d_merged_k_kernel(
+    input_pointer,
+    weight_pointer,
+    output_pointer,
+    bias_pointer,
+    input_n_stride,
+    input_height_stride,
+    output_n_stride,
+    output_c_stride,
+    output_height_stride,
+    output_width_stride,
+    in_n: tl.constexpr,
+    out_c: tl.constexpr,
+    out_height: tl.constexpr,
+    out_width: tl.constexpr,
+    channels: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    stride_height: tl.constexpr,
+    stride_width: tl.constexpr,
+    co_pad: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    """Forward conv on a padded/NHWC input with a merged (kw, ci) K axis.
+
+    Input is NHWC and already zero-padded, so every tap of every valid output
+    pixel is inside the tensor: no spatial mask. Pixel stride is ``channels``
+    and channel stride is 1, so for kernel row kh the elements
+    [pixel(oh*s, ow*s) + kh rows, + k) for k in [0, kw*C) are contiguous.
+    Weight is packed as [kh, kw*C, co_pad].
+    """
+    pid_m = tl.program_id(0)
+    pid_co = tl.program_id(1)
+
+    HW: tl.constexpr = out_height * out_width
+    K_ROW: tl.constexpr = weight_width * channels
+    NKB: tl.constexpr = (K_ROW + BLOCK_K - 1) // BLOCK_K
+    EVEN_K: tl.constexpr = K_ROW % BLOCK_K == 0
+    EVEN_CO_PAD: tl.constexpr = co_pad % BLOCK_CO == 0
+    EVEN_CO: tl.constexpr = out_c % BLOCK_CO == 0
+
+    m_offs = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    total_rows = in_n * out_height * out_width
+    row_ok = m_offs < total_rows
+
+    n_idx = m_offs // HW
+    rem = m_offs % HW
+    oh = rem // out_width
+    ow = rem % out_width
+
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    k_local = tl.arange(0, BLOCK_K)
+
+    in_base = (
+        n_idx.to(tl.int64) * input_n_stride
+        + (oh * stride_height) * input_height_stride
+        + (ow * stride_width) * channels
+    )
+    row_ptr = input_pointer + in_base[:, None]
+    w_ptr = weight_pointer + co[None, :]
+
+    accum = tl.zeros((BLOCK_M, BLOCK_CO), dtype=tl.float32)
+    for kh in range(weight_height):
+        a_row = row_ptr + kh * input_height_stride
+        w_row = w_ptr + kh * (K_ROW * co_pad)
+        for kb in range(NKB):
+            k = kb * BLOCK_K + k_local
+            if EVEN_K:
+                a_mask = tl.broadcast_to(row_ok[:, None], (BLOCK_M, BLOCK_K))
+            else:
+                a_mask = row_ok[:, None] & ((K_ROW - k) > 0)[None, :]
+            a = tl.load(a_row + k[None, :], mask=a_mask, other=0.0)
+
+            w_ptrs = w_row + k[:, None] * co_pad
+            if EVEN_K and EVEN_CO_PAD:
+                b = tl.load(w_ptrs)
+            elif EVEN_K:
+                b = tl.load(w_ptrs, mask=((co_pad - co) > 0)[None, :], other=0.0)
+            elif EVEN_CO_PAD:
+                b = tl.load(w_ptrs, mask=((K_ROW - k) > 0)[:, None], other=0.0)
+            else:
+                b = tl.load(
+                    w_ptrs,
+                    mask=((K_ROW - k) > 0)[:, None] & ((co_pad - co) > 0)[None, :],
+                    other=0.0,
+                )
+            accum += tl.dot(a, b, allow_tf32=False)
+
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + co, mask=(out_c - co) > 0, other=0.0).to(
+            tl.float32
+        )
+        accum += bias[None, :]
+
+    out_ptrs = (
+        output_pointer
+        + (
+            n_idx.to(tl.int64) * output_n_stride
+            + oh * output_height_stride
+            + ow * output_width_stride
+        )[:, None]
+        + (co * output_c_stride)[None, :]
+    )
+    if EVEN_CO:
+        out_mask = tl.broadcast_to(row_ok[:, None], (BLOCK_M, BLOCK_CO))
+    else:
+        out_mask = row_ok[:, None] & ((out_c - co) > 0)[None, :]
+    tl.store(out_ptrs, accum, mask=out_mask)
+
+
+def _kmerge_usable(k_input: torch.Tensor, channels: int, width: int) -> bool:
+    """Merged-K needs pixel stride == C, channel stride == 1, row stride == W*C."""
+    if not _KMERGE_ENABLED or _KMERGE_STATE["broken"]:
+        return False
+    if k_input.dim() != 4 or k_input.shape[1] != channels:
+        return False
+    return (
+        k_input.stride(1) == 1
+        and k_input.stride(3) == channels
+        and k_input.stride(2) == width * channels
+    )
+
+
+def _launch_merged_k(
+    k_input,
+    weight,
+    bias,
+    output,
+    in_n,
+    out_c,
+    out_height,
+    out_width,
+    channels,
+    weight_height,
+    weight_width,
+    stride_height,
+    stride_width,
+):
+    """Returns True if the merged kernel ran, False to fall back."""
+    try:
+        packed, _, co_pad = _pack_weight_merged_cached(weight)
+        grid = lambda META: (
+            triton.cdiv(in_n * out_height * out_width, META["BLOCK_M"]),
+            triton.cdiv(out_c, META["BLOCK_CO"]),
+        )
+        with _disable_aabs():
+            conv2d_merged_k_kernel[grid](
+                k_input,
+                packed,
+                output,
+                bias,
+                k_input.stride(0),
+                k_input.stride(2),
+                *output.stride(),
+                in_n,
+                out_c,
+                out_height,
+                out_width,
+                channels,
+                weight_height,
+                weight_width,
+                stride_height,
+                stride_width,
+                co_pad,
+                HAS_BIAS=bias is not None,
+            )
+        return True
+    except Exception as exc:  # compile / resource failure: use the per-tap kernel
+        if "out of memory" in str(exc).lower():
+            raise
+        _KMERGE_STATE["broken"] = True
+        logger.warning(
+            "conv2d merged-K kernel disabled, falling back to per-tap kernel: %r", exc
+        )
+        return False
 
 
 @libentry()
@@ -839,7 +1184,8 @@ class Conv2d(torch.autograd.Function):
         k_input = input
         k_in_h, k_in_w = input_height, input_width
         k_pad_h, k_pad_w = padding_height, padding_width
-        if _want_channels_last(input, weight_height, weight_width):
+        use_channels_last = _want_channels_last(input, weight_height, weight_width)
+        if use_channels_last:
             if padding_height or padding_width:
                 # Fold the zero padding into the layout conversion. The conv
                 # kernel then sees a padding-free problem on the padded input
@@ -852,40 +1198,67 @@ class Conv2d(torch.autograd.Function):
             else:
                 k_input = input
 
-        packed, w_strides, co_group, ci_tile, co_tile = _pack_weight_cached(
-            weight, groups
-        )
-        with _disable_aabs():
-            conv2d_forward_kernel[grid](
+        launched = False
+        if (
+            use_channels_last
+            and groups == 1
+            and dilation_height == 1
+            and dilation_width == 1
+            and k_pad_h == 0
+            and k_pad_w == 0
+            and _kmerge_usable(k_input, weight_c, k_in_w)
+        ):
+            launched = _launch_merged_k(
                 k_input,
-                packed,
-                output,
+                weight,
                 bias,
+                output,
                 in_n,
-                k_in_h,
-                k_in_w,
                 out_c,
                 out_height,
                 out_width,
-                *k_input.stride(),
-                *w_strides,
-                co_group,
-                *output.stride(),
                 weight_c,
                 weight_height,
                 weight_width,
                 stride_height,
                 stride_width,
-                k_pad_h,
-                k_pad_w,
-                dilation_height,
-                dilation_width,
-                groups=groups,
-                HAS_BIAS=bias is not None,
-                LAYOUT=_LAYOUT_W,
-                PACKED_CI_TILE=ci_tile,
-                PACKED_CO_TILE=co_tile,
             )
+
+        if not launched:
+            packed, w_strides, co_group, ci_tile, co_tile = _pack_weight_cached(
+                weight, groups
+            )
+            with _disable_aabs():
+                conv2d_forward_kernel[grid](
+                    k_input,
+                    packed,
+                    output,
+                    bias,
+                    in_n,
+                    k_in_h,
+                    k_in_w,
+                    out_c,
+                    out_height,
+                    out_width,
+                    *k_input.stride(),
+                    *w_strides,
+                    co_group,
+                    *output.stride(),
+                    weight_c,
+                    weight_height,
+                    weight_width,
+                    stride_height,
+                    stride_width,
+                    k_pad_h,
+                    k_pad_w,
+                    dilation_height,
+                    dilation_width,
+                    groups=groups,
+                    HAS_BIAS=bias is not None,
+                    LAYOUT=_LAYOUT_W,
+                    PACKED_CI_TILE=ci_tile,
+                    PACKED_CO_TILE=co_tile,
+                )
 
         ctx.save_for_backward(weight, orig_input, bias)
 

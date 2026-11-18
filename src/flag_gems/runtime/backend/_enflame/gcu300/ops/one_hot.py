@@ -42,15 +42,32 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     if not tensor.is_contiguous():
         tensor = tensor.contiguous()
     numel = tensor.numel()
-    if num_classes == -1:
-        num_classes = int(tensor.max().item()) + 1
 
     # GCU300 does not support 64-bit data types. torch.one_hot returns int64,
     # so allocate an int32 output for the kernel and cast back to int64 after.
+    # The dtype cast comes first because this backend's `max` reduction aborts on
+    # int64 input ("max check args err"), and `num_classes == -1` needs it.
     if tensor.dtype == torch.int64:
         tensor = tensor.to(torch.int32)
     if tensor.dtype == torch.uint64:
         tensor = tensor.to(torch.uint32)
+
+    if num_classes == -1:
+        if numel == 0:
+            raise RuntimeError(
+                "Can not infer total number of classes from empty tensor."
+            )
+        num_classes = int(tensor.max().item()) + 1
+
+    # `torch.one_hot` rejects out-of-range classes instead of emitting an
+    # all-zero row, so the range is checked before the kernel runs. Counted with
+    # comparisons rather than `min`/`max` reductions: this backend's `min`
+    # aborts on int64 input as well.
+    if numel > 0:
+        if int((tensor < 0).sum().item()) > 0:
+            raise RuntimeError("Class values must be non-negative.")
+        if int((tensor >= num_classes).sum().item()) > 0:
+            raise RuntimeError("Class values must be smaller than num_classes.")
     out_i32 = torch.empty(
         (*tensor.shape, num_classes), device=tensor.device, dtype=torch.int32
     )

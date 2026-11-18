@@ -56,14 +56,14 @@ jobs:
         run: |
           docker exec -t $CONTAINER bash -c "
             set -e
-            /opt/python/cp38-cp38/bin/python -m pip install --upgrade pip setuptools wheel build
+            /opt/python/cp310-cp310/bin/python -m pip install --upgrade pip setuptools wheel build
           "
 
-      - name: Build wheel for Python 3.8
+      - name: Build wheel for Python 3.10
         run: |
           docker exec -t $CONTAINER bash -c "
             set -e
-            /opt/python/cp38-cp38/bin/python -m build --wheel --outdir /wheelhouse
+            /opt/python/cp310-cp310/bin/python -m build --wheel --outdir /wheelhouse
           "
 
       - name: Upload wheel as artifact
