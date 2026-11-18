@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # Exclude 1D shapes since inplace op requires matching dimensions
 GREATER_SHAPES = [s for s in utils.POINTWISE_SHAPES if s != (1,)]
@@ -41,7 +42,7 @@ def test_greater_(shape, dtype):
 
 
 @pytest.mark.greater_
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_greater_fp64_precision(dtype):
     """Test that float64 precision is preserved and not converted to float32.
 

@@ -34,6 +34,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # Ranks 0 through 4: rank 0 flattens to a 1-element 1-D tensor, rank 1 is the
 # identity-shaped row, and the higher ranks feed the non-contiguous rows.
@@ -69,6 +70,20 @@ def _apply_layout(inp, layout):
     if layout == "expanded":
         return inp[:1].expand(4, *inp.shape[1:])
     raise ValueError(f"unknown layout {layout!r}")
+
+
+def _assert_ravel_complex_values(actual, reference, source, dtype):
+    # KLX complex eq is unsupported in the default device comparison helper.
+    # Keep original-device metadata checks before moving only observations.
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        assert actual.device == source.device
+        assert actual.dtype == reference.dtype == dtype
+        assert actual.shape == reference.shape
+        actual = actual.detach().cpu()
+        reference = reference.detach().cpu()
+        assert actual.dtype == reference.dtype == dtype
+        assert actual.shape == reference.shape
+    utils.gems_assert_close(actual, reference, dtype)
 
 
 @pytest.mark.ravel
@@ -152,7 +167,9 @@ def test_ravel_copy_path_ranks(shape):
 
 
 @pytest.mark.ravel
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_ravel_complex(dtype):
     if dtype == torch.complex128 and not flag_gems.runtime.device.support_fp64:
         pytest.skip("complex128 needs fp64 support")
@@ -162,7 +179,7 @@ def test_ravel_complex(dtype):
     res_out = flag_gems.ravel(inp)
     ref_out = torch.ravel(ref_inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_ravel_complex_values(res_out, ref_out, inp, dtype)
 
 
 @pytest.mark.ravel
@@ -180,7 +197,7 @@ def test_ravel_lazy_conj_bit_kept_on_view_path():
     ref_values = torch.ravel(utils.to_reference(conj_inp))
 
     assert res_out.is_conj() == ref_out.is_conj()
-    utils.gems_assert_close(res_out, ref_values, torch.complex64)
+    _assert_ravel_complex_values(res_out, ref_values, conj_inp, torch.complex64)
 
 
 @pytest.mark.ravel
@@ -241,3 +258,45 @@ def test_ravel_rejects_sparse_layout():
 
     with pytest.raises(RuntimeError):
         flag_gems.ravel(sparse)
+
+
+@pytest.mark.ravel
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("rank", [2, 8, 9])
+@pytest.mark.parametrize("lazy", ["none", "neg", "conj", "conj_neg"])
+def test_ravel_strided_offset_lazy_bits(rank, lazy):
+    dtype = torch.complex64 if "conj" in lazy else torch.float32
+    base = torch.randn((2,) * (rank - 1) + (6,), dtype=dtype, device=flag_gems.device)
+    inp = base[..., 1::2]
+    # KLX native ravel and a device-to-CPU copy currently discard the lazy
+    # negative bit. Rebuild the reference view from the unmodified CPU base.
+    ref_inp = base.cpu()[..., 1::2]
+    if "conj" in lazy:
+        inp = inp.conj()
+        ref_inp = ref_inp.conj()
+    if "neg" in lazy:
+        inp = torch._neg_view(inp)
+        ref_inp = torch._neg_view(ref_inp)
+    assert not inp.is_contiguous()
+    assert inp.storage_offset() != 0
+    reference = torch.ravel(ref_inp)
+    result = flag_gems.ravel(inp)
+    assert result.is_contiguous()
+    assert not result.is_conj() and not result.is_neg()
+    assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    if dtype.is_complex:
+        _assert_ravel_complex_values(result, reference, inp, dtype)
+    else:
+        utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.ravel
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+def test_ravel_bfloat16_lazy_neg_copy():
+    base = torch.randn((4, 6), dtype=torch.bfloat16)
+    reference = torch.ravel(torch._neg_view(base[..., 1::2]))
+    inp = torch._neg_view(base.to(flag_gems.device)[..., 1::2])
+    result = flag_gems.ravel(inp)
+    assert result.dtype == inp.dtype and result.device == inp.device
+    assert not result.is_neg()
+    utils.gems_assert_close(result, reference, torch.bfloat16)
