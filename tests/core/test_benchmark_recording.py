@@ -13,17 +13,30 @@ conftest = SimpleNamespace(pytest_runtest_logreport=None)
 
 @pytest.fixture
 def recording(monkeypatch):
-    config = SimpleNamespace(reference_only=False, record_json=True, reference_records=[])
+    config = SimpleNamespace(
+        reference_only=False, record_json=True, reference_records=[]
+    )
     records = {}
     path = Path(__file__).resolve().parents[2] / "benchmark/conftest.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     names = {"get_reason", "_record_outcome", "pytest_runtest_logreport"}
-    nodes = [node for node in tree.body if
-        (isinstance(node, ast.FunctionDef) and node.name in names) or
-        (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_RESULT_PRIORITY" for t in node.targets))]
+    nodes = [
+        node
+        for node in tree.body
+        if (isinstance(node, ast.FunctionDef) and node.name in names)
+        or (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "_RESULT_PRIORITY"
+                for t in node.targets
+            )
+        )
+    ]
     namespace = {"pytest": pytest, "Config": config, "TEST_RESULTS": records}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), namespace)
-    monkeypatch.setattr(conftest, "pytest_runtest_logreport", namespace["pytest_runtest_logreport"])
+    monkeypatch.setattr(
+        conftest, "pytest_runtest_logreport", namespace["pytest_runtest_logreport"]
+    )
     return config, records
 
 
