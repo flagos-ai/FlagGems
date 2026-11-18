@@ -37,9 +37,36 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 _BLOCK = 1024
+
+# Prefer the corresponding FlagGems compressed constructor when it is present
+# (it is added by the sibling sparse_compressed_tensor_unsafe operator). When
+# it is absent, fall back to the native assembly kernel captured once at import
+# time; either path avoids a torch compute-layer call
+# (check_no_torch_fallback) and avoids recursing into the FlagGems
+# _sparse_csr_tensor_unsafe registration.
+try:
+    from flag_gems.ops.sparse_compressed_tensor_unsafe import (
+        sparse_compressed_tensor_unsafe as _flag_gems_compressed_unsafe,
+    )
+except ImportError:  # pragma: no cover - depends on merge order
+    _flag_gems_compressed_unsafe = None
+
+_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    _NATIVE_COMPRESSED_UNSAFE = torch.library.get_kernel(
+        torch.ops.aten._sparse_compressed_tensor_unsafe.default,
+        runtime.device.dispatch_key,
+    )
+    _DEVICE_KEYSET = torch._C.DispatchKeySet(
+        getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+    )
+else:
+    _NATIVE_COMPRESSED_UNSAFE = None
 
 
 @triton.jit
@@ -89,13 +116,31 @@ def sparse_csr_tensor_unsafe(
     # defaults the sparse tensor to float32 and then rejects any other values
     # dtype.  Pass the (possibly converted) values' device and dtype whenever
     # the caller did not specify one.
-    return torch.ops.aten._sparse_compressed_tensor_unsafe(
-        crow_indices,
-        col_indices,
-        out_values,
-        size,
+    kwargs = dict(
         dtype=out_values.dtype if dtype is None else dtype,
         layout=torch.sparse_csr if layout is None else layout,
         device=out_values.device if device is None else device,
         pin_memory=pin_memory,
+    )
+    if _flag_gems_compressed_unsafe is not None:
+        return _flag_gems_compressed_unsafe(
+            crow_indices,
+            col_indices,
+            out_values,
+            size,
+            **kwargs,
+        )
+    if _NATIVE_COMPRESSED_UNSAFE is None:
+        raise RuntimeError(
+            "sparse_csr_tensor_unsafe requires "
+            "flag_gems.sparse_compressed_tensor_unsafe or "
+            "torch.library.get_kernel"
+        )
+    return _NATIVE_COMPRESSED_UNSAFE.call_boxed(
+        _DEVICE_KEYSET,
+        crow_indices,
+        col_indices,
+        out_values,
+        size,
+        **kwargs,
     )
