@@ -245,9 +245,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
         for tensor in state_tensors
     ]
 
-    # The current FlagGems implementation scalarizes these state tensors and
-    # ignores per_row_fake_quant/ch_axis. Keep the pinned ATen contract here so
-    # deferred runtime validation exposes that implementation mismatch.
+    # Compare channel states and output against the pinned ATen contract.
     res_out = flag_gems.fused_moving_avg_obs_fake_quant(
         input_tensor,
         observer_tri,
