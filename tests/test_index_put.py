@@ -491,3 +491,43 @@ def test_index_put__single_element_index(input_shape, index_dim, dtype):
     ref_inp[tuple(ref_slices)] = ref_values
     flag_gems.index_put_(inp, indices, values, False)
     utils.gems_assert_close(inp, ref_inp, dtype)
+
+
+INDEX_PUT_BACKWARD_CASES = [((1024, 64), 0), ((2048, 32), 0)]
+
+
+@pytest.mark.index_put_backward
+@pytest.mark.parametrize("shape, dim", INDEX_PUT_BACKWARD_CASES)
+@pytest.mark.parametrize("accumulate", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_put_backward(shape, dim, accumulate, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    index_len = shape[dim] // 2
+    index = torch.randperm(index_len, device=flag_gems.device)
+    values = torch.randn(
+        (index_len, *shape[dim + 1 :]),
+        dtype=dtype,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+
+    res_out = flag_gems.index_put(inp, (index,), values, accumulate=accumulate)
+    ref_inp = utils.to_reference(inp, True)
+    ref_values = utils.to_reference(values, True)
+    ref_out = torch.index_put(ref_inp, (index,), ref_values, accumulate=accumulate)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_dinp, res_dval = torch.autograd.grad(res_out, (inp, values), out_grad)
+    ref_dinp, ref_dval = torch.autograd.grad(
+        ref_out, (ref_inp, ref_values), ref_out_grad
+    )
+    utils.gems_assert_close(res_dinp, ref_dinp, dtype)
+    utils.gems_assert_close(res_dval, ref_dval, dtype)
+
+    res_dinp_direct, res_dval_direct = flag_gems.index_put_backward(
+        out_grad, (index,), shape, accumulate
+    )
+    utils.gems_assert_close(res_dinp_direct, ref_dinp, dtype)
+    utils.gems_assert_close(res_dval_direct, ref_dval, dtype)
