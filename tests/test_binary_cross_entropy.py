@@ -64,6 +64,13 @@ def test_binary_cross_entropy(shape, dtype, reduction, weighted):
         pytest.skip(
             "Kunlunxin native binary-cross-entropy reference rejects empty input"
         )
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not utils.TO_CPU
+        and reduction == "mean"
+        and 0 in shape
+    ):
+        pytest.skip("MUSA native BCE mean returns zero for empty input instead of NaN")
     inp, target, weight = _inputs(shape, dtype, weighted)
     inp_before = inp.clone()
     target_before = target.clone()
