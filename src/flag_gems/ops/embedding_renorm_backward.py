@@ -20,8 +20,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,174 +41,179 @@ logger = logging.getLogger(__name__)
 #
 # The VJP of that row map, for upstream gradient ``g``:
 #
-#     dL/dx = c * g - C * T * |x|^(p-1) * sign(x)
-#     T    = sum_j g_j |x_j|^(p-1) sign(x_j)
-#     C    = max_norm / (n + eps)^2 * n^(1-p)
+#     grad_weight = c * g - C * T * |x|^(p-1) * sign(x)
+#     T = sum_j g_j |x_j|^(p-1) sign(x_j)
+#     C = max_norm / (n + eps)^2 * n^(1-p)
 #
-# Rows not selected by ``indices`` propagate ``g`` unchanged.  ``p == 1`` and
-# ``p == 2`` (``nn.Embedding``'s default) are special-cased to avoid the
-# ``exp(p * log|x|)`` round trip: it costs an extra ULP on ``n``, which the
-# ``c * g - C * T * ...`` cancellation amplifies.  Other orders use
-# exp/log.  Accumulation is fp32 for fp16/bf16/fp32 inputs and fp64 for fp64
-# inputs, matching ATen's opmath policy, so the result is exact against the
-# eager VJP up to the storage dtype's rounding.
+# Rows outside ``indices`` propagate ``g`` unchanged.  A per-row uint8 flag
+# array (zero-fill + scatter of indices) drives the row-tiled fused kernel
+# in a single pass over V rows; duplicate index writers store the same
+# byte so there is no race.  The fused path is dispatched when
+# ``num_indices * D >= 1e6``; smaller cases use the per-index row kernel
+# (BLOCK_D = next_power_of_2(D), num_warps = min(4, BLOCK_D // 64)).
 # ---------------------------------------------------------------------------
-
-# One program per embedding row: the row reduction (sum |x|^p) and the row
-# scatter (c*g - C*T*...) share the whole row, so a single pass over it
-# amortises the two loads of ``x`` across the row width.  1024 covers the
-# common embedding dims (128/256/512); BLOCK = next_power_of_2(D) capped at 4096.
-_BLOCK = 1024
-_NUM_WARPS = 4
-
-# ``norm_type`` dispatch: 1 and 2 get exact integer-exponent arithmetic;
-# 0 keeps the general exp/log form.  Instantiated as ``constexpr`` so Triton
-# kernels can read them.
-_P_KIND_OTHER = tl.constexpr(0)
-_P_KIND_ONE = tl.constexpr(1)
-_P_KIND_TWO = tl.constexpr(2)
 
 
 @triton.jit
-def _mark_selected_kernel(
-    indices_ptr,  # (num_indices,) selected row ids (may contain duplicates)
-    flag_ptr,  # (V,) uint8 per-row selection flag
-    num_indices,
-    BLOCK: tl.constexpr,
-):
-    """Set ``flag[row] = 1`` for every row in ``indices``.
-
-    This replaces a host-side ``torch.unique``: duplicate indices write the same
-    ``1`` to the same byte, so no dedup is needed and no host sync happens.
-    """
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < num_indices
-    rows = tl.load(indices_ptr + offsets, mask=mask, other=0).to(tl.int64)
-    tl.store(flag_ptr + rows, tl.full((BLOCK,), 1, tl.uint8), mask=mask)
+def _copy_kernel(src, dst, numel, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < numel
+    tl.store(dst + offs, tl.load(src + offs, mask=mask), mask=mask)
 
 
-@triton.jit(do_not_specialize=["max_norm", "norm_type"])
-def _embedding_renorm_backward_kernel(
-    grad_ptr,  # (V, D) upstream gradient
-    weight_ptr,  # (V, D) forward weight rows
-    flag_ptr,  # (V,) per-row selection flag
-    grad_weight_ptr,  # (V, D) output gradient
-    D,  # embedding dim (row length)
+@triton.jit
+def _zero_i8(ptr, n, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    tl.store(ptr + offs, tl.zeros([BLOCK], dtype=tl.int8), mask=mask)
+
+
+@triton.jit
+def _mark_i8(ptr, idx_ptr, n, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    i = tl.load(idx_ptr + offs, mask=mask, other=0)
+    tl.store(ptr + i, tl.full([BLOCK], 1, tl.int8), mask=mask)
+
+
+@triton.jit
+def _p2(base, e):
+    # base ** e via exp2/log2 (base == 0 -> 0)
+    return tl.exp2(e * tl.log2(base))
+
+
+@triton.jit
+def _renorm_bwd_row(
+    weight_ptr,
+    grad_ptr,
+    out_ptr,
+    idx_ptr,
+    D,
     max_norm,
-    norm_type,
-    EPS: tl.constexpr,
-    IS64: tl.constexpr,
-    P_KIND: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    p,
+    BLOCK_D: tl.constexpr,
+    IS_P2: tl.constexpr,
+    IS_FP64: tl.constexpr,
 ):
-    row = tl.program_id(axis=0).to(tl.int64)
+    pid = tl.program_id(0)
+    row = tl.load(idx_ptr + pid)
+    offs = tl.arange(0, BLOCK_D)
+    m = offs < D
     base = row * D
-    offset = tl.arange(0, BLOCK_SIZE).to(tl.int64)
-    mask = offset < D
 
-    g = tl.load(grad_ptr + base + offset, mask=mask, other=0.0)
+    x = tl.load(weight_ptr + base + offs, mask=m, other=0.0)
+    g = tl.load(grad_ptr + base + offs, mask=m, other=0.0)
 
-    if tl.load(flag_ptr + row) == 0:
-        # Row outside ``indices``: the upstream gradient passes through.
-        tl.store(grad_weight_ptr + base + offset, g, mask=mask)
+    if IS_FP64:
+        fdt: tl.constexpr = tl.float64
+        xw = x
+        gw = g
     else:
-        x = tl.load(weight_ptr + base + offset, mask=mask, other=0.0)
+        fdt: tl.constexpr = tl.float32
+        xw = x.to(tl.float32)
+        gw = g.to(tl.float32)
 
-        if IS64:
-            xw = x
-            gw = g
-            dt = tl.float64
-        else:
-            # fp32 and lower: ATen runs the renorm math in fp32 opmath.
-            xw = x.to(tl.float32)
-            gw = g.to(tl.float32)
-            dt = grad_ptr.dtype.element_ty
+    one = tl.zeros([], dtype=fdt) + 1.0
+    zero = tl.zeros([], dtype=fdt)
 
-        ax = tl.abs(xw)
-        sgn = tl.where(xw >= 0, 1.0, -1.0)
+    if IS_P2:
+        n = tl.sqrt(tl.sum(xw * xw, axis=0))
+    else:
+        n = _p2(tl.sum(_p2(tl.abs(xw), p), axis=0), 1.0 / p)
 
-        if P_KIND == _P_KIND_TWO:
-            sum_pow = tl.sum(xw * xw, axis=0)
-            n = tl.sqrt(sum_pow)
-            pterm = ax  # |x|^(p-1)
-            # sum_j g_j |x_j|^(p-1) sign(x_j) == sum_j g_j x_j for p == 2
-            t = tl.sum(gw * xw, axis=0)
-            inv_n_pow = 1.0 / n
-        elif P_KIND == _P_KIND_ONE:
-            n = tl.sum(ax, axis=0)
-            pterm = 1.0  # |x|^0
-            t = tl.sum(gw * sgn, axis=0)
-            inv_n_pow = 1.0
-        else:
-            sum_pow = tl.sum(tl.exp(norm_type * tl.log(ax)), axis=0)
-            n = tl.exp(tl.log(sum_pow) / norm_type)
-            pterm = tl.exp((norm_type - 1.0) * tl.log(ax))
-            t = tl.sum(gw * pterm * sgn, axis=0)
-            inv_n_pow = tl.exp((1.0 - norm_type) * tl.log(n))
+    denom = n + 1e-7
+    rescaled = n > max_norm
+    c = tl.where(rescaled, max_norm / denom, one)
 
-        rescaled = n > max_norm
-        denom = n + EPS
-        c = tl.where(rescaled, max_norm / denom, 1.0)
-        coef = tl.where(rescaled, max_norm / denom / denom * inv_n_pow, 0.0)
+    if IS_P2:
+        coef = tl.where(rescaled, (max_norm / (denom * denom)) * (one / n), zero)
+        t = tl.sum(gw * xw, axis=0)
+        grad = c * gw - coef * t * xw
+    else:
+        coef = tl.where(rescaled, (max_norm / (denom * denom)) * _p2(n, 1.0 - p), zero)
+        sgn = tl.where(xw > 0, one, tl.where(xw < 0, -one, zero))
+        apm = _p2(tl.abs(xw), p - 1.0)
+        t = tl.sum(gw * apm * sgn, axis=0)
+        grad = c * gw - coef * t * apm * sgn
 
-        grad = c * gw - coef * t * pterm * sgn
-        if not IS64:
-            grad = grad.to(dt)
-        tl.store(grad_weight_ptr + base + offset, grad, mask=mask)
+    tl.store(out_ptr + base + offs, grad.to(g.dtype), mask=m)
 
 
-def _p_kind(norm_type):
-    if norm_type == 2.0:
-        return _P_KIND_TWO
-    if norm_type == 1.0:
-        return _P_KIND_ONE
-    return _P_KIND_OTHER
+@triton.jit
+def _renorm_bwd_fused(
+    weight_ptr,
+    grad_ptr,
+    out_ptr,
+    flags_ptr,
+    V,
+    D,
+    max_norm,
+    p,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    IS_P2: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
+    cols = tl.arange(0, BLOCK_D)
+    rmask = rows < V
+    cmask = cols < D
+    m2 = rmask[:, None] & cmask[None, :]
+    off = rows[:, None] * D + cols[None, :]
 
+    g = tl.load(grad_ptr + off, mask=m2, other=0.0)
+    fl = tl.load(flags_ptr + rows, mask=rmask, other=0)
+    sel = (fl != 0)[:, None] & m2
 
-def _embedding_renorm_backward_impl(grad_output, weight, indices, max_norm, norm_type):
-    weight_c = weight.contiguous()
-    grad_c = grad_output.contiguous()
-    V, D = weight_c.shape
+    x = tl.load(weight_ptr + off, mask=sel, other=0.0)
 
-    grad_weight = torch.empty_like(weight_c)
+    if IS_FP64:
+        fdt: tl.constexpr = tl.float64
+        xw = x
+        gw = g
+    else:
+        fdt: tl.constexpr = tl.float32
+        xw = x.to(tl.float32)
+        gw = g.to(tl.float32)
 
-    flat_indices = indices.flatten()
-    num_indices = flat_indices.numel()
-    if num_indices == 0 or D == 0:
-        # Nothing is renormalized: the upstream gradient is the answer.
-        grad_weight.copy_(grad_output)
-        return grad_weight
+    one = tl.zeros([], dtype=fdt) + 1.0
+    zero = tl.zeros([], dtype=fdt)
 
-    # Per-row selection bitmap, written on-device (duplicates are idempotent).
-    selected = torch.zeros(V, dtype=torch.uint8, device=weight.device)
+    if IS_P2:
+        n = tl.sqrt(tl.sum(xw * xw, axis=1))
+    else:
+        n = _p2(tl.sum(_p2(tl.abs(xw), p), axis=1), 1.0 / p)
 
-    BLOCK_SIZE = min(triton.next_power_of_2(D), 4096)
-    mark_block = 1024
-    mark_grid = (triton.cdiv(num_indices, mark_block),)
-    grid = (V,)
-    with torch_device_fn.device(weight.device):
-        _mark_selected_kernel[mark_grid](
-            flat_indices,
-            selected,
-            num_indices,
-            BLOCK=mark_block,
+    n_safe = tl.maximum(n, 1.0e-30)
+    denom = n + 1e-7
+    rescaled = (n > max_norm)[:, None]
+    c = tl.where(rescaled, max_norm / denom[:, None], one)
+
+    if IS_P2:
+        coef = tl.where(
+            rescaled,
+            (max_norm / (denom * denom))[:, None] * (one / n_safe)[:, None],
+            zero,
         )
-        _embedding_renorm_backward_kernel[grid](
-            grad_c,
-            weight_c,
-            selected,
-            grad_weight,
-            D,
-            float(max_norm),
-            float(norm_type),
-            EPS=1e-7,
-            IS64=(weight_c.dtype == torch.float64),
-            P_KIND=_p_kind(float(norm_type)),
-            BLOCK_SIZE=BLOCK_SIZE,
-            num_warps=_NUM_WARPS,
+        t = tl.sum(gw * xw, axis=1)
+        grad = c * gw - coef * t[:, None] * xw
+    else:
+        coef = tl.where(
+            rescaled,
+            (max_norm / (denom * denom))[:, None] * _p2(n_safe, 1.0 - p)[:, None],
+            zero,
         )
-    return grad_weight
+        sgn = tl.where(xw > 0, one, tl.where(xw < 0, -one, zero))
+        apm = _p2(tl.abs(xw), p - 1.0)
+        t = tl.sum(gw * apm * sgn, axis=1)
+        grad = c * gw - coef * t[:, None] * apm * sgn
+
+    res = tl.where(sel, grad.to(g.dtype), g)
+    tl.store(out_ptr + off, res, mask=m2)
 
 
 def embedding_renorm_backward(grad_output, weight, indices, max_norm, norm_type):
@@ -221,10 +224,64 @@ def embedding_renorm_backward(grad_output, weight, indices, max_norm, norm_type)
     for the formula.
     """
     logger.debug("GEMS EMBEDDING_RENORM_BACKWARD")
-    if weight.dim() != 2:
-        raise AssertionError("embedding_renorm_backward expects a 2D weight matrix")
-    if weight.shape != grad_output.shape:
-        raise AssertionError("grad_output must have the same shape as weight")
-    return _embedding_renorm_backward_impl(
-        grad_output, weight, indices, max_norm, norm_type
-    )
+    out = torch.empty_like(grad_output)
+    V, D = weight.shape
+    n_idx = indices.numel()
+    p = float(norm_type)
+    is_p2 = p == 2.0
+    is_fp64 = weight.dtype == torch.float64
+    block_d = triton.next_power_of_2(max(int(D), 1))
+
+    if n_idx * int(D) >= 1000000:
+        # Single fused pass: one read of grad_output, one write of out.
+        BLOCK_ROWS = max(1, 2048 // block_d)
+        flags = torch.empty(V, dtype=torch.int8, device=weight.device)
+        ZB = 1024
+        _zero_i8[(triton.cdiv(V, ZB),)](flags, V, BLOCK=ZB, num_warps=4)
+        MB = 1024
+        _mark_i8[(triton.cdiv(n_idx, MB),)](
+            flags, indices, n_idx, BLOCK=MB, num_warps=4
+        )
+        elems = BLOCK_ROWS * block_d
+        nw = max(1, min(8, elems // 512))
+        _renorm_bwd_fused[(triton.cdiv(V, BLOCK_ROWS),)](
+            weight,
+            grad_output,
+            out,
+            flags,
+            V,
+            int(D),
+            float(max_norm),
+            p,
+            BLOCK_ROWS=BLOCK_ROWS,
+            BLOCK_D=block_d,
+            IS_P2=is_p2,
+            IS_FP64=is_fp64,
+            num_warps=nw,
+        )
+        return out
+
+    numel = out.numel()
+    if numel > 0:
+        # Pure copy kernel: 4096 elements per program amortises the launch
+        # overhead on the tiny tables where this path runs.
+        BLOCK = 4096
+        _copy_kernel[(triton.cdiv(numel, BLOCK),)](
+            grad_output, out, numel, BLOCK=BLOCK, num_warps=4
+        )
+    if n_idx > 0:
+        nw = max(1, min(4, block_d // 64))
+        _renorm_bwd_row[(n_idx,)](
+            weight,
+            grad_output,
+            out,
+            indices,
+            int(D),
+            float(max_norm),
+            p,
+            BLOCK_D=block_d,
+            IS_P2=is_p2,
+            IS_FP64=is_fp64,
+            num_warps=nw,
+        )
+    return out
