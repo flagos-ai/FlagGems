@@ -476,8 +476,8 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
 
     # NOTE: when the input is half-precision(either float16 or bfloat16)
     # these statistical data saved for backward is in single precision
-    mean = torch.empty(M, dtype=input.dtype, device=input.device)
-    rstd = torch.empty(M, dtype=input.dtype, device=input.device)
+    mean = torch.empty(M, dtype=torch.float32, device=input.device)
+    rstd = torch.empty_like(mean)
 
     with torch_device_fn.device(input.device):
         if N <= 128:
