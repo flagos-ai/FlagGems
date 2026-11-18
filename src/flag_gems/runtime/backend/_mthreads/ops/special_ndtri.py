@@ -34,14 +34,13 @@ logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
 )
 
-# Moore Threads hardware does not support fp64.
-_SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
-
-# Logged under this module's own name, like every other vendor override: the
-# test resolves the logger from the dispatched function's ``__module__``, so
-# borrowing the reference operator's namespace sends the record to a logger the
-# caller is not capturing.
-_logger = logging.getLogger(__name__)
+# The MUSA kernel computes in the element dtype, so only the dtypes the
+# hardware can execute natively are whitelisted.  float16/bfloat16 are absent
+# on purpose: the ATen reference (ndtri_cuda/ndtri_cpu) raises
+# NotImplementedError for them, so there is no reference to compare
+# against — let them fall back to the generic op, which reproduces that
+# same rejection semantics without a dead branch inside the kernel.
+_SUPPORTED_DTYPES = {torch.float32}
 
 _MAX_RANK = 8
 
