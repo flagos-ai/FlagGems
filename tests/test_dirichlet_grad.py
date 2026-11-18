@@ -81,8 +81,6 @@ def _dirichlet_inputs(shape, dtype, alpha_range, seed):
 @pytest.mark.parametrize("k", DIRICHLET_KS)
 @pytest.mark.parametrize("shape_kind", ["flat", "rows", "batched", "deep"])
 def test_dirichlet_grad(shape_kind, dtype, alpha_range, k):
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
-        pytest.skip("Kunlunxin FP64 inputs/results are narrowed to FP32")
     shape = {"flat": (k,), "rows": (8, k), "batched": (64, k), "deep": (20, 320, k)}[
         shape_kind
     ]
@@ -95,3 +93,39 @@ def test_dirichlet_grad(shape_kind, dtype, alpha_range, k):
     res_out = flag_gems._dirichlet_grad(x, alpha, total)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=DIRICHLET_GRAD_ATOL)
+
+
+@pytest.mark.dirichlet_grad
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin backend regression"
+)
+@pytest.mark.parametrize("layout", ["broadcast", "strided", "expand_x"])
+def test_dirichlet_grad_layout(layout):
+    x = torch.full((4, 6), 0.2, device=flag_gems.device)
+    alpha = torch.full((4, 6), 2.0, device=flag_gems.device)
+    total = torch.full((4, 6), 8.0, device=flag_gems.device)
+    if layout == "broadcast":
+        alpha = alpha[:1, :1]
+        total = total[:, :1]
+    elif layout == "strided":
+        x, alpha, total = x.t(), alpha.t(), total.t()
+    else:
+        x = x[:1, :1]
+    reference = torch.ops.aten._dirichlet_grad(x, alpha, total)
+    result = flag_gems._dirichlet_grad(x, alpha, total)
+    utils.gems_assert_close(result, reference, torch.float32, atol=DIRICHLET_GRAD_ATOL)
+    out = torch.empty_like(result.t()).t()
+    actual = flag_gems._dirichlet_grad_into(x, alpha, total, out=out)
+    assert actual is out
+    utils.gems_assert_close(out, result, torch.float32, atol=DIRICHLET_GRAD_ATOL)
+
+
+@pytest.mark.dirichlet_grad
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin backend regression"
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.bool])
+def test_dirichlet_grad_rejects_unsupported_dtype(dtype):
+    x = torch.ones((2,), dtype=dtype, device=flag_gems.device)
+    with pytest.raises(AssertionError, match="only supports"):
+        flag_gems._dirichlet_grad(x, x, x)

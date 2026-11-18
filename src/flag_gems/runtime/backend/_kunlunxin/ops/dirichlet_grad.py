@@ -135,6 +135,27 @@ def _beta_grad_beta_small(x1, a, b, dig_total, dig_alpha):
 
 
 @triton.jit
+def _log1p(v):
+    # Accurate log(1 + v) without an extern call.
+    #
+    # ``tl.log(1.0 + v)`` loses relative accuracy for small ``|v|`` because
+    # ``1.0 + v`` rounds away the low bits of ``v`` (log(r) ~ v, so the error
+    # of the rounded sum is amplified by 1/v).  The saddle-point branch below
+    # feeds it ratios that are close to 1 and multiplies the (small) log by a
+    # large ``alpha``/``beta``, so this matters.  For small ``|v|`` use the
+    # Taylor series; otherwise ``1 + v`` is far enough from 1 that the plain
+    # log keeps full relative accuracy.
+    small = tl.abs(v) < 0.25
+    # Taylor series, truncated after v^10 (error < 1e-8 at |v| = 0.25).
+    poly = tl.zeros_like(v)
+    term = v
+    for k in range(1, 11):
+        poly = poly + term * (1.0 / k)
+        term = -term * v
+    return tl.where(small, poly, tl.log(1.0 + v))
+
+
+@triton.jit
 def _beta_grad_alpha_mid(x, alpha, beta):
     """Rice saddle-point expansion for alpha, beta both large.
 
@@ -147,12 +168,7 @@ def _beta_grad_alpha_mid(x, alpha, beta):
     total = alpha + beta
     mean = _div_rn(alpha, total)
     std = _div_rn(_ld.sqrt(_div_rn(alpha * beta, total + 1.0)), total)
-    # The near-mode polynomial is the accurate form for |x - mean| up to about a
-    # quarter standard deviation on this reference build (the saddle-point form
-    # diverges as x approaches the mode), while the saddle-point form is accurate
-    # beyond it; both agree to ~1e-4 in the hand-over region, so the switch point
-    # is not sensitive.
-    near_mean = (mean - 0.25 * std <= x) & (x <= mean + 0.25 * std)
+    near_mean = (mean - 0.1 * std <= x) & (x <= mean + 0.1 * std)
 
     # Polynomial form, valid close to the mode.
     b2 = beta * beta
@@ -184,14 +200,14 @@ def _beta_grad_alpha_mid(x, alpha, beta):
     term1_num = (
         2.0 * alpha * alpha * (x - 1.0) + alpha * beta * (x - 1.0) - x * (beta * beta)
     )
-    axbx = alpha * (x - 1.0) + beta * x
+    axbx = tl.fma(total, x, -alpha)
     term1_den = _ld.sqrt(_div_rn(2.0 * alpha, beta)) * _ld.pow(total, 1.5) * axbx * axbx
     term1 = _div_rn(term1_num, term1_den)
-    log_a_over_total_x = tl.log(_div_rn(alpha, total * x))
+    log_a_over_total_x = _log1p(_div_rn(-axbx, total * x))
     term2 = 0.5 * log_a_over_total_x
     term3_num = _ld.sqrt(_div_rn(8.0 * alpha * beta, total))
     term3 = _div_rn(term3_num, axbx)
-    log_b_over_total_1mx = tl.log(_div_rn(beta, total * (1.0 - x)))
+    log_b_over_total_1mx = _log1p(_div_rn(axbx, total * (1.0 - x)))
     term4_base = beta * log_b_over_total_1mx + alpha * log_a_over_total_x
     term4 = _ld.pow(term4_base, -1.5)
     term1234 = tl.where(
@@ -335,31 +351,87 @@ def _dirichlet_grad_kernel(x_ptr, a_ptr, t_ptr, o_ptr, n, BLOCK: tl.constexpr):
     tl.store(o_ptr + offs, y.to(o_ptr.dtype.element_ty), mask=m)
 
 
+@libentry()
+@triton.jit
+def _dirichlet_grad_strided(
+    x,
+    a,
+    t,
+    out,
+    n,
+    SHAPE: tl.constexpr,
+    XS: tl.constexpr,
+    AS: tl.constexpr,
+    TS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    rem = off.to(tl.int64)
+    xo = tl.full((BLOCK,), 0, tl.int64)
+    ao = tl.full((BLOCK,), 0, tl.int64)
+    to = tl.full((BLOCK,), 0, tl.int64)
+    for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
+        coordinate = rem % SHAPE[axis]
+        rem = rem // SHAPE[axis]
+        xo += coordinate * XS[axis]
+        ao += coordinate * AS[axis]
+        to += coordinate * TS[axis]
+    xv = tl.load(x + xo, off < n, other=0.5)
+    av = tl.load(a + ao, off < n, other=1.0)
+    tv = tl.load(t + to, off < n, other=2.0)
+    tl.store(out + off, _dirichlet_grad_one(xv, av, tv), off < n)
+
+
+def _validate_inputs(x, alpha, total):
+    for tensor in (x, alpha, total):
+        assert tensor.dtype in (
+            torch.float32,
+            torch.float64,
+        ), f"_dirichlet_grad only supports float32/float64, got {tensor.dtype}"
+        if tensor.device != x.device:
+            raise RuntimeError("_dirichlet_grad: inputs must be on the same device")
+        if tensor.dtype != x.dtype:
+            raise RuntimeError("_dirichlet_grad: inputs must have the same dtype")
+    if x.dtype == torch.float64:
+        raise NotImplementedError("_dirichlet_grad: FP64 is not supported on Kunlunxin")
+    return torch.broadcast_shapes(x.shape, alpha.shape, total.shape)
+
+
+def _broadcast_strides(tensor, shape):
+    pad = len(shape) - tensor.ndim
+    sizes = (1,) * pad + tuple(tensor.shape)
+    strides = (0,) * pad + tuple(tensor.stride())
+    return tuple(0 if size == 1 else stride for size, stride in zip(sizes, strides))
+
+
 def _dirichlet_grad(x, alpha, total):
     logger.debug("GEMS_KUNLUNXIN DIRICHLET_GRAD")
-    out = torch.empty_like(x)
-    n = x.numel()
+    shape = _validate_inputs(x, alpha, total)
+    out = torch.empty(shape, dtype=x.dtype, device=x.device)
+    n = out.numel()
     if n == 0:
         return out
-    # The optimal elements-per-thread is two-sided on this backend: a single tiny
-    # program pays for the whole per-thread instruction stream, so one element per
-    # thread is fastest there (measured 8.29us vs 13.75us at N=8), while the
-    # multi-program shapes prefer four elements per thread to amortise program
-    # overhead and expose ILP (30.93us vs 45.86us at N=8192).  Dispatch on the
-    # element count, which is pure launch metadata; the kernel is identical.
+    block = 128 if n <= 4096 else 512 if n <= 65536 else 1024
     with torch_device_fn.device(x.device):
-        if n <= 4096:
-            _dirichlet_grad_kernel[((n + 127) >> 7,)](
-                x, alpha, total, out, n, BLOCK=128, num_warps=4
-            )
-        elif n <= 65536:
-            _dirichlet_grad_kernel[((n + 511) >> 9,)](
-                x, alpha, total, out, n, BLOCK=512, num_warps=4
+        if all(
+            t.is_contiguous() and tuple(t.shape) == tuple(shape)
+            for t in (x, alpha, total)
+        ):
+            _dirichlet_grad_kernel[(triton.cdiv(n, block),)](
+                x, alpha, total, out, n, BLOCK=block, num_warps=4
             )
         else:
-            # Enough programs remain to fill all 8 SMs, so spend the extra per-thread
-            # work on fewer, longer programs (8 elements per thread).
-            _dirichlet_grad_kernel[((n + 1023) >> 10,)](
-                x, alpha, total, out, n, BLOCK=1024, num_warps=4
+            _dirichlet_grad_strided[(triton.cdiv(n, block),)](
+                x,
+                alpha,
+                total,
+                out,
+                n,
+                tuple(shape),
+                _broadcast_strides(x, shape),
+                _broadcast_strides(alpha, shape),
+                _broadcast_strides(total, shape),
+                BLOCK=block,
+                num_warps=4,
             )
     return out
