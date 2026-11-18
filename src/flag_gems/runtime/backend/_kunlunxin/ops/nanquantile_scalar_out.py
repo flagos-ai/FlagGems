@@ -32,8 +32,9 @@ smallest key whose cumulative count exceeds the rank, the upper one is either
 the same value (duplicate run / integral position) or the next distinct key.
 FP64 is unsupported on this backend; only FP32 matches the ATen dtype contract.
 Non-collapsible input layouts support at most six dimensions.
-Rank arithmetic uses 48-bit fixed point: pos = q*(cnt-1),
-rank = pos >> 48, gamma = frac(pos); the product is split to avoid int64 overflow.
+Rank arithmetic uses FP32 q and FP32 multiplication, matching ATen for FP32
+input (including rounded half-integer positions). The fractional result is
+encoded as a 48-bit integer for interpolation comparisons.
 """
 
 import logging
@@ -120,12 +121,12 @@ def _key(xs, BITS: tl.constexpr):
 
 @triton.jit
 def _rank_parts(QA, cnt):
-    # Split the product so n up to ATen's 2**24 limit cannot overflow int64.
-    q = QA - 1099511627776
-    count = tl.maximum(cnt - 1, 0)
-    hi = (q >> 24) * count
-    lo = (q & 16777215) * count + ((hi & 16777215) << 24)
-    return (hi >> 24) + (lo >> 48), lo & 281474976710655
+    # ATen converts scalar q to the input dtype, then multiplies in that dtype.
+    # A higher-precision product changes nearest ties, e.g. q=0.1, count=6.
+    q = (QA - 1099511627776).to(tl.float32) * 3.552713678800501e-15
+    pos = q * tl.maximum(cnt - 1, 0).to(tl.float32)
+    lower = tl.floor(pos)
+    return lower.to(tl.int64), ((pos - lower) * 281474976710656.0).to(tl.int64)
 
 
 @libentry()

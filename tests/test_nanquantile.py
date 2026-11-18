@@ -289,17 +289,17 @@ def test_nanquantile_scalar_out_large_bucket(size):
 
 
 @pytest.mark.nanquantile_scalar_out
-@pytest.mark.parametrize("size", [4, 6])
-def test_nanquantile_scalar_out_nearest_even(size):
+@pytest.mark.parametrize(
+    "size, q", [(4, 0.5), (6, 0.1), (6, 0.3), (6, 0.5), (6, 0.7), (6, 0.9)]
+)
+def test_nanquantile_scalar_out_nearest_even(size, q):
     cpu = torch.arange(size, dtype=torch.float32)
     inp = cpu.to(flag_gems.device)
     out = torch.empty((), device=inp.device)
-    result = flag_gems.nanquantile_scalar_out(
-        inp, 0.5, interpolation="nearest", out=out
-    )
+    result = flag_gems.nanquantile_scalar_out(inp, q, interpolation="nearest", out=out)
     torch.testing.assert_close(
         result.cpu(),
-        torch.nanquantile(cpu, 0.5, interpolation="nearest"),
+        torch.nanquantile(cpu, q, interpolation="nearest"),
         rtol=0,
         atol=0,
     )
