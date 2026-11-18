@@ -30,7 +30,13 @@ MAX_GRID_SIZES = [
 ]
 MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y, MAX_GRID_SIZE_Z = MAX_GRID_SIZES
 
-from .reduce_utils import *  # noqa F403 F401
+from .reduce_utils import (  # noqa: E402
+    cfggen_reduce_op,
+    cfggen_reduce_op2,
+    count_divisible_by_2,
+    next_power_of_two,
+    prune_reduce_config,
+)
 
 # from .pointwise_dynamic import pointwise_dynamic
 
@@ -43,4 +49,9 @@ __all__ = [
     "MAX_GRID_SIZE_Z",
     "MAX_GRID_SIZES",
     "DEVICE_COUNT",
+    "cfggen_reduce_op",
+    "cfggen_reduce_op2",
+    "count_divisible_by_2",
+    "next_power_of_two",
+    "prune_reduce_config",
 ]
