@@ -142,6 +142,29 @@ def fused_moving_avg_obs_fake_quant(
     )
     sym = bool(symmetric_quant)
 
+    if per_row_fake_quant:
+        # Keep channel states as views so updates preserve the caller's storage.
+        # Each channel uses the same reduction and quantization kernels as the
+        # per-tensor path, including noncontiguous channel slices.
+        output = torch.empty_like(input)
+        for channel in range(input.shape[ch_axis]):
+            channel_output = fused_moving_avg_obs_fake_quant(
+                input.select(ch_axis, channel),
+                obs,
+                fq,
+                running_min[channel : channel + 1],
+                running_max[channel : channel + 1],
+                scale[channel : channel + 1],
+                zero_point[channel : channel + 1],
+                averaging_const,
+                quant_min,
+                quant_max,
+                -1,
+                symmetric_quant=sym,
+            )
+            output.select(ch_axis, channel).copy_(channel_output)
+        return output
+
     x = input.contiguous().view(-1).float()
     N = x.numel()
     dev = x.device
