@@ -20,12 +20,11 @@ import logging
 import triton
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import pointwise_dynamic
-
 from flag_gems.runtime.backend._kunlunxin.ops.dirichlet_grad import (
     _dirichlet_grad_one,
     _validate_inputs,
 )
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
