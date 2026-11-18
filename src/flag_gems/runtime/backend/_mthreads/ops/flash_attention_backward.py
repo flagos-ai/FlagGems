@@ -1022,6 +1022,8 @@ def _musa_flash_bwd_persistent_delta(
     OH: tl.constexpr,
     OS: tl.constexpr,
     BM: tl.constexpr,
+    LSE=None,
+    SCALE: tl.constexpr = 1.0,
 ):
     bh = tl.program_id(1)
     m = tl.program_id(0) * BM + tl.arange(0, BM)
@@ -1033,7 +1035,17 @@ def _musa_flash_bwd_persistent_delta(
         0,
     )
     delta = _musa_flash_delta_serial8(o, do, BM, D, D)
-    tl.store(DELTA + bh * S + m, delta, m < S)
+    offset = bh * S + m
+    if LSE is None:
+        tl.store(DELTA + offset, delta, m < S)
+    else:
+        # The SDK consumes a pair of already scaled row statistics.
+        lse = tl.load(LSE + offset, m < S, other=float("inf"))
+        lse = tl.where(tl.abs(lse) < float("inf"), lse, float(1 << 30))
+        stats = tl.interleave(lse * 1.4426950408889634, delta * SCALE)
+        pair = 2 * tl.program_id(0) * BM + tl.arange(0, 2 * BM)
+        tl.store(DELTA + 2 * bh * S + pair, stats, pair < 2 * S)
+
     tl.store(DQA + (bh * S + m[:, None]) * D + d[None, :], 0.0, m[:, None] < S)
 
 
@@ -1178,21 +1190,6 @@ def _musa_flash_bwd_persistent(
 def _musa_flash_bwd_persistent_cast(DQA, DQ, N: tl.constexpr, BLOCK: tl.constexpr):
     i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     tl.store(DQ + i, tl.load(DQA + i, i < N, 0).to(DQ.dtype.element_ty), i < N)
-
-
-@triton.jit
-def _musa_flash_bwd_permute_delta(
-    DELTA, DELTA_KM, N, S: tl.constexpr, H: tl.constexpr, BLOCK: tl.constexpr
-):
-    # FlagGems delta is (B, H, S)-major flat; the TileLang main kernel consumes
-    # seq-major (B*S, H).  Pure permutation of a 256 KiB buffer.
-    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    valid = i < N
-    q = i // H
-    h = i % H
-    b = q // S
-    s = q % S
-    tl.store(DELTA_KM + i, tl.load(DELTA + (b * H + h) * S + s, valid, 0), valid)
 
 
 def flash_attention_backward(
@@ -1435,14 +1432,16 @@ def flash_attention_backward(
         and max_q == 1024
         and 0 < query.numel() < 2**31
         and (out.is_contiguous() or out.transpose(1, 2).is_contiguous())
-        and not torch.are_deterministic_algorithms_enabled()
+        and not torch.are_deterministic_algorithms_enabled()  # allow-torch-compute: reads a runtime flag
         and "S5000" in torch.musa.get_device_name(query.device)
     )
     fold_heads = can_fold_heads and (native_default_scale or explicit_aligned_d64)
-    if (explicit_aligned_d64 or (can_fold_heads and native_default_scale and dim == 64)) and (
+    if (
+        explicit_aligned_d64 or (can_fold_heads and native_default_scale and dim == 64)
+    ) and (
         (batch, hq, max_q) == (4, 16, 1024)
         and (out.is_contiguous() or out.transpose(1, 2).is_contiguous())
-        and not torch.are_deterministic_algorithms_enabled()
+        and not torch.are_deterministic_algorithms_enabled()  # allow-torch-compute: reads a runtime flag
         and "S5000" in torch.musa.get_device_name(query.device)
     ):
         result = _musa_flash_bwd_d64_sdk(
@@ -1459,7 +1458,7 @@ def flash_attention_backward(
         and max_q % 128 == 0
         and query.numel() < 2**31
         and (out.is_contiguous() or out.transpose(1, 2).is_contiguous())
-        and not torch.are_deterministic_algorithms_enabled()
+        and not torch.are_deterministic_algorithms_enabled()  # allow-torch-compute: reads a runtime flag
         and "S5000" in torch.musa.get_device_name(query.device)
     ):
         # Share QK/dP work between all gradients; dQ accumulates in FP32.
@@ -1469,9 +1468,6 @@ def flash_attention_backward(
         )
         po = out.transpose(1, 2)
         pdq, pdk, pdv = (torch.empty_like(tensor) for tensor in (pq, pk, pv))
-        pdelta = torch.empty(
-            (batch * hq * max_q,), dtype=torch.float32, device=query.device
-        )
         d128_handle = _d128_prepare(pq, pk, pv, pdo, logsumexp, is_causal)
         if d128_handle is not None:
             # The MP31 main kernel writes dK/dV directly and
@@ -1481,13 +1477,13 @@ def flash_attention_backward(
             dq_accum = torch.empty(
                 (batch, hq, max_q, dim), dtype=torch.float32, device=query.device
             )
-            delta_km = torch.empty(
-                (batch * max_q, hq), dtype=torch.float32, device=query.device
+            row_stats = torch.empty(
+                (batch, hq, max_q, 2), dtype=torch.float32, device=query.device
             )
             _musa_flash_bwd_persistent_delta[(triton.cdiv(max_q, 32), batch * hq)](
                 po,
                 pdo,
-                pdelta,
+                row_stats,
                 dq_accum,
                 max_q,
                 hq,
@@ -1496,18 +1492,29 @@ def flash_attention_backward(
                 32,
                 num_warps=4,
                 num_stages=1,
-            )
-            _musa_flash_bwd_permute_delta[(triton.cdiv(pdelta.numel(), 256),)](
-                pdelta, delta_km, pdelta.numel(), max_q, hq, 256, num_warps=4
+                LSE=logsumexp,
+                SCALE=scale32,
             )
             _d128_launch(
-                d128_handle, pq, pk, pv, pdo, logsumexp, delta_km, dq_accum, pdk, pdv,
-                scale32, scale_log2,
+                d128_handle,
+                pq,
+                pk,
+                pv,
+                pdo,
+                row_stats,
+                dq_accum,
+                pdk,
+                pdv,
+                scale32,
+                scale_log2,
             )
             _musa_flash_bwd_persistent_cast[(triton.cdiv(pdq.numel(), 256),)](
                 dq_accum, pdq, pdq.numel(), 256, num_warps=4
             )
             return pdq, pdk, pdv
+        pdelta = torch.empty(
+            (batch * hq * max_q,), dtype=torch.float32, device=query.device
+        )
         pdqa = torch.empty_like(pq, dtype=torch.float32)
         _musa_flash_bwd_persistent_delta[(triton.cdiv(max_q, 32), batch * hq)](
             po,
@@ -1693,7 +1700,7 @@ def flash_attention_backward(
         and query.numel() > 0
         and query.numel() < 2**31
         and (out.is_contiguous() or out.transpose(1, 2).is_contiguous())
-        and not torch.are_deterministic_algorithms_enabled()
+        and not torch.are_deterministic_algorithms_enabled()  # allow-torch-compute: reads a runtime flag
     )
     if aligned_s:
         dq_extra["ALIGNED_S"] = 1
@@ -1769,8 +1776,14 @@ def _d128_compiler_env():
     # Exclude include/library injection and ambient compiler overrides.
     env = os.environ.copy()
     for key in (
-        "CPATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "MUSA_INCLUDE_PATH",
-        "LIBRARY_PATH", "COMPILER_PATH", "GCC_EXEC_PREFIX", "CCC_OVERRIDE_OPTIONS",
+        "CPATH",
+        "CPLUS_INCLUDE_PATH",
+        "C_INCLUDE_PATH",
+        "MUSA_INCLUDE_PATH",
+        "LIBRARY_PATH",
+        "COMPILER_PATH",
+        "GCC_EXEC_PREFIX",
+        "CCC_OVERRIDE_OPTIONS",
     ):
         env.pop(key, None)
     return env
@@ -1792,20 +1805,30 @@ def _d128_toolchain(mcc, cxx, sdk):
         raise OSError("D128 SDK path requires the system GCC C++ headers")
     includes = (
         "--gcc-toolchain=/usr",
-        "-isystem", str(cxx_include),
-        "-isystem", str(arch_include),
-        "-isystem", str(cxx_include / "backward"),
+        "-isystem",
+        str(cxx_include),
+        "-isystem",
+        str(arch_include),
+        "-isystem",
+        str(cxx_include / "backward"),
     )
     sdk_hash = hashlib.sha256()
-    for name in ("musa.h", "musa_runtime.h", "musa_robust.h", "musa_burst.h",
-                 "musa_bf16.h", "musa_fp16.h"):
+    for name in (
+        "musa.h",
+        "musa_runtime.h",
+        "musa_robust.h",
+        "musa_burst.h",
+        "musa_bf16.h",
+        "musa_fp16.h",
+    ):
         sdk_hash.update((sdk / "include" / name).read_bytes())
     return includes, (version, cxx_version, sdk_hash.hexdigest().encode())
 
 
 def _d128_compile(cache, mcc, cxx, sdk, bf16, causal, *, head_dim=128):
     device_cpp, host_cpp = (
-        (_D64_DEVICE_CPP, _D64_HOST_CPP) if head_dim == 64
+        (_D64_DEVICE_CPP, _D64_HOST_CPP)
+        if head_dim == 64
         else (_D128_DEVICE_CPP, _D128_HOST_CPP)
     )
     includes, tool_ids = _d128_toolchain(mcc, cxx, sdk)
@@ -1815,16 +1838,22 @@ def _d128_compile(cache, mcc, cxx, sdk, bf16, causal, *, head_dim=128):
     flags = _D128_MCC_FLAGS + includes + dtype_flags
     host_flags = ("-std=c++17", "-O2", "-shared", "-fPIC", f"-I{sdk / 'include'}")
     key = hashlib.sha256()
-    for item in (*tool_ids, *(os.fsencode(x) for x in (mcc, cxx, sdk)),
-                 repr((flags, host_flags)).encode(), device_cpp.encode(),
-                 host_cpp.encode()):
+    for item in (
+        *tool_ids,
+        *(os.fsencode(x) for x in (mcc, cxx, sdk)),
+        repr((flags, host_flags)).encode(),
+        device_cpp.encode(),
+        host_cpp.encode(),
+    ):
         key.update(len(item).to_bytes(8, "little"))
         key.update(item)
     cache.mkdir(parents=True, mode=0o700, exist_ok=True)
     destination = cache / key.hexdigest()
     with destination.with_suffix(".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if (destination / "kernel.mubin").is_file() and (destination / "launcher.so").is_file():
+        if (destination / "kernel.mubin").is_file() and (
+            destination / "launcher.so"
+        ).is_file():
             return destination
         with tempfile.TemporaryDirectory(prefix=".d128-", dir=cache) as temporary:
             stage = Path(temporary) / "artifact"
@@ -1832,18 +1861,43 @@ def _d128_compile(cache, mcc, cxx, sdk, bf16, causal, *, head_dim=128):
             (stage / "kernel.mu").write_text(device_cpp)
             (stage / "launcher.cc").write_text(host_cpp)
             commands = (
-                [mcc, *flags, "-MD", "-MF", "kernel.d", "kernel.mu", "-o", "kernel.mubin"],
-                [cxx, *host_flags, "launcher.cc", f"-L{sdk / 'lib'}",
-                 "-l:libmusa.so.1", "-o", "launcher.so"],
+                [
+                    mcc,
+                    *flags,
+                    "-MD",
+                    "-MF",
+                    "kernel.d",
+                    "kernel.mu",
+                    "-o",
+                    "kernel.mubin",
+                ],
+                [
+                    cxx,
+                    *host_flags,
+                    "launcher.cc",
+                    f"-L{sdk / 'lib'}",
+                    "-l:libmusa.so.1",
+                    "-o",
+                    "launcher.so",
+                ],
             )
             env = _d128_compiler_env()
             for command in commands:
-                result = subprocess.run(command, cwd=stage, env=env, timeout=120,
-                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        text=True, check=False)
+                result = subprocess.run(
+                    command,
+                    cwd=stage,
+                    env=env,
+                    timeout=120,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=False,
+                )
                 if result.returncode:
-                    raise OSError(f"{Path(command[0]).name} failed ({result.returncode}): "
-                                  f"{result.stdout[-2500:]}")
+                    raise OSError(
+                        f"{Path(command[0]).name} failed ({result.returncode}): "
+                        f"{result.stdout[-2500:]}"
+                    )
             (stage / "build.json").write_text(json.dumps(commands))
             if destination.exists():
                 # Recover a partial directory left by manual cache maintenance.
@@ -1862,11 +1916,21 @@ def _d128_prepare(q, k, v, dout, lse, causal, *, head_dim=128):
         return None
     if q.device.type != "musa" or q.dtype not in (torch.float16, torch.bfloat16):
         return None
-    if any(t.shape != (4, 16, 1024, head_dim) or t.device != q.device
-           or t.dtype != q.dtype or not t.is_contiguous() for t in (q, k, v, dout)):
+    # The SDK tiles, including their packed row-statistics loads, assume this shape.
+    if any(
+        t.shape != (4, 16, 1024, head_dim)
+        or t.device != q.device
+        or t.dtype != q.dtype
+        or not t.is_contiguous()
+        for t in (q, k, v, dout)
+    ):
         return None
-    if (lse.shape != (4, 16, 1024) or lse.device != q.device
-            or lse.dtype != torch.float32 or not lse.is_contiguous()):
+    if (
+        lse.shape != (4, 16, 1024)
+        or lse.device != q.device
+        or lse.dtype != torch.float32
+        or not lse.is_contiguous()
+    ):
         return None
     if any(t.data_ptr() % 16 for t in (q, k, v, dout, lse)):
         return None
@@ -1882,30 +1946,54 @@ def _d128_prepare(q, k, v, dout, lse, causal, *, head_dim=128):
         cxx = shutil.which("g++", path=os.defpath)
         if not mcc or not cxx:
             return None
-        cache = Path(os.getenv(f"FLAGGEMS_MUSA_BWD_D{head_dim}_CACHE_DIR") or
-                     Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache"))
-                     / "flaggems" / f"musa-flash-bwd-d{head_dim}")
+        cache = Path(
+            os.getenv(f"FLAGGEMS_MUSA_BWD_D{head_dim}_CACHE_DIR")
+            or Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache"))
+            / "flaggems"
+            / f"musa-flash-bwd-d{head_dim}"
+        )
         bf16 = q.dtype == torch.bfloat16
-        key = (os.getpid(), q.device.index, mcc, cxx, sdk, cache, bf16, bool(causal), head_dim)
+        key = (
+            os.getpid(),
+            q.device.index,
+            mcc,
+            cxx,
+            sdk,
+            cache,
+            bf16,
+            bool(causal),
+            head_dim,
+        )
         with _D128_HANDLE_LOCK:
             if key in _D128_HANDLES:
                 return _D128_HANDLES[key]
             if key in _D128_UNAVAILABLE:
                 return None
             try:
-                artifact = _d128_compile(cache, mcc, cxx, sdk, bf16, bool(causal), head_dim=head_dim)
+                artifact = _d128_compile(
+                    cache, mcc, cxx, sdk, bf16, bool(causal), head_dim=head_dim
+                )
                 lib = ctypes.CDLL(os.fspath(artifact / "launcher.so"))
                 ptr = ctypes.c_void_p
                 lib.mp31_load.argtypes = [ctypes.c_char_p, ctypes.POINTER(ptr)]
                 lib.mp31_load.restype = ctypes.c_int
                 lib.mp31_launch.argtypes = [
-                    ptr, ptr, ctypes.c_int, *([ptr] * 9), ctypes.c_float, ctypes.c_float,
+                    ptr,
+                    ptr,
+                    ctypes.c_int,
+                    *([ptr] * 8),
+                    ctypes.c_float,
+                    ctypes.c_float,
                 ]
                 lib.mp31_launch.restype = ctypes.c_int
                 function = ptr()
-                status = lib.mp31_load(os.fsencode(artifact / "kernel.mubin"), ctypes.byref(function))
+                status = lib.mp31_load(
+                    os.fsencode(artifact / "kernel.mubin"), ctypes.byref(function)
+                )
                 if status or not function.value:
-                    raise OSError(f"MUSA module load/shared-memory opt-in failed ({status})")
+                    raise OSError(
+                        f"MUSA module load/shared-memory opt-in failed ({status})"
+                    )
             except (OSError, subprocess.SubprocessError) as error:
                 _D128_UNAVAILABLE.add(key)
                 logger.debug("D%s SDK route unavailable: %s", head_dim, error)
@@ -1915,14 +2003,18 @@ def _d128_prepare(q, k, v, dout, lse, causal, *, head_dim=128):
             return handle
 
 
-def _d128_launch(handle, q, k, v, dout, lse, delta, dq_accum, dk, dv, scale, scale_log2):
+def _d128_launch(handle, q, k, v, dout, row_stats, dq_accum, dk, dv, scale, scale_log2):
     lib, function, _ = handle
-    tensors = q, k, v, dout, lse, delta, dq_accum, dk, dv
+    tensors = q, k, v, dout, row_stats, dq_accum, dk, dv
     with torch.musa.device(q.device):
         stream = torch.musa.current_stream(q.device)
         status = lib.mp31_launch(
-            function, stream.musa_stream, int(q.dtype == torch.bfloat16),
-            *(tensor.data_ptr() for tensor in tensors), scale, scale_log2,
+            function,
+            stream.musa_stream,
+            int(q.dtype == torch.bfloat16),
+            *(tensor.data_ptr() for tensor in tensors),
+            scale,
+            scale_log2,
         )
         if status:
             raise RuntimeError(f"D128 SDK kernel launch failed ({status})")
@@ -1931,13 +2023,27 @@ def _d128_launch(handle, q, k, v, dout, lse, delta, dq_accum, dk, dv, scale, sca
 
 
 _D128_MCC_FLAGS = (
-    "--cuda-device-only", "--cuda-gpu-arch=mp_31", "-std=c++17",
-    "-Wno-error=address-of-temporary", "-Wno-error=c++11-narrowing",
-    "-D__MUSA_ARCH_LIST__=310", "-mllvm", "-mtgpu-alloc-shared-memory-from-zero=1",
-    "-fmusa-flush-denormals-to-zero", "-fno-signed-zeros", "-fno-strict-aliasing",
-    "-mllvm", "-misched=mtgpu-max-ilp", "-mllvm", "-mtgpu-tiny-offset-hint=1",
-    "-mllvm", "-misched-recompute-slotindex=1", "-mllvm", "-mtgpu-if-convert=1",
-    "-mllvm", "-mtgpu-combine-fop-instr=1",
+    "--cuda-device-only",
+    "--cuda-gpu-arch=mp_31",
+    "-std=c++17",
+    "-Wno-error=address-of-temporary",
+    "-Wno-error=c++11-narrowing",
+    "-D__MUSA_ARCH_LIST__=310",
+    "-mllvm",
+    "-mtgpu-alloc-shared-memory-from-zero=1",
+    "-fmusa-flush-denormals-to-zero",
+    "-fno-signed-zeros",
+    "-fno-strict-aliasing",
+    "-mllvm",
+    "-misched=mtgpu-max-ilp",
+    "-mllvm",
+    "-mtgpu-tiny-offset-hint=1",
+    "-mllvm",
+    "-misched-recompute-slotindex=1",
+    "-mllvm",
+    "-mtgpu-if-convert=1",
+    "-mllvm",
+    "-mtgpu-combine-fop-instr=1",
 )
 
 
@@ -2073,7 +2179,8 @@ _D128_MCC_FLAGS = (
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-_D128_DEVICE_CPP = r"""
+# Escaped line breaks wrap the Python source without changing the SDK payload.
+_D128_DEVICE_CPP = """
 // Derived from the MP31 TileLang code generation for the MATE backward kernel.
 // See the copyright and dependency notices in the enclosing Python source.
 #include <cstdint>
@@ -2122,10 +2229,6 @@ FG_DEVICE void cp_async_gs_robust(const void* dst, const void* src,
                              (void FG_GLOBAL_AS *)src, Bytes, bounds, 0);
 }
 
-FG_DEVICE float load_float(const void* src, robust_param_desc_t bounds) {
-  return __builtin_bit_cast(float, __musa_ld_v4_robust_i32(src, bounds, 0));
-}
-
 enum class TmaGranularity : int32_t { B16 = 1, B32 = 2 };
 template <TmaGranularity Granularity>
 FG_DEVICE void tma_load(const MUtensorDescriptor& descriptor, uint32_t barrier,
@@ -2139,9 +2242,10 @@ FG_DEVICE void tma_load(const MUtensorDescriptor& descriptor, uint32_t barrier,
       Tile{x, h, s, b}, static_cast<int>(Granularity), 3, 1, 0, 2, 2, 0);
 }
 
-FG_DEVICE tl_f4 mul4(tl_f4 a, float b) { return __musa_mul_f_bst4_sv(b, a); }
-FG_DEVICE tl_f4 sub4(tl_f4 a, tl_f4 b) {
-  return tl_f4{a[0]-b[0], a[1]-b[1], a[2]-b[2], a[3]-b[3]};
+// Fuse scores with the previously rounded LSE term, as in the Triton path.
+FG_DEVICE tl_f4 fma4(tl_f4 a, float b, float c) {
+  return tl_f4{fmaf(a[0], b, c), fmaf(a[1], b, c),
+               fmaf(a[2], b, c), fmaf(a[3], b, c)};
 }
 FG_DEVICE tl_f4 vec_exp2_f4(tl_f4 x) {
   const float4 y = __exp2f(float4{x[0], x[1], x[2], x[3]});
@@ -2165,6 +2269,18 @@ using Vec8 = tl_h8;
 using Packed4 = half4_t;
 FG_DEVICE Packed4 round_to_scalar4(float4 x) { return cvt_float_to_half_x4(x); }
 #endif
+
+// p is the nonnegative exp2 result. The product bounds are adjacent
+// FP32 values (or identical for an exact product). Preserve the sign of
+// the truncated bound and use the other bound's low bit to round to odd
+// before the FP16/BF16 conversion.
+FG_DEVICE float scale_ds(float p, float diff) {
+  const float truncated = __fmul_rz(p, diff);
+  const float away = __fmul_ru(p, fabsf(diff));
+  const uint32_t bits = __builtin_bit_cast(uint32_t, truncated);
+  const uint32_t sticky = __builtin_bit_cast(uint32_t, away) & 1u;
+  return __builtin_bit_cast(float, bits | sticky);
+}
 
 enum class Product { QK, DOV, DV, DK, DQ };
 // Fields in an MP31 SQMMA descriptor: 18-bit shared byte address, then
@@ -2207,8 +2323,28 @@ FG_DEVICE void gemm(T* a, T* b, float* accum, int first_thread) {
 }  // namespace d128
 
 #ifdef FG_D128_CAUSAL
-extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s);
-extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s) {
+extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__ RowStats,\
+ const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s);
+extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__\
+ RowStats, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s) {
   __musa_async_bar_record(28);
   extern __shared__ __align__(4096) uchar buf_dyn_shmem[];
   void* K_shared = ((void*)((char*)buf_dyn_shmem + 0));
@@ -2306,17 +2442,26 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
       warprole = ((((int)threadIdx.x) >> 5) - 16);
       if (((int)threadIdx.x) == 512) {
         __musa_async_add_trans(1, 32768);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[8192])), 64, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)\
+blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[8192])), 64, kv_group,\
+ (((int)blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
       }
       __musa_async_arrive(1);
       #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ (((i * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])), (&(K[(((((((int)threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i >> 3) * 64)) + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i & 7)) * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128))\
+ + (((((int)threadIdx.x) & 15) ^ (((i * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])), (&(K[(((((((int)\
+threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i >> 3) * 64))\
+ + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i & 7)) * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
       }
       #pragma unroll
       for (int i_1 = 0; i_1 < 16; ++i_1) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ (((i_1 * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])), (&(V[(((((((int)threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i_1 >> 3) * 64)) + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i_1 & 7)) * v_stride_s)) + (kv_group * v_stride_h))])), V_robust_desc_1);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4)\
+ * 128)) + (((((int)threadIdx.x) & 15) ^ (((i_1 * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])),\
+ (&(V[(((((((int)threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128)\
+ + ((i_1 >> 3) * 64)) + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i_1 & 7)) * v_stride_s))\
+ + (kv_group * v_stride_h))])), V_robust_desc_1);
       }
       d128::finish_robust_copies();
       __musa_async_arrive(2);
@@ -2337,7 +2482,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 12), prev_phase_producer);
           if (((int)threadIdx.x) == 512) {
             __musa_async_add_trans((stage_producer + 4), 16384);
-            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)Pt_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)\
+Pt_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 4));
         }
@@ -2345,7 +2491,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 16), prev_phase_producer);
           if (((int)threadIdx.x) == 544) {
             __musa_async_add_trans((stage_producer + 8), 16384);
-            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)\
+dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 8));
         }
@@ -2353,7 +2500,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 18), prev_phase_producer);
           if (((int)threadIdx.x) == 576) {
             __musa_async_add_trans((stage_producer + 10), 16384);
-            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)\
+dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 10));
         }
@@ -2361,8 +2509,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 14), prev_phase_producer);
           if (((int)threadIdx.x) == 608) {
             __musa_async_add_trans((stage_producer + 6), 16384);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[4096])), 64, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[4096])), 64, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 6));
         }
@@ -2382,15 +2532,18 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_2 = 0; i_2 < 16; ++i_2) {
           float broadcast_var = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
+          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var),\
+ static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
         }
         __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
         __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-        d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+        d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 14));
         __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-        d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+        d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 22));
         #pragma unroll
@@ -2414,14 +2567,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         for (int _tmp_1 = 0; _tmp_1 < (((end_seq_q - dq_loop_start) - 1) >> 6); ++_tmp_1) {
           #pragma unroll
           for (int i_4 = 0; i_4 < 32; ++i_4) {
-            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q) * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_4 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))), dq_store_buffer[i_4]);
+            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_4 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))),\
+ dq_store_buffer[i_4]);
           }
           __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
           __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-          d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+          d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-          d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+          d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_arrive((stage_consumer1 + 14));
           __musa_async_arrive((stage_consumer1 + 22));
@@ -2435,7 +2593,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         }
         #pragma unroll
         for (int i_6 = 0; i_6 < 32; ++i_6) {
-          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q) * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_6 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))), dq_store_buffer[i_6]);
+          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_6 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))),\
+ dq_store_buffer[i_6]);
         }
         #pragma unroll
         for (int i_7 = 0; i_7 < 16; ++i_7) {
@@ -2447,14 +2608,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_8 = 0; i_8 < 64; ++i_8) {
-            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_8 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_8];
+            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv)\
+ < end_seq_kv) {
+              dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_8 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_8];
             }
           }
         } else {
           #pragma unroll
           for (int i_9 = 0; i_9 < 64; ++i_9) {
-            dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_9 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_9 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_9];
+            dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_9 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_9 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_9];
           }
         }
         __musa_async_arrive(28);
@@ -2469,7 +2635,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_10 = 0; i_10 < 16; ++i_10) {
           float broadcast_var_1 = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
+          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1),\
+ static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
         }
         consumer0_causal_offset = (((end_seq_kv + begin_seq_q) - begin_seq_kv) - end_seq_q);
         consumer0_causal_q_local_start = ((((int)blockIdx.x) * 128) - consumer0_causal_offset);
@@ -2501,27 +2668,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           int q_start_1 = ((_tmp_2 * 64) + consumer0_causal_q_start);
           #pragma unroll
           for (int i_11 = 0; i_11 < 4; ++i_11) {
-            lse_buffer[i_11] = d128::load_float((Lse + ((((((i_11 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + ((((int)blockIdx.z) * seqlen_q) * heads_q)) + (((int)blockIdx.y) * seqlen_q)) + q_start_1) - begin_seq_q)), Lse_robust_desc_2);
-          }
-          #pragma unroll
-          for (int i_12 = 0; i_12 < 4; ++i_12) {
-            float condval_5;
-            if (isfinite(lse_buffer[i_12])) {
-              condval_5 = lse_buffer[i_12];
-            } else {
-              condval_5 = 0x1p+30f/*1.073742e+09*/;
-            }
-            lse_buffer[i_12] = condval_5;
-          }
-          #pragma unroll
-          for (int i_13 = 0; i_13 < 4; ++i_13) {
-            delta_buffer[i_13] = d128::load_float((Delta + (((((i_13 * heads_q) * 16) + (((((int)threadIdx.x) & 127) >> 3) * heads_q)) + ((int)blockIdx.y)) + (q_start_1 * heads_q))), Delta_robust_desc_3);
+            const int row = i_11 * 16 + ((int(threadIdx.x) & 127) >> 3)
+                + (int(blockIdx.z) * heads_q + kv_group) * seqlen_q
+                + q_start_1 - begin_seq_q;
+            const float2 stats = RowStats[row];
+            lse_buffer[i_11] = stats.x;
+            delta_buffer[i_11] = stats.y;
           }
           if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
             #pragma unroll
             for (int i_14 = 0; i_14 < 32; ++i_14) {
               float condval_6;
-              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8)) + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
+              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8))\
+ + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
                 condval_6 = 0x0p+0f/*0.000000e+00*/;
               } else {
                 condval_6 = -MUSART_INF_F;
@@ -2532,14 +2691,16 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
             #pragma unroll
             for (int i_15 = 0; i_15 < 8; ++i_15) {
               float broadcast_var_2 = 0x0p+0f/*0.000000e+00*/;
-              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
+              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2),\
+ static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
             }
           }
           if (q_start_1 < consumer0_causal_q_mask_end) {
             #pragma unroll
             for (int i_16 = 0; i_16 < 32; ++i_16) {
               int q_idx = (((((i_16 >> 3) * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) - begin_seq_q);
-              bool valid = (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8)) + (i_16 & 7)) <= (q_idx + consumer0_causal_offset));
+              bool valid = (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x)\
+ & 7) * 8)) + (i_16 & 7)) <= (q_idx + consumer0_causal_offset));
               float condval_7;
               if (valid) {
                 condval_7 = accs_accum[i_16];
@@ -2549,48 +2710,20 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
               accs_accum[i_16] = condval_7;
             }
           }
-          #pragma unroll
-          for (int i_17 = 0; i_17 < 4; ++i_17) {
-            lse_buffer[i_17] = (lse_buffer[i_17] * 0x1.7154764ee6c2fp+0f/*1.442695e+00*/);
-          }
-          #pragma unroll
-          for (int i_18 = 0; i_18 < 4; ++i_18) {
-            delta_buffer[i_18] = (delta_buffer[i_18] * smscale);
-          }
-          if (end_seq_q <= (q_start_1 + 64)) {
-            #pragma unroll
-            for (int i_19 = 0; i_19 < 4; ++i_19) {
-              float condval_8;
-              if (((((i_19 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_8 = lse_buffer[i_19];
-              } else {
-                condval_8 = 0x1.7154764ee6c2fp+30f/*1.549082e+09*/;
-              }
-              lse_buffer[i_19] = condval_8;
-            }
-            #pragma unroll
-            for (int i_20 = 0; i_20 < 4; ++i_20) {
-              float condval_9;
-              if (((((i_20 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_9 = delta_buffer[i_20];
-              } else {
-                condval_9 = 0x0p+0f/*0.000000e+00*/;
-              }
-              delta_buffer[i_20] = condval_9;
-            }
-          }
           __musa_async_wait((stage_consumer0 + 4), phase_consumer0);
-          d128::gemm<d128::Product::QK>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])), (&(accs_accum[0])), 0);
+          d128::gemm<d128::Product::QK>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])),\
+ (&(accs_accum[0])), 0);
           d128::warpgroup_commit_batch();
           __musa_async_wait((stage_consumer0 + 8), phase_consumer0);
-          d128::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])), (&(dp_accum[0])), 0);
+          d128::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])),\
+ (&(dp_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage = stage_consumer0;
           __musa_async_arrive((stage + 20));
           #pragma unroll
           for (int i_21 = 0; i_21 < 8; ++i_21) {
-            tl_f4 v__1 = d128::sub4(d128::mul4(*(tl_f4*)(accs_accum + (i_21 * 4)), rln2_scale), (tl_f4{static_cast<float>(lse_buffer[(i_21 >> 1)]), static_cast<float>(lse_buffer[(i_21 >> 1)]), static_cast<float>(lse_buffer[(i_21 >> 1)]), static_cast<float>(lse_buffer[(i_21 >> 1)])}));
+            tl_f4 v__1 = d128::fma4(*(tl_f4*)(accs_accum + (i_21 * 4)), rln2_scale, -lse_buffer[(i_21 >> 1)]);
             *(tl_f4*)(accs_accum + (i_21 * 4)) = d128::vec_exp2_f4(v__1);
           }
           #pragma unroll
@@ -2603,30 +2736,36 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((stage_consumer0 + 20), phase_consumer0);
           #pragma unroll
           for (int i_23 = 0; i_23 < 4; ++i_23) {
-            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_23 * 1024)) + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127) >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_23 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_23 * 1024))\
+ + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127)\
+ >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_23 * 8));
           }
           d128::lma_wait();
           __musa_async_wait((stage_consumer0 + 10), phase_consumer0);
-          d128::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])), (&(dv_accum[0])), 0);
+          d128::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])),\
+ (&(dv_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage_1 = stage_consumer0;
           __musa_async_arrive((stage_1 + 16));
           #pragma unroll
-          for (int i_24 = 0; i_24 < 32; ++i_24) {
-            dp_accum[i_24] = (((dp_accum[i_24] * smscale) - delta_buffer[(i_24 >> 3)]) * accs_accum[i_24]);
-          }
-          #pragma unroll
           for (int i_25 = 0; i_25 < 8; ++i_25) {
             d128::Vec4 __3;
-            tl_f4 v__3 = *(tl_f4*)(dp_accum + (i_25 * 4));
+            const tl_f4 p = *(tl_f4*)(accs_accum + (i_25 * 4));
+            const tl_f4 dp = *(tl_f4*)(dp_accum + (i_25 * 4));
+            const tl_f4 d = d128::fma4(dp, smscale, -delta_buffer[i_25 >> 1]);
+            const tl_f4 v__3 = {
+                d128::scale_ds(p[0], d[0]), d128::scale_ds(p[1], d[1]),
+                d128::scale_ds(p[2], d[2]), d128::scale_ds(p[3], d[3])};
             ((d128::Packed4*)(&__3))[0] = d128::round_to_scalar4(((float4*)(&v__3))[0]);
             *(d128::Vec4*)(accs_cast + (i_25 * 4)) = __3;
           }
           __musa_async_wait((prev_stage_consumer0 + 22), prev_phase_consumer0);
           #pragma unroll
           for (int i_26 = 0; i_26 < 4; ++i_26) {
-            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_26 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16))\
+ + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_26 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 26));
@@ -2635,7 +2774,9 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_arrive((stage_consumer0 + 18));
           #pragma unroll
           for (int i_27 = 0; i_27 < 4; ++i_27) {
-            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_27 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8))) = *(d128::Vec8*)(accs_cast + (i_27 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_27 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8)))\
+ = *(d128::Vec8*)(accs_cast + (i_27 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 24));
@@ -2654,14 +2795,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_29 = 0; i_29 < 64; ++i_29) {
-            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dV[((((((i_29 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
+            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 4) * 16)) + ((((int)\
+threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
+              dV[((((((i_29 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_29 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
             }
           }
         } else {
           #pragma unroll
           for (int i_30 = 0; i_30 < 64; ++i_30) {
-            dV[((((((i_30 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_30 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_30];
+            dV[((((((i_30 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_30 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_30];
           }
         }
         __musa_async_arrive(28);
@@ -2671,8 +2817,28 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
 }
 
 #else
-extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s);
-extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s) {
+extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__ RowStats,\
+ const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s);
+extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__\
+ RowStats, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s) {
   __musa_async_bar_record(28);
   extern __shared__ __align__(4096) uchar buf_dyn_shmem[];
   void* K_shared = ((void*)((char*)buf_dyn_shmem + 0));
@@ -2759,17 +2925,26 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
       warprole = ((((int)threadIdx.x) >> 5) - 16);
       if (((int)threadIdx.x) == 512) {
         __musa_async_add_trans(1, 32768);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[8192])), 64, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)\
+blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[8192])), 64, kv_group,\
+ (((int)blockIdx.x) * 128), ((int)blockIdx.z), 64, 1, 128, 1);
       }
       __musa_async_arrive(1);
       #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ (((i * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])), (&(K[(((((((int)threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i >> 3) * 64)) + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i & 7)) * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128))\
+ + (((((int)threadIdx.x) & 15) ^ (((i * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])), (&(K[(((((((int)\
+threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i >> 3) * 64))\
+ + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i & 7)) * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
       }
       #pragma unroll
       for (int i_1 = 0; i_1 < 16; ++i_1) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ (((i_1 * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])), (&(V[(((((((int)threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i_1 >> 3) * 64)) + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i_1 & 7)) * v_stride_s)) + (kv_group * v_stride_h))])), V_robust_desc_1);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4)\
+ * 128)) + (((((int)threadIdx.x) & 15) ^ (((i_1 * 8) + (((int)threadIdx.x) >> 4)) & 15)) * 8)) - 4096)])),\
+ (&(V[(((((((int)threadIdx.x) & 15) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128)\
+ + ((i_1 >> 3) * 64)) + (((((int)threadIdx.x) & 127) >> 4) * 8)) + (i_1 & 7)) * v_stride_s))\
+ + (kv_group * v_stride_h))])), V_robust_desc_1);
       }
       d128::finish_robust_copies();
       __musa_async_arrive(2);
@@ -2780,7 +2955,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 12), prev_phase_producer);
           if (((int)threadIdx.x) == 512) {
             __musa_async_add_trans((stage_producer + 4), 16384);
-            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)Pt_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)\
+Pt_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 4));
         }
@@ -2788,7 +2964,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 16), prev_phase_producer);
           if (((int)threadIdx.x) == 544) {
             __musa_async_add_trans((stage_producer + 8), 16384);
-            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)\
+dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 8));
         }
@@ -2796,7 +2973,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 18), prev_phase_producer);
           if (((int)threadIdx.x) == 576) {
             __musa_async_add_trans((stage_producer + 10), 16384);
-            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)\
+dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 128, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 10));
         }
@@ -2804,8 +2982,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 14), prev_phase_producer);
           if (((int)threadIdx.x) == 608) {
             __musa_async_add_trans((stage_producer + 6), 16384);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[4096])), 64, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[4096])), 64, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 6));
         }
@@ -2825,15 +3005,18 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_2 = 0; i_2 < 16; ++i_2) {
           float broadcast_var = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
+          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var),\
+ static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
         }
         __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
         __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-        d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+        d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 14));
         __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-        d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+        d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 22));
         #pragma unroll
@@ -2847,14 +3030,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         for (int _tmp_1 = 0; _tmp_1 < (((end_seq_q - dq_loop_start) - 1) >> 6); ++_tmp_1) {
           #pragma unroll
           for (int i_4 = 0; i_4 < 32; ++i_4) {
-            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q) * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_4 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))), dq_store_buffer[i_4]);
+            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_4 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))),\
+ dq_store_buffer[i_4]);
           }
           __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
           __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-          d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+          d128::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-          d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+          d128::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_arrive((stage_consumer1 + 14));
           __musa_async_arrive((stage_consumer1 + 22));
@@ -2868,7 +3056,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         }
         #pragma unroll
         for (int i_6 = 0; i_6 < 32; ++i_6) {
-          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q) * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_6 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))), dq_store_buffer[i_6]);
+          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 3) * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (local_q_start * 128)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 128)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 128)) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_6 & 7) * 8)) + (((int)threadIdx.x) & 7)) - 128)]))),\
+ dq_store_buffer[i_6]);
         }
         #pragma unroll
         for (int i_7 = 0; i_7 < 16; ++i_7) {
@@ -2880,14 +3071,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_8 = 0; i_8 < 64; ++i_8) {
-            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_8 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_8];
+            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv)\
+ < end_seq_kv) {
+              dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_8 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_8 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_8];
             }
           }
         } else {
           #pragma unroll
           for (int i_9 = 0; i_9 < 64; ++i_9) {
-            dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_9 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_9 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_9];
+            dK[((((((((((int)threadIdx.x) >> 7) * 64) + ((i_9 & 7) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_9 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 128)] = dk_cast[i_9];
           }
         }
         __musa_async_arrive(28);
@@ -2902,33 +3098,26 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_10 = 0; i_10 < 16; ++i_10) {
           float broadcast_var_1 = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
+          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1),\
+ static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
         }
         for (int _tmp_2 = 0; _tmp_2 < (((end_seq_q + 63) - begin_seq_q) >> 6); ++_tmp_2) {
           int q_start_1 = ((_tmp_2 * 64) + begin_seq_q);
           #pragma unroll
           for (int i_11 = 0; i_11 < 4; ++i_11) {
-            lse_buffer[i_11] = d128::load_float((Lse + ((((((i_11 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + ((((int)blockIdx.z) * seqlen_q) * heads_q)) + (((int)blockIdx.y) * seqlen_q)) + q_start_1) - begin_seq_q)), Lse_robust_desc_2);
-          }
-          #pragma unroll
-          for (int i_12 = 0; i_12 < 4; ++i_12) {
-            float condval;
-            if (isfinite(lse_buffer[i_12])) {
-              condval = lse_buffer[i_12];
-            } else {
-              condval = 0x1p+30f/*1.073742e+09*/;
-            }
-            lse_buffer[i_12] = condval;
-          }
-          #pragma unroll
-          for (int i_13 = 0; i_13 < 4; ++i_13) {
-            delta_buffer[i_13] = d128::load_float((Delta + (((((i_13 * heads_q) * 16) + (((((int)threadIdx.x) & 127) >> 3) * heads_q)) + ((int)blockIdx.y)) + (q_start_1 * heads_q))), Delta_robust_desc_3);
+            const int row = i_11 * 16 + ((int(threadIdx.x) & 127) >> 3)
+                + (int(blockIdx.z) * heads_q + kv_group) * seqlen_q
+                + q_start_1 - begin_seq_q;
+            const float2 stats = RowStats[row];
+            lse_buffer[i_11] = stats.x;
+            delta_buffer[i_11] = stats.y;
           }
           if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
             #pragma unroll
             for (int i_14 = 0; i_14 < 32; ++i_14) {
               float condval_1;
-              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8)) + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
+              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8))\
+ + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
                 condval_1 = 0x0p+0f/*0.000000e+00*/;
               } else {
                 condval_1 = -MUSART_INF_F;
@@ -2939,51 +3128,24 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
             #pragma unroll
             for (int i_15 = 0; i_15 < 8; ++i_15) {
               float broadcast_var_2 = 0x0p+0f/*0.000000e+00*/;
-              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
-            }
-          }
-          #pragma unroll
-          for (int i_16 = 0; i_16 < 4; ++i_16) {
-            lse_buffer[i_16] = (lse_buffer[i_16] * 0x1.7154764ee6c2fp+0f/*1.442695e+00*/);
-          }
-          #pragma unroll
-          for (int i_17 = 0; i_17 < 4; ++i_17) {
-            delta_buffer[i_17] = (delta_buffer[i_17] * smscale);
-          }
-          if (end_seq_q <= (q_start_1 + 64)) {
-            #pragma unroll
-            for (int i_18 = 0; i_18 < 4; ++i_18) {
-              float condval_2;
-              if (((((i_18 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_2 = lse_buffer[i_18];
-              } else {
-                condval_2 = 0x1.7154764ee6c2fp+30f/*1.549082e+09*/;
-              }
-              lse_buffer[i_18] = condval_2;
-            }
-            #pragma unroll
-            for (int i_19 = 0; i_19 < 4; ++i_19) {
-              float condval_3;
-              if (((((i_19 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_3 = delta_buffer[i_19];
-              } else {
-                condval_3 = 0x0p+0f/*0.000000e+00*/;
-              }
-              delta_buffer[i_19] = condval_3;
+              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2),\
+ static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
             }
           }
           __musa_async_wait((stage_consumer0 + 4), phase_consumer0);
-          d128::gemm<d128::Product::QK>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])), (&(accs_accum[0])), 0);
+          d128::gemm<d128::Product::QK>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])),\
+ (&(accs_accum[0])), 0);
           d128::warpgroup_commit_batch();
           __musa_async_wait((stage_consumer0 + 8), phase_consumer0);
-          d128::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])), (&(dp_accum[0])), 0);
+          d128::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])),\
+ (&(dp_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage = stage_consumer0;
           __musa_async_arrive((stage + 20));
           #pragma unroll
           for (int i_20 = 0; i_20 < 8; ++i_20) {
-            tl_f4 v__1 = d128::sub4(d128::mul4(*(tl_f4*)(accs_accum + (i_20 * 4)), rln2_scale), (tl_f4{static_cast<float>(lse_buffer[(i_20 >> 1)]), static_cast<float>(lse_buffer[(i_20 >> 1)]), static_cast<float>(lse_buffer[(i_20 >> 1)]), static_cast<float>(lse_buffer[(i_20 >> 1)])}));
+            tl_f4 v__1 = d128::fma4(*(tl_f4*)(accs_accum + (i_20 * 4)), rln2_scale, -lse_buffer[(i_20 >> 1)]);
             *(tl_f4*)(accs_accum + (i_20 * 4)) = d128::vec_exp2_f4(v__1);
           }
           #pragma unroll
@@ -2996,30 +3158,36 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((stage_consumer0 + 20), phase_consumer0);
           #pragma unroll
           for (int i_22 = 0; i_22 < 4; ++i_22) {
-            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_22 * 1024)) + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127) >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_22 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_22 * 1024))\
+ + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127)\
+ >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_22 * 8));
           }
           d128::lma_wait();
           __musa_async_wait((stage_consumer0 + 10), phase_consumer0);
-          d128::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])), (&(dv_accum[0])), 0);
+          d128::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])),\
+ (&(dv_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage_1 = stage_consumer0;
           __musa_async_arrive((stage_1 + 16));
           #pragma unroll
-          for (int i_23 = 0; i_23 < 32; ++i_23) {
-            dp_accum[i_23] = (((dp_accum[i_23] * smscale) - delta_buffer[(i_23 >> 3)]) * accs_accum[i_23]);
-          }
-          #pragma unroll
           for (int i_24 = 0; i_24 < 8; ++i_24) {
             d128::Vec4 __3;
-            tl_f4 v__3 = *(tl_f4*)(dp_accum + (i_24 * 4));
+            const tl_f4 p = *(tl_f4*)(accs_accum + (i_24 * 4));
+            const tl_f4 dp = *(tl_f4*)(dp_accum + (i_24 * 4));
+            const tl_f4 d = d128::fma4(dp, smscale, -delta_buffer[i_24 >> 1]);
+            const tl_f4 v__3 = {
+                d128::scale_ds(p[0], d[0]), d128::scale_ds(p[1], d[1]),
+                d128::scale_ds(p[2], d[2]), d128::scale_ds(p[3], d[3])};
             ((d128::Packed4*)(&__3))[0] = d128::round_to_scalar4(((float4*)(&v__3))[0]);
             *(d128::Vec4*)(accs_cast + (i_24 * 4)) = __3;
           }
           __musa_async_wait((prev_stage_consumer0 + 22), prev_phase_consumer0);
           #pragma unroll
           for (int i_25 = 0; i_25 < 4; ++i_25) {
-            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_25 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_25 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_25 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16))\
+ + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_25 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 26));
@@ -3028,7 +3196,9 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_arrive((stage_consumer0 + 18));
           #pragma unroll
           for (int i_26 = 0; i_26 < 4; ++i_26) {
-            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8))) = *(d128::Vec8*)(accs_cast + (i_26 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8)))\
+ = *(d128::Vec8*)(accs_cast + (i_26 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 24));
@@ -3047,14 +3217,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_28 = 0; i_28 < 64; ++i_28) {
-            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_28 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dV[((((((i_28 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_28 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_28];
+            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_28 >> 4) * 16)) + ((((int)\
+threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
+              dV[((((((i_28 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_28 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_28];
             }
           }
         } else {
           #pragma unroll
           for (int i_29 = 0; i_29 < 64; ++i_29) {
-            dV[((((((i_29 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
+            dV[((((((i_29 & 15) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_29 >> 4) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
           }
         }
         __musa_async_arrive(28);
@@ -3137,17 +3312,14 @@ extern "C" int mp31_resources(MUfunction function, int* values) {
 }
 
 extern "C" int mp31_launch(MUfunction function, MUstream stream, int bf16,
-                            void* q, void* k, void* v, void* dout, void* lse,
-                            void* delta, void* dqa, void* dk, void* dv,
+                            void* q, void* k, void* v, void* dout,
+                            void* row_stats, void* dqa, void* dk, void* dv,
                             float scale, float scale_log2) {
   const MUtensorDescriptorDataType type =
       bf16 ? MU_TENSOR_DESCRIPTOR_DATA_TYPE_BFLOAT16 : MU_TENSOR_DESCRIPTOR_DATA_TYPE_FLOAT16;
   const auto tensor_bytes = static_cast<std::uint64_t>(kBatch) * kBatchStride * 2;
-  const auto scalar_bytes = static_cast<std::uint64_t>(kBatch) * kHeads * kSeq * 4;
   auto k_bounds = make_robust(k, tensor_bytes);
   auto v_bounds = make_robust(v, tensor_bytes);
-  auto lse_bounds = make_robust(lse, scalar_bytes);
-  auto delta_bounds = make_robust(delta, scalar_bytes);
   alignas(128) MUtensorDescriptor k_desc{}, q_desc{}, dout_desc{};
   MUresult rc = encode(k, type, &k_desc);
   if (rc != MUSA_SUCCESS) return rc;
@@ -3160,19 +3332,19 @@ extern "C" int mp31_launch(MUfunction function, MUstream stream, int bf16,
   int batch = kBatch, heads = kHeads, seq = kSeq;
   int bs = kBatchStride, hs = kHeadStride, ss = kHeadDim;
   void* parameters[] = {
-      &delta, &delta_bounds, &k, &k_desc, &k_bounds, &lse, &lse_bounds,
+      &row_stats, &k, &k_desc, &k_bounds,
       &q_desc, &q_desc, &v, &v_bounds, &dk, &dout_desc, &dout_desc, &dqa, &dv,
       &batch, &bs, &hs, &ss, &bs, &hs, &ss, &heads, &bs, &hs, &ss, &seq,
       &seq, &scale_log2, &seq, &seq, &scale, &bs, &hs, &ss};
-  static_assert(sizeof(parameters) / sizeof(parameters[0]) == 36, "kernel argument count");
+  static_assert(sizeof(parameters) / sizeof(parameters[0]) == 33, "kernel argument count");
   return muLaunchKernel(function, kSeq / 128, kHeads, kBatch, kThreads, 1, 1,
                         kSharedBytes, stream, parameters, nullptr);
 }
 """
 
 
-def _d64_launch(handle, q, k, v, dout, lse, delta, dq_accum, dk, dv, scale, scale_log2):
-    _d128_launch(handle, q, k, v, dout, lse, delta, dq_accum, dk, dv, scale, scale_log2)
+def _d64_launch(handle, q, k, v, dout, row_stats, dq_accum, dk, dv, scale, scale_log2):
+    _d128_launch(handle, q, k, v, dout, row_stats, dq_accum, dk, dv, scale, scale_log2)
 
 
 def _musa_flash_bwd_d64_sdk(q, k, v, o, dout, lse, scale, scale_log2, causal):
@@ -3185,25 +3357,35 @@ def _musa_flash_bwd_d64_sdk(q, k, v, o, dout, lse, scale, scale_log2, causal):
     dk = torch.empty_like(pk)
     dv = torch.empty_like(pv)
     dq_accum = torch.empty_like(pq, dtype=torch.float32)
-    delta = torch.empty(batch * heads * seq, device=q.device, dtype=torch.float32)
-    delta_km = torch.empty((batch * seq, heads), device=q.device, dtype=torch.float32)
+    row_stats = torch.empty(
+        (batch, heads, seq, 2), device=q.device, dtype=torch.float32
+    )
     _musa_flash_bwd_persistent_delta[(triton.cdiv(seq, 32), batch * heads)](
-        po, pdo, delta, dq_accum, seq, heads, dim, *po.stride()[:3],
-        32, num_warps=4, num_stages=1,
+        po,
+        pdo,
+        row_stats,
+        dq_accum,
+        seq,
+        heads,
+        dim,
+        *po.stride()[:3],
+        32,
+        num_warps=4,
+        num_stages=1,
+        LSE=lse,
+        SCALE=scale,
     )
-    _musa_flash_bwd_permute_delta[(triton.cdiv(delta.numel(), 256),)](
-        delta, delta_km, delta.numel(), seq, heads, 256, num_warps=4
-    )
-    _d64_launch(handle, pq, pk, pv, pdo, lse, delta_km, dq_accum, dk, dv, scale, scale_log2)
+    _d64_launch(handle, pq, pk, pv, pdo, row_stats, dq_accum, dk, dv, scale, scale_log2)
     _musa_flash_bwd_persistent_cast[(triton.cdiv(dq.numel(), 256),)](
         dq_accum, dq, dq.numel(), 256, num_warps=4
     )
     return dq, dk, dv
 
+
 # D64 schedule from the same licensed FlagGems/MATE/TileLang adaptation above,
 # using the verified 128 KiB layout and SDK-only per-product descriptors.
 # Share the SDK preamble and host ABI without changing D128's source bytes.
-_D64_DEVICE_CPP = _D128_DEVICE_CPP.split("\n#ifdef FG_D128_CAUSAL\n", 1)[0] + r"""
+_D64_DEVICE_CPP = _D128_DEVICE_CPP.split("\n#ifdef FG_D128_CAUSAL\n", 1)[0] + """
 // Fixed BM64/BN128 D64 products from the validated generated MP31 schedule.
 // Reuse SDK representations above. SDK instruction encodes the BF16/FP16
 // operand type and the per-product transpose modes as immediate arguments.
@@ -3242,8 +3424,28 @@ FG_DEVICE void gemm(T* a, T* b, float* accum, int first_thread) {
 }  // namespace d64
 
 #ifdef FG_D128_CAUSAL
-extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s);
-extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s) {
+extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__ RowStats,\
+ const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s);
+extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__\
+ RowStats, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s) {
   __musa_async_bar_record(28);
   extern __shared__ __align__(4096) uchar buf_dyn_shmem[];
   void* K_shared = ((void*)((char*)buf_dyn_shmem + 0));
@@ -3342,17 +3544,27 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
       warprole = ((((int)threadIdx.x) >> 5) - 16);
       if (((int)threadIdx.x) == 512) {
         __musa_async_add_trans(1, 16384);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[4096])), 32, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)\
+blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[4096])), 32, kv_group,\
+ (((int)blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
       }
       __musa_async_arrive(1);
       #pragma unroll
       for (int i = 0; i < 8; ++i) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ ((((i * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])), (&(K[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i * 2) + (((int)threadIdx.x) >> 6)) & 7)) * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128))\
+ + (((((int)threadIdx.x) & 15) ^ ((((i * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])),\
+ (&(K[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128)\
+ + ((i >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i * 2) + (((int)threadIdx.x) >> 6)) & 7))\
+ * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
       }
       #pragma unroll
       for (int i_1 = 0; i_1 < 8; ++i_1) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ ((((i_1 * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])), (&(V[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i_1 >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i_1 * 2) + (((int)threadIdx.x) >> 6)) & 7)) * v_stride_s)) + (kv_group * v_stride_h))])), V_robust_desc_1);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4)\
+ * 128)) + (((((int)threadIdx.x) & 15) ^ ((((i_1 * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])),\
+ (&(V[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128)\
+ + ((i_1 >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i_1 * 2) + (((int)threadIdx.x) >> 6)) & 7))\
+ * v_stride_s)) + (kv_group * v_stride_h))])), V_robust_desc_1);
       }
       d128::finish_robust_copies();
       __musa_async_arrive(2);
@@ -3373,7 +3585,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 12), prev_phase_producer);
           if (((int)threadIdx.x) == 512) {
             __musa_async_add_trans((stage_producer + 4), 8192);
-            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)Qa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)\
+Qa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 4));
         }
@@ -3381,7 +3594,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 16), prev_phase_producer);
           if (((int)threadIdx.x) == 544) {
             __musa_async_add_trans((stage_producer + 8), 8192);
-            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)\
+dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 8));
         }
@@ -3389,7 +3603,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 18), prev_phase_producer);
           if (((int)threadIdx.x) == 576) {
             __musa_async_add_trans((stage_producer + 10), 8192);
-            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)\
+dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 10));
         }
@@ -3397,8 +3612,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 14), prev_phase_producer);
           if (((int)threadIdx.x) == 608) {
             __musa_async_add_trans((stage_producer + 6), 8192);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[2048])), 32, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[2048])), 32, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 6));
         }
@@ -3418,15 +3635,18 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_2 = 0; i_2 < 8; ++i_2) {
           float broadcast_var = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
+          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var),\
+ static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
         }
         __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
         __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-        d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+        d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 14));
         __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-        d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+        d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 22));
         #pragma unroll
@@ -3450,14 +3670,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         for (int _tmp_1 = 0; _tmp_1 < (((end_seq_q - dq_loop_start) - 1) >> 6); ++_tmp_1) {
           #pragma unroll
           for (int i_4 = 0; i_4 < 16; ++i_4) {
-            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64)) + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q) * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_4 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))), dq_store_buffer[i_4]);
+            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64))\
+ + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_4 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))),\
+ dq_store_buffer[i_4]);
           }
           __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
           __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-          d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+          d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-          d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+          d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_arrive((stage_consumer1 + 14));
           __musa_async_arrive((stage_consumer1 + 22));
@@ -3471,7 +3696,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         }
         #pragma unroll
         for (int i_6 = 0; i_6 < 16; ++i_6) {
-          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64)) + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q) * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_6 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))), dq_store_buffer[i_6]);
+          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64))\
+ + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_6 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))),\
+ dq_store_buffer[i_6]);
         }
         #pragma unroll
         for (int i_7 = 0; i_7 < 8; ++i_7) {
@@ -3483,14 +3711,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_8 = 0; i_8 < 32; ++i_8) {
-            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_8 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_8];
+            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv)\
+ < end_seq_kv) {
+              dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_8 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_8];
             }
           }
         } else {
           #pragma unroll
           for (int i_9 = 0; i_9 < 32; ++i_9) {
-            dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_9 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_9 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_9];
+            dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_9 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_9 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_9];
           }
         }
         __musa_async_arrive(28);
@@ -3505,7 +3738,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_10 = 0; i_10 < 8; ++i_10) {
           float broadcast_var_1 = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
+          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1),\
+ static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
         }
         consumer0_causal_offset = (((end_seq_kv + begin_seq_q) - begin_seq_kv) - end_seq_q);
         consumer0_causal_q_local_start = ((((int)blockIdx.x) * 128) - consumer0_causal_offset);
@@ -3537,27 +3771,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           int q_start_1 = ((_tmp_2 * 64) + consumer0_causal_q_start);
           #pragma unroll
           for (int i_11 = 0; i_11 < 4; ++i_11) {
-            lse_buffer[i_11] = d128::load_float((Lse + ((((((i_11 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + ((((int)blockIdx.z) * seqlen_q) * heads_q)) + (((int)blockIdx.y) * seqlen_q)) + q_start_1) - begin_seq_q)), Lse_robust_desc_2);
-          }
-          #pragma unroll
-          for (int i_12 = 0; i_12 < 4; ++i_12) {
-            float condval_5;
-            if (isfinite(lse_buffer[i_12])) {
-              condval_5 = lse_buffer[i_12];
-            } else {
-              condval_5 = 0x1p+30f/*1.073742e+09*/;
-            }
-            lse_buffer[i_12] = condval_5;
-          }
-          #pragma unroll
-          for (int i_13 = 0; i_13 < 4; ++i_13) {
-            delta_buffer[i_13] = d128::load_float((Delta + (((((i_13 * heads_q) * 16) + (((((int)threadIdx.x) & 127) >> 3) * heads_q)) + ((int)blockIdx.y)) + (q_start_1 * heads_q))), Delta_robust_desc_3);
+            const int row = i_11 * 16 + ((int(threadIdx.x) & 127) >> 3)
+                + (int(blockIdx.z) * heads_q + kv_group) * seqlen_q
+                + q_start_1 - begin_seq_q;
+            const float2 stats = RowStats[row];
+            lse_buffer[i_11] = stats.x;
+            delta_buffer[i_11] = stats.y;
           }
           if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
             #pragma unroll
             for (int i_14 = 0; i_14 < 32; ++i_14) {
               float condval_6;
-              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8)) + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
+              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8))\
+ + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
                 condval_6 = 0x0p+0f/*0.000000e+00*/;
               } else {
                 condval_6 = -MUSART_INF_F;
@@ -3568,14 +3794,16 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
             #pragma unroll
             for (int i_15 = 0; i_15 < 8; ++i_15) {
               float broadcast_var_2 = 0x0p+0f/*0.000000e+00*/;
-              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
+              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2),\
+ static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
             }
           }
           if (q_start_1 < consumer0_causal_q_mask_end) {
             #pragma unroll
             for (int i_16 = 0; i_16 < 32; ++i_16) {
               int q_idx = (((((i_16 >> 3) * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) - begin_seq_q);
-              bool valid = (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8)) + (i_16 & 7)) <= (q_idx + consumer0_causal_offset));
+              bool valid = (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x)\
+ & 7) * 8)) + (i_16 & 7)) <= (q_idx + consumer0_causal_offset));
               float condval_7;
               if (valid) {
                 condval_7 = accs_accum[i_16];
@@ -3585,48 +3813,20 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
               accs_accum[i_16] = condval_7;
             }
           }
-          #pragma unroll
-          for (int i_17 = 0; i_17 < 4; ++i_17) {
-            lse_buffer[i_17] = (lse_buffer[i_17] * 0x1.7154764ee6c2fp+0f/*1.442695e+00*/);
-          }
-          #pragma unroll
-          for (int i_18 = 0; i_18 < 4; ++i_18) {
-            delta_buffer[i_18] = (delta_buffer[i_18] * smscale);
-          }
-          if (end_seq_q <= (q_start_1 + 64)) {
-            #pragma unroll
-            for (int i_19 = 0; i_19 < 4; ++i_19) {
-              float condval_8;
-              if (((((i_19 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_8 = lse_buffer[i_19];
-              } else {
-                condval_8 = 0x1.7154764ee6c2fp+30f/*1.549082e+09*/;
-              }
-              lse_buffer[i_19] = condval_8;
-            }
-            #pragma unroll
-            for (int i_20 = 0; i_20 < 4; ++i_20) {
-              float condval_9;
-              if (((((i_20 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_9 = delta_buffer[i_20];
-              } else {
-                condval_9 = 0x0p+0f/*0.000000e+00*/;
-              }
-              delta_buffer[i_20] = condval_9;
-            }
-          }
           __musa_async_wait((stage_consumer0 + 4), phase_consumer0);
-          d64::gemm<d128::Product::QK>((&(((d128::Scalar*)Qa_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])), (&(accs_accum[0])), 0);
+          d64::gemm<d128::Product::QK>((&(((d128::Scalar*)Qa_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])),\
+ (&(accs_accum[0])), 0);
           d128::warpgroup_commit_batch();
           __musa_async_wait((stage_consumer0 + 8), phase_consumer0);
-          d64::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])), (&(dp_accum[0])), 0);
+          d64::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])),\
+ (&(dp_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage = stage_consumer0;
           __musa_async_arrive((stage + 20));
           #pragma unroll
           for (int i_21 = 0; i_21 < 8; ++i_21) {
-            tl_f4 v__1 = d128::sub4(d128::mul4(*(tl_f4*)(accs_accum + (i_21 * 4)), rln2_scale), (tl_f4{static_cast<float>(lse_buffer[(i_21 >> 1)]), static_cast<float>(lse_buffer[(i_21 >> 1)]), static_cast<float>(lse_buffer[(i_21 >> 1)]), static_cast<float>(lse_buffer[(i_21 >> 1)])}));
+            tl_f4 v__1 = d128::fma4(*(tl_f4*)(accs_accum + (i_21 * 4)), rln2_scale, -lse_buffer[(i_21 >> 1)]);
             *(tl_f4*)(accs_accum + (i_21 * 4)) = d128::vec_exp2_f4(v__1);
           }
           #pragma unroll
@@ -3639,30 +3839,36 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((stage_consumer0 + 20), phase_consumer0);
           #pragma unroll
           for (int i_23 = 0; i_23 < 4; ++i_23) {
-            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_23 * 1024)) + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127) >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_23 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_23 * 1024))\
+ + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127)\
+ >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_23 * 8));
           }
           d128::lma_wait();
           __musa_async_wait((stage_consumer0 + 10), phase_consumer0);
-          d64::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])), (&(dv_accum[0])), 0);
+          d64::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])),\
+ (&(dv_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage_1 = stage_consumer0;
           __musa_async_arrive((stage_1 + 16));
           #pragma unroll
-          for (int i_24 = 0; i_24 < 32; ++i_24) {
-            dp_accum[i_24] = (((dp_accum[i_24] * smscale) - delta_buffer[(i_24 >> 3)]) * accs_accum[i_24]);
-          }
-          #pragma unroll
           for (int i_25 = 0; i_25 < 8; ++i_25) {
             d128::Vec4 __3;
-            tl_f4 v__3 = *(tl_f4*)(dp_accum + (i_25 * 4));
+            const tl_f4 p = *(tl_f4*)(accs_accum + (i_25 * 4));
+            const tl_f4 dp = *(tl_f4*)(dp_accum + (i_25 * 4));
+            const tl_f4 d = d128::fma4(dp, smscale, -delta_buffer[i_25 >> 1]);
+            const tl_f4 v__3 = {
+                d128::scale_ds(p[0], d[0]), d128::scale_ds(p[1], d[1]),
+                d128::scale_ds(p[2], d[2]), d128::scale_ds(p[3], d[3])};
             ((d128::Packed4*)(&__3))[0] = d128::round_to_scalar4(((float4*)(&v__3))[0]);
             *(d128::Vec4*)(accs_cast + (i_25 * 4)) = __3;
           }
           __musa_async_wait((prev_stage_consumer0 + 22), prev_phase_consumer0);
           #pragma unroll
           for (int i_26 = 0; i_26 < 4; ++i_26) {
-            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_26 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16))\
+ + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_26 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 26));
@@ -3671,7 +3877,9 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_arrive((stage_consumer0 + 18));
           #pragma unroll
           for (int i_27 = 0; i_27 < 4; ++i_27) {
-            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_27 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8))) = *(d128::Vec8*)(accs_cast + (i_27 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_27 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8)))\
+ = *(d128::Vec8*)(accs_cast + (i_27 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 24));
@@ -3690,14 +3898,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_29 = 0; i_29 < 32; ++i_29) {
-            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dV[((((((i_29 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
+            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 3) * 16)) + ((((int)\
+threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
+              dV[((((((i_29 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_29 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
             }
           }
         } else {
           #pragma unroll
           for (int i_30 = 0; i_30 < 32; ++i_30) {
-            dV[((((((i_30 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_30 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_30];
+            dV[((((((i_30 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_30 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_30];
           }
         }
         __musa_async_arrive(28);
@@ -3707,8 +3920,28 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
 }
 
 #else
-extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s);
-extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float* __restrict__ Delta, __attribute__((grid_constant)) const d128::robust_param_desc_t Delta_robust_desc_3, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0, __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, const float* __restrict__ Lse, __attribute__((grid_constant)) const d128::robust_param_desc_t Lse_robust_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4, const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1, d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum, d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b, int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv, int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h, int v_stride_s) {
+extern "C" __global__ void flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__ RowStats,\
+ const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s);
+extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_kernel_kernel(const float2* __restrict__\
+ RowStats, const d128::Scalar* __restrict__ K, __attribute__((grid_constant)) const MUtensorDescriptor K_desc_0,\
+ __attribute__((grid_constant)) const d128::robust_param_desc_t K_robust_desc_0, __attribute__((grid_constant))\
+ const MUtensorDescriptor Q_desc_1, __attribute__((grid_constant)) const MUtensorDescriptor Q_desc_4,\
+ const d128::Scalar* __restrict__ V, __attribute__((grid_constant)) const d128::robust_param_desc_t V_robust_desc_1,\
+ d128::Scalar* __restrict__ dK, __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_2,\
+ __attribute__((grid_constant)) const MUtensorDescriptor dO_desc_3, float* __restrict__ dQ_accum,\
+ d128::Scalar* __restrict__ dV, int batch, int dk_stride_b, int dk_stride_h, int dk_stride_s, int dv_stride_b,\
+ int dv_stride_h, int dv_stride_s, int heads_q, int k_stride_b, int k_stride_h, int k_stride_s, int max_seq_kv,\
+ int max_seq_q, float rln2_scale, int seqlen_k, int seqlen_q, float smscale, int v_stride_b, int v_stride_h,\
+ int v_stride_s) {
   __musa_async_bar_record(28);
   extern __shared__ __align__(4096) uchar buf_dyn_shmem[];
   void* K_shared = ((void*)((char*)buf_dyn_shmem + 0));
@@ -3796,17 +4029,27 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
       warprole = ((((int)threadIdx.x) >> 5) - 16);
       if (((int)threadIdx.x) == 512) {
         __musa_async_add_trans(1, 16384);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
-        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[4096])), 32, kv_group, (((int)blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[0])), 0, kv_group, (((int)\
+blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
+        d128::tma_load<d128::TmaGranularity::B32>(K_desc_0, 1, (&(((d128::Scalar*)K_shared)[4096])), 32, kv_group,\
+ (((int)blockIdx.x) * 128), ((int)blockIdx.z), 32, 1, 128, 1);
       }
       __musa_async_arrive(1);
       #pragma unroll
       for (int i = 0; i < 8; ++i) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ ((((i * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])), (&(K[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i * 2) + (((int)threadIdx.x) >> 6)) & 7)) * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Kt_shared)[((((i * 1024) + ((((int)threadIdx.x) >> 4) * 128))\
+ + (((((int)threadIdx.x) & 15) ^ ((((i * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])),\
+ (&(K[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * k_stride_b)) + (((((((int)blockIdx.x) * 128)\
+ + ((i >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i * 2) + (((int)threadIdx.x) >> 6)) & 7))\
+ * k_stride_s)) + (kv_group * k_stride_h))])), K_robust_desc_0);
       }
       #pragma unroll
       for (int i_1 = 0; i_1 < 8; ++i_1) {
-        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4) * 128)) + (((((int)threadIdx.x) & 15) ^ ((((i_1 * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])), (&(V[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128) + ((i_1 >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i_1 * 2) + (((int)threadIdx.x) >> 6)) & 7)) * v_stride_s)) + (kv_group * v_stride_h))])), V_robust_desc_1);
+        d128::cp_async_gs_robust<16>((&(((d128::Scalar*)Vt_shared)[((((i_1 * 1024) + ((((int)threadIdx.x) >> 4)\
+ * 128)) + (((((int)threadIdx.x) & 15) ^ ((((i_1 * 16) + (((int)threadIdx.x) >> 3)) & 31) >> 1)) * 8)) - 4096)])),\
+ (&(V[(((((((int)threadIdx.x) & 7) * 8) + (((int)blockIdx.z) * v_stride_b)) + (((((((int)blockIdx.x) * 128)\
+ + ((i_1 >> 2) * 64)) + (((((int)threadIdx.x) & 63) >> 3) * 8)) + (((i_1 * 2) + (((int)threadIdx.x) >> 6)) & 7))\
+ * v_stride_s)) + (kv_group * v_stride_h))])), V_robust_desc_1);
       }
       d128::finish_robust_copies();
       __musa_async_arrive(2);
@@ -3817,7 +4060,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 12), prev_phase_producer);
           if (((int)threadIdx.x) == 512) {
             __musa_async_add_trans((stage_producer + 4), 8192);
-            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)Qa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(Q_desc_1, (stage_producer + 4), (&(((d128::Scalar*)\
+Qa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 4));
         }
@@ -3825,7 +4069,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 16), prev_phase_producer);
           if (((int)threadIdx.x) == 544) {
             __musa_async_add_trans((stage_producer + 8), 8192);
-            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B16>(dO_desc_2, (stage_producer + 8), (&(((d128::Scalar*)\
+dOa_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 8));
         }
@@ -3833,7 +4078,8 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 18), prev_phase_producer);
           if (((int)threadIdx.x) == 576) {
             __musa_async_add_trans((stage_producer + 10), 8192);
-            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(dO_desc_3, (stage_producer + 10), (&(((d128::Scalar*)\
+dOb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 64, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 10));
         }
@@ -3841,8 +4087,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((prev_stage_producer + 14), prev_phase_producer);
           if (((int)threadIdx.x) == 608) {
             __musa_async_add_trans((stage_producer + 6), 8192);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
-            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)Qb_shared)[2048])), 32, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[0])), 0, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
+            d128::tma_load<d128::TmaGranularity::B32>(Q_desc_4, (stage_producer + 6), (&(((d128::Scalar*)\
+Qb_shared)[2048])), 32, ((int)blockIdx.y), (q_start - begin_seq_q), ((int)blockIdx.z), 32, 1, 64, 1);
           }
           __musa_async_arrive((stage_producer + 6));
         }
@@ -3862,15 +4110,18 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_2 = 0; i_2 < 8; ++i_2) {
           float broadcast_var = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
+          *(tl_f4*)(dk_accum + (i_2 * 4)) = (tl_f4{static_cast<float>(broadcast_var),\
+ static_cast<float>(broadcast_var), static_cast<float>(broadcast_var), static_cast<float>(broadcast_var)});
         }
         __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
         __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-        d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+        d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 14));
         __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-        d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+        d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
         d128::wait_sqmma();
         __musa_async_arrive((stage_consumer1 + 22));
         #pragma unroll
@@ -3884,14 +4135,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         for (int _tmp_1 = 0; _tmp_1 < (((end_seq_q - dq_loop_start) - 1) >> 6); ++_tmp_1) {
           #pragma unroll
           for (int i_4 = 0; i_4 < 16; ++i_4) {
-            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64)) + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q) * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_4 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))), dq_store_buffer[i_4]);
+            AtomicAdd(*((&(dQ_accum[((((((((((i_4 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64))\
+ + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_4 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))),\
+ dq_store_buffer[i_4]);
           }
           __musa_async_wait((stage_consumer1 + 6), phase_consumer1);
           __musa_async_wait((stage_consumer1 + 26), phase_consumer1);
-          d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])), (&(dk_accum[0])), 256);
+          d64::gemm<d128::Product::DK>((&(((d128::Scalar*)dSt_shared)[0])), (&(((d128::Scalar*)Qb_shared)[0])),\
+ (&(dk_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_wait((stage_consumer1 + 24), phase_consumer1);
-          d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])), (&(dq_accum[0])), 256);
+          d64::gemm<d128::Product::DQ>((&(((d128::Scalar*)dS_shared)[0])), (&(((d128::Scalar*)K_shared)[0])),\
+ (&(dq_accum[0])), 256);
           d128::wait_sqmma();
           __musa_async_arrive((stage_consumer1 + 14));
           __musa_async_arrive((stage_consumer1 + 22));
@@ -3905,7 +4161,10 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         }
         #pragma unroll
         for (int i_6 = 0; i_6 < 16; ++i_6) {
-          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64)) + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q) * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_6 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))), dq_store_buffer[i_6]);
+          AtomicAdd(*((&(dQ_accum[((((((((((i_6 >> 2) * 1024) + (((((int)threadIdx.x) & 127) >> 3) * 64))\
+ + (local_q_start * 64)) + (((((int)blockIdx.z) * max_seq_q) * heads_q) * 64)) + ((((int)blockIdx.y) * max_seq_q)\
+ * 64)) + ((((int)threadIdx.x) >> 7) * 32)) + ((i_6 & 3) * 8)) + (((int)threadIdx.x) & 7)) - 64)]))),\
+ dq_store_buffer[i_6]);
         }
         #pragma unroll
         for (int i_7 = 0; i_7 < 8; ++i_7) {
@@ -3917,14 +4176,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_8 = 0; i_8 < 32; ++i_8) {
-            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_8 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_8];
+            if (((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv)\
+ < end_seq_kv) {
+              dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_8 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_8 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_8];
             }
           }
         } else {
           #pragma unroll
           for (int i_9 = 0; i_9 < 32; ++i_9) {
-            dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_9 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b)) + ((((((int)blockIdx.x) * 128) + ((i_9 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_9];
+            dK[((((((((((int)threadIdx.x) >> 7) * 32) + ((i_9 & 3) * 8)) + (((int)blockIdx.z) * dk_stride_b))\
+ + ((((((int)blockIdx.x) * 128) + ((i_9 >> 2) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dk_stride_s)) + (((int)\
+blockIdx.y) * dk_stride_h)) + (((int)threadIdx.x) & 7)) - 64)] = dk_cast[i_9];
           }
         }
         __musa_async_arrive(28);
@@ -3939,33 +4203,26 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         #pragma unroll
         for (int i_10 = 0; i_10 < 8; ++i_10) {
           float broadcast_var_1 = 0x0p+0f/*0.000000e+00*/;
-          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
+          *(tl_f4*)(dv_accum + (i_10 * 4)) = (tl_f4{static_cast<float>(broadcast_var_1),\
+ static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1), static_cast<float>(broadcast_var_1)});
         }
         for (int _tmp_2 = 0; _tmp_2 < (((end_seq_q + 63) - begin_seq_q) >> 6); ++_tmp_2) {
           int q_start_1 = ((_tmp_2 * 64) + begin_seq_q);
           #pragma unroll
           for (int i_11 = 0; i_11 < 4; ++i_11) {
-            lse_buffer[i_11] = d128::load_float((Lse + ((((((i_11 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + ((((int)blockIdx.z) * seqlen_q) * heads_q)) + (((int)blockIdx.y) * seqlen_q)) + q_start_1) - begin_seq_q)), Lse_robust_desc_2);
-          }
-          #pragma unroll
-          for (int i_12 = 0; i_12 < 4; ++i_12) {
-            float condval;
-            if (isfinite(lse_buffer[i_12])) {
-              condval = lse_buffer[i_12];
-            } else {
-              condval = 0x1p+30f/*1.073742e+09*/;
-            }
-            lse_buffer[i_12] = condval;
-          }
-          #pragma unroll
-          for (int i_13 = 0; i_13 < 4; ++i_13) {
-            delta_buffer[i_13] = d128::load_float((Delta + (((((i_13 * heads_q) * 16) + (((((int)threadIdx.x) & 127) >> 3) * heads_q)) + ((int)blockIdx.y)) + (q_start_1 * heads_q))), Delta_robust_desc_3);
+            const int row = i_11 * 16 + ((int(threadIdx.x) & 127) >> 3)
+                + (int(blockIdx.z) * heads_q + kv_group) * seqlen_q
+                + q_start_1 - begin_seq_q;
+            const float2 stats = RowStats[row];
+            lse_buffer[i_11] = stats.x;
+            delta_buffer[i_11] = stats.y;
           }
           if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
             #pragma unroll
             for (int i_14 = 0; i_14 < 32; ++i_14) {
               float condval_1;
-              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8)) + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
+              if (((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((((int)threadIdx.x) & 7) * 8))\
+ + begin_seq_kv) + (i_14 & 7)) < end_seq_kv)) {
                 condval_1 = 0x0p+0f/*0.000000e+00*/;
               } else {
                 condval_1 = -MUSART_INF_F;
@@ -3976,51 +4233,24 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
             #pragma unroll
             for (int i_15 = 0; i_15 < 8; ++i_15) {
               float broadcast_var_2 = 0x0p+0f/*0.000000e+00*/;
-              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
-            }
-          }
-          #pragma unroll
-          for (int i_16 = 0; i_16 < 4; ++i_16) {
-            lse_buffer[i_16] = (lse_buffer[i_16] * 0x1.7154764ee6c2fp+0f/*1.442695e+00*/);
-          }
-          #pragma unroll
-          for (int i_17 = 0; i_17 < 4; ++i_17) {
-            delta_buffer[i_17] = (delta_buffer[i_17] * smscale);
-          }
-          if (end_seq_q <= (q_start_1 + 64)) {
-            #pragma unroll
-            for (int i_18 = 0; i_18 < 4; ++i_18) {
-              float condval_2;
-              if (((((i_18 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_2 = lse_buffer[i_18];
-              } else {
-                condval_2 = 0x1.7154764ee6c2fp+30f/*1.549082e+09*/;
-              }
-              lse_buffer[i_18] = condval_2;
-            }
-            #pragma unroll
-            for (int i_19 = 0; i_19 < 4; ++i_19) {
-              float condval_3;
-              if (((((i_19 * 16) + ((((int)threadIdx.x) & 127) >> 3)) + q_start_1) < end_seq_q)) {
-                condval_3 = delta_buffer[i_19];
-              } else {
-                condval_3 = 0x0p+0f/*0.000000e+00*/;
-              }
-              delta_buffer[i_19] = condval_3;
+              *(tl_f4*)(accs_accum + (i_15 * 4)) = (tl_f4{static_cast<float>(broadcast_var_2),\
+ static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2), static_cast<float>(broadcast_var_2)});
             }
           }
           __musa_async_wait((stage_consumer0 + 4), phase_consumer0);
-          d64::gemm<d128::Product::QK>((&(((d128::Scalar*)Qa_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])), (&(accs_accum[0])), 0);
+          d64::gemm<d128::Product::QK>((&(((d128::Scalar*)Qa_shared)[0])), (&(((d128::Scalar*)Kt_shared)[0])),\
+ (&(accs_accum[0])), 0);
           d128::warpgroup_commit_batch();
           __musa_async_wait((stage_consumer0 + 8), phase_consumer0);
-          d64::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])), (&(dp_accum[0])), 0);
+          d64::gemm<d128::Product::DOV>((&(((d128::Scalar*)dOa_shared)[0])), (&(((d128::Scalar*)Vt_shared)[0])),\
+ (&(dp_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage = stage_consumer0;
           __musa_async_arrive((stage + 20));
           #pragma unroll
           for (int i_20 = 0; i_20 < 8; ++i_20) {
-            tl_f4 v__1 = d128::sub4(d128::mul4(*(tl_f4*)(accs_accum + (i_20 * 4)), rln2_scale), (tl_f4{static_cast<float>(lse_buffer[(i_20 >> 1)]), static_cast<float>(lse_buffer[(i_20 >> 1)]), static_cast<float>(lse_buffer[(i_20 >> 1)]), static_cast<float>(lse_buffer[(i_20 >> 1)])}));
+            tl_f4 v__1 = d128::fma4(*(tl_f4*)(accs_accum + (i_20 * 4)), rln2_scale, -lse_buffer[(i_20 >> 1)]);
             *(tl_f4*)(accs_accum + (i_20 * 4)) = d128::vec_exp2_f4(v__1);
           }
           #pragma unroll
@@ -4033,30 +4263,36 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_wait((stage_consumer0 + 20), phase_consumer0);
           #pragma unroll
           for (int i_22 = 0; i_22 < 4; ++i_22) {
-            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_22 * 1024)) + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127) >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_22 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)Pt_shared) + ((((((((int)threadIdx.x) >> 7) * 4096) + (i_22 * 1024))\
+ + (((((int)threadIdx.x) & 127) >> 4) * 128)) + ((((((int)threadIdx.x) & 15) >> 1) ^ ((((int)threadIdx.x) & 127)\
+ >> 4)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_22 * 8));
           }
           d128::lma_wait();
           __musa_async_wait((stage_consumer0 + 10), phase_consumer0);
-          d64::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])), (&(dv_accum[0])), 0);
+          d64::gemm<d128::Product::DV>((&(((d128::Scalar*)Pt_shared)[0])), (&(((d128::Scalar*)dOb_shared)[0])),\
+ (&(dv_accum[0])), 0);
           d128::warpgroup_commit_batch();
           d128::warpgroup_wait<1>();
           int stage_1 = stage_consumer0;
           __musa_async_arrive((stage_1 + 16));
           #pragma unroll
-          for (int i_23 = 0; i_23 < 32; ++i_23) {
-            dp_accum[i_23] = (((dp_accum[i_23] * smscale) - delta_buffer[(i_23 >> 3)]) * accs_accum[i_23]);
-          }
-          #pragma unroll
           for (int i_24 = 0; i_24 < 8; ++i_24) {
             d128::Vec4 __3;
-            tl_f4 v__3 = *(tl_f4*)(dp_accum + (i_24 * 4));
+            const tl_f4 p = *(tl_f4*)(accs_accum + (i_24 * 4));
+            const tl_f4 dp = *(tl_f4*)(dp_accum + (i_24 * 4));
+            const tl_f4 d = d128::fma4(dp, smscale, -delta_buffer[i_24 >> 1]);
+            const tl_f4 v__3 = {
+                d128::scale_ds(p[0], d[0]), d128::scale_ds(p[1], d[1]),
+                d128::scale_ds(p[2], d[2]), d128::scale_ds(p[3], d[3])};
             ((d128::Packed4*)(&__3))[0] = d128::round_to_scalar4(((float4*)(&v__3))[0]);
             *(d128::Vec4*)(accs_cast + (i_24 * 4)) = __3;
           }
           __musa_async_wait((prev_stage_consumer0 + 22), prev_phase_consumer0);
           #pragma unroll
           for (int i_25 = 0; i_25 < 4; ++i_25) {
-            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_25 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16)) + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_25 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dSt_shared) + ((((i_25 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 4) + ((((int)threadIdx.x) & 7) >> 1)) ^ ((((int)threadIdx.x) & 63) >> 3)) * 16))\
+ + ((((int)threadIdx.x) & 1) * 8))) = *(d128::Vec8*)(accs_cast + (i_25 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 26));
@@ -4065,7 +4301,9 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
           __musa_async_arrive((stage_consumer0 + 18));
           #pragma unroll
           for (int i_26 = 0; i_26 < 4; ++i_26) {
-            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128)) + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8))) = *(d128::Vec8*)(accs_cast + (i_26 * 8));
+            *(d128::Vec8*)(((d128::Scalar*)dS_shared) + (((i_26 * 2048) + (((((int)threadIdx.x) & 127) >> 3) * 128))\
+ + (((((((int)threadIdx.x) >> 7) * 8) + (((int)threadIdx.x) & 7)) ^ ((((int)threadIdx.x) & 127) >> 3)) * 8)))\
+ = *(d128::Vec8*)(accs_cast + (i_26 * 8));
           }
           d128::lma_wait();
           __musa_async_arrive((stage_consumer0 + 24));
@@ -4084,14 +4322,19 @@ extern "C" __global__ void __launch_bounds__(640, 1) flashattn_bwd_ws_unsplit_ke
         if (end_seq_kv < (((((int)blockIdx.x) * 128) + begin_seq_kv) + 128)) {
           #pragma unroll
           for (int i_28 = 0; i_28 < 32; ++i_28) {
-            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_28 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
-              dV[((((((i_28 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_28 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_28];
+            if ((((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_28 >> 3) * 16)) + ((((int)\
+threadIdx.x) & 127) >> 3)) + begin_seq_kv) < end_seq_kv) {
+              dV[((((((i_28 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_28 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_28];
             }
           }
         } else {
           #pragma unroll
           for (int i_29 = 0; i_29 < 32; ++i_29) {
-            dV[((((((i_29 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)threadIdx.x) >> 7) * 64)) + ((i_29 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
+            dV[((((((i_29 & 7) * 8) + (((int)blockIdx.z) * dv_stride_b)) + (((((((int)blockIdx.x) * 128) + ((((int)\
+threadIdx.x) >> 7) * 64)) + ((i_29 >> 3) * 16)) + ((((int)threadIdx.x) & 127) >> 3)) * dv_stride_s)) + (((int)\
+blockIdx.y) * dv_stride_h)) + (((int)threadIdx.x) & 7))] = dv_cast[i_29];
           }
         }
         __musa_async_arrive(28);
