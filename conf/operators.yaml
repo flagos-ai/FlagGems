@@ -3406,6 +3406,18 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: clamp_max_backward
+  description: Computes the gradient of `clamp_max` with respect to its input, returning
+    `grad_output` where `self <= max_value` and zero elsewhere.
+  for:
+    - clamp_max_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: clamp_min
   description: A variant of `clamp()` with `min` set to `min`.
   for:
