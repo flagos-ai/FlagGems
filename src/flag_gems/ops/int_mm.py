@@ -22,6 +22,13 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+if runtime.device.vendor_name == "metax":
+    from flag_gems.runtime.backend._metax.int_mm import (
+        _launch_metax_split,
+        _metax_split_device_supported,
+    )
+
+
 logger = logging.getLogger(__name__)
 
 _GROUP_M = 8
@@ -362,6 +369,148 @@ def _launch_nvidia(self, mat2, out, M, N, K):
         )
 
 
+def _launch_metax(self, mat2, out, M, N, K):
+    # MetaX C550 measured 2026-11-17: int8 tl.dot lowers to mxc.mma 16x16x16;
+    # BLOCK_K=64 is the sweet spot (>=128 collapses 5-25x), num_stages=3.
+    # cpasync-mixed pipeline + num_stages=2 cuts register pressure (229 -> ~95)
+    # and wins on N>=64 tiles; it crashes the compiler for 32x32 tiles with
+    # long K, so small-N buckets keep the default pipeline.
+    # AsyncNT can fail to lower masked loads in the generic dot kernel.
+    mixed = {
+        "pipeline": "cpasync-mixed",
+        "pipeline_load_num": 2,
+        "enable_fp_fusion": False,
+    }
+    if K > _MAX_DOT_K_WITHOUT_INT32_OVERFLOW:
+        _launch_outer(self, mat2, out, M, N, K)
+    # The narrow, long-K bucket has only 16–24 GEMM tiles on C550.
+    # Eight aligned slices shorten the K loop and expose at least 128 CTAs.
+    elif (
+        48 < M <= 96
+        and N == 64
+        and 1536 <= K <= 2560
+        and K % 512 == 0
+        and self.is_contiguous()
+        and mat2.is_contiguous()
+        and out.is_contiguous()
+        and self.data_ptr() % 16 == 0
+        and mat2.data_ptr() % 16 == 0
+        and out.data_ptr() % 16 == 0
+        and _metax_split_device_supported(self.device)
+    ):
+        _launch_metax_split(self, mat2, out, M, N, K, **mixed)
+    elif M <= 128 and N <= 64:
+        _launch_dot(
+            self,
+            mat2,
+            out,
+            M,
+            N,
+            K,
+            block_m=16,
+            block_n=16,
+            block_k=64,
+            num_warps=4,
+            num_stages=4,
+            explicit_out_dtype=True,
+        )
+    elif M <= 64:
+        if N >= 64:
+            _launch_dot(
+                self,
+                mat2,
+                out,
+                M,
+                N,
+                K,
+                block_m=16,
+                block_n=64,
+                block_k=64,
+                num_warps=4,
+                num_stages=2,
+                explicit_out_dtype=True,
+                **(mixed if M % 16 == N % 64 == K % 64 == 0 else {}),
+            )
+        else:
+            _launch_dot(
+                self,
+                mat2,
+                out,
+                M,
+                N,
+                K,
+                block_m=16,
+                block_n=32,
+                block_k=64,
+                num_warps=4,
+                num_stages=3,
+                explicit_out_dtype=True,
+            )
+    elif M <= 256:
+        if N >= 64:
+            _launch_dot(
+                self,
+                mat2,
+                out,
+                M,
+                N,
+                K,
+                block_m=32,
+                block_n=64,
+                block_k=64,
+                num_warps=4,
+                num_stages=2,
+                explicit_out_dtype=True,
+                **(mixed if M % 32 == N % 64 == K % 64 == 0 else {}),
+            )
+        else:
+            _launch_dot(
+                self,
+                mat2,
+                out,
+                M,
+                N,
+                K,
+                block_m=32,
+                block_n=32,
+                block_k=64,
+                num_warps=4,
+                num_stages=3,
+                explicit_out_dtype=True,
+            )
+    elif N >= 128:
+        _launch_dot(
+            self,
+            mat2,
+            out,
+            M,
+            N,
+            K,
+            block_m=64,
+            block_n=64,
+            block_k=64,
+            num_warps=8,
+            num_stages=2,
+            explicit_out_dtype=True,
+            **(mixed if M % 64 == N % 64 == K % 64 == 0 else {}),
+        )
+    else:
+        _launch_dot(
+            self,
+            mat2,
+            out,
+            M,
+            N,
+            K,
+            block_m=128,
+            block_n=64,
+            block_k=64,
+            num_warps=8,
+            num_stages=3,
+            explicit_out_dtype=True,
+        )
+
+
 def _launch_iluvatar(self, mat2, out, M, N, K):
     if M <= 32:
         _launch_dot(self, mat2, out, M, N, K, block_k=32)
@@ -386,7 +535,7 @@ def _launch_iluvatar(self, mat2, out, M, N, K):
 _BACKEND_LAUNCHER = {
     "ascend": _launch_conservative,
     "iluvatar": _launch_iluvatar,
-    "metax": _launch_conservative,
+    "metax": _launch_metax,
     "nvidia": _launch_nvidia,
 }.get(runtime.device.vendor_name, _launch_conservative)
 
