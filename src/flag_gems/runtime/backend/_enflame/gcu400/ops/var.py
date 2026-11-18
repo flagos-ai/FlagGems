@@ -18,29 +18,17 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as ext
+
+from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
-def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
-    count = count_x + count_y
-    _count = tl.maximum(count, 1)
-    mc_x = mean_x * count_x
-    mc_y = mean_y * count_y
-    mean = (mc_x + mc_y) / _count
-    M = M_x + mc_x * mean_x + M_y + mc_y * mean_y - count * mean * mean
-    return mean, count, M
-
-
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
 @triton.jit(do_not_specialize=["correction"])
-def var_welford_kernel(
+def var_kernel(
     X,
     Var,
     M,
@@ -48,93 +36,85 @@ def var_welford_kernel(
     correction,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    num_stages: tl.constexpr = 1,
 ):
-    # Map the program id to the row of X it should compute.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Var = Var + pid
-    row_mask = pid < M
+    # Persistent grid-stride over row tiles keeps grid.x within the GCU
+    # hardware limit (P19: grid.x <= 65535) for large M.
+    pid_m = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (M + BLOCK_M - 1) // BLOCK_M
+    for tile_id in tl.range(pid_m, num_tile, step, num_stages=num_stages):
+        m_offset = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
+        row_mask = m_offset < M
 
-    _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask & col_mask
+        _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        _sum2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for col_off in tl.range(0, N, BLOCK_N):
+            n_offset = col_off + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
+            x = tl.load(X + offset, mask, other=0.0).to(tl.float32)
+            _sum += x
+            _sum2 += x * x
 
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        total_sum = tl.sum(_sum, axis=1)
+        total_sum2 = tl.sum(_sum2, axis=1)
+        var = (total_sum2 - total_sum * total_sum / N) / (N - correction)
+        var = tl.maximum(var, 0.0)
 
-        count = _count + mask
-        cnt = tl.maximum(count, 1)
-        cur_mean = (_mean * _count + x) / cnt
-        _acc += (x - cur_mean) * (x - _mean) * mask
-        _mean = cur_mean
-        _count = count
-
-    mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
-    var = acc / (N - correction)
-    var = var[:, None]
-    # Write var
-    tl.store(Var, var, row_mask)
+        tl.store(Var + m_offset, var, row_mask)
 
 
 @libentry()
 @triton.jit
-def var_kernel_1(
+def var_global_kernel_1(
     X,
-    Acc,
-    Average,
-    Count,
-    N,
-    BLOCK_N: tl.constexpr,
+    Mid_sum,
+    Mid_sum2,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+    num_stages: tl.constexpr = 1,
 ):
-    # Map the program id to the row of X it should compute.
-    pid = ext.program_id(0)
-    offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    X = X + offset
-    Acc = Acc + pid
-    Average = Average + pid
-    Count = Count + pid
-    mask = offset < N
-
-    x = tl.load(X, mask, other=0.0).to(tl.float32)
-
-    count = tl.sum(mask.to(tl.float32))
-    average = tl.sum(x) / count
-    acc = tl.sum(x * x) - count * average * average
-
-    tl.store(Average, average)
-    tl.store(Acc, acc)
-    tl.store(Count, count)
+    # Stage 1 of the global (all-dims) reduction: each program walks several
+    # BLOCK_SIZE tiles with a grid-stride loop, so the launch grid stays small
+    # and never exceeds the 65535 grid.x hardware limit (P19).
+    pid = tl.program_id(0)
+    num_prog = tl.num_programs(0)
+    num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, num_prog, num_stages=num_stages):
+        offset = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        x = tl.load(X + offset, mask=mask, other=0.0).to(tl.float32)
+        sum_val = tl.sum(x, axis=0)
+        sum2_val = tl.sum(x * x, axis=0)
+        tl.store(Mid_sum + tile_id, sum_val)
+        tl.store(Mid_sum2 + tile_id, sum2_val)
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("var_mean"))
 @triton.jit(do_not_specialize=["correction"])
-def var_kernel_2(
-    Acc,
-    Average,
-    Count,
+def var_global_kernel_2(
+    Mid_sum,
+    Mid_sum2,
     Var,
     N,
     correction,
-    BLOCK_NUM,
-    BLOCK_N: tl.constexpr,
+    MID_SIZE,
+    BLOCK_MID: tl.constexpr,
 ):
-    offset = tl.arange(0, BLOCK_N)
-    mask = offset < BLOCK_NUM
-    Acc = Acc + offset
-    Average = Average + offset
-    Count = Count + offset
-    acc = tl.load(Acc, mask, other=0.0).to(tl.float32)
-    average = tl.load(Average, mask, other=0.0).to(tl.float32)
-    count = tl.load(Count, mask, other=0.0).to(tl.float32)
+    # Stage 2 folds the per-tile partial sums in a single program. The block
+    # ladder in the host keeps MID_SIZE (hence BLOCK_MID) bounded.
+    offset = tl.arange(0, BLOCK_MID)
+    mask = offset < MID_SIZE
+    partial_sum = tl.load(Mid_sum + offset, mask=mask, other=0.0).to(tl.float32)
+    partial_sum2 = tl.load(Mid_sum2 + offset, mask=mask, other=0.0).to(tl.float32)
 
-    mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
+    total_sum = tl.sum(partial_sum)
+    total_sum2 = tl.sum(partial_sum2)
 
-    var = nvar / (N - correction)
+    var = (total_sum2 - total_sum * total_sum / N) / (N - correction)
+    var = tl.maximum(var, 0.0)
+
     tl.store(Var, var)
 
 
@@ -148,15 +128,46 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         shape = [1] * x.ndim
         N = x.numel()
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
-        BLOCK_N = 1024
-        BLOCK_NUM = triton.cdiv(N, BLOCK_N)
-        acc = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
+
+        block_size = 32 * 64
+        if N < 24 * 16 * 1024:
+            block_size = 16 * 1024
+        elif N >= 24 * 32 * 1024 and N < 24 * 64 * 1024:
+            block_size = 32 * 1024
+        elif N >= 24 * 64 * 1024:
+            block_size = 64 * 1024
+
+        mid_size = triton.cdiv(N, block_size)
+        block_mid = triton.next_power_of_2(mid_size)
+        num_stages = 1
+        if mid_size > 4 * 24:
+            num_stages = 3
+
+        mid_sum = torch.empty([mid_size], dtype=torch.float32, device=x.device)
+        mid_sum2 = torch.empty([mid_size], dtype=torch.float32, device=x.device)
+
+        grid_size = min(mid_size, 8)
 
         with torch_device_fn.device(x.device):
-            var_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-            var_kernel_2[(1,)](acc, average, count, var, N, correction, BLOCK_NUM)
+            var_global_kernel_1[(grid_size, 1, 1)](
+                x,
+                mid_sum,
+                mid_sum2,
+                N,
+                BLOCK_SIZE=block_size,
+                num_stages=num_stages,
+                num_warps=1,
+            )
+            var_global_kernel_2[(1, 1, 1)](
+                mid_sum,
+                mid_sum2,
+                var,
+                N,
+                correction,
+                mid_size,
+                BLOCK_MID=block_mid,
+                num_warps=1,
+            )
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
@@ -168,9 +179,25 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         M = x.numel() // N
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+        BLOCK_N = min(triton.next_power_of_2(N), 2048)
+        BLOCK_M = max(1, min(128, 32768 // BLOCK_N))
+
+        num_stages = 1
+
+        grid_m = min(triton.cdiv(M, BLOCK_M), MAX_GRID_DIM)
+
         with torch_device_fn.device(x.device):
-            var_welford_kernel[grid](x, var, M, N, correction)
+            var_kernel[(grid_m,)](
+                x,
+                var,
+                M,
+                N,
+                correction,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+                num_stages=num_stages,
+                num_warps=1,
+            )
 
     if not keepdim:
         var = var.squeeze(dim=dim)
