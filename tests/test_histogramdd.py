@@ -27,6 +27,8 @@ from . import accuracy_utils as utils
 def test_histogramdd_basic(shape, bins, dtype):
     if len(bins) != shape[1]:
         pytest.skip("bins length must match D dimension")
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -52,6 +54,9 @@ def test_histogramdd_basic(shape, bins, dtype):
 @pytest.mark.parametrize("shape", [(60, 2), (40, 3)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_histogramdd_with_range(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+
     D = shape[1]
     bins = [5] * D
     # Define explicit range per dimension
@@ -79,6 +84,9 @@ def test_histogramdd_with_range(shape, dtype):
 @pytest.mark.parametrize("shape", [(30, 2), (50, 3)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_histogramdd_density(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+
     D = shape[1]
     bins = [4] * D
 

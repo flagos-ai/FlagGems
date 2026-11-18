@@ -27,15 +27,19 @@ permissions:
 
 jobs:
   report-to-feishu:
-    runs-on: ubuntu-latest
+    # Runs on cpu-runner (self-hosted): ci_report_feishu.py uses only stdlib
+    # (no pip install needed) and the script only calls the Feishu and GitHub
+    # APIs over HTTPS — the injected proxy on cpu-runner reaches both fine.
+    # Moving off ubuntu-latest frees a hosted runner slot for PR CI jobs.
+    runs-on: cpu-runner
+    env:
+      http_proxy: ${{ secrets.CI_HTTP_PROXY }}
+      https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: flagos-ai/FlagOps/actions/robust-checkout@main
         with:
-          sparse-checkout: tools/ci_report_feishu.py
-          sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
-        with:
-          python-version: '3.11'
+          ssh-key: ${{ secrets.CI_SSH_KEY }}
+          rounds: "5"
       - name: Report to Feishu
         env:
           FEISHU_BITABLE_APP_ID: ${{ secrets.FEISHU_BITABLE_APP_ID }}
@@ -47,7 +51,7 @@ jobs:
 
           # Retry up to 3 times with exponential backoff
           for attempt in 1 2 3; do
-            if python tools/ci_report_feishu.py \
+            if python3 tools/ci_report_feishu.py \
               --app-id "${FEISHU_BITABLE_APP_ID}" \
               --app-secret "${FEISHU_BITABLE_APP_SECRET}" \
               --github-token "${GITHUB_TOKEN}" \

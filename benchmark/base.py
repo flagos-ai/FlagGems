@@ -47,6 +47,7 @@ from .consts import (
     check_metric_dependencies,
     model_shapes,
 )
+from .gemm_shapes import blas_cases, input_metadata
 from .reference import reference_failure
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
@@ -816,9 +817,18 @@ class Benchmark:
 
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
+        # Attach profiling time-share metadata when --model-profile was
+        # supplied. The same metadata applies to every shape inside this op
+        # because it comes from op-level profiling.
+        if (
+            getattr(Config, "model_profile", None)
+            and self.op_name in Config.model_profile
+        ):
+            metric.time_share = Config.model_profile[self.op_name]
         try:
             args, kwargs = self.unpack_to_args_kwargs(input)
             metric.shape_detail = self.record_shapes(*args, **kwargs)
+            metric.case_metadata = input_metadata(self.op_name, args)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
@@ -1256,12 +1266,13 @@ class BlasBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def get_input_iter(self, dtype) -> Generator:
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
-
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            for b, m, n, k in self.shapes:
-                yield from self.input_fn(b, m, n, k, dtype, self.device, True)
+        for b, m, n, k, column_major in blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        ):
+            yield from self.input_fn(b, m, n, k, dtype, self.device, column_major)
 
     def supports_cases(self) -> bool:
         # Subclasses that replace the standard BLAS case loop must provide
@@ -1274,9 +1285,12 @@ class BlasBenchmark(Benchmark):
         return type(self).get_input_iter is BlasBenchmark.get_input_iter
 
     def get_case_iter(self, dtype) -> Generator:
-        raw_cases = [(*shape, False) for shape in self.shapes]
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            raw_cases.extend((*shape, True) for shape in self.shapes)
+        raw_cases = blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        )
 
         for ordinal, (b, m, n, k, b_column_major) in enumerate(raw_cases):
             yield BenchmarkCaseSpec(

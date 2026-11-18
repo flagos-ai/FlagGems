@@ -31,9 +31,11 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     # unroll_num=8 breaks the bool-op buffer into unrolled chunks so the
     # monolithic 2048-wide llvm.struct is never formed (avoids ~16GB IR);
-    # isCloseMemoryAsync stays at its default True (see bitwise_and).
+    # 16 measured 197->168us on int16 and 208->182us on int32 (2026-11-02,
+    # (4096,4096)); isCloseMemoryAsync stays at its default True (see
+    # bitwise_and).
     kunlunAutoGrid=True,
-    unroll_num=8,
+    unroll_num=16,
 )
 
 

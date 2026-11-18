@@ -1804,8 +1804,19 @@ def nmdim_single_kernel(
         lo = tl.where((~go_left) & active, mid + 1, lo)
     hit = inb & (keys == lo)
     ridx = tl.minimum(tl.min(tl.where(hit, cols, BLOCK_N), axis=0), N - 1)
-    tl.store(out_values + pid, tl.load(inp + base + ridx))
-    tl.store(out_indices + pid, ridx.to(tl.int64))
+    # A 0-d load/store with a data-dependent address costs ~11us per *program*
+    # on this backend (measured 2026-11-02: the fused kernel takes 819us on
+    # (64,64) with a scalar `tl.load(inp + base + ridx)` tail and 87us when the
+    # same fetch goes through the 1-lane masked vector below), so the tail uses
+    # the masked-vector form already proven by `nmdim_finish_kernel`.
+    dst = tl.arange(0, 8)
+    keep = dst < 1
+    tl.store(
+        out_values + pid + dst,
+        tl.load(inp + base + tl.minimum(ridx + dst, N - 1)),
+        mask=keep,
+    )
+    tl.store(out_indices + pid + dst, ridx.to(tl.int64), mask=keep)
 
 
 @libentry()
@@ -1873,8 +1884,16 @@ def nmdim_single_i64_kernel(
 
     hit = sel & (lo == lo_l)
     ridx = tl.minimum(tl.min(tl.where(hit, cols, BLOCK_N), axis=0), N - 1)
-    tl.store(out_values + pid, tl.load(inp + pid.to(tl.int64) * N + ridx))
-    tl.store(out_indices + pid, ridx.to(tl.int64))
+    # Masked-vector tail: a 0-d data-dependent load/stores costs ~11us per
+    # program on this backend (see `nmdim_single_kernel`).
+    dst = tl.arange(0, 8)
+    keep = dst < 1
+    tl.store(
+        out_values + pid + dst,
+        tl.load(inp + pid.to(tl.int64) * N + tl.minimum(ridx + dst, N - 1)),
+        mask=keep,
+    )
+    tl.store(out_indices + pid + dst, ridx.to(tl.int64), mask=keep)
 
 
 # The chunked path is a partial + combine pipeline of loop-free kernels rather

@@ -17,6 +17,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,7 +78,9 @@ def _special_i0_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _launch_special_i0(out: torch.Tensor, x: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Input and output must be CUDA tensors"
+    assert (
+        x.device.type == device.name and out.device.type == device.name
+    ), f"Input and output must be on the {device.name} device"
     assert (
         out.numel() == x.numel()
     ), "Input and output must have the same number of elements"
@@ -116,8 +120,10 @@ def special_i0(x: torch.Tensor):
     Computes the zeroth order modified Bessel function of the first kind for each element.
     """
     logger.debug("GEMS SPECIAL_I0")
-    if not x.is_cuda:
-        raise ValueError("special_i0: input tensor must be on CUDA device")
+    if x.device.type != device.name:
+        raise ValueError(
+            f"special_i0: input tensor must be on the {device.name} device"
+        )
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
     out = torch.empty_like(x.to(dtype=out_dtype), dtype=out_dtype, device=x.device)
     _launch_special_i0(out, x)
@@ -129,9 +135,10 @@ def special_i0_out(x: torch.Tensor, out: torch.Tensor):
     ATen wrapper: special_i0.out(Tensor self, Tensor out) -> Tensor
     """
     logger.debug("GEMS SPECIAL_I0_OUT")
-    if not (x.is_cuda and out.is_cuda):
+    if not (x.device.type == device.name and out.device.type == device.name):
         raise ValueError(
-            "special_i0_out: input and output tensors must be on CUDA device"
+            "special_i0_out: input and output tensors must be on the "
+            f"{device.name} device"
         )
     if not out.is_floating_point():
         raise TypeError("special_i0_out: output tensor must be a floating point type")

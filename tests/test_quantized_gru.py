@@ -67,7 +67,7 @@ def _make_dynamic_quantized_gru(
 )
 def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirectional):
     """Compare the dense Triton implementation with packed dynamic GRU."""
-    from flag_gems.ops.quantized_gru import quantized_gru_input
+    quantized_gru_input = flag_gems.quantized_gru_input
 
     batch_size, seq_len, input_size = shape
     directions = 2 if bidirectional else 1
@@ -121,7 +121,7 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
 def test_quantized_gru_packed_data(bidirectional):
-    from flag_gems.ops.quantized_gru import quantized_gru_data
+    quantized_gru_data = flag_gems.quantized_gru_data
 
     batch_size, seq_len, input_size, hidden_size = 3, 5, 8, 20
     directions = 2 if bidirectional else 1
