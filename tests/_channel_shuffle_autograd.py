@@ -24,7 +24,9 @@ def compare_gradients(
 ):
     utils.gems_assert_close(
         actual_out,
-        expected_out if forward_reference is None else forward_reference,
+        utils.to_reference(
+            expected_out if forward_reference is None else forward_reference
+        ),
         dtype,
         reduce_dim=reduce_dim,
         equal_nan=True,
@@ -37,4 +39,6 @@ def compare_gradients(
     for got, want, source in zip(actual, expected, inputs):
         assert got.shape == source.shape
         assert got.dtype == source.dtype
-        utils.gems_assert_close(got, want, dtype, reduce_dim=reduce_dim, equal_nan=True)
+        utils.gems_assert_close(
+            got, utils.to_reference(want), dtype, reduce_dim=reduce_dim, equal_nan=True
+        )
