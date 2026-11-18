@@ -1254,7 +1254,7 @@ def conv2d(
         dilation,
         groups,
     ):
-        logger.debug("GEMS_HYGON CONV2D P0_4_NATIVE_MIOPEN_FP32")
+        logger.debug("GEMS_HYGON CONV2D_P0_4_NATIVE_MIOPEN_FP32")
         return _native_miopen_conv2d(
             input,
             weight,
@@ -1274,7 +1274,7 @@ def conv2d(
         dilation,
         groups,
     ):
-        logger.debug("GEMS_HYGON CONV2D SELECTIVE_NATIVE_MIOPEN_LOW_PRECISION")
+        logger.debug("GEMS_HYGON CONV2D_SELECTIVE_NATIVE_MIOPEN_LOW_PRECISION")
         return _native_miopen_conv2d(
             input,
             weight,
@@ -1294,7 +1294,7 @@ def conv2d(
         dilation,
         groups,
     ):
-        logger.debug("GEMS_HYGON CONV2D P0_3_PACKED_HWIO_CL_HYBRID")
+        logger.debug("GEMS_HYGON CONV2D_P0_3_PACKED_HWIO_CL_HYBRID")
         return _packed_weight_conv2d_forward(
             input,
             weight,
@@ -1304,7 +1304,7 @@ def conv2d(
             dilation,
         )
 
-    logger.debug("GEMS_HYGON CONV2D GENERIC_FALLBACK")
+    logger.debug("GEMS_HYGON CONV2D_GENERIC_FALLBACK")
     return _generic_conv2d(
         input,
         weight,

@@ -12,6 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .scaled_grouped_mm import scaled_grouped_mm
-
-__all__ = ["scaled_grouped_mm"]
+__all__ = []

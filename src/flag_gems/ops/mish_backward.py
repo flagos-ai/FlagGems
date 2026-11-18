@@ -24,5 +24,5 @@ def mish_backward_kernel(grad_output, input):
 
 
 def mish_backward(grad_output, input):
-    logger.debug("GEMS MISH BACKWARD")
+    logger.debug("GEMS MISH_BACKWARD")
     return mish_backward_kernel(grad_output, input)

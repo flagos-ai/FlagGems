@@ -55,9 +55,9 @@ def test_upsample_bicubic2d(N, C, H, W, outH, outW, align_corners, use_scale, dt
     ref_out = torch._C._nn.upsample_bicubic2d(
         ref_x, output_size, align_corners, scale_factors
     ).to(dtype=dtype)
-    with flag_gems.use_gems():
-        res_out = torch._C._nn.upsample_bicubic2d(
-            x, output_size, align_corners, scale_factors
-        )
+    scales_h, scales_w = scale_factors or (None, None)
+    res_out = flag_gems.upsample_bicubic2d(
+        x, output_size, align_corners, scales_h, scales_w
+    )
 
     utils.gems_assert_close(res_out.to(dtype=dtype), ref_out, dtype, reduce_dim=16)

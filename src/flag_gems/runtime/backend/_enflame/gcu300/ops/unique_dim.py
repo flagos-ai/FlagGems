@@ -334,8 +334,19 @@ def _triton_num_warps(block_size: int) -> int:
 
 def _monotonic_key_bits(dtype: torch.dtype):
     """Return the per-element key width for ``dtype`` if it can be mapped
-    into a monotonic int64 view, else ``None``."""
-    return _INT_DTYPE_BITS.get(dtype)
+    into a monotonic int64 view, else ``None``.
+
+    32-bit dtypes are excluded. The composite key folds the running group id
+    into the high bits (``group_id * 2**bits + value``) and the monotonic
+    remap of a signed 32-bit value needs ``value + 2**31``; neither fits the
+    int32 keys the GCU toolchain requires (``2**31`` is already out of int32
+    range). Those dtypes fall back to the stable multi-pass cascade, which
+    never packs a group id into the key.
+    """
+    bits = _INT_DTYPE_BITS.get(dtype)
+    if bits is None or bits >= 32:
+        return None
+    return bits
 
 
 # Monotonic-remap kinds for the fused key-build kernel.
@@ -906,13 +917,15 @@ def unique_dim(
 
     if all_unique:
         if return_counts:
-            counts = torch.ones(size_dim, dtype=torch.int32, device=device)
+            counts = torch.ones(size_dim, dtype=torch.int64, device=device)
         if return_inverse:
-            inverse_indices = _unique_dim_inverse_from_permutation(sorted_indices)
+            inverse_indices = _unique_dim_inverse_from_permutation(sorted_indices).to(
+                torch.int64
+            )
         output = _unique_dim_gather_output(moved, sorted_indices, dim, input.shape)
-        # GCU300 keeps inverse_indices/counts in int64 host tensors; sorted_indices
-        # is int64 here too. No 64-bit kernel load/store happens on the all_unique
-        # path (no kernel runs on these tensors).
+        # No 64-bit kernel load/store happens on the all_unique path (no kernel
+        # runs on these tensors), but the returned inverse/counts must still
+        # match aten's int64 dtype.
         return output, inverse_indices, counts
 
     is_first = _unique_dim_first_mask(flat, sorted_indices)

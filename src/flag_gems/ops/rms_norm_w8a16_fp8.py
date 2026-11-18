@@ -140,7 +140,7 @@ def rms_norm_fp8_w8a16_loop_kernel(
 def rms_norm_w8a16_fp8(
     x, normalized_shape, weight_fp8, weight_scale, eps=1e-5, group_size=128
 ):
-    logger.debug("GEMS RMS_NORM FP8 W8A16 FORWARD")
+    logger.debug("GEMS RMS_NORM_FP8_W8A16_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

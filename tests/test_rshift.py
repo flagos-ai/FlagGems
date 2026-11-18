@@ -33,8 +33,7 @@ def test_rshift_tensor(dtype, shape):
         utils.to_reference(value), utils.to_reference(shift)
     )
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.__rshift__.Tensor(value, shift)
+    actual = flag_gems.__rshift__(value, shift)
 
     utils.gems_assert_equal(actual, expected)
 
@@ -45,8 +44,7 @@ def test_rshift_scalar(dtype):
     value = torch.randint(0, 100, (11, 17), dtype=dtype, device=flag_gems.device)
     expected = torch.ops.aten.__rshift__.Scalar(utils.to_reference(value), 3)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.__rshift__.Scalar(value, 3)
+    actual = flag_gems.__rshift__(value, 3)
 
     utils.gems_assert_equal(actual, expected)
 
@@ -64,11 +62,8 @@ def test_rshift_output_overloads(dtype):
     tensor_out = torch.empty_like(value)
     scalar_out = torch.empty_like(value)
 
-    with flag_gems.use_gems():
-        tensor_result = torch.ops.aten.__rshift__.Tensor_out(
-            value, shift, out=tensor_out
-        )
-        scalar_result = torch.ops.aten.__rshift__.Scalar_out(value, 2, out=scalar_out)
+    tensor_result = flag_gems.__rshift__(value, shift, out=tensor_out)
+    scalar_result = flag_gems.__rshift__(value, 2, out=scalar_out)
 
     assert tensor_result is tensor_out
     assert scalar_result is scalar_out

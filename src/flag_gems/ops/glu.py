@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import logging
 import math
 from functools import lru_cache
@@ -260,7 +261,11 @@ if HAS_TLE_EXTRACT_SLICE:
         key=["N", "D", "NUM_CORES"],
         prune_configs_by={"early_config_prune": _prune_glu_ascend_configs},
         do_bench=_glu_ascend_do_bench,
-        cache_results=False,
+        **(
+            {"cache_results": False}
+            if "cache_results" in inspect.signature(triton.autotune).parameters
+            else {}
+        ),
     )
     @triton.jit
     def glu_kernel_ascend(
@@ -367,7 +372,7 @@ def glu_backward_kernel(grad_output, a, b):
 
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logger.debug("GEMS GLU FORWARD")
+    logger.debug("GEMS GLU_FORWARD")
     if HAS_TLE_EXTRACT_SLICE:
         if (
             dim in (-1, self.ndim - 1)
@@ -416,7 +421,7 @@ def glu(self, dim=-1):
 
 def glu_backward(grad_output, self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logger.debug("GEMS GLU BACKWARD")
+    logger.debug("GEMS GLU_BACKWARD")
     a, b = torch.chunk(self, 2, dim=dim)
     grad_input = torch.empty_like(self, memory_format=torch.contiguous_format)
     grad_a, grad_b = torch.chunk(grad_input, 2, dim=dim)

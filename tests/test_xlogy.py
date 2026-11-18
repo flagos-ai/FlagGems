@@ -32,8 +32,7 @@ def test_xlogy(shape, dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.xlogy(ref_x, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.xlogy(x, y)
+    res_out = flag_gems.xlogy(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -51,8 +50,7 @@ def test_xlogy_out(shape, dtype):
     ref_out = torch.ops.aten.xlogy.OutTensor(ref_x, ref_y, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.xlogy.OutTensor(x, y, out=res_out_buf)
+    res_out = flag_gems.xlogy_out(x, y, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -72,8 +70,7 @@ def test_xlogy_special_values(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.xlogy(ref_x, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.xlogy(x, y)
+    res_out = flag_gems.xlogy(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -88,8 +85,7 @@ def test_xlogy_tensor_scalar(shape, dtype):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.xlogy(ref_x, scalar)
 
-    with flag_gems.use_gems():
-        res_out = torch.xlogy(x, scalar)
+    res_out = flag_gems.xlogy_tensor_scalar(x, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -106,8 +102,7 @@ def test_xlogy_tensor_scalar_out(shape, dtype):
     ref_out = torch.ops.aten.xlogy.OutScalar_Other(ref_x, scalar, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.xlogy.OutScalar_Other(x, scalar, out=res_out_buf)
+    res_out = flag_gems.xlogy_tensor_scalar_out(x, scalar, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -122,8 +117,7 @@ def test_xlogy_scalar_tensor(shape, dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.xlogy(scalar, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.xlogy(scalar, y)
+    res_out = flag_gems.xlogy_scalar_tensor(scalar, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -140,7 +134,6 @@ def test_xlogy_scalar_tensor_out(shape, dtype):
     ref_out = torch.ops.aten.xlogy.OutScalar_Self(scalar, ref_y, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.xlogy.OutScalar_Self(scalar, y, out=res_out_buf)
+    res_out = flag_gems.xlogy_scalar_tensor_out(scalar, y, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

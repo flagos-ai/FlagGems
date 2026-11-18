@@ -25,7 +25,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 from .copy import _copy_flat_kernel, _pick_flat_block
 from .expand_copy import _launch_bcast
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 _INT32_MAX = 2**31 - 1
 _B8 = 65536  # int64 lanes per program (8 bytes each => 512 KiB/program)

@@ -7,6 +7,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -914,7 +915,11 @@ def _median_key_select_chunked(rows, N, key_bits):
                 preordered,
                 **nan_kw,
             )
-        max_key = (1 << key_bits) - 1
+        # ``-1`` is the uint64 all-ones sentinel.  Passing ``2**64 - 1`` as a
+        # constexpr makes the XPU launcher emit an unsigned literal that fails
+        # to narrow to ``int64_t`` in the generated C (median of int64 rows
+        # wider than 16384 could not compile); ``-1`` lowers to the same bits.
+        max_key = -1 if key_bits == 64 else (1 << key_bits) - 1
         median_row_reduce_kernel[(M,)](
             chunk_mins, lo, nchunks, max_key, reduce_block, 0, **nan_kw
         )
@@ -1092,21 +1097,40 @@ def _median_dim_impl(inp, dim, keepdim, out=None):
     return MedianResult(values=values, indices=indices)
 
 
+def _write_flat_out(out, result):
+    """Write the 0-d scalar result into ``out`` following the ``.out`` contract.
+
+    The reduction kernels produce a ``(1,)`` vector before it is squeezed, so a
+    direct ``_copy_from`` into a 0-d ``out`` fails with "expand ... to size=[]".
+    Materialise the scalar first and use the Triton copy instead.  Like ATen,
+    resize ``out`` when its shape does not match the required output shape.
+    """
+    if tuple(out.shape) != tuple(result.shape):
+        out.resize_as_(result)
+    _gems_copy_(out, result)
+    return out
+
+
 def _median_flat_impl(inp, out=None):
     if inp.numel() == 0:
         result = _empty_flat_result(inp)
         if out is not None:
-            torch.ops.aten._copy_from(result, out, False)
-            return out
+            return _write_flat_out(out, result)
         return result
 
     flat = inp.reshape(-1)
+    if not flat.is_contiguous():
+        # ``reshape`` may return a strided view (e.g. a ``[:, ::2]`` slice is
+        # flattenable with stride 2).  The select kernels assume unit-stride
+        # rows, so they would read the raw storage instead of the logical row.
+        # Stage the values into a contiguous buffer with the Triton copy.
+        staged = torch.empty(flat.shape, dtype=flat.dtype, device=flat.device)
+        _gems_copy_(staged, flat)
+        flat = staged
+    result = _median_dim_impl(flat, 0, False).values
     if out is None:
-        return _median_dim_impl(flat, 0, False).values
-
-    indices = torch.empty((), dtype=torch.long, device=inp.device)
-    _median_dim_impl(flat, 0, False, out=(out, indices))
-    return out
+        return result
+    return _write_flat_out(out, result)
 
 
 def median(inp):

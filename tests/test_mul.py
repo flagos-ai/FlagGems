@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
 
 import numpy as np
@@ -85,6 +86,71 @@ def test_mul_scalar_scalar(dtype):
         utils.gems_assert_equal(res_out, ref_out)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_mul_tensor_scalar_int(shape, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = 3
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_mul_tensor_scalar_int_float_scalar(shape, dtype):
+    # int tensor x float scalar promotes to the default float dtype
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = 0.001
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", [True, False, 2.0])
+def test_mul_tensor_scalar_bool(shape, scalar):
+    inp1 = torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(
+        flag_gems.device
+    )
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, scalar)
+    res_out = flag_gems.mul(inp1, scalar)
+
+    if isinstance(scalar, bool):
+        utils.gems_assert_equal(res_out, ref_out)
+    else:
+        # bool tensor x float scalar promotes to float32
+        utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+def test_mul_scalar_scalar_float(shape):
+    inp1 = float(np.float32(random.random()))
+    inp2 = float(np.float32(random.random()))
+
+    ref_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    # scalar x scalar falls back to torch.tensor(A * B), which yields float32
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
 
 
 @pytest.mark.mul_
@@ -281,3 +347,26 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
+
+
+def test_mul_accelerator_device_alias(monkeypatch):
+    """A renamed PrivateUse1 accelerator must not take the aten fallback.
+
+    Issue #6254: integrations such as Torch-FL expose the accelerator as a
+    renamed PrivateUse1 device (e.g. ``flagos``), so ``device.type`` differs
+    from the backend device name. Such tensors must keep using the Triton path
+    instead of being redispatched to an aten op with no device kernel.
+    """
+    mul_mod = importlib.import_module("flag_gems.ops.mul")
+
+    class _Device:
+        def __init__(self, type_):
+            self.type = type_
+
+    monkeypatch.setattr(
+        mul_mod, "_ACCELERATOR_DEVICE_TYPES", {mul_mod._DEVICE_NAME, "flagos"}
+    )
+    assert mul_mod._is_accelerator_device(_Device(mul_mod._DEVICE_NAME))
+    assert mul_mod._is_accelerator_device(_Device("flagos"))
+    assert not mul_mod._is_accelerator_device(_Device("cpu"))
+    assert not mul_mod._is_accelerator_device(_Device("meta"))

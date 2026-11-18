@@ -40,7 +40,9 @@ def test_amax(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.amax(inp, dim=dim, keepdim=keepdim)
+    # Direct GEMS call: the dispatcher lifts an int dim to IntList, so normalise
+    # it here to match amax's own contract.
+    dims = dim if isinstance(dim, (list, tuple)) else [dim]
+    res_out = flag_gems.amax(inp, dim=dims, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)

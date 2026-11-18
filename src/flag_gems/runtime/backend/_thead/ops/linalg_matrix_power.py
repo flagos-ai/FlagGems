@@ -12,7 +12,9 @@ Everything else — validation, positive powers, the df64 kernels — is
 imported from the generic module.
 """
 
+import contextlib
 import importlib
+import os
 
 import torch
 import triton
@@ -33,7 +35,6 @@ from flag_gems.ops.linalg_matrix_power import (
     _inverse,
     _lu_apply_left_par,
     _lu_swap_right_solve_par,
-    _matmul,
     _matrix_power_df64_pair,
     _pivots_to_perm_gpu,
     _single_tile_kernel,
@@ -439,13 +440,20 @@ def _thead_fp64_mm16_kernel(
     stride_cb,
     stride_cm,
     stride_cn,
+    ACC_FP64: tl.constexpr = True,
 ):
     """Tiled fp64 C = A @ B whose every tl.dot is capped at a (32,32,32) tile
     (4 warps) — thead's fp64 tl.dot with wider tiles or more warps
     sporadically returns garbage once operand magnitudes grow (see the thead
     policy row; 4-warp dots up to (64,64,64) were bitwise-deterministic in the
     envelope probe).  The thead M > 64 negative-power chain routes every fp64
-    matmul through this kernel.  Grid: (output-tiles, batch)."""
+    matmul through this kernel.  Grid: (output-tiles, batch).
+
+    ``ACC_FP64`` selects the accumulation dtype: fp64 for fp64 inputs, fp32 for
+    fp32 inputs (matching the generic mm kernel's ``IS_FP64`` policy).  The fp32
+    twin exists so the safety layer below can keep positive powers off the
+    backend's wide-tile autotuned matmul with the same fixed geometry.
+    """
     pid = tl.program_id(0)
     pid_b = tl.program_id(1)
     grid_n = tl.cdiv(N, 32)
@@ -460,7 +468,7 @@ def _thead_fp64_mm16_kernel(
     b_base = B + pid_b * stride_bb
     c_base = C + pid_b * stride_cb
 
-    acc = tl.zeros((32, 32), dtype=tl.float64)
+    acc = tl.zeros((32, 32), dtype=tl.float64 if ACC_FP64 else tl.float32)
     for k0 in tl.range(0, K, 32):
         kr = k0 + rk
         a = tl.load(
@@ -473,7 +481,10 @@ def _thead_fp64_mm16_kernel(
             mask=(kr[:, None] < K) & (rn[None, :] < N),
             other=0.0,
         )
-        acc += tl.dot(a.to(tl.float64), b.to(tl.float64), allow_tf32=False)
+        if ACC_FP64:
+            acc += tl.dot(a.to(tl.float64), b.to(tl.float64), allow_tf32=False)
+        else:
+            acc += tl.dot(a.to(tl.float32), b.to(tl.float32), allow_tf32=False)
     cmask = (rm[:, None] < M) & (rn[None, :] < N)
     tl.store(
         c_base + rm[:, None] * stride_cm + rn[None, :] * stride_cn,
@@ -509,9 +520,128 @@ def _thead_fp64_mm16(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         C.stride(0),
         C.stride(1),
         C.stride(2),
+        ACC_FP64=True,
         num_warps=4,
     )
     return C.reshape(A.shape[:-2] + (M, N))
+
+
+# ===========================================================================
+# This operator's matmuls always run on its own fixed-tile kernel.
+#
+# On this backend fp32/fp64 never reach a PPU kernel: ``mm`` only routes
+# fp16/bf16 to the TLE path (``_can_use_ppu_mm``) and everything else falls back
+# to the generic ``mm_kernel_general`` / ``bmm``, whose tuner is handed
+# ``runtime.get_tuned_config("mm"|"bmm")`` *unpruned* — this backend's own
+# ``_prune_gemm_configs`` (192 KiB bound, "cannot compile reliably on PPU") is
+# attached to the PPU kernels only.  Every tile in those tables exceeds the
+# per-block shared memory of a 64 KiB part under fp32, and *none* of them fits
+# under fp64, so the autotuner is left benchmarking candidates whose launch the
+# device cannot accept — and this backend's own notes say such a launch fault
+# "poisons the CUDA context instead of failing one config", after which every
+# later launch/sync blocks (measured: a matrix_power case sitting on its first
+# ``flag_gems.mm`` call for 30+ minutes with no output).
+#
+# The operator already carries the (32,32,32)/4-warp dot geometry this platform
+# is known-good in (``_thead_fp64_mm16``, used by the whole negative-power
+# chain), and one stage of it fits the smallest shared memory these parts ship,
+# so it always uses it: no autotuner in the path, and fp64 never goes near the
+# wide-tile dots this platform forbids.
+#
+# FLAG_GEMS_MP_AABS_OFF=1 optionally holds FlagTree AABS off around the dispatch:
+# it rewrites block sizes at launch time, and a mis-paired shrink can leave a
+# tile below the backend's dot floor and abort the launch.
+# ===========================================================================
+
+_MP_AABS_ENV = "FLAG_GEMS_MP_AABS_OFF"
+_MP_UNSET = object()
+
+
+def _mp_mm(A, B):
+    """The operator's matmul: its own fixed-tile kernel (see the note above).
+
+    fp64 reuses ``_thead_fp64_mm16`` — the (32,32,32)/4-warp dot shape this
+    platform's negative-power chain already relies on — and fp32 launches the
+    same geometry with an fp32 accumulator.  One 32x32x32 stage stages 8 KiB of
+    operands, so a single stage fits the smallest shared memory these parts
+    ship, and a batched call rides the same kernel through its batch-stride
+    argument.
+    """
+    if A.dtype == torch.float64:
+        return _thead_fp64_mm16(A, B)
+    *_, M, K = A.shape
+    *_, k_b, N = B.shape
+    assert K == k_b, "incompatible dimensions"
+    A2 = A.reshape(-1, M, K)
+    B2 = B.reshape(-1, k_b, N)
+    C = torch.empty(A2.shape[0], M, N, dtype=A.dtype, device=A.device)
+    grid = (triton.cdiv(M, 32) * triton.cdiv(N, 32), A2.shape[0])
+    _thead_fp64_mm16_kernel[grid](
+        A2,
+        B2,
+        C,
+        M,
+        N,
+        K,
+        A2.stride(0),
+        A2.stride(1),
+        A2.stride(2),
+        B2.stride(0),
+        B2.stride(1),
+        B2.stride(2),
+        C.stride(0),
+        C.stride(1),
+        C.stride(2),
+        ACC_FP64=False,
+        num_warps=4,
+    )
+    return C.reshape(A.shape[:-2] + (M, N))
+
+
+def _mp_generic_matmul(A, B):
+    """``_generic._matmul`` shim: any generic host that multiplies goes through
+    the operator's own fixed-tile matmul (no thead path reaches it
+    today — the negative-power chain uses the private kernels below — but the
+    hook keeps that property if one is added)."""
+    return _mp_mm(A, B)
+
+
+try:
+    # Triton < 3.6 has no ``triton.knobs``; vanilla Triton >= 3.6 ships the
+    # module but no AABS, so this probe is False there too.
+    from triton.knobs import autotuning as _mp_autotuning_knobs
+except (ImportError, ModuleNotFoundError):
+    _mp_autotuning_knobs = None
+
+_MP_AABS_PRESENT = _mp_autotuning_knobs is not None and hasattr(
+    _mp_autotuning_knobs, "adjust_block_size"
+)
+
+
+@contextlib.contextmanager
+def _mp_aabs_off():
+    """Optionally hold FlagTree AABS off for the duration of the dispatch.
+
+    AABS rewrites block sizes at launch time by pairing ``tl.cdiv(extent,
+    BLOCK)`` to kernel argument names; a mis-paired shrink can leave a tile
+    below the backend's dot floor and abort the launch (see the same guard in
+    ``flag_gems/ops/cudnn_convolution.py``).  Opt-in here: this operator's own
+    kernels use fixed tiles that are already legal, so the guard is only worth
+    its global-knob write when a tile-shrinking backend pass is suspected.
+    """
+    if not (_MP_AABS_PRESENT and os.environ.get(_MP_AABS_ENV) == "1"):
+        yield
+        return
+    state = _mp_autotuning_knobs.__dict__
+    previous = state.get("adjust_block_size", _MP_UNSET)
+    state["adjust_block_size"] = False
+    try:
+        yield
+    finally:
+        if previous is _MP_UNSET:
+            state.pop("adjust_block_size", None)
+        else:
+            state["adjust_block_size"] = previous
 
 
 @triton.jit
@@ -776,14 +906,32 @@ def _thead_fp64_power_large(X, k, shape):
     res = None
     while k > 0:
         if k & 1:
-            res = X2 if res is None else _thead_fp64_mm16(res, X2)
+            if res is None:
+                res = X2
+            else:
+                res = _thead_fp64_mm16(res, X2)
         k >>= 1
         if k > 0:
             X2 = _thead_fp64_mm16(X2, X2)
     return res.reshape(shape)
 
 
+# Route the generic host's matmul through this module's safety policy as well.
+# No thead path reaches it today (the negative-power chain uses the private
+# kernels above, and the df64 route never multiplies), so this is a hook for
+# future call sites rather than a behaviour change: ``_trsm_solve_2d`` is
+# deliberately *not* hooked, because the generic solve's non-df64 branch is
+# unreachable here and this module's variant carries an extra D16 argument.
+_generic._matmul = _mp_generic_matmul
+
+
 def linalg_matrix_power(A, n, *, out=None):
+    """Public entry — the dispatch below plus the operator-local safety layer."""
+    with _mp_aabs_off():
+        return _linalg_matrix_power(A, n, out=out)
+
+
+def _linalg_matrix_power(A, n, *, out=None):
     """thead dispatch: negative powers via df64 / 16-tile fp64 routes (see
     the module docstring); positive powers follow the generic NV dispatch
     minus the grid-sync Tier 3."""
@@ -881,7 +1029,7 @@ def linalg_matrix_power(A, n, *, out=None):
     upcast = False
     # ---- n == 2, 3: fast paths for large M ----
     if n == 2 and m > TRITON_THRESHOLD:
-        r = _matmul(A, A)
+        r = _mp_mm(A, A)
         if upcast:
             r = r.float()
         if out is not None:
@@ -889,7 +1037,7 @@ def linalg_matrix_power(A, n, *, out=None):
             return out
         return r
     if n == 3 and m > TRITON_THRESHOLD:
-        r = _matmul(_matmul(A, A), A)
+        r = _mp_mm(_mp_mm(A, A), A)
         if upcast:
             r = r.float()
         if out is not None:
@@ -956,10 +1104,10 @@ def linalg_matrix_power(A, n, *, out=None):
         n_remaining = n
         while n_remaining > 0:
             if n_remaining & 1:
-                result = z if result is None else _matmul(result, z)
+                result = z if result is None else _mp_mm(result, z)
             n_remaining >>= 1
             if n_remaining > 0:
-                z = _matmul(z, z)
+                z = _mp_mm(z, z)
         if is_batched:
             out_flat.copy_(result)
         else:

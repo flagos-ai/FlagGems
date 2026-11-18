@@ -21,6 +21,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
+
 LOGCUMSUMEXP_SHAPES = (
     [(2, 32)]
     if utils.QUICK_MODE
@@ -216,7 +220,7 @@ def test__logcumsumexp_fp64_precision(shape, dim):
 
 
 @pytest.mark.underscore_logcumsumexp
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize(
     "shape,dim", [((3, 4), 1), ((3, 4), 0), ((2, 3, 4), 2), ((64,), 0)]
 )
@@ -594,7 +598,7 @@ def _assert_complex_scan_close(res_out, ref_out):
     ],
     ids=["past-limit", "chunk-boundary", "several-chunks", "k-gt-1-tail"],
 )
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test__logcumsumexp_long_complex_rows(shape, dim, dtype):
     """Complex rows past the single-block limit must scan as complex pairs.
 

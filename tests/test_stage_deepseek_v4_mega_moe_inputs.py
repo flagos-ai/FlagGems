@@ -98,6 +98,7 @@ def _make_inputs(num_tokens, hidden_size, top_k):
     return hidden_states, topk_weights, topk_ids
 
 
+@pytest.mark.stage_deepseek_v4_mega_moe_inputs
 @pytest.mark.parametrize("num_tokens, hidden_size, top_k", [(1, 128, 1), (7, 256, 8)])
 @pytest.mark.skipif(
     not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"

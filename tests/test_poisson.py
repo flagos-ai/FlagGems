@@ -27,8 +27,7 @@ def test_poisson(shape, dtype):
     lam = 5.0
     inp = torch.full(size=shape, fill_value=lam, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.poisson(inp)
+    res_out = flag_gems.poisson(inp)
 
     ref_out = to_reference(res_out)
     mean = torch.mean(ref_out.to(torch.float32))
@@ -45,8 +44,7 @@ def test_poisson(shape, dtype):
 def test_poisson_varying_rates(shape, dtype):
     inp = torch.rand(size=shape, dtype=dtype, device=flag_gems.device) * 10 + 1
 
-    with flag_gems.use_gems():
-        res_out = torch.poisson(inp)
+    res_out = flag_gems.poisson(inp)
 
     assert (res_out >= 0).all()
     assert torch.isfinite(res_out).all()
@@ -59,8 +57,7 @@ def test_poisson_large_lambda(shape, dtype):
     lam = 50.0
     inp = torch.full(size=shape, fill_value=lam, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.poisson(inp)
+    res_out = flag_gems.poisson(inp)
 
     ref_out = to_reference(res_out)
     mean = torch.mean(ref_out.to(torch.float32))
@@ -77,7 +74,6 @@ def test_poisson_zero_rate(dtype):
     shape = (1000,)
     inp = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.poisson(inp)
+    res_out = flag_gems.poisson(inp)
 
     assert (res_out == 0).all()

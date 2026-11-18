@@ -20,27 +20,22 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
-if QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    VECTOR_BIAS_MNK_SHAPES = [(64, 256, 184)]
-    FLOAT_DTYPES = [torch.float32]
-else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    VECTOR_BIAS_MNK_SHAPES = [
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+MNK_SHAPES = accuracy_shapes("addmm", QUICK_MODE)
+VECTOR_BIAS_MNK_SHAPES = (
+    [(64, 256, 184)]
+    if QUICK_MODE
+    else [
         (64, 256, 184),
         (128, 512, 512),
         (256, 256, 1024),
         (512, 1024, 1024),
         (1024, 512, 1536),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+)
 
 
 _ADDMM_LAYOUT_BIAS_VENDORS = (
@@ -52,6 +47,10 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "metax",
 )
 _ADDMM_BETA_ZERO_VENDORS = ("nvidia", "hygon", "thead", "metax")
+
+if IS_KUNLUNXIN:
+    _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)
+    _ADDMM_BETA_ZERO_VENDORS += ("kunlunxin",)
 
 # Extend this set as vendor implementations gain equivalent layout and bias support.
 _addmm_layout_bias_only = pytest.mark.skipif(
@@ -66,14 +65,11 @@ _addmm_beta_zero_only = pytest.mark.skipif(
 
 
 @pytest.mark.addmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("b_column_major", [True, False])
-def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #3794: not working")
-
+@pytest.mark.parametrize(
+    "dtype, scalar, M, N, K, b_column_major",
+    accuracy_dtype_cases("addmm", QUICK_MODE, scalars=utils.SCALARS),
+)
+def test_addmm(M, N, K, scalar, dtype, b_column_major):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
@@ -102,7 +98,7 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
 
 @pytest.mark.addmm
 @_addmm_beta_zero_only
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_addmm_beta_zero_ignores_bias(dtype):
     M, N, K = 17, 19, 23
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -125,7 +121,7 @@ def test_addmm_beta_zero_ignores_bias(dtype):
 @pytest.mark.addmm
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_vector_bias_shapes(M, N, K, dtype, b_column_major):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -147,7 +143,7 @@ def test_addmm_vector_bias_shapes(M, N, K, dtype, b_column_major):
 
 @pytest.mark.addmm
 @_addmm_layout_bias_only
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_scalar_bias(dtype, b_column_major):
     M, N, K = 17, 29, 31
@@ -171,7 +167,7 @@ def test_addmm_scalar_bias(dtype, b_column_major):
 @pytest.mark.addmm_vector_bias
 @pytest.mark.addmm
 @_addmm_layout_bias_only
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_padded_vector_bias(dtype, b_column_major):
     M, N, K, padding = 64, 128, 64, 7
@@ -197,11 +193,8 @@ def test_addmm_padded_vector_bias(dtype, b_column_major):
 @pytest.mark.addmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_addmm_out(M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #3794: not working")
-
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -229,7 +222,7 @@ def test_addmm_out(M, N, K, scalar, dtype):
 
 @pytest.mark.addmm_out
 @_addmm_beta_zero_only
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_addmm_out_beta_zero_ignores_bias(dtype):
     M, N, K = 17, 19, 23
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -253,7 +246,7 @@ def test_addmm_out_beta_zero_ignores_bias(dtype):
 @pytest.mark.addmm_out
 @_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_out_vector_bias_shapes(M, N, K, dtype, b_column_major):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -276,7 +269,7 @@ def test_addmm_out_vector_bias_shapes(M, N, K, dtype, b_column_major):
 
 @pytest.mark.addmm_out
 @_addmm_layout_bias_only
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_out_noncontiguous(dtype, b_column_major):
     M, N, K = 15, 17, 32
@@ -301,7 +294,7 @@ def test_addmm_out_noncontiguous(dtype, b_column_major):
 
 @pytest.mark.addmm
 @_addmm_layout_bias_only
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 @pytest.mark.parametrize("bias_shape", [(), (1, 128), (128, 1)])
 def test_addmm_broadcast_bias(dtype, bias_shape):
     M, N, K = 128, 128, 128

@@ -62,8 +62,8 @@ def _right_shift_kernel(a, b, *, out=None, out0=None):
     large = a.numel() > 4096
     if out is not None:
         if large:
-            return bitwise_right_shift_large(a, b, out=out)
-        return bitwise_right_shift_small(a, b, out=out)
+            return bitwise_right_shift_large(a, b, out0=out)
+        return bitwise_right_shift_small(a, b, out0=out)
     if out0 is not None:
         if large:
             return bitwise_right_shift_large(a, b, out0=out0)

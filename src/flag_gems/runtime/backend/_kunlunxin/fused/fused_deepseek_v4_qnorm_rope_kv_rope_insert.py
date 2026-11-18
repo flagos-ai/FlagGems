@@ -70,6 +70,7 @@ import logging
 import torch  # noqa: F401
 import triton
 import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
 import flag_gems
 
@@ -289,36 +290,42 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_insert(
         num_heads = q.shape[1]
         tile_h = _pick_tile_h(num_heads)
         grid_q = (num_tokens, num_heads // tile_h)
-        _qnorm_rope_kernel_2d[grid_q](
-            q,
-            cos_item,
-            sin_item,
-            eps,
-            num_tokens,
-            tile_h,
-            num_heads,
-            head_dim,
-            nope_dim,
-            num_warps=4,
-            num_stages=1,
-        )
+        # bf16 outputs take the fast f32->bf16 store lowering for this launch
+        # only; see _kunlunxin.utils.bf16_fast_store for why it is scoped rather
+        # than set globally, and for the one-ULP tie-bias difference.
+        with bf16_fast_store(q.dtype):
+            _qnorm_rope_kernel_2d[grid_q](
+                q,
+                cos_item,
+                sin_item,
+                eps,
+                num_tokens,
+                tile_h,
+                num_heads,
+                head_dim,
+                nope_dim,
+                num_warps=4,
+                num_stages=1,
+            )
 
     if n_insert > 0:
         grid_kv = min(n_insert, 4096)
-        _kv_rope_insert_kernel[(grid_kv,)](
-            kv,
-            k_cache,
-            slot_mapping,
-            cos_item,
-            sin_item,
-            kv.stride(0),
-            k_cache.stride(0),
-            k_cache.stride(1),
-            n_insert,
-            grid_kv,
-            cache_block_size,
-            head_dim,
-            nope_dim,
-            num_warps=1,
-            num_stages=1,
-        )
+        # Same scoped fast store as the qnorm launch above.
+        with bf16_fast_store(k_cache.dtype):
+            _kv_rope_insert_kernel[(grid_kv,)](
+                kv,
+                k_cache,
+                slot_mapping,
+                cos_item,
+                sin_item,
+                kv.stride(0),
+                k_cache.stride(0),
+                k_cache.stride(1),
+                n_insert,
+                grid_kv,
+                cache_block_size,
+                head_dim,
+                nope_dim,
+                num_warps=1,
+                num_stages=1,
+            )

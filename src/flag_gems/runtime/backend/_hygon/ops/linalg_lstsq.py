@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 # NOT `import flag_gems.ops.linalg_lstsq as _generic`: flag_gems/ops/__init__.py
 # does `from .linalg_lstsq import linalg_lstsq`, which rebinds that attribute on

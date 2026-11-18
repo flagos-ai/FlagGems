@@ -34,8 +34,7 @@ def test_upsample_trilinear3d(dtype, shape, scale, align_corners):
     ref_out = torch.ops.aten.upsample_trilinear3d.default(
         ref_i, output_size, align_corners, None, None, None
     ).to(dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.upsample_trilinear3d.default(
-            input, output_size, align_corners, None, None, None
-        )
+    res_out = flag_gems.upsample_trilinear3d(
+        input, output_size, align_corners, None, None, None
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)

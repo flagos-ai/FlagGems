@@ -26,5 +26,5 @@ def mish_backward_kernel(grad_output, input):
 
 
 def mish_backward(grad_output, input):
-    logger.debug("GEMS_CAMBRICON MISH BACKWARD")
+    logger.debug("GEMS_CAMBRICON MISH_BACKWARD")
     return mish_backward_kernel(grad_output, input)

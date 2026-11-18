@@ -70,8 +70,7 @@ def test_reflection_pad2d(shape, dtype, padding):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad2d(x, padding)
+    act_out = flag_gems.reflection_pad2d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -87,8 +86,7 @@ def test_reflection_pad2d_list_padding(padding):
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad2d(x, padding)
+    act_out = flag_gems.reflection_pad2d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -103,8 +101,7 @@ def test_reflection_pad2d_empty_padding():
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad2d(x, padding)
+    act_out = flag_gems.reflection_pad2d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -120,8 +117,7 @@ def test_reflection_pad2d_3d_input(padding):
     ref_x = utils.to_reference(x.clone())
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        act_out = flag_gems.reflection_pad2d(x, padding)
+    act_out = flag_gems.reflection_pad2d(x, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
@@ -144,8 +140,7 @@ def test_reflection_pad2d_out(shape, dtype, padding):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.reflection_pad2d.out(x, padding, out=out)
+    flag_gems.reflection_pad2d_out(x, padding, out)
 
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
@@ -165,8 +160,7 @@ def test_reflection_pad2d_out_3d_input(padding):
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.reflection_pad2d.out(x, padding, out=out)
+    flag_gems.reflection_pad2d_out(x, padding, out)
 
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
@@ -182,7 +176,6 @@ def test_reflection_pad2d_out_empty_padding():
     ref_x = utils.to_reference(x, True)
     ref_out = torch.ops.aten.reflection_pad2d(ref_x, padding)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.reflection_pad2d.out(x, padding, out=out)
+    flag_gems.reflection_pad2d_out(x, padding, out)
 
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)

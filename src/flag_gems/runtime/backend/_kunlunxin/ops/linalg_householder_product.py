@@ -73,7 +73,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # One-shot path: M <= _ONE_SHOT_M keeps the whole Q column in registers
 # (verified correct on XPU for BLOCK_M up to 8192; beyond that the kernel

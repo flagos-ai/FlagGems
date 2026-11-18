@@ -61,8 +61,7 @@ def test_polygamma(shape, dtype, n):
     ref_inp = utils.to_reference(inp)
 
     ref_out = _reference_polygamma(n, ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.polygamma(n, inp)
+    res_out = flag_gems.polygamma(n, inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -93,8 +92,7 @@ def test_polygamma_wide_domain(n):
     ref_inp = utils.to_reference(inp)
 
     ref_out = _reference_polygamma(n, ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.polygamma(n, inp)
+    res_out = flag_gems.polygamma(n, inp)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
@@ -109,8 +107,7 @@ def test_polygamma_out(n):
     ref_out = torch.empty_like(ref_inp)
 
     _reference_polygamma(n, ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.polygamma(n, inp, out=out)
+    flag_gems.polygamma_out(n, inp, out)
 
     utils.gems_assert_close(out, ref_out, torch.float32)
 
@@ -125,8 +122,7 @@ def test_polygamma_(shape, dtype, n):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.copy_(_reference_polygamma(n, ref_inp))
-    with flag_gems.use_gems():
-        res_out = inp.polygamma_(n)
+    res_out = flag_gems.polygamma_(inp, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

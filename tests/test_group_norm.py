@@ -60,7 +60,9 @@ def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
         eps,
     )
 
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_group_norm"):
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.native_group_norm)
+    ):
         result = flag_gems.native_group_norm(
             inp,
             weight,
@@ -134,6 +136,7 @@ def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
 
 
 @pytest.mark.group_norm_backward
+@pytest.mark.native_group_norm_backward
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [

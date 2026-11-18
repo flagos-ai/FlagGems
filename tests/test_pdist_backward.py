@@ -52,8 +52,7 @@ def test_pdist_backward(shape, dtype):
     grad_output = torch.ones_like(pdist_out_gems)
 
     ref_out = torch.ops.aten._pdist_backward(ref_grad_output, ref_inp, p, pdist_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
+    res_out = flag_gems._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -78,8 +77,7 @@ def test_pdist_backward_p1(shape, dtype):
     grad_output = torch.ones_like(pdist_out_gems)
 
     ref_out = torch.ops.aten._pdist_backward(ref_grad_output, ref_inp, p, pdist_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
+    res_out = flag_gems._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -109,8 +107,7 @@ def test_pdist_backward_pinf(shape, dtype):
     grad_output = ref_grad_output.to(flag_gems.device)
 
     ref_out = torch.ops.aten._pdist_backward(ref_grad_output, ref_inp, p, pdist_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
+    res_out = flag_gems._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -139,7 +136,6 @@ def test_pdist_backward_general(shape, dtype, p):
     grad_output = ref_grad_output.to(flag_gems.device)
 
     ref_out = torch.ops.aten._pdist_backward(ref_grad_output, ref_inp, p, pdist_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_backward(grad_output, inp, p, pdist_out_gems)
+    res_out = flag_gems._pdist_backward(grad_output, inp, p, pdist_out_gems)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

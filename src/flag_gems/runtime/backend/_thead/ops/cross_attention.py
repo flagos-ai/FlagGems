@@ -415,7 +415,7 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     GQA, and MQA are supported. Non-zero bool/uint8 mask entries are blocked.
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
-    logger.debug("GEMS CROSS ATTENTION (PPU)")
+    logger.debug("GEMS_THEAD CROSS ATTENTION (PPU)")
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]

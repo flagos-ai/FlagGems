@@ -109,6 +109,7 @@ import json
 import os
 import platform
 import queue as queue_module
+import re
 import shlex
 import shutil
 import signal
@@ -122,11 +123,15 @@ from importlib import metadata
 from multiprocessing import Process, Queue
 from pathlib import Path
 
-import consts
 import distro
 import yaml
 
 import flag_gems
+
+if __package__:
+    from .performance_report import parse_perf_data
+else:
+    from performance_report import parse_perf_data
 
 getcontext().prec = 18
 RED = "\033[31m"
@@ -433,16 +438,160 @@ def _probe_vllm():
         pwarn(f"vllm detection failed: {e}")
 
 
+def _strip_cpu_fallback():
+    """Drop vendor debug settings that force every op onto the CPU.
+
+    The enflame runtime image exports
+    ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops from
+    /etc/profile.d/runtime_env.sh, which routes *every* aten op through a
+    host round-trip. Accuracy still passes (the reference runs on CPU
+    anyway), but the performance baseline then measures D2H + CPU + H2D
+    instead of the device, inflating the reported speedup by ~60x. Strip it
+    here so the setting cannot silently reach the benchmark subprocesses,
+    whatever the image or the login shell did.
+    """
+    var = "ENFLAME_PT_OP_DEBUG_CONFIG"
+    value = os.environ.get(var)
+    if value and "fallback_cpu" in value:
+        pwarn(f"{var}={value} forces CPU fallback; unsetting it for the test run")
+        del os.environ[var]
+
+
+def _read_cann_version():
+    """Read CANN version from $ASCEND_HOME_PATH/opp/version.info (best-effort).
+
+    The file holds a ``Version=8.5.0`` line; return the value after ``Version=``.
+    """
+    roots = [
+        os.environ.get(v)
+        for v in (
+            "ASCEND_HOME_PATH",
+            "ASCEND_TOOLKIT_HOME",
+            "ASCEND_TOOLKIT_LATEST_HOME",
+        )
+    ]
+    roots.append("/usr/local/Ascend/ascend-toolkit/latest")
+    for root in filter(None, roots):
+        info = Path(root) / "opp" / "version.info"
+        if info.is_file():
+            try:
+                m = re.search(r"^Version=([\w.]+)", info.read_text(), re.MULTILINE)
+                if m:
+                    return m.group(1)
+            except Exception:
+                pass
+    return None
+
+
+def _read_xpu_version():
+    """Read Kunlunxin XRE version from /usr/local/xpu/version.txt (first line)."""
+    txt = Path("/usr/local/xpu/version.txt")
+    if txt.is_file():
+        try:
+            first = txt.read_text().strip().splitlines()[0].strip()
+            if first:
+                return first
+        except Exception:
+            pass
+    return None
+
+
+def _read_tops_version():
+    """Read Enflame TOPS version from the ``EFSMI:`` field of ``efsmi`` output."""
+    try:
+        out = subprocess.run(
+            ["efsmi"], capture_output=True, text=True, timeout=30
+        ).stdout
+        m = re.search(r"EFSMI:\s*([\d.]+)", out)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def _read_ppu_version():
+    """Read T-Head PPU version from /usr/local/PPU_SDK/release.yaml.
+
+    The file has a ``version: 2.1.0-a5f865`` line; keep the numeric part.
+    """
+    yml = Path("/usr/local/PPU_SDK/release.yaml")
+    if yml.is_file():
+        try:
+            m = re.search(r"^version:\s*(\d+\.\d+\.\d+)", yml.read_text(), re.MULTILINE)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return None
+
+
+def _probe_sdk():
+    """Probe the accelerator SDK version.
+
+    Most domestic torch builds encode their SDK version in the PyPI local
+    version suffix (``torch==<ver>+<vendor><sdk>``); scan those first. Then a
+    vendor fallback for stacks that expose the SDK elsewhere (Ascend/CANN,
+    Kunlunxin/XRE) -- these come before generic CUDA because such boxes also
+    report a CUDA-compatible version we do not want to pick. Finally plain CUDA
+    via ``torch.version.cuda`` for NVIDIA and pure CUDA-compatible stacks.
+    """
+    import torch
+
+    full = metadata.version("torch")
+    name, version = None, None
+
+    # (display name, regex capturing the SDK version from the torch suffix)
+    SDK_SUFFIX = (
+        ("COREX", r"corex\.?(\d+\.\d+\.\d+)"),  # iluvatar: 4.5.0.20260804 -> 4.5.0
+        ("METAX", r"metax(\d+\.\d+\.\d+)"),  # metax:    3.8.1.0       -> 3.8.1
+        ("MUSA", r"musa(\d+\.\d+\.\d+)"),  # mthreads: 5.2.0
+        ("DTK", r"dtk(\d+)"),  # hygon:    2604
+    )
+    for sdk_name, pat in SDK_SUFFIX:
+        m = re.search(pat, full)
+        if m:
+            name, version = sdk_name, m.group(1)
+            if sdk_name == "DTK":  # 2604 -> 26.04 (year.month)
+                version = f"{version[:2]}.{version[2:]}"
+            break
+
+    if version is None:
+        vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
+        if vendor == "ascend":
+            name = "CANN"
+            version = os.environ.get("ASCEND_TOOLKIT_VERSION") or _read_cann_version()
+        elif vendor == "kunlunxin":
+            name = "XRE"
+            version = _read_xpu_version()
+        elif vendor == "enflame":
+            name = "TOPS"
+            version = _read_tops_version()
+        elif vendor == "thead":
+            name = "PPU"
+            version = _read_ppu_version()
+
+    if version is None:
+        v = getattr(torch.version, "cuda", None)
+        if v:
+            name, version = "CUDA", v
+
+    ENV_INFO["sdk"] = {"name": name, "version": version}
+    pinfo(f"SDK detection ... {name} {version}")
+
+
 def probe_env():
     ENV_INFO["architecture"] = platform.machine()
     ENV_INFO["os_name"] = distro.id()
     ENV_INFO["os_release"] = distro.version()
     ENV_INFO["python"] = platform.python_version()
 
+    _strip_cpu_fallback()
     _probe_torch()
     _probe_triton()
     _probe_flaggems()
     _probe_vllm()
+    _probe_sdk()
 
 
 def get_env(gpu_ids):
@@ -612,116 +761,6 @@ def parse_accuracy_data(result_file):
     return result
 
 
-def parse_perf_data(op, result_file):
-    raw_data = {}
-    try:
-        with result_file.open("r") as f:
-            raw_data = json.load(f)
-    except (json.JSONDecodeError, ValueError):
-        return {
-            "status": "Error",
-            "reason": f"Invalid JSON in {result_file}",
-        }
-
-    data = raw_data.get(op, {})
-    if not data:
-        return {"status": "NotFound"}
-
-    result = data.get("result", "NotFound")
-    if result in ["failed", "skipped"]:
-        return {
-            "status": result.title(),
-            "reason": data.get("reason", "Unknown"),
-            "test_case": data.get("test_case", "Unknown"),
-        }
-
-    bench_res = {}
-    records = data.get("details", [])
-    if not any(item.get("native_baseline_skip_reason") for item in records):
-        for item in records:
-            dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
-            details = {}
-            total = 0.0
-            count = 0
-            for res in item.get("result", []):
-                shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-                details.setdefault(shape, {})
-                details[shape]["base"] = res.get("latency_base", 0.0)
-                details[shape]["gems"] = res.get("latency", 0.0)
-                speedup = res.get("speedup", 0.0)
-                details[shape]["speedup"] = speedup
-                count += 1
-                total += speedup
-
-            if details:
-                bench_res[dtype] = {
-                    "result": "OK",
-                    "details": details,
-                    "speedup": total / count,
-                }
-            else:
-                bench_res[dtype] = {
-                    "result": "Unknown",
-                    "details": {},
-                    "speedup": 0,
-                }
-
-        return {
-            "status": result.title(),
-            "data": bench_res,
-            "test_case": data.get("test_case", "Unknown"),
-        }
-
-    native_baseline_skip_reasons = []
-    speedup_totals = {}
-    speedup_counts = {}
-
-    for item in records:
-        dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
-        skip_reason = item.get("native_baseline_skip_reason")
-        if skip_reason and skip_reason not in native_baseline_skip_reasons:
-            native_baseline_skip_reasons.append(skip_reason)
-        dtype_result = bench_res.setdefault(
-            dtype,
-            {
-                "result": "Unknown",
-                "details": {},
-                "speedup": None,
-            },
-        )
-        details = dtype_result["details"]
-        for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-            details.setdefault(shape, {})
-            details[shape]["base"] = res.get("latency_base")
-            details[shape]["gems"] = res.get("latency")
-            speedup = res.get("speedup")
-            details[shape]["speedup"] = speedup
-            if isinstance(speedup, (int, float)):
-                speedup_counts[dtype] = speedup_counts.get(dtype, 0) + 1
-                speedup_totals[dtype] = speedup_totals.get(dtype, 0.0) + speedup
-
-        if details:
-            dtype_result["result"] = "OK"
-
-    for dtype, dtype_result in bench_res.items():
-        count = speedup_counts.get(dtype, 0)
-        dtype_result["speedup"] = (
-            speedup_totals.get(dtype, 0.0) / count if count else None
-        )
-
-    parsed_result = {
-        "status": result.title(),
-        "data": bench_res,
-        "test_case": data.get("test_case", "Unknown"),
-    }
-    if native_baseline_skip_reasons:
-        parsed_result["native_baseline_skip_reason"] = "; ".join(
-            native_baseline_skip_reasons
-        )
-    return parsed_result
-
-
 def op_marker(op):
     """Return the pytest marker name for an operator id.
 
@@ -824,6 +863,8 @@ def run_benchmark_q(gpu_id, op):
         f'pytest -m "{marker}" --level core --record json '
         f"--output benchmark_{op}.json --continue-on-collection-errors"
     )
+    if getattr(CFG, "base_data", None):
+        cmd += f" --base-data={shlex.quote(CFG.base_data)}"
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1356,7 +1397,14 @@ def main():
         default="auto",
         help="ANSI color output mode: auto (TTY only), always, never. Default: auto",
     )
+    parser.add_argument(
+        "--base-data",
+        metavar="FILE",
+        default=None,
+        help="Optional ops-baseline JSON; matched external speedup wins in summaries.",
+    )
     OPTS = parser.parse_args()
+    CFG.base_data = str(Path(OPTS.base_data).resolve()) if OPTS.base_data else None
     CFG.dump_output = OPTS.dump_output
     CFG.quick = OPTS.quick
     CFG.start = OPTS.start

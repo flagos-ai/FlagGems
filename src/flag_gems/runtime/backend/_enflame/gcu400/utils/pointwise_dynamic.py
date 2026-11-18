@@ -1149,6 +1149,7 @@ class ModuleGenerator:
             functions (those NOT decorated with @pointwise_dynamic)
         """
         import ast
+        import importlib.util
         import inspect
 
         py_fn = getattr(scalar_fn, "fn", scalar_fn)
@@ -1179,16 +1180,42 @@ class ModuleGenerator:
             "flag_gems.utils.libentry",
             "flag_gems.utils",
             "flag_gems.runtime",
-            "flag_gems.utils.pointwise_dynamic",
             "flag_gems.runtime.backend._enflame.gcu400.utils.pointwise_dynamic",
         }
         extra_imports = {}
         for node in ast.iter_child_nodes(tree):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module in ALREADY_IMPORTED:
+            if isinstance(node, ast.ImportFrom) and (node.module or node.level):
+                # Resolve relative imports (e.g. `from ..utils.pointwise_dynamic
+                # import ...`) to their absolute module path. Otherwise the
+                # collected module name stays relative ("utils.pointwise_dynamic")
+                # which (a) never matches ALREADY_IMPORTED and (b) gets emitted
+                # as a top-level `from utils...` import in the generated kernel,
+                # colliding with any other top-level `utils` package on
+                # sys.path (e.g. nvidia_cutlass_dsl).
+                if node.level:
+                    try:
+                        module = importlib.util.resolve_name(
+                            ("." * node.level) + (node.module or ""), module_name
+                        )
+                    except (ImportError, ValueError):
+                        module = node.module
+                else:
+                    module = node.module
+                if module in ALREADY_IMPORTED:
+                    continue
+                # `pointwise_dynamic` is the very decorator that generates this
+                # kernel; after exec the generated module copies the scalar
+                # function's globals (which already contain `pointwise_dynamic`),
+                # so re-importing it is both redundant and fragile: relative
+                # imports resolve differently depending on whether the backend is
+                # packaged as `flag_gems...gcu400` or as a top-level `gcu400`,
+                # and a bare `from utils...` collides with other top-level
+                # `utils` packages (e.g. nvidia_cutlass_dsl). Skip it regardless
+                # of the resolved absolute path.
+                if module.endswith("utils.pointwise_dynamic"):
                     continue
                 names = {alias.name for alias in node.names}
-                extra_imports.setdefault(node.module, set()).update(names)
+                extra_imports.setdefault(module, set()).update(names)
 
         def _has_decorator(func_node, name):
             for dec in func_node.decorator_list:

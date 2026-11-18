@@ -240,4 +240,15 @@ def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     )
     values = values.to(inp.device) if values.device != inp.device else values
 
+    # Accumulate fp16/bf16 in fp32. The kernel uses tl.atomic_add in the input
+    # dtype; a native fp16/bf16 atomic rounds on every add, so a heavily-collided
+    # destination slot drifts past tolerance. fp32 atomic_add is exact, so upcast
+    # the input and values, accumulate in fp32, then round back once.
+    if inp.dtype in (torch.float16, torch.bfloat16):
+        orig_dtype = inp.dtype
+        result = unsafe_masked_index_put_accumulate_func(
+            inp.float(), mask, indices_tensor, values.float()
+        )
+        return result.to(orig_dtype)
+
     return unsafe_masked_index_put_accumulate_func(inp, mask, indices_tensor, values)

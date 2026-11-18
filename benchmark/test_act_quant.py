@@ -103,6 +103,15 @@ class ActQuantBenchmark(base.GenericBenchmark):
         self.shapes = SHAPES
         return []
 
+    def get_input_iter(self, cur_dtype):
+        # The last dim must be divisible by block_size; skip shapes that the
+        # current block_size cannot tile (e.g. the (64, 64) core shape with
+        # block_size=128).
+        for shape in self.shapes:
+            if shape[-1] % self._block_size != 0:
+                continue
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
 
 @pytest.mark.act_quant_triton
 # https://github.com/triton-lang/triton/blob/v3.6.0/third_party/nvidia/backend/compiler.py#L188
@@ -123,4 +132,5 @@ def test_act_quant_perf(block_size, scale_fmt):
         gems_op=flag_gems.act_quant_triton,
         dtypes=[torch.bfloat16],
     )
+    bench._block_size = block_size
     bench.run()

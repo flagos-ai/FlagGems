@@ -55,13 +55,20 @@ SHAPES = utils.POINTWISE_SHAPES
 def _skip_if_cpu_ref():
     """Skip when the CPU reference path is requested.
 
-    ``torch._fused_sgd_`` only has a native CUDA fused-SGD implementation, so
-    when CI runs the second pass with ``--ref=cpu --quick`` (``utils.TO_CPU``),
-    the reference cannot run on CPU. Skip those cases rather than attempting a
-    cross-device comparison that cannot succeed.
+    ``torch._fused_sgd_``'s CPU kernel silently leaves ``param`` unchanged when
+    the tensors are half precision (float16/bfloat16) and ``numel % 16 == 0``
+    -- the momentum buffer is updated but the parameter is not, with no error
+    or warning. ``torch.optim.SGD`` on the same inputs updates correctly, so
+    the CPU reference is not trustworthy for those shapes. CI runs this file
+    with ``--ref=cpu`` (``utils.TO_CPU``), where the parametrised shapes are
+    all multiples of 16 in half precision, so the whole file is skipped rather
+    than reporting mismatches against a reference that does not move.
     """
     if utils.TO_CPU:
-        pytest.skip("fused SGD has no native CPU reference (CUDA-only op)")
+        pytest.skip(
+            "torch._fused_sgd_ CPU reference does not update param for "
+            "half-precision tensors whose numel is a multiple of 16"
+        )
 
 
 def _make_inputs(shape, dtype, device, momentum):

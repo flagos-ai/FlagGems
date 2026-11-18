@@ -203,10 +203,10 @@ def test_out_parameter(n, dtype):
 def test_linalg_matrix_power_out(shape, n, dtype):
     """Test the linalg_matrix_power.out overload.
 
-    Dispatches torch.linalg.matrix_power(A, n, out=out) under use_gems so the
-    ``*.out`` dispatcher key routes through flag_gems' ``linalg_matrix_power_out``
-    rather than torch's native compute.  The result must be written into the
-    caller-provided ``out`` tensor and that same tensor returned.
+    Calls the GEMS ``linalg_matrix_power_out`` entry point directly so the
+    ``*.out`` compute routes through flag_gems rather than torch's native
+    compute.  The result must be written into the caller-provided ``out``
+    tensor and that same tensor returned.
     """
     A = _make_input(shape, dtype, n)
     ref = _matrix_power_golden(A, n)

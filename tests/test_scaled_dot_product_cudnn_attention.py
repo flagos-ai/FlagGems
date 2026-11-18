@@ -61,28 +61,27 @@ def test_scaled_dot_product_cudnn_attention(
     )
 
     # Test FlagGems implementation
-    with flag_gems.use_gems():
-        (
-            gems_out,
-            logsumexp,
-            cum_seq_q,
-            cum_seq_k,
-            max_q,
-            max_k,
-            philox_seed,
-            philox_offset,
-            debug_attn_mask,
-        ) = flag_gems._scaled_dot_product_cudnn_attention(
-            q,
-            k,
-            v,
-            attn_bias=None,
-            compute_log_sumexp=True,
-            dropout_p=0.0,
-            is_causal=is_causal,
-            return_debug_mask=False,
-            scale=scale,
-        )
+    (
+        gems_out,
+        logsumexp,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        philox_seed,
+        philox_offset,
+        debug_attn_mask,
+    ) = flag_gems._scaled_dot_product_cudnn_attention(
+        q,
+        k,
+        v,
+        attn_bias=None,
+        compute_log_sumexp=True,
+        dropout_p=0.0,
+        is_causal=is_causal,
+        return_debug_mask=False,
+        scale=scale,
+    )
 
     # Use relaxed tolerance for attention (atol=5e-2 for attention operations)
     utils.gems_assert_close(gems_out, ref_out, dtype, atol=5e-2)
@@ -149,28 +148,27 @@ def test_scaled_dot_product_cudnn_attention_with_attn_bias(
         scale=scale,
     )
 
-    with flag_gems.use_gems():
-        (
-            gems_out,
-            logsumexp,
-            cum_seq_q,
-            cum_seq_k,
-            max_q,
-            max_k,
-            philox_seed,
-            philox_offset,
-            debug_attn_mask,
-        ) = flag_gems._scaled_dot_product_cudnn_attention(
-            q,
-            k,
-            v,
-            attn_bias=attn_bias,
-            compute_log_sumexp=True,
-            dropout_p=0.0,
-            is_causal=False,
-            return_debug_mask=False,
-            scale=scale,
-        )
+    (
+        gems_out,
+        logsumexp,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        philox_seed,
+        philox_offset,
+        debug_attn_mask,
+    ) = flag_gems._scaled_dot_product_cudnn_attention(
+        q,
+        k,
+        v,
+        attn_bias=attn_bias,
+        compute_log_sumexp=True,
+        dropout_p=0.0,
+        is_causal=False,
+        return_debug_mask=False,
+        scale=scale,
+    )
 
     # Use relaxed tolerance for attention (atol=5e-2 for attention operations)
     utils.gems_assert_close(gems_out, ref_out, dtype, atol=5e-2)

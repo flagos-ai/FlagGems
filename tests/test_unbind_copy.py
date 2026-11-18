@@ -42,8 +42,7 @@ def test_unbind_copy(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unbind_copy(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_out = torch.unbind_copy(inp, dim)
+    res_out = flag_gems.unbind_copy(inp, dim)
 
     assert len(res_out) == len(
         ref_out
@@ -62,8 +61,7 @@ def test_unbind_copy_default_dim(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unbind_copy(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.unbind_copy(inp)
+    res_out = flag_gems.unbind_copy(inp)
 
     assert len(res_out) == len(
         ref_out

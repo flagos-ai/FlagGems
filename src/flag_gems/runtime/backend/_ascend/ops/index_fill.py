@@ -31,6 +31,30 @@ _TRANSPOSE_FILL_MIN_SPARSE_PROGRAMS = 1600
 _FULL_COVERAGE_HOST_CHECK_MAX_BYTES = 384 * 1024
 _TRANSPOSE_FILL_SMALL_FULL_DIM_MAX_SIZE = 256
 _TRANSPOSE_FILL_SMALL_FULL_DIM_MIN_NUMEL = 1024 * 1024
+# The Ascend driver flattens the launch grid before rtKernelLaunch
+# (coreDim = grid.x * grid.y * grid.z), so it is the *product* of the axes that
+# must stay <= 65535 - capping each axis separately is not enough.
+_ASCEND_MAX_CORE_DIM = 65535
+
+
+def _ascend_launch_grid(grid_x, grid_y=None):
+    """Cap a launch grid so Ascend's flattened coreDim stays within its limit.
+
+    A grid whose product already fits is returned unchanged. Otherwise the
+    larger axis absorbs the reduction. Every 2-D kernel in this module walks
+    both axes with ``num_programs(axis=N)`` strides, so a reduced axis only
+    makes each program cover more of its dimension.
+    """
+    grid_x = min(grid_x, _ASCEND_MAX_CORE_DIM)
+    if grid_y is None:
+        return (grid_x,)
+    grid_y = min(grid_y, _ASCEND_MAX_CORE_DIM)
+    if grid_x * grid_y > _ASCEND_MAX_CORE_DIM:
+        if grid_x >= grid_y:
+            grid_x = max(1, _ASCEND_MAX_CORE_DIM // grid_y)
+        else:
+            grid_y = max(1, _ASCEND_MAX_CORE_DIM // grid_x)
+    return (grid_x, grid_y)
 
 
 @libentry()
@@ -55,27 +79,34 @@ def index_fill_contiguous_scalar_kernel(
     BLOCK_N: tl.constexpr,
 ):
     pid_m = ext.program_id(axis=0)
+    worker_m = ext.num_programs(axis=0)
     pid_n = ext.program_id(axis=1)
-    m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    inner_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    worker_n = ext.num_programs(axis=1)
 
-    m_mask = m_offsets < outer_index_len
-    index_coord = m_offsets % index_len
-    outer_coord = m_offsets // index_len
-    raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
-    valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
-    tl.device_assert((~m_mask) | valid_index, "index out of bounds")
-    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index).to(
-        tl.int64
-    )
+    # Ascend caps the flattened launch grid (grid.x * grid.y) at
+    # _ASCEND_MAX_CORE_DIM, so each program strides over multiple row and inner
+    # tiles when a count exceeds the cap.
+    for m_start in range(pid_m * BLOCK_M, outer_index_len, worker_m * BLOCK_M):
+        m_offsets = m_start + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < outer_index_len
+        index_coord = m_offsets % index_len
+        outer_coord = m_offsets // index_len
+        raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
+        valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+        tl.device_assert((~m_mask) | valid_index, "index out of bounds")
+        normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index).to(
+            tl.int64
+        )
 
-    out_offsets = outer_coord[:, None].to(tl.int64) * dim_size * inner_size
-    out_offsets += normalized_index[:, None] * inner_size
-    out_offsets += inner_offsets[None, :]
+        for n_start in range(pid_n * BLOCK_N, inner_size, worker_n * BLOCK_N):
+            inner_offsets = n_start + tl.arange(0, BLOCK_N)
+            out_offsets = outer_coord[:, None].to(tl.int64) * dim_size * inner_size
+            out_offsets += normalized_index[:, None] * inner_size
+            out_offsets += inner_offsets[None, :]
 
-    store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
-    store_mask &= valid_index[:, None]
-    tl.store(out + out_offsets, value, mask=store_mask)
+            store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
+            store_mask &= valid_index[:, None]
+            tl.store(out + out_offsets, value, mask=store_mask)
 
 
 @libentry()
@@ -103,6 +134,7 @@ def index_fill_contiguous_scalar_small_inner_kernel(
 ):
     pid_index = ext.program_id(axis=0)
     pid_outer = ext.program_id(axis=1)
+    worker_outer = ext.num_programs(axis=1)
     index_offsets = pid_index * BLOCK_I + tl.arange(0, BLOCK_I)
     index_mask = index_offsets < index_len
     inner_offsets = tl.arange(0, BLOCK_N)
@@ -115,16 +147,24 @@ def index_fill_contiguous_scalar_small_inner_kernel(
             index_values < 0, index_values + dim_size_i32, index_values
         )
 
-    for outer_offset in range(0, BLOCK_OUTER):
-        outer_index = pid_outer * BLOCK_OUTER + outer_offset
-        outer_mask = outer_index < outer_size
-        out_offsets = outer_index.to(tl.int32) * dim_size_i32 * inner_size_i32
-        out_offsets += index_values[:, None] * inner_size_i32
-        out_offsets += inner_offsets[None, :]
-        store_mask = (
-            outer_mask & index_mask[:, None] & (inner_offsets[None, :] < inner_size_i32)
-        )
-        tl.store(out + out_offsets, value, mask=store_mask)
+    # Ascend caps the flattened launch grid at _ASCEND_MAX_CORE_DIM, so each
+    # program strides over multiple outer blocks when outer_size exceeds the
+    # cap.
+    for outer_start in range(
+        pid_outer * BLOCK_OUTER, outer_size, worker_outer * BLOCK_OUTER
+    ):
+        for outer_offset in range(0, BLOCK_OUTER):
+            outer_index = outer_start + outer_offset
+            outer_mask = outer_index < outer_size
+            out_offsets = outer_index.to(tl.int32) * dim_size_i32 * inner_size_i32
+            out_offsets += index_values[:, None] * inner_size_i32
+            out_offsets += inner_offsets[None, :]
+            store_mask = (
+                outer_mask
+                & index_mask[:, None]
+                & (inner_offsets[None, :] < inner_size_i32)
+            )
+            tl.store(out + out_offsets, value, mask=store_mask)
 
 
 @libentry()
@@ -134,6 +174,7 @@ def index_fill_contiguous_scalar_small_inner_kernel(
         "outer_size",
         "dim_size",
         "inner_size",
+        "index_len",
     ]
 )
 def index_fill_contiguous_scalar_small_inner_blockptr_kernel(
@@ -143,42 +184,58 @@ def index_fill_contiguous_scalar_small_inner_blockptr_kernel(
     outer_size,
     dim_size,
     inner_size,
+    index_len,
     HAS_NEGATIVE: tl.constexpr,
     BLOCK_OUTER: tl.constexpr,
     SPAN: tl.constexpr,
 ):
     pid_index = ext.program_id(axis=0)
+    worker_index = ext.num_programs(axis=0)
     pid_outer = ext.program_id(axis=1)
+    worker_outer = ext.num_programs(axis=1)
 
     dim_size_i32 = dim_size.to(tl.int32)
     inner_size_i32 = inner_size.to(tl.int32)
-    raw_index = tl.load(index + pid_index).to(tl.int32)
-    valid_index = (raw_index >= -dim_size_i32) & (raw_index < dim_size_i32)
-    index_value = raw_index
-    if HAS_NEGATIVE:
-        index_value = tl.where(index_value < 0, index_value + dim_size_i32, index_value)
 
-    # Block pointers cannot accept a mask. Skip invalid indices and map the
-    # final outer tail to row zero, which has already received the same value.
-    if valid_index:
-        for outer_offset in range(0, BLOCK_OUTER):
-            outer_index = pid_outer * BLOCK_OUTER + outer_offset
-            safe_outer_index = tl.where(outer_index < outer_size, outer_index, 0)
-            base = (
-                out
-                + (safe_outer_index.to(tl.int32) * dim_size_i32 + index_value)
-                * inner_size_i32
+    # Ascend caps the flattened launch grid (grid.x * grid.y) at
+    # _ASCEND_MAX_CORE_DIM, so each program strides over multiple index
+    # positions and outer blocks when a count exceeds the cap.
+    for index_pos in range(pid_index, index_len, worker_index):
+        raw_index = tl.load(index + index_pos).to(tl.int32)
+        valid_index = (raw_index >= -dim_size_i32) & (raw_index < dim_size_i32)
+        index_value = raw_index
+        if HAS_NEGATIVE:
+            index_value = tl.where(
+                index_value < 0, index_value + dim_size_i32, index_value
             )
-            block = tl.make_block_ptr(
-                base=base,
-                shape=(SPAN,),
-                strides=(1,),
-                offsets=(0,),
-                block_shape=(4,),
-                order=(0,),
-            )
-            values = tl.full((4,), value, out.dtype.element_ty)
-            tl.store(block, values, boundary_check=(0,))
+
+        # Block pointers cannot accept a mask. Skip invalid indices and map the
+        # final outer tail to row zero, which has already received the same
+        # value.
+        if valid_index:
+            for outer_start in range(
+                pid_outer * BLOCK_OUTER, outer_size, worker_outer * BLOCK_OUTER
+            ):
+                for outer_offset in range(0, BLOCK_OUTER):
+                    outer_index = outer_start + outer_offset
+                    safe_outer_index = tl.where(
+                        outer_index < outer_size, outer_index, 0
+                    )
+                    base = (
+                        out
+                        + (safe_outer_index.to(tl.int32) * dim_size_i32 + index_value)
+                        * inner_size_i32
+                    )
+                    block = tl.make_block_ptr(
+                        base=base,
+                        shape=(SPAN,),
+                        strides=(1,),
+                        offsets=(0,),
+                        block_shape=(4,),
+                        order=(0,),
+                    )
+                    values = tl.full((4,), value, out.dtype.element_ty)
+                    tl.store(block, values, boundary_check=(0,))
 
 
 @libentry()
@@ -191,13 +248,18 @@ def index_fill_contiguous_full_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
+    worker_count = ext.num_programs(axis=0)
     if VALUE_IS_TENSOR:
         fill_value = tl.load(value)
     else:
         fill_value = value
-    tl.store(out + offsets, fill_value, mask=mask)
+
+    # Ascend caps the flattened launch grid at _ASCEND_MAX_CORE_DIM, so each
+    # program strides over multiple blocks when N exceeds the cap.
+    for block_start in range(pid * BLOCK_SIZE, N, worker_count * BLOCK_SIZE):
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < N
+        tl.store(out + offsets, fill_value, mask=mask)
 
 
 @libentry()
@@ -221,28 +283,35 @@ def index_fill_contiguous_tensor_kernel(
     BLOCK_N: tl.constexpr,
 ):
     pid_m = ext.program_id(axis=0)
+    worker_m = ext.num_programs(axis=0)
     pid_n = ext.program_id(axis=1)
-    m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    inner_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    m_mask = m_offsets < outer_index_len
-    index_coord = m_offsets % index_len
-    outer_coord = m_offsets // index_len
-    raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
-    valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
-    tl.device_assert((~m_mask) | valid_index, "index out of bounds")
-    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index).to(
-        tl.int64
-    )
-
-    out_offsets = outer_coord[:, None].to(tl.int64) * dim_size * inner_size
-    out_offsets += normalized_index[:, None] * inner_size
-    out_offsets += inner_offsets[None, :]
-
-    store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
-    store_mask &= valid_index[:, None]
+    worker_n = ext.num_programs(axis=1)
     fill_value = tl.load(value)
-    tl.store(out + out_offsets, fill_value, mask=store_mask)
+
+    # Ascend caps the flattened launch grid (grid.x * grid.y) at
+    # _ASCEND_MAX_CORE_DIM, so each program strides over multiple row and inner
+    # tiles when a count exceeds the cap.
+    for m_start in range(pid_m * BLOCK_M, outer_index_len, worker_m * BLOCK_M):
+        m_offsets = m_start + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < outer_index_len
+        index_coord = m_offsets % index_len
+        outer_coord = m_offsets // index_len
+        raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
+        valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+        tl.device_assert((~m_mask) | valid_index, "index out of bounds")
+        normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index).to(
+            tl.int64
+        )
+
+        for n_start in range(pid_n * BLOCK_N, inner_size, worker_n * BLOCK_N):
+            inner_offsets = n_start + tl.arange(0, BLOCK_N)
+            out_offsets = outer_coord[:, None].to(tl.int64) * dim_size * inner_size
+            out_offsets += normalized_index[:, None] * inner_size
+            out_offsets += inner_offsets[None, :]
+
+            store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
+            store_mask &= valid_index[:, None]
+            tl.store(out + out_offsets, fill_value, mask=store_mask)
 
 
 @libentry()
@@ -251,6 +320,7 @@ def index_fill_contiguous_tensor_kernel(
         "value",
         "index_len",
         "dim_size",
+        "outer_size",
     ]
 )
 def index_fill_contiguous_scalar_inner1_kernel(
@@ -259,37 +329,50 @@ def index_fill_contiguous_scalar_inner1_kernel(
     value,
     index_len,
     dim_size,
+    outer_size,
     HAS_NEGATIVE: tl.constexpr,
     USE_INT32: tl.constexpr,
     BLOCK_I: tl.constexpr,
 ):
     pid_outer = ext.program_id(axis=0)
+    worker_outer = ext.num_programs(axis=0)
     pid_index = ext.program_id(axis=1)
-    index_offsets = pid_index.to(tl.int32) * BLOCK_I + tl.arange(0, BLOCK_I)
-    index_mask = index_offsets < index_len.to(tl.int32)
+    worker_index = ext.num_programs(axis=1)
+    index_len_i32 = index_len.to(tl.int32)
 
-    if USE_INT32:
-        dim_size_i32 = dim_size.to(tl.int32)
-        index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
-            tl.int32
-        )
-        if HAS_NEGATIVE:
-            index_values = tl.where(
-                index_values < 0, index_values + dim_size_i32, index_values
-            )
-        out_offsets = pid_outer.to(tl.int32) * dim_size_i32 + index_values
-    else:
-        dim_size_i64 = dim_size.to(tl.int64)
-        index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
-            tl.int64
-        )
-        if HAS_NEGATIVE:
-            index_values = tl.where(
-                index_values < 0, index_values + dim_size_i64, index_values
-            )
-        out_offsets = pid_outer.to(tl.int64) * dim_size_i64 + index_values
+    # Ascend caps the flattened launch grid (grid.x * grid.y) at
+    # _ASCEND_MAX_CORE_DIM, so each program strides over multiple index blocks
+    # and outer rows when a count exceeds the cap.
+    for index_start in range(
+        pid_index * BLOCK_I, index_len_i32, worker_index * BLOCK_I
+    ):
+        index_offsets = index_start + tl.arange(0, BLOCK_I)
+        index_mask = index_offsets < index_len_i32
 
-    tl.store(out + out_offsets, value, mask=index_mask)
+        if USE_INT32:
+            dim_size_i32 = dim_size.to(tl.int32)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int32
+            )
+            if HAS_NEGATIVE:
+                index_values = tl.where(
+                    index_values < 0, index_values + dim_size_i32, index_values
+                )
+            for outer_id in range(pid_outer, outer_size, worker_outer):
+                out_offsets = outer_id.to(tl.int32) * dim_size_i32 + index_values
+                tl.store(out + out_offsets, value, mask=index_mask)
+        else:
+            dim_size_i64 = dim_size.to(tl.int64)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int64
+            )
+            if HAS_NEGATIVE:
+                index_values = tl.where(
+                    index_values < 0, index_values + dim_size_i64, index_values
+                )
+            for outer_id in range(pid_outer, outer_size, worker_outer):
+                out_offsets = outer_id.to(tl.int64) * dim_size_i64 + index_values
+                tl.store(out + out_offsets, value, mask=index_mask)
 
 
 @libentry()
@@ -297,6 +380,7 @@ def index_fill_contiguous_scalar_inner1_kernel(
     do_not_specialize=[
         "index_len",
         "dim_size",
+        "outer_size",
     ]
 )
 def index_fill_contiguous_tensor_inner1_kernel(
@@ -305,37 +389,51 @@ def index_fill_contiguous_tensor_inner1_kernel(
     value,
     index_len,
     dim_size,
+    outer_size,
     HAS_NEGATIVE: tl.constexpr,
     USE_INT32: tl.constexpr,
     BLOCK_I: tl.constexpr,
 ):
     pid_outer = ext.program_id(axis=0)
+    worker_outer = ext.num_programs(axis=0)
     pid_index = ext.program_id(axis=1)
-    index_offsets = pid_index.to(tl.int32) * BLOCK_I + tl.arange(0, BLOCK_I)
-    index_mask = index_offsets < index_len.to(tl.int32)
+    worker_index = ext.num_programs(axis=1)
+    index_len_i32 = index_len.to(tl.int32)
+    fill_value = tl.load(value)
 
-    if USE_INT32:
-        dim_size_i32 = dim_size.to(tl.int32)
-        index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
-            tl.int32
-        )
-        if HAS_NEGATIVE:
-            index_values = tl.where(
-                index_values < 0, index_values + dim_size_i32, index_values
-            )
-        out_offsets = pid_outer.to(tl.int32) * dim_size_i32 + index_values
-    else:
-        dim_size_i64 = dim_size.to(tl.int64)
-        index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
-            tl.int64
-        )
-        if HAS_NEGATIVE:
-            index_values = tl.where(
-                index_values < 0, index_values + dim_size_i64, index_values
-            )
-        out_offsets = pid_outer.to(tl.int64) * dim_size_i64 + index_values
+    # Ascend caps the flattened launch grid (grid.x * grid.y) at
+    # _ASCEND_MAX_CORE_DIM, so each program strides over multiple index blocks
+    # and outer rows when a count exceeds the cap.
+    for index_start in range(
+        pid_index * BLOCK_I, index_len_i32, worker_index * BLOCK_I
+    ):
+        index_offsets = index_start + tl.arange(0, BLOCK_I)
+        index_mask = index_offsets < index_len_i32
 
-    tl.store(out + out_offsets, tl.load(value), mask=index_mask)
+        if USE_INT32:
+            dim_size_i32 = dim_size.to(tl.int32)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int32
+            )
+            if HAS_NEGATIVE:
+                index_values = tl.where(
+                    index_values < 0, index_values + dim_size_i32, index_values
+                )
+            for outer_id in range(pid_outer, outer_size, worker_outer):
+                out_offsets = outer_id.to(tl.int32) * dim_size_i32 + index_values
+                tl.store(out + out_offsets, fill_value, mask=index_mask)
+        else:
+            dim_size_i64 = dim_size.to(tl.int64)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int64
+            )
+            if HAS_NEGATIVE:
+                index_values = tl.where(
+                    index_values < 0, index_values + dim_size_i64, index_values
+                )
+            for outer_id in range(pid_outer, outer_size, worker_outer):
+                out_offsets = outer_id.to(tl.int64) * dim_size_i64 + index_values
+                tl.store(out + out_offsets, fill_value, mask=index_mask)
 
 
 @libentry()
@@ -441,37 +539,39 @@ def index_fill_contiguous_dim0_rows_kernel(
     VALUE_IS_TENSOR: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    row_id = ext.program_id(axis=0)
-    row_mask = row_id < index_len
+    pid = ext.program_id(axis=0)
+    worker_count = ext.num_programs(axis=0)
 
     if USE_INT32:
         row_count_value = row_count.to(tl.int32)
         row_width_value = row_width.to(tl.int32)
-        index_value = tl.load(index + row_id, mask=row_mask, other=0).to(tl.int32)
-        if HAS_NEGATIVE:
-            index_value = tl.where(
-                index_value < 0, index_value + row_count_value, index_value
-            )
-        row_offset = index_value * row_width_value
     else:
         row_count_value = row_count.to(tl.int64)
         row_width_value = row_width.to(tl.int64)
-        index_value = tl.load(index + row_id, mask=row_mask, other=0).to(tl.int64)
-        if HAS_NEGATIVE:
-            index_value = tl.where(
-                index_value < 0, index_value + row_count_value, index_value
-            )
-        row_offset = index_value * row_width_value
 
     if VALUE_IS_TENSOR:
         value_scalar = tl.load(value)
     else:
         value_scalar = value
 
-    for column_start in range(0, row_width, BLOCK_N):
-        columns = column_start + tl.arange(0, BLOCK_N)
-        mask = row_mask & (columns < row_width)
-        tl.store(out + row_offset + columns, value_scalar, mask=mask)
+    # Ascend caps the flattened launch grid at _ASCEND_MAX_CORE_DIM, so each
+    # program strides over multiple rows when index_len exceeds the cap.
+    for row_id in range(pid, index_len, worker_count):
+        row_mask = row_id < index_len
+        if USE_INT32:
+            index_value = tl.load(index + row_id, mask=row_mask, other=0).to(tl.int32)
+        else:
+            index_value = tl.load(index + row_id, mask=row_mask, other=0).to(tl.int64)
+        if HAS_NEGATIVE:
+            index_value = tl.where(
+                index_value < 0, index_value + row_count_value, index_value
+            )
+        row_offset = index_value * row_width_value
+
+        for column_start in range(0, row_width, BLOCK_N):
+            columns = column_start + tl.arange(0, BLOCK_N)
+            mask = row_mask & (columns < row_width)
+            tl.store(out + row_offset + columns, value_scalar, mask=mask)
 
 
 @libentry()
@@ -487,28 +587,35 @@ def index_fill_contiguous_mask_inner1_reuse_kernel(
     BLOCK_P: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
+    worker_count = ext.num_programs(axis=0)
     outer_size_i32 = outer_size.to(tl.int32)
     dim_size_i32 = dim_size.to(tl.int32)
     n_tiles = tl.cdiv(dim_size_i32, BLOCK_N)
-    n_tile = pid.to(tl.int32) % n_tiles
-    outer_block = pid.to(tl.int32) // n_tiles
-    n_offsets = n_tile * BLOCK_N + tl.arange(0, BLOCK_N)
-    n_mask = n_offsets < dim_size_i32
-    selected = tl.load(membership + n_offsets, mask=n_mask, other=0) > 0
+    total_tiles = n_tiles * tl.cdiv(outer_size_i32, BLOCK_P)
 
     if VALUE_IS_TENSOR:
         value_scalar = tl.load(value)
     else:
         value_scalar = value
 
-    for row_offset in tl.range(BLOCK_P):
-        outer_id = outer_block * BLOCK_P + row_offset
-        row_mask = n_mask & (outer_id < outer_size_i32)
-        out_offsets = outer_id * dim_size_i32 + n_offsets
-        original = tl.load(out + out_offsets, mask=row_mask, other=0)
-        fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
-        result = tl.where(selected, fill_values, original)
-        tl.store(out + out_offsets, result, mask=row_mask)
+    # Ascend caps the flattened launch grid at _ASCEND_MAX_CORE_DIM, so each
+    # program strides over multiple (inner, outer) tiles when the total exceeds
+    # the cap.
+    for tile_id in range(pid, total_tiles, worker_count):
+        n_tile = tile_id.to(tl.int32) % n_tiles
+        outer_block = tile_id.to(tl.int32) // n_tiles
+        n_offsets = n_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        n_mask = n_offsets < dim_size_i32
+        selected = tl.load(membership + n_offsets, mask=n_mask, other=0) > 0
+
+        for row_offset in tl.range(BLOCK_P):
+            outer_id = outer_block * BLOCK_P + row_offset
+            row_mask = n_mask & (outer_id < outer_size_i32)
+            out_offsets = outer_id * dim_size_i32 + n_offsets
+            original = tl.load(out + out_offsets, mask=row_mask, other=0)
+            fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
+            result = tl.where(selected, fill_values, original)
+            tl.store(out + out_offsets, result, mask=row_mask)
 
 
 @libentry()
@@ -525,28 +632,35 @@ def index_fill_contiguous_mask_inner1_copy_reuse_kernel(
     BLOCK_P: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
+    worker_count = ext.num_programs(axis=0)
     outer_size_i32 = outer_size.to(tl.int32)
     dim_size_i32 = dim_size.to(tl.int32)
     n_tiles = tl.cdiv(dim_size_i32, BLOCK_N)
-    n_tile = pid.to(tl.int32) % n_tiles
-    outer_block = pid.to(tl.int32) // n_tiles
-    n_offsets = n_tile * BLOCK_N + tl.arange(0, BLOCK_N)
-    n_mask = n_offsets < dim_size_i32
-    selected = tl.load(membership + n_offsets, mask=n_mask, other=0) > 0
+    total_tiles = n_tiles * tl.cdiv(outer_size_i32, BLOCK_P)
 
     if VALUE_IS_TENSOR:
         value_scalar = tl.load(value)
     else:
         value_scalar = value
 
-    for row_offset in tl.range(BLOCK_P):
-        outer_id = outer_block * BLOCK_P + row_offset
-        row_mask = n_mask & (outer_id < outer_size_i32)
-        offsets = outer_id * dim_size_i32 + n_offsets
-        original = tl.load(inp + offsets, mask=row_mask, other=0)
-        fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
-        result = tl.where(selected, fill_values, original)
-        tl.store(out + offsets, result, mask=row_mask)
+    # Ascend caps the flattened launch grid at _ASCEND_MAX_CORE_DIM, so each
+    # program strides over multiple (inner, outer) tiles when the total exceeds
+    # the cap.
+    for tile_id in range(pid, total_tiles, worker_count):
+        n_tile = tile_id.to(tl.int32) % n_tiles
+        outer_block = tile_id.to(tl.int32) // n_tiles
+        n_offsets = n_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        n_mask = n_offsets < dim_size_i32
+        selected = tl.load(membership + n_offsets, mask=n_mask, other=0) > 0
+
+        for row_offset in tl.range(BLOCK_P):
+            outer_id = outer_block * BLOCK_P + row_offset
+            row_mask = n_mask & (outer_id < outer_size_i32)
+            offsets = outer_id * dim_size_i32 + n_offsets
+            original = tl.load(inp + offsets, mask=row_mask, other=0)
+            fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
+            result = tl.where(selected, fill_values, original)
+            tl.store(out + offsets, result, mask=row_mask)
 
 
 @libentry()
@@ -567,6 +681,7 @@ def index_fill_contiguous_local_membership_inner1_kernel(
     BLOCK_P: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
+    worker_count = ext.num_programs(axis=0)
     outer_size_i32 = outer_size.to(tl.int32)
     dim_size_i32 = dim_size.to(tl.int32)
     n_offsets = tl.arange(0, BLOCK_N)
@@ -601,14 +716,20 @@ def index_fill_contiguous_local_membership_inner1_kernel(
     else:
         value_scalar = value
 
-    for row_offset in tl.range(BLOCK_P):
-        outer_id = pid.to(tl.int32) * BLOCK_P + row_offset
-        row_mask = n_mask & (outer_id < outer_size_i32)
-        offsets = outer_id * dim_size_i32 + n_offsets
-        original = tl.load(inp + offsets, mask=row_mask, other=0)
-        fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
-        result = tl.where(selected, fill_values, original)
-        tl.store(out + offsets, result, mask=row_mask)
+    # Ascend caps the flattened launch grid at _ASCEND_MAX_CORE_DIM, so each
+    # program strides over multiple outer blocks when outer_size exceeds the
+    # cap.
+    for outer_start in range(
+        pid.to(tl.int32) * BLOCK_P, outer_size, worker_count * BLOCK_P
+    ):
+        for row_offset in tl.range(BLOCK_P):
+            outer_id = (outer_start + row_offset).to(tl.int32)
+            row_mask = n_mask & (outer_id < outer_size_i32)
+            offsets = outer_id * dim_size_i32 + n_offsets
+            original = tl.load(inp + offsets, mask=row_mask, other=0)
+            fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
+            result = tl.where(selected, fill_values, original)
+            tl.store(out + offsets, result, mask=row_mask)
 
 
 def _generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -643,41 +764,51 @@ def _generate_strided_kernel(
 
     with code.indent():
         code.writeline("pid = tl.program_id(axis=0)")
-        code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
-        code.writeline("mask = offsets < N")
-        code.writeline("linear = offsets.to(tl.int64)")
-        code.writeline("out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
-        code.newline()
-
-        for i in range(rank - 1, -1, -1):
-            logical_size = "index_len" if i == dim else f"shape_{i}"
-            code.writeline(f"coord_{i} = linear % {logical_size}")
-            if i != 0:
-                code.writeline(f"linear = linear // {logical_size}")
-            if i == dim:
-                code.writeline(
-                    f"raw_index = tl.load(index + coord_{i}, mask=mask, other=0)"
-                    ".to(tl.int64)"
-                )
-                code.writeline(
-                    "valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)"
-                )
-                code.writeline(
-                    f"coord_{i} = tl.where("
-                    "raw_index < 0, raw_index + dim_size, raw_index)"
-                )
-            code.writeline(f"out_offsets += coord_{i} * stride_{i}")
-
-        code.newline()
-        code.writeline('tl.device_assert((~mask) | valid_index, "index out of bounds")')
-        code.writeline("store_mask = mask & valid_index")
-        code.writeline("if VALUE_IS_TENSOR:")
+        code.writeline("worker_count = tl.num_programs(axis=0)")
+        code.writeline("# Ascend caps the flattened launch grid (coreDim) at 65535,")
+        code.writeline("# so each program walks several element tiles when N is large.")
+        code.writeline(
+            "for block_start in range(pid * BLOCK_SIZE, N, worker_count * BLOCK_SIZE):"
+        )
         with code.indent():
-            code.writeline("fill_value = tl.load(value)")
-        code.writeline("else:")
-        with code.indent():
-            code.writeline("fill_value = value")
-        code.writeline("tl.store(out + out_offsets, fill_value, mask=store_mask)")
+            code.writeline("offsets = block_start + tl.arange(0, BLOCK_SIZE)")
+            code.writeline("mask = offsets < N")
+            code.writeline("linear = offsets.to(tl.int64)")
+            code.writeline("out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
+            code.newline()
+
+            for i in range(rank - 1, -1, -1):
+                logical_size = "index_len" if i == dim else f"shape_{i}"
+                code.writeline(f"coord_{i} = linear % {logical_size}")
+                if i != 0:
+                    code.writeline(f"linear = linear // {logical_size}")
+                if i == dim:
+                    code.writeline(
+                        f"raw_index = tl.load(index + coord_{i}, mask=mask, other=0)"
+                        ".to(tl.int64)"
+                    )
+                    code.writeline(
+                        "valid_index = (raw_index >= -dim_size)"
+                        " & (raw_index < dim_size)"
+                    )
+                    code.writeline(
+                        f"coord_{i} = tl.where("
+                        "raw_index < 0, raw_index + dim_size, raw_index)"
+                    )
+                code.writeline(f"out_offsets += coord_{i} * stride_{i}")
+
+            code.newline()
+            code.writeline(
+                'tl.device_assert((~mask) | valid_index, "index out of bounds")'
+            )
+            code.writeline("store_mask = mask & valid_index")
+            code.writeline("if VALUE_IS_TENSOR:")
+            with code.indent():
+                code.writeline("fill_value = tl.load(value)")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("fill_value = value")
+            code.writeline("tl.store(out + out_offsets, fill_value, mask=store_mask)")
 
     code.newline()
     return code
@@ -697,7 +828,8 @@ def _generate_strided_wrapper(
         code.writeline("out_shapes = list(out.shape)")
         code.writeline("out_strides = list(out.stride())")
         code.writeline("BLOCK_SIZE = 512")
-        code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
+        code.writeline("# Ascend caps the flattened launch grid (coreDim) at 65535.")
+        code.writeline("grid = (min(triton.cdiv(N, BLOCK_SIZE), 65535),)")
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
             code.writeline("out,")
@@ -1067,7 +1199,9 @@ def _index_fill_contiguous_small_inner_updates(out, dim, index, value, has_negat
 
     with torch_device_fn.device(out.device):
         if 2 <= inner_size <= 4:
-            grid = (index.numel(), triton.cdiv(outer_size, block_outer))
+            grid = _ascend_launch_grid(
+                index.numel(), triton.cdiv(outer_size, block_outer)
+            )
             index_fill_contiguous_scalar_small_inner_blockptr_kernel[grid](
                 out,
                 index,
@@ -1075,6 +1209,7 @@ def _index_fill_contiguous_small_inner_updates(out, dim, index, value, has_negat
                 outer_size,
                 dim_size,
                 inner_size,
+                index.numel(),
                 HAS_NEGATIVE=has_negative,
                 BLOCK_OUTER=block_outer,
                 SPAN=inner_size,
@@ -1082,7 +1217,9 @@ def _index_fill_contiguous_small_inner_updates(out, dim, index, value, has_negat
         else:
             block_i = _SMALL_INNER_BLOCK_I
             block_n = _SMALL_INNER_BLOCK_N
-            grid = (
+            # index.numel() == 1 on this path, so only the outer blocks on
+            # axis 1 can exceed the coreDim cap.
+            grid = _ascend_launch_grid(
                 triton.cdiv(index.numel(), block_i),
                 triton.cdiv(outer_size, block_outer),
             )
@@ -1187,8 +1324,9 @@ def _try_index_fill_contiguous_full_coverage_fill(
         return None
 
     out = inp if inplace else torch.empty_like(inp)
+    grid = _ascend_launch_grid(triton.cdiv(inp.numel(), 4096))
     with torch_device_fn.device(inp.device):
-        index_fill_contiguous_full_kernel[(triton.cdiv(inp.numel(), 4096),)](
+        index_fill_contiguous_full_kernel[grid](
             out,
             value,
             inp.numel(),
@@ -1203,7 +1341,7 @@ def _index_fill_contiguous_dim0_rows(
 ):
     dim_size = out.size(dim)
     inner_size = math.prod(out.shape[dim + 1 :])
-    grid = (index.numel(),)
+    grid = _ascend_launch_grid(index.numel())
     with torch_device_fn.device(out.device):
         index_fill_contiguous_dim0_rows_kernel[grid](
             out,
@@ -1263,7 +1401,8 @@ def _index_fill_contiguous_membership_mask(
     source=None,
 ):
     block_n, block_p = _get_inner1_membership_mask_config(outer_size, dim_size)
-    select_grid = (triton.cdiv(dim_size, block_n) * triton.cdiv(outer_size, block_p),)
+    total_tiles = triton.cdiv(dim_size, block_n) * triton.cdiv(outer_size, block_p)
+    select_grid = _ascend_launch_grid(total_tiles)
     membership = _build_contiguous_membership_mask(out, index, has_negative, dim_size)
 
     with torch_device_fn.device(out.device):
@@ -1311,7 +1450,7 @@ def _index_fill_contiguous_local_membership_mask(
     block_i = 32
     block_n = min(256, triton.next_power_of_2(dim_size))
     _, block_p = _get_inner1_membership_mask_config(outer_size, dim_size)
-    grid = (triton.cdiv(outer_size, block_p),)
+    grid = _ascend_launch_grid(triton.cdiv(outer_size, block_p))
     use_int32 = _use_int32_indexing(out, dim_size, index_len)
 
     with torch_device_fn.device(out.device):
@@ -1345,7 +1484,7 @@ def _index_fill_contiguous_inner1(
     outer_size = out.numel() // dim_size
     index_len = index.numel()
     block_i = _get_inner1_config(index_len)
-    grid = (outer_size, triton.cdiv(index_len, block_i))
+    grid = _ascend_launch_grid(outer_size, triton.cdiv(index_len, block_i))
     use_int32 = _use_int32_indexing(out, dim_size, index_len)
 
     with torch_device_fn.device(out.device):
@@ -1356,6 +1495,7 @@ def _index_fill_contiguous_inner1(
                 value,
                 index_len,
                 dim_size,
+                outer_size,
                 HAS_NEGATIVE=has_negative,
                 USE_INT32=use_int32,
                 BLOCK_I=block_i,
@@ -1367,6 +1507,7 @@ def _index_fill_contiguous_inner1(
                 value,
                 index_len,
                 dim_size,
+                outer_size,
                 HAS_NEGATIVE=has_negative,
                 USE_INT32=use_int32,
                 BLOCK_I=block_i,
@@ -1448,9 +1589,8 @@ def _index_fill_contiguous(
         )
     outer_index_len = outer_size * index.numel()
     block_m, block_n = _get_contiguous_config(inner_size)
-    grid = (
-        triton.cdiv(outer_index_len, block_m),
-        triton.cdiv(inner_size, block_n),
+    grid = _ascend_launch_grid(
+        triton.cdiv(outer_index_len, block_m), triton.cdiv(inner_size, block_n)
     )
 
     with torch_device_fn.device(out.device):

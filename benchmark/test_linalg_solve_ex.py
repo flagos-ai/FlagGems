@@ -67,3 +67,18 @@ def test_linalg_solve_ex():
         dtypes=SOLVE_EX_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.underscore_linalg_solve_ex
+def test__linalg_solve_ex():
+    """aten::_linalg_solve_ex, the private primitive behind solve_ex.
+
+    Same shapes and inputs as the public operator above, so the two numbers are
+    directly comparable; the private profile additionally returns LU and pivots.
+    """
+    bench = LinalgSolveExBenchmark(
+        op_name="_linalg_solve_ex",
+        torch_op=torch._linalg_solve_ex,
+        dtypes=SOLVE_EX_DTYPES,
+    )
+    bench.run()

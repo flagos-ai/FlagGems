@@ -299,17 +299,14 @@ def vdot_heur_block_size(args):
 
 
 def mha_varlen_prefill_heur_block_m(args):
-    # Prefill phase: large query tiles for throughput.
     return 128
 
 
 def mha_varlen_decode_heur_block_m(args):
-    # Decode phase: small query tiles for device utilization.
     return 32
 
 
 def mha_varlen_heur_block_n(args):
-    # KV tile; must not exceed the paged-KV block size.
     return 32
 
 

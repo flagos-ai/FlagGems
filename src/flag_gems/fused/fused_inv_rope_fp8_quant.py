@@ -180,7 +180,7 @@ def fused_inv_rope_fp8_quant(
         o_fp8: [num_tokens, n_groups, heads_per_group * head_dim]
         o_scale: [num_tokens, n_groups, num_scale_blocks] or packed UE8M0 view
     """
-    logger.debug("GEMS FUSED INV ROPE FP8 QUANT")
+    logger.debug("GEMS FUSED_INV_ROPE_FP8_QUANT")
 
     fp8_dtype = SUPPORTED_FP8_DTYPE if dtype is None else dtype
     assert fp8_dtype == torch.float8_e4m3fn, "only torch.float8_e4m3fn is supported"
