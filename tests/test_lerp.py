@@ -122,3 +122,61 @@ def test_lerp_scalar_(shape, dtype):
     ref_out = ref_input.clone().lerp_(ref_end, weight=0.8)
     res_out = flag_gems.lerp_scalar_(input.clone(), end, weight=0.8)
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.lerp_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_lerp_tensor_backward(shape, dtype):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    end = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+
+    res_out = flag_gems.lerp_tensor(input, end, weight)
+    ref_input = utils.to_reference(input, True)
+    ref_end = utils.to_reference(end, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_out = torch.lerp(ref_input, ref_end, ref_weight)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_grads = torch.autograd.grad(res_out, (input, end, weight), out_grad)
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_input, ref_end, ref_weight), ref_out_grad
+    )
+    for res_grad, ref_grad in zip(res_grads, ref_grads):
+        utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+    res_direct = flag_gems.lerp_backward(out_grad, input, end, weight)
+    for res_grad, ref_grad in zip(res_direct, ref_grads):
+        utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.lerp_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_lerp_scalar_backward(shape, dtype):
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    end = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = 0.3
+
+    res_out = flag_gems.lerp_scalar(input, end, weight)
+    ref_input = utils.to_reference(input, True)
+    ref_end = utils.to_reference(end, True)
+    ref_out = torch.lerp(ref_input, ref_end, weight)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_grads = torch.autograd.grad(res_out, (input, end), out_grad)
+    ref_grads = torch.autograd.grad(ref_out, (ref_input, ref_end), ref_out_grad)
+    for res_grad, ref_grad in zip(res_grads, ref_grads):
+        utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+    res_direct = flag_gems.lerp_backward(out_grad, input, end, weight)
+    assert res_direct[2] is None
+    utils.gems_assert_close(res_direct[0], ref_grads[0], dtype)
+    utils.gems_assert_close(res_direct[1], ref_grads[1], dtype)

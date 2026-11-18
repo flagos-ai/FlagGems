@@ -99,3 +99,46 @@ def test_lerp_scalar_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+def lerp_tensor_backward_input_fn(shape, dtype, device):
+    input = torch.randn(*shape, device=device, dtype=dtype)
+    end = input + 10
+    weight = torch.randn(*shape, device=device, dtype=dtype)
+    yield input, end, weight
+
+
+def lerp_scalar_backward_input_fn(shape, dtype, device):
+    input = torch.randn(*shape, device=device, dtype=dtype)
+    end = input + 10
+    yield input, end, 0.5
+
+
+@pytest.mark.lerp_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_lerp_tensor_backward():
+    bench = LerpBenchmark(
+        input_fn=lerp_tensor_backward_input_fn,
+        op_name="lerp_tensor",
+        torch_op=torch.lerp,
+        dtypes=[torch.float32],
+        is_backward=True,
+    )
+    bench.run()
+
+
+@pytest.mark.lerp_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_lerp_scalar_backward():
+    bench = LerpBenchmark(
+        input_fn=lerp_scalar_backward_input_fn,
+        op_name="lerp_scalar",
+        torch_op=torch.lerp,
+        dtypes=[torch.float32],
+        is_backward=True,
+    )
+    bench.run()
