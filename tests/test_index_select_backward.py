@@ -19,39 +19,105 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 SHAPES = [(3, 4), (5, 3), (2, 3, 4), (4,), (8, 16), (2, 8, 16)]
 CASES = [(shape, dim) for shape in SHAPES for dim in range(len(shape))]
 
 
-@pytest.mark.index_select_backward
-@pytest.mark.parametrize("shape,dim", CASES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_index_select_backward(shape, dim, dtype):
+def _skip_unsupported_index_dtype(index_dtype):
+    if (
+        flag_gems.vendor_name == "enflame"
+        and index_dtype == torch.int64
+        and not utils.TO_CPU
+    ):
+        pytest.skip("Enflame native index_select_backward requires Int32 indices")
+
+
+def _check_index_select_backward(shape, dim, dtype, index_dtype):
+    _skip_unsupported_index_dtype(index_dtype)
     dim_size_out = shape[dim] + 2
     self_sizes = list(shape)
     self_sizes[dim] = dim_size_out
     self_sizes = tuple(self_sizes)
     torch.manual_seed(0)
     grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(0, dim_size_out, (shape[dim],), device=flag_gems.device)
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else flag_gems.device
+    index = torch.randint(
+        0, dim_size_out, (shape[dim],), dtype=index_dtype, device=index_device
+    ).to(flag_gems.device)
+    assert index.dtype == index_dtype
+    assert index.device == grad.device
+    expected_device = grad.device
     ref_out = torch.ops.aten.index_select_backward(
-        utils.to_reference(grad, True), self_sizes, dim, utils.to_reference(index, False)
+        utils.to_reference(grad, True),
+        self_sizes,
+        dim,
+        utils.to_reference(index, False),
     )
     result = flag_gems.index_select_backward(grad, self_sizes, dim, index)
     assert result.shape == self_sizes
     assert result.dtype == dtype
-    utils.gems_assert_close(result, ref_out, dtype)
+    assert result.device == expected_device
+    assert result.untyped_storage()._cdata not in {
+        grad.untyped_storage()._cdata,
+        index.untyped_storage()._cdata,
+    }
+    if flag_gems.vendor_name == "enflame":
+        result_for_compare, ref_for_compare = result.cpu(), ref_out.cpu()
+    else:
+        result_for_compare, ref_for_compare = result, ref_out
+    utils.gems_assert_close(result_for_compare, ref_for_compare, dtype)
+
+
+def _check_index_select_backward_repeated_indices(dtype, index_dtype):
+    _skip_unsupported_index_dtype(index_dtype)
+    torch.manual_seed(0)
+    grad = torch.randn(4, dtype=dtype, device=flag_gems.device)
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else flag_gems.device
+    index = torch.tensor([0, 2, 2, 5], dtype=index_dtype, device=index_device).to(
+        flag_gems.device
+    )
+    assert index.dtype == index_dtype
+    assert index.device == grad.device
+    expected_device = grad.device
+    ref_out = torch.ops.aten.index_select_backward(
+        utils.to_reference(grad, True), (6,), 0, utils.to_reference(index, False)
+    )
+    result = flag_gems.index_select_backward(grad, (6,), 0, index)
+    assert result.device == expected_device
+    assert result.dtype == dtype
+    assert result.shape == (6,)
+    assert result.untyped_storage()._cdata not in {
+        grad.untyped_storage()._cdata,
+        index.untyped_storage()._cdata,
+    }
+    if flag_gems.vendor_name == "enflame":
+        result_for_compare, ref_for_compare = result.cpu(), ref_out.cpu()
+    else:
+        result_for_compare, ref_for_compare = result, ref_out
+    utils.gems_assert_close(result_for_compare, ref_for_compare, dtype)
+
+
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("shape,dim", CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_select_backward(shape, dim, dtype):
+    _check_index_select_backward(shape, dim, dtype, torch.int64)
 
 
 @pytest.mark.index_select_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_index_select_backward_repeated_indices(dtype):
-    torch.manual_seed(0)
-    grad = torch.randn(4, dtype=dtype, device=flag_gems.device)
-    index = torch.tensor([0, 2, 2, 5], device=flag_gems.device)
-    ref_out = torch.ops.aten.index_select_backward(
-        utils.to_reference(grad, True), (6,), 0, utils.to_reference(index, False)
-    )
-    result = flag_gems.index_select_backward(grad, (6,), 0, index)
-    utils.gems_assert_close(result, ref_out, dtype)
+    _check_index_select_backward_repeated_indices(dtype, torch.int64)
+
+
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("shape,dim", CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_select_backward_int32(shape, dim, dtype):
+    _check_index_select_backward(shape, dim, dtype, torch.int32)
+
+
+@pytest.mark.index_select_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_select_backward_repeated_indices_int32(dtype):
+    _check_index_select_backward_repeated_indices(dtype, torch.int32)
