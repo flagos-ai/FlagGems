@@ -109,9 +109,9 @@ def test_dist_backward_zero_diff(p, dtype=torch.float64):
 def test_dist_backward_use_gems_entry(dtype=torch.float32):
     """``flag_gems.dist_backward`` agrees with the public ``torch.dist`` chain.
 
-    ``aten::dist`` is a CompositeExplicitAutograd op, so under ``use_gems()``
-    the forward runs on the Triton kernel while ``DistBackward0`` stays above
-    it. This pins both paths to the same gradients and exercises the explicit
+    ``aten::dist`` is a CompositeExplicitAutograd op, so the forward runs on
+    the Triton kernel while ``DistBackward0`` stays above it. This pins both
+    paths to the same gradients and exercises the explicit
     ``flag_gems.dist_backward`` entry.
     """
     inp = torch.randn((8, 32), dtype=dtype, device=flag_gems.device)
@@ -125,14 +125,13 @@ def test_dist_backward_use_gems_entry(dtype=torch.float32):
         torch.dist(ref_inp, ref_other, 2), [ref_inp, ref_other], grad_outputs=ref_grad
     )
 
-    with flag_gems.use_gems():
-        res_inp = inp.detach().requires_grad_(True)
-        res_other = other.detach().requires_grad_(True)
-        res_self, res_other_grad = torch.autograd.grad(
-            torch.dist(res_inp, res_other, 2), [res_inp, res_other], grad_outputs=grad
-        )
-        dist = torch.dist(inp, other, 2).detach()
-        entry_self, entry_other = flag_gems.dist_backward(grad, inp, other, 2, dist)
+    res_inp = inp.detach().requires_grad_(True)
+    res_other = other.detach().requires_grad_(True)
+    res_self, res_other_grad = torch.autograd.grad(
+        torch.dist(res_inp, res_other, 2), [res_inp, res_other], grad_outputs=grad
+    )
+    dist = torch.dist(inp, other, 2).detach()
+    entry_self, entry_other = flag_gems.dist_backward(grad, inp, other, 2, dist)
 
     for got, expected in (
         (res_self, ref_self),
