@@ -175,6 +175,7 @@ def test_cast_Short_strided(dtype, layout):
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 @pytest.mark.parametrize("conjugated", [False, True])
 def test_cast_Short_complex_real_component(dtype, conjugated):
+    _require_dtype(dtype)
     # Nonzero imaginary parts must not contribute to the int16 result.
     real = torch.tensor([-32768.0, -2.9, 0.0, 3.9, 32767.0], device=flag_gems.device)
     imag = torch.tensor([7.0, -11.0, 5.0, -13.0, 17.0], device=flag_gems.device)
