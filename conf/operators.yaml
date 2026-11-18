@@ -12424,6 +12424,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: log2_backward
+  description: The backward computation of `log2()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log2
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log_
   description: The in-place version of `log()`. Computes the natural logarithm of
     each element in the input tensor in-place.
