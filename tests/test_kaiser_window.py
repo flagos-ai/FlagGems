@@ -86,7 +86,12 @@ def test_kaiser_window_periodic(window_length, periodic, dtype):
     # An explicit periodic flag selects the aten::kaiser_window.periodic
     # overload; N is window_length for the periodic window and window_length - 1
     # for the symmetric one.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    target = torch.empty(0, device=flag_gems.device).device
+    device = (
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend", "kunlunxin")
+        else flag_gems.device
+    )
     ref_out = torch.kaiser_window(
         window_length, periodic=periodic, dtype=dtype, device=device
     )
@@ -94,11 +99,12 @@ def test_kaiser_window_periodic(window_length, periodic, dtype):
         window_length, periodic=periodic, dtype=dtype, device=flag_gems.device
     )
 
+    assert res_out.device == target
     assert res_out.dtype == dtype
     assert res_out.shape == ref_out.shape
     if window_length == 0:
         return
-    utils.gems_assert_close(res_out, ref_out, dtype=dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype=dtype)
 
 
 @pytest.mark.kaiser_window_beta
@@ -112,7 +118,12 @@ def test_kaiser_window_beta(window_length, periodic, beta, dtype):
     # CPU/CUDA index-rounding difference described above, and 4096 would sit
     # within 2.4x of the float16 tolerance in `--ref cpu` mode. The long-window
     # coverage lives in the two tests above instead.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    target = torch.empty(0, device=flag_gems.device).device
+    device = (
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend", "kunlunxin")
+        else flag_gems.device
+    )
     ref_out = torch.kaiser_window(
         window_length, periodic=periodic, beta=beta, dtype=dtype, device=device
     )
@@ -124,11 +135,12 @@ def test_kaiser_window_beta(window_length, periodic, beta, dtype):
         device=flag_gems.device,
     )
 
+    assert res_out.device == target
     assert res_out.dtype == dtype
     assert res_out.shape == ref_out.shape
     if window_length == 0:
         return
-    utils.gems_assert_close(res_out, ref_out, dtype=dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype=dtype)
 
 
 @pytest.mark.kaiser_window
