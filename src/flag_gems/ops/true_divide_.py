@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover
 
 @triton.jit(do_not_specialize=["n"])
 def _true_div_flat(x_ptr, y_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tl.cast(tl.program_id(0), tl.int64)
     step = tl.num_programs(0) * BLOCK
     base = pid * BLOCK
     if EVEN:
@@ -62,7 +62,7 @@ def _true_div_flat(x_ptr, y_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
 
 @triton.jit(do_not_specialize=["val", "n"])
 def _true_div_scalar(x_ptr, val, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
-    pid = tl.program_id(0)
+    pid = tl.cast(tl.program_id(0), tl.int64)
     step = tl.num_programs(0) * BLOCK
     base = pid * BLOCK
     if EVEN:
@@ -83,7 +83,7 @@ def _true_div_scalar(x_ptr, val, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
 @triton.jit(do_not_specialize=["n"])
 def _true_div_stensor(x_ptr, y_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     val = tl.load(y_ptr).to(tl.float32)
-    pid = tl.program_id(0)
+    pid = tl.cast(tl.program_id(0), tl.int64)
     step = tl.num_programs(0) * BLOCK
     base = pid * BLOCK
     if EVEN:
