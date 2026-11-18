@@ -5556,6 +5556,24 @@ ops:
   - BLAS
   stages:
   - stable: '3.0'
+- id: dot_backward
+  description: |
+    Backward pass of `dot` (1-D dot product): given the upstream gradient and
+    the two forward operands, produce the input gradients
+    `grad_self = grad * tensor` and `grad_tensor = grad * self`.
+    ATen drives these through the `DotBackward0` autograd node; this Torch
+    build has no standalone `aten::dot_backward` schema, so the Triton kernel
+    is exposed as an explicit entry point plus a `torch.autograd.Function`
+    bridge (same pattern as `div_backward`).
+  for:
+  - dot_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6'
 - id: dreglu
   description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
     of

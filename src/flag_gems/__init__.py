@@ -1333,6 +1333,7 @@ _FULL_CONFIG = (
     ("divide_.Tensor", true_divide_),
     ("divide_.Tensor_mode", div_mode_),
     ("dot", dot),
+    ("dot_backward", dot_backward),
     ("dropout_", dropout_),
     ("dstack", dstack),
     ("elu", elu),
