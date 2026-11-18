@@ -68,6 +68,18 @@ DSTACK_ZERO_SHAPES = [
     [(0, 3, 4), (0, 3, 4)],
 ]
 
+# Mixed real+complex lists promote to complex, so the real inputs must be read
+# at the complex copy-element width. 2-D inputs take the promoted (M, N, 1)
+# shape with inner == 1; the rank-4 pair has inner == 2.
+DSTACK_MIXED_SHAPES = [
+    [(2, 3), (2, 3)],
+    [(2, 3, 1, 2), (2, 3, 2, 2)],
+]
+
+DSTACK_COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
+
 
 def _make_inputs(shapes, dtype):
     if dtype in utils.FLOAT_DTYPES:
@@ -207,6 +219,36 @@ def test_dstack_mixed_dtype_promotion():
 
 
 @pytest.mark.dstack
+@pytest.mark.parametrize("shapes", DSTACK_MIXED_SHAPES)
+@pytest.mark.parametrize("complex_dtype", DSTACK_COMPLEX_DTYPES)
+def test_dstack_mixed_real_complex(shapes, complex_dtype):
+    # Disjoint integer ramps: the real input and the complex input's real part
+    # use consecutive values, and the imaginary part adds a fixed offset, so a
+    # real/imaginary mix-up or a real input read over-wide changes the result.
+    cpu_inp = []
+    for i, shape in enumerate(shapes):
+        numel = 1
+        for dim in shape:
+            numel *= dim
+        real = torch.arange(i * numel, (i + 1) * numel, dtype=torch.float32).reshape(
+            shape
+        )
+        if i == 0:
+            cpu_inp.append(real)
+        else:
+            imag = torch.arange(1000, 1000 + numel, dtype=torch.float32).reshape(shape)
+            cpu_inp.append(torch.complex(real, imag).to(complex_dtype))
+
+    # Independent native reference, computed on CPU from the exact inputs.
+    ref_out = torch.dstack(cpu_inp)
+    inp = [x.to(flag_gems.device) for x in cpu_inp]
+    res_out = flag_gems.dstack(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out.cpu(), ref_out)
+
+
+@pytest.mark.dstack
 @pytest.mark.parametrize("shapes", DSTACK_EXCEPTION_SHAPES)
 def test_dstack_rejects_mismatched_shapes(shapes):
     inp = _make_inputs(shapes, torch.float32)
@@ -227,3 +269,40 @@ def test_dstack_rejects_non_tensor():
 
     with pytest.raises(TypeError):
         flag_gems.dstack(inp)
+
+
+@pytest.mark.dstack
+@pytest.mark.parametrize(
+    "shapes",
+    [
+        [(), ()],
+        [(3,), (3,)],
+        [(4, 5), (4, 5)],
+        [(4, 5, 6), (4, 5, 7)],
+        [(2, 2, 3, 4), (2, 2, 3, 4)],
+    ],
+)
+def test_dstack_backward(shapes):
+    """Autograd must reach every input; the old path silently returned None."""
+    inp = [
+        torch.randn(
+            shape, dtype=torch.float32, device=flag_gems.device
+        ).requires_grad_()
+        for shape in shapes
+    ]
+    ref_inp = [utils.to_reference(x.detach(), False).requires_grad_() for x in inp]
+
+    ref_out = torch.dstack(ref_inp)
+    res_out = flag_gems.dstack(inp)
+    assert res_out.requires_grad
+    # Per-element gradients catch a backward that reshapes the depth slice
+    # incorrectly; a uniform sum would hide that behind an all-ones grad.
+    grad_out = torch.randn_like(res_out)
+    # Move the same values to the reference device: the default lane keeps the
+    # reference on device, while --ref=cpu moves it to CPU.
+    ref_out.backward(grad_out.to(device=ref_out.device, dtype=ref_out.dtype))
+    res_out.backward(grad_out)
+
+    for got, ref in zip(inp, ref_inp):
+        assert got.grad is not None
+        utils.gems_assert_equal(got.grad, ref.grad)

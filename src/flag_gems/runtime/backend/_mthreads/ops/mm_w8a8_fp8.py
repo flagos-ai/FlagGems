@@ -151,9 +151,12 @@ if _HAS_WS:
         NC: tl.constexpr,
         GM: tl.constexpr,
         ROLE: tl.constexpr,
+        FRAGMENTED: tl.constexpr,
     ):
-        pm, pn = _tile_index(tl.program_id(0), M, N, BM, BN * NC, GM)
-        acc = tl.zeros((BM, BN), tl.float32)
+        TN: tl.constexpr = BN + BN // 4 if FRAGMENTED else BN * NC
+        CN: tl.constexpr = BN // 4 if FRAGMENTED and ROLE == 1 else BN
+        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
+        acc = tl.zeros((BM, CN), tl.float32)
         for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
             ready = reader.wait(block)
             if ROLE == 0:
@@ -168,13 +171,125 @@ if _HAS_WS:
             acc = tle.gpu.wgmma_wait(0, acc)
             reader.release(block)
         rm = pm * BM + tl.arange(0, BM)
-        rn = pn * BN * NC + ROLE * BN + tl.arange(0, BN)
+        rn = pn * TN + ROLE * BN + tl.arange(0, CN)
         acc *= tl.load(SA)
         acc *= tl.load(SB)
         tl.store(
             C + rm[:, None].to(tl.int64) * N + rn[None, :],
             acc,
             (rm[:, None] < M) & (rn[None, :] < N),
+        )
+
+    @triton.jit
+    def _produce_skinny(
+        writer,
+        A,
+        B,
+        M: tl.constexpr,
+        K: tl.constexpr,
+        AM: tl.constexpr,
+        BV: tl.constexpr,
+        BK: tl.constexpr,
+        DM: tl.constexpr,
+    ):
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            slot = writer.acquire(block)
+            rm = tl.arange(0, DM)
+            kk = block * BK + tl.arange(0, BK)
+            av = tl.load(
+                A + rm[:, None].to(tl.int64) * AM + kk[None, :],
+                (rm[:, None] < M) & (kk[None, :] < K),
+                0.0,
+            )
+            slot.a.store(av)
+            tle.gpu.copy(B, slot.b, (BV, BK), (tl.program_id(0) * BV, block * BK))
+            writer.commit(block)
+
+    @triton.jit
+    def _consume_skinny(
+        reader,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BV: tl.constexpr,
+        BK: tl.constexpr,
+        DM: tl.constexpr,
+    ):
+        acc = tl.zeros((BV, DM), tl.float32)
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            ready = reader.wait(block)
+            acc = tle.gpu.wgmma(ready.slot.b, ready.slot.a, acc, trans_b=True)
+            acc = tle.gpu.wgmma_wait(0, acc)
+            reader.release(block)
+        rn = tl.program_id(0) * BV + tl.arange(0, BV)
+        rm = tl.arange(0, DM)
+        tl.store(
+            C + rm[None, :].to(tl.int64) * N + rn[:, None],
+            acc * tl.load(SA) * tl.load(SB),
+            (rm[None, :] < M) & (rn[:, None] < N),
+        )
+
+    @libentry()
+    @triton.jit
+    def _skinny_tme_kernel(
+        A,
+        B,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        AM: tl.constexpr,
+        BV: tl.constexpr,
+        BK: tl.constexpr,
+        DM: tl.constexpr,
+        ST: tl.constexpr,
+    ):
+        aa = tle.gpu.alloc(
+            (ST, DM, BK),
+            A.dtype.element_ty,
+            scope=tle.gpu.smem,
+            nv_mma_shared_layout=True,
+        )
+        bb = tle.gpu.alloc(
+            (ST, BV, BK),
+            B.dtype,
+            scope=tle.gpu.smem,
+            nv_mma_shared_layout=True,
+        )
+        pipe = tle.pipe(
+            capacity=ST,
+            scope="cta",
+            name="ab",
+            readers=("r",),
+            a=aa,
+            b=bb,
+        )
+        tle.gpu.warp_specialize(
+            [
+                (
+                    _consume_skinny,
+                    (
+                        pipe.reader("r", fields=("a", "b")),
+                        C,
+                        SA,
+                        SB,
+                        M,
+                        N,
+                        K,
+                        BV,
+                        BK,
+                        DM,
+                    ),
+                ),
+                (_produce_skinny, (pipe.writer(), A, B, M, K, AM, BV, BK, DM)),
+            ],
+            worker_num_warps=[4],
+            worker_num_regs=[64],
         )
 
     @libentry()
@@ -285,6 +400,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -311,6 +427,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (
@@ -329,6 +446,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             1,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -355,6 +473,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (
@@ -373,6 +492,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             1,
+                            False,
                         ),
                     ),
                     (
@@ -391,6 +511,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             2,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -417,6 +538,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (
@@ -435,6 +557,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             1,
+                            False,
                         ),
                     ),
                     (
@@ -453,6 +576,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             2,
+                            False,
                         ),
                     ),
                     (
@@ -471,6 +595,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             3,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -501,42 +626,6 @@ if _HAS_WS:
             tle.gpu.copy(B, slot.b0, (BN, BK), (pn * TN, block * BK))
             tle.gpu.copy(Bsmall, slot.b1, (BN // 4, BK), (pn * TN + BN, block * BK))
             writer.commit(block)
-
-    @triton.jit
-    def _consume_fragmented(
-        reader,
-        C,
-        SA,
-        SB,
-        M: tl.constexpr,
-        N: tl.constexpr,
-        K: tl.constexpr,
-        BM: tl.constexpr,
-        BN: tl.constexpr,
-        BK: tl.constexpr,
-        GM: tl.constexpr,
-        ROLE: tl.constexpr,
-    ):
-        TN: tl.constexpr = BN + BN // 4
-        CN: tl.constexpr = BN if ROLE == 0 else BN // 4
-        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
-        acc = tl.zeros((BM, CN), tl.float32)
-        for block in range(tl.cdiv(K, BK)):
-            ready = reader.wait(block)
-            if ROLE == 0:
-                b = ready.slot.b0
-            else:
-                b = ready.slot.b1
-            acc = tle.gpu.wgmma(ready.slot.a, b, acc, trans_b=True)
-            acc = tle.gpu.wgmma_wait(0, acc)
-            reader.release(block)
-        rm = pm * BM + tl.arange(0, BM)
-        rn = pn * TN + ROLE * BN + tl.arange(0, CN)
-        tl.store(
-            C + rm[:, None] * N + rn[None, :],
-            acc * tl.load(SA) * tl.load(SB),
-            (rm[:, None] < M) & (rn[None, :] < N),
-        )
 
     _BASE_WS_JIT = ws_multi_kernel.fn.fn
 
@@ -625,7 +714,7 @@ if _HAS_WS:
             tle.gpu.warp_specialize(
                 [
                     (
-                        _consume_fragmented,
+                        _consume,
                         (
                             pipe.reader("r0", fields=("a", "b0")),
                             C,
@@ -637,12 +726,14 @@ if _HAS_WS:
                             BM,
                             BN,
                             BK,
+                            2,
                             GM,
                             0,
+                            True,
                         ),
                     ),
                     (
-                        _consume_fragmented,
+                        _consume,
                         (
                             pipe.reader("r1", fields=("a", "b1")),
                             C,
@@ -654,8 +745,10 @@ if _HAS_WS:
                             BM,
                             BN,
                             BK,
+                            2,
                             GM,
                             1,
+                            True,
                         ),
                     ),
                     (
@@ -925,46 +1018,81 @@ def _gemv_fp8(
     HAS_SR: tl.constexpr,
     SR_STRIDE: tl.constexpr,
     TRANSPOSE: tl.constexpr,
+    NATIVE_DOT: tl.constexpr,
+    DOT_M: tl.constexpr,
     BLOCK_V: tl.constexpr,
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,
 ):
     v = tl.program_id(0) * BLOCK_V + tl.arange(0, BLOCK_V)
     outer = tl.program_id(1)
-    split = tl.program_id(2)
+    split = tl.program_id(2) if SPLIT_K > 1 else 0
     rk = tl.arange(0, BLOCK_K)
-    acc = tl.zeros((BLOCK_V, BLOCK_K), tl.float32)
-    for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
-        kk = (block * SPLIT_K + split) * BLOCK_K + rk
-        if TRANSPOSE:
+    if NATIVE_DOT:
+        # B^T @ A^T keeps the wide N tile on the native FP8 dot's left side.
+        rows = tl.arange(0, DOT_M)
+        acc = tl.zeros((BLOCK_V, DOT_M), tl.float32)
+        for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+            kk = (block * SPLIT_K + split) * BLOCK_K + rk
             aa = tl.load(
-                A + v[:, None].to(tl.int64) * AM + kk[None, :],
-                (v[:, None] < M) & (kk[None, :] < K),
+                A + rows[:, None].to(tl.int64) * AM + kk[None, :],
+                (rows[:, None] < M) & (kk[None, :] < K),
                 0.0,
-            ).to(tl.float32)
-            bb = tl.load(B + outer.to(tl.int64) * BN + kk, kk < K, 0.0).to(tl.float32)
-            acc += aa * bb[None, :]
-        else:
-            aa = tl.load(A + outer.to(tl.int64) * AM + kk, kk < K, 0.0).to(tl.float32)
+            )
             bb = tl.load(
                 B + v[:, None].to(tl.int64) * BN + kk[None, :],
                 (v[:, None] < N) & (kk[None, :] < K),
                 0.0,
-            ).to(tl.float32)
-            acc += aa[None, :] * bb
-    rm = v if TRANSPOSE else outer
-    rn = outer if TRANSPOSE else v
+            )
+            acc = tl.dot(bb, tl.trans(aa), acc)
+        value = acc
+        rm, rn = rows[None, :], v[:, None]
+    else:
+        acc = tl.zeros((BLOCK_V, BLOCK_K), tl.float32)
+        for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+            kk = (block * SPLIT_K + split) * BLOCK_K + rk
+            if TRANSPOSE:
+                aa = tl.load(
+                    A + v[:, None].to(tl.int64) * AM + kk[None, :],
+                    (v[:, None] < M) & (kk[None, :] < K),
+                    0.0,
+                ).to(tl.float32)
+                bb = tl.load(B + outer.to(tl.int64) * BN + kk, kk < K, 0.0).to(
+                    tl.float32
+                )
+                acc += aa * bb[None, :]
+            else:
+                aa = tl.load(A + outer.to(tl.int64) * AM + kk, kk < K, 0.0).to(
+                    tl.float32
+                )
+                bb = tl.load(
+                    B + v[:, None].to(tl.int64) * BN + kk[None, :],
+                    (v[:, None] < N) & (kk[None, :] < K),
+                    0.0,
+                ).to(tl.float32)
+                acc += aa[None, :] * bb
+        value = tl.sum(acc, axis=1)
+        rm = v if TRANSPOSE else outer
+        rn = outer if TRANSPOSE else v
     mask = (rm < M) & (rn < N)
-    value = tl.sum(acc, axis=1)
-    value *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)
-    value *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)
+    if SA_STRIDE == 0:
+        value *= tl.load(SA)
+    else:
+        value *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)
+    if SB_STRIDE == 0:
+        value *= tl.load(SB)
+    else:
+        value *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)
     if SPLIT_K > 1:
         ptr = C + split * M * N + rm.to(tl.int64) * N + rn
     else:
         if HAS_BIAS:
             value += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0).to(tl.float32)
         if HAS_SR:
-            value /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)
+            if SR_STRIDE == 0:
+                value /= tl.load(SR)
+            else:
+                value /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)
         ptr = C + rm.to(tl.int64) * CM + rn.to(tl.int64) * CN
     tl.store(ptr, value, mask)
 
@@ -1002,6 +1130,9 @@ def _reduce_split_k(
 
 
 def _select_split_k(m, n, k, descriptor):
+    if descriptor and m in (496, 512) and n == 256 and k == 2048:
+        # Two descriptor partitions beat the WS setup even with FP32 reduction.
+        return 2
     if descriptor and 32 <= m < 128 and 512 < n <= 2048 and 4096 <= k < 8192:
         # Two K partitions shorten long TME loops without large reductions.
         return 2
@@ -1032,19 +1163,139 @@ def _select_split_k(m, n, k, descriptor):
     return 1
 
 
+# Native dot, block V, block K, warps, physical dot M, split K.
+_SKINNY_CONFIGS = {
+    (1, 64, 4096): (False, 1, 4096, 8, 16, 1),
+    (1, 4096, 1024): (True, 64, 256, 8, 32, 1),
+    (2, 64, 4096): (False, 1, 4096, 8, 16, 1),
+    (2, 512, 4096): (True, 32, 256, 4, 32, 8),
+    (2, 1536, 4096): (True, 64, 256, 8, 32, 4),
+    (4, 16160, 7168): (True, 64, 256, 4, 16, 1),
+    (4, 248320, 2048): (True, 128, 256, 8, 16, 1),
+    (8, 16160, 7168): (True, 64, 256, 4, 16, 1),
+    (8, 248320, 2048): (True, 128, 256, 8, 16, 1),
+}
+
+
+# Block V, block K, physical dot M, pipe stages, consumer warps.
+_SKINNY_TME_CONFIGS = {
+    (4, 62080, 2048): (64, 128, 16, 3, 4),
+    (8, 20480, 7168): (64, 256, 32, 2, 8),
+}
+
+
+def _supports_tme_layout(a, b):
+    return (
+        a.dtype == b.dtype == torch.float8_e4m3fn
+        and a.stride(1) == b.stride(0) == 1
+        and a.stride(0) > 0
+        and b.stride(1) > 0
+        and a.stride(0) % 16 == b.stride(1) % 16 == 0
+        and a.data_ptr() % 16 == b.data_ptr() % 16 == 0
+    )
+
+
+def _finish_split_k(partial, out, bias, sr, split, epilogue):
+    if split > 1:
+        m, n = out.shape
+        _reduce_split_k[(triton.cdiv(m * n, 512),)](
+            partial,
+            out,
+            bias,
+            sr,
+            m,
+            n,
+            out.stride(0),
+            out.stride(1),
+            SPLIT_K=split,
+            BLOCK=512,
+            **epilogue,
+            num_warps=4,
+        )
+    return out
+
+
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
+    tme_config = _SKINNY_TME_CONFIGS.get((m, n, k))
     if (
-        (n == 1 or (m <= 2 and n <= 4) or (m == 1 and n <= 4096))
+        tme_config is not None
+        and _HAS_WS
+        and _supports_tme_layout(a, b)
+        and sa_stride == sb_stride == 0
+        and bias is None
+        and sr is None
+        and out.dtype == torch.bfloat16
+        and out.is_contiguous()
+    ):
+        bv, bk, dm, stages, warps = tme_config
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), 1], [bv, bk])
+        # Only B uses asynchronous TME; the tiny A tile is explicitly padded.
+        _skinny_tme_kernel[(triton.cdiv(n, bv),)](
+            a,
+            bb,
+            out,
+            sa,
+            sb,
+            m,
+            n,
+            k,
+            a.stride(0),
+            bv,
+            bk,
+            dm,
+            stages,
+            num_warps=warps,
+            num_stages=1,
+            enable_backend_opt=True,
+        )
+        return out
+    epilogue = dict(
+        HAS_BIAS=bias is not None,
+        BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+        HAS_SR=sr is not None,
+        SR_STRIDE=sr_stride,
+    )
+    native_dot = (
+        m <= 2
+        and 1024 <= n <= 8192
+        and 256 <= k <= 2048
+        and (m == 2 or (n > 4096 and k > 512))
+    )
+    config = _SKINNY_CONFIGS.get((m, n, k))
+    if config is not None:
+        native_dot = config[0]
+    if (
+        (
+            config is not None
+            or native_dot
+            or n == 1
+            or (m <= 2 and n <= 4)
+            or (m == 1 and n <= 4096)
+        )
         and k >= 256
         and a.dtype == b.dtype == torch.float8_e4m3fn
         and a.stride(1) == b.stride(0) == 1
     ):
-        # Avoid padded MMA work for vector-shaped outputs.
+        # Choose native transposed dots or vector reductions for skinny grids.
         # Very small output grids split K to expose independent CTAs.
         split = 1
-        if m * n <= 128:
+        warps = 4
+        stages = 1
+        dot_m = 16 if k <= 512 else 32
+        if config is not None:
+            native_dot, bv, bk, warps, dot_m, split = config
+        elif native_dot:
+            bv, bk = (64 if k <= 512 else 32), 256
+            stages = 3 if k <= 512 else 1
+        elif m == 1 and 64 <= n <= 512 and 2048 <= k <= 4096:
+            # A full-K reduction avoids the partial buffer and second launch.
+            bv, bk = (1 if n < 256 else 4), triton.next_power_of_2(k)
+            warps = 4 if n < 256 else 8
+        elif m == 1 and n >= 1024 and k <= 1024:
+            bv, bk, warps = 16, min(256, max(128, k // 2)), 8
+        elif m * n <= 128:
             bv, bk = 1, 1024 if k >= 8192 else 512
             split = min(16, max(1, triton.cdiv(k, bk)))
         elif n == 1:
@@ -1061,16 +1312,9 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             if split > 1
             else out
         )
-        epilogue = dict(
-            HAS_BIAS=bias is not None,
-            BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
-            HAS_SR=sr is not None,
-            SR_STRIDE=sr_stride,
-        )
         transpose = n <= 4
-        _gemv_fp8[
-            (triton.cdiv(m if transpose else n, bv), n if transpose else m, split)
-        ](
+        outer = 1 if native_dot else (n if transpose else m)
+        _gemv_fp8[(triton.cdiv(m if transpose else n, bv), outer, split)](
             a,
             b,
             partial,
@@ -1089,43 +1333,19 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             sb_stride,
             **epilogue,
             TRANSPOSE=transpose,
+            NATIVE_DOT=native_dot,
+            DOT_M=dot_m,
             BLOCK_V=bv,
             BLOCK_K=bk,
             SPLIT_K=split,
-            num_warps=4,
-            num_stages=1,
+            num_warps=warps,
+            num_stages=stages,
+            **({"enable_backend_opt": True} if native_dot else {}),
         )
-        if split > 1:
-            _reduce_split_k[(triton.cdiv(m * n, 512),)](
-                partial,
-                out,
-                bias,
-                sr,
-                m,
-                n,
-                out.stride(0),
-                out.stride(1),
-                SPLIT_K=split,
-                BLOCK=512,
-                **epilogue,
-                num_warps=4,
-            )
-        return out
+        return _finish_split_k(partial, out, bias, sr, split, epilogue)
     # E5M2 descriptor loads fail S5000 accuracy checks. Masked FP8 loads also
     # cover unaligned and non-contiguous inputs without BF16 dequantization.
-    descriptor = (
-        a.dtype == b.dtype == torch.float8_e4m3fn
-        and a.stride(1) == 1
-        and b.stride(0) == 1
-        and a.stride(0) > 0
-        and b.stride(1) > 0
-        and a.stride(0) % 16 == 0
-        and b.stride(1) % 16 == 0
-        and a.data_ptr() % 16 == 0
-        and b.data_ptr() % 16 == 0
-        and min(m, n) >= 16
-        and k >= 16
-    )
+    descriptor = min(m, n) >= 16 and k >= 16 and _supports_tme_layout(a, b)
     split = _select_split_k(m, n, k, descriptor)
     if (
         _HAS_WS
@@ -1180,12 +1400,6 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         if split > 1
         else out
     )
-    epilogue = dict(
-        HAS_BIAS=bias is not None,
-        BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
-        HAS_SR=sr is not None,
-        SR_STRIDE=sr_stride,
-    )
     # SQMMA instruction scheduling improves dense TME tiles on S5000.
     compiler_options = {"enable_backend_opt": True} if descriptor else {}
     num_sms = torch_device_fn.get_device_properties(a.device).multi_processor_count
@@ -1228,22 +1442,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         **epilogue,
         **compiler_options,
     )
-    if split > 1:
-        _reduce_split_k[(triton.cdiv(m * n, 512),)](
-            partial,
-            out,
-            bias,
-            sr,
-            m,
-            n,
-            out.stride(0),
-            out.stride(1),
-            SPLIT_K=split,
-            BLOCK=512,
-            **epilogue,
-            num_warps=4,
-        )
-    return out
+    return _finish_split_k(partial, out, bias, sr, split, epilogue)
 
 
 def _scale_stride(scale, x, axis, name):

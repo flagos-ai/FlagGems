@@ -21,12 +21,14 @@
 #   * larger matrices: the matrix stays in global memory and each Jacobi round
 #     rotates n/2 disjoint column pairs in parallel, so nothing is unrolled and
 #     register pressure stays bounded.
+import linecache
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -34,7 +36,12 @@ logger = logging.getLogger(__name__)
 # Largest dimension handled by the fused register-resident kernel. Above this the
 # statically unrolled sweeps blow up compile time and the matrix no longer fits
 # in registers, so the blocked global-memory path takes over.
-_FUSED_MAX_DIM = 32
+#
+# On the Kunlunxin XPU backend the fused kernel does not compile at all
+# ("out of resource: uni_sram" plus an illegal `tt.reduce` from the axis=1
+# reductions), so the threshold is 0 there and every shape uses the blocked
+# path. The fused kernel below is kept for the backends that can compile it.
+_FUSED_MAX_DIM = 0 if runtime.device.vendor_name == "kunlunxin" else 32
 
 # Cyclic one-sided Jacobi converges in well under 10 sweeps for practical inputs;
 # the blocked path uses a fixed count to avoid a device-to-host sync per sweep.
@@ -225,8 +232,8 @@ def _eye_init_kernel(
 def _jacobi_round_kernel(
     W_ptr,
     V_ptr,
-    R,
-    C,
+    R: tl.constexpr,
+    C: tl.constexpr,
     w_batch_stride,
     v_batch_stride,
     round_idx,
@@ -267,9 +274,9 @@ def _jacobi_round_kernel(
             rmask = rows < R
             w_p = tl.load(w_base + rows * C + p, mask=rmask, other=0.0)
             w_q = tl.load(w_base + rows * C + q, mask=rmask, other=0.0)
-            alpha += tl.sum(w_p * w_p, axis=0)
-            beta += tl.sum(w_q * w_q, axis=0)
-            gamma += tl.sum(w_p * w_q, axis=0)
+            alpha += tl.sum(w_p * w_p)
+            beta += tl.sum(w_q * w_q)
+            gamma += tl.sum(w_p * w_q)
 
         # Jacobi rotation that zeroes the off-diagonal Gram entry.
         scale = tl.maximum(alpha, beta) + 1e-30
@@ -307,7 +314,7 @@ def _jacobi_round_kernel(
 def _column_norm_kernel(
     W_ptr,
     S_ptr,
-    R,
+    R: tl.constexpr,
     C,
     w_batch_stride,
     BLOCK_R: tl.constexpr,
@@ -323,96 +330,138 @@ def _column_norm_kernel(
             rows = r0 + tl.arange(0, BLOCK_R)
             rmask = rows < R
             w = tl.load(w_base + rows * C + j, mask=rmask, other=0.0)
-            acc += tl.sum(w * w, axis=0)
+            acc += tl.sum(w * w)
         tl.store(S_ptr + batch_idx * C + j, tl.sqrt(acc))
 
 
-@libentry()
-@triton.jit
-def _sigma_max_kernel(
-    S_ptr,
-    SMAX_ptr,
-    C,
-    BLOCK_C: tl.constexpr,
-):
-    """Per-batch largest singular value, used to build the rank cutoff."""
-    batch_idx = tl.program_id(0)
+# ---------------------------------------------------------------------------
+# Register-resident path (Kunlunxin XPU, small square matrices).
+#
+# The blocked path launches one kernel per Jacobi round (34 launches for a 4x4
+# batch, 74 for 8x8) and a single launch costs ~33us on this backend, so small
+# matrices are pure launch overhead. This path keeps the whole matrix in
+# registers: one program per batch element, every column of W and V living in
+# its own 1-D register vector, and every column pair of a sweep unrolled. Each
+# reduction is then a 1-D tl.sum over a register vector - the backend rejects
+# tl.reduce over axis 0 of a 2-D tile, which rules out keeping W as one tile -
+# and the whole SVD comes out of one launch; the pinv contraction is a single
+# native matmul, so the op is 2 launches instead of 34/74.
+#
+# Triton does not allow indexing a Python list of tensors by the loop variable
+# and has no __setitem__, so the unrolled body is generated as source text per
+# (C, R, sweeps) shape. The source is registered in linecache, which is what
+# inspect.getsource (used by @triton.jit) reads from.
+_REG_MAX_C = 8 if runtime.device.vendor_name == "kunlunxin" else 0
+_REG_KERNELS = {}
 
-    # Singular values are non-negative, so 0.0 is a valid reduction identity.
-    mx = tl.zeros([], dtype=tl.float32)
-    for c0 in tl.range(0, C, BLOCK_C):
-        cols = c0 + tl.arange(0, BLOCK_C)
-        cmask = cols < C
-        s = tl.load(S_ptr + batch_idx * C + cols, mask=cmask, other=0.0)
-        mx = tl.maximum(mx, tl.max(s, axis=0))
-    tl.store(SMAX_ptr + batch_idx, mx)
 
+def _reg_kernel_source(C, R, sweeps):
+    BLOCK_R = triton.next_power_of_2(R)
+    BLOCK_C = triton.next_power_of_2(C)
+    lines = []
 
-@libentry()
-@triton.jit
-def _pinv_reconstruct_kernel(
-    V_ptr,
-    W_ptr,
-    S_ptr,
-    SMAX_ptr,
-    OUT_ptr,
-    R,
-    C,
-    atol_val,
-    rtol_val,
-    v_batch_stride,
-    w_batch_stride,
-    out_batch_stride,
-    BLOCK_I: tl.constexpr,
-    BLOCK_L: tl.constexpr,
-    BLOCK_J: tl.constexpr,
-):
-    """pinv = V @ diag(1/sigma_filt) @ U^T, tiled over the (C x R) output.
+    def emit(line=""):
+        lines.append(line)
 
-    With U[:, j] = W[:, j] / sigma_j the contraction collapses to
-    pinv[i, l] = sum_j V[i, j] * W[l, j] / sigma_j^2, so U is never materialized.
-    """
-    batch_idx = tl.program_id(0)
-    pid_i = tl.program_id(1)
-    pid_l = tl.program_id(2)
-
-    offs_i = pid_i * BLOCK_I + tl.arange(0, BLOCK_I)
-    offs_l = pid_l * BLOCK_L + tl.arange(0, BLOCK_L)
-
-    smax = tl.load(SMAX_ptr + batch_idx)
-    thr = tl.maximum(atol_val, smax * rtol_val)
-
-    v_base = V_ptr + batch_idx * v_batch_stride
-    w_base = W_ptr + batch_idx * w_batch_stride
-
-    acc = tl.zeros([BLOCK_I, BLOCK_L], dtype=tl.float32)
-    for j0 in tl.range(0, C, BLOCK_J):
-        offs_j = j0 + tl.arange(0, BLOCK_J)
-        jmask = offs_j < C
-
-        sj = tl.load(S_ptr + batch_idx * C + offs_j, mask=jmask, other=0.0)
-        is_valid = sj > thr
-        inv_sj_sq = tl.where(is_valid, 1.0 / (sj * sj + 1e-38), 0.0)
-
-        v = tl.load(
-            v_base + offs_i[:, None] * C + offs_j[None, :],
-            mask=(offs_i[:, None] < C) & jmask[None, :],
-            other=0.0,
+    emit("import triton")
+    emit("import triton.language as tl")
+    emit("")
+    emit("")
+    emit("@triton.jit")
+    emit("def _pinv_reg_kernel(A_ptr, W_ptr, V_ptr, atol_val, rtol_val):")
+    emit("    pid = tl.program_id(0)")
+    emit(f"    wbase = pid * {C * R}")
+    emit(f"    vbase = pid * {C * C}")
+    emit(f"    rs = tl.arange(0, {BLOCK_R})")
+    emit(f"    rmask = rs < {R}")
+    # W column j is A[:, j], i.e. wbase + r * C + j for row r.
+    for j in range(C):
+        emit(
+            f"    w{j} = tl.load(A_ptr + wbase + rs * {C} + {j}, mask=rmask, other=0.0)"
         )
-        w = tl.load(
-            w_base + offs_l[:, None] * C + offs_j[None, :],
-            mask=(offs_l[:, None] < R) & jmask[None, :],
-            other=0.0,
-        )
-        # allow_tf32=False: TF32 keeps only ~10 mantissa bits, which loses far
-        # more precision than the float32 tolerance the pinv tests assert.
-        acc += tl.dot(v * inv_sj_sq[None, :], tl.trans(w), allow_tf32=False)
+    emit(f"    vs = tl.arange(0, {BLOCK_C})")
+    for j in range(C):
+        emit(f"    v{j} = tl.where(vs == {j}, 1.0, 0.0)")
+    # Sigma is refreshed at the end of every sweep instead of once after the
+    # loop: on this backend a tl.sum over a value produced by a runtime
+    # tl.range loop fails to compile ("scf.for ... iter_arg have different
+    # type"), while a reduction *inside* the loop is fine. The scalars left in
+    # the carried variables after the last sweep are the converged norms.
+    for j in range(C):
+        emit(f"    sig{j} = tl.zeros([], dtype=tl.float32)")
 
-    tl.store(
-        OUT_ptr + batch_idx * out_batch_stride + offs_i[:, None] * R + offs_l[None, :],
-        acc,
-        mask=(offs_i[:, None] < C) & (offs_l[None, :] < R),
-    )
+    # The sweep counter stays a runtime loop: the columns are plain variables,
+    # so the loop body is just the unrolled pair list and the sweep count costs
+    # nothing at compile time.
+    emit(f"    for _sweep in tl.range(0, {sweeps}):")
+    for p in range(C):
+        for q in range(p + 1, C):
+            emit(f"        alpha = tl.sum(w{p} * w{p})")
+            emit(f"        beta = tl.sum(w{q} * w{q})")
+            emit(f"        gamma = tl.sum(w{p} * w{q})")
+            emit("        scale = tl.maximum(alpha, beta) + 1e-30")
+            emit("        rot = tl.abs(gamma) > 1e-10 * scale")
+            emit("        tau = (beta - alpha) / (2.0 * gamma + 1e-30)")
+            emit("        sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)")
+            emit("        t = sign_tau / (tl.abs(tau) + tl.sqrt(tau * tau + 1.0))")
+            emit("        c = 1.0 / tl.sqrt(1.0 + t * t)")
+            emit("        s = t * c")
+            emit("        c = tl.where(rot, c, 1.0)")
+            emit("        s = tl.where(rot, s, 0.0)")
+            for prefix in ("w", "v"):
+                emit(f"        cur_p = {prefix}{p}")
+                emit(f"        cur_q = {prefix}{q}")
+                emit(f"        {prefix}{p} = c * cur_p - s * cur_q")
+                emit(f"        {prefix}{q} = s * cur_p + c * cur_q")
+    for j in range(C):
+        emit(f"        sig{j} = tl.sqrt(tl.sum(w{j} * w{j}))")
+
+    emit("    sigma_max = sig0")
+    for j in range(1, C):
+        emit(f"    sigma_max = tl.maximum(sigma_max, sig{j})")
+    emit("    thr = tl.maximum(atol_val, sigma_max * rtol_val)")
+    for j in range(C):
+        emit(
+            f"    inv{j} = tl.where(sig{j} > thr, 1.0 / (sig{j} * sig{j} + 1e-38), 0.0)"
+        )
+    # Nothing below builds a 2-D tile: on this backend a [C, R] tile blows the
+    # uni_sram budget, and mixing 1-D and 2-D uses of the same value trips an
+    # arith.mulf type error. So the kernel writes the rotated W and the
+    # threshold-scaled V, and the contraction runs on the native matmul.
+    for j in range(C):
+        emit(f"    tl.store(W_ptr + wbase + rs * {C} + {j}, w{j}, mask=rmask)")
+        emit(
+            f"    tl.store(V_ptr + vbase + {j} * {C} + vs, v{j} * inv{j}, mask=vs < {C})"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _reg_kernel(C, R):
+    key = (C, R)
+    kernel = _REG_KERNELS.get(key)
+    if kernel is None:
+        sweeps = 10 if C <= 4 else 8
+        source = _reg_kernel_source(C, R, sweeps)
+        name = f"<flag_gems_pinv_reg_{C}_{R}>"
+        linecache.cache[name] = (len(source), None, source.splitlines(True), name)
+        namespace = {}
+        exec(compile(source, name, "exec"), namespace)
+        kernel = namespace["_pinv_reg_kernel"]
+        _REG_KERNELS[key] = kernel
+    return kernel
+
+
+def _reg_pinv(W: torch.Tensor, batch: int, R: int, C: int, atol_val, rtol_val):
+    """Pseudoinverse of a (batch, R, C) stack: one register-resident launch plus matmul."""
+    device = W.device
+    W_rot = torch.empty(batch, R, C, dtype=torch.float32, device=device)
+    V_scaled = torch.empty(batch, C, C, dtype=torch.float32, device=device)
+    _reg_kernel(C, R)[(batch,)](W, W_rot, V_scaled, atol_val, rtol_val)
+    # The kernel stores the j-th column of V as row j, so V_scaled holds
+    # V^T diag(1/sigma) with 1/sigma folded in and the singular values below the
+    # cutoff zeroed. pinv[i, l] = sum_j V[i, j] W[l, j] / sigma_j^2 is then
+    # (W_rot @ V_scaled)^T, i.e. a contiguous matmul and a view transpose.
+    return torch.matmul(W_rot, V_scaled).transpose(-2, -1)
 
 
 def _blocked_pinv(W: torch.Tensor, batch: int, R: int, C: int, atol_val, rtol_val):
@@ -456,34 +505,15 @@ def _blocked_pinv(W: torch.Tensor, batch: int, R: int, C: int, atol_val, rtol_va
     S = torch.empty(batch, C, dtype=torch.float32, device=device)
     _column_norm_kernel[(batch, C)](W, S, R, C, R * C, BLOCK_R=BLOCK_R)
 
-    SMAX = torch.empty(batch, dtype=torch.float32, device=device)
-    _sigma_max_kernel[(batch,)](S, SMAX, C, BLOCK_C=BLOCK_C)
-
-    out = torch.empty(batch, C, R, dtype=torch.float32, device=device)
-
-    # tl.dot requires tiles of at least 16 along every axis.
-    BLOCK_I = 32
-    BLOCK_L = 32
-    BLOCK_J = 32
-    grid = (batch, triton.cdiv(C, BLOCK_I), triton.cdiv(R, BLOCK_L))
-    _pinv_reconstruct_kernel[grid](
-        V,
-        W,
-        S,
-        SMAX,
-        out,
-        R,
-        C,
-        atol_val,
-        rtol_val,
-        C * C,
-        R * C,
-        C * R,
-        BLOCK_I=BLOCK_I,
-        BLOCK_L=BLOCK_L,
-        BLOCK_J=BLOCK_J,
+    # pinv = V @ diag(1/sigma_filt) @ U^T with U[:, j] = W[:, j] / sigma_j, i.e.
+    # pinv[i, l] = sum_j V[i, j] * W[l, j] / sigma_j^2. The contraction runs on
+    # the native matmul: the Triton version crashed the XPU compiler with
+    # "LLVM ERROR: Unsupported element type" on tl.trans + tl.dot tiles.
+    thr = torch.maximum(
+        torch.full_like(S[:, :1], atol_val), S.amax(dim=-1, keepdim=True) * rtol_val
     )
-    return out
+    inv_sq = torch.where(S > thr, 1.0 / (S * S + 1e-38), torch.zeros_like(S))
+    return torch.matmul(V * inv_sq[:, None, :], W.transpose(-2, -1))
 
 
 def linalg_pinv(
@@ -542,7 +572,13 @@ def linalg_pinv(
 
     compute_dtype = A.dtype
 
-    if m > _FUSED_MAX_DIM or n > _FUSED_MAX_DIM:
+    if _REG_MAX_C > 0 and m == n and m <= _REG_MAX_C:
+        # Single-launch register-resident path (small square matrices). Only
+        # square inputs: with R != C the backend miscompiles the sweep loop
+        # (mixed 4- and 8-lane vectors), so rectangular matrices stay on the
+        # blocked path.
+        out_f32 = _reg_pinv(A_flat.to(torch.float32), batch, m, n, atol_val, rtol_val)
+    elif m > _FUSED_MAX_DIM or n > _FUSED_MAX_DIM:
         # Blocked path. One-sided Jacobi orthogonalizes columns, so it wants at
         # least as many rows as columns; for wide inputs use
         # pinv(A) = pinv(A^T)^T to get there.

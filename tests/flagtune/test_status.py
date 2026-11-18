@@ -64,3 +64,26 @@ def test_model_loaded_once_per_version(monkeypatch, capsys):
     loaded.model_version = "1.0.1"
     cm.ensure_proposer(identity)
     assert "version=1.0.1" in capsys.readouterr().err
+
+
+def test_proposer_cache_separates_outer_package_versions(monkeypatch):
+    proposer = pytest.importorskip("triton.flagtune.runtime.proposer")
+    identity_module = pytest.importorskip("triton.flagtune.contract.identity")
+    cm = importlib.import_module("flag_gems.flagtune.inference.cost_model")
+    for name in ("_FLAGTUNE_PROPOSER_POOL", "_FLAGTUNE_VARIANT_INFO_POOL"):
+        monkeypatch.setattr(cm, name, {})
+    monkeypatch.setattr(cm, "_MODEL_LOAD_STARTED", set())
+    loaded = SimpleNamespace(
+        model_version="1.0.0", package_version="2.0.0", variant=object()
+    )
+    monkeypatch.setattr(proposer, "load_model_bundle", lambda *a, **k: loaded)
+    monkeypatch.setattr(proposer, "make_config_proposer", lambda *a, **k: object())
+    identity = identity_module.ModelIdentity(
+        "nvidia-h20", "flaggems/mul", "scalar", "bf16-bf16"
+    )
+    first = cm.ensure_proposer(identity)
+    assert cm.ensure_proposer(identity)[0] is first[0]
+    loaded.package_version = "3.0.0"
+    second = cm.ensure_proposer(identity)
+    assert second[0] is not first[0]
+    assert cm.ensure_proposer(identity)[0] is second[0]
