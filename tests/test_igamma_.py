@@ -93,8 +93,22 @@ def test_igamma_(shape, dtype):
     if _is_suiyuan_double(torch.empty(0, dtype=dtype, device=flag_gems.device)):
         if not utils.TO_CPU and all(size != 0 for size in shape):
             pytest.skip("Enflame native igamma does not compute nonempty Double values")
-        inp = (torch.rand(shape, dtype=dtype) + 1.0).reshape(-1).view(torch.uint8).to(flag_gems.device).view(dtype).reshape(shape)
-        other = (torch.rand(shape, dtype=dtype) + 1.0).reshape(-1).view(torch.uint8).to(flag_gems.device).view(dtype).reshape(shape)
+        inp = (
+            (torch.rand(shape, dtype=dtype) + 1.0)
+            .reshape(-1)
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(dtype)
+            .reshape(shape)
+        )
+        other = (
+            (torch.rand(shape, dtype=dtype) + 1.0)
+            .reshape(-1)
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(dtype)
+            .reshape(shape)
+        )
     else:
         inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
         other = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
