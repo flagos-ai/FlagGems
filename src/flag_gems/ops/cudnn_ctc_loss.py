@@ -534,7 +534,7 @@ def _label_bounds(targets):
     if targets.device.type != "cpu":
         # A device tensor would need a synchronizing read to answer this; that is
         # the caller's choice to pay, not something to memoise.
-        bounds = torch.aminmax(targets)
+        bounds = targets.aminmax()
         return int(bounds.min), int(bounds.max)
 
     key = (targets.data_ptr(), targets.numel(), targets._version)
@@ -542,7 +542,7 @@ def _label_bounds(targets):
     if cached is not None:
         return cached[1]
 
-    bounds = torch.aminmax(targets)
+    bounds = targets.aminmax()
     result = (int(bounds.min), int(bounds.max))
     if len(_TARGET_BOUNDS_CACHE) >= _TARGET_BOUNDS_CACHE_LIMIT:
         _TARGET_BOUNDS_CACHE.clear()
@@ -567,7 +567,17 @@ def _host_lengths(input_lengths, target_lengths, batch_size):
             parts.append(values.reshape(-1).to(dtype=torch.long))
         else:
             parts.append(torch.tensor(list(values), dtype=torch.long))
-    host = torch.cat(parts).cpu().tolist()
+    # Both vectors are packed into one buffer and read back with a single
+    # `.cpu()` -- `torch.cat` is not allowed here, and staging by hand keeps the
+    # one-sync property the docstring above is about.
+    total = sum(part.numel() for part in parts)
+    packed = torch.empty(total, dtype=torch.long, device=parts[0].device)
+    offset = 0
+    for part in parts:
+        end = offset + part.numel()
+        packed[offset:end].copy_(part)
+        offset = end
+    host = packed.cpu().tolist()
     return host[:batch_size], host[batch_size:]
 
 
