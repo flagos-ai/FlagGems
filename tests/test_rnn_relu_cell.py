@@ -149,17 +149,26 @@ def test_accuracy_rnn_relu_cell_zero_sized(batch, input_size, hidden_size):
     if res_out.numel():
         # An empty reduction leaves only the biases, so the result is still
         # well defined and must match the reference.
-        ref_inputs = (
-            to_reference(input, True),
-            to_reference(hx, True),
-            to_reference(w_ih, True),
-            to_reference(w_hh, True),
-            to_reference(b_ih, True),
-            to_reference(b_hh, True),
-        )
         if IS_KUNLUNXIN and input_size == 0:
-            ref_inputs = tuple(t.cpu() for t in ref_inputs)
-        ref_out = _reference(*ref_inputs, dtype)
+            ref_out = _reference(
+                to_reference(input, True).cpu(),
+                to_reference(hx, True).cpu(),
+                to_reference(w_ih, True).cpu(),
+                to_reference(w_hh, True).cpu(),
+                to_reference(b_ih, True).cpu(),
+                to_reference(b_hh, True).cpu(),
+                dtype,
+            )
+        else:
+            ref_out = _reference(
+                to_reference(input, True),
+                to_reference(hx, True),
+                to_reference(w_ih, True),
+                to_reference(w_hh, True),
+                to_reference(b_ih, True),
+                to_reference(b_hh, True),
+                dtype,
+            )
         gems_assert_close(res_out, ref_out, dtype, reduce_dim=hidden_size + 1)
 
 
