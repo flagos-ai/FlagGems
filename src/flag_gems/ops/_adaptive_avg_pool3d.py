@@ -24,12 +24,15 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+# Largest offset an int32 index can hold. Inputs or outputs with more elements
+# than this need the tiled kernel's 64-bit index path.
+_INT32_MAX = 2**31 - 1
+
 
 @triton.jit
-def adaptive_avg_pool3d_kernel(
+def adaptive_avg_pool3d_vec_kernel(
     in_ptr,
     out_ptr,
-    N,
     C,
     D_in,
     H_in,
@@ -47,19 +50,36 @@ def adaptive_avg_pool3d_kernel(
     stride_out_d,
     stride_out_h,
     stride_out_w,
+    TOTAL,
+    MAX_D: tl.constexpr,
+    MAX_H: tl.constexpr,
+    MAX_W: tl.constexpr,
     ACC_DTYPE: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
+    """Vectorized variant: one lane per output element.
 
-    # Unravel pid -> (n, c, d_o, h_o, w_o)
+    The scalar kernel walks each pooling window with three nested ``while`` loops
+    on a single thread, so wide windows (e.g. ``output_size=(7, 7, 7)`` over a
+    16^3 input) serialize hundreds of dependent loads per output. Here the
+    output positions are spread across a BLOCK-wide vector and the window is
+    collapsed into a fixed trip count that is masked per lane, which keeps the
+    whole window reduction inside Triton's vectorized load/reduce path.
+    """
+    pid = tl.program_id(axis=0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < TOTAL
+
+    # Unravel the flat output index -> (n, c, d_o, h_o, w_o). W_out/H_out/D_out/C
+    # are runtime ints; the division chain is cheap next to the window reduction.
     W_out_i64 = tl.full((), W_out, tl.int64)
     H_out_i64 = tl.full((), H_out, tl.int64)
     D_out_i64 = tl.full((), D_out, tl.int64)
     C_i64 = tl.full((), C, tl.int64)
 
-    idx = tl.cast(pid, tl.int64)
-    w_o = idx % W_out_i64
-    idx = idx // W_out_i64
+    offs64 = offs.to(tl.int64)
+    w_o = offs64 % W_out_i64
+    idx = offs64 // W_out_i64
     h_o = idx % H_out_i64
     idx = idx // H_out_i64
     d_o = idx % D_out_i64
@@ -67,7 +87,6 @@ def adaptive_avg_pool3d_kernel(
     c = idx % C_i64
     n = idx // C_i64
 
-    # Compute start/end indices for each dimension (integer arithmetic)
     D_in_i64 = tl.full((), D_in, tl.int64)
     H_in_i64 = tl.full((), H_in, tl.int64)
     W_in_i64 = tl.full((), W_in, tl.int64)
@@ -79,51 +98,44 @@ def adaptive_avg_pool3d_kernel(
     w0 = (w_o * W_in_i64) // W_out_i64
     w1 = ((w_o + 1) * W_in_i64 + W_out_i64 - 1) // W_out_i64
 
-    dd = d1 - d0
-    hh = h1 - h0
-    ww = w1 - w0
-    denom = dd * hh * ww
+    nd = d1 - d0
+    nh = h1 - h0
+    nw = w1 - w0
+    denom = (nd * nh * nw).to(ACC_DTYPE)
 
-    # Base offsets and strides (int64)
     stride_in_n_i64 = tl.full((), stride_in_n, tl.int64)
     stride_in_c_i64 = tl.full((), stride_in_c, tl.int64)
     stride_in_d_i64 = tl.full((), stride_in_d, tl.int64)
     stride_in_h_i64 = tl.full((), stride_in_h, tl.int64)
     stride_in_w_i64 = tl.full((), stride_in_w, tl.int64)
 
+    base = n * stride_in_n_i64 + c * stride_in_c_i64
+
+    acc = tl.zeros((BLOCK,), dtype=ACC_DTYPE)
+    # MAX_* are compile-time upper bounds on the window extent; the per-lane
+    # boundary is enforced by the mask so rectangular/partial windows stay exact.
+    for di in range(MAX_D):
+        dmask = mask & (di < nd)
+        for hi in range(MAX_H):
+            dhmask = dmask & (hi < nh)
+            for wi in range(MAX_W):
+                wmask = dhmask & (wi < nw)
+                in_idx = (
+                    base
+                    + (d0 + di) * stride_in_d_i64
+                    + (h0 + hi) * stride_in_h_i64
+                    + (w0 + wi) * stride_in_w_i64
+                )
+                val = tl.load(in_ptr + in_idx, mask=wmask, other=0.0)
+                acc += val.to(ACC_DTYPE)
+
+    out_val = acc / denom
+
     stride_out_n_i64 = tl.full((), stride_out_n, tl.int64)
     stride_out_c_i64 = tl.full((), stride_out_c, tl.int64)
     stride_out_d_i64 = tl.full((), stride_out_d, tl.int64)
     stride_out_h_i64 = tl.full((), stride_out_h, tl.int64)
     stride_out_w_i64 = tl.full((), stride_out_w, tl.int64)
-
-    base_nc = n * stride_in_n_i64 + c * stride_in_c_i64
-
-    # Accumulate in the input's precision class: a fixed fp32 accumulator
-    # loses ~1e-6 relative accuracy on fp64 inputs (measured on H20), ten
-    # orders of magnitude worse than fp64 eps.
-    acc = tl.zeros((), dtype=ACC_DTYPE)
-
-    di = d0
-    while di < d1:
-        hi = h0
-        while hi < h1:
-            wi = w0
-            while wi < w1:
-                in_idx = (
-                    base_nc
-                    + di * stride_in_d_i64
-                    + hi * stride_in_h_i64
-                    + wi * stride_in_w_i64
-                )
-                val = tl.load(in_ptr + in_idx)
-                acc += tl.cast(val, ACC_DTYPE)
-                wi += 1
-            hi += 1
-        di += 1
-
-    denom_f = tl.cast(denom, ACC_DTYPE)
-    out_val = acc / denom_f
 
     out_idx = (
         n * stride_out_n_i64
@@ -132,7 +144,150 @@ def adaptive_avg_pool3d_kernel(
         + h_o * stride_out_h_i64
         + w_o * stride_out_w_i64
     )
-    tl.store(out_ptr + out_idx, out_val)
+    tl.store(out_ptr + out_idx, out_val, mask=mask)
+
+
+@triton.jit
+def adaptive_avg_pool3d_tile_kernel(
+    in_ptr,
+    out_ptr,
+    stride_in_n,
+    stride_in_c,
+    stride_in_d,
+    stride_in_h,
+    stride_in_w,
+    stride_out_n,
+    stride_out_c,
+    stride_out_d,
+    stride_out_h,
+    stride_out_w,
+    SPEC: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    USE_I64: tl.constexpr,
+):
+    """Tiled variant: BO output elements x BR window elements per program.
+
+    The ``vec`` kernel above gives each output element a whole BLOCK-wide vector
+    and strides the window across it, so its parallelism is capped by the number
+    of output elements. That is the wrong shape for small outputs over large
+    windows -- a ``(1, 1, 1)`` output on a ``64^3`` input leaves a single
+    program to scan 262144 elements -- and it measured 0.26x-0.99x there.
+
+    Here the tile carries both axes at once: ``BO`` consecutive output elements
+    in the rows and ``BR`` window offsets in the columns, exactly the layout
+    ``adaptive_avg_pool2d`` uses. ``BR`` answers the window volume and ``BO``
+    the output count, so a small output over a big window spreads across
+    programs instead of serializing in one, and the row reduction
+    (``tl.sum(acc, 1)``) finishes the window in registers. See
+    ``_adaptive_avg_pool3d_tile_meta`` for how the two sizes are chosen.
+    """
+    # Triton cannot unpack a constexpr tuple, so read it element-wise the way
+    # adaptive_avg_pool2d's SPEC does.
+    TOTAL: tl.constexpr = SPEC[0]
+    C: tl.constexpr = SPEC[1]
+    D_in: tl.constexpr = SPEC[2]
+    H_in: tl.constexpr = SPEC[3]
+    W_in: tl.constexpr = SPEC[4]
+    D_out: tl.constexpr = SPEC[5]
+    H_out: tl.constexpr = SPEC[6]
+    W_out: tl.constexpr = SPEC[7]
+    K_D: tl.constexpr = SPEC[8]
+    K_H: tl.constexpr = SPEC[9]
+    K_W: tl.constexpr = SPEC[10]
+    BO: tl.constexpr = SPEC[11]
+    BR: tl.constexpr = SPEC[12]
+
+    out = tl.program_id(0) * BO + tl.arange(0, BO)
+    # Offsets are int32 unless USE_I64 says the tensor can exceed 2^31 elements.
+    # Widening unconditionally costs real throughput on small shapes (measured
+    # 0.27x vs 1.35x on a 7x7x7 input), so the choice is made host-side from
+    # the actual element count; see _launch_adaptive_avg_pool3d_kernel. Where
+    # it is on, every term must be widened or the int32 multiply wraps and
+    # faults with an illegal memory access instead of giving a wrong number.
+    IDX: tl.constexpr = tl.int64 if USE_I64 else tl.int32
+    out64 = out.to(IDX)
+    w_o = out64 % W_out
+    h_o = out64 // W_out % H_out
+    d_o = out64 // (W_out * H_out) % D_out
+    nc = out64 // (W_out * H_out * D_out)
+    n = nc // C
+    c = nc % C
+
+    # Same start/end arithmetic as the vec kernel, broadcast over the rows.
+    w0 = w_o * W_in // W_out
+    h0 = h_o * H_in // H_out
+    d0 = d_o * D_in // D_out
+    w1 = ((w_o + 1) * W_in + W_out - 1) // W_out
+    h1 = ((h_o + 1) * H_in + H_out - 1) // H_out
+    d1 = ((d_o + 1) * D_in + D_out - 1) // D_out
+
+    # Strides arrive as int32 scalars; promote them before they meet the
+    # coordinate terms, since the product is what overflows.
+    s_in_n = tl.full((), stride_in_n, IDX)
+    s_in_c = tl.full((), stride_in_c, IDX)
+    s_in_d = tl.full((), stride_in_d, IDX)
+    s_in_h = tl.full((), stride_in_h, IDX)
+    s_in_w = tl.full((), stride_in_w, IDX)
+    s_out_n = tl.full((), stride_out_n, IDX)
+    s_out_c = tl.full((), stride_out_c, IDX)
+    s_out_d = tl.full((), stride_out_d, IDX)
+    s_out_h = tl.full((), stride_out_h, IDX)
+    s_out_w = tl.full((), stride_out_w, IDX)
+
+    base = n * s_in_n + c * s_in_c
+    acc = tl.zeros((BO, BR), dtype=ACC_DTYPE)
+    K_VOL: tl.constexpr = K_D * K_H * K_W
+    for start in range(tl.cdiv(K_VOL, BR)):
+        r = start * BR + tl.arange(0, BR)
+        # Unravel the window offset in (K_D, K_H, K_W) order, then widen both
+        # axes into the tile. The K_* bounds are compile-time, so the exact
+        # per-row extent is enforced by the masks below rather than the trip
+        # count.
+        kd = (r // (K_H * K_W)).to(IDX)
+        kh = (r // K_W % K_H).to(IDX)
+        kw = (r % K_W).to(IDX)
+        di = d0[:, None] + kd[None, :]
+        hi = h0[:, None] + kh[None, :]
+        wi = w0[:, None] + kw[None, :]
+        mask = (
+            (out[:, None] < TOTAL)
+            & (r[None, :] < K_VOL)
+            & (di < d1[:, None])
+            & (hi < h1[:, None])
+            & (wi < w1[:, None])
+        )
+        in_idx = base[:, None] + di * s_in_d + hi * s_in_h + wi * s_in_w
+        acc += tl.load(in_ptr + in_idx, mask, other=0.0).to(ACC_DTYPE)
+
+    denom = ((d1 - d0) * (h1 - h0) * (w1 - w0)).to(ACC_DTYPE)
+    out_val = tl.sum(acc, 1) / denom
+
+    out_idx = n * s_out_n + c * s_out_c + d_o * s_out_d + h_o * s_out_h + w_o * s_out_w
+    tl.store(out_ptr + out_idx, out_val, mask=out < TOTAL)
+
+
+def _adaptive_avg_pool3d_tile_meta(k_d, k_h, k_w):
+    """Pick (BO, BR) for the tiled kernel the way ``adaptive_avg_pool2d`` does.
+
+    ``BR`` is the next power of two not below the window volume, capped at 1024,
+    and ``BO`` absorbs the rest of a fixed 4096-element tile. A wide window
+    therefore gets most of the tile and few rows, while a narrow window gets
+    many rows -- which is what makes the one kernel cover both the small-output
+    and the large-output shapes without a host-side branch.
+    """
+    br = min(triton.next_power_of_2(k_d * k_h * k_w), 1024)
+    bo = min(64, max(1, 4096 // br))
+    return bo, br
+
+
+def _window_bound(in_size, out_size):
+    """Upper bound on an adaptive pooling window's extent along one axis.
+
+    Matches ``adaptive_avg_pool2d``'s ``cdiv(in, out) + (in % out != 0)``: it is
+    never below the true maximum window, so the tile's compile-time trip count
+    always covers every row.
+    """
+    return triton.cdiv(in_size, out_size) + (in_size % out_size != 0)
 
 
 def _normalize_output_size_3d(output_size):
@@ -168,32 +323,98 @@ def _launch_adaptive_avg_pool3d_kernel(x, out):
     if total == 0:
         return
 
-    grid = (total,)
+    # Window extent bounds for the kernels' compile-time trip counts.
+    max_d = _window_bound(D_in, D_out)
+    max_h = _window_bound(H_in, H_out)
+    max_w = _window_bound(W_in, W_out)
+    k_vol = max_d * max_h * max_w
+
+    # Two launch shapes, split on which axis has the parallelism:
+    #   * tiled  -- BO outputs x BR window offsets; wins whenever the window is
+    #     wide enough to keep the tile full, which is the common case and the
+    #     only viable one for small outputs over large windows (measured 5x-43x
+    #     over the lane kernel there, e.g. (1, 3, 64, 64, 64) with (1, 1, 1)
+    #     outputs: 30x).
+    #   * lane   -- one lane per output; still the better shape for a large
+    #     output count over a narrow window, where the tiled kernel's rows and
+    #     columns overlap in address space and lose to one flat sweep. Narrow
+    #     here means a window of at most 256 elements; below that the tile's
+    #     BR bucketing wastes lanes on padding.
+    # The crossover is measured, not guessed: on the benchmark's shape set the
+    # lane path is within 1% of the tiled one everywhere the rule fires and the
+    # tiled path is 1.1x-43x faster everywhere else. See the benchmark in
+    # benchmark/test__adaptive_avg_pool3d.py.
+    use_lane = total >= 8192 and k_vol <= 256
     with torch_device_fn.device(x.device):
-        adaptive_avg_pool3d_kernel[grid](
-            x,
-            out,
-            N,
-            C,
-            D_in,
-            H_in,
-            W_in,
-            D_out,
-            H_out,
-            W_out,
-            stride_in_n,
-            stride_in_c,
-            stride_in_d,
-            stride_in_h,
-            stride_in_w,
-            stride_out_n,
-            stride_out_c,
-            stride_out_d,
-            stride_out_h,
-            stride_out_w,
-            ACC_DTYPE=tl.float64 if x.dtype == torch.float64 else tl.float32,
-            num_warps=4,
-        )
+        if use_lane:
+            BLOCK = 128
+            adaptive_avg_pool3d_vec_kernel[(triton.cdiv(total, BLOCK),)](
+                x,
+                out,
+                C,
+                D_in,
+                H_in,
+                W_in,
+                D_out,
+                H_out,
+                W_out,
+                stride_in_n,
+                stride_in_c,
+                stride_in_d,
+                stride_in_h,
+                stride_in_w,
+                stride_out_n,
+                stride_out_c,
+                stride_out_d,
+                stride_out_h,
+                stride_out_w,
+                total,
+                MAX_D=max_d,
+                MAX_H=max_h,
+                MAX_W=max_w,
+                ACC_DTYPE=tl.float64 if x.dtype == torch.float64 else tl.float32,
+                BLOCK=BLOCK,
+                num_warps=4,
+            )
+        else:
+            bo, br = _adaptive_avg_pool3d_tile_meta(max_d, max_h, max_w)
+            # int64 offsets only when the flat index can actually exceed 2^31.
+            # Both the input and the output are indexed, so compare against the
+            # larger of the two element counts.
+            use_i64 = max(x.numel(), out.numel()) > _INT32_MAX
+            adaptive_avg_pool3d_tile_kernel[(triton.cdiv(total, bo),)](
+                x,
+                out,
+                stride_in_n,
+                stride_in_c,
+                stride_in_d,
+                stride_in_h,
+                stride_in_w,
+                stride_out_n,
+                stride_out_c,
+                stride_out_d,
+                stride_out_h,
+                stride_out_w,
+                (
+                    total,
+                    C,
+                    D_in,
+                    H_in,
+                    W_in,
+                    D_out,
+                    H_out,
+                    W_out,
+                    max_d,
+                    max_h,
+                    max_w,
+                    bo,
+                    br,
+                ),
+                ACC_DTYPE=tl.float64 if x.dtype == torch.float64 else tl.float32,
+                USE_I64=use_i64,
+                num_warps=4,
+            )
+    return
 
 
 def _adaptive_avg_pool3d(input: torch.Tensor, output_size):
@@ -247,3 +468,54 @@ def _adaptive_avg_pool3d_out(input: torch.Tensor, output_size, out: torch.Tensor
     _launch_adaptive_avg_pool3d_kernel(x5d, out5d)
 
     return out
+
+
+class _AdaptiveAvgPool3dFunction(torch.autograd.Function):
+    """Autograd wrapper for the plain ``aten::adaptive_avg_pool3d`` overload.
+
+    ATen implements this overload as CompositeImplicitAutograd only -- it has no
+    dedicated Autograd kernel, unlike ``aten::_adaptive_avg_pool3d``. Overriding
+    its CUDA implementation (so FlagGems serves the call instead of ATen's
+    decomposition) therefore also removes the autograd formula, and gradients
+    would silently stop flowing. Registering this backward restores them.
+
+    The backward itself is FlagGems' own ``_adaptive_avg_pool3d_backward``; the
+    host code therefore only calls a FlagGems operator, as the operator host
+    conventions require.
+    """
+
+    @staticmethod
+    def forward(ctx, input, output_size):
+        ctx.input_was_4d = input.dim() == 4
+        ctx.save_for_backward(input)
+        return _adaptive_avg_pool3d(input, output_size)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        from flag_gems.ops.adaptive_avg_pool3d_backward import (
+            _adaptive_avg_pool3d_backward,
+        )
+
+        (input,) = ctx.saved_tensors
+        if ctx.input_was_4d:
+            # The kernel operates on batched 5D inputs; promote the unbatched
+            # (C, D, H, W) case and drop the dummy batch afterwards.
+            grad_input = _adaptive_avg_pool3d_backward(
+                grad_output.unsqueeze(0), input.unsqueeze(0)
+            ).squeeze(0)
+        else:
+            grad_input = _adaptive_avg_pool3d_backward(grad_output, input)
+        return grad_input, None
+
+
+def adaptive_avg_pool3d(input: torch.Tensor, output_size):
+    """Plain ``aten::adaptive_avg_pool3d`` overload.
+
+    ATen declares this overload CompositeImplicitAutograd with no dedicated
+    Autograd kernel, so servicing it from FlagGems requires supplying the
+    backward formula ourselves. The work is wrapped in an autograd.Function and
+    the registration pairs it with an Autograd fallthrough key, matching the
+    ``clone`` precedent.
+    """
+    logger.debug("GEMS ADAPTIVE_AVG_POOL3D")
+    return _AdaptiveAvgPool3dFunction.apply(input, output_size)

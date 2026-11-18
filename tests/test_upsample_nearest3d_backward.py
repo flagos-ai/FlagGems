@@ -6,6 +6,74 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def ref_upsample_nearest3d_backward(
+    grad_output,
+    output_size,
+    input_size,
+    scales_d=None,
+    scales_h=None,
+    scales_w=None,
+):
+    # Kunlunxin eager upsample_nearest3d_backward accumulates the fp16 gradient
+    # in fp16 instead of the fp32 acc type the kernel and the CPU reference use,
+    # so its result is off by up to 1 ulp at fp16 (12% of the voxels). Compute
+    # the reference on CPU there. Other backends keep the on-device reference.
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.ops.aten.upsample_nearest3d_backward.default(
+            grad_output, output_size, input_size, scales_d, scales_h, scales_w
+        )
+    grad_cpu = (
+        grad_output.cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    )
+    ref = torch.ops.aten.upsample_nearest3d_backward.default(
+        grad_cpu, output_size, input_size, scales_d, scales_h, scales_w
+    )
+    if not utils.TO_CPU and isinstance(grad_output, torch.Tensor):
+        ref = ref.to(grad_output.dtype).to(grad_output.device)
+    return ref
+
+
+def ref_upsample_nearest3d_backward_grad_input(
+    grad_output,
+    output_size,
+    input_size,
+    scales_d=None,
+    scales_h=None,
+    scales_w=None,
+    grad_input=None,
+):
+    # Same fp16-accumulation discrepancy as ref_upsample_nearest3d_backward,
+    # for the in-place `.grad_input` overload.
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.ops.aten.upsample_nearest3d_backward.grad_input(
+            grad_output,
+            output_size,
+            input_size,
+            scales_d,
+            scales_h,
+            scales_w,
+            grad_input=grad_input,
+        )
+    grad_cpu = (
+        grad_output.cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    )
+    grad_input_cpu = (
+        grad_input.cpu() if isinstance(grad_input, torch.Tensor) else grad_input
+    )
+    ref = torch.ops.aten.upsample_nearest3d_backward.grad_input(
+        grad_cpu,
+        output_size,
+        input_size,
+        scales_d,
+        scales_h,
+        scales_w,
+        grad_input=grad_input_cpu,
+    )
+    if not utils.TO_CPU and isinstance(grad_output, torch.Tensor):
+        ref = ref.to(grad_output.dtype).to(grad_output.device)
+    return ref
+
+
 @pytest.mark.upsample_nearest3d_backward
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES_3D)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -25,7 +93,7 @@ def test_upsample_nearest3d_backward(shape, dtype):
 
     input_size = tuple(x.shape)  # (N, C, D, H, W)
 
-    ref_grad_input = torch.ops.aten.upsample_nearest3d_backward.default(
+    ref_grad_input = ref_upsample_nearest3d_backward(
         utils.to_reference(grad_output), output_size, input_size
     )
 
@@ -58,7 +126,7 @@ def test_upsample_nearest3d_backward_with_scales(shape, dtype):
 
     input_size = tuple(x.shape)
 
-    ref_grad_input = torch.ops.aten.upsample_nearest3d_backward.default(
+    ref_grad_input = ref_upsample_nearest3d_backward(
         utils.to_reference(grad_output),
         output_size,
         input_size,
@@ -97,7 +165,7 @@ def test_upsample_nearest3d_backward_grad_input(shape, dtype):
     input_size = tuple(x.shape)
 
     ref_grad_input = torch.empty(input_size, dtype=dtype, device=ref_grad_output.device)
-    ref_grad_input = torch.ops.aten.upsample_nearest3d_backward.grad_input(
+    ref_grad_input = ref_upsample_nearest3d_backward_grad_input(
         ref_grad_output,
         output_size,
         input_size,

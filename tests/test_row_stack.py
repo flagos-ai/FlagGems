@@ -109,6 +109,14 @@ def test_row_stack_zero_sized_trailing_dims(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_row_stack_memory_format(shape, memory_format, dtype):
     """The output must keep the inputs' channels-last memory format."""
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and memory_format != torch.contiguous_format
+    ):
+        # XPU (torch_xmlir) drops the channels-last layout when an input is
+        # moved to the reference device (.to("cpu")), so the CPU reference is
+        # computed from contiguous inputs and cannot validate the layout.
+        pytest.skip("channels-last layout is not preserved by the reference on XPU")
     inp = [
         torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
             memory_format=memory_format
@@ -184,6 +192,14 @@ def test_row_stack_out_memory_format(shape, memory_format, dtype):
     ATen keeps the out tensor's layout when it is already the derived format,
     and re-imposes the derived format when the shape had to be resized.
     """
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and memory_format != torch.contiguous_format
+    ):
+        # Same reference limitation as test_row_stack_memory_format: the
+        # channels-last layout is lost when the reference inputs are moved to
+        # the reference device, so the resize path cannot be validated on XPU.
+        pytest.skip("channels-last layout is not preserved by the reference on XPU")
     inp = [
         torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
             memory_format=memory_format
@@ -262,6 +278,10 @@ def test_row_stack_out_resize(shape, dtype):
 @pytest.mark.row_stack_out
 def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # a genuinely float64 out tensor cannot be created there.
+        pytest.skip("float64 is not supported by this device")
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     ref_inp = [utils.to_reference(e) for e in inp]
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)

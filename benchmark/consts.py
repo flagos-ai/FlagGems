@@ -130,13 +130,19 @@ class BenchmarkMetrics:
     base_latency_ms: Optional[float] = None
     base_scaling_factor: Optional[float] = None
     base_miss_reason: Optional[str] = None
+    # GPU time share from model profiling YAML (--model-profile).
+    # Format: {"prefill": {"pct": 2.60, "calls": 4696}, "decode": {...}}
+    # None when --model-profile is not provided.
+    time_share: Optional[dict] = None
     # Error message
     error_msg: Optional[str] = None
+    case_metadata: Optional[dict] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "case_id",
     "candidate_source",
+    "case_metadata",
     "legacy_shape",
     "shape_detail",
     "base_raw_speedup",
@@ -145,6 +151,7 @@ ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "base_latency_ms",
     "base_scaling_factor",
     "base_miss_reason",
+    "time_share",
 }
 
 DEFAULT_METRICS = [
@@ -267,17 +274,23 @@ class BenchmarkResult:
         if self.result[0].gbps is not None:
             col_names.append(f"{'Torch GBPS ':>20}")
             col_names.append(f"{'Gems GBPS ':>20}")
+        # Show Time Share column only when profiling data is attached.
+        show_time_share = any(m.time_share is not None for m in self.result)
+        if show_time_share:
+            col_names.append(f"{'Time Share (prefill/decode)':>30}")
         col_names.append(f"{'Size Detail':>20}\n")
         header_col_names = " ".join(col_names)
         header_break = "-" * len(header_col_names) + "\n"
         header = header_title + header_col_names + header_break
 
         metrics_lines = "".join(
-            self._format_metrics(ele, show_base) for ele in self.result
+            self._format_metrics(ele, show_base, show_time_share) for ele in self.result
         )
         return header + metrics_lines
 
-    def _format_metrics(self, metrics: BenchmarkMetrics, show_base=False) -> str:
+    def _format_metrics(
+        self, metrics: BenchmarkMetrics, show_base=False, show_time_share=False
+    ) -> str:
         # self.gen_legacy_shape(metrics)
         # legacy_shape_str = (
         #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
@@ -316,9 +329,34 @@ class BenchmarkResult:
             data_line += f"{tflops_str:>20}"
         if metrics.gbps is not None:
             data_line += f"{torch_gbps_str:>20}{gems_gbps_str:>20}"
+        if show_time_share:
+            data_line += f"{self._format_time_share(metrics.time_share):>30}"
         data_line += " " * 10
         data_line += f"{shape_detail_str}\n"
         return data_line
+
+    @staticmethod
+    def _format_time_share(time_share: Optional[dict]) -> str:
+        """Render profiling metadata as 'pf {pct}%/{calls}x | dc {pct}%/{calls}x'.
+
+        A missing phase shows '-' for both fields.
+        """
+        if not time_share:
+            return "N/A"
+
+        def _phase(key):
+            block = time_share.get(key)
+            if not isinstance(block, dict):
+                return "-", "-"
+            pct = block.get("pct")
+            calls = block.get("calls")
+            pct_s = f"{pct:.2f}%" if isinstance(pct, (int, float)) else "-"
+            calls_s = f"{int(calls)}x" if isinstance(calls, (int, float)) else "-"
+            return pct_s, calls_s
+
+        pf_pct, pf_calls = _phase("prefill")
+        dc_pct, dc_calls = _phase("decode")
+        return f"pf {pf_pct}/{pf_calls} | dc {dc_pct}/{dc_calls}"
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
         first_shape = (

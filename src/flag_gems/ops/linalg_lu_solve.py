@@ -23,6 +23,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -452,6 +453,142 @@ def _get_blocked_block_rhs(nrhs):
     return 16
 
 
+# XPU cannot lower ``tt.gather`` at all (constant indices included), so the
+# gather/blocked kernels above do not exist on that backend. The alternative
+# below keeps the whole column in registers and extracts each serial step's
+# scalar with a one-hot weighted reduction instead of a gather.
+_XPU_SERIAL = runtime.device.vendor_name == "kunlunxin"
+
+
+@libentry()
+@triton.jit
+def _xpu_lu_solve_kernel(
+    LU,
+    B,
+    X,
+    pivots,
+    N,
+    nrhs,
+    batch_stride_lu,
+    stride_lu_row,
+    stride_lu_col,
+    batch_stride_piv,
+    stride_piv_row,
+    batch_stride_b,
+    stride_b_row,
+    stride_b_col,
+    batch_stride_x,
+    stride_x_row,
+    stride_x_col,
+    BLOCK_N: tl.constexpr,
+):
+    """One solution column in registers, one program per (batch, RHS column).
+
+    ``w`` is the whole RHS column held in a single ``BLOCK_N``-lane vector, so
+    both triangular sweeps are pure elementwise updates of ``w``: step ``i``
+    reads the solution component it needs with a one-hot weight
+    (``tl.sum(w * oh)``) and applies the rank-1 update
+    ``w -= L[:, i] * w_i`` (forward) or ``w -= U[:, i] * x_i`` (backward).
+
+    Weights are built arithmetically (``max(1 - |row - i|, 0)``) rather than
+    from comparisons: this backend miscompiles kernels that mix tile shapes or
+    keep boolean masks live across a serial loop, and it cannot lower
+    ``tl.gather`` at all. A one-hot weight plus a 1-D reduction is the
+    supported way to extract a scalar component of a live vector.
+    """
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+
+    rows = tl.arange(0, BLOCK_N)
+    rows_mask = rows < N
+    lu_base = LU + batch * batch_stride_lu
+    piv_base = pivots + batch * batch_stride_piv
+
+    # Compose the sequential 1-indexed pivot swaps into one row permutation.
+    perm = rows
+    for i in range(N):
+        p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
+        at_i = rows == i
+        at_p = rows == p
+        v_i = tl.sum(tl.where(at_i, perm, 0).to(tl.int32), axis=0)
+        v_p = tl.sum(tl.where(at_p, perm, 0).to(tl.int32), axis=0)
+        perm = tl.where(at_i, v_p, tl.where(at_p, v_i, perm))
+
+    # w = (P @ B)[:, col]
+    w = tl.load(
+        B + batch * batch_stride_b + perm * stride_b_row + col * stride_b_col,
+        mask=rows_mask,
+        other=0.0,
+    )
+
+    # Forward substitution, L has an implicit unit diagonal.
+    for i in range(N):
+        df = (rows - i).to(tl.float32)
+        oh = tl.maximum(1.0 - tl.abs(df), 0.0)
+        step = tl.maximum(tl.minimum(df, 1.0), 0.0)
+        w_i = tl.sum(w * oh, axis=0)
+        l_col = tl.load(
+            lu_base + rows * stride_lu_row + i * stride_lu_col,
+            mask=rows_mask,
+            other=0.0,
+        )
+        w = w - step * l_col * w_i
+
+    # Backward substitution with U; x_i replaces w_i as it is produced.
+    for i in range(N - 1, -1, -1):
+        df = (rows - i).to(tl.float32)
+        oh = tl.maximum(1.0 - tl.abs(df), 0.0)
+        below = tl.maximum(tl.minimum(-df, 1.0), 0.0)
+        w_i = tl.sum(w * oh, axis=0)
+        diag = tl.load(lu_base + i * stride_lu_row + i * stride_lu_col)
+        x_i = w_i / diag
+        u_col = tl.load(
+            lu_base + rows * stride_lu_row + i * stride_lu_col,
+            mask=rows_mask,
+            other=0.0,
+        )
+        w = w - below * u_col * x_i
+        w = w + oh * (x_i - w)
+
+    tl.store(
+        X + batch * batch_stride_x + rows * stride_x_row + col * stride_x_col,
+        w,
+        mask=rows_mask,
+    )
+
+
+def _xpu_lu_solve_serial(LU_work, piv_work, B, batch, n, nrhs):
+    """Register-resident column solve used on XPU."""
+    B_work = B.reshape(batch, n, nrhs).contiguous()
+    X = torch.empty_like(B_work)
+    block_n = max(triton.next_power_of_2(n), 16)
+    with torch.no_grad():
+        _xpu_lu_solve_kernel[(batch * nrhs,)](
+            LU_work,
+            B_work,
+            X,
+            piv_work,
+            n,
+            nrhs,
+            LU_work.stride(0),
+            LU_work.stride(1),
+            LU_work.stride(2),
+            piv_work.stride(0),
+            piv_work.stride(1),
+            B_work.stride(0),
+            B_work.stride(1),
+            B_work.stride(2),
+            X.stride(0),
+            X.stride(1),
+            X.stride(2),
+            BLOCK_N=block_n,
+            num_warps=1,
+            num_stages=1,
+        )
+    return X.reshape(B.shape)
+
+
 def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
     """
     Solve the linear system AX = B using the LU factorization of A.
@@ -492,6 +629,9 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
     # Make contiguous working copies
     LU_work = LU.reshape(batch, n, n).contiguous()
     piv_work = pivots.reshape(batch, n).contiguous()
+
+    if _XPU_SERIAL:
+        return _xpu_lu_solve_serial(LU_work, piv_work, B, batch, n, nrhs)
 
     with torch.no_grad():
         if _can_use_gather_path(n, nrhs):

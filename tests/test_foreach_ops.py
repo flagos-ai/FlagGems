@@ -25,12 +25,30 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_binary import BINARY_OPS, registered_wrappers
 from flag_gems.ops._foreach_reduction import registered_wrappers as reduction_wrappers
+from flag_gems.runtime.backend import SpecOpRegistrar
 
 from .accuracy_utils import gems_assert_close, to_reference
 
 BINARY_WRAPPERS = registered_wrappers()
 REDUCTION_WRAPPERS = reduction_wrappers()
 ALL_WRAPPERS = {**BINARY_WRAPPERS, **REDUCTION_WRAPPERS}
+
+# Some vendors override select ``_foreach_*`` overloads (e.g. Kunlunxin's
+# scalar-family ops avoid a device function the XPU compiler can't lower --
+# see #8047). ``flag_gems/__init__.py`` overlays those overrides onto the
+# generic registration via ``SpecOpRegistrar`` before anything dispatches, so
+# mirror that here: run the same registrar and pull in whichever of our keys
+# it touched. This way the accuracy test exercises the code path that
+# actually runs for the current vendor, on every vendor, without a
+# per-vendor special case in this file.
+_spec_registry = {}
+SpecOpRegistrar(registry=_spec_registry, vendor=flag_gems.vendor_name).apply()
+for _key in list(ALL_WRAPPERS):
+    _core, _, _overload = _key.partition(".")
+    _attr = f"{_core}_{_overload}" if _overload else _core
+    if _attr in _spec_registry:
+        ALL_WRAPPERS[_key] = _spec_registry[_attr]
+del _spec_registry, _key, _core, _overload, _attr
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 
@@ -350,10 +368,14 @@ def test_foreach_ops_registration_is_live(key, caplog):
     device = flag_gems.device
     inp = [_sample(s, torch.float32, device) for s in shapes]
     args = _build_args(core, overload, shapes, torch.float32, device)
-    loggers = (
+    # The wrapper's own module is the one that logs its debug record. This is
+    # normally one of the two generic modules, but a vendor override (see the
+    # ``ALL_WRAPPERS`` overlay above) logs through its backend module instead.
+    loggers = {
         "flag_gems.ops._foreach_binary",
         "flag_gems.ops._foreach_reduction",
-    )
+        ALL_WRAPPERS[key].__module__,
+    }
     aten = _aten(key)
 
     def call():
@@ -559,9 +581,34 @@ def _gems(key):
 
     Public names spell the overload with an underscore suffix rather than
     ATen's dot (``_foreach_add_List``, not ``_foreach_add.List``), so the key is
-    rewritten rather than looked up verbatim.
+    rewritten rather than looked up verbatim.  ``ALL_WRAPPERS`` carries the
+    vendor overlay (see above), so these named cases exercise the same wrapper
+    a ``use_gems()`` dispatch would reach instead of the generic baseline.
     """
-    return BINARY_WRAPPERS[key] if key in BINARY_WRAPPERS else REDUCTION_WRAPPERS[key]
+    return ALL_WRAPPERS[key]
+
+
+def _foreach_ref(fn, refs, *args):
+    """ATen reference for a ``_foreach_*`` op, on CPU for Kunlunxin.
+
+    Kunlunxin's device-side eager implementations deviate from ATen semantics
+    for some inputs: ``_foreach_norm`` does not special-case the 0/±inf orders
+    (it returns the generic power-sum value) and ``_foreach_pow`` rejects a
+    bool base (see ``tests/accuracy_utils.py::ref_div_rounding`` for the same
+    pattern).  The CPU implementation carries ATen's reference semantics, so
+    on that backend the reference is computed there; other backends keep the
+    on-device reference, which matches their eager implementation.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        refs = [t.cpu() for t in refs]
+    return fn(refs, *args)
+
+
+def _assert_foreach_close(res, ref, dtype):
+    """Compare a gems result against a possibly-CPU reference."""
+    if ref.device.type == "cpu":
+        res = res.cpu()
+    gems_assert_close(res, ref, dtype)
 
 
 @pytest.mark.parametrize("core", ["add", "sub", "mul"])
@@ -716,11 +763,11 @@ def test_accuracy_foreach_norm_orders(ord_):
     """
     device = flag_gems.device
     inp = [torch.tensor([0.0, 2.0, -3.0, 0.5], device=device)]
-    ref = torch._foreach_norm([to_reference(t) for t in inp], ord_)
+    ref = _foreach_ref(torch._foreach_norm, [to_reference(t) for t in inp], ord_)
 
     res = _gems("_foreach_norm.Scalar")(inp, ord_)
     assert res[0].dtype == ref[0].dtype
-    gems_assert_close(res[0], ref[0], ref[0].dtype)
+    _assert_foreach_close(res[0], ref[0], ref[0].dtype)
 
 
 def test_accuracy_foreach_norm_all_zero():
@@ -729,7 +776,7 @@ def test_accuracy_foreach_norm_all_zero():
     inp = [torch.zeros(8, device=device)]
     for ord_ in (0, 1, 2, 3, float("inf"), float("-inf")):
         res = _gems("_foreach_norm.Scalar")(inp, ord_)
-        ref = torch._foreach_norm([to_reference(t) for t in inp], ord_)
+        ref = _foreach_ref(torch._foreach_norm, [to_reference(t) for t in inp], ord_)
         assert res[0].item() == ref[0].item(), f"ord={ord_}"
 
 
@@ -752,7 +799,7 @@ def test_accuracy_foreach_pow_bool_base(exponent):
     ref_inp = [to_reference(t) for t in inp]
 
     res = _gems("_foreach_pow.Scalar")(inp, exponent)
-    ref = torch._foreach_pow(ref_inp, exponent)
+    ref = _foreach_ref(torch._foreach_pow, ref_inp, exponent)
 
     assert res[0].dtype == ref[0].dtype, f"{res[0].dtype} != {ref[0].dtype}"
     assert res[0].cpu().tolist() == ref[0].cpu().tolist()
@@ -766,7 +813,7 @@ def test_foreach_pow_list_rejects_bool():
     inp = [torch.tensor([True, False], dtype=torch.bool, device=device)]
     with pytest.raises(NotImplementedError):
         _gems("_foreach_pow.List")(inp, [torch.tensor([True, True], device=device)])
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RuntimeError):
         torch._foreach_pow([t.cpu() for t in inp], [torch.tensor([True, True])])
 
 

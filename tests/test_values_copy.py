@@ -767,3 +767,76 @@ def test__values_copy_out():
 
     assert res_ret is res_out
     utils.gems_assert_close(res_out, vals, torch.float32)
+
+
+# ---------------------------------------------------------------------------
+# Non-contiguous stored values
+# ---------------------------------------------------------------------------
+# A COO tensor's stored values are whatever buffer the constructor is handed, so
+# they can be any strided view: dense but permuted (transpose), sliced with gaps
+# (``base[:, ::4]``), or expanded (stride-0). The ND kernel addresses BOTH the
+# source and the destination at the physical offset implied by the source's
+# shape/stride table, which is sound only for the dense case. For a gapped or
+# expanded source that offset passes the end of the source buffer, and because
+# ``torch.empty_like`` hands back a compact destination for those layouts, the
+# store also lands outside the output. ``test_values_copy_values_view`` above
+# covers a strided view through the CSR constructor, whose values are
+# normalized, so none of these reached the ND kernel before.
+_NONCONTIG_VALUE_CASES = ["transposed", "gapped", "expanded"]
+
+
+def _noncontig_values(case, nnz, dtype):
+    pool = torch.arange(nnz * 24, device=flag_gems.device).to(dtype)
+    if case == "transposed":
+        return pool[: nnz * 6].reshape(nnz, 2, 3).transpose(1, 2)
+    if case == "gapped":
+        return pool[: nnz * 8].reshape(nnz, 8)[:, ::4]
+    return pool[:nnz].reshape(nnz, 1).expand(nnz, 3)
+
+
+def _make_coo_with_values(values, nnz):
+    indices = torch.arange(nnz, device=values.device)[None, :]
+    size = (nnz * 8,) + tuple(values.shape[1:])
+    return torch.sparse_coo_tensor(indices, values, size=size, device=values.device)
+
+
+@pytest.mark.values_copy
+@pytest.mark.parametrize("case", _NONCONTIG_VALUE_CASES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_values_copy_noncontiguous_stored_values(case, dtype):
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    nnz = 6
+    inp = _make_coo_with_values(_noncontig_values(case, nnz, dtype), nnz)
+    stored = inp._values()
+    assert not stored.is_contiguous(), "case must exercise the strided path"
+    ref = stored.clone()
+
+    res = flag_gems._values_copy(inp)
+
+    assert res.shape == ref.shape
+    assert res.untyped_storage().data_ptr() != stored.untyped_storage().data_ptr()
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.values_copy
+@pytest.mark.parametrize("case", _NONCONTIG_VALUE_CASES)
+def test_values_copy_out_noncontiguous_stored_values(case):
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    nnz = 6
+    inp = _make_coo_with_values(_noncontig_values(case, nnz, torch.float32), nnz)
+    stored = inp._values()
+    ref = stored.clone()
+    # A matching-stride buffer takes the ND path; a compact one takes the staged
+    # path. Both must leave ``out`` holding exactly the stored values.
+    for out in (
+        torch.empty_like(stored),
+        torch.empty(stored.shape, dtype=stored.dtype, device=stored.device),
+    ):
+        out.fill_(-1)
+
+        res = flag_gems._values_copy_out(inp, out=out)
+
+        assert res is out
+        utils.gems_assert_equal(out, ref)
