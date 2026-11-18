@@ -65,5 +65,7 @@ def test_linalg_cholesky_ex():
             else [torch.float32]
         ),
     )
-    bench.set_gems(flag_gems.linalg_cholesky_ex)
+    bench.set_gems(
+        lambda *args, **kwargs: flag_gems.linalg_cholesky_ex(*args, **kwargs)
+    )
     bench.run()

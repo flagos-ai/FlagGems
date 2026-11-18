@@ -52,9 +52,7 @@ def _case_fn(shape, dtype, *, equation):
     if equation in ("ij,jk->ik", "bij,bjk->bik"):
         b, m, n, k = shape
         operands = (
-            ((b, m, k), (b, k, n))
-            if equation == "bij,bjk->bik"
-            else ((m, k), (k, n))
+            ((b, m, k), (b, k, n)) if equation == "bij,bjk->bik" else ((m, k), (k, n))
         )
     elif equation == "i,i->":
         operands = (tuple(shape), tuple(shape))
