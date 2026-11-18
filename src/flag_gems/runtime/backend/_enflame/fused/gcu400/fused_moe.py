@@ -334,7 +334,7 @@ def get_moe_wna16_block_config(
         num_k_blocks = size_n // block_size_k
         num_m_blocks = (
             num_valid_tokens + block_size_m - 1
-        ) / block_size_m + num_experts
+        ) // block_size_m + num_experts
         if num_valid_tokens // real_top_k <= block_size_m:
             num_m_blocks = min(num_m_blocks, num_valid_tokens)
         num_blocks = num_m_blocks * num_n_blocks * num_k_blocks
@@ -345,7 +345,6 @@ def get_moe_wna16_block_config(
 
         if (
             num_m_blocks <= 16
-            and size_k % (block_size_k * 2) == 0
             and size_k % (block_size_k * 2) == 0
             and block_size_k <= 512
             and num_blocks >= 512
