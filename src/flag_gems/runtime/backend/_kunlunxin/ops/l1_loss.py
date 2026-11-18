@@ -25,7 +25,7 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 # Unmasked stage-1 tile: largest `tl.sum` tile that is complete on this target
-# with buffer_size_limit=2048 (same ceiling used by the other reduction kern`.
+# with buffer_size_limit=2048 (same ceiling used by the other reduction kernels).
 _FULL_BLOCK = 32768
 # Masked stage-1 tile for sizes that do not divide _FULL_BLOCK.
 _MASKED_BLOCK = 2048

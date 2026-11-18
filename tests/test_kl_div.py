@@ -57,9 +57,6 @@ def test_kl_div(shape, dtype, reduction, log_target):
     if IS_KUNLUNXIN and ref_inp.device.type != "cpu":
         ref_inp = ref_inp.cpu()
         ref_target = ref_target.cpu()
-    if IS_KUNLUNXIN and ref_inp.device.type != "cpu":
-        ref_inp = ref_inp.cpu()
-        ref_target = ref_target.cpu()
     ref_out = torch.ops.aten.kl_div(
         ref_inp, ref_target, reduction, log_target=log_target
     )

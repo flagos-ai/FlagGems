@@ -238,6 +238,8 @@ def _output_shape(shape, dim, keepdim):
 def test_std_mean(unbiased, dtype):
     inp = _make_input((257, 33), dtype)
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     reference = torch.std_mean(ref_inp, unbiased=unbiased)
     result = flag_gems.std_mean(inp, unbiased=unbiased)
@@ -255,6 +257,8 @@ def test_std_mean(unbiased, dtype):
 def test_std_mean_dim(shape, dim, unbiased, keepdim, dtype):
     inp = _make_input(shape, dtype)
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     reference = torch.std_mean(ref_inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
     result = flag_gems.std_mean_dim(inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
@@ -272,6 +276,8 @@ def test_std_mean_dim(shape, dim, unbiased, keepdim, dtype):
 def test_std_mean_correction(shape, dim, correction, keepdim, noncontiguous, dtype):
     inp = _make_input(shape, dtype, noncontiguous)
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     reference = torch.std_mean(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
     result = flag_gems.std_mean_correction(
@@ -305,6 +311,8 @@ def test_std_mean_names_dim(named_dim, numeric_dim, unbiased, keepdim, dtype):
         inp = inp.refine_names("batch", "reduce", "feature")
 
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
     reference = torch.std_mean(
         ref_inp, dim=numeric_dim, unbiased=unbiased, keepdim=keepdim
     )
@@ -350,6 +358,8 @@ def test_std_mean_correction_names(dtype, named_dim, numeric_dim, correction, ke
         inp = inp.refine_names("batch", "reduce", "feature")
 
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
     reference = torch.std_mean(
         ref_inp, dim=numeric_dim, correction=correction, keepdim=keepdim
     )
@@ -378,6 +388,8 @@ def test_std_mean_correction_names(dtype, named_dim, numeric_dim, correction, ke
 def test_std_mean_correction_out(shape, dim, correction, keepdim, noncontiguous, dtype):
     inp = _make_input(shape, dtype, noncontiguous)
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
     output_shape = _output_shape(shape, dim, keepdim)
     std_out = torch.empty(
         output_shape, dtype=_std_dtype(dtype), device=flag_gems.device
@@ -409,6 +421,8 @@ def test_std_mean_correction_out(shape, dim, correction, keepdim, noncontiguous,
 def test_std_mean_empty_reduction(shape, dim, dtype):
     inp = _make_input(shape, dtype)
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -448,7 +462,14 @@ def test_std_mean_empty_output_warning(dtype, correction):
     inp = _make_input((0, 3), dtype)
     with warnings.catch_warnings(record=True) as native_warnings:
         warnings.simplefilter("always")
-        reference = torch.std_mean(_reference_input(inp), dim=1, correction=correction)
+        if IS_KUNLUNXIN and dtype.is_complex:
+            reference = torch.std_mean(
+                _reference_input(inp).cpu(), dim=1, correction=correction
+            )
+        else:
+            reference = torch.std_mean(
+                _reference_input(inp), dim=1, correction=correction
+            )
     with warnings.catch_warnings(record=True) as gems_warnings:
         warnings.simplefilter("always")
         result = flag_gems.std_mean_correction(inp, dim=1, correction=correction)
@@ -477,6 +498,8 @@ def test_std_mean_empty_output_warning(dtype, correction):
 def test_std_mean_warns_for_nonpositive_dof(shape, dim, correction, dtype):
     inp = _make_input(shape, dtype)
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -499,6 +522,8 @@ def test_std_mean_complex_nonpositive_dof_is_componentwise():
         device=flag_gems.device,
     )
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -545,6 +570,8 @@ def test_std_mean_numerical_stability(dtype):
     else:
         inp = real
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     reference = torch.std_mean(ref_inp, correction=0.5)
     result = flag_gems.std_mean_correction(inp, correction=0.5)
@@ -568,6 +595,8 @@ def test_std_mean_numerical_stability_with_first_outlier(dtype):
     else:
         inp = real
     ref_inp = _reference_input(inp)
+    if IS_KUNLUNXIN and dtype.is_complex and ref_inp.device.type != "cpu":
+        ref_inp = ref_inp.cpu()
 
     reference = torch.std_mean(ref_inp, correction=-0.5)
     result = flag_gems.std_mean_correction(inp, correction=-0.5)
