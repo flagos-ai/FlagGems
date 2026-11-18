@@ -219,6 +219,8 @@ def orgqr(self, input2):
     for s in A.shape[:-2]:
         B *= s
 
+    # Conservative support bound of this single-tile implementation, not a
+    # hardware limit. Larger matrices need a separately validated tiled path.
     if m > 2048:
         raise NotImplementedError(
             "orgqr: row count exceeds supported single-tile limit 2048"
