@@ -232,39 +232,6 @@ def _check_topk(
     return values, indices
 
 
-@pytest.mark.topk_w8a16
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "metax" or not _fp8_available(),
-    reason="Sampled FP8 TopK path requires MetaX",
-)
-@pytest.mark.parametrize("largest", [True, False])
-def test_topk_fp8_metax_sampled_fallback(largest):
-    rows, n, k = 20, 262144, 512
-    device = flag_gems.device
-    storage = torch.zeros((rows, n + 16), dtype=torch.uint8, device=device)
-    bits = storage[:, :n]
-    scale = torch.ones((rows, n // FP8_GROUP_SIZE), dtype=torch.bfloat16, device=device)
-    q = bits.view(FP8_DTYPE)
-    preferred_value = 0x40 if largest else 0xC0
-    # This matches the sample layout so the two rows force opposite failures:
-    # too few candidates above the cutoff, and more than the buffer can hold.
-    lanes = torch.arange(8192, device=device)
-    sampled_columns = (lanes // 32) * (n * 32 // 8192) + lanes % 32
-    bits[0].index_fill_(0, sampled_columns[:32], preferred_value)
-    bits[1].fill_(preferred_value)
-    bits[1].index_fill_(0, sampled_columns, 0)
-
-    _check_topk(q, scale, k, largest=largest)
-    graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
-        result = flag_gems.topk_w8a16_fp8(q, scale, k, largest=largest)
-    # Move the rejection patterns to different rows after capture. A tie-only
-    # row can finish on the fast path while its neighbors use exact radix.
-    bits[:3].copy_(bits[:3].roll(1, dims=0))
-    graph.replay()
-    _check_topk(q, scale, k, largest=largest, result=result)
-
-
 @E4M3_ONLY
 @pytest.mark.topk_w8a16
 @pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn])

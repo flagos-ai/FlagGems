@@ -1318,9 +1318,109 @@ def _launch_sampled_topk(values, indices, x, scale, k, group_size, ascending):
     )
 
 
+@triton.jit
+def _row_radix_cutoff(key, valid, rank):
+    bins = tl.arange(0, 256)
+    cutoff = tl.full((), 0, tl.int32)
+    for shift in tl.static_range(8, -1, -8):
+        matching = valid & ((key >> (shift + 8)) == cutoff)
+        digit = (key >> shift) & 255
+        counts = tl.histogram(tl.where(matching, digit, 256), 256)
+        suffix = tl.cumsum(counts, 0, reverse=True)
+        bucket = tl.max(tl.where(suffix >= rank, bins, 0), 0)
+        rank -= tl.sum(tl.where(bins > bucket, counts, 0), 0)
+        cutoff = (cutoff << 8) | bucket
+    return cutoff
+
+
+@libentry()
+@triton.jit
+def _compact_row_radix_keys(
+    scratch,
+    x,
+    scale,
+    N: tl.constexpr,
+    RS,
+    SS,
+    G: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK: tl.constexpr,
+    ASC: tl.constexpr,
+):
+    row = tl.program_id(0)
+    cols = tl.arange(0, BLOCK)
+    valid = cols < N
+    key = _partitioned_radix_key(x, scale, row, cols, valid, RS, SS, G, ASC)
+    cutoff = _row_radix_cutoff(key, valid, K)
+    greater = valid & (key > cutoff)
+    equal = valid & (key == cutoff)
+    gt_total = tl.sum(greater.to(tl.int32), 0)
+    # The high half counts ties. With at most 16384 elements both counts fit.
+    votes = greater.to(tl.int32) + (equal.to(tl.int32) << 16)
+    ranks = tl.cumsum(votes, 0)
+    offset = tl.where(greater, ranks & 0xFFFF, gt_total + (ranks >> 16)) - 1
+    selected = (greater | equal) & (offset < K)
+    packed = (key.to(tl.uint32) << 16) | (65535 - cols).to(tl.uint32)
+    tl.store(scratch + row * K + offset, packed, selected)
+
+
+@libentry()
+@triton.jit
+def _sort_row_radix_keys(
+    output,
+    indices,
+    scratch,
+    K: tl.constexpr,
+    KP: tl.constexpr,
+    ASC: tl.constexpr,
+):
+    row = tl.program_id(0)
+    rank = tl.arange(0, KP)
+    packed = tl.load(scratch + row * K + rank, rank < K, 0)
+    best = tl.sort(packed, descending=True)
+    col = (65535 - (best & 65535)).to(tl.int32)
+    key = (best >> 16).to(tl.uint16)
+    if ASC:
+        key = ~key
+    flip = tl.where((key & 0x8000) != 0, 0x8000, 0xFFFF).to(tl.uint16)
+    value = (key ^ flip).to(tl.bfloat16, bitcast=True)
+    tl.store(output + row * K + rank, value, rank < K)
+    tl.store(indices + row * K + rank, col.to(tl.int64), rank < K)
+
+
+def _launch_row_radix_topk(values, indices, x, scale, k, group_size, ascending):
+    rows, n = x.shape
+    candidates = torch.empty((rows, k), device=x.device, dtype=torch.uint32)
+    with torch_device_fn.device(x.device):
+        _compact_row_radix_keys[(rows,)](
+            candidates,
+            x,
+            scale,
+            n,
+            x.stride(0),
+            scale.stride(0),
+            group_size,
+            k,
+            triton.next_power_of_2(n),
+            ascending,
+            num_warps=4,
+        )
+        _sort_row_radix_keys[(rows,)](
+            values,
+            indices,
+            candidates,
+            k,
+            triton.next_power_of_2(k),
+            ascending,
+            num_warps=4,
+        )
+
+
 def _parallel_topk_route(rows, n, k):
     if n == 262144 and k == 512 and rows >= 20:
         return "sampled"
+    if rows >= 4096 and 2048 < n <= 16384 and k == 512:
+        return "row_radix"
     if 65534 < n <= 262144 and 64 <= k <= 1024:
         return "radix"
     if 256 <= k <= 512:
@@ -1383,6 +1483,11 @@ def topk_w8a16_fp8(
         route = _parallel_topk_route(batch_size, topk_elem_cnt, k)
         if route == "sampled":
             _launch_sampled_topk(
+                y_vals_2d, y_idx_2d, x_2d, scale_2d, k, group_size, not descending
+            )
+            return y_vals, y_idx
+        if route == "row_radix":
+            _launch_row_radix_topk(
                 y_vals_2d, y_idx_2d, x_2d, scale_2d, k, group_size, not descending
             )
             return y_vals, y_idx
