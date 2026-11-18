@@ -660,19 +660,33 @@ def test_slice_copy_int64_index():
     # a small slice out of a huge input, and an output larger than int32 max.
     n = 2**31 + 1024
     inp = torch.ones(n, dtype=torch.int8, device=flag_gems.device)
+    expected_device = inp.device
     tail = torch.tensor(
         [1, 2, 3, 4, 5, 6, 7, 8], dtype=torch.int8, device=flag_gems.device
     )
     inp[-8:] = tail
     try:
         res_out = flag_gems.slice_copy(inp, 0, n - 8, n, 1)
+        assert res_out.device == expected_device
+        assert res_out.dtype == torch.int8
+        assert tuple(res_out.shape) == (8,)
         assert res_out.tolist() == tail.tolist()
 
         res_out = flag_gems.slice_copy(inp, 0, 0, n, 1)
+        assert res_out.device == expected_device
+        assert res_out.dtype == torch.int8
+        assert tuple(res_out.shape) == (n,)
         assert res_out.numel() == n
         # every element copied: the tail sums to 36, the rest are ones
         expected = (n - 8) + 36
-        assert res_out.to(torch.int64).sum().item() == expected
+        # GCU emulates int64 reductions with int32, which overflows here.
+        # Keep the full large-index copy and observe its sum on CPU instead.
+        observed = (
+            res_out.cpu()
+            if flag_gems.vendor_name == "enflame"
+            else res_out.to(torch.int64)
+        )
+        assert observed.sum(dtype=torch.int64).item() == expected
     finally:
         del inp
         torch.cuda.empty_cache() if flag_gems.device != "cpu" else None
