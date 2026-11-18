@@ -219,3 +219,28 @@ def test_orgqr_noncontiguous_batch(n, layout):
     reference = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
     result = flag_gems.orgqr(input, tau)
     utils.gems_assert_close(result, reference, torch.float32)
+
+
+@pytest.mark.orgqr
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin validation regression"
+)
+@pytest.mark.parametrize("mismatch", ["dtype", "device"])
+def test_orgqr_rejects_mismatched_tau(mismatch):
+    inp = torch.empty((4, 3), device=flag_gems.device, dtype=torch.float32)
+    tau = torch.empty(
+        (3,),
+        device="cpu" if mismatch == "device" else inp.device,
+        dtype=torch.float16 if mismatch == "dtype" else inp.dtype,
+    )
+    with pytest.raises(RuntimeError, match="same dtype and device"):
+        flag_gems.orgqr(inp, tau)
+
+
+@pytest.mark.orgqr
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin tile limit")
+def test_orgqr_large_row_limit():
+    inp = torch.empty((2049, 1), device=flag_gems.device)
+    tau = torch.empty((1,), device=flag_gems.device)
+    with pytest.raises(NotImplementedError, match="limit 2048"):
+        flag_gems.orgqr(inp, tau)

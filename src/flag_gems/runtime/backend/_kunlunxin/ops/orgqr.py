@@ -57,7 +57,6 @@ def _orgqr_kernel_1(
     TAU,
     OUT,
     m,
-    n,
     K,
     BATCH_SHAPE: tl.constexpr,
     A_BATCH_STRIDES: tl.constexpr,
@@ -181,6 +180,9 @@ def orgqr(self, input2):
     if not isinstance(A, torch.Tensor) or not isinstance(tau, torch.Tensor):
         raise RuntimeError("orgqr: expected two tensor arguments")
 
+    if A.dtype != tau.dtype or A.device != tau.device:
+        raise RuntimeError("orgqr: input and tau must have the same dtype and device")
+
     if A.dim() < 2:
         raise RuntimeError("orgqr: input must have at least 2 dimensions")
     m = A.shape[-2]
@@ -201,7 +203,9 @@ def orgqr(self, input2):
 
     dt = A.dtype
     if dt in (torch.complex64, torch.complex128):
-        raise RuntimeError("orgqr: complex dtypes are not supported")
+        raise RuntimeError(
+            "orgqr: complex dtypes are not supported by this Triton kernel"
+        )
     if dt is not torch.float32 and dt is not torch.float64:
         raise RuntimeError(
             "orgqr: unsupported dtype %s (expected float32/float64)" % (dt,)
@@ -215,6 +219,10 @@ def orgqr(self, input2):
     for s in A.shape[:-2]:
         B *= s
 
+    if m > 2048:
+        raise NotImplementedError(
+            "orgqr: row count exceeds supported single-tile limit 2048"
+        )
     BLOCK_M = triton.next_power_of_2(m)
     o_bs = out.stride(-3) if out.dim() > 2 else 0
 
@@ -232,7 +240,6 @@ def orgqr(self, input2):
                 tau,
                 out,
                 m,
-                n,
                 K,
                 tuple(A.shape[:-2]),
                 tuple(A.stride()[:-2]),
