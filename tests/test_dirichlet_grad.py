@@ -26,7 +26,10 @@ from . import conftest as cfg
 # and bfloat16 are *not* supported -- so we restrict the test to those two
 # dtypes (see ATen/native/cuda/Distributions.cu).
 # Only float32/float64 are supported by the ATen CUDA dispatcher; matching that.
-DIRICHLET_GRAD_DTYPES = [torch.float32, torch.float64]
+# XPU has no fp64 (torch silently downgrades to fp32), so drop float64 there.
+DIRICHLET_GRAD_DTYPES = (
+    [torch.float32, torch.float64] if utils.fp64_is_supported else [torch.float32]
+)
 
 # Concentration ranges.  The kernel switches between small / large / mid /
 # rational sub-branches depending on `alpha`, `total` and the sampled `x`, so

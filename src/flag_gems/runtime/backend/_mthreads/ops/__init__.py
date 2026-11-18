@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.util
+
 from torch_musa import current_device, get_device_capability
 
 from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
@@ -119,6 +121,7 @@ from .inverse import inverse
 from .isin import isin
 from .kl_div import kl_div
 from .kthvalue import kthvalue
+from .layernorm import layer_norm_backward
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
@@ -129,7 +132,6 @@ from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
 from .linalg_tensorinv import linalg_tensorinv
-from .linear import linear
 from .log import log
 from .log2_ import log2_
 from .log10 import log10, log10_, log10_out
@@ -180,6 +182,7 @@ from .repeat_interleave import (
 )
 from .replication_pad2d import replication_pad2d
 from .replication_pad3d_backward import replication_pad3d_backward
+from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -217,9 +220,13 @@ from .upsample_nearest3d_backward_grad_input import (
 )
 from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
-from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
+
+# Older MUSA Triton releases do not provide tensor descriptor support.
+_HAS_TENSOR_DESCRIPTOR = (
+    importlib.util.find_spec("triton.tools.tensor_descriptor") is not None
+)
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
@@ -340,6 +347,7 @@ __all__ = [
     "isin",
     "kl_div",
     "kthvalue",
+    "layer_norm_backward",
     "lcm",
     "lcm_",
     "ldl_factor_ex",
@@ -350,7 +358,6 @@ __all__ = [
     "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_tensorinv",
-    "linear",
     "log",
     "log10",
     "log10_",
@@ -454,35 +461,26 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
-    "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
     "zeros_like",
 ]
 
+if _HAS_TENSOR_DESCRIPTOR:
+    from .linear import linear  # noqa: F401
+    from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul  # noqa: F401
+
+    __all__.extend(["linear", "w8a8_block_fp8_matmul"])
+
 
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
-    from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm, bmm_out  # noqa: F401
     from .gelu import gelu  # noqa: F401
-    from .mm import mm, mm_out  # noqa: F401
     from .mv import mv  # noqa: F401
     from .tanh import tanh  # noqa: F401
 
     __all__.extend(
         [
-            "addmm",
-            "addmm_dtype",
-            "addmm_dtype_out",
-            "addmm_out",
-            "baddbmm",
-            "baddbmm_out",
-            "bmm",
-            "bmm_out",
             "gelu",
-            "mm",
-            "mm_out",
             "mv",
             "tanh",
             "atan2",
@@ -544,12 +542,34 @@ if get_device_capability(current_device())[0] >= 3:
         ]
     )
 
-if get_device_capability(current_device()) >= (3, 1):
+    if _HAS_TENSOR_DESCRIPTOR:
+        from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+        from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
+        from .bmm import bmm, bmm_out  # noqa: F401
+        from .mm import mm, mm_out  # noqa: F401
+
+        __all__.extend(
+            [
+                "addmm",
+                "addmm_dtype",
+                "addmm_dtype_out",
+                "addmm_out",
+                "baddbmm",
+                "baddbmm_out",
+                "bmm",
+                "bmm_out",
+                "mm",
+                "mm_out",
+            ]
+        )
+
+if _HAS_TENSOR_DESCRIPTOR and get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
-from .resolve_conj import resolve_conj
-from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
 
-__all__.extend(["scaled_mm", "scaled_mm_out"])
+if _HAS_TENSOR_DESCRIPTOR:
+    from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+
+    __all__.extend(["scaled_mm", "scaled_mm_out"])
