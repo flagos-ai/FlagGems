@@ -1557,7 +1557,12 @@ _FULL_CONFIG = (
     ("less_equal.Tensor", less_equal),
     ("less_equal_.Scalar", less_equal_scalar_),
     ("less_equal_.Tensor", less_equal_),
-    ("lgamma", lgamma),
+    (
+        "lgamma",
+        lgamma,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("lgamma_", lgamma_),
     ("lift", lift),
     ("lift.out", lift_out),

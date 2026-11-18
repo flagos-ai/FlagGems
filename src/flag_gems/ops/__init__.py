@@ -1068,7 +1068,7 @@ from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tens
 from flag_gems.ops.less_ import less_, less_scalar_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
-from flag_gems.ops.lgamma_ import lgamma, lgamma_
+from flag_gems.ops.lgamma_ import lgamma, lgamma_, lgamma_backward
 from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
@@ -2805,6 +2805,7 @@ __all__ = [
     "less_scalar_",
     "lgamma",
     "lgamma_",
+    "lgamma_backward",
     "lift",
     "lift_fresh",
     "lift_fresh_copy",
