@@ -92,6 +92,8 @@ def test_linalg_vander_with_N(shape, N, dtype):
 @pytest.mark.parametrize("shape", VANDER_SHAPES)
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_linalg_vander_complex(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin native complex vander is not implemented")
     # Complex dtype coverage: torch.linalg.vander supports complex inputs.
     # No upcast is needed because the reference supports complex natively.
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -109,6 +111,8 @@ def test_linalg_vander_complex(shape, dtype):
 @pytest.mark.parametrize("N", [2, 3, 4, 8])
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_linalg_vander_with_N_complex(shape, N, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin native complex vander is not implemented")
     # Test complex dtype with explicit N parameter.
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x, False)
