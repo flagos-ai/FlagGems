@@ -3593,6 +3593,18 @@ ops:
   - Math
   stages:
   - stable: '4.0'
+- id: clamp_min_backward
+  description: Computes the gradient of `clamp_min` with respect to its input, returning
+    `grad_output` where `self >= min_value` and zero elsewhere.
+  for:
+    - clamp_min_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: clamp_tensor
   description: The tensor version of `clamp()`.
   for:
