@@ -6,6 +6,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # gels fast path covers overdetermined (m >= n) float32. Shapes are (m, n).
 _SHAPES = [(16, 4), (64, 8), (128, 16), (200, 8), (256, 32)]
@@ -308,7 +309,7 @@ def test_linalg_lstsq_underdetermined_blocked(shape, nrhs, dtype):
 
 
 @pytest.mark.linalg_lstsq
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_linalg_lstsq_underdetermined_blocked_fp64(dtype):
     _require_dtype(torch.float64)
     # fp64 blocked wide: tile 512*64=32768 == fp64... use (48,512): >16384 budget
@@ -400,7 +401,7 @@ def test_linalg_lstsq_tall_blocked(shape, nrhs, dtype):
 
 
 @pytest.mark.linalg_lstsq
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_linalg_lstsq_tall_blocked_fp64(dtype):
     _require_dtype(torch.float64)
     # fp64 blocked path (fp64 tall ALWAYS routes to blocked kernels: measured
@@ -505,7 +506,7 @@ def test_linalg_lstsq_near_singular(dtype):
 
 @pytest.mark.linalg_lstsq
 @pytest.mark.parametrize("shape", [(64, 8), (16, 64)])  # tall and wide
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_linalg_lstsq_fp64(shape, dtype):
     _require_dtype(torch.float64)
     # float64 is now a NATIVE path (not a fallback). gelsd is CPU-only, so the
@@ -626,7 +627,7 @@ def test_linalg_lstsq_square_wy(batch, shape, dtype):
 
 
 @pytest.mark.linalg_lstsq
-@pytest.mark.parametrize("dtype", [torch.float64])
+@pytest.mark.parametrize("dtype", [pytest.param(torch.float64, marks=_SKIP_FP64)])
 def test_linalg_lstsq_square_wy_fp64(dtype):
     _require_dtype(torch.float64)
     # fp64 square: same path, and fp64 conditioning is no longer the limit.
