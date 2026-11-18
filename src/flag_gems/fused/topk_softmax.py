@@ -1,4 +1,4 @@
-# Copyright 2026 FlagOS Contributors
+﻿# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ def topk_gating_softmax_kernel(
         e = tl.exp(weights - top1[:, None])
         wsum = tl.sum(e, axis=1) + 1e-8
         # fast div: one reciprocal + multiplies instead of per-element division
-        inv = 1.0 / wsum
+        inv = tl.math.fdiv(1.0, wsum)
         weights = e * inv[:, None]
 
         out_offs = rows[:, None] * K + k_ar[None, :]
@@ -86,7 +86,8 @@ def topk_gating_softmax_kernel(
         row_max = tl.max(logits, axis=1)
         exp_vals = tl.exp(logits - row_max[:, None])
         denom = tl.sum(exp_vals, axis=1) + 1e-8
-        inv = 1.0 / denom
+        # fast div: one reciprocal + multiplies instead of per-element division
+        inv = tl.math.fdiv(1.0, denom)
         probs = exp_vals * inv[:, None]
 
         work = probs
