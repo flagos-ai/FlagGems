@@ -35,7 +35,7 @@ def check_dtype(fill_value, dtype, device):
 
     elif (
         dtype in ALL_INT_DTYPES
-        and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
+        and not (torch.iinfo(dtype).min <= fill_value <= torch.iinfo(dtype).max)
     ) or (
         dtype in ALL_FLOAT_DTYPES
         and not (math.isinf(fill_value) or math.isnan(fill_value))
