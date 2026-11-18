@@ -130,7 +130,7 @@ def test_digamma_backward_igamma_precision(dtype):
 
 @pytest.mark.digamma_backward
 def test_digamma_backward_use_gems_entry():
-    """Dispatch path: ``torch.digamma`` under ``use_gems`` runs the FlagGems
+    """Dispatch path: ``torch.digamma`` under ``only_enable`` runs the FlagGems
     forward, and pairing it with ``DigammaFunction`` drives the Triton backward.
 
     ``aten::digamma`` has no standalone backward schema to register against, so
@@ -144,12 +144,28 @@ def test_digamma_backward_use_gems_entry():
     ref_grad = utils.to_reference(grad, True)
     (ref_grad_in,) = torch.autograd.grad(torch.digamma(ref_inp), ref_inp, ref_grad)
 
-    with flag_gems.use_gems():
+    # Capture the native forward before registering anything: once
+    # ``only_enable`` runs, a second ``torch.digamma`` call would dispatch to
+    # the Gems kernel too and compare it against itself.
+    expected_fwd = torch.digamma(x)
+
+    # A private Library scopes the registration to this test, matching the
+    # teardown the ``use_gems()`` context manager used to provide. Tests must
+    # not call ``use_gems()``; ``only_enable`` is the sanctioned registration
+    # API and reaches the same registrar.
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["digamma"])
         fwd = torch.digamma(x)
+    finally:
+        lib._destroy()
 
     res_inp = x.clone().requires_grad_(True)
     res_out = DigammaFunction.apply(res_inp)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad)
 
-    utils.gems_assert_close(fwd, torch.digamma(x), torch.float32)
-    utils.gems_assert_close(res_grad, ref_grad_in, torch.float32)
+    # Compare on the CPU explicitly. Under ``--ref cpu`` ``utils.to_cpu`` moves
+    # only the result, so a reference tensor still on the device (here the
+    # freshly computed forward) would trip the device check.
+    utils.gems_assert_close(fwd.cpu(), expected_fwd.cpu(), torch.float32)
+    utils.gems_assert_close(res_grad.cpu(), ref_grad_in.cpu(), torch.float32)
