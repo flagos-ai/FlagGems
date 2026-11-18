@@ -37,8 +37,12 @@ def check_backward(inp, grad_output):
     out = flag_gems.asinh(inp)
     assert type(out.grad_fn).__name__ == "AsinhFunctionBackward"
     actual = torch.autograd.grad(out, inp, grad_output)[0]
-    utils.gems_assert_close(out, expected_out, inp.dtype, equal_nan=True)
-    utils.gems_assert_close(actual, expected, inp.dtype, equal_nan=True)
+    utils.gems_assert_close(
+        out, utils.to_reference(expected_out), inp.dtype, equal_nan=True
+    )
+    utils.gems_assert_close(
+        actual, utils.to_reference(expected), inp.dtype, equal_nan=True
+    )
     torch.testing.assert_close(inp.detach(), before, equal_nan=True, rtol=0, atol=0)
     assert actual.shape == inp.shape
     assert actual.dtype == inp.dtype
@@ -121,7 +125,7 @@ def test_asinh_backward_retain_and_accumulate(dtype):
         grad = torch.randn_like(inp)
         actual.backward(grad, retain_graph=True)
         expected.backward(grad, retain_graph=True)
-    utils.gems_assert_close(inp.grad, ref.grad, dtype)
+    utils.gems_assert_close(inp.grad, utils.to_reference(ref.grad), dtype)
 
 
 def test_asinh_backward_saved_input_version():
@@ -232,4 +236,4 @@ def test_asinh_backward_registered_dispatch(monkeypatch):
     finally:
         lib._destroy()
     assert calls == [True]
-    utils.gems_assert_close(actual, expected, inp.dtype)
+    utils.gems_assert_close(actual, utils.to_reference(expected), inp.dtype)
