@@ -98,6 +98,7 @@ def group_idx_and_topk_triton(
     N_GROUP: tl.constexpr,
     TOPK_GROUP: tl.constexpr,
     TOPK: tl.constexpr,
+    TOPK_PAD: tl.constexpr,
     BLOCK_GROUP: tl.constexpr,
     BLOCK_EXPERT: tl.constexpr,
     INPUT_DTYPE: tl.constexpr,
@@ -191,9 +192,14 @@ def group_idx_and_topk_triton(
         neg_inf,
     )
 
-    topk_vals = tl.full([TOPK], 0.0, tl.float32)
-    topk_idx = tl.full([TOPK], 0, tl.int32)
-    pos_range = tl.arange(0, TOPK)
+    # Triton requires every block dimension to be a power of two, but `topk`
+    # itself need not be (e.g. Nemotron-H uses 10/12/14/22). Size the static
+    # vectors with the padded value and keep the selection loop bounded by
+    # TOPK; the padded slots stay at their defaults and are never stored
+    # (stores are masked with `pos_range < topk`).
+    topk_vals = tl.full([TOPK_PAD], 0.0, tl.float32)
+    topk_idx = tl.full([TOPK_PAD], 0, tl.int32)
+    pos_range = tl.arange(0, TOPK_PAD)
 
     for i in range(TOPK):
         max_val = tl.max(selection_scores, axis=0)
@@ -224,7 +230,7 @@ def group_idx_and_topk_triton(
     topk_vals = topk_vals * scale
 
     default_idx = pos_range.to(tl.int32)
-    default_vals = tl.full([TOPK], 1.0 / topk, tl.float32)
+    default_vals = tl.full([TOPK_PAD], 1.0 / topk, tl.float32)
 
     final_vals = tl.where(if_proceed, topk_vals, default_vals)
     final_idx = tl.where(if_proceed, topk_idx, default_idx)
@@ -346,6 +352,7 @@ def grouped_topk(
         N_GROUP=n_group,
         TOPK_GROUP=topk_group,
         TOPK=topk,
+        TOPK_PAD=triton.next_power_of_2(topk),
         BLOCK_GROUP=BLOCK_GROUP,
         BLOCK_EXPERT=BLOCK_EXPERT,
         INPUT_DTYPE=INPUT_DTYPE,
