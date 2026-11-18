@@ -121,6 +121,7 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
 
 
 @pytest.mark.softmax_backward
+@pytest.mark.softmax_backward_data
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -137,10 +138,7 @@ def test_softmax_backward(shape, dtype, dim, neg_inf):
     ref_in_grad = torch.ops.aten._softmax_backward_data(
         ref_grad, ref_out, dim, ref_grad.dtype
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten._softmax_backward_data(
-            res_grad, res_out, dim, dtype
-        )
+    res_in_grad = flag_gems.softmax_backward(res_grad, res_out, dim, dtype)
 
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True
