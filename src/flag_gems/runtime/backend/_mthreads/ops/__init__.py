@@ -40,6 +40,7 @@ from ._foreach_add_ScalarList import _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
 from ._foreach_addcdiv__ScalarList import _foreach_addcdiv__ScalarList
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
+from ._foreach_clamp_max__List import _foreach_clamp_max__List
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -251,6 +252,7 @@ __all__ = [
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
+    "_foreach_clamp_max__List",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
