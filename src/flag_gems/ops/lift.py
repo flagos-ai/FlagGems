@@ -43,6 +43,12 @@ def lift(A):
     return A
 
 
+def lift_backward(grad_output):
+    """Backward of ``lift``: the operation is a value-preserving identity."""
+    logger.debug("GEMS LIFT_BACKWARD")
+    return grad_output
+
+
 def lift_out(A, *, out=None):
     """
     Implements aten::lift.out variant - copies A to out and returns out.
