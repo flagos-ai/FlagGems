@@ -1266,6 +1266,8 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("clamp_max_", clamp_max_),
+    ("clamp_max_backward", clamp_max_backward),
+    ("clamp_min", clamp_min),
     # Autograd fallthrough: the ClampMinFunction wrapper owns
     # the differentiable path. Without it the device-key override drops ATen's
     # autograd formula and the backward falls back to the native kernel.
