@@ -1,3 +1,11 @@
+import hashlib
+import json
+import math
+import os
+from dataclasses import asdict, dataclass
+from functools import cached_property
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -16,7 +24,197 @@ _BIDIRECTIONAL = False
 _BATCH_FIRST = False
 
 
-class MkldnnRnnLayerBenchmark(base.GenericBenchmark):
+@dataclass
+class _MkldnnMetrics(base.BenchmarkMetrics):
+    baseline_source: dict | None = None
+
+
+class _H800Latency:
+    @staticmethod
+    def _input_config(args, kwargs):
+        def value(x):
+            if isinstance(x, torch.Tensor):
+                return dict(
+                    shape=list(x.shape),
+                    dtype=str(x.dtype),
+                    stride=list(x.stride()),
+                    requires_grad=x.requires_grad,
+                )
+            if isinstance(x, (tuple, list)):
+                return [value(y) for y in x]
+            if isinstance(x, dict):
+                return {k: value(v) for k, v in x.items()}
+            return x
+
+        return dict(
+            inputs=dict(args=value(args), kwargs=value(kwargs)),
+            source_commit="9d57a23b4386bd669152a935fe88a96db907da7c",
+            benchmark="benchmark/test_mkldnn_rnn_layer.py",
+            descriptor=list(args[0].shape),
+            scope="core",
+            variant=_MKLDNN_RNN_LAYER_SHAPES.index(tuple(args[0].shape)),
+        )
+
+    @cached_property
+    def _h800(self):
+        path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
+        payload = path.read_bytes()
+
+        def unique(pairs):
+            result = {}
+            for key, val in pairs:
+                if key in result:
+                    raise ValueError(f"Duplicate baseline key: {key}")
+                result[key] = val
+            return result
+
+        def reject(value):
+            raise ValueError(f"Non-finite baseline constant: {value}")
+
+        data = json.loads(payload, object_pairs_hook=unique, parse_constant=reject)
+        op = data["mkldnn_rnn_layer"]
+        if op["native_api"] != "ops.mkldnn_rnn_layer":
+            raise ValueError("Expected ops-baseline native LSTM composition")
+        task = data["_collection"]["tasks"]["mkldnn_rnn_layer"]
+        if (
+            task["status"] != "completed"
+            or isinstance(task["returncode"], bool)
+            or not isinstance(task["returncode"], int)
+            or task["returncode"] != 0
+        ):
+            raise ValueError("Expected a completed H800 LSTM collection")
+        return (
+            data,
+            op["shapes"],
+            task,
+            dict(
+                kind="external_nvidia",
+                source_artifact=data.get("_snapshot_source"),
+                artifact=str(path),
+                artifact_sha256=hashlib.sha256(payload).hexdigest(),
+                reference_implementation="pytorch_native_lstm_composition",
+                input_identity="same distribution/configuration; not identical random payloads",
+                ratio="raw H800 native-composition latency / target candidate latency",
+                collection_task_status=task["status"],
+            ),
+        )
+
+    def _import_latency(self, args, kwargs):
+        data, shapes, task, provenance = self._h800
+        config = self._input_config(args, kwargs)
+        rows = [
+            row
+            for group in shapes.values()
+            for dtype, row in group.items()
+            if dtype == str(args[0].dtype)
+            and json.dumps(row.get("config"), sort_keys=True, allow_nan=False)
+            == json.dumps(config, sort_keys=True, allow_nan=False)
+        ]
+        if len(rows) != 1:
+            raise ValueError(
+                "Expected exactly one matching H800 LSTM input configuration"
+            )
+        row = rows[0]
+        origin = row.get("collection_origin")
+        environment = (
+            origin["environment"]
+            if origin
+            else data["_environments"][str(task["device"])]
+        )
+        source = environment["source"]
+        commit = source["git_commit"]
+        validity = row.get("metric_validity")
+        measured = (
+            validity.get("T_us") == "measured"
+            and validity.get("latency_ms") == "measured"
+            if validity is not None
+            else environment["run"].get("ncu_enabled") is False
+            and environment["run"].get("selected_ops") == ["mkldnn_rnn_layer"]
+        )
+        if (
+            environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
+            or environment["run"]["repo"] != "pytorch"
+            or source["git_dirty"] is not False
+            or not isinstance(commit, str)
+            or len(commit) != 40
+            or any(c not in "0123456789abcdef" for c in commit)
+            or not environment["software"]["packages"]["torch"]
+            or not measured
+        ):
+            raise ValueError(
+                "H800 latency needs measured timing and its actual environment"
+            )
+        for field in ("T_us", "latency_ms"):
+            value = row[field]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError("H800 latency must be finite and positive")
+        latency = row["T_us"] / 1000
+        if not math.isclose(row["latency_ms"], latency, rel_tol=1e-9, abs_tol=1e-12):
+            raise ValueError("H800 latency units disagree")
+        self._imported_baseline = dict(
+            **provenance,
+            environment=environment,
+            config=config,
+            collection_origin=origin,
+            ncu_status=row.get("ncu_status"),
+            ncu_reason=row.get("ncu_reason"),
+            ncu_enabled=environment["run"]["ncu_enabled"],
+            latency_validity="measured",
+            target_timing_mode=base.Config.mode.value,
+        )
+        return latency
+
+    def get_latency(self, op, *args, **kwargs):
+        if getattr(self, "_native_measurement_pending", False):
+            if op is not self.torch_op:
+                raise ValueError("External baseline must replace the reference timer")
+            self._native_measurement_pending = False
+            return self._import_latency(args, kwargs)
+        return super().get_latency(op, *args, **kwargs)
+
+    def _measure_input(self, input, case_id=None):
+        external = bool(os.environ.get("FLAGGEMS_NV_BASELINE"))
+        if external and (
+            self.is_backward
+            or "tflops" in self.to_bench_metrics
+            or base.Config.skip_native
+            or base.Config.reference_only
+        ):
+            raise ValueError(
+                "External LSTM baseline requires ordinary forward latency timing"
+            )
+        self._imported_baseline = None
+        self._native_measurement_pending = (
+            external and "latency_base" in self.to_bench_metrics
+        )
+        try:
+            metric = super()._measure_input(input, case_id)
+            if self._imported_baseline is not None:
+                if (
+                    isinstance(metric.latency, bool)
+                    or not isinstance(metric.latency, (int, float))
+                    or not math.isfinite(metric.latency)
+                    or metric.latency <= 0
+                ):
+                    raise ValueError(
+                        "Target candidate latency must be finite and positive"
+                    )
+                if "speedup" in self.to_bench_metrics:
+                    metric.speedup = metric.latency_base / metric.latency
+                return _MkldnnMetrics(
+                    **asdict(metric), baseline_source=self._imported_baseline
+                )
+            return metric
+        finally:
+            self._native_measurement_pending = False
+
+
+class MkldnnRnnLayerBenchmark(_H800Latency, base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = _MKLDNN_RNN_LAYER_SHAPES
 
