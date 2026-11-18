@@ -78,7 +78,7 @@ def test_addmm(monkeypatch):
         op_name="addmm",
         input_fn=_input_fn,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -90,7 +90,7 @@ def test_addmm_vector_bias(monkeypatch):
         op_name="addmm_vector_bias",
         input_fn=_input_fn_vector_bias,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -202,7 +202,7 @@ def test_addmm_out(monkeypatch):
         op_name="addmm_out",
         input_fn=_input_fn_out,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -214,7 +214,7 @@ def test_addmm_out_vector_bias(monkeypatch):
         op_name="addmm_out_vector_bias",
         input_fn=_input_fn_vector_bias_out,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()

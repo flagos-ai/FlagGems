@@ -502,3 +502,9 @@ def float_power_scalar_tensor_out(A, exponent, *, out):
         num_warps=4,
     )
     return out
+
+
+def float_power_scalar_tensor(A, exponent):
+    """ATen entry point for ``float_power.Scalar``."""
+    out = torch.empty(exponent.shape, dtype=torch.float64, device=exponent.device)
+    return float_power_scalar_tensor_out(A, exponent, out=out)

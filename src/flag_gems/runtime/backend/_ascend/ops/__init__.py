@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -227,7 +228,7 @@ from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .permute_copy import permute_copy
 from .polar import polar
-from .polygamma import polygamma_
+from .polygamma import polygamma, polygamma_, polygamma_out
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -321,6 +322,7 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -577,7 +579,9 @@ __all__ = [
     "pairwise_distance",
     "permute_copy",
     "polar",
+    "polygamma",
     "polygamma_",
+    "polygamma_out",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",

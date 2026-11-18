@@ -375,6 +375,10 @@ def test_accuracy_crow_indices_copy_repeated_dispatch():
     utils.gems_assert_equal(via_dispatch, ref)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSR layout not supported on this device",
+)
 @pytest.mark.crow_indices_copy
 def test_accuracy_crow_indices_copy_dispatch_sentinel():
     # Sentinel test (reviewer-requested): prove that the FlagGems
