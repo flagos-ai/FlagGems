@@ -31,6 +31,7 @@ def _make_mask(shape):
         )
     return torch.randint(0, 2, shape, dtype=torch.uint8, device=flag_gems.device)
 
+
 def _reference(inp, mask, scale):
     ref_inp = utils.to_reference(inp, True)
     ref_mask = utils.to_reference(mask, False)
@@ -39,6 +40,7 @@ def _reference(inp, mask, scale):
     return torch.where(
         ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
     )
+
 
 def _assert_masked_scale_close(result, reference, inp, mask, dtype, **kwargs):
     assert result.device == inp.device
