@@ -182,5 +182,9 @@ def test_cast_Short_complex_real_component(dtype, conjugated):
     if conjugated:
         x = x.conj()
     actual, expected = assert_cast(x)
-    torch.testing.assert_close(actual, real.to(torch.int16), rtol=0, atol=0)
-    torch.testing.assert_close(expected, real.to(torch.int16), rtol=0, atol=0)
+    # Use exact integer expectations. A second native floating cast on the
+    # device can have its own backend conversion bug, and --ref cpu places the
+    # reference on a different device from the input.
+    exact = torch.tensor([-32768, -2, 0, 3, 32767], dtype=TARGET)
+    tu.assert_result_equal(actual, exact)
+    tu.assert_result_equal(expected, exact)
