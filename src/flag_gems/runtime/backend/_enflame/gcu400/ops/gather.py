@@ -255,7 +255,7 @@ def _gather_2d_fast(inp, dim, index, out):
                 out.stride(0),
                 BLOCK_N=BLOCK_N,
                 GRID_DIM=grid_dim,
-                num_warps=4,
+                num_warps=8,
             )
         elif dim == 0:
             gather_2d_dim0_kernel[(grid_dim,)](
@@ -270,7 +270,7 @@ def _gather_2d_fast(inp, dim, index, out):
                 out.stride(0),
                 BLOCK_N=BLOCK_N,
                 GRID_DIM=grid_dim,
-                num_warps=4,
+                num_warps=8,
             )
         else:
             return False

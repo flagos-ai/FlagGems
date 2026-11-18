@@ -48,6 +48,8 @@ def test_ldexp_(shape, dtype):
 @pytest.mark.parametrize("other_dtype", [torch.int64, torch.float32, torch.float64])
 @pytest.mark.parametrize("self_dtype", utils.FLOAT_DTYPES)
 def test_ldexp_mixed_dtype_(self_dtype, other_dtype):
+    if other_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("FP64 exponent is not supported")
     shape = (37, 53)
     self = torch.randn(shape, dtype=self_dtype, device=flag_gems.device)
     if other_dtype.is_floating_point:
@@ -115,6 +117,10 @@ def test_ldexp_special_values_(dtype):
 
 
 @pytest.mark.ldexp_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="MUSA native ldexp_ overflows FP32 scaling at exponent 128",
+)
 def test_ldexp_extreme_integral_exponents_():
     self = torch.tensor(
         [2.0**-100, -(2.0**-100), 2.0**100, -(2.0**100)],
@@ -160,6 +166,10 @@ def test_ldexp_fp64_exponent_precision_():
 @pytest.mark.parametrize(
     "dtype",
     utils.COMPLEX_DTYPES + ([torch.complex128] if utils.fp64_is_supported else []),
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="MUSA native ldexp_ does not support these complex dtypes",
 )
 def test_ldexp_complex_(dtype):
     self = torch.randn((19, 7), dtype=dtype, device=flag_gems.device)
@@ -289,6 +299,10 @@ def test_ldexp_int64_exponent_outside_int32_range_():
 @pytest.mark.ldexp_
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 @pytest.mark.parametrize("conjugated", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="MUSA native ldexp_ does not support these complex dtypes",
+)
 def test_ldexp_complex_integral_extremes_(dtype, conjugated):
     self = torch.tensor(
         [
@@ -311,6 +325,10 @@ def test_ldexp_complex_integral_extremes_(dtype, conjugated):
 
 
 @pytest.mark.ldexp_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="MUSA native ldexp_ does not support these complex dtypes",
+)
 def test_ldexp_conjugated_complex_exponent_():
     self = torch.randn(17, dtype=torch.complex64, device=flag_gems.device).conj()
     other = torch.randn_like(self).conj()

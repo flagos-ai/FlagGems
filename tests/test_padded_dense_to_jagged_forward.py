@@ -91,6 +91,8 @@ def _run_case(dense_cpu, offsets_cpu, offset_dtype, total_L):
 @pytest.mark.parametrize("dtype", _DENSE_DTYPES)
 @pytest.mark.parametrize("offset_dtype", [torch.int32, torch.int64])
 def test_padded_dense_to_jagged_forward_single(dtype, offset_dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported on this device")
     shape = (7, 9, 17)
     offsets = _make_offsets(shape[0], shape[1:-1])
     _run_case(
@@ -114,6 +116,8 @@ def test_padded_dense_to_jagged_forward_single(dtype, offset_dtype):
 @pytest.mark.parametrize("dtype", _DENSE_DTYPES)
 @pytest.mark.parametrize("offset_dtype", [torch.int32, torch.int64])
 def test_padded_dense_to_jagged_forward_multi(shape, dtype, offset_dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported on this device")
     offsets = _make_offsets(shape[0], shape[1:-1])
     _run_case(
         _make_dense(shape, dtype),
@@ -149,6 +153,8 @@ def test_padded_dense_to_jagged_forward_noncontiguous_dense():
 
 @pytest.mark.padded_dense_to_jagged_forward
 def test_padded_dense_to_jagged_forward_float64_preserves_bits():
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported on this device")
     bit_patterns = torch.tensor(
         [
             0,
