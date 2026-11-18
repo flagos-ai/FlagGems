@@ -122,7 +122,7 @@ def _scatter_strided_kernel(
     tl.store(a_ptr + aoff, v.to(a_ptr.dtype.element_ty), mask=mask)
 
 
-def less_(A, B):
+def less__tensor(A, B):
     numel = A.numel()
     if numel == 0:
         return A

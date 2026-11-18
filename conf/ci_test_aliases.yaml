@@ -17,8 +17,11 @@
 
 # _out variants - share test with base operator
 less__scalar: test_less_
+less__tensor: test_less_
 less_scalar: test_less
 less_tensor: test_less
+lt__scalar: test_lt_
+lt__tensor: test_lt_
 lt_scalar: test_lt
 lt_tensor: test_lt
 _ctc_loss_backward_out: test__ctc_loss_backward

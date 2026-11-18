@@ -230,8 +230,8 @@ def lt_func_(x, y):
     return t
 
 
-def lt_(A, B):
-    logger.debug("GEMS_KUNLUNXIN LT_")
+def lt__tensor(A, B):
+    logger.debug("GEMS_KUNLUNXIN LT__TENSOR")
     if A.device != B.device:
         B = B.to(A.device)
     lt_func_(A, B, out0=A)
@@ -263,8 +263,8 @@ def lt_func_scalar_(x, y):
     return t
 
 
-def lt_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN LT_SCALAR_")
+def lt__scalar(A, B):
+    logger.debug("GEMS_KUNLUNXIN LT__SCALAR")
     numel = A.numel()
     if (
         A.is_contiguous()
@@ -309,9 +309,9 @@ def _lt_scalar_inplace_fast(A):
     return A
 
 
-def less_(A, B):
-    return lt_(A, B)
+def less__tensor(A, B):
+    return lt__tensor(A, B)
 
 
 def less__scalar(A, B):
-    return lt_scalar_(A, B)
+    return lt__scalar(A, B)

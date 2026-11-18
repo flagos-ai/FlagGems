@@ -148,7 +148,7 @@ from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor
 from .logical_xor_ import logical_xor_
 from .lt import less_scalar, less_tensor, lt_scalar, lt_tensor
-from .lt_ import lt_, lt_scalar_
+from .lt_ import lt__scalar, lt__tensor
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
@@ -460,9 +460,9 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logical_xor_",
-    "lt_",
+    "lt__scalar",
+    "lt__tensor",
     "lt_scalar",
-    "lt_scalar_",
     "lt_tensor",
     "masked_fill",
     "masked_fill_",

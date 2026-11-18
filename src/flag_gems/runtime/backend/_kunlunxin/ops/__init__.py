@@ -653,13 +653,13 @@ from .logsumexp import logsumexp
 from .lstm import lstm
 from .lstm_cell import lstm_cell
 from .lt import (
-    less_,
     less__scalar,
+    less__tensor,
     less_scalar,
     less_tensor,
-    lt_,
+    lt__scalar,
+    lt__tensor,
     lt_scalar,
-    lt_scalar_,
     lt_tensor,
 )
 from .lu_unpack import lu_unpack, lu_unpack_out
@@ -1581,8 +1581,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
-    "less_",
     "less__scalar",
+    "less__tensor",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
@@ -1658,9 +1658,9 @@ __all__ = [
     "lstm",
     "lstm_cell",
     "lt",
-    "lt_",
+    "lt__scalar",
+    "lt__tensor",
     "lt_scalar",
-    "lt_scalar_",
     "lt_tensor",
     "lu_unpack",
     "lu_unpack_out",

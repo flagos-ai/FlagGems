@@ -1073,7 +1073,7 @@ from flag_gems.ops.leaky_relu import (
     leaky_relu_out,
 )
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
-from flag_gems.ops.less_ import less_, less__scalar
+from flag_gems.ops.less_ import less__scalar, less__tensor
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
@@ -1178,7 +1178,7 @@ from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import less_scalar, less_tensor, lt_scalar, lt_tensor
-from flag_gems.ops.lt_ import lt_, lt_scalar_
+from flag_gems.ops.lt_ import lt__scalar, lt__tensor
 from flag_gems.ops.lu_solve import lu_solve, lu_solve_out
 from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.make_dual_copy import _make_dual_copy, _make_dual_copy_out
@@ -2832,8 +2832,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
-    "less_",
     "less__scalar",
+    "less__tensor",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
@@ -2954,9 +2954,9 @@ __all__ = [
     "logsumexp",
     "lstm",
     "lstm_cell",
-    "lt_",
+    "lt__scalar",
+    "lt__tensor",
     "lt_scalar",
-    "lt_scalar_",
     "lt_tensor",
     "lu_solve",
     "lu_solve_out",

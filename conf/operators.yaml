@@ -11335,10 +11335,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - stable: '3.0'
-- id: less_
-  description: The in-place version of `less()`.
+- id: less__scalar
+  description: The scalar version of `less_()`.
   for:
-  - less_.Tensor
+  - less_.Scalar
   labels:
   - aten
   - KernelGen
@@ -11346,10 +11346,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: less__scalar
-  description: The scalar version of `less_()`.
+- id: less__tensor
+  description: The in-place version of `less()`.
   for:
-  - less_.Scalar
+  - less_.Tensor
   labels:
   - aten
   - KernelGen
@@ -12993,7 +12993,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: lt_
+- id: lt__scalar
+  description: The scalar version of `lt_()`.
+  for:
+  - lt_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: lt__tensor
   description: The in-place version of `lt()`.
   for:
   - lt_.Tensor
@@ -13015,17 +13026,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.0'
-- id: lt_scalar_
-  description: The scalar version of `lt_()`.
-  for:
-  - lt_.Scalar
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: lt_tensor
   description: Computes that `input` is less than `other` element-wise.
   for:
