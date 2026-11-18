@@ -226,17 +226,13 @@ def _empty_like_gems(source, dtype, preserve_format=True):
     """Allocate through FlagGems while preserving dense input layouts."""
     shape = tuple(source.shape)
     if preserve_format and source.numel() and source.ndim > 1:
-        # empty_like(preserve_format) keeps strides for dense permutations, but
-        # allocates contiguous storage for slices and expanded views.
-        layout = sorted(
-            range(source.ndim), key=lambda d: source.stride(d), reverse=True
-        )
-        stride = 1
-        strides = [0] * source.ndim
-        for dim in reversed(layout):
-            strides[dim] = stride
-            stride *= shape[dim]
-        if tuple(strides) == tuple(source.stride()):
+        # empty_like(preserve_format) compacts sliced strides while retaining
+        # the dimension order of non-overlapping views; expanded views overlap
+        # and instead receive a contiguous allocation.
+        if all(source.stride(d) > 0 or shape[d] == 1 for d in range(source.ndim)):
+            layout = sorted(
+                range(source.ndim), key=lambda d: source.stride(d), reverse=True
+            )
             return gems_empty_permuted(shape, layout, dtype=dtype, device=source.device)
     return gems_empty(shape, dtype=dtype, device=source.device)
 
