@@ -32,13 +32,20 @@ GREATER_SHAPES = [s for s in utils.POINTWISE_SHAPES if s != (1,)]
 def test_greater_(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1)
+    ref_inp1 = utils.to_reference(inp1.clone())
     ref_inp2 = utils.to_reference(inp2)
 
     ref_inp1.greater_(ref_inp2)
-    flag_gems.greater_(inp1, inp2)
+    original_pointer = inp1.data_ptr()
+    other_before = inp2.clone()
+    result = flag_gems.greater_(inp1, inp2)
 
-    utils.gems_assert_equal(inp1, ref_inp1)
+    assert result is inp1
+    assert result.data_ptr() == original_pointer
+    assert result.device == inp2.device
+    assert result.dtype == dtype
+    assert torch.equal(inp2, other_before)
+    utils.gems_assert_equal(result, ref_inp1)
 
 
 @pytest.mark.greater_
@@ -59,10 +66,52 @@ def test_greater_fp64_precision(dtype):
 
     inp1 = torch.tensor([val1], dtype=dtype, device=flag_gems.device)
     inp2 = torch.tensor([val2], dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1)
-    ref_inp2 = utils.to_reference(inp2)
+    # Iluvatar's native comparison rounds these distinct FP64 inputs to FP32.
+    use_cpu_oracle = flag_gems.vendor_name == "iluvatar"
+    if use_cpu_oracle:
+        ref_inp1, ref_inp2 = inp1.cpu().clone(), inp2.cpu()
+    else:
+        ref_inp1 = utils.to_reference(inp1.clone())
+        ref_inp2 = utils.to_reference(inp2)
 
     ref_inp1.greater_(ref_inp2)
-    flag_gems.greater_(inp1, inp2)
+    original_pointer = inp1.data_ptr()
+    other_before = inp2.clone()
+    result = flag_gems.greater_(inp1, inp2)
 
-    utils.gems_assert_equal(inp1, ref_inp1)
+    assert result is inp1
+    assert result.data_ptr() == original_pointer
+    assert result.device == inp2.device
+    assert result.dtype == dtype
+    assert torch.equal(inp2, other_before)
+    utils.gems_assert_equal(result.cpu() if use_cpu_oracle else result, ref_inp1)
+
+
+@pytest.mark.greater_
+@pytest.mark.skipif(not utils.fp64_is_supported, reason="FP64 is not supported")
+@pytest.mark.parametrize("other_kind", ["tensor", "scalar", "mixed"])
+def test_greater_fp64_strided_repeated_calls(other_kind):
+    # Genuine doubles must retain all eight bytes on every cached launch.
+    host = torch.tensor([16777216.5, -16777216.5], dtype=torch.float64)
+    other = 16777216.4
+    if other_kind == "tensor":
+        other = torch.tensor([16777216.4, -16777216.4], dtype=torch.float64)
+    elif other_kind == "mixed":
+        other = torch.tensor([16777216.0, -16777216.0], dtype=torch.float32)
+    reference = host.clone().greater_(other)
+    if isinstance(other, torch.Tensor):
+        other = other.to(flag_gems.device)
+        other_before = other.clone()
+    backing = torch.full((4,), 17.0, dtype=torch.float64, device=flag_gems.device)
+    inp = backing[::2]
+    for _ in range(2):
+        inp.copy_(host.to(flag_gems.device))
+        result = flag_gems.greater_(inp, other)
+        assert result is inp and result.dtype == torch.float64
+        assert result.device == backing.device and result.stride() == (2,)
+        utils.gems_assert_equal(result.cpu(), reference)
+        assert torch.equal(
+            backing[1::2].cpu(), torch.full((2,), 17.0, dtype=torch.float64)
+        )
+        if isinstance(other, torch.Tensor):
+            assert torch.equal(other, other_before)
