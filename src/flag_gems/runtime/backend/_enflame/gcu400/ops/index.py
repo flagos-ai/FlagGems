@@ -15,6 +15,7 @@
 import importlib
 import logging
 import os
+import types
 from typing import Any, Callable, Mapping, Tuple
 
 import torch
@@ -28,6 +29,14 @@ GCU_MAX_GRID_Y = 255
 # Row-copy fast path tile budget: keep the DSM tile at/below 128KB so wide
 # element types (fp64) do not blow the DSM limit (32768 fp32 elems verified).
 GCU_ROWCOPY_BLOCK_BYTES = 128 * 1024
+# General 2D-tile gather kernel: maximum BLOCK_SIZE1 (row width). Rows of
+# >=512 lanes in the 2D broadcast-mask gather lower through the
+# tops_cvt_v0_si8_to_v1_si8__4 intrinsic whose ICALL relocation is rejected
+# by ld.lld (P03 family), so any tile with BLOCK_SIZE1 >= 512 fails to link.
+# Measured safe region (fp32 + int64, leading/non-leading index, B0 8..64):
+# BLOCK_SIZE1 <= 256 always links; BLOCK_SIZE1 >= 512 fails on every probed
+# case family (with an erratic non-monotonic pass at 1024 for one shape).
+GCU_INDEX_MAX_BLOCK_N = 256
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -287,8 +296,11 @@ def generate_index_wrapper(
                 code.writeline("return input")
         code.newline()
         # GCU400 measured (GATHER kernel; differs from index_put's scatter):
-        # - BLOCK_SIZE1 hugs the sliced width N (cap 2048). Wide-slice cases
-        #   blow the DSM budget with larger tiles.
+        # - BLOCK_SIZE1 hugs the sliced width N, capped at
+        #   GCU_INDEX_MAX_BLOCK_N (256): wider rows (>=512 lanes) lower the
+        #   gather mask through the ld.lld-broken si8 cvt intrinsic (P03
+        #   family) and fail to link. Wide-slice cases blow the DSM budget
+        #   with larger tiles anyway.
         # - BLOCK_SIZE0 targets ~128 CTAs along M (measured sweet spot: 1D
         #   full-gather keeps improving up to grid.x~128; tiny M stays at a
         #   floor of 8 lanes per CTA), then is clamped by the DSM tile budget
@@ -296,7 +308,10 @@ def generate_index_wrapper(
         # - BLOCK_SIZE0 is only enlarged beyond the above when the M grid
         #   (incl. y_rounds folding) approaches the hardware limit 65535, to
         #   avoid launch failure on huge gather volumes.
-        code.writeline("_BLOCK_SIZE1 = min(triton.next_power_of_2(max(N, 1)), 2048)")
+        code.writeline(
+            "_BLOCK_SIZE1 = min(triton.next_power_of_2(max(N, 1)), "
+            f"{GCU_INDEX_MAX_BLOCK_N})"
+        )
         code.writeline("_y_rounds = triton.cdiv(triton.cdiv(N, _BLOCK_SIZE1), 255)")
         code.writeline(
             "_BLOCK_SIZE0 = max(8, min(triton.next_power_of_2("
@@ -545,29 +560,15 @@ def index(inp, indices):
                 replacement_shape = list(idx_item.shape)
 
     out_shape = before_shape + replacement_shape + after_shape
-    original_dtype = inp.dtype
-
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
 
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
     if inp.numel() == 0:
-        if original_dtype == torch.int64:
-            out = out.to(torch.int64)
         return out.contiguous()
 
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
-        result = inp.view(*out_shape)
-        if original_dtype == torch.int64:
-            result = result.to(torch.int64)
-        return result.contiguous()
-
-    tensor_indices = [
-        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
-        for idx in tensor_indices
-    ]
+        return inp.view(*out_shape).contiguous()
 
     _index_func(inp, tensor_indices, out)
 
@@ -582,6 +583,93 @@ def index(inp, indices):
         result.copy_(out)
         out = result
 
-    if original_dtype == torch.int64:
-        out = out.to(torch.int64)
     return out.contiguous()
+
+
+# ============================================================================
+# aten::index native bridge (torch_gcu topsatenIndex broadcast defect)
+# ============================================================================
+#
+# torch_gcu's native ``aten::index`` (topsatenIndex) hard-aborts the whole
+# process (CHECK terminate, not an exception) when the tensor indices need
+# broadcasting: the internal index expansion runs ``op_aten_repeat`` with a
+# dtype-mismatched output and dies in ``op_aten_repeat_base.h`` /
+# ``gcu_utils.cpp`` (TOPSATEN_STATUS_BAD_PARAM -> "Check failed: 0").  Any
+# caller of ``torch.ops.aten.index`` on GCU tensors -- in particular the
+# reference arm of the accuracy tests -- is killed before the FlagGems
+# candidate even runs.  Probes (fp32/int64, leading/non-leading, bool masks,
+# empty, k=0): every non-broadcast pattern works natively; only
+# shape-differing multi-index calls abort; handing the SAME native kernel
+# pre-broadcast same-shape index views computes correctly.
+#
+# This bridge therefore registers ``index.Tensor`` on the device dispatch key
+# (allow_override, cholesky/values_copy conventions): it pre-broadcasts the
+# indices with ``torch.broadcast_tensors`` -- a metadata-only view expansion,
+# semantically identical per aten::index broadcast rules -- and delegates to
+# the native kernel captured at import time via ``torch.library.get_kernel``
+# (``call_boxed`` bypasses the dispatcher, so it can never re-enter this
+# shim).  Non-broadcast calls are delegated unchanged, so the reference arm
+# keeps its native GCU semantics and never routes through FlagGems code.
+#
+# The captured handle and the Library live on a ``torch``-attached state
+# because this module is imported under several names at once (gcu400.ops...,
+# _enflame.gcu400..., flag_gems.runtime.backend...); a plain module global
+# would be duplicated per alias and re-capture after registration would
+# capture this shim itself, recursing forever.
+
+_INDEX_BRIDGE_FLAG = "_flag_gems_gcu400_index_native_bridge"
+
+
+def _index_needs_prebroadcast(indices):
+    tensor_indices = [t for t in indices if t is not None]
+    if len(tensor_indices) < 2:
+        return False
+    first = tensor_indices[0].shape
+    return any(t.shape != first for t in tensor_indices[1:])
+
+
+def _install_index_native_bridge():
+    if getattr(torch, _INDEX_BRIDGE_FLAG, None) is not None:
+        return
+    if not hasattr(torch.library, "get_kernel"):
+        return
+
+    from flag_gems.runtime import device as _runtime_device
+
+    dispatch_key = _runtime_device.dispatch_key
+    try:
+        native = torch.library.get_kernel(torch.ops.aten.index.Tensor, dispatch_key)
+        keyset = torch._C.DispatchKeySet(getattr(torch._C.DispatchKey, dispatch_key))
+    except Exception:
+        # No native kernel to delegate to (or unsupported torch build): keep
+        # the default dispatch untouched instead of installing a bridge that
+        # could never complete a call.
+        return
+    if native is None:
+        return
+
+    def _aten_index_tensor_gcu(self, indices):
+        if _index_needs_prebroadcast(indices):
+            tensor_indices = [t for t in indices if t is not None]
+            broadcast = torch.broadcast_tensors(*tensor_indices)
+            expanded = iter(broadcast)
+            indices = [next(expanded) if t is not None else None for t in indices]
+        return native.call_boxed(keyset, self, indices)
+
+    library = torch.library.Library("aten", "IMPL")
+    try:
+        library.impl(
+            "index.Tensor", _aten_index_tensor_gcu, dispatch_key, allow_override=True
+        )
+    except TypeError:
+        # Older torch builds have no allow_override parameter.
+        library.impl("index.Tensor", _aten_index_tensor_gcu, dispatch_key)
+
+    setattr(
+        torch,
+        _INDEX_BRIDGE_FLAG,
+        types.SimpleNamespace(native=native, library=library),
+    )
+
+
+_install_index_native_bridge()

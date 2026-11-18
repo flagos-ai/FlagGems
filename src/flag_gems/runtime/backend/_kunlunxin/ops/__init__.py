@@ -172,7 +172,7 @@ from ._functional_sym_constrain_range_for_size import (
 )
 from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
-from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
+from ._fused_rms_norm import _fused_rms_norm, _fused_rms_norm_backward  # noqa: F401
 from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
@@ -566,6 +566,10 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
 from .histogramdd import histogramdd
+from .histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -584,7 +588,7 @@ from .index_copy_ import (  # noqa: F401  (registered via _FULL_CONFIG)
 from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
-from .index_reduce import index_reduce_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inverse import inverse
@@ -597,9 +601,11 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .isreal import isreal  # noqa: F401
 from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
@@ -619,6 +625,7 @@ from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_householder_product import linalg_householder_product
 from .linalg_inv import linalg_inv
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
@@ -1193,6 +1200,8 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
     "_is_all_true",
     "_logcumsumexp",
@@ -1576,7 +1585,9 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
+    "index_reduce",
     "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
@@ -1591,9 +1602,13 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "isreal",
     "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kron",
     "kthvalue",
@@ -1631,6 +1646,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_householder_product",
     "linalg_inv",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu",

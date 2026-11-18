@@ -652,7 +652,37 @@ _FULL_CONFIG = (
         None,
         (SPARSE_DISPATCH_KEY,),
     ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        sparse_coo_tensor_with_dims_and_tensors,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors.out",
+        sparse_coo_tensor_with_dims_and_tensors_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
+    (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     (
         "_sparse_csr_sum",
         sparse_csr_sum,
