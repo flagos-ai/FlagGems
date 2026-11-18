@@ -25,14 +25,14 @@ every intermediate is written back in the storage dtype.
 
 The kernel below fuses the whole chain into a single launch while keeping
 ATen's per-op rounding boundaries (each intermediate is rounded to the
-storage dtype), so fp16/bf16/fp32 gradients are bit-exact against native
+storage dtype), so fp32/fp16/bf16 gradients are bit-exact against native
 autograd.
 
 Domain note: ``erfinv`` is only real-valued on ``(-1, 1)``. At ``x = +-1``
 the forward result is ``+-inf`` and the gradient is ``inf``; outside that
-domain both the forward and the gradient are ``nan``. The kernel reproduces
-those values because it uses the same libdevice primitives as ATen
-(``libdevice.erfinv`` / ``libdevice.exp``), with no clamping of its own.
+domain both are ``nan``. The kernel reproduces those values because it uses
+the same libdevice primitives as ATen (``libdevice.erfinv`` / ``libdevice.exp``)
+and clamps nothing.
 """
 
 import logging
@@ -50,9 +50,12 @@ logger = logging.getLogger(__name__)
 # d/dx erfinv(x) = sqrt(pi)/2 * exp(erfinv(x)^2).
 _SQRTPI_OVER_2 = math.sqrt(math.pi) / 2.0
 
-# One element per lane; BLOCK=1024 / num_warps=4 measured fastest across the
-# 16 MiB-1 GiB workloads swept on H20-3e.
-_BLOCK_SIZE = 1024
+# The block size is dispatched on the tensor size: launch-bound small tensors
+# win from more CTAs, large streaming tensors from the wider block. Both
+# values come from the SimpleOpt sweep on H20-3e.
+_SMALL_NUMEL = 4096
+_SMALL_BLOCK = 256
+_LARGE_BLOCK = 1024
 _NUM_WARPS = 4
 
 
@@ -64,6 +67,7 @@ def _erfinv_backward_kernel(
     n_elements,
     C: tl.constexpr,
     BLOCK: tl.constexpr,
+    LOWP: tl.constexpr,  # 0 = fp32, 1 = fp16, 2 = bf16
 ):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK + tl.arange(0, BLOCK)
@@ -72,32 +76,62 @@ def _erfinv_backward_kernel(
     grad = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0)
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
 
-    dt = x.dtype
+    # All math runs in fp32 and every step is rounded back to the storage
+    # dtype, exactly like ATen's sequence of elementwise kernels does.
+    xf = x.to(tl.float32)
+    gf = grad.to(tl.float32)
 
-    # Step 1: y = erfinv(x)  (fp32 math, rounded to storage dtype)
-    # ATen recomputes erfinv inside the backward graph; libdevice.erfinv on
-    # fp32 matches its `erfinv_kernel` bit-for-bit for fp16/bf16/fp32 inputs.
-    y32 = libdevice.erfinv(x.to(tl.float32))
-    y = y32.to(dt)
+    # Step 1: y = erfinv(x). ATen recomputes erfinv inside the backward graph;
+    # libdevice.erfinv matches its `erfinv_kernel` for fp16/bf16/fp32 inputs.
+    y = libdevice.erfinv(xf)
+    if LOWP == 1:
+        y = y.to(tl.float16).to(tl.float32)
+    elif LOWP == 2:
+        y = y.to(tl.bfloat16).to(tl.float32)
 
-    # Step 2: squared = y.pow(2)  (fp32 math, rounded to storage dtype)
-    yf = y.to(tl.float32)
-    squared = (yf * yf).to(dt)
+    # Step 2: squared = y.pow(2)
+    squared = y * y
+    if LOWP == 1:
+        squared = squared.to(tl.float16).to(tl.float32)
+    elif LOWP == 2:
+        squared = squared.to(tl.bfloat16).to(tl.float32)
 
-    # Step 3: exponential = exp(squared)  (fp32 math, rounded to storage dtype)
-    # libdevice.exp is bit-exact with ATen's expf; the default tl.exp lowering
-    # (ex2.approx) differs by 1 ULP on a small fraction of elements.
-    e32 = libdevice.exp(squared.to(tl.float32))
-    exponential = e32.to(dt)
+    # Step 3: exponential = exp(squared).
+    if LOWP == 0:
+        # libdevice.exp is bit-exact with ATen's expf on fp32.
+        exponential = libdevice.exp(squared)
+    else:
+        # ex2.approx.f32 has ~2 ULP of error, which the storage-dtype rounding
+        # of this very step absorbs for fp16/bf16 inputs.
+        exponential = tl.math.exp2(squared * 1.4426950408889634)
+    if LOWP == 1:
+        exponential = exponential.to(tl.float16).to(tl.float32)
+    elif LOWP == 2:
+        exponential = exponential.to(tl.bfloat16).to(tl.float32)
 
-    # Step 4: tmp = sqrt(pi)/2 * exponential  (scalar mul, rounded to dtype)
-    tmp32 = C * exponential.to(tl.float32)
-    tmp = tmp32.to(dt)
+    # Step 4: tmp = sqrt(pi)/2 * exponential  (scalar mul, rounded)
+    tmp = C * exponential
+    if LOWP == 1:
+        tmp = tmp.to(tl.float16).to(tl.float32)
+    elif LOWP == 2:
+        tmp = tmp.to(tl.bfloat16).to(tl.float32)
 
-    # Step 5: grad_input = tmp * grad_output  (binary mul, fp32 math, rounded)
-    out = (tmp.to(tl.float32) * grad.to(tl.float32)).to(dt)
+    # Step 5: grad_input = tmp * grad_output  (binary mul, rounded)
+    out = tmp * gf
+    if LOWP == 1:
+        out = out.to(tl.float16)
+    elif LOWP == 2:
+        out = out.to(tl.bfloat16)
 
     tl.store(grad_input_ptr + offsets, out, mask=mask)
+
+
+def _lowp_code(dtype: torch.dtype) -> int:
+    if dtype == torch.float16:
+        return 1
+    if dtype == torch.bfloat16:
+        return 2
+    return 0
 
 
 def erfinv_backward(grad_output: torch.Tensor, x: torch.Tensor):
@@ -115,17 +149,24 @@ def erfinv_backward(grad_output: torch.Tensor, x: torch.Tensor):
         return torch.empty(grad_output.shape, dtype=x.dtype, device=x.device)
 
     grad_contig = grad_output.contiguous()
-    grad_input = torch.empty(grad_contig.shape, dtype=x.dtype, device=x.device)
+    x_contig = x.contiguous()
+    # The gradient keeps the forward input's dtype: ATen's formula rounds every
+    # intermediate to that storage dtype.
+    grad_input = torch.empty(
+        grad_contig.shape, dtype=x.dtype, device=grad_contig.device
+    )
     n_elements = grad_contig.numel()
-    grid = ((n_elements + _BLOCK_SIZE - 1) // _BLOCK_SIZE,)
+    block = _SMALL_BLOCK if n_elements <= _SMALL_NUMEL else _LARGE_BLOCK
+    grid = ((n_elements + block - 1) // block,)
     with torch_device_fn.device(grad_output.device):
         _erfinv_backward_kernel[grid](
             grad_contig,
-            x.contiguous(),
+            x_contig,
             grad_input,
             n_elements,
             C=_SQRTPI_OVER_2,
-            BLOCK=_BLOCK_SIZE,
+            BLOCK=block,
+            LOWP=_lowp_code(x.dtype),
             num_warps=_NUM_WARPS,
         )
     return grad_input
