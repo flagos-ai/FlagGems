@@ -130,14 +130,14 @@ def test_nanmean_edge():
 
 @pytest.mark.nanmean
 def test_nanmean_empty_and_dtype():
-    if flag_gems.vendor_name == "mthreads":
-        pytest.skip(
-            "MUSA native nanmean does not support FP64 division for this empty reduction"
-        )
     inp = torch.empty((2, 0, 3), device=flag_gems.device)
     result = flag_gems.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
-    reference = torch.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
-    torch.testing.assert_close(result, reference, equal_nan=True)
+    use_cpu_reference = flag_gems.vendor_name == "mthreads"
+    ref_inp = inp.cpu() if use_cpu_reference else inp
+    reference = torch.nanmean(ref_inp, dim=1, keepdim=True, dtype=torch.float64)
+    torch.testing.assert_close(
+        result.cpu() if use_cpu_reference else result, reference, equal_nan=True
+    )
 
 
 @pytest.mark.nanmean
