@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 import flag_gems
 import flag_gems.runtime as runtime
-from flag_gems.fused import top_k_per_row_prefill
+from flag_gems.deprecated import top_k_per_row_prefill
 from flag_gems.patches.patch_util import (
     init_vllm_libraries,
     patch_module_method,
@@ -100,7 +100,7 @@ def custom_gems_write_to_paged_cache(
     k_scale,
     v_scale,
 ):
-    from flag_gems.fused.reshape_and_cache import reshape_and_cache
+    from flag_gems.deprecated.reshape_and_cache import reshape_and_cache
 
     reshape_and_cache(
         key,
@@ -121,7 +121,7 @@ def custom_gems_flash_mla_forward(
     kv_c_and_k_pe_cache,
     attn_metadata,
 ) -> torch.Tensor:
-    from flag_gems.fused import flash_mla
+    from flag_gems.deprecated import flash_mla
 
     assert kv_c_and_k_pe_cache.numel() > 0
     assert attn_metadata.decode is not None
@@ -331,7 +331,7 @@ def custom_moe_grouped_topk(
     bias: torch.Tensor,
     scoring_func: int = 0,
 ):
-    from flag_gems.fused import grouped_topk
+    from flag_gems.deprecated import grouped_topk
 
     return grouped_topk(
         scores=gating_output,
@@ -354,7 +354,7 @@ def custom_topk_softmax(
 
 
 def custom_moe_sum(input: torch.Tensor, output: torch.Tensor):
-    from flag_gems.fused import moe_sum
+    from flag_gems.deprecated import moe_sum
 
     moe_sum(input, output)
 

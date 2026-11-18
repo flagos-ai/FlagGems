@@ -122,7 +122,7 @@ with flag_gems.use_gems():
 ```
 
 You can bypass the PyTorch dispatch process and directly invoke operators from
-the `flag_gems.ops` & `flag_gems.fused` package.
+the `flag_gems.ops` & `flag_gems.deprecated` package.
 
 ```python
 import flag_gems
@@ -139,7 +139,7 @@ topk_ids = torch.randint(
     device=flag_gems.device,
     dtype=torch.int32,
 )
-sorted_ids, expert_ids, num_tokens_post_pad = flag_gems.fused.moe_align_block_size.moe_align_block_size(topk_ids, block_size, num_experts)
+sorted_ids, expert_ids, num_tokens_post_pad = flag_gems.deprecated.moe_align_block_size.moe_align_block_size(topk_ids, block_size, num_experts)
 ```
 
 Check the [using FlagGems](../usage/_index.md) section for more detailed
