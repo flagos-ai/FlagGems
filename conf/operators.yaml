@@ -3543,6 +3543,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: clamp_backward
+  description: Computes the gradient of `clamp` for scalar bounds, returning `grad_output`
+    where `min_value <= self <= max_value` (both inclusive) and zero elsewhere.
+  for:
+    - clamp_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: clamp_max
   description: 'Clamps all elements in `input` to be smaller or equal `max`.
 

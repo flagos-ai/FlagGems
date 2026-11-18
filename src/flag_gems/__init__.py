@@ -1250,6 +1250,7 @@ _FULL_CONFIG = (
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
+    ("clamp_backward", clamp_backward),
     # Autograd fallthrough: the ClampMaxFunction wrapper owns
     # the differentiable path. Without it the device-key override drops ATen's
     # autograd formula and the backward falls back to the native kernel.
