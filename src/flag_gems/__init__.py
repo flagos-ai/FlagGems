@@ -665,7 +665,6 @@ _FULL_CONFIG = (
         (SPARSE_DISPATCH_KEY,),
     ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
-    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
     (
         "_sparse_csr_sum",
         sparse_csr_sum,
@@ -684,6 +683,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
     (
         "_sparse_log_softmax",
         _sparse_log_softmax,
