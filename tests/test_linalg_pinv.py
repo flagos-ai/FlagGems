@@ -21,6 +21,49 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _ieee_fp32_matmul():
+    # The blocked Jacobi path rebuilds pinv with a native fp32 matmul.  Runners
+    # that start torch with TF32 enabled (TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1 is
+    # set on CI's a100-worker-1) then evaluate that matmul with a 10-bit
+    # mantissa, which moves the result ~1e-4 away from the cuSOLVER reference
+    # on (48, 48) -- the fused path never uses a matmul and stays at ~3e-7.
+    # That is an ambient precision policy, not a property of the kernel under
+    # test, so pin both precision APIs off (torch >= 2.9 new API plus the legacy
+    # flag, which older versions only have) and restore the process state
+    # afterwards.  Same approach as tests/test_chain_matmul.py.
+    saved_precision = None
+    try:
+        saved_precision = torch.backends.cuda.matmul.fp32_precision
+    except (AttributeError, RuntimeError):
+        pass
+    saved_tf32 = None
+    try:
+        saved_tf32 = torch.backends.cuda.matmul.allow_tf32
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "ieee"
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+    except (AttributeError, RuntimeError):
+        pass
+    yield
+    if saved_precision is not None:
+        try:
+            torch.backends.cuda.matmul.fp32_precision = saved_precision
+        except (AttributeError, RuntimeError):
+            pass
+    if saved_tf32 is not None:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = saved_tf32
+        except (AttributeError, RuntimeError):
+            pass
+
+
 # Jacobi SVD kernel operates in float32; float16/bfloat16 lack precision for convergence
 PINV_DTYPES = [torch.float32]
 
