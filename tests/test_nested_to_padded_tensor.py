@@ -20,6 +20,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=("enflame has no NestedTensor GCU backend"),
+)
+
 
 def _make_nested(batch_size, max_length, trailing, dtype):
     # Force component 0 to the full row count so the inferred padded shape is
