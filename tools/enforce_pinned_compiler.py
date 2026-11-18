@@ -244,30 +244,66 @@ def main() -> None:
         log(f"removing stale shadow {dist_name} {ver} at {root}")
         remove_dist(dist)
 
-    # When the pin is flagtree, also evict any triton distribution baked outside
-    # the venv. flagtree installs into the same 'triton' import namespace, so a
-    # standalone triton package ahead of the venv on sys.path shadows flagtree
-    # even after flagtree is pinned correctly. setup.sh handles this with an
-    # explicit 'uv pip uninstall triton' before installing flagtree; the
-    # reconcile path has no such step, so we do it here.
-    # We only remove copies outside the venv (never touch a triton the venv
-    # itself installed) and only when flagtree is the declared compiler — if the
-    # backend uses triton directly, we leave triton installs alone.
+    # When the pin is flagtree, also evict any triton package baked outside the
+    # venv. flagtree installs into the 'triton' import namespace, so any copy of
+    # triton ahead of the venv on sys.path shadows flagtree regardless of whether
+    # flagtree is correctly pinned. setup.sh guards this with an explicit
+    # 'uv pip uninstall triton'; the reconcile path has no such step.
+    #
+    # Two forms of shadow must be handled:
+    #
+    #   1. pip-installed triton with dist-info: found by find_installs("triton"),
+    #      removed the same way as a stale flagtree shadow.
+    #
+    #   2. Bare directory on PYTHONPATH with no dist-info (e.g. /opt/triton
+    #      injected via PYTHONPATH=[/opt/triton]): importlib.metadata never sees
+    #      it, so find_installs returns nothing. We scan every sys.path entry
+    #      that (a) is outside the venv and (b) contains a triton/ subdirectory
+    #      that looks like a real package (has __init__.py), then remove that
+    #      subdirectory directly with shutil.rmtree.
+    #
+    # We only act when flagtree is the declared compiler and only on copies
+    # outside the venv — triton inside the venv and backends that use triton
+    # directly are never touched.
     if dist_name == "flagtree":
-        triton_shadows = [
+        # Form 1: pip-installed triton with dist-info outside the venv.
+        triton_dist_shadows = [
             d for d in find_installs("triton") if not _under(_dist_root(d), venv)
         ]
-        if triton_shadows:
+        if triton_dist_shadows:
             log(
-                f"flagtree is the pinned compiler; removing {len(triton_shadows)} "
-                f"triton shadow(s) outside the venv that would shadow the triton "
-                f"namespace:"
+                f"flagtree is the pinned compiler; removing {len(triton_dist_shadows)} "
+                f"pip-installed triton shadow(s) outside the venv:"
             )
-            for d in triton_shadows:
+            for d in triton_dist_shadows:
                 log(f"  removing triton {_dist_version(d)} at {_dist_root(d)}")
                 remove_dist(d)
         else:
-            log("no triton shadows outside the venv found")
+            log("no pip-installed triton shadows outside the venv found")
+
+        # Form 2: bare triton/ directory on sys.path with no dist-info.
+        # Covers images that inject /opt/triton via PYTHONPATH.
+        bare_removed = []
+        for entry in sys.path:
+            if not entry:
+                continue
+            p = Path(entry).resolve()
+            if _under(p, venv):
+                continue
+            triton_pkg = p / "triton"
+            if (triton_pkg / "__init__.py").exists():
+                log(
+                    f"found bare triton/ package at {triton_pkg} (no dist-info); "
+                    f"removing it"
+                )
+                try:
+                    shutil.rmtree(triton_pkg)
+                    bare_removed.append(str(triton_pkg))
+                    log(f"  removed {triton_pkg}")
+                except OSError as e:
+                    log(f"  could not remove {triton_pkg}: {e}")
+        if not bare_removed:
+            log("no bare triton/ directories found outside the venv")
 
     # Hard gate: what resolves now must be the pin.
     have, root = resolved_version(dist_name)
