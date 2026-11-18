@@ -25,12 +25,12 @@ from . import accuracy_utils as utils
 # and torch.istft accepts them directly.
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64]
 
-# torch computes the fp16/complex32 inverse transform in half precision, so its
-# reference carries ~1e-3 relative error; the Triton kernels accumulate in fp32
-# and are therefore closer to the true signal. The tolerance follows the
-# reference's own precision rather than the input dtype.
+# torch computes the fp16/complex32 inverse transform in half precision, and
+# the Triton overlap-add/envelope buffers are fp16 as well. Four hann frames
+# can differ from the fp64 oracle by 4 ULP (0.0078 near |x|=2.8), so the
+# tolerance follows that rounding rather than the input dtype.
 _ATOL = {
-    torch.float16: 5e-3,
+    torch.float16: 1e-2,
     torch.float32: 1e-4,
     torch.float64: 1e-7,
 }
