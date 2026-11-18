@@ -56,12 +56,8 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
 @pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
-    if flag_gems.vendor_name == "mthreads" and dtype.is_complex:
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.complex64:
         pytest.skip("MUSA replication_pad1d input preparation does not support complex")
-    if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128:
-        pytest.skip(
-            "Iluvatar complex128 replication_pad1d_backward returns incorrect gradients"
-        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
