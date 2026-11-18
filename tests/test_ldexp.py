@@ -224,12 +224,21 @@ def test_ldexp_special_values(dtype):
         dtype=dtype,
         device=flag_gems.device,
     )
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    if flag_gems.vendor_name == "kunlunxin":
+        # Native ldexp loses the negative sign for -0 * 2**-inf and
+        # negative underflow. Keep the exact sign checks against CPU.
+        ref_self = self.cpu().to(torch.float64)
+        ref_other = other.cpu().to(torch.float64)
+    else:
+        ref_self = utils.to_reference(self, True)
+        ref_other = utils.to_reference(other, True)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
 
+    assert res_out.device == self.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == self.shape
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
     res_cpu = res_out.cpu()
     ref_cpu = ref_out.cpu()
