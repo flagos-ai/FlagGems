@@ -6041,6 +6041,17 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
   cpp: '4.0'
+- id: exponential_backward_
+  description: Backward of in-place exponential sampling through autograd.
+  for:
+  - exponential_
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.4'
 - id: eye
   description: Returns a 2-D tensor with ones on the diagonal and zeros elsewhere.
   for:
