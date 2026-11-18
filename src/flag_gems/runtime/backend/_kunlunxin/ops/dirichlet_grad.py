@@ -394,7 +394,10 @@ def _validate_inputs(x, alpha, total):
             raise RuntimeError("_dirichlet_grad: inputs must have the same dtype")
     if x.dtype == torch.float64:
         raise NotImplementedError("_dirichlet_grad: FP64 is not supported on Kunlunxin")
-    return torch.broadcast_shapes(x.shape, alpha.shape, total.shape)
+    # Shape-only metadata; no tensor computation or materialization.
+    return torch.broadcast_shapes(
+        x.shape, alpha.shape, total.shape
+    )  # allow-torch-compute
 
 
 def _broadcast_strides(tensor, shape):

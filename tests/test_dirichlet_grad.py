@@ -115,7 +115,11 @@ def test_dirichlet_grad_layout(layout):
     result = flag_gems._dirichlet_grad(x, alpha, total)
     utils.gems_assert_close(result, reference, torch.float32, atol=DIRICHLET_GRAD_ATOL)
     out = torch.empty_like(result.t()).t()
-    actual = flag_gems._dirichlet_grad_into(x, alpha, total, out=out)
+    from flag_gems.runtime.backend._kunlunxin.ops._dirichlet_grad import (
+        _dirichlet_grad_into,
+    )
+
+    actual = _dirichlet_grad_into(x, alpha, total, out=out)
     assert actual is out
     utils.gems_assert_close(out, result, torch.float32, atol=DIRICHLET_GRAD_ATOL)
 
