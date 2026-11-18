@@ -33,7 +33,11 @@ def _erfc_backward_reference(grad_output, x):
     separate elementwise kernel whose result is written back in the storage
     dtype (fp16/bf16 included, no float32 accumulator is kept across steps),
     so the reference below rounds at the same places and is bit-exact against
-    ``torch.autograd.grad(torch.erfc(x), x)``.
+    ``torch.autograd.grad(torch.erfc(x), x)`` on the same device.
+
+    Under ``--ref cpu`` the reference runs on CPU instead, where ``torch.exp``
+    is not bit-identical to the CUDA ``expf``; callers use ``gems_assert_close``
+    in that mode and the bit-exact ``gems_assert_equal`` on device.
     """
     if x.numel() == 0:
         return torch.empty(x.shape, dtype=x.dtype, device=x.device)
@@ -42,6 +46,14 @@ def _erfc_backward_reference(grad_output, x):
     squared = x * x
     exponential = torch.exp(-squared)
     return ((-_M_2_SQRTPI) * exponential) * grad_output
+
+
+def _assert_backward(res_grad, ref_grad):
+    """Bit-exact on device; tolerance-based when the reference is on CPU."""
+    if utils.TO_CPU:
+        utils.gems_assert_close(res_grad, ref_grad, res_grad.dtype, atol=1e-4)
+    else:
+        utils.gems_assert_equal(res_grad, ref_grad)
 
 
 @pytest.mark.erfc_backward
@@ -58,10 +70,12 @@ def test_erfc_backward_bit_exact(shape, dtype):
     grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_grad = _erfc_backward_reference(grad_output, x)
+    ref_grad = _erfc_backward_reference(
+        utils.to_reference(grad_output), utils.to_reference(x)
+    )
     res_grad = flag_gems.erfc_backward(grad_output, x)
 
-    utils.gems_assert_equal(res_grad, ref_grad)
+    _assert_backward(res_grad, ref_grad)
 
 
 @pytest.mark.erfc_backward
@@ -78,8 +92,10 @@ def test_erfc_backward_autograd(dtype):
     grad_output = torch.randn_like(out)
     (res_grad,) = torch.autograd.grad(out, (inp,), (grad_output,))
 
-    ref_grad = _erfc_backward_reference(grad_output, inp)
-    utils.gems_assert_equal(res_grad, ref_grad)
+    ref_grad = _erfc_backward_reference(
+        utils.to_reference(grad_output), utils.to_reference(inp)
+    )
+    _assert_backward(res_grad, ref_grad)
 
 
 @pytest.mark.erfc_backward
@@ -91,10 +107,12 @@ def test_erfc_backward_non_contiguous(dtype):
     assert not x.is_contiguous()
     grad_output = torch.randn_like(x)
 
-    ref_grad = _erfc_backward_reference(grad_output, x)
+    ref_grad = _erfc_backward_reference(
+        utils.to_reference(grad_output), utils.to_reference(x)
+    )
     res_grad = flag_gems.erfc_backward(grad_output, x)
 
-    utils.gems_assert_equal(res_grad, ref_grad)
+    _assert_backward(res_grad, ref_grad)
 
 
 @pytest.mark.erfc_backward
