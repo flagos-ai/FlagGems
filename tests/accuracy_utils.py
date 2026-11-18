@@ -23,12 +23,22 @@ import torch
 import flag_gems
 
 from .conftest import QUICK_MODE, TO_CPU
+from .kernelgen_test_utils import fp8_is_supported as _fp8_compiles_on_device
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
 complex_is_supported = flag_gems.runtime.device.support_complex
+
+# The vendor flag says fp8 is advertised, not that the device can compile the
+# kernel: Triton's CUDA backend only lowers fp8e4nv pointers on sm89+, so the
+# shared KernelGen helper adds that arch check on NVIDIA and trusts the vendor
+# flag elsewhere. ``fp8_is_supported`` above stays the plain vendor bool that
+# other test files read directly.
+FP8_DTYPES = (
+    [torch.float8_e4m3fn, torch.float8_e5m2] if _fp8_compiles_on_device() else []
+)
 
 
 def TestForwardOnly():
