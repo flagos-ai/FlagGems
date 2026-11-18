@@ -42,9 +42,11 @@ def test_floor_backward(shape, dtype, noncontiguous):
     if noncontiguous and inp.ndim == 2:
         inp = inp.T
     grad = torch.randn_like(inp)
-    ref = inp.detach().requires_grad_()
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
     actual = inp.detach().requires_grad_()
-    expected = torch.autograd.grad(torch.floor(ref), ref, grad)[0]
+    expected = torch.autograd.grad(
+        torch.floor(ref), ref, utils.to_reference(grad, False)
+    )[0]
     result = torch.autograd.grad(flag_gems.floor(actual), actual, grad)[0]
     utils.gems_assert_equal(result, expected)
 
