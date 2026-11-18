@@ -30,8 +30,10 @@ Selection: NaN -> +inf, count valid, then 32 unrolled bisection steps on the
 monotone integer image of the float bits; the lower order statistic is the
 smallest key whose cumulative count exceeds the rank, the upper one is either
 the same value (duplicate run / integral position) or the next distinct key.
-Rank arithmetic is exact 48-bit fixed point: pos = q*(cnt-1),
-rank = pos >> 48, gamma = frac(pos), so floor/ceil cannot drift by a ULP.
+FP64 is unsupported on this backend; only FP32 matches the ATen dtype contract.
+Non-collapsible input layouts support at most six dimensions.
+Rank arithmetic uses 48-bit fixed point: pos = q*(cnt-1),
+rank = pos >> 48, gamma = frac(pos); the product is split to avoid int64 overflow.
 """
 
 import logging
@@ -42,6 +44,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+from .copy import copy_
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +116,16 @@ def _key(xs, BITS: tl.constexpr):
     else:
         bits = xs.to(tl.int16, bitcast=True).to(tl.int64)
         return tl.where(bits >= 0, bits + 32768, -bits - 1)
+
+
+@triton.jit
+def _rank_parts(QA, cnt):
+    # Split the product so n up to ATen's 2**24 limit cannot overflow int64.
+    q = QA - 1099511627776
+    count = tl.maximum(cnt - 1, 0)
+    hi = (q >> 24) * count
+    lo = (q & 16777215) * count + ((hi & 16777215) << 24)
+    return (hi >> 24) + (lo >> 48), lo & 281474976710655
 
 
 @libentry()
@@ -227,10 +241,11 @@ def _nanq_kernel(
     # Measured trade-off: a wider radix needs more reduce sites, which costs more
     # than the saved loads when the slice is short (one chunk per pass), so the
     # width is dispatched on the reduction length: 3 bits (11 passes, 8 buckets
-    # from 4 int32 accumulators) for long slices, 2 bits (16 passes, 4 buckets
-    # from 2 int32 accumulators) for short ones.  Bucket counts are packed two
+    # from 4 int32 accumulators) for medium slices, 2 bits (16 passes, 4 buckets
+    # from 4 independent int32 accumulators) otherwise. Bucket counts are packed two
     # per int32 with digit base 32768, so a bucket of up to 32767 elements cannot
-    # carry into its neighbour.  Only int32 accumulators appear here.
+    # carry into its neighbour. The host selects this path only for n < 32768;
+    # the two-bit path uses independent int32 counters and supports larger n.
     if NBITS == 3:
         nlev = 11 if BITS == 32 else 6
         for lvl in tl.static_range(0, 11):
@@ -305,9 +320,7 @@ def _nanq_kernel(
                 u6 = u5 + c6
                 if lvl == 0:
                     cnt = u6 + c7
-                    p = (QA - 1099511627776) * (cnt - 1)
-                    rank = p >> 48
-                    qrem = p & 281474976710655
+                    rank, qrem = _rank_parts(QA, cnt)
                     csafe = tl.where(cnt > 0, cnt - 1, 0)
                     rank = tl.where(rank > csafe, csafe, tl.where(rank < 0, 0, rank))
                     gamma = qrem.to(tl.float32) * 3.552713678800501e-15
@@ -349,6 +362,8 @@ def _nanq_kernel(
                 sh = (nlev - 1 - lvl) * 2
                 accA = tl.zeros([BLOCK], tl.int32)
                 accB = tl.zeros([BLOCK], tl.int32)
+                accC = tl.zeros([BLOCK], tl.int32)
+                accD = tl.zeros([BLOCK], tl.int32)
                 for start in tl.range(0, n, BLOCK):
                     offs = start + offs0
                     lm = offs < n
@@ -381,26 +396,20 @@ def _nanq_kernel(
                     k = _key(xs, BITS)
                     act = valid & ((k >> (sh + 2)) == prefix)
                     b = (k >> sh) & 3
-                    accA += (act & (b == 0)).to(tl.int32) + (act & (b == 1)).to(
-                        tl.int32
-                    ) * 32768
-                    accB += (act & (b == 2)).to(tl.int32) + (act & (b == 3)).to(
-                        tl.int32
-                    ) * 32768
-                sA = tl.sum(accA, axis=0)
-                sB = tl.sum(accB, axis=0)
-                n0 = (sA & 32767).to(tl.int64)
-                n1 = ((sA >> 15) & 32767).to(tl.int64)
-                n2 = (sB & 32767).to(tl.int64)
-                n3 = ((sB >> 15) & 32767).to(tl.int64)
+                    accA += (act & (b == 0)).to(tl.int32)
+                    accB += (act & (b == 1)).to(tl.int32)
+                    accC += (act & (b == 2)).to(tl.int32)
+                    accD += (act & (b == 3)).to(tl.int32)
+                n0 = tl.sum(accA, axis=0).to(tl.int64)
+                n1 = tl.sum(accB, axis=0).to(tl.int64)
+                n2 = tl.sum(accC, axis=0).to(tl.int64)
+                n3 = tl.sum(accD, axis=0).to(tl.int64)
                 u0 = n0
                 u1 = n0 + n1
                 u2 = u1 + n2
                 if lvl == 0:
                     cnt = u2 + n3
-                    p = (QA - 1099511627776) * (cnt - 1)
-                    rank = p >> 48
-                    qrem = p & 281474976710655
+                    rank, qrem = _rank_parts(QA, cnt)
                     csafe = tl.where(cnt > 0, cnt - 1, 0)
                     rank = tl.where(rank > csafe, csafe, tl.where(rank < 0, 0, rank))
                     gamma = qrem.to(tl.float32) * 3.552713678800501e-15
@@ -466,19 +475,15 @@ def _nanq_kernel(
     elif INTERP == 2:
         res = vhi
     elif INTERP == 3:
-        res = tl.where(qrem >= 140737488355328, vhi, vlo)
+        round_up = (qrem > 140737488355328) | (
+            (qrem == 140737488355328) & ((rank0 & 1) != 0)
+        )
+        res = tl.where(round_up, vhi, vlo)
     else:
         res = (vlo + vhi) * 0.5
 
     res = tl.where(cnt == 0, float("nan"), res)
     tl.store(out_ptr + pid, res)
-
-
-def _next_pow2(v):
-    p = 1
-    while p < v:
-        p <<= 1
-    return p
 
 
 def nanquantile_scalar_out(
@@ -487,19 +492,17 @@ def nanquantile_scalar_out(
     logger.debug("GEMS_KUNLUNXIN NANQUANTILE_SCALAR_OUT")
     interp = _INTERP.get(interpolation)
     if interp is None:
-        raise ValueError(
-            "Interpolation method must be one of 'linear', 'lower', 'higher', "
-            "'nearest', or 'midpoint' (got '" + str(interpolation) + "')"
+        raise RuntimeError(
+            "quantile() interpolation must be one of linear, lower, higher, "
+            f"midpoint or nearest, but got {interpolation}"
         )
 
     dt = inp.dtype
     if dt == torch.float32:
         bits = 32
-    elif dt == torch.float16 or dt == torch.bfloat16:
-        bits = 16
     else:
         raise RuntimeError(
-            "Kunlunxin nanquantile_scalar_out supports float16, bfloat16 and float32; got "
+            "Kunlunxin nanquantile_scalar_out supports float32 only (FP64 unsupported); got "
             + str(dt)
             + ")"
         )
@@ -510,7 +513,17 @@ def nanquantile_scalar_out(
     if not 0.0 <= q <= 1.0:
         raise RuntimeError("quantile() q must be in the range [0, 1]")
 
-    nd = inp.dim()
+    if out is not None:
+        if out.dtype != inp.dtype:
+            raise RuntimeError(
+                "quantile() out tensor must be same dtype as the input tensor"
+            )
+        if out.device != inp.device:
+            raise RuntimeError(
+                "quantile() out tensor must be on the same device as the input tensor"
+            )
+    original_nd = inp.dim()
+    nd = original_nd
     if nd == 0:
         inp = inp.reshape(1)
         nd = 1
@@ -533,7 +546,11 @@ def nanquantile_scalar_out(
             mode = 2
             slots = tuple((int(inp.shape[k]), int(inp.stride(k))) for k in range(nd))
     else:
-        d = int(dim)
+        if not isinstance(dim, int):
+            raise TypeError("quantile() dim must be an integer or None")
+        d = dim
+        if not -nd <= d < nd:
+            raise IndexError("Dimension out of range")
         if d < 0:
             d += nd
         n = int(inp.shape[d])
@@ -560,6 +577,13 @@ def nanquantile_scalar_out(
                 raise RuntimeError("nanquantile: unsupported reduce layout rank")
             slots = tuple((int(inp.shape[k]), int(inp.stride(k))) for k in od)
 
+    if n > (1 << 24):
+        raise RuntimeError("quantile() input tensor is too large")
+    if len(slots) > 6:
+        raise RuntimeError("nanquantile: unsupported reduce layout rank (maximum 6)")
+    if original_nd == 0:
+        oshape = ()
+
     M = 1 if dim is None else (int(inp.numel()) // n if n else 0)
 
     padded = list(slots) + [(1, 0)] * (6 - len(slots))
@@ -573,14 +597,25 @@ def nanquantile_scalar_out(
     elif tuple(out.shape) != oshape:
         out.resize_(oshape)
 
+    if torch._debug_has_internal_overlap(out) == 1:
+        raise RuntimeError(
+            "unsupported operation: output elements refer to a single memory location"
+        )
+    # A temporary also prevents input/output aliasing across reduction programs.
+    needs_copy = not out.is_contiguous() or (
+        out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
+    )
+    result = (
+        torch.empty(oshape, device=inp.device, dtype=inp.dtype) if needs_copy else out
+    )
     qarg = int(round(q * _QSCALE)) + _QOFFS
     # Radix width: 3 bits per pass for long slices (load-call bound), 2 bits for
     # short ones (reduce-site bound).  Threshold from measured per-workload data.
-    nbits = 3 if n >= 256 else 2
+    nbits = 3 if 256 <= n < 32768 else 2
     with torch_device_fn.device(inp.device):
         _nanq_kernel[(M,)](
             inp,
-            out,
+            result,
             n,
             SD,
             OST,
@@ -607,4 +642,6 @@ def nanquantile_scalar_out(
             ONE=1 if n == 1 else 0,
             num_warps=1,
         )
+    if needs_copy:
+        copy_(out, result)
     return out
