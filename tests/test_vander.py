@@ -6,6 +6,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _assert_close(res, ref, dtype):
+    if IS_KUNLUNXIN:
+        res, ref = res.cpu(), ref.cpu()
+    utils.gems_assert_close(res, ref, dtype)
+
+
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     INT_DTYPES = [torch.int32]
@@ -32,11 +41,13 @@ def _make_input(M, dtype):
 def test_vander(M, N, increasing, dtype):
     res_inp = torch.randn(M, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, upcast=True)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=N, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=N, increasing=increasing)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.vander
@@ -48,11 +59,13 @@ def test_vander_non_contiguous(increasing, dtype):
     base = torch.randn(2 * 64, dtype=dtype, device=flag_gems.device)
     res_inp = base[::2]
     ref_inp = utils.to_reference(res_inp, upcast=True)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=8, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=8, increasing=increasing)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.vander
@@ -62,13 +75,15 @@ def test_vander_int(increasing, dtype):
     M = 8
     res_inp = _make_input(M, dtype)
     ref_inp = utils.to_reference(res_inp, upcast=False)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=5, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=5, increasing=increasing)
 
     # bool and narrow integer inputs promote to int64, matching ATen.
     assert res_out.dtype == torch.int64
-    utils.gems_assert_close(res_out, ref_out, torch.int64)
+    _assert_close(res_out, ref_out, torch.int64)
 
 
 @pytest.mark.vander
@@ -82,12 +97,14 @@ def test_vander_int64_large(increasing):
         device=flag_gems.device,
     )
     ref_inp = utils.to_reference(res_inp, upcast=False)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=5, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=5, increasing=increasing)
 
     assert res_out.dtype == torch.int64
-    utils.gems_assert_close(res_out, ref_out, torch.int64)
+    _assert_close(res_out, ref_out, torch.int64)
 
 
 @pytest.mark.vander
@@ -96,24 +113,30 @@ def test_vander_negative_values(dtype):
     # Negative bases with higher powers must produce the correct alternating sign.
     res_inp = torch.tensor([-2, -3, 2, -1], dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, upcast=dtype.is_floating_point)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=6, increasing=True)
     res_out = flag_gems.vander(res_inp, N=6, increasing=True)
 
     check_dtype = dtype if dtype.is_floating_point else torch.int64
-    utils.gems_assert_close(res_out, ref_out, check_dtype)
+    _assert_close(res_out, ref_out, check_dtype)
 
 
 @pytest.mark.vander
 def test_vander_fp64():
     # FP64 precision must be preserved end-to-end (no fp32 downcast in the kernel).
+    if not utils.fp64_is_supported:
+        pytest.skip("device has no fp64 support")
     res_inp = torch.randn(32, dtype=torch.float64, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, upcast=False)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=16)
     res_out = flag_gems.vander(res_inp, N=16)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float64)
+    _assert_close(res_out, ref_out, torch.float64)
 
 
 @pytest.mark.vander
@@ -122,14 +145,21 @@ def test_vander_fp64():
 def test_vander_complex(dtype, increasing):
     # Complex inputs are computed via a dedicated real/imag power kernel and must
     # match ATen's complex-capable implementation.
+    if dtype is torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("device has no fp64 support")
     x = torch.randn(6, dtype=dtype, device=flag_gems.device)
     ref_inp = x.cpu()
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
 
     ref_out = torch.vander(ref_inp, N=5, increasing=increasing).to(x.device)
     res_out = flag_gems.vander(x, N=5, increasing=increasing)
 
     assert res_out.dtype == dtype
-    torch.testing.assert_close(res_out, ref_out)
+    if IS_KUNLUNXIN:
+        torch.testing.assert_close(res_out.cpu(), ref_out.cpu())
+    else:
+        torch.testing.assert_close(res_out, ref_out)
 
 
 @pytest.mark.vander
@@ -169,6 +199,8 @@ def test_vander_output_dtype():
         (torch.float64, torch.float64),
     ]
     for input_dtype, expected in cases:
+        if input_dtype is torch.float64 and not utils.fp64_is_supported:
+            continue
         res_inp = _make_input(4, input_dtype)
         res_out = flag_gems.vander(res_inp, N=3)
         assert (

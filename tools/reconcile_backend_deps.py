@@ -88,7 +88,8 @@ def vendor_of(backend: str) -> str:
     """Derive the vendor from a backend label, e.g. 'nvidia-cuda133' -> 'nvidia'.
 
     Mirrors setup.sh: strip a trailing '-<suffix>' if present, else the
-    backend label itself is the vendor (e.g. 'hygon', 'thead').
+    backend label itself is the vendor (for a hypothetical backend label with
+    no version suffix).
     """
     vendor, _, suffix = backend.rpartition("-")
     return vendor if vendor and suffix else backend
