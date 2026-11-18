@@ -50,7 +50,9 @@ def test_scaled_dot_product_attention_math_for_mps(
     scale = 1.0 / (head_dim**0.5)
     scores = torch.matmul(ref_q, ref_k.transpose(-2, -1)) * scale
     if is_causal:
-        mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=ref_q.device).tril()
+        mask = torch.ones(
+            seq_len, seq_len, dtype=torch.bool, device=ref_q.device
+        ).tril()
         scores = scores.masked_fill(~mask, float("-inf"))
     ref_weights = torch.softmax(scores, dim=-1)
     ref_output = torch.matmul(ref_weights, ref_v).to(dtype)
