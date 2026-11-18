@@ -58,10 +58,6 @@ def generate_test_params():
 def test_topk_softmax(
     num_tokens, num_experts, topk, input_dtype, index_dtype, renormalize
 ):
-    if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
-        # Issue #2858: torch musa does not support uint32
-        index_dtype = torch.int64
-
     try:
         from vllm._custom_ops import topk_softmax as vllm_topk_softmax
     except (ImportError, AttributeError):

@@ -453,7 +453,8 @@ def _lerp(self, tensors1, weight, inplace):
     self_l = check_tensor_list(self)
     tensors1_l = check_tensor_list(tensors1)
     if len(self_l) == len(tensors1_l):
-        values = _resolve_scalars(self_l, weight)
+        # _resolve_scalars returns (values, common, value_class).
+        values, _, _ = _resolve_scalars(self_l, weight)
         res = _fast([self_l, tensors1_l], values, inplace)
         if res is not None:
             return None if inplace else res
@@ -467,7 +468,8 @@ def _addcmul(self, tensor1, tensor2, value, inplace):
     tensor1_l = check_tensor_list(tensor1)
     tensor2_l = check_tensor_list(tensor2)
     if len(self_l) == len(tensor1_l) == len(tensor2_l):
-        values = _resolve_scalars(self_l, value)
+        # _resolve_scalars returns (values, common, value_class).
+        values, _, _ = _resolve_scalars(self_l, value)
         res = _fast([self_l, tensor1_l, tensor2_l], values, inplace)
         if res is not None:
             return None if inplace else res

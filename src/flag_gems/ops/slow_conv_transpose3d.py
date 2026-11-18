@@ -353,6 +353,9 @@ def slow_conv_transpose3d(
                 % (bias.numel(), C_out)
             )
 
+    if bias is not None and not bias.is_contiguous():
+        bias = bias.contiguous()
+
     D_out = (D_in - 1) * st[0] - 2 * pa[0] + dl[0] * (kD - 1) + op[0] + 1
     H_out = (H_in - 1) * st[1] - 2 * pa[1] + dl[1] * (kH - 1) + op[1] + 1
     W_out = (W_in - 1) * st[2] - 2 * pa[2] + dl[2] * (kW - 1) + op[2] + 1

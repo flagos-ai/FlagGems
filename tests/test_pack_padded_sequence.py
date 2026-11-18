@@ -16,7 +16,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 
 from . import accuracy_utils as utils
 
@@ -61,7 +60,9 @@ def test_pack_padded_sequence(time_steps, batch_size, feat_size, batch_first, dt
     ref_data, ref_batch_sizes = torch.ops.aten._pack_padded_sequence(
         ref_inp, lengths, batch_first
     )
-    res_data, res_batch_sizes = _pack_padded_sequence(inp, lengths, batch_first)
+    res_data, res_batch_sizes = flag_gems._pack_padded_sequence(
+        inp, lengths, batch_first
+    )
 
     assert res_data.shape == ref_data.shape
     assert res_batch_sizes.shape == ref_batch_sizes.shape
@@ -88,7 +89,9 @@ def test_pack_padded_sequence_ragged_lengths(batch_first):
     ref_data, ref_batch_sizes = torch.ops.aten._pack_padded_sequence(
         ref_inp, lengths, batch_first
     )
-    res_data, res_batch_sizes = _pack_padded_sequence(inp, lengths, batch_first)
+    res_data, res_batch_sizes = flag_gems._pack_padded_sequence(
+        inp, lengths, batch_first
+    )
 
     assert res_data.shape == ref_data.shape
     utils.gems_assert_close(res_data, ref_data, torch.float32)

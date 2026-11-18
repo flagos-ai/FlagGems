@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import json
 import logging
 import os
@@ -19,11 +20,13 @@ from pathlib import Path
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 from flag_gems.runtime import torch_device_fn
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 from . import consts
 from .baseline import BaselineData
@@ -32,6 +35,7 @@ from .reference import reference_report, validate_reference_options
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
 Config = None
@@ -117,14 +121,50 @@ class BenchConfig:
         self.preflight_only = False
         self.preflight_records = []
         self.reference_only = False
+        self.ref_as_candidate = False
         self.reference_records = []
         self.profile_warmup = 10
         self.profile_iterations = 1
         self.profile_hook = None
         self.override_registry = None
+        # Override names declared via --override that no timed case invoked.
+        # Non-empty means the candidate was never measured, so the report must
+        # not be written (see pytest_terminal_summary).
+        self.override_unused = []
         self.skip_native = False
         self.native_baseline_skip_reason = None
         self.base_data = None
+        # Model profiling YAML loaded from --model-profile; None means disabled.
+        # When set, each op's profiling.prefill/decode metadata is attached to
+        # BenchmarkMetrics.time_share so it appears as an extra column.
+        self.model_profile = None
+
+
+def _load_model_profile(path):
+    """Load a model-profiling shapes YAML for the optional 'Time Share' column.
+
+    Returns a dict  {op_name: {"prefill": {...}, "decode": {...}}}  extracted
+    from each op's ``profiling:`` sub-block, or None on error.  Never raises.
+    """
+    if not path:
+        return None
+    try:
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            print(f"[model-profile] {path} 不是有效的 mapping，'Time Share' 列关闭。")
+            return None
+        result = {}
+        for op_name, entry in data.items():
+            if not isinstance(entry, dict):
+                continue
+            profiling = entry.get("profiling")
+            if isinstance(profiling, dict):
+                result[op_name] = profiling
+        return result or None
+    except Exception as e:
+        print(f"[model-profile] 加载失败 {path}: {e}；'Time Share' 列关闭。")
+        return None
 
 
 def _get_native_baseline_skip_reason(marker, current_vendor):
@@ -344,6 +384,22 @@ def pytest_addoption(parser):
         ),
     )
 
+    parser.addoption(
+        "--model-profile",
+        action="store",
+        default=None,
+        required=False,
+        help=(
+            "Path to a model-profiling shapes YAML "
+            "(e.g. benchmark/models_shapes/285B.yaml). "
+            "When provided: (1) --shape_file is overridden with this path, "
+            "so only shapes defined in the YAML are benchmarked; "
+            "(2) each op's profiling.prefill/decode metadata (pct, calls) "
+            "is loaded and shown as a 'Time Share' column. "
+            "Ops not present in the YAML are silently skipped."
+        ),
+    )
+
     try:
         parser.addoption(
             "--collect-marks",
@@ -372,6 +428,7 @@ def pytest_configure(config):
     )
 
     Config = BenchConfig()
+    Config.ref_as_candidate = validate_ref_as_candidate_options(config)
     Config.reference_only = validate_reference_options(config)
     CASE_LISTS.clear()
     TEST_RESULTS.clear()
@@ -443,6 +500,19 @@ def pytest_configure(config):
     Config.shape_file = shape_file_str
     Config.base_data = BaselineData.load(config.getoption("--base-data"))
 
+    # --model-profile: load profiling YAML and force --shape_file to it so
+    # only the ops/shapes defined there are benchmarked.
+    model_profile_path = config.getoption("--model-profile")
+    if model_profile_path:
+        loaded = _load_model_profile(model_profile_path)
+        if loaded is not None:
+            Config.model_profile = loaded
+            Config.shape_file = model_profile_path
+            print(
+                f"[model-profile] 已加载 {model_profile_path}："
+                f"{len(loaded)} 个算子；--shape_file 已覆盖为该文件。"
+            )
+
     Config.record_log = config.getoption("--record") == "log"
     Config.record_json = config.getoption("--record") == "json"
 
@@ -494,6 +564,22 @@ def pytest_unconfigure(config):
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
+    elif (
+        vendor_name == "mthreads"
+        and Config.mode == consts.BenchMode.CUDAGRAPH
+        and not (
+            Config.list_cases
+            or Config.preflight_only
+            or Config.reference_only
+            or Config.profile_only
+        )
+    ):
+        # Graph benchmarks need CUDA-to-MUSA aliases, but collection does not.
+        next_power_of_2 = triton.next_power_of_2
+        try:
+            importlib.import_module("torchada")
+        finally:
+            triton.next_power_of_2 = next_power_of_2
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -638,6 +724,14 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.override_unused:
+        terminalreporter.write_line(
+            "ERROR: --override named {} but no timed benchmark in this session "
+            "invoked it. Those numbers would describe the built-in "
+            "implementation rather than the requested candidate, so no report "
+            "was written.".format(", ".join(repr(n) for n in Config.override_unused))
+        )
+        return
     if Config.reference_only:
         with open(REPORT_FILE, "w") as output:
             json.dump(
@@ -683,7 +777,33 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         json.dump(data, f, indent=2, default=str)
 
 
+def _unused_override_names():
+    """Override names from --override that no timed case actually invoked.
+
+    An override whose name does not match the operator being benchmarked is
+    registered but never called, so the numbers describe the built-in
+    implementation while still looking like a successful candidate run. Modes
+    that never time a candidate are excluded: for them an unused override is
+    expected rather than a mistake.
+    """
+    if Config is None or Config.override_registry is None:
+        return []
+    if (
+        Config.query
+        or Config.list_cases
+        or Config.preflight_only
+        or Config.reference_only
+        or Config.ref_as_candidate
+    ):
+        return []
+    return Config.override_registry.unused_overrides()
+
+
 def pytest_sessionfinish(session, exitstatus):
+    if Config is not None:
+        Config.override_unused = _unused_override_names()
+        if Config.override_unused and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and Config.reference_only:
         if reference_report(Config.reference_records)["status"] in {
             "UNSUPPORTED",

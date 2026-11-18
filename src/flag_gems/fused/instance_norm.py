@@ -311,8 +311,11 @@ def update_running_stats_kernel(
         rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
             tl.float32
         )
+        # rstd = rsqrt(var_biased + eps), so 1 / rstd**2 - eps == var_biased.
+        # Subtract eps (not add) and clamp at 0 so subtractive cancellation on
+        # a near-constant channel can never produce a negative running_var.
         var = (
-            (1 / (rstd * rstd) + eps) * N / (N - 1)
+            tl.maximum(1 / (rstd * rstd) - eps, 0.0) * N / (N - 1)
         )  # NOTE: use unbiased var to update running_var
 
         new_mean += tl.sum(mean, axis=0)

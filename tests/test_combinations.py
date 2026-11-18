@@ -23,7 +23,9 @@ from . import accuracy_utils as utils
 # unranking kernels; every other rank takes the generic binary-search one.
 # The 300-element entries cross the 4 * 256-row tile boundary of the r == 2
 # kernel and the 256-row block boundary of the r == 3 kernel, and the (3, 5)
-# entry has r > n, so the output is empty.
+# entry has r > n, so the output is empty.  The (129, 4) and (130, 4) entries
+# cross the 4 * 256-row tile boundary of the r == 4 kernel and grow the
+# binary-search depth (LOGM) past its smaller-shape coverage.
 COMBINATIONS_CASES = [
     (0, 2, False),
     (0, 2, True),
@@ -45,6 +47,10 @@ COMBINATIONS_CASES = [
     (300, 2, True),
     (64, 3, False),
     (64, 3, True),
+    (129, 4, False),
+    (129, 4, True),
+    (130, 4, False),
+    (130, 4, True),
 ]
 
 

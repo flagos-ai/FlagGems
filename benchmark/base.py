@@ -27,6 +27,11 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.testing.reference import (
+    ReferenceContractError,
+    reference_execution,
+    select_candidate,
+)
 from flag_gems.utils import shape_utils
 
 from . import consts
@@ -42,6 +47,7 @@ from .consts import (
     check_metric_dependencies,
     model_shapes,
 )
+from .gemm_shapes import blas_cases, input_metadata
 from .reference import reference_failure
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
@@ -107,6 +113,20 @@ class Benchmark:
         **kwargs,
     ):
         self.op_name = op_name
+        if getattr(Config, "ref_as_candidate", False):
+            if not callable(torch_op):
+                raise ReferenceContractError(
+                    f"Operator '{op_name}': --ref-as-candidate requires an explicit "
+                    "callable torch_op reference"
+                )
+            if any(
+                getattr(type(self), name) is not getattr(Benchmark, name)
+                for name in ("run", "_measure_input", "get_latency", "_candidate_call")
+            ):
+                raise ReferenceContractError(
+                    f"Operator '{op_name}': custom benchmark execution does not "
+                    "support the --ref-as-candidate reference contract"
+                )
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
         if (
@@ -538,6 +558,11 @@ class Benchmark:
         select_all = case_ids is None
         selected = set(case_ids or [])
         Config.available_case_ids.update(available_ids)
+        state = reference_execution()
+        if state is not None and state.ref_as_candidate and not select_all:
+            state.benchmark_selection_empty = not any(
+                case.case_id in selected for case in cases
+            )
 
         results = []
         executed = []
@@ -567,6 +592,12 @@ class Benchmark:
 
     def _candidate_call(self):
         """Resolve the same callable and dispatch scope for candidate-only modes."""
+        if getattr(Config, "ref_as_candidate", False):
+            return (
+                select_candidate(None, self.torch_op, self.op_name),
+                nullcontext(),
+                False,
+            )
         override = (
             Config.override_registry.get_override(self.op_name)
             if Config.override_registry is not None
@@ -786,9 +817,18 @@ class Benchmark:
 
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
+        # Attach profiling time-share metadata when --model-profile was
+        # supplied. The same metadata applies to every shape inside this op
+        # because it comes from op-level profiling.
+        if (
+            getattr(Config, "model_profile", None)
+            and self.op_name in Config.model_profile
+        ):
+            metric.time_share = Config.model_profile[self.op_name]
         try:
             args, kwargs = self.unpack_to_args_kwargs(input)
             metric.shape_detail = self.record_shapes(*args, **kwargs)
+            metric.case_metadata = input_metadata(self.op_name, args)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
@@ -797,8 +837,18 @@ class Benchmark:
                 registry = Config.override_registry
                 key = f"flag_gems.{self.op_name}"
                 before = registry.call_counts().get(key, 0) if overridden else 0
+                state = reference_execution()
+                reference_before = state.candidate_calls if state is not None else 0
                 with dispatch:
                     metric.latency = self.get_latency(op, *args, **kwargs)
+                if getattr(Config, "ref_as_candidate", False):
+                    metric.candidate_source = "reference"
+                    if state is not None:
+                        if state.candidate_calls <= reference_before:
+                            raise ReferenceContractError(
+                                "Reference candidate timer did not invoke its callable"
+                            )
+                        state.completed_timings += 1
                 if overridden:
                     if registry.call_counts().get(key, 0) <= before:
                         raise RuntimeError(
@@ -859,6 +909,13 @@ class Benchmark:
             return
 
         self.init_user_config()
+        if (
+            getattr(Config, "ref_as_candidate", False)
+            and "latency" not in self.to_bench_metrics
+        ):
+            raise ReferenceContractError(
+                "--ref-as-candidate requires the candidate latency metric"
+            )
         configured_case_ids = getattr(Config, "case_ids", None)
         selection_requested = case_ids is not None or configured_case_ids is not None
         selected_case_ids = case_ids if case_ids is not None else configured_case_ids
@@ -1209,12 +1266,13 @@ class BlasBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def get_input_iter(self, dtype) -> Generator:
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
-
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            for b, m, n, k in self.shapes:
-                yield from self.input_fn(b, m, n, k, dtype, self.device, True)
+        for b, m, n, k, column_major in blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        ):
+            yield from self.input_fn(b, m, n, k, dtype, self.device, column_major)
 
     def supports_cases(self) -> bool:
         # Subclasses that replace the standard BLAS case loop must provide
@@ -1227,9 +1285,12 @@ class BlasBenchmark(Benchmark):
         return type(self).get_input_iter is BlasBenchmark.get_input_iter
 
     def get_case_iter(self, dtype) -> Generator:
-        raw_cases = [(*shape, False) for shape in self.shapes]
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            raw_cases.extend((*shape, True) for shape in self.shapes)
+        raw_cases = blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        )
 
         for ordinal, (b, m, n, k, b_column_major) in enumerate(raw_cases):
             yield BenchmarkCaseSpec(

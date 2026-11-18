@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.testing.reference import get_candidate
 
 from . import accuracy_utils as utils
 
@@ -28,6 +29,7 @@ def test_negative(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.negative(ref_inp)
-    res_out = flag_gems.negative(inp)
+    candidate = get_candidate("negative", reference=torch.negative)
+    res_out = candidate(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -56,6 +56,8 @@ def _flash_attn_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     HEAD_DIM: tl.constexpr,
+    FP32: tl.constexpr,
+    FP32_EXP2: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_h = tl.program_id(1)
@@ -102,7 +104,11 @@ def _flash_attn_kernel(
     kv_head = (pid_h * nheads_kv) // nheads_q
 
     acc = tl.zeros((BLOCK_M, HEAD_DIM), dtype=tl.float32)
-    m_i = tl.full((BLOCK_M,), -1e30, dtype=tl.float32)
+    if FP32:
+        # A finite sentinel is incorrect when all valid logits are below it.
+        m_i = tl.full((BLOCK_M,), float("-inf"), dtype=tl.float32)
+    else:
+        m_i = tl.full((BLOCK_M,), -1e30, dtype=tl.float32)
     l_i = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
     # Fully-masked key blocks are skipped: compute the key-index bounds that
@@ -143,8 +149,14 @@ def _flash_attn_kernel(
             kk = tl.load(k_ptrs, mask=kmask, other=0.0)
             vv = tl.load(v_ptrs, mask=kmask, other=0.0)
 
-        qk = tl.dot(q, kk)
-        qk = qk * scale
+        if FP32:
+            qk = tl.dot(q, kk, input_precision="ieee")
+        else:
+            qk = tl.dot(q, kk)
+        if FP32_EXP2:
+            qk = qk * (scale * 1.4426950408889634)
+        else:
+            qk = qk * scale
         if HAS_ALIBI:
             slope = tl.load(AlibiSlopes + pid_b * alibi_batch_stride + pid_h)
             rel = m_offs[:, None] + off - n_offs[None, :]
@@ -180,7 +192,10 @@ def _flash_attn_kernel(
         qk = tl.where(mask2d, qk, float("-inf"))
 
         m_new = tl.maximum(m_i, tl.max(qk, axis=1))
-        p = tl.exp(qk - m_new[:, None])
+        if FP32_EXP2:
+            p = tl.exp2(qk - m_new[:, None])
+        else:
+            p = tl.exp(qk - m_new[:, None])
         if HAS_DROPOUT:
             # Same philox consumption as the reference (flash_attn fwd_kernel):
             # per-element flat offset =
@@ -193,9 +208,16 @@ def _flash_attn_kernel(
             rng = tl.rand(philox_seed, offs2d)
             keep = rng > dropout_p
             p = tl.where(keep, p, 0.0)
-        alpha = tl.exp(m_i - m_new)
+        if FP32_EXP2:
+            alpha = tl.exp2(m_i - m_new)
+        else:
+            alpha = tl.exp(m_i - m_new)
         l_i = l_i * alpha + tl.sum(p, axis=1)
-        acc = acc * alpha[:, None] + tl.dot(p.to(q.dtype), tl.trans(vv))
+        if FP32:
+            pv = tl.dot(p, tl.trans(vv), input_precision="ieee")
+        else:
+            pv = tl.dot(p.to(q.dtype), tl.trans(vv))
+        acc = acc * alpha[:, None] + pv
         m_i = m_new
 
     l_safe = tl.where(l_i > 0, l_i, 1.0)
@@ -203,7 +225,10 @@ def _flash_attn_kernel(
     if HAS_DROPOUT:
         out = out / (1.0 - dropout_p)
     # softmax logsumexp of the scaled scores (same convention as the reference).
-    lse_val = m_i + tl.log(l_safe)
+    if FP32_EXP2:
+        lse_val = (m_i + tl.log2(l_safe)) * 0.6931471805599453
+    else:
+        lse_val = m_i + tl.log(l_safe)
     tl.store(Lse + pid_h * total_q + (q_start + m_offs), lse_val, mask=m_mask)
     out_ptrs = (
         Out
@@ -241,6 +266,59 @@ def _as_bool(x, name):
     if isinstance(x, torch.Tensor):
         return bool(x.item())
     return bool(x)
+
+
+def _validate_fp32_inputs(
+    query,
+    key,
+    value,
+    cumulative_sequence_length_q,
+    cumulative_sequence_length_k,
+    max_q,
+    max_k,
+    dropout_p,
+    return_debug_mask,
+    window_size_left,
+    window_size_right,
+    seqused_k,
+    alibi_slopes,
+):
+    """Validate the intentionally narrow FP32 forward contract for Hygon."""
+    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
+        raise ValueError("Hygon FP32 FlashAttention requires 4D BSHD inputs")
+    if query.dtype != key.dtype or query.dtype != value.dtype:
+        raise ValueError("query, key, and value must have the same dtype")
+    if query.device != key.device or query.device != value.device:
+        raise ValueError("query, key, and value must be on the same device")
+    if (
+        not query.is_contiguous()
+        or not key.is_contiguous()
+        or not value.is_contiguous()
+    ):
+        raise ValueError("Hygon FP32 FlashAttention requires contiguous BSHD inputs")
+    if query.shape != key.shape or query.shape != value.shape:
+        raise ValueError("Hygon FP32 FlashAttention currently requires square MHA")
+    if query.shape[-1] not in (64, 128):
+        raise ValueError(
+            "Hygon FP32 FlashAttention supports head dimensions 64 and 128"
+        )
+    if (
+        cumulative_sequence_length_q is not None
+        or cumulative_sequence_length_k is not None
+    ):
+        raise ValueError("Hygon FP32 FlashAttention does not support variable lengths")
+    if max_q != query.shape[1] or max_k != key.shape[1]:
+        raise ValueError("max_q and max_k must match the fixed input sequence length")
+    if dropout_p != 0.0:
+        raise ValueError("Hygon FP32 FlashAttention does not support dropout")
+    if return_debug_mask:
+        raise ValueError("Hygon FP32 FlashAttention does not return a debug mask")
+    if window_size_left is not None or window_size_right is not None:
+        raise ValueError("Hygon FP32 FlashAttention does not support sliding windows")
+    if seqused_k is not None or alibi_slopes is not None:
+        raise ValueError(
+            "Hygon FP32 FlashAttention does not support seqused_k or alibi"
+        )
 
 
 def run(
@@ -292,6 +370,24 @@ def run(
     max_k = _as_int(max_k, "max_k")
     dropout_p = _as_float(dropout_p, "dropout_p")
     causal = _as_bool(is_causal, "is_causal")
+    debug_mask = _as_bool(return_debug_mask, "return_debug_mask")
+    fp32 = q4.dtype == torch.float32
+    if fp32:
+        _validate_fp32_inputs(
+            q4,
+            k4,
+            v4,
+            cumulative_sequence_length_q,
+            cumulative_sequence_length_k,
+            max_q,
+            max_k,
+            dropout_p,
+            debug_mask,
+            window_size_left,
+            window_size_right,
+            seqused_k,
+            alibi_slopes,
+        )
 
     if cumulative_sequence_length_q is None or cumulative_sequence_length_k is None:
         uniform = True
@@ -351,8 +447,20 @@ def run(
     head_dim_pow2 = triton.next_power_of_2(head_dim)
     even_d = head_dim == head_dim_pow2
 
+    fp32_exp2 = fp32
     if _CFG_OVERRIDE is not None:
         BLOCK_M, BLOCK_N, num_warps, num_stages = _CFG_OVERRIDE
+    elif fp32:
+        # Preserve the low-overhead short-sequence tiles and use wider K/V
+        # chunks where they improve long-sequence FP32 throughput on Hygon.
+        if head_dim_pow2 <= 64 and seqlen_k <= 1024:
+            BLOCK_M, BLOCK_N, num_warps, num_stages = 64, 64, 4, 2
+            fp32_exp2 = False
+        elif head_dim_pow2 > 64 and seqlen_k <= 256:
+            BLOCK_M, BLOCK_N, num_warps, num_stages = 64, 16, 4, 3
+            fp32_exp2 = False
+        else:
+            BLOCK_M, BLOCK_N, num_warps, num_stages = 64, 32, 4, 2
     elif win_l >= 0 or win_r >= 0:
         # Sliding-window workloads: wide M tiles with narrow N tiles keep the
         # per-row window work dense (measured best on BW). Long-K windows
@@ -420,6 +528,8 @@ def run(
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
         HEAD_DIM=head_dim_pow2,
+        FP32=fp32,
+        FP32_EXP2=fp32_exp2,
         num_warps=num_warps,
         num_stages=num_stages,
     )
