@@ -161,9 +161,12 @@ def _finish_splitk(
     )
 
 
-def _launch_reduction(partials, out, splits, bias=None, alpha=1, beta=0):
+def _launch_reduction(
+    partials, out, splits, bias=None, alpha=1, beta=0, *, bias_strides=None
+):
     batch, m, n = out.shape
-    cb, cm, cn = bias.stride() if bias is not None else (0, 0, 0)
+    if bias_strides is None:
+        bias_strides = bias.stride() if bias is not None else (0, 0, 0)
     _finish_splitk[(triton.cdiv(batch * m * n, 256),)](
         partials,
         out,
@@ -174,9 +177,7 @@ def _launch_reduction(partials, out, splits, bias=None, alpha=1, beta=0):
         *out.stride(),
         splits,
         256,
-        cb,
-        cm,
-        cn,
+        *bias_strides,
         alpha,
         beta,
         bias is not None,
@@ -211,11 +212,12 @@ def launch_splitk(a, b, out, config):
     _launch_reduction(partials, out, splits)
 
 
-def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0):
+def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0, *, bias_strides=None):
     """Return whether a long reduction was split across additional workgroups.
 
     Each call allocates fresh FP32 partials. The second kernel reduces them and
     applies the optional bias once, before casting to the output dtype.
+    Pass the broadcast strides explicitly when bias is not already expanded.
     """
     batch, m, k = a.shape
     n = b.shape[2]
@@ -242,5 +244,7 @@ def launch_small_splitk(a, b, out, bias=None, alpha=1, beta=0):
             splits,
         )
     ](a, b, partials, m, n, k, *a.stride(), *b.stride(), batch, splits)
-    _launch_reduction(partials, out, splits, bias, alpha, beta)
+    _launch_reduction(
+        partials, out, splits, bias, alpha, beta, bias_strides=bias_strides
+    )
     return True

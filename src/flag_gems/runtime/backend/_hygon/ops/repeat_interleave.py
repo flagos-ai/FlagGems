@@ -19,6 +19,8 @@ import torch
 import triton
 from triton import language as tl
 
+from flag_gems.ops.index_select import index_select
+from flag_gems.ops.index_select_backward import index_select_backward
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -260,6 +262,67 @@ def _repeat_interleave_contiguous(inp, repeats, dim, inner, output_size):
     return out
 
 
+def _complex_lanes(inp):
+    return inp.contiguous().unsqueeze(-1).view(inp.real.dtype)
+
+
+class _RepeatInterleaveGather(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, indices):
+        ctx.save_for_backward(indices)
+        ctx.input_shape = inp.shape
+        ctx.dim = dim
+
+        if inp.numel() == 0 or indices.numel() == 0:
+            shape = list(inp.shape)
+            shape[dim] = indices.numel()
+            return inp.new_empty(shape)
+
+        inp = inp.resolve_conj().resolve_neg()
+        with torch_device_fn.device(inp.device):
+            if inp.is_complex():
+                out = index_select(_complex_lanes(inp), dim, indices)
+                return out.view(inp.dtype).squeeze(-1)
+            return index_select(inp, dim, indices)
+
+    @staticmethod
+    def backward(ctx, grad):
+        (indices,) = ctx.saved_tensors
+        grad_inp = _RepeatInterleaveGatherBackward.apply(
+            grad, ctx.input_shape, ctx.dim, indices
+        )
+        return grad_inp, None, None
+
+
+class _RepeatInterleaveGatherBackward(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, grad, input_shape, dim, indices):
+        ctx.save_for_backward(indices)
+        ctx.dim = dim
+
+        if grad.numel() == 0:
+            return grad.new_zeros(input_shape)
+
+        grad = grad.resolve_conj().resolve_neg()
+        with torch_device_fn.device(grad.device):
+            if grad.is_complex():
+                grad_inp = index_select_backward(
+                    _complex_lanes(grad), (*input_shape, 2), dim, indices
+                )
+                return grad_inp.view(grad.dtype).squeeze(-1)
+            return index_select_backward(grad, input_shape, dim, indices)
+
+    @staticmethod
+    def backward(ctx, grad_inp):
+        (indices,) = ctx.saved_tensors
+        return (
+            _RepeatInterleaveGather.apply(grad_inp, ctx.dim, indices),
+            None,
+            None,
+            None,
+        )
+
+
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
 
@@ -296,18 +359,25 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
         )
 
+    if repeats.device != inp.device:
+        raise RuntimeError("repeats and input must be on the same device")
+    if repeats.dtype not in (torch.int32, torch.int64):
+        raise RuntimeError("repeats must have int32 or int64 dtype")
+
     inner = math.prod(inp_shape[dim + 1 :])
     if (
         inp.is_contiguous()
         and inp.dtype in _REPEAT_COPY_DTYPES
-        and repeats.device == inp.device
-        and repeats.dtype in (torch.int32, torch.int64)
         and 1 < inp_shape[dim] <= 4096
         and inner >= 128
     ):
         return _repeat_interleave_contiguous(inp, repeats, dim, inner, output_size)
 
-    indices = repeat_interleave_tensor(repeats)
-    res = torch.index_select(inp, dim, indices)
-
-    return res
+    with torch_device_fn.device(inp.device):
+        indices = repeat_interleave_tensor(repeats)
+    if output_size is not None and output_size != indices.numel():
+        raise RuntimeError(
+            f"repeat_interleave: Invalid output_size, expected {indices.numel()} "
+            f"but got {output_size}"
+        )
+    return _RepeatInterleaveGather.apply(inp, dim, indices)

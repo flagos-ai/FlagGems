@@ -210,7 +210,7 @@ def _baddbmm_launch(bias, A, B, beta, alpha, out):
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
+    bbias = bias.expand(batch, M, N).contiguous()
     bias_batch_stride = bbias.stride(0)
     bias_M_stride = bbias.stride(1)
     bias_N_stride = bbias.stride(-1)
