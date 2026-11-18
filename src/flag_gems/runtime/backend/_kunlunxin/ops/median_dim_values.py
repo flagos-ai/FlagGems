@@ -479,7 +479,6 @@ def _median_dim_values(inp, dim=0, keepdim=False, *out_args, values=None, indice
         M = 1
         inner = 1
         contig = True
-        out_ndim = 0
     else:
         N = shape[dim]
         if N == 0:
@@ -491,15 +490,14 @@ def _median_dim_values(inp, dim=0, keepdim=False, *out_args, values=None, indice
             inner *= s
         M = inp.numel() // N
         contig = inp.is_contiguous()
-        out_ndim = nd if keepdim else nd - 1
 
+    oshape = list(shape)
+    if nd:
+        if keepdim:
+            oshape[dim] = 1
+        else:
+            del oshape[dim]
     if values is None or indices is None:
-        oshape = list(shape)
-        if nd:
-            if keepdim:
-                oshape[dim] = 1
-            else:
-                del oshape[dim]
         values = torch.empty(oshape, dtype=dt, device=inp.device)
         indices = torch.empty(oshape, dtype=torch.int64, device=inp.device)
     else:
@@ -511,19 +509,9 @@ def _median_dim_values(inp, dim=0, keepdim=False, *out_args, values=None, indice
             raise RuntimeError("median_dim_values: indices must be int64")
         if values.dtype != dt:
             raise RuntimeError("median_dim_values: values dtype must match input")
-        if (
-            values.numel() != M
-            or indices.numel() != M
-            or values.ndim != out_ndim
-            or indices.ndim != out_ndim
-        ):
-            oshape = list(shape)
-            if nd:
-                if keepdim:
-                    oshape[dim] = 1
-                else:
-                    del oshape[dim]
+        if tuple(values.shape) != tuple(oshape):
             values.resize_(oshape)
+        if tuple(indices.shape) != tuple(oshape):
             indices.resize_(oshape)
 
     if M == 0:
