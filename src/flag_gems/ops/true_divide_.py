@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover
 
 @triton.jit(do_not_specialize=["n"])
 def _true_div_flat(x_ptr, y_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
-    pid = tl.cast(tl.program_id(0), tl.int64)
+    pid = tl.program_id(0)
     step = tl.num_programs(0) * BLOCK
     base = pid * BLOCK
     if EVEN:
@@ -62,7 +62,7 @@ def _true_div_flat(x_ptr, y_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
 
 @triton.jit(do_not_specialize=["val", "n"])
 def _true_div_scalar(x_ptr, val, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
-    pid = tl.cast(tl.program_id(0), tl.int64)
+    pid = tl.program_id(0)
     step = tl.num_programs(0) * BLOCK
     base = pid * BLOCK
     if EVEN:
@@ -83,7 +83,7 @@ def _true_div_scalar(x_ptr, val, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
 @triton.jit(do_not_specialize=["n"])
 def _true_div_stensor(x_ptr, y_ptr, n, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     val = tl.load(y_ptr).to(tl.float32)
-    pid = tl.cast(tl.program_id(0), tl.int64)
+    pid = tl.program_id(0)
     step = tl.num_programs(0) * BLOCK
     base = pid * BLOCK
     if EVEN:
@@ -410,10 +410,11 @@ def run(self, other):
                     + " doesn't match the broadcast shape "
                     + str(list(oshape))
                 )
-        if n > _INT32_LIMIT:
-            raise RuntimeError("element count exceeds supported int32 indexing range")
-        _launch_generic(self, other, n, sshape, self.stride(), oshape, other.stride())
-        return self
+        # Broadcast divide: the hand-written generic kernel is rejected by the
+        # MACA Triton backend at launch ("memory size or pointer value too large
+        # to fit in 32 bit"), so route broadcasts through the pointwise_dynamic
+        # div_ which generates backend-compatible code on all vendors.
+        return _div_true_divide_(self, other)
 
     # Python scalar operand.
     if n > _INT32_LIMIT:
