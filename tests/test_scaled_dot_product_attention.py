@@ -108,7 +108,9 @@ def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
     if is_causal:
         q_index = torch.arange(q.shape[-2], device=q.device)[:, None]
         k_index = torch.arange(k.shape[-2], device=k.device)
-        causal_mask = k_index > q_index
+        # The low-level ATen FlashAttention op uses a lower-right causal mask
+        # (unlike functional SDPA's upper-left mask for nonsquare inputs).
+        causal_mask = k_index > q_index + k.shape[-2] - q.shape[-2]
         scores.masked_fill_(causal_mask, float("-inf"))
     logsumexp = torch.logsumexp(scores, dim=-1)
     output = torch.matmul(torch.softmax(scores, dim=-1), v.float())
@@ -147,8 +149,9 @@ def test_scaled_dot_product_flash_attention(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    # Use CPU reference when explicitly requested
-    if cfg.TO_CPU:
+    # Ascend has no native ATen FlashAttention kernel; use independent math
+    # on the selected reference device instead of its unsupported CPU fallback.
+    if cfg.TO_CPU or flag_gems.vendor_name == "ascend":
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -157,7 +160,7 @@ def test_scaled_dot_product_flash_attention(
             ref_q, ref_k, ref_v, 0.0, is_causal, False, scale=scale
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
-    result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+    result = flag_gems._scaled_dot_product_flash_attention(
         q, k, v, 0.0, is_causal, False, scale=scale
     )
 
@@ -167,6 +170,91 @@ def test_scaled_dot_product_flash_attention(
     assert result[2] is None
     assert result[3] is None
     assert result[4:6] == (q_seq_len, kv_seq_len)
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend dispatch regression"
+)
+@pytest.mark.parametrize(
+    "batch,num_head,q_seq_len,kv_seq_len,head_size",
+    SCALED_DOT_PRODUCT_FLASH_ATTENTION_SHAPES,
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["bshd", "strided_head"])
+def test_scaled_dot_product_flash_attention_ascend_dispatch(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype, layout, caplog
+):
+    inputs = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        torch_device_fn.current_device(),
+    )
+    if layout == "bshd":
+        # Models commonly transpose a contiguous BSHD projection into BHSD.
+        q, k, v = [t.transpose(1, 2).contiguous().transpose(1, 2) for t in inputs]
+    else:
+        # Also exercise materialization when the last dimension is strided.
+        q, k, v = [torch.stack((t, t), dim=-1)[..., 0] for t in inputs]
+    assert all(not t.is_contiguous() for t in (q, k, v))
+    scale = head_size**-0.5
+    ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
+        utils.to_reference(q),
+        utils.to_reference(k),
+        utils.to_reference(v),
+        scale,
+        is_causal,
+    )
+
+    with caplog.at_level(
+        "DEBUG",
+        logger=utils.gems_log_logger(flag_gems._scaled_dot_product_flash_attention),
+    ):
+        direct = flag_gems._scaled_dot_product_flash_attention(
+            q, k, v, 0.0, is_causal, False, scale=scale
+        )
+        # Scope the ATen registration to this case so subsequent reference
+        # calls cannot accidentally execute the FlagGems candidate.
+        previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+        lib = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(
+                lib=lib, include=["_scaled_dot_product_flash_attention"]
+            )
+            registered = torch.ops.aten._scaled_dot_product_flash_attention.default(
+                q, k, v, 0.0, is_causal, False, scale=scale
+            )
+        finally:
+            lib._destroy()
+            flag_gems.current_work_registrar = previous_registrar
+
+    # Both public entry points must reach the specialized Ascend wrapper.
+    assert (
+        sum(
+            record.getMessage() == "GEMS_ASCEND _SCALED_DOT_PRODUCT_FLASH_ATTENTION"
+            for record in caplog.records
+        )
+        == 2
+    )
+    for result in (direct, registered):
+        assert len(result) == 9
+        assert result[0].shape == q.shape
+        assert result[0].device == q.device
+        assert result[1].shape == (batch, num_head, q_seq_len)
+        assert result[1].device == q.device
+        assert result[2:6] == (None, None, q_seq_len, kv_seq_len)
+        assert all(isinstance(t, torch.Tensor) for t in result[6:])
+        assert all(t.device == q.device for t in result[6:])
+        utils.gems_assert_close(result[0], ref_out, dtype)
+        utils.gems_assert_close(result[1], ref_lse, torch.float)
+    torch.testing.assert_close(direct[0], registered[0], atol=0, rtol=0)
+    torch.testing.assert_close(direct[1], registered[1], atol=0, rtol=0)
 
 
 def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
@@ -466,3 +554,100 @@ def test_scaled_dot_product_attention_nonsquare_qk(
     gems_result = torch_sdpa(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend D256 regression")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "batch,heads,kv_heads,seq_len,scale",
+    [
+        (1, 6, 1, 128, None),
+        (1, 2, 1, 256, 0.0),
+        (1, 2, 2, 384, 0.17),
+        (2, 4, 2, 512, -0.125),
+        (1, 4, 1, 1024, None),
+    ],
+)
+def test_scaled_dot_product_attention_ascend_d256_gradients(
+    dtype, batch, heads, kv_heads, seq_len, scale
+):
+    # Exercise the first/last causal tiles, both supported traversal sizes,
+    # multiple batches, and shared KV gradients against independent CPU math.
+    generator = torch.Generator().manual_seed(20261110)
+    inputs = [
+        (torch.randn(batch, h, seq_len, 256, generator=generator) * 0.5).to(dtype)
+        for h in (heads, kv_heads, kv_heads)
+    ]
+    grad = torch.randn(inputs[0].shape, generator=generator).to(dtype)
+    ref_q, ref_k, ref_v = [x.double().requires_grad_() for x in inputs]
+    group = heads // kv_heads
+    ref_k_expanded = ref_k.repeat_interleave(group, dim=1)
+    ref_v_expanded = ref_v.repeat_interleave(group, dim=1)
+    scores = ref_q @ ref_k_expanded.transpose(-1, -2)
+    scores = scores * (256**-0.5 if scale is None else scale)
+    causal_mask = torch.ones(seq_len, seq_len, dtype=torch.bool).triu(1)
+    probabilities = scores.masked_fill(causal_mask, -float("inf")).softmax(-1)
+    expected = probabilities @ ref_v_expanded
+    expected_grads = torch.autograd.grad(expected, (ref_q, ref_k, ref_v), grad.double())
+
+    q, k, v = [x.to(device).requires_grad_() for x in inputs]
+    actual = flag_gems.scaled_dot_product_attention(
+        q, k, v, is_causal=True, scale=scale, enable_gqa=group > 1
+    )
+    actual_grads = torch.autograd.grad(actual, (q, k, v), grad.to(device))
+    tolerance = 0.006 if dtype == torch.float16 else 0.04
+    for result, reference in zip((actual, *actual_grads), (expected, *expected_grads)):
+        torch.testing.assert_close(
+            result.cpu().float(),
+            reference.to(dtype).float(),
+            atol=tolerance,
+            rtol=tolerance,
+        )
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend D256 regression")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_scaled_dot_product_attention_ascend_d256_cached_gradients(dtype):
+    import torch_npu
+
+    # Exercise score-buffer reuse across batches and GQA heads at the lower
+    # dispatch boundary. Compare all gradients with the native fused operator.
+    generator = torch.Generator().manual_seed(20261111)
+    inputs = [
+        (torch.randn(2, heads, 4096, 256, generator=generator) * 0.5)
+        .to(dtype)
+        .to(device)
+        for heads in (8, 2, 2)
+    ]
+    grad = torch.randn(inputs[0].shape, generator=generator).to(dtype).to(device)
+    reference_inputs = [x.detach().requires_grad_() for x in inputs]
+    causal_mask = torch.ones((2048, 2048), dtype=torch.bool).triu(1).to(device)
+    expected = torch_npu.npu_fusion_attention(
+        *reference_inputs,
+        8,
+        "BNSD",
+        atten_mask=causal_mask,
+        scale=1 / 16,
+        keep_prob=1.0,
+        pre_tockens=2147483647,
+        next_tockens=0,
+        sparse_mode=2,
+    )[0]
+    expected_grads = torch.autograd.grad(expected, reference_inputs, grad)
+    q, k, v = [x.detach().requires_grad_() for x in inputs]
+    actual = flag_gems.scaled_dot_product_attention(
+        q, k, v, is_causal=True, enable_gqa=True
+    )
+    actual_grads = torch.autograd.grad(actual, (q, k, v), grad)
+    tolerance = 0.006 if dtype == torch.float16 else 0.04
+    for result, reference in zip((actual, *actual_grads), (expected, *expected_grads)):
+        torch.testing.assert_close(
+            result.cpu().float(),
+            reference.cpu().float(),
+            atol=tolerance,
+            rtol=tolerance,
+        )
