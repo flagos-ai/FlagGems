@@ -1343,6 +1343,7 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("copysign_.Tensor", copysign_),
+    ("copysign_backward", copysign_backward),
     ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),

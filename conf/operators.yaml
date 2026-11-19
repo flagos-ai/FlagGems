@@ -4438,6 +4438,19 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: copysign_backward
+  description: Computes the gradient of `copysign` with respect to its input, returning
+    `grad_output * sign(self) * sign(other)` with the sign of `other` taken from its
+    sign bit (so -0.0 counts as negative) and zero where `self` is zero.
+  for:
+    - copysign_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: copysign_out
   description: 'A variant of `copysign` that allows the output to be saved into `out`.
 

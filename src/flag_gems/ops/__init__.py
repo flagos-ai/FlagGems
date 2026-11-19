@@ -747,6 +747,7 @@ from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
+from flag_gems.ops.copysign_backward import copysign_backward
 from flag_gems.ops.corrcoef import corrcoef
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
@@ -2512,6 +2513,7 @@ __all__ = [
     "copy_sparse_to_sparse_",
     "copysign",
     "copysign_",
+    "copysign_backward",
     "copysign_out",
     "corrcoef",
     "cos",
