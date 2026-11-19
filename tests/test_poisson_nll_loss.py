@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 SHAPES = [(2, 3)] if cfg.QUICK_MODE else [(2, 3), (128, 256), (512, 512)]
 
@@ -115,6 +116,11 @@ def test_accuracy_poisson_nll_loss_boundary(dtype):
 def test_poisson_nll_loss_mixed_dtype_promotion(
     input_dtype, target_dtype, expected_dtype
 ):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (input_dtype, target_dtype, expected_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     input = torch.ones((2, 3), dtype=input_dtype, device=flag_gems.device)
     target = torch.ones((1, 3), dtype=target_dtype, device=flag_gems.device)
     ref = torch.ops.aten.poisson_nll_loss(
@@ -166,7 +172,9 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 
 
 @pytest.mark.poisson_nll_loss
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 @pytest.mark.parametrize("log_input", [False, True])
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize(

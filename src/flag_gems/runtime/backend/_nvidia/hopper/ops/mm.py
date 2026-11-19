@@ -3219,7 +3219,7 @@ def mm_backward(grad_output, a, b, needs_input_grad):
 
 
 class MmFunction(torch.autograd.Function):
-    """First-order autograd node around the generic ``mm`` forward."""
+    """First-order autograd node for real-valued Hopper ``mm`` inputs."""
 
     @staticmethod
     def forward(ctx, a, b):

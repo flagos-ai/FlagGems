@@ -18,19 +18,24 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # torch.istft requires a complex spectrogram (the return_complex=True output of
 # torch.stft). cuFFT rejects bfloat16 spectrograms, so bfloat16 is not
 # reachable through a stft/istft round trip; float16 spectrograms are complex32
 # and torch.istft accepts them directly.
-FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64]
+FLOAT_DTYPES = [
+    torch.float16,
+    torch.float32,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
+]
 
-# torch computes the fp16/complex32 inverse transform in half precision, so its
-# reference carries ~1e-3 relative error; the Triton kernels accumulate in fp32
-# and are therefore closer to the true signal. The tolerance follows the
-# reference's own precision rather than the input dtype.
+# torch computes the fp16/complex32 inverse transform in half precision, and
+# the Triton overlap-add/envelope buffers are fp16 as well. Four hann frames
+# can differ from the fp64 oracle by 4 ULP (0.0078 near |x|=2.8), so the
+# tolerance follows that rounding rather than the input dtype.
 _ATOL = {
-    torch.float16: 5e-3,
+    torch.float16: 1e-2,
     torch.float32: 1e-4,
     torch.float64: 1e-7,
 }
@@ -170,7 +175,19 @@ def test_istft_1d_signal(dtype):
 # fp16 is omitted here: the complex-return and normalized variants are covered
 # by test_istft_roundtrip for all three dtypes, and the fp64 path here already
 # pins the exact-arithmetic behavior this test targets.
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        pytest.param(
+            torch.float64,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "enflame",
+                reason="enflame dose not support fp64",
+            ),
+        ),
+    ],
+)
 def test_istft_variants(dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("fp64 is not supported on this backend")
