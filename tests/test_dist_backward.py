@@ -19,8 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# One case per code path: equal-shape contiguous (Triton kernel), broadcast in
-# both directions (ATen-formula fallback), zero-size and strided layouts.
+# One case per code path: equal-shape contiguous (Triton kernel), zero-size
+# and the +/-inf global tie path (ties inside one block and across blocks).
 DIST_BACKWARD_CASES = [
     ((64,), (64,), 2),
     ((8, 32), (8, 32), 1),
@@ -30,9 +30,6 @@ DIST_BACKWARD_CASES = [
     ((8, 32), (8, 32), float("inf")),
     ((8, 32), (8, 32), float("-inf")),
     ((8, 32), (8, 32), -1.0),
-    ((8, 32), (32,), 2),
-    ((32,), (8, 32), 2),
-    ((4, 8, 32), (32,), 2),
     ((), (), 2),
 ]
 
@@ -153,3 +150,44 @@ def test_dist_backward_not_differentiable_at_p_zero(dtype=torch.float64):
         torch.autograd.grad(torch.dist(inp, other, 0), [inp, other], grad_outputs=grad)
     with pytest.raises(NotImplementedError):
         flag_gems.dist_backward(grad, inp, other, 0, None)
+
+
+@pytest.mark.dist_backward
+@pytest.mark.parametrize("p", [float("inf"), float("-inf"), 2, 1])
+def test_dist_backward_global_tie_across_blocks(p, dtype=torch.float64):
+    """p = +/-inf ties spanning multiple 1024-element blocks share the
+    upstream gradient by the GLOBAL count (0.5/0.5 per maximizer), matching
+    ATen's norm_backward."""
+    n = 2048
+    inp = torch.randn(n, dtype=dtype, device=flag_gems.device)
+    other = torch.zeros(n, dtype=dtype, device=flag_gems.device)
+    # Two maxima at |diff| = 2.5 in different blocks (indices 100 < 1024,
+    # 1500 >= 1024); everything else stays strictly smaller.
+    inp[100] = 2.5
+    inp[1500] = -2.5
+    rest = torch.randn(n, dtype=dtype, device=flag_gems.device) * 0.1
+    keep = torch.ones(n, dtype=torch.bool, device=flag_gems.device)
+    keep[100] = False
+    keep[1500] = False
+    inp[keep] = rest[keep]
+    grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+
+    dist = torch.dist(inp, other, p).detach()
+    ref_grads = _dist_backward_reference(grad, inp, other, p, dist)
+    res_grads = flag_gems.dist_backward(grad, inp, other, p, dist)
+
+    for ref, res in zip(ref_grads, res_grads):
+        utils.gems_assert_close(res, ref.to(dtype), dtype)
+
+
+@pytest.mark.dist_backward
+def test_dist_backward_broadcast_not_supported(dtype=torch.float64):
+    """Broadcasting / non-contiguous inputs degrade to ATen with a clear
+    NotImplementedError (same policy as the fbgemm_pack_* family)."""
+    inp = torch.randn(8, 32, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(32, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn((), dtype=dtype, device=flag_gems.device)
+    dist = torch.dist(inp, other, 2).detach()
+
+    with pytest.raises(NotImplementedError):
+        flag_gems.dist_backward(grad, inp, other, 2, dist)

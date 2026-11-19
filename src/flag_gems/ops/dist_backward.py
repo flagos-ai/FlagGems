@@ -20,8 +20,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.dist import dist as dist_forward
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -43,25 +44,59 @@ logger = logging.getLogger(__name__)
 #
 #     p == 1     grad = g * sign(diff)
 #     p == 2     grad = g * diff / dist
-#     p == inf   grad = g * sign(diff) / count(|diff| == dist) at the maxima
-#     p == -inf  grad = g * sign(diff) / count(|diff| == dist) at the minima
+#     p == inf   grad = g * sign(diff) / global_count(|diff| == dist) at the maxima
+#     p == -inf  grad = g * sign(diff) / global_count(|diff| == dist) at the minima
 #     p == 0     not differentiable (ATen raises); we raise as well
 #
 # Where ``diff == 0`` the true gradient is 0 for every finite p: ``sign(0) == 0``
 # naturally kills p >= 1, and the ``where(diff == 0, 0, ...)`` guard keeps
 # ``|diff|**(p - 1)`` from blowing up for p < 1.
 #
-# The Triton kernel below handles the non-broadcast (equal-shape) path in one
-# launch.  Broadcast inputs fall back to the ATen formula composition.
+# The p = +/-inf gradient splits the upstream scalar over the GLOBAL tie
+# count, so the count is computed by a dedicated reduction kernel
+# (``_dist_backward_count_kernel``) before the elementwise kernel divides
+# by it. Broadcasting/strided inputs are not yet supported (see the
+# NotImplementedError in ``dist_backward``).
 # ---------------------------------------------------------------------------
 
 
+@libentry()
+@triton.jit
+def _dist_backward_count_kernel(
+    self_ptr,
+    other_ptr,
+    dist_ptr,  # forward scalar output (0-dim tensor)
+    count_ptr,  # global tie counter (1-element tensor)
+    n_elements,
+    IS_INF: tl.constexpr,  # p == +inf
+    IS_NINF: tl.constexpr,  # p == -inf
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+
+    dist = tl.load(dist_ptr)
+    a_raw = tl.load(self_ptr + offs, mask=mask, other=0.0)
+    b_raw = tl.load(other_ptr + offs, mask=mask, other=0.0)
+    diff_raw = a_raw - b_raw
+    abs_diff_raw = tl.abs(diff_raw)
+    # The comparison runs in the input dtype: the ATen forward derives
+    # ``dist`` from a same-dtype difference, so the equality is only exact
+    # there.
+    match = abs_diff_raw == dist.to(abs_diff_raw.dtype)
+    block_count = tl.sum(tl.where(match & mask, 1, 0))
+    tl.atomic_add(count_ptr, block_count)
+
+
+@libentry()
 @triton.jit
 def _dist_backward_kernel(
     grad_ptr,  # upstream gradient (0-dim tensor)
     self_ptr,
     other_ptr,
     dist_ptr,  # forward scalar output (0-dim tensor)
+    count_ptr,  # global tie count (1-element tensor, +/-inf path only)
     grad_self_ptr,
     grad_other_ptr,
     n_elements,
@@ -86,14 +121,16 @@ def _dist_backward_kernel(
     sgn = (diff > 0.0).to(tl.float64) - (diff < 0.0).to(tl.float64)
 
     if IS_INF or IS_NINF:
-        # dist == max (or min) |diff|: gradient lives only at the extreme
-        # element(s); ties share the gradient evenly. The comparison runs in
-        # the input dtype: the ATen forward derives ``dist`` from a same-dtype
-        # difference, so the equality is only exact there.
+        # dist == max (or min) |diff|: the gradient lives only at the extreme
+        # element(s) and the upstream scalar is split evenly over the GLOBAL
+        # tie count, so each maximizer/minimizer receives g / count exactly,
+        # matching ATen (grad 0.5/0.5 for two maxima). The comparison runs in
+        # the input dtype: the ATen forward derives ``dist`` from a
+        # same-dtype difference, so the equality is only exact there.
         diff_raw = a_raw - b_raw
         abs_diff_raw = tl.abs(diff_raw)
         match = abs_diff_raw == dist.to(abs_diff_raw.dtype)
-        count = tl.sum(tl.where(match & mask, 1.0, 0.0))
+        count = tl.load(count_ptr).to(tl.float64)
         val = tl.where(
             match,
             g * ((diff_raw > 0).to(tl.float64) - (diff_raw < 0).to(tl.float64)) / count,
@@ -138,58 +175,25 @@ def dist_backward(
     """
     logger.debug("GEMS DIST_BACKWARD")
 
+    if p == 0:
+        raise NotImplementedError("dist is not differentiable at p = 0")
+
     if (
         self.shape != other.shape
         or not self.is_contiguous()
         or not other.is_contiguous()
     ):
-        # Broadcast / strided layout: compose the exact ATen formula. The
-        # arithmetic runs in float32 (the accumulation dtype ATen uses for
-        # half/bfloat16 inputs) and is cast back at the end.
-        compute_dtype = torch.float32 if self.dtype != torch.float64 else torch.float64
-        a = self.to(compute_dtype)
-        b = other.to(compute_dtype)
-        g = grad.to(compute_dtype)
-        diff = a - b
-        norm = torch.dist(a, b, p).detach()  # allow-torch-compute
-        if p == float("inf") or p == float("-inf"):
-            abs_diff = diff.abs()
-            extreme = abs_diff == norm
-            count = extreme.sum()
-            S = torch.where(  # allow-torch-compute
-                extreme,
-                g * torch.sign(diff) / count,  # allow-torch-compute
-                torch.zeros_like(diff),  # allow-torch-compute
-            )
-        elif p == 0:
-            raise NotImplementedError("dist is not differentiable at p = 0")
-        else:
-            q = p - 1
-            mag = diff.abs().pow(q)
-            denom = norm.pow(q)
-            S = torch.where(  # allow-torch-compute
-                diff == 0,
-                torch.zeros_like(diff),
-                g * torch.sign(diff) * mag / denom,  # allow-torch-compute
-            )
-        grad_self = S
-        if grad_self.shape != self.shape:
-            padded = (1,) * (grad_self.ndim - self.ndim) + tuple(self.shape)
-            reduce = tuple(
-                d for d in range(grad_self.ndim) if grad_self.shape[d] != padded[d]
-            )
-            grad_self = grad_self.sum(dim=reduce)
-        grad_other = -S
-        if grad_other.shape != other.shape:
-            padded = (1,) * (grad_other.ndim - other.ndim) + tuple(other.shape)
-            reduce = tuple(
-                d for d in range(grad_other.ndim) if grad_other.shape[d] != padded[d]
-            )
-            grad_other = grad_other.sum(dim=reduce)
-        return grad_self.to(self.dtype), grad_other.to(other.dtype)
-
-    if p == 0:
-        raise NotImplementedError("dist is not differentiable at p = 0")
+        # Broadcasting / strided layouts require an elementwise kernel over
+        # the broadcast shape plus two shaped reductions, which the current
+        # kernel does not cover. Degrade to ATen (same policy as the
+        # fbgemm_pack_* family) instead of hiding a torch-compute chain
+        # behind the allow-torch-compute marker.
+        raise NotImplementedError(
+            "dist_backward: FlagGems supports equal-shape contiguous inputs only; "
+            f"got self.shape={tuple(self.shape)}, other.shape={tuple(other.shape)}, "
+            f"self.is_contiguous()={self.is_contiguous()}, "
+            f"other.is_contiguous()={other.is_contiguous()}."
+        )
 
     n_elements = self.numel()
     grad_self = torch.empty_like(self)
@@ -199,28 +203,50 @@ def dist_backward(
         return grad_self, grad_other
 
     p = float(p)
-    # The general-p formula divides by dist**(p - 1), so the norm must be
-    # well-defined even when the input dtype overflows (e.g. fp16 p = 0.5
-    # sums to inf): recompute it in float64 on the same inputs, ignoring the
-    # caller-provided scalar.
-    dist = torch.dist(self.double(), other.double(), p).detach()  # allow-torch-compute
+    # Honor the caller-provided forward scalar; only recompute when omitted
+    # (via the registered FlagGems ``dist`` kernel, not ATen).
+    if dist is None:
+        dist = dist_forward(self, other, p).detach()
+
+    IS_INF = p == float("inf")
+    IS_NINF = p == float("-inf")
     # 1024 elements per program: the kernel is a pure elementwise read-modify-
     # write over a flat contiguous tensor, so a wide block amortizes the
     # launch while keeping register pressure low.
     BLOCK = 1024
     grid = (triton.cdiv(n_elements, BLOCK),)
     with torch_device_fn.device(self.device):
+        if IS_INF or IS_NINF:
+            # Phase 1: the GLOBAL tie count. The p = +/-inf gradient divides
+            # the upstream scalar by the number of maxima/minima over the
+            # whole tensor, so it must be known before the elementwise pass
+            # (per-block counts would each divide by their local count and
+            # overshoot for ties spanning blocks).
+            global_count = torch.zeros(1, dtype=torch.int32, device=self.device)
+            _dist_backward_count_kernel[grid](
+                self,
+                other,
+                dist,
+                global_count,
+                n_elements,
+                IS_INF=IS_INF,
+                IS_NINF=IS_NINF,
+                BLOCK=BLOCK,
+            )
+        else:
+            global_count = None
         _dist_backward_kernel[grid](
             grad,
             self,
             other,
             dist,
+            global_count,
             grad_self,
             grad_other,
             n_elements,
             p,
-            IS_INF=(p == float("inf")),
-            IS_NINF=(p == float("-inf")),
+            IS_INF=IS_INF,
+            IS_NINF=IS_NINF,
             BLOCK=BLOCK,
         )
     return grad_self, grad_other
