@@ -98,39 +98,6 @@ def _tiled_flash_forward():
     return _FLASH_KERNEL
 
 
-def _normalize_attn_bias(attn_bias, batch_size, num_heads, seq_q, seq_k, dtype, device):
-    """Broadcast a 2D/3D/4D attention bias to the 4D launch layout.
-
-    Returns ``(mask, has_mask)``. The mask keeps broadcast dimensions as
-    stride-0 views (``expand`` never materialises), which is exactly what the
-    tiled kernel's pointer arithmetic expects. Boolean masks are converted to
-    the additive ``0 / -1e6`` form the kernel consumes.
-    """
-    if attn_bias is None:
-        return None, False
-    if attn_bias.device != device:
-        raise RuntimeError("attn_bias must be on the query device")
-
-    if attn_bias.dtype == torch.bool:
-        mask = attn_bias.to(dtype) * -1.0e6
-    else:
-        mask = attn_bias.to(dtype)
-
-    if mask.ndim == 2:
-        mask = mask[None, None]
-    elif mask.ndim == 3:
-        mask = mask[:, None]
-    elif mask.ndim != 4:
-        raise RuntimeError("attn_bias must be a dense 2D, 3D, or 4D tensor")
-
-    expected = (batch_size, num_heads, seq_q, seq_k)
-    if any(actual not in (1, wanted) for actual, wanted in zip(mask.shape, expected)):
-        raise RuntimeError(
-            "attn_bias must broadcast to (batch, query_heads, query_seq, key_seq)"
-        )
-    return mask.expand(*expected), True
-
-
 def _scaled_dot_product_fused_attention_overrideable(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -159,18 +126,6 @@ def _scaled_dot_product_fused_attention_overrideable(
 
     batch_size, num_query_heads, seq_q, head_dim = query.shape
     _, num_key_heads, seq_k, _ = key.shape
-    if attn_bias is None:
-        attn_mask, has_bias = None, False
-    else:
-        attn_mask, has_bias = _normalize_attn_bias(
-            attn_bias,
-            batch_size,
-            num_query_heads,
-            seq_q,
-            seq_k,
-            query.dtype,
-            query.device,
-        )
 
     # The four metadata outputs are shape constants: copy the packed template
     # into a fresh buffer and hand out one view per output.
@@ -196,6 +151,35 @@ def _scaled_dot_product_fused_attention_overrideable(
         else _empty_debug_mask(query)
     )
 
+    if attn_bias is not None:
+        # An additive bias needs the value it is added to, so it is handled by
+        # the two-pass forward, which builds the (B, H, Q, K) bias from a
+        # 2D/3D/4D mask on the device and supports both boolean and float
+        # masks. The tiled kernel below serves the mask-free case.
+        from .attention import scaled_dot_product_attention_forward
+
+        output, logsumexp = scaled_dot_product_attention_forward(
+            query,
+            key,
+            value,
+            attn_mask=attn_bias,
+            dropout_p=0.0,
+            is_causal=is_causal,
+            scale=scale,
+            return_lse=True,
+        )
+        return (
+            output,
+            logsumexp,
+            cum_seq_q,
+            cum_seq_k,
+            seq_q,
+            seq_k,
+            philox_seed,
+            philox_offset,
+            debug_attn_mask,
+        )
+
     # Delegate the score/softmax/output computation to the backend's tiled
     # flash-attention kernel instead of re-deriving a serial per-row sweep.
     # `_attn_fwd` is the same kernel the backend's autograd attention entry
@@ -219,7 +203,7 @@ def _scaled_dot_product_fused_attention_overrideable(
             query,
             key,
             value,
-            attn_mask,  # must stay None when there is no mask
+            None,  # the mask-free path never passes a bias
             sm_scale,
             logsumexp,
             output,  #
@@ -235,7 +219,10 @@ def _scaled_dot_product_fused_attention_overrideable(
             value.stride(1),
             value.stride(2),
             value.stride(3),  #
-            *(attn_mask.stride() if has_bias else (1, 1, 1, 1)),
+            1,
+            1,
+            1,
+            1,
             output.stride(0),
             output.stride(1),
             output.stride(2),
@@ -248,7 +235,7 @@ def _scaled_dot_product_fused_attention_overrideable(
             seq_k,  #
             head_dim,  #
             STAGE=stage,  #
-            HAS_ATTN_MASK=has_bias,  #
+            HAS_ATTN_MASK=False,  #
             ACCUM_TYPE=fa_accum_type,
             GEMM_TYPE=fa_gemm_type,
             **tile,
@@ -259,7 +246,7 @@ def _scaled_dot_product_fused_attention_overrideable(
                 query,
                 key,
                 value,
-                attn_mask,
+                None,
                 sm_scale,
                 logsumexp,
                 output,  #
@@ -275,7 +262,10 @@ def _scaled_dot_product_fused_attention_overrideable(
                 value.stride(1),
                 value.stride(2),
                 value.stride(3),  #
-                *(attn_mask.stride() if has_bias else (1, 1, 1, 1)),
+                1,
+                1,
+                1,
+                1,
                 output.stride(0),
                 output.stride(1),
                 output.stride(2),
@@ -288,7 +278,7 @@ def _scaled_dot_product_fused_attention_overrideable(
                 seq_k,  #
                 head_dim,  #
                 STAGE=stage,  #
-                HAS_ATTN_MASK=has_bias,  #
+                HAS_ATTN_MASK=False,  #
                 ACCUM_TYPE=fa_accum_type,
                 GEMM_TYPE=fa_gemm_type,
                 **tile,

@@ -1047,6 +1047,32 @@ def scaled_dot_product_attention_forward(
     return out
 
 
+def _contiguous_attn_bias(attn_bias, batch, heads, q_len, kv_len):
+    """Materialise a 2D/3D/4D bias as a dense ``(B, H, Q, K)`` float32 tensor.
+
+    The backward kernel indexes the bias as a flat contiguous buffer, so a
+    broadcast or non-contiguous mask has to be expanded and copied first.
+    Boolean masks are converted to the additive ``0 / -1e30`` form, where
+    ``True`` means the cell is attended.
+    """
+    if attn_bias.dtype == torch.bool:
+        bias = (~attn_bias).to(torch.float32) * -1.0e30
+    else:
+        bias = attn_bias.to(torch.float32)
+    if bias.ndim == 2:
+        bias = bias[None, None]
+    elif bias.ndim == 3:
+        bias = bias[:, None]
+    elif bias.ndim != 4:
+        raise RuntimeError("attn_bias must be a dense 2D, 3D, or 4D tensor")
+    expected = (batch, heads, q_len, kv_len)
+    if any(actual not in (1, wanted) for actual, wanted in zip(bias.shape, expected)):
+        raise RuntimeError(
+            "attn_bias must broadcast to (batch, heads, query_seq, key_seq)"
+        )
+    return bias.expand(*expected).contiguous()
+
+
 def _staged_attention_backward(
     do,
     query,
@@ -1068,6 +1094,10 @@ def _staged_attention_backward(
     assert do.is_contiguous()
     assert query.is_contiguous() and key.is_contiguous()
     assert value.is_contiguous() and o.is_contiguous()
+    if attn_bias is not None:
+        attn_bias = _contiguous_attn_bias(
+            attn_bias, batch, query_heads, query_length, kv_length
+        )
 
     query_batch_heads = batch * query_heads
     kv_batch_heads = batch * kv_heads
