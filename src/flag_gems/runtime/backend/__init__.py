@@ -168,6 +168,17 @@ class BackendArchEvent(BackendEventBase):
         if not hasattr(_state.vendor_module, "ARCH_MAP"):
             return
         arch_map = _state.vendor_module.ARCH_MAP
+        # A vendor whose devices cannot be told apart by the generic rules
+        # below may own the lookup by exposing ``get_arch_key``: it returns the
+        # ``ARCH_MAP`` key for the current device, or None when the device is
+        # not one it specializes.
+        arch_detector = getattr(_state.vendor_module, "get_arch_key", None)
+        if arch_detector is not None:
+            arch_key = arch_detector(_state.torch_device_object, device)
+            if arch_key in arch_map:
+                self.has_arch = True
+                return arch_map[arch_key]
+            return
         arch_string = os.environ.get("ARCH", "")
         # Candidate keys ordered from the most to the least specific. The last
         # one is the major version alone, so a map that lists whole families
