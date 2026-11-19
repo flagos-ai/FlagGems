@@ -29,6 +29,13 @@ device = device.name
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func(x, y):
+    if x.dtype.is_int() and y.dtype.is_int():
+        # Keep narrow integer/bool comparisons in a supported integer width.
+        if x.dtype.primitive_bitwidth < 32:
+            x = x.to(tl.int32)
+        if y.dtype.primitive_bitwidth < 32:
+            y = y.to(tl.int32)
+        return x == y
     return x.to(tl.float32) == y.to(tl.float32)
 
 
@@ -39,17 +46,37 @@ def eq(A, B):
         else:
             A = A.to(B.device)
     logger.debug("GEMS EQ")
+    # ALWAYS_BOOL controls output allocation, not input promotion. In particular,
+    # signed/unsigned pairs and zero-dimensional tensors need PyTorch's rules.
+    if (
+        A.dtype != B.dtype
+        and not A.dtype.is_floating_point
+        and not B.dtype.is_floating_point
+        and not A.dtype.is_complex
+        and not B.dtype.is_complex
+    ):
+        dtype = torch.result_type(A, B)
+        A, B = A.to(dtype), B.to(dtype)
     return eq_func(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func_scalar(x, y):
+    if x.dtype.is_int() and y.dtype.is_int():
+        if x.dtype == tl.int1:
+            return x.to(tl.int32) == y
+        if x.dtype.primitive_bitwidth < 32:
+            return x.to(tl.int32) == y.to(x.dtype).to(tl.int32)
+        return x == y.to(x.dtype)
     return x.to(tl.float32) == y.to(tl.float32)
 
 
 def eq_scalar(A, B):
     logger.debug("GEMS EQ_SCALAR")
+    # Keep bool and integer scalar calls on the same integer launch signature.
+    if isinstance(B, bool):
+        B = int(B)
     return eq_func_scalar(A, B)
 
 
