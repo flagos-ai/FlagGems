@@ -155,6 +155,8 @@ def test_pinverse_nonfinite(value, rcond):
     ],
 )
 def test_pinverse_invalid_input(shape, dtype):
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.pinverse(inp)

@@ -34,6 +34,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # Ranks 0 through 4: rank 0 flattens to a 1-element 1-D tensor, rank 1 is the
 # identity-shaped row, and the higher ranks feed the non-contiguous rows.
@@ -166,7 +167,9 @@ def test_ravel_copy_path_ranks(shape):
 
 
 @pytest.mark.ravel
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_ravel_complex(dtype):
     if dtype == torch.complex128 and not flag_gems.runtime.device.support_fp64:
         pytest.skip("complex128 needs fp64 support")

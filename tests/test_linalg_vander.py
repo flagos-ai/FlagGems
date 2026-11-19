@@ -4,9 +4,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 COMPLEX_DTYPES = (
-    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+    [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+    if utils.complex_is_supported
+    else []
 )
 
 # linalg_vander tests
