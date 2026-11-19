@@ -39,6 +39,13 @@ _MUSA_CPU_FP32_DIVERGENCES = {
 }
 
 
+def _run_dirichlet_grad(x, alpha, total):
+    candidate = getattr(flag_gems, "dirichlet_grad", None)
+    if candidate is None:
+        candidate = flag_gems._dirichlet_grad
+    return candidate(x, alpha, total)
+
+
 def _make_inputs(shape, dtype, alpha_range):
     torch.manual_seed(0)
     lo, hi = alpha_range
@@ -82,7 +89,7 @@ def test_dirichlet_grad_regimes(shape, dtype, alpha_range):
     )
 
     reference = torch.ops.aten._dirichlet_grad(ref_x, ref_alpha, ref_total)
-    result = flag_gems._dirichlet_grad(x, alpha, total)
+    result = _run_dirichlet_grad(x, alpha, total)
 
     assert result.device == x.device
     assert result.shape == x.shape
@@ -101,4 +108,4 @@ def test_dirichlet_grad_rejects_nonbroadcastable_shape():
     total = torch.ones((3,), device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
-        flag_gems._dirichlet_grad(x, alpha, total)
+        _run_dirichlet_grad(x, alpha, total)
