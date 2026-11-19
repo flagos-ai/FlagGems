@@ -91,3 +91,30 @@ def test_bitwise_and_scalar_tensor():
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.and_tensor
+def test_and_tensor():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="and_tensor",
+        torch_op=torch.bitwise_and,
+        dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
+    )
+    bench.run()
+
+
+def _and_scalar_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    scalar = True if dtype == torch.bool else 0x00FF
+    yield inp, scalar
+
+
+@pytest.mark.and_scalar
+def test_and_scalar():
+    bench = base.GenericBenchmark(
+        input_fn=_and_scalar_input_fn,
+        op_name="and_scalar",
+        torch_op=torch.bitwise_and,
+        dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
+    )
+    bench.run()

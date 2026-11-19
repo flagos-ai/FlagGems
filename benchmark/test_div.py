@@ -167,3 +167,65 @@ def test_div_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.div_mode
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+def test_div_mode_tensor(rounding_mode):
+    bench = base.GenericBenchmark(
+        op_name="div_mode",
+        input_fn=_div_tensor_mode_input_fn,
+        torch_op=lambda a, b: torch.div(a, b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
+    )
+    bench.run()
+
+
+@pytest.mark.div_mode
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+def test_div_mode_scalar(rounding_mode):
+    bench = base.GenericBenchmark(
+        op_name="div_mode",
+        input_fn=_div_scalar_mode_input_fn,
+        torch_op=lambda a, b: torch.div(a, b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
+    )
+    bench.run()
+
+
+@pytest.mark.div_mode_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+def test_div_mode_tensor_inplace(rounding_mode):
+    bench = base.GenericBenchmark(
+        op_name="div_mode_",
+        input_fn=_div_tensor_mode_input_fn,
+        torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.div_mode_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+def test_div_mode_scalar_inplace(rounding_mode):
+    bench = base.GenericBenchmark(
+        op_name="div_mode_",
+        input_fn=_div_scalar_mode_input_fn,
+        torch_op=lambda a, b: a.div_(b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
+        is_inplace=True,
+    )
+    bench.run()

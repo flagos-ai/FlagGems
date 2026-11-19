@@ -85,3 +85,17 @@ def test_perf_max_pool3d():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.max_pool3d_with_indices
+def test_perf_max_pool3d_with_indices():
+    bench = MaxPool3dBenchmark(
+        input_fn=max_pool3d_input_fn,
+        op_name="max_pool3d_with_indices",
+        torch_op=lambda inp, **kwargs: torch.nn.functional.max_pool3d(
+            inp, return_indices=True, **kwargs
+        ),
+        gems_op=flag_gems.max_pool3d_with_indices,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
