@@ -12892,6 +12892,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.3'
+- id: logsumexp_backward
+  description: The backward computation of `logsumexp()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - logsumexp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: lshift_scalar
   description: Applies a bitwise left shift to an integer tensor with a scalar shift
     value.
