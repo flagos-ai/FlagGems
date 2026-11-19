@@ -13406,6 +13406,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.0'
   cpp: '4.0'
+- id: max_backward
+  description: The backward computation of `max()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - max
+  - max.dim
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: max_dim
   description: 'Returns a namedtuple `(values, indices)` where `values` is the maximum
     value
