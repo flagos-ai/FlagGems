@@ -22,6 +22,7 @@ import triton.language as tl
 from triton.language.extra import libdevice
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,11 @@ MIN_SCALE = 6.0999998822808266e-05
 NEAR_HALF = 0.499
 
 # Beyond this quotient magnitude both the fp32 and the fp64 path clamp to the
-# same endpoint (|y| > 200 saturates every supported [qmin, qmax] range), so
-# such lanes never need the fp64 repair pass.
-BIG_Q = 200.0
+# same endpoint. The bound must cover the worst-case zero point: ``q = a + zp``
+# with ``|zp| <= 128`` stays inside every supported [qmin, qmax] range while
+# ``|a| <= 256`` (e.g. ``q = a - 128 <= 127`` needs ``a >= 256`` to saturate),
+# so ``|y| > 256`` saturates and such lanes never need the fp64 repair.
+BIG_Q = 256.0
 
 # Mapping from a quantized dtype to its integer storage dtype and the
 # representable range (qmin, qmax) -- the full range; ``reduce_range`` halves
@@ -111,14 +114,36 @@ def _choose_qparams_fp64(x_min, x_max, qmin, qmax, reduce_range):
     return float(scale), zero_point
 
 
+@libentry()
+@triton.jit
+def _qptd_minmax_kernel(x_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
+    """Device-side ``aminmax`` for the dynamic qparams.
+
+    Writes ``[min, max, nan_count]`` into a 3-element fp32 buffer. Running the
+    reduction as a Triton kernel keeps the host function free of torch compute
+    (ATen's ``min()``/``max()`` pairs are two separate reduction kernels); the
+    NaN count is folded in so the caller can reject a non-finite range the way
+    ``ChooseQuantizationParams`` does. The count lives in an fp32 slot only as
+    a ``> 0`` flag, so the fp32 accumulation cannot lose a positive count.
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+    v = tl.load(x_ptr + offs, mask=mask, other=float("inf"))
+    tl.atomic_min(out_ptr, tl.min(v))
+    w = tl.load(x_ptr + offs, mask=mask, other=float("-inf"))
+    tl.atomic_max(out_ptr + 1, tl.max(w))
+    nan_cnt = tl.sum((v != v).to(tl.int32), axis=0)
+    tl.atomic_add(out_ptr + 2, nan_cnt.to(tl.float32))
+
+
+@libentry()
 @triton.jit
 def _qptd_quant_kernel(
     x_ptr,
     out_ptr,
     scale_ptr,
     zp_ptr,
-    fix_ptr,
-    cnt_ptr,
     n_elements,
     QMIN: tl.constexpr,
     QMAX: tl.constexpr,
@@ -127,22 +152,23 @@ def _qptd_quant_kernel(
     BIG_Q: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Elementwise dynamic quantization with an exact-fp64 repair queue.
+    """Elementwise dynamic quantization with a program-local fp64 repair.
 
     The reference computes ``nearbyint(x / scale) + zero_point`` with the
     quotient in fp64 (the CUDA backend rounds the double quotient -- the same
     precision ``quantize_per_tensor`` documents). The fast path runs one fp64
     reciprocal per program and then per-element fp32 multiply + rint, which
     agrees with the fp64 quotient whenever the fp32 product lands far enough
-    from a half-integer boundary; ambiguous lanes are recorded in ``fix_ptr``
-    and recomputed in full fp64 by the fix kernel. Lanes with a huge quotient
-    saturate identically on both paths and skip the repair.
+    from a half-integer boundary. Ambiguous lanes are rare (~0.2%), so a
+    program only enters the fp64 branch when at least one of its lanes is
+    ambiguous -- no auxiliary queue, no extra launch, no per-element fp64 math
+    on the programs that do not need it.
 
-    The offset + clamp stays in fp32: ``a`` is an integer in [-200, 200] and
+    The offset + clamp stays in fp32: ``a`` is an integer in [-256, 256] and
     ``|zp| <= 255``, so ``a + zp`` is exactly representable in fp32 and
-    identical to the reference's int64 arithmetic. (Converting to fp64 here
-    -- the SimpleOpt round-5 shape -- measured ~190us vs ~24us at 4096^2: the
-    per-element fp64 convert/compare pipeline dwarfs the memory traffic.)
+    identical to the reference's int64 arithmetic. (Converting every element
+    to fp64 unconditionally -- the SimpleOpt round-5 shape -- measured ~190us
+    vs ~24us at 4096^2.)
     """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -156,55 +182,23 @@ def _qptd_quant_kernel(
     a = libdevice.rint(y)
     frac = y - a
     ambiguous = (tl.abs(frac) > NEAR_HALF) & (tl.abs(y) <= BIG_Q) & mask
-    # Offset + clamp in fp32: a is an integer in [-200, 200] and |zp| <= 255,
+    # Offset + clamp in fp32: a is an integer in [-256, 256] and |zp| <= 255,
     # so a + zp is exact in fp32 and equals the reference's int64 arithmetic.
     q = a + zp
+    # Program-level gate: only programs that actually own an ambiguous lane pay
+    # for the fp64 math.
+    if tl.sum(ambiguous.to(tl.int32), axis=0) > 0:
+        q64 = libdevice.rint(x.to(tl.float64) * (1.0 / scale)) + tl.load(zp_ptr).to(
+            tl.float64
+        )
+        q64 = tl.minimum(tl.maximum(q64, float(QMIN)), float(QMAX))
+        q = tl.where(ambiguous, q64.to(tl.float32), q)
     q = tl.minimum(tl.maximum(q, float(QMIN)), float(QMAX))
     qi = q.to(tl.int32)
     if UINT8:
         tl.store(out_ptr + offs, qi.to(tl.uint8), mask=mask)
     else:
         tl.store(out_ptr + offs, qi.to(tl.int8), mask=mask)
-    nfix = tl.sum(ambiguous.to(tl.int32), axis=0)
-    if nfix > 0:
-        base = tl.atomic_add(cnt_ptr, nfix)
-        pos = tl.cumsum(ambiguous.to(tl.int32), axis=0) - 1
-        tl.store(fix_ptr + base + pos, offs, mask=ambiguous)
-
-
-@triton.jit
-def _qptd_fix_kernel(
-    x_ptr,
-    out_ptr,
-    scale_ptr,
-    zp_ptr,
-    fix_ptr,
-    cnt_ptr,
-    QMIN: tl.constexpr,
-    QMAX: tl.constexpr,
-    UINT8: tl.constexpr,
-    BS: tl.constexpr,
-    NPROG: tl.constexpr,
-):
-    """Recompute the ambiguous lanes with the exact fp64 quotient."""
-    total = tl.load(cnt_ptr)
-    step = BS * NPROG
-    i = tl.program_id(0) * BS
-    while i < total:
-        k = i + tl.arange(0, BS)
-        m = k < total
-        offs = tl.load(fix_ptr + k, mask=m, other=0)
-        scale = tl.load(scale_ptr)
-        zp = tl.load(zp_ptr).to(tl.float64)
-        x = tl.load(x_ptr + offs, mask=m, other=0.0)
-        q = libdevice.rint(x.to(tl.float64) * (1.0 / scale)) + zp
-        q = tl.minimum(tl.maximum(q, float(QMIN)), float(QMAX))
-        qi = q.to(tl.int32)
-        if UINT8:
-            tl.store(out_ptr + offs, qi.to(tl.uint8), mask=m)
-        else:
-            tl.store(out_ptr + offs, qi.to(tl.int8), mask=m)
-        i += step
 
 
 def _suggest_memory_format(t):
@@ -243,6 +237,43 @@ def _validate(self, dtype):
         raise RuntimeError(f"Quantize only works on Float Tensor, got {self.dtype}")
 
 
+def _device_aminmax(x):
+    """Reduce ``x`` to ``(min, max)`` with a Triton kernel, one host sync.
+
+    The dynamic qparams need two fp32 scalars on the host, and nothing can
+    avoid *one* device->host transfer (``_empty_affine_quantized`` takes Python
+    floats). It does avoid the two separate ATen reduction kernels plus two
+    syncs that ``x.min()`` / ``x.max()`` would cost: the reduction itself is
+    Triton, and the single ``tolist()`` below moves both values at once.
+
+    A NaN element makes ``ChooseQuantizationParams`` reject the range with
+    "min should be less than or equal to max"; the atomic min/max ignore NaNs,
+    so the kernel counts them and the same error is raised here.
+    """
+    n = x.numel()
+    if n == 0:
+        # ``aten::min`` raises before touching the data for an empty input, and
+        # ATen's dynamic quant surfaces that as its qparams error.
+        raise RuntimeError(
+            "min(): Expected reduction dim to be specified for input.numel() == 0. "
+            "Specify the reduction dim with the 'dim' argument."
+        )
+    buf = torch.tensor(
+        [float("inf"), float("-inf"), 0.0], dtype=torch.float32, device=x.device
+    )
+    BLOCK = 4096
+    with torch_device_fn.device(x.device):
+        _qptd_minmax_kernel[(triton.cdiv(n, BLOCK),)](
+            x, buf, n, BLOCK=BLOCK, num_warps=4
+        )
+    x_min, x_max, nan_count = buf.tolist()
+    if nan_count > 0.0:
+        raise RuntimeError(
+            "In ChooseQuantizationParams, min should be less than or equal to max"
+        )
+    return x_min, x_max
+
+
 def _quantize_impl(self, dtype, reduce_range):
     """Shared core of both overloads: dynamic amax + elementwise quantization.
 
@@ -252,27 +283,25 @@ def _quantize_impl(self, dtype, reduce_range):
     ``PerTensorAffineQuantizer::quantize``).
     """
     storage_dtype, qmin, qmax = _QUANT_INFO[dtype]
-    # Dynamic scale: ATen reduces min()/max() on device and syncs the two
-    # scalars to the host, where ChooseQuantizationParams runs in fp64. The
-    # same host-side computation keeps the qparams bit-exact. (A fused
-    # ``aminmax`` is *not* used: under the FlagGems dispatcher it reroutes to
-    # a Triton kernel and measured slower than the two plain reductions.)
-    x_min = self.min().item()
-    x_max = self.max().item()
-    scale, zero_point = _choose_qparams_fp64(x_min, x_max, qmin, qmax, reduce_range)
 
     memory_format = _suggest_memory_format(self)
     if memory_format is torch.contiguous_format or self.dim() < 4:
-        out = torch.empty(self.shape, dtype=storage_dtype, device=self.device)
         x = self.contiguous()
+        out = torch.empty(self.shape, dtype=storage_dtype, device=self.device)
     else:
+        x = self.contiguous(memory_format=memory_format)
         out = torch.empty(
             self.shape,
             dtype=storage_dtype,
             device=self.device,
             memory_format=memory_format,
         )
-        x = self.contiguous(memory_format=memory_format)
+
+    # Dynamic scale: reduce on device (Triton), then run ATen's
+    # ChooseQuantizationParams in fp64 on the host so the qparams stay
+    # bit-exact. One sync for both bounds, not one per bound.
+    x_min, x_max = _device_aminmax(x)
+    scale, zero_point = _choose_qparams_fp64(x_min, x_max, qmin, qmax, reduce_range)
 
     n = x.numel()
     if n == 0:
@@ -283,12 +312,6 @@ def _quantize_impl(self, dtype, reduce_range):
         # kernel (a Python float kernel argument would be narrowed to fp32).
         scale_tensor = torch.tensor(scale, dtype=torch.float64, device=self.device)
         zp_tensor = torch.tensor(zero_point, dtype=torch.int64, device=self.device)
-        # Flag queue: at most one entry per element; in practice ~0.2% of
-        # lanes land near a rounding boundary and need the fp64 repair. The
-        # counter must start at zero (the SimpleOpt kernel stored the reset in
-        # its qparam stage; here the host allocator does it).
-        fix = torch.empty(n, dtype=torch.int32, device=self.device)
-        cnt = torch.zeros(1, dtype=torch.int32, device=self.device)
         # BLOCK=4096 / 4 warps: measured best in the KernelGen SimpleOpt
         # tuning for this operator (bandwidth-bound elementwise pass).
         BLOCK = 4096
@@ -298,8 +321,6 @@ def _quantize_impl(self, dtype, reduce_range):
             out,
             scale_tensor,
             zp_tensor,
-            fix,
-            cnt,
             n,
             QMIN=qmin,
             QMAX=qmax,
@@ -307,23 +328,6 @@ def _quantize_impl(self, dtype, reduce_range):
             NEAR_HALF=NEAR_HALF,
             BIG_Q=BIG_Q,
             BLOCK=BLOCK,
-            num_warps=4,
-        )
-        # Repair the ambiguous lanes in exact fp64 (a tiny fraction of lanes).
-        BS = 1024
-        NPROG = 64
-        _qptd_fix_kernel[(NPROG,)](
-            x,
-            out,
-            scale_tensor,
-            zp_tensor,
-            fix,
-            cnt,
-            QMIN=qmin,
-            QMAX=qmax,
-            UINT8=dtype is not torch.qint8,
-            BS=BS,
-            NPROG=NPROG,
             num_warps=4,
         )
     return out, scale, zero_point
@@ -356,13 +360,28 @@ def _make_per_tensor_from_int(int_repr, scale, zero_point):
     return result
 
 
+def _cast_half(self):
+    """ATen's half "quantization": a contiguous fp32 -> fp16 cast.
+
+    Done device-side with FlagGems' Triton ``copy_`` (which handles the dtype
+    conversion and the strided source) instead of the host-side
+    ``self.contiguous().to(torch.float16)`` pair, so no ATen cast kernel runs
+    in the host function and the input needs no host materialisation.
+    """
+    out = torch.empty(self.shape, dtype=torch.float16, device=self.device)
+    if self.numel() == 0:
+        return out
+    from flag_gems.ops.copy import copy_
+
+    copy_(out, self)
+    return out
+
+
 def quantize_per_tensor_dynamic(self, dtype, reduce_range=False):
     logger.debug("GEMS QUANTIZE_PER_TENSOR_DYNAMIC")
     _validate(self, dtype)
     if dtype is torch.float16:
-        # ATen's float16 "quantization" is a plain dtype cast of the
-        # contiguous input.
-        return self.contiguous().to(torch.float16)
+        return _cast_half(self)
     int_repr, scale, zero_point = _quantize_impl(self, dtype, reduce_range)
     return _make_per_tensor_from_int(int_repr, scale, zero_point)
 
@@ -375,8 +394,10 @@ def quantize_per_tensor_dynamic_out(self, dtype, reduce_range=False, *, out=None
             "quantize_per_tensor_dynamic.out: argument 'out' is required"
         )
     if dtype is torch.float16:
-        # ATen's float16 branch casts and copies into the destination.
-        out.copy_(self.contiguous().to(torch.float16))
+        # ATen's float16 branch casts into the destination.
+        from flag_gems.ops.copy import copy_
+
+        copy_(out, self)
         return out
     # The autogenerated redispatch wrapper (check_out_type) rejects a
     # non-quantized destination before the operator body runs.
@@ -408,8 +429,13 @@ def quantize_per_tensor_dynamic_out(self, dtype, reduce_range=False, *, out=None
         out.stride(),
     )
     copy_(out_int, result)
-    # Adopt the dynamically computed quantizer via the ``.data`` alias swap
-    # (the only way to re-point a quantized tensor's quantizer in place).
+    # Adopt the dynamically computed quantizer: build an alias that shares
+    # ``out``'s storage, offset, sizes and strides but carries the new
+    # quantizer, then hand ``out`` that metadata with the supported
+    # ``swap_tensors`` primitive (which preserves ``out``'s identity and does
+    # not touch the data). A direct ``out.data = alias`` would bypass the
+    # version counter, so it is only used if ``swap_tensors`` refuses (it
+    # rejects tensors with outstanding weak references or aliases).
     alias = torch._empty_affine_quantized(
         0,
         scale=float(scale),
@@ -423,5 +449,10 @@ def quantize_per_tensor_dynamic_out(self, dtype, reduce_range=False, *, out=None
         tuple(out.shape),
         out.stride(),
     )
-    out.data = alias
+    try:
+        torch.utils.swap_tensors(out, alias)
+    except RuntimeError:
+        # ``swap_tensors`` is unavailable for this tensor; fall back to the
+        # storage-preserving ``.data`` metadata swap.
+        out.data = alias
     return out
