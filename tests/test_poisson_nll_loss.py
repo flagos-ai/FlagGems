@@ -183,6 +183,7 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
+    use_cpu_reference = flag_gems.vendor_name == "mthreads" and case != "empty"
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -195,14 +196,16 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         target = target.real.abs() + 0.5
     full = case == "real_target"
     reference = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(inp),
-        utils.to_reference(target),
+        inp.cpu() if use_cpu_reference else utils.to_reference(inp),
+        target.cpu() if use_cpu_reference else utils.to_reference(target),
         log_input,
         full,
         1e-8,
         reduction,
     )
     result = flag_gems.poisson_nll_loss(inp, target, log_input, full, 1e-8, reduction)
+    if use_cpu_reference:
+        assert result.device == inp.device
     assert result.dtype == reference.dtype
     utils.gems_assert_close(
         result,
