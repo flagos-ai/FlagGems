@@ -34,6 +34,7 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 DEFAULT_BLOCK_SIZE = 1024
 CUDA_SMALL_SCAN_LIMIT = 1024 * 4
 ASCEND_SCAN_LIMIT = 1024
+ASCEND_MAX_GRID_SIZE = 65535
 DEFAULT_NUM_SMS = 40
 
 
@@ -286,39 +287,54 @@ def cumprod_wrapper(inp, dim, dtype=None, out=None):
 
 
 def reduce_then_scan_row(x, out, M, N, compute_dtype):
-    persistent_limit = (
-        ASCEND_SCAN_LIMIT if runtime_device.vendor_name == "ascend" else 16384
-    )
-    if N <= persistent_limit:
-        TILE_SIZE = triton.next_power_of_2(N)
-        num_warps = 8 if TILE_SIZE > 2048 else 4
-        reduce_then_scan_root_scan_kernel_row[(M, 1, 1)](
+    is_ascend = runtime_device.vendor_name == "ascend"
+    persistent_limit = ASCEND_SCAN_LIMIT if is_ascend else 16384
+    split_scan = N > persistent_limit
+    TILE_SIZE = _scan_block_size(N) if split_scan else triton.next_power_of_2(N)
+    num_warps = 8 if TILE_SIZE > 2048 else 4
+    num_ctas = 1
+    if split_scan:
+        num_tiles = triton.cdiv(N, TILE_SIZE)
+        max_ctas = get_num_sms(_get_device_index(x.device)) * 4
+        num_ctas = min(num_tiles, max_ctas)
+
+    # Ascend flattens the grid into coreDim, which cannot exceed 65535.
+    # Batch independent rows while preserving each row's tile partition.
+    if is_ascend and M * num_ctas > ASCEND_MAX_GRID_SIZE:
+        rows_per_launch = ASCEND_MAX_GRID_SIZE // num_ctas
+        x_rows, out_rows = x.view(M, N), out.view(M, N)
+        for start in range(0, M, rows_per_launch):
+            end = min(start + rows_per_launch, M)
+            reduce_then_scan_row(
+                x_rows[start:end], out_rows[start:end], end - start, N, compute_dtype
+            )
+        return out
+
+    root_grid = (M, 1, 1)
+    if not split_scan:
+        reduce_then_scan_root_scan_kernel_row[root_grid](
             x, out, N, TILE_SIZE, num_warps=num_warps
         )
         return out
 
-    TILE_SIZE = min(_scan_block_size(N), triton.next_power_of_2(N))
-    num_warps = 8 if TILE_SIZE > 2048 else 4
-    num_tiles = triton.cdiv(N, TILE_SIZE)
-    max_ctas = get_num_sms(_get_device_index(x.device)) * 4
-    num_ctas = min(num_tiles, max_ctas)
     ROOT_SCAN_TILE_SIZE = triton.next_power_of_2(num_ctas)
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+    block_grid = (M, num_ctas, 1)
 
     block_products = torch.empty((M, num_ctas), dtype=compute_dtype, device=x.device)
     block_inclusive_prefix = torch.empty_like(block_products)
 
-    reduce_then_scan_block_product_kernel_row[(M, num_ctas, 1, 1)](
+    reduce_then_scan_block_product_kernel_row[block_grid](
         x, block_products, N, tiles_per_cta, TILE_SIZE, num_warps=num_warps
     )
-    reduce_then_scan_root_scan_kernel_row[(M, 1, 1)](
+    reduce_then_scan_root_scan_kernel_row[root_grid](
         block_products,
         block_inclusive_prefix,
         num_ctas,
         ROOT_SCAN_TILE_SIZE,
         num_warps=num_warps,
     )
-    reduce_then_scan_block_scan_kernel_row[(M, num_ctas, 1)](
+    reduce_then_scan_block_scan_kernel_row[block_grid](
         x,
         block_inclusive_prefix,
         out,
