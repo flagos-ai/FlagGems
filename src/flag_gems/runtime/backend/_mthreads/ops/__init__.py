@@ -48,6 +48,7 @@ from ._foreach_atan import _foreach_atan
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max_List import _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
+from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -267,6 +268,7 @@ __all__ = [
     "_foreach_ceil",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
+    "_foreach_clamp_max_ScalarList",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
