@@ -43,6 +43,13 @@ def _run_candidate(*args):
     return candidate(*args)
 
 
+def _compare_output(output, reference, inp):
+    assert output.device == inp.device
+    assert output.shape == inp.shape
+    assert output.dtype == inp.dtype
+    utils.gems_assert_close(output, reference, inp.dtype)
+
+
 def _seed():
     torch.manual_seed(0)
     if torch.cuda.is_available():
@@ -59,6 +66,15 @@ def _make_inputs(shape, axis, dtype):
     channels = shape[axis]
     scale = torch.rand(channels, device=flag_gems.device) * 0.5 + 0.01
     zero_point = torch.randn(channels, device=flag_gems.device)
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float32 and len(shape) == 4:
+        # CPU and MUSA can round opposite ways at a quantization half-step.
+        # Move only those inputs near a half-step away from that boundary.
+        view = [1] * len(shape)
+        view[axis] = channels
+        scale_view = scale.view(view)
+        scaled = inp / scale_view
+        near_tie = ((scaled - scaled.floor()) - 0.5).abs() < 1e-4
+        inp = torch.where(near_tie, inp + scale_view / 32, inp)
     return inp, scale, zero_point
 
 
@@ -69,6 +85,14 @@ def _make_inputs(shape, axis, dtype):
 def test_fake_quantize_learnable_per_channel_affine(
     shape, axis, dtype, quant_min, quant_max
 ):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float16
+        and not utils.TO_CPU
+    ):
+        pytest.skip(
+            "Kunlunxin native learnable per-channel Half returns Float instead of Half"
+        )
     inputs = _make_inputs(shape, axis, dtype)
     snapshots = tuple(tensor.clone() for tensor in inputs)
     ref_out = _ATEN_OP(
@@ -78,30 +102,52 @@ def test_fake_quantize_learnable_per_channel_affine(
         quant_max,
         1.0,
     )
-    result = _run_candidate(
-        *inputs, axis, quant_min, quant_max, 1.0
-    )
+    result = _run_candidate(*inputs, axis, quant_min, quant_max, 1.0)
 
-    utils.gems_assert_close(result, ref_out, dtype)
+    _compare_output(result, ref_out, inputs[0])
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
-    assert result.shape == inputs[0].shape
-    assert result.dtype == inputs[0].dtype
+        flag_gems.testing.assert_equal(value, snapshot)
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine
-@pytest.mark.parametrize("axis", [1, -2])
-@pytest.mark.parametrize("grad_factor", [0.5, 2.5])
-def test_fake_quantize_learnable_per_channel_affine_grad_factor(axis, grad_factor):
+@pytest.mark.parametrize("shape, axis", PER_CHANNEL_SHAPES)
+def test_fake_quantize_learnable_per_channel_affine_grad_factor(shape, axis):
+    inputs = _make_inputs(shape, axis, torch.float32)
+    ref_out = _ATEN_OP(
+        *(_reference(tensor) for tensor in inputs), axis, 0, 255, 2.5
+    )
+    _compare_output(_run_candidate(*inputs, axis, 0, 255, 2.5), ref_out, inputs[0])
+
+
+@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.parametrize("axis, grad_factor", [(1, 0.5), (-2, 0.5), (-2, 2.5)])
+def test_fake_quantize_learnable_per_channel_affine_alternate_grad_factor(axis, grad_factor):
     inputs = _make_inputs((2, 19, 7), axis, torch.float32)
     ref_out = _ATEN_OP(
-        *(_reference(tensor) for tensor in inputs), axis, 0, 255, grad_factor
+        *(_reference(tensor) for tensor in inputs),
+        axis % inputs[0].ndim,
+        0,
+        255,
+        grad_factor,
     )
-    result = _run_candidate(
-        *inputs, axis, 0, 255, grad_factor
+    _compare_output(
+        _run_candidate(*inputs, axis, 0, 255, grad_factor), ref_out, inputs[0]
     )
 
-    utils.gems_assert_close(result, ref_out, torch.float32)
+
+@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
+@pytest.mark.parametrize("axis", [0, 1])
+def test_fake_quantize_learnable_per_channel_affine_transposed(axis):
+    inp = torch.randn((4, 8), device=flag_gems.device).t()
+    channels = inp.shape[axis]
+    scale = torch.linspace(0.1, 1.0, channels, device=flag_gems.device)
+    zero_point = torch.arange(channels, dtype=torch.float32, device=flag_gems.device)
+    inputs = inp, scale, zero_point
+    reference = _ATEN_OP(
+        *(_reference(tensor) for tensor in inputs), axis, -128, 127, 1.0
+    )
+    _compare_output(_run_candidate(*inputs, axis, -128, 127, 1.0), reference, inp)
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine
@@ -129,6 +175,8 @@ def test_fake_quantize_learnable_per_channel_affine_autograd(request):
         output = _run_candidate(inp, scale, zero_point, 1, -128, 127, 0.5)
         grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
 
+    assert output.device == inp.device
+    assert all(actual.device == inp.device for actual in grads)
     utils.gems_assert_close(output, ref_out, torch.float32)
     utils.gems_assert_close(grads[0], ref_grads[0], torch.float32)
     utils.gems_assert_close(grads[1], ref_grads[1], torch.float32, reduce_dim=4)
@@ -141,6 +189,4 @@ def test_fake_quantize_learnable_per_channel_affine_rejects_integer_input():
     scale = torch.ones(8, device=flag_gems.device)
     zero_point = torch.zeros(8, device=flag_gems.device)
     with pytest.raises(TypeError):
-        _run_candidate(
-            inp, scale, zero_point, 1, -128, 127, 1.0
-        )
+        _run_candidate(inp, scale, zero_point, 1, -128, 127, 1.0)
