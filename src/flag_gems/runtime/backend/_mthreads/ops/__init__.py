@@ -44,6 +44,7 @@ from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
 from ._foreach_addcmul__ScalarList import _foreach_addcmul__ScalarList
 from ._foreach_addcmul__Tensor import _foreach_addcmul__Tensor
 from ._foreach_asin_ import _foreach_asin_
+from ._foreach_atan import _foreach_atan
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -259,6 +260,7 @@ __all__ = [
     "_foreach_addcmul__ScalarList",
     "_foreach_addcmul__Tensor",
     "_foreach_asin_",
+    "_foreach_atan",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
