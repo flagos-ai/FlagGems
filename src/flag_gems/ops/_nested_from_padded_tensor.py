@@ -20,9 +20,15 @@ import torch
 import triton
 import triton.language as tl
 from torch.utils.weak import WeakTensorKeyDictionary
+from triton.runtime import driver as _triton_driver
 
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
+try:  # Triton >= 3.6 exposes launch hooks through ``triton.knobs``.
+    from triton import knobs as _triton_knobs
+except ImportError:  # pragma: no cover - older Triton has no knobs module
+    _triton_knobs = None
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +119,11 @@ def _nested_from_padded_tensor(
     """
     logger.debug("GEMS _NESTED_FROM_PADDED_TENSOR")
 
+    if torch.is_grad_enabled() and padded.requires_grad:
+        return NestedFromPaddedTensorFunction.apply(
+            padded, offsets, dummy, ragged_idx, min_seqlen, max_seqlen, sum_S
+        )
+
     padded = padded.contiguous()
     shape = padded.shape
 
@@ -163,6 +174,319 @@ def _nested_from_padded_tensor(
     return torch._nested_view_from_jagged(
         values, offsets, dummy, None, ragged_idx, min_seqlen, max_seqlen
     )
+
+
+@libentry()
+@triton.jit
+def _nested_from_padded_tensor_backward_kernel(
+    grad_values,
+    offsets,
+    grad_padded,
+    S,
+    IB: tl.constexpr,
+    IN: tl.constexpr,
+    TOTAL: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Scatter the flat ``values`` gradient back into a padded dense tensor.
+
+    Inverse of the forward packing kernel: ``grad_padded`` is viewed as
+    ``[B, IB, T, IN]`` and one program handles a single ``(b, ib)`` pair for one
+    tile of the ``T * IN`` dense span. Elements whose ragged index is beyond the
+    component length are written as zeros, matching ATen's
+    ``grad.to_padded_tensor(0.0, padded.sizes())``.
+    """
+    tile = tle.program_id(axis=0)
+    pid = tle.program_id(axis=1)
+
+    b = pid // IB
+    ib = (pid % IB).to(tl.int64)
+
+    start = tl.load(offsets + b).to(tl.int64)
+    end = tl.load(offsets + b + 1).to(tl.int64)
+    length = end - start
+
+    idx = tile.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    mask = idx < TOTAL
+    in_range = idx < length * IN
+
+    src = (ib * S + start) * IN + idx
+    dst = pid.to(tl.int64) * TOTAL + idx
+    value = tl.load(grad_values + src, mask=mask & in_range, other=0.0)
+    tl.store(grad_padded + dst, value, mask=mask)
+
+
+# ``(padded_shape, ragged_idx) -> (shape, IB, IN, TOTAL, BLOCK_SIZE, grid,
+# has_work)``.  Only launch geometry is memoised; no device-visible buffer is
+# cached, so a new ``grad_padded`` is still allocated on every call.
+_LAUNCH_PLAN_CACHE = {}
+
+# ``fast key -> (launcher, function, packed_metadata, grid, IB, IN, TOTAL,
+#                 BLOCK_SIZE, device)`` for the bound direct launcher.
+_LAUNCH_FAST_PATH = {}
+
+# Set once the direct launcher is known to be unusable on this build; the
+# ordinary ``kernel[grid]`` dispatch is then used for every later call.
+_LAUNCH_FAST_DISABLED = [False]
+
+
+def _hooks_absent():
+    """True only when no Triton launch hook is installed.
+
+    Triton compiles that do not expose ``triton.knobs`` cannot prove this, so
+    they always take the ordinary dispatch path; the memoised launcher is an
+    optimisation, never a correctness requirement.
+    """
+    if _triton_knobs is None:
+        return False
+    return (
+        not _triton_knobs.runtime.launch_enter_hook.calls
+        and not _triton_knobs.runtime.launch_exit_hook.calls
+    )
+
+
+def _launch_plan(padded_shape, ragged_idx):
+    """Resolve (and memoise) the launch geometry for one padded layout."""
+    key = (padded_shape, ragged_idx)
+    plan = _LAUNCH_PLAN_CACHE.get(key)
+    if plan is not None:
+        return plan
+
+    T = padded_shape[ragged_idx]
+    IB = 1
+    for d in padded_shape[1:ragged_idx]:
+        IB *= d
+    IN = 1
+    for d in padded_shape[ragged_idx + 1 :]:
+        IN *= d
+
+    total = T * IN
+    # A 2048-element tile saturates bandwidth for narrow rows while 4096 avoids
+    # extra tile scheduling once the dense span is wide.
+    block_size = 4096 if total >= 8192 else 2048
+    nb = padded_shape[0] * IB
+    # Axis 0 is scheduled first, so the tile index goes there: consecutive CTAs
+    # then cover consecutive bytes of ``grad_padded`` instead of 16 KB chunks
+    # spaced a whole slab apart.
+    grid = ((total + block_size - 1) // block_size, nb)
+    plan = (padded_shape, IB, IN, total, block_size, grid, bool(nb) and bool(total))
+    _LAUNCH_PLAN_CACHE[key] = plan
+    return plan
+
+
+def _bind_launcher(entry, plan, device):
+    """Bind a compiled launcher for one specialization, or return ``None``.
+
+    Mirrors ``flag_gems.utils.foreach``: the raw C launcher is called only when
+    it takes no scratch buffers and exposes the plain ``launch`` callable; any
+    other Triton build returns ``None`` and keeps the ordinary dispatch.
+    """
+    compiled = entry
+    launcher = compiled.run
+    function = compiled.function
+    packed = compiled.packed_metadata
+    grid = plan[5]
+    ib, in_, total, block_size = plan[1], plan[2], plan[3], plan[4]
+    try:
+        raw = launcher.launch
+        if launcher.global_scratch_size != 0 or launcher.profile_scratch_size != 0:
+            return None
+        cooperative = launcher.launch_cooperative_grid
+        pdl = getattr(launcher, "launch_pdl", None)
+        if pdl is None:
+            return None
+        get_stream = _triton_driver.active.get_current_stream
+    except Exception:
+        return None
+
+    def replay(grad_values, offsets, grad_padded, s):
+        # The stream is read at launch time so a replay issued inside a
+        # ``torch.cuda.stream`` context still lands on the current stream.
+        raw(
+            grid[0],
+            grid[1],
+            1,
+            get_stream(device),
+            function,
+            cooperative,
+            pdl,
+            None,
+            None,
+            packed,
+            None,
+            None,
+            None,
+            grad_values,
+            offsets,
+            grad_padded,
+            s,
+            ib,
+            in_,
+            total,
+            block_size,
+        )
+
+    return replay
+
+
+def _nested_from_padded_tensor_backward(grad_values, offsets, padded_shape, ragged_idx):
+    """Gradient of ``_nested_from_padded_tensor`` w.r.t. ``padded``.
+
+    ``grad_values`` is the gradient of the packed ``values`` buffer with shape
+    ``[IB, S, IN]`` (or ``[S]`` when the padded tensor is 2-D), while
+    ``padded_shape`` is the shape of the original padded tensor.
+    """
+    if type(padded_shape) is not tuple:
+        padded_shape = tuple(int(d) for d in padded_shape)
+    if not padded_shape:
+        raise ValueError(
+            "_nested_from_padded_tensor_backward expects a padded tensor with "
+            "at least one dimension."
+        )
+
+    if ragged_idx < 0:
+        ragged_idx += len(padded_shape)
+    plan = _launch_plan(padded_shape, ragged_idx)
+
+    grad_padded = torch.empty(
+        padded_shape, dtype=grad_values.dtype, device=grad_values.device
+    )
+    if not plan[6]:
+        return grad_padded
+
+    S = int(grad_values.shape[ragged_idx - 1])
+
+    # Triton's specialization key covers every dtype and the 16-byte pointer
+    # divisibility of every pointer, so those take part in this key as well;
+    # ``grad_padded`` is always a fresh allocation and therefore aligned.
+    fast_key = (
+        padded_shape,
+        ragged_idx,
+        grad_values.dtype,
+        offsets.dtype,
+        S,
+        grad_values.data_ptr() & 15 == 0,
+        offsets.data_ptr() & 15 == 0,
+    )
+    replay = _LAUNCH_FAST_PATH.get(fast_key)
+    if replay is not None and _hooks_absent():
+        try:
+            replay(grad_values, offsets, grad_padded, S)
+        except Exception:
+            # A launcher that cannot be replayed is not a correctness problem:
+            # forget it and let Triton dispatch as usual below.
+            _LAUNCH_FAST_PATH.pop(fast_key, None)
+        else:
+            return grad_padded
+
+    kernel_cache = None
+    known_keys = None
+    device = 0
+    if not _LAUNCH_FAST_DISABLED[0]:
+        try:
+            device = _triton_driver.active.get_current_device()
+            # ``@libentry`` wraps the JIT function; the compiled-kernel cache
+            # lives on the wrapped ``JITFunction`` exactly as Triton's own
+            # dispatch indexes it.
+            jit_function = getattr(
+                _nested_from_padded_tensor_backward_kernel, "jit_function", None
+            )
+            if jit_function is None:
+                jit_function = _nested_from_padded_tensor_backward_kernel
+            kernel_cache = jit_function.device_caches[device][0]
+            known_keys = set(kernel_cache)
+        except Exception:
+            _LAUNCH_FAST_DISABLED[0] = True
+
+    _nested_from_padded_tensor_backward_kernel[plan[5]](
+        grad_values,
+        offsets,
+        grad_padded,
+        S,
+        plan[1],
+        plan[2],
+        plan[3],
+        plan[4],
+    )
+
+    # The dispatch above has just compiled (or reused) exactly one
+    # specialization for this shape/dtype; bind it so later calls can skip the
+    # JIT binder, cache-key construction and dispatch lookup.
+    if known_keys is not None:
+        try:
+            new_keys = [k for k in kernel_cache if k not in known_keys]
+            cache_key = None
+            if len(new_keys) > 1:
+                _LAUNCH_FAST_DISABLED[0] = True
+            elif new_keys:
+                cache_key = new_keys[0]
+            elif len(kernel_cache) == 1:
+                # Already compiled by an earlier call that could not bind.
+                cache_key = next(iter(kernel_cache))
+            else:
+                _LAUNCH_FAST_DISABLED[0] = True
+            if cache_key is not None:
+                replay = _bind_launcher(kernel_cache[cache_key], plan, device)
+                if replay is not None:
+                    _LAUNCH_FAST_PATH[fast_key] = replay
+        except Exception:
+            _LAUNCH_FAST_DISABLED[0] = True
+
+    return grad_padded
+
+
+class NestedFromPaddedTensorFunction(torch.autograd.Function):
+    """Autograd wrapper so the FlagGems forward also provides a backward.
+
+    ``padded`` is the only differentiable input; ``offsets``, ``dummy`` and the
+    length metadata are non-differentiable, exactly as in the ATen derivative
+    for ``_nested_from_padded_tensor``.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        padded,
+        offsets,
+        dummy,
+        ragged_idx,
+        min_seqlen,
+        max_seqlen,
+        sum_S,
+    ):
+        out = _nested_from_padded_tensor(
+            padded,
+            offsets,
+            dummy,
+            ragged_idx,
+            min_seqlen,
+            max_seqlen,
+            sum_S,
+        )
+        ctx.ragged_idx = ragged_idx
+        ctx.padded_shape = tuple(padded.shape)
+        ctx.save_for_backward(offsets)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (offsets,) = ctx.saved_tensors
+        if grad_output.is_nested:
+            # ``values()`` routes through ``aten::_nested_get_values`` and the
+            # jagged dispatch layer; the raw buffer is the same storage and
+            # skips that host-side dispatch on the hot backward path.
+            grad_values = getattr(grad_output, "_values", None)
+            if grad_values is None:
+                grad_values = grad_output.values()
+        else:
+            grad_values = grad_output
+        grad_padded = _nested_from_padded_tensor_backward(
+            grad_values.contiguous(),
+            offsets,
+            ctx.padded_shape,
+            ctx.ragged_idx,
+        )
+        return grad_padded, None, None, None, None, None, None
 
 
 __all__ = ["_nested_from_padded_tensor"]
