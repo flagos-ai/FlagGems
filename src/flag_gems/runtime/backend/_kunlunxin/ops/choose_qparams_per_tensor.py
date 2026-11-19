@@ -142,10 +142,7 @@ def _partial_minmax_kernel(
             vmax = tl.maximum(vmax, x)
     tl.store(scratch_ptr + pid, tl.min(vmin, axis=0))
     tl.store(scratch_ptr + MAXP + pid, tl.max(vmax, axis=0))
-    tl.store(
-        scratch_ptr + 2 * MAXP + pid,
-        tl.max(tl.where(vabs != vabs, 1.0, 0.0), axis=0),
-    )
+    tl.store(scratch_ptr + 2 * MAXP + pid, tl.sum(vabs, axis=0))
 
 
 @triton.jit
@@ -180,12 +177,12 @@ def _strided_minmax_kernel(
             offs += coord * strd
             rem = rem // size
         x = tl.where(mask, tl.load(x_ptr + offs).to(ACC_DT), 0.0)
-        vnan = tl.maximum(vnan, tl.where(mask, (x != x).to(tl.float32), 0.0))
+        vnan += tl.where(mask, tl.abs(x).to(tl.float32), 0.0)
         vmin = tl.minimum(vmin, tl.where(mask, x, float("inf")))
         vmax = tl.maximum(vmax, tl.where(mask, x, float("-inf")))
     tl.store(scratch_ptr + pid, tl.min(vmin, axis=0))
     tl.store(scratch_ptr + MAXP + pid, tl.max(vmax, axis=0))
-    tl.store(scratch_ptr + 2 * MAXP + pid, tl.max(vnan, axis=0))
+    tl.store(scratch_ptr + 2 * MAXP + pid, tl.sum(vnan, axis=0))
 
 
 @triton.jit
@@ -208,11 +205,11 @@ def _finalize_kernel(
 
     fmin = tl.min(pmin, axis=0).to(tl.float64)
     fmax = tl.max(pmax, axis=0).to(tl.float64)
-    nan_any = tl.max(pnan, axis=0)
+    nan_any = tl.sum(pnan, axis=0)
 
     # The reference asserts min <= max; only NaN can violate it.
     bad = tl.maximum(
-        tl.where(fmin <= fmax, 0.0, 1.0), tl.where(nan_any > 0.0, 1.0, 0.0)
+        tl.where(fmin <= fmax, 0.0, 1.0), tl.where(nan_any != nan_any, 1.0, 0.0)
     )
 
     mn_c = tl.minimum(fmin, 0.0)
