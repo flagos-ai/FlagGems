@@ -189,9 +189,9 @@ def test_slow_conv_dilated2d_out(
     inp_shape, weight_shape, kernel_size, stride, padding, dilation, dtype, bias
 ):
     inp, weight, bias_t = _make_conv_inputs(inp_shape, weight_shape, bias, dtype)
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     # The .out overload must write into the provided tensor and return it.
     ref_full = torch.ops.aten.slow_conv_dilated2d(
@@ -217,7 +217,7 @@ def test_slow_conv_dilated2d_out(
     assert res_ret.dtype == dtype
     assert res_ret.shape == ref_ret.shape
 
-    _assert_close(res_ret, ref_ret, dtype)
+    _assert_close(_comparison_output(res_ret, inp.device), ref_ret, dtype)
 
 
 @pytest.mark.slow_conv_dilated2d
@@ -277,9 +277,9 @@ def test_slow_conv_dilated2d_backward(
         * tu.make_input(dtype, (weight_shape[0],), ["-1", "1"]).requires_grad_()
     )
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
 
     ref_fwd = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding, dilation
@@ -291,7 +291,7 @@ def test_slow_conv_dilated2d_backward(
     res_out = flag_gems.slow_conv_dilated2d(
         inp, weight, kernel_size, bias, stride, padding, dilation
     )
-    _assert_close(res_out, ref_fwd.to(dtype), dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_fwd.to(dtype), dtype)
 
     # grad_input contracts over C_out x kH x kW; grad_weight/grad_bias contract
     # over N x H_out x W_out. Scale atol by those counts.
@@ -302,12 +302,23 @@ def test_slow_conv_dilated2d_backward(
     res_in_grad, res_weight_grad, res_bias_grad = torch.autograd.grad(
         res_out.sum(), (inp, weight, bias)
     )
-    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=in_reduce_dim)
     utils.gems_assert_close(
-        res_weight_grad, ref_weight_grad, dtype, reduce_dim=out_reduce_dim
+        _comparison_output(res_in_grad, inp.device),
+        ref_in_grad,
+        dtype,
+        reduce_dim=in_reduce_dim,
     )
     utils.gems_assert_close(
-        res_bias_grad, ref_bias_grad, dtype, reduce_dim=out_reduce_dim
+        _comparison_output(res_weight_grad, inp.device),
+        ref_weight_grad,
+        dtype,
+        reduce_dim=out_reduce_dim,
+    )
+    utils.gems_assert_close(
+        _comparison_output(res_bias_grad, inp.device),
+        ref_bias_grad,
+        dtype,
+        reduce_dim=out_reduce_dim,
     )
 
 
@@ -330,9 +341,9 @@ def test_slow_conv_dilated2d_nan_inf(dtype, scenario, special_arg):
     padding = (0, 0)
     dilation = (1, 1)
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding, dilation
     ).to(dtype)
@@ -341,7 +352,7 @@ def test_slow_conv_dilated2d_nan_inf(dtype, scenario, special_arg):
         inp, weight, kernel_size, bias, stride, padding, dilation
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out)
 
 
 @pytest.mark.slow_conv_dilated2d_negative
@@ -353,7 +364,13 @@ def test_slow_conv_dilated2d_negative(case):
     # The reference rejects the inconsistent configuration...
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_dilated2d(
-            inp, weight, kernel_size, bias, stride, padding, dilation
+            _reference_input(inp),
+            _reference_input(weight),
+            kernel_size,
+            _reference_input(bias),
+            stride,
+            padding,
+            dilation,
         )
 
     # The candidate must reject the same invalid arguments.
@@ -370,10 +387,17 @@ def test_slow_conv_dilated2d_rejects_unsupported_dtype(dtype):
     weight = torch.ones((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
     bias = torch.ones((4,), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.slow_conv_dilated2d(
-            inp, weight, (3, 3), bias, (1, 1), (0, 0), (1, 1)
-        )
+    if not (_MUSA and dtype in {torch.int8, torch.uint8, torch.int32, torch.int64}):
+        with pytest.raises(RuntimeError):
+            torch.ops.aten.slow_conv_dilated2d(
+                _reference_input(inp),
+                _reference_input(weight),
+                (3, 3),
+                _reference_input(bias),
+                (1, 1),
+                (0, 0),
+                (1, 1),
+            )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems.slow_conv_dilated2d(inp, weight, (3, 3), bias, (1, 1), (0, 0), (1, 1))
 
