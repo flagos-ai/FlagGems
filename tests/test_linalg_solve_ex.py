@@ -352,3 +352,365 @@ def test__linalg_solve_ex_aux_outputs_usable(n, dtype):
         dtype,
         reduce_dim=n,
     )
+
+
+# ---------------------------------------------------------------------------
+# Backward (`_linalg_solve_ex_backward`)
+#
+# `aten::_linalg_solve_ex` has no standalone backward schema. PyTorch generates
+# `LinalgSolveExBackward0` from `derivatives.yaml`; that node saves
+# A/LU/pivots/result and calls `linalg_solve_backward` in
+# torch/csrc/autograd/FunctionsManual.cpp. Only `result` is differentiable
+# (`output_differentiability: [True, False, False, False]`), so LU, pivots and
+# info never receive a gradient.
+#
+# The tests below drive the real autograd path of `flag_gems._linalg_solve_ex`
+# and compare it with native `torch._linalg_solve_ex`, plus an independent
+# float64 reimplementation of the ATen formula so the fused kernel is not
+# compared against itself.
+# ---------------------------------------------------------------------------
+
+SOLVE_EX_BACKWARD_SHAPES = [
+    (1, 4, 4),
+    (1, 8, 8),
+    (3, 4, 2),
+    (4, 8, 1),
+    (8, 16, 4),
+    (2, 32, 8),
+]
+SOLVE_EX_BACKWARD_BATCHES = [(), (2,), (2, 3)]
+# Broadcasting pairs, (a_batch, b_batch), where B wins the joint batch.
+SOLVE_EX_BACKWARD_BROADCASTS = [
+    ((3,), ()),
+    ((), (2,)),
+    ((2, 1), (1, 3)),
+]
+
+
+def _make_solve_ex_backward_inputs(A, B, left=True):
+    """Well-conditioned A and random B, independent flags for both."""
+    return A.clone().requires_grad_(True), B.clone().requires_grad_(True)
+
+
+def _reference_solve_ex_backward(grad_result, result, A, LU, pivots, left):
+    """Independent float64 reimplementation of the ATen solve backward.
+
+    Written from ``linalg_solve_backward`` in FunctionsManual.cpp, using
+    ``torch.linalg.solve`` on A itself rather than the saved factors, so a
+    mistake in the kernel's factor replay shows up as a mismatch instead of
+    being reproduced on both sides. ``LU``/``pivots`` are accepted for call-site
+    symmetry and deliberately unused.
+    """
+    vector_case = result.dim() == A.dim() - 1
+    gX = grad_result.unsqueeze(-1) if vector_case else grad_result
+    X = result.unsqueeze(-1) if vector_case else result
+    gX64 = gX.to(torch.float64)
+    X64 = X.to(torch.float64)
+    A64 = A.to(torch.float64)
+    # Always compare in float64: the formula is exact in double, and the caller
+    # grades the candidate against its own dtype's tolerance.
+    # gB = A^{-H} gX, expressed directly rather than through lu_solve.
+    gB = torch.linalg.solve(A64.mH, gX64)
+    gA = -gB @ X64.mH if left else -(X64.mH @ gB)
+    grad_B = gB.mH if not left else gB
+    if vector_case:
+        grad_B = grad_B.squeeze(-1)
+    return gA, grad_B
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("shape", SOLVE_EX_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward(shape, dtype):
+    """Autograd of the gems entry against native autograd, both inputs."""
+    batch, n, k = shape
+    A = torch.randn(batch, n, n, dtype=dtype, device=flag_gems.device)
+    eye = torch.eye(n, dtype=dtype, device=flag_gems.device).expand(batch, n, n)
+    A = A @ A.mT + eye * n
+    B = torch.randn(batch, n, k, dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A, True)
+    ref_B = utils.to_reference(B, True)
+    ref_A = ref_A.clone().requires_grad_(True)
+    ref_B = ref_B.clone().requires_grad_(True)
+    ref_out = torch._linalg_solve_ex(ref_A, ref_B)[0]
+    grad_out = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_grad = utils.to_reference(grad_out, True)
+    ref_gA, ref_gB = torch.autograd.grad(ref_out, (ref_A, ref_B), ref_grad)
+
+    res_A, res_B = _make_solve_ex_backward_inputs(A, B)
+    res_out = flag_gems._linalg_solve_ex(res_A, res_B)[0]
+    res_gA, res_gB = torch.autograd.grad(res_out, (res_A, res_B), grad_out)
+
+    assert res_gA.shape == ref_gA.shape
+    assert res_gB.shape == ref_gB.shape
+    utils.gems_assert_close(res_gA, utils.to_reference(ref_gA), dtype, reduce_dim=n)
+    utils.gems_assert_close(res_gB, utils.to_reference(ref_gB), dtype, reduce_dim=n)
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("batch_shape", SOLVE_EX_BACKWARD_BATCHES)
+@pytest.mark.parametrize("left", [True, False])
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_directions(batch_shape, left, dtype):
+    """Both equations (AX = B and XA = B) reach the same gradients as ATen."""
+    n, k = 6, 3
+    A = torch.randn(batch_shape + (n, n), dtype=dtype, device=flag_gems.device)
+    eye = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    A = A @ A.mT + eye * n
+    B_shape = batch_shape + ((n, k) if left else (k, n))
+    B = torch.randn(B_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A, True)
+    ref_B = utils.to_reference(B, True)
+    ref_A = ref_A.clone().requires_grad_(True)
+    ref_B = ref_B.clone().requires_grad_(True)
+    ref_out = torch._linalg_solve_ex(ref_A, ref_B, left=left)[0]
+    grad_out = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_gA, ref_gB = torch.autograd.grad(
+        ref_out, (ref_A, ref_B), utils.to_reference(grad_out, True)
+    )
+
+    res_A = A.clone().requires_grad_(True)
+    res_B = B.clone().requires_grad_(True)
+    res_out = flag_gems._linalg_solve_ex(res_A, res_B, left=left)[0]
+    res_gA, res_gB = torch.autograd.grad(res_out, (res_A, res_B), grad_out)
+
+    assert res_gA.shape == ref_gA.shape
+    assert res_gB.shape == ref_gB.shape
+    utils.gems_assert_close(res_gA, utils.to_reference(ref_gA), dtype, reduce_dim=n)
+    utils.gems_assert_close(res_gB, utils.to_reference(ref_gB), dtype, reduce_dim=n)
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_vector_rhs(dtype):
+    """A 1-D right-hand side yields a 1-D solution and 1-D grad_B."""
+    n = 8
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
+    b = torch.randn(n, dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A, True).clone().requires_grad_(True)
+    ref_b = utils.to_reference(b, True).clone().requires_grad_(True)
+    ref_out = torch._linalg_solve_ex(ref_A, ref_b)[0]
+    grad_out = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_gA, ref_gb = torch.autograd.grad(
+        ref_out, (ref_A, ref_b), utils.to_reference(grad_out, True)
+    )
+
+    res_A = A.clone().requires_grad_(True)
+    res_b = b.clone().requires_grad_(True)
+    res_out = flag_gems._linalg_solve_ex(res_A, res_b)[0]
+    res_gA, res_gb = torch.autograd.grad(res_out, (res_A, res_b), grad_out)
+
+    assert res_out.shape == (n,)
+    assert res_gb.shape == (n,)
+    utils.gems_assert_close(res_gA, utils.to_reference(ref_gA), dtype, reduce_dim=n)
+    utils.gems_assert_close(res_gb, utils.to_reference(ref_gb), dtype, reduce_dim=n)
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("a_batch, b_batch", SOLVE_EX_BACKWARD_BROADCASTS)
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_broadcast(a_batch, b_batch, dtype):
+    """Broadcast batches reduce grad_A back onto A's own shape."""
+    n, k = 4, 2
+    A = torch.randn(a_batch + (n, n), dtype=dtype, device=flag_gems.device)
+    eye = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    A = A @ A.mT + eye * n
+    B = torch.randn(b_batch + (n, k), dtype=dtype, device=flag_gems.device)
+
+    ref_A = utils.to_reference(A, True).clone().requires_grad_(True)
+    ref_B = utils.to_reference(B, True).clone().requires_grad_(True)
+    ref_out = torch._linalg_solve_ex(ref_A, ref_B)[0]
+    grad_out = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_gA, ref_gB = torch.autograd.grad(
+        ref_out, (ref_A, ref_B), utils.to_reference(grad_out, True)
+    )
+
+    res_A = A.clone().requires_grad_(True)
+    res_B = B.clone().requires_grad_(True)
+    res_out = flag_gems._linalg_solve_ex(res_A, res_B)[0]
+    res_gA, res_gB = torch.autograd.grad(res_out, (res_A, res_B), grad_out)
+
+    # Both gradients must come back in the shape of their own input: the
+    # engine performs the broadcast reduction that the fused kernel leaves out.
+    assert res_gA.shape == a_batch + (n, n)
+    assert res_gB.shape == b_batch + (n, k)
+    assert ref_gA.shape == res_gA.shape
+    assert ref_gB.shape == res_gB.shape
+    utils.gems_assert_close(res_gA, utils.to_reference(ref_gA), dtype, reduce_dim=n)
+    utils.gems_assert_close(res_gB, utils.to_reference(ref_gB), dtype, reduce_dim=n)
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_formula(dtype):
+    """Compare grad_A/grad_B with a float64 reimplementation of the ATen formula."""
+    n, k = 8, 4
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(n, dtype=dtype, device=flag_gems.device) * (2 * n)
+    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
+
+    res_A = A.clone().requires_grad_(True)
+    res_B = B.clone().requires_grad_(True)
+    out, LU, pivots, _ = flag_gems._linalg_solve_ex(res_A, res_B)
+    grad_out = torch.randn_like(out)
+    res_gA, res_gB = torch.autograd.grad(out, (res_A, res_B), grad_out)
+
+    ref_gA, ref_gB = _reference_solve_ex_backward(
+        grad_out, out.detach(), A, LU.detach(), pivots, left=True
+    )
+    # Both sides are already on the device and in float64, so compare them
+    # natively; routing through the CPU-reference helper would move only one
+    # side and report a spurious device mismatch under --ref cpu.
+    # The reference is float64 by construction, so compare the candidate in the
+    # same precision; the tolerance reflects what float32 forward data can carry.
+    rtol, atol = (1e-5, 1e-5) if dtype == torch.float32 else (1e-12, 1e-12)
+    torch.testing.assert_close(res_gA.to(torch.float64), ref_gA, rtol=rtol, atol=atol)
+    torch.testing.assert_close(res_gB.to(torch.float64), ref_gB, rtol=rtol, atol=atol)
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_only_one_input(dtype):
+    """Only the input that requires grad receives it; the other stays None."""
+    n, k = 6, 2
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
+    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
+
+    only_A = A.clone().requires_grad_(True)
+    ref_A = utils.to_reference(A, True).clone().requires_grad_(True)
+    for entry, a, b, name in (
+        (flag_gems._linalg_solve_ex, only_A, B.clone(), "gems"),
+        (torch._linalg_solve_ex, ref_A, utils.to_reference(B, True), "native"),
+    ):
+        out = entry(a, b)[0]
+        (grad,) = torch.autograd.grad(out, (a,), torch.randn_like(out))
+        assert grad.shape == (n, n), f"{name}: grad_A must have A's shape"
+
+    only_B = B.clone().requires_grad_(True)
+    out = flag_gems._linalg_solve_ex(A, only_B)[0]
+    (grad_B,) = torch.autograd.grad(out, (only_B,), torch.randn_like(out))
+    assert grad_B.shape == (n, k)
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_aux_not_differentiable(dtype):
+    """LU, pivots and info are non-differentiable, as the ATen schema states."""
+    n, k = 4, 2
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
+    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device).requires_grad_(True)
+    A.requires_grad_(True)
+
+    out, LU, pivots, info = flag_gems._linalg_solve_ex(A, B)
+    assert out.requires_grad
+    assert not LU.requires_grad
+    assert not pivots.requires_grad
+    assert not info.requires_grad
+    assert (LU.grad_fn is None) and (pivots.grad_fn is None) and (info.grad_fn is None)
+
+    out.sum().backward()
+    assert A.grad is not None and B.grad is not None
+    assert A.grad.shape == A.shape and B.grad.shape == B.shape
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_singular_input(dtype):
+    """A singular A produces a finite (large) or non-finite gradient, or raises.
+
+    ATen makes no numerical promise here, so the check is that the entry behaves
+    like the native one and never silently fabricates a gradient: each either
+    raises the same exception type or produces a gradient of the right shape.
+    """
+    n, k = 4, 2
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    A = A @ A.mT + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
+    A[-1, :] = A[0, :]  # exactly singular
+    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
+
+    def run(entry, make):
+        a = make(A)
+        b = make(B)
+        out = entry(a, b)[0]
+        return torch.autograd.grad(out, (a, b), torch.ones_like(out))
+
+    make_gems = lambda t: t.clone().requires_grad_(True)  # noqa: E731
+    make_ref = (
+        lambda t: utils.to_reference(t, True).clone().requires_grad_(True)
+    )  # noqa: E731
+
+    ref_result = None
+    try:
+        ref_result = run(torch._linalg_solve_ex, make_ref)
+    except Exception as exc:  # noqa: BLE001 - record what the reference does
+        ref_error = type(exc)
+    else:
+        ref_error = None
+
+    try:
+        res_result = run(flag_gems._linalg_solve_ex, make_gems)
+    except Exception as exc:  # noqa: BLE001 - compare against the reference
+        assert (
+            ref_error is not None
+        ), f"gems raised {type(exc).__name__} but native succeeded: {exc}"
+        assert isinstance(exc, ref_error)
+        return
+
+    assert ref_error is None, "gems succeeded where native raised"
+    for res_g, ref_g in zip(res_result, ref_result):
+        assert res_g.shape == ref_g.shape
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_grad_fn(dtype):
+    """The recorded node is the wrapper's, proving the fused path is attributed."""
+    n, k = 4, 2
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    A = A + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
+    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
+    A.requires_grad_(True)
+
+    out = flag_gems._linalg_solve_ex(A, B)[0]
+    assert out.grad_fn is not None
+    assert type(out.grad_fn).__name__ == "_LinalgSolveExFunctionBackward"
+
+    # No-grad and inference calls stay on the plain forward, with no graph.
+    with torch.no_grad():
+        plain = flag_gems._linalg_solve_ex(A, B)[0]
+    assert plain.grad_fn is None
+    assert torch.equal(plain, out.detach())
+
+
+@pytest.mark.linalg_solve_ex_backward
+@pytest.mark.parametrize("dtype", SOLVE_EX_DTYPES)
+def test__linalg_solve_ex_backward_non_contiguous(dtype):
+    """Strided A/B keep the same gradients as their contiguous equivalents."""
+    n, k = 8, 4
+    base = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    base = base + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
+    A = base.mT
+    B = torch.randn(n, 2 * k, dtype=dtype, device=flag_gems.device)[:, ::2]
+    assert not A.is_contiguous() and not B.is_contiguous()
+
+    ref_A = utils.to_reference(A, True).clone().requires_grad_(True)
+    ref_B = utils.to_reference(B, True).clone().requires_grad_(True)
+    ref_out = torch._linalg_solve_ex(ref_A, ref_B)[0]
+    grad_out = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_gA, ref_gB = torch.autograd.grad(
+        ref_out, (ref_A, ref_B), utils.to_reference(grad_out, True)
+    )
+
+    res_A = A.clone().requires_grad_(True)
+    res_B = B.clone().requires_grad_(True)
+    res_out = flag_gems._linalg_solve_ex(res_A, res_B)[0]
+    res_gA, res_gB = torch.autograd.grad(res_out, (res_A, res_B), grad_out)
+
+    utils.gems_assert_close(res_gA, utils.to_reference(ref_gA), dtype, reduce_dim=n)
+    utils.gems_assert_close(res_gB, utils.to_reference(ref_gB), dtype, reduce_dim=n)

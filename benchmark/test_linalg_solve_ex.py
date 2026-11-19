@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # Benchmark shapes: (batch, n, k) - focus on batched small/medium matrices
@@ -81,4 +83,39 @@ def test__linalg_solve_ex():
         torch_op=torch._linalg_solve_ex,
         dtypes=SOLVE_EX_DTYPES,
     )
+    bench.run()
+
+
+class LinalgSolveExBackwardBenchmark(LinalgSolveExBenchmark):
+    """Backward of ``_linalg_solve_ex``: the autograd formula below the forward.
+
+    The forward builds the graph once per case outside the timed closure; the
+    timer only runs ``torch.autograd.grad`` on the differentiable ``result``,
+    so the measured latency is the solve-backward path (the composite
+    ``lu_solve`` + matmul natively, the fused adjoint-solve kernel under gems
+    dispatch). ``is_backward=True`` makes the harness mark both inputs
+    ``requires_grad`` and feed the same upstream gradient to both sides.
+    """
+
+    def _benchmark_callable(self, op, *args, **kwargs):
+        # The harness passes the raw (A, B) pair for this class; the backward
+        # needs only the solution, whose gradient path already saved the LU
+        # factors and pivots.
+        A, B = args[:2]
+        out = op(A, B, **kwargs)[0]
+        dout = torch.randn_like(out)
+        fn = lambda: torch.autograd.grad((out,), (A, B), (dout,), retain_graph=True)
+        return fn, [A, B]
+
+
+@pytest.mark.linalg_solve_ex_backward
+def test__linalg_solve_ex_backward():
+    """Autograd-level benchmark over the same core shapes as the forward."""
+    bench = LinalgSolveExBackwardBenchmark(
+        op_name="_linalg_solve_ex",
+        torch_op=torch._linalg_solve_ex,
+        dtypes=SOLVE_EX_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems._linalg_solve_ex)
     bench.run()
