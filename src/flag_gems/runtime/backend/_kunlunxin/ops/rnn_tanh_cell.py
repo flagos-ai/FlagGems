@@ -14,13 +14,18 @@
 
 """Single-step tanh RNN cell, kunlunxin override.
 
-Two things the shared kernel cannot do unchanged on this backend:
+Three things the shared kernel cannot do unchanged on this backend:
 
 * its activation is ``tl_extra_shim.tanh``, which lowers to a libdevice extern
-  whose lowering is not available for every elementary-function shape the
-  backend asks it to serve.  This override evaluates the same value through
-  ``tl.exp`` (``tanh(x) = 1 - 2 / (exp(2x) + 1)``), the identity the sibling
-  cell overrides in this tree already use for the same reason;
+  whose elementary-function lowering is not available for every shape the
+  backend asks it to serve, so the kernel fails to compile;
+* evaluating ``tanh`` through ``tl.exp`` *inside the fused tile kernel* is not
+  reliable either: measured on this backend, the exponential of a positive
+  argument comes back as ``1`` there, which silently zeroes every positive
+  activation while leaving the negative ones exact.  The same expression in a
+  flat elementwise kernel is correct, so the cell is split: the two projections
+  and their sum are produced by the tile kernel, and the activation runs in a
+  separate flat pass;
 * when ``input_size == 0`` the input projection's ``tl.dot`` reduction makes
   zero trips, which this backend compiles to an undefined accumulator (the
   whole output tile is garbage).  A one-column zero input and a matching zero
@@ -45,17 +50,19 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_ACT_BLOCK = 1024
+
 
 @libentry()
 @triton.jit
-def _rnn_tanh_cell_kernel_exp(
+def _rnn_tanh_cell_gates_kernel(
     x_ptr,
     h_ptr,
     w_ih_ptr,
     w_hh_ptr,
     b_ih_ptr,
     b_hh_ptr,
-    out_ptr,
+    z_ptr,
     B,
     I,
     H,
@@ -67,8 +74,6 @@ def _rnn_tanh_cell_kernel_exp(
     s_wi_k,
     s_wh_n,
     s_wh_k,
-    s_ob,
-    s_on,
     HAS_BIH: tl.constexpr,
     HAS_BHH: tl.constexpr,
     ACC_DTYPE: tl.constexpr,
@@ -127,14 +132,22 @@ def _rnn_tanh_cell_kernel_exp(
     gate_h = _round(acc_h, ROUND_DTYPE, ACC_DTYPE)
 
     z = _round(gate_i + gate_h, ROUND_DTYPE, ACC_DTYPE)
-    # tanh through the core exp path; saturates correctly for |z| -> inf.
-    hy = 1.0 - 2.0 / (tl.exp(2.0 * z) + 1.0)
-
     tl.store(
-        out_ptr + offs_b[:, None] * s_ob + offs_n[None, :] * s_on,
-        hy.to(out_ptr.dtype.element_ty),
+        z_ptr + offs_b[:, None] * H + offs_n[None, :],
+        z.to(tl.float32),
         mask=b_mask[:, None] & n_mask[None, :],
     )
+
+
+@libentry()
+@triton.jit
+def _rnn_tanh_cell_act_kernel(z_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    z = tl.load(z_ptr + offsets, mask=mask, other=0.0)
+    # tanh(z) = 1 - 2 / (exp(2z) + 1); saturates correctly for |z| -> inf.
+    hy = 1.0 - 2.0 / (tl.exp(2.0 * z) + 1.0)
+    tl.store(out_ptr + offsets, hy.to(out_ptr.dtype.element_ty), mask=mask)
 
 
 def rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
@@ -155,7 +168,9 @@ def rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     block_h = _block(hidden_size, 32)
     block_k = _block(max(input_size, hidden_size), 64)
 
-    _rnn_tanh_cell_kernel_exp[
+    n_elements = batch * hidden_size
+    z = torch.empty((batch, hidden_size), dtype=torch.float32, device=input.device)
+    _rnn_tanh_cell_gates_kernel[
         (triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))
     ](
         input,
@@ -164,7 +179,7 @@ def rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         w_hh,
         b_ih if b_ih is not None else input,
         b_hh if b_hh is not None else input,
-        out,
+        z,
         batch,
         input_size,
         hidden_size,
@@ -176,8 +191,6 @@ def rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         w_ih.stride(1),
         w_hh.stride(0),
         w_hh.stride(1),
-        out.stride(0),
-        out.stride(1),
         HAS_BIH=b_ih is not None,
         HAS_BHH=b_hh is not None,
         ACC_DTYPE=_ACC_DTYPE[input.dtype],
@@ -187,5 +200,12 @@ def rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
         BLOCK_K=block_k,
         num_warps=4,
         num_stages=3,
+    )
+    _rnn_tanh_cell_act_kernel[(triton.cdiv(n_elements, _ACT_BLOCK),)](
+        z,
+        out,
+        n_elements,
+        BLOCK=_ACT_BLOCK,
+        num_warps=4,
     )
     return out
