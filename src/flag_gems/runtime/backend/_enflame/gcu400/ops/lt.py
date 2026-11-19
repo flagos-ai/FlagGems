@@ -92,7 +92,7 @@ def lt_func(x, y):
 
 def lt_tensor(A, B):
     logger.debug("GEMS_ENFLAME LT_TENSOR")
-    return lt_func(A, B)
+    return _lt_tensor(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -165,8 +165,7 @@ def _lt_cmp_run(A, B, out):
     return _launch_flat(A, B, out, n, (131072 if n >= _MID_N else 16384), 4)
 
 
-def lt(A, B):
-    logger.debug("GEMS_ENFLAME LT")
+def _lt_tensor(A, B):
     if (
         A.numel() >= _SMALL_N
         and A.device == B.device
@@ -184,6 +183,10 @@ def lt(A, B):
 
 def lt_scalar(A, B):
     logger.debug("GEMS_ENFLAME LT_SCALAR")
+    return _lt_scalar(A, B)
+
+
+def _lt_scalar(A, B):
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         n = A.numel()
         if n > 0:
@@ -207,9 +210,9 @@ def lt_scalar(A, B):
 
 def less_tensor(A, B):
     logger.debug("GEMS_ENFLAME LESS_TENSOR")
-    return lt_func(A, B)
+    return _lt_tensor(A, B)
 
 
 def less_scalar(A, B):
     logger.debug("GEMS_ENFLAME LESS_SCALAR")
-    return lt_func_scalar(A, B)
+    return _lt_scalar(A, B)

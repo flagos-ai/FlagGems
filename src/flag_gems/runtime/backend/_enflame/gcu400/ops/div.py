@@ -573,12 +573,12 @@ def floor_divide_(A, B):
 
 def div_tensor_mode(A, B, rounding_mode=None):
     logger.debug("GEMS_ENFLAME DIV_TENSOR_MODE")
-    return _div_mode(A, B, rounding_mode=rounding_mode)
+    return _div_mode(A, B, rounding_mode=rounding_mode, tensor=True)
 
 
 def div__tensor_mode(A, B, rounding_mode=None):
     logger.debug("GEMS_ENFLAME DIV__TENSOR_MODE")
-    return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
+    return _div_mode_inplace(A, B, rounding_mode=rounding_mode, tensor=True)
 
 
 def div_scalar_mode(A, B, rounding_mode=None):
@@ -591,27 +591,26 @@ def div__scalar_mode(A, B, rounding_mode=None):
     return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 
-def _div_mode(A, B, rounding_mode=None):
-    if rounding_mode is None:
-        return true_divide(A, B)
-    elif rounding_mode == "trunc":
+def _div_mode(A, B, rounding_mode=None, *, tensor=False):
+    if rounding_mode == "trunc":
         return trunc_divide(A, B)
     if rounding_mode == "floor":
         return floor_divide(A, B)
-    from flag_gems.ops.div import div_mode as _generic_div_mode
+    # Preserve master's generic None/invalid-mode path, matching the overload.
+    from flag_gems.ops.div import div_scalar_mode, div_tensor_mode
 
+    _generic_div_mode = div_tensor_mode if tensor else div_scalar_mode
     return _generic_div_mode(A, B, rounding_mode)
 
 
-def _div_mode_inplace(A, B, rounding_mode=None):
-    if rounding_mode is None:
-        return true_divide_(A, B)
-    elif rounding_mode == "trunc":
+def _div_mode_inplace(A, B, rounding_mode=None, *, tensor=False):
+    if rounding_mode == "trunc":
         return trunc_divide_(A, B)
     if rounding_mode == "floor":
         return floor_divide_(A, B)
-    from flag_gems.ops.div import div_mode_ as _generic_div_mode_
+    from flag_gems.ops.div import div__scalar_mode, div__tensor_mode
 
+    _generic_div_mode_ = div__tensor_mode if tensor else div__scalar_mode
     return _generic_div_mode_(A, B, rounding_mode)
 
 
@@ -666,5 +665,7 @@ import sys as _sys  # noqa: E402
 
 _generic_ops_module = _sys.modules.get("flag_gems.ops")
 if _generic_ops_module is not None:
-    setattr(_generic_ops_module, "div_mode", div_mode)
-    setattr(_generic_ops_module, "div_mode_", div_mode_)
+    setattr(_generic_ops_module, "div_scalar_mode", div_scalar_mode)
+    setattr(_generic_ops_module, "div_tensor_mode", div_tensor_mode)
+    setattr(_generic_ops_module, "div__scalar_mode", div__scalar_mode)
+    setattr(_generic_ops_module, "div__tensor_mode", div__tensor_mode)
