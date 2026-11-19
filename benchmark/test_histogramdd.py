@@ -103,7 +103,5 @@ def test_histogramdd():
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32, torch.float64],
     )
-    registry = base.Config.override_registry
-    if registry is None or registry.get_override(bench.op_name) is None:
-        bench.set_gems(flag_gems.histogramdd)
+    bench.set_gems(lambda *args, **kwargs: flag_gems.histogramdd(*args, **kwargs))
     bench.run()
