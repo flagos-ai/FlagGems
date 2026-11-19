@@ -1534,7 +1534,12 @@ _FULL_CONFIG = (
     ("hypot", hypot),
     ("hypot.out", hypot_out),
     ("hypot_", hypot_),
-    ("i0", i0),
+    (
+        "i0",
+        i0,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("i0.out", i0_out),
     ("i0_", i0_),
     ("igamma", igamma),
