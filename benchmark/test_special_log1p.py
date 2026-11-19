@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import torch
 
@@ -18,6 +20,26 @@ def _scalar_gems_fallback(value):
 
 
 class ScalarSpecialLog1pBenchmark(base.Benchmark):
+    def get_latency(self, op, *args, **kwargs):
+        # This scalar extension runs on the host; GPU event times do not
+        # measure its CPU allocation and math. Time the complete host call.
+        result = op(*args, **kwargs)
+        assert isinstance(result, torch.Tensor)
+        assert result.device.type == "cpu" and result.dtype == torch.float32
+        assert result.shape == torch.Size([])
+        for _ in range(10):
+            op(*args, **kwargs)
+        start = time.perf_counter()
+        end = start
+        deadline = start + max(base.Config.repetition, 1) / 1000
+        count = 0
+        while end < deadline:
+            for _ in range(100):
+                op(*args, **kwargs)
+            count += 100
+            end = time.perf_counter()
+        return (end - start) * 1000 / count
+
     def __init__(self, value):
         self.value = value
         super().__init__(
