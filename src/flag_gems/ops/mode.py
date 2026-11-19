@@ -445,6 +445,9 @@ def _mode_byte(inp, dim, keepdim):
 def mode(inp, dim=-1, keepdim=False):
     logger.debug("GEMS MODE")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if torch.is_grad_enabled() and inp.requires_grad:
+        values, indices = ModeFunction.apply(inp, dim, keepdim)
+        return namedtuple("mode", ["values", "indices"])(values, indices)
     if (
         inp.dtype in (torch.int8, torch.uint8)
         and inp.shape[dim] > 0
@@ -488,3 +491,231 @@ def mode(inp, dim=-1, keepdim=False):
 
     Mode_out = namedtuple("mode", ["values", "indices"])
     return Mode_out(values=out_value, indices=out_index)
+
+
+# ---------------------------------------------------------------------------
+# Backward
+# ---------------------------------------------------------------------------
+#
+# ``torch.mode`` has no independent ``aten::mode_backward`` schema. PyTorch
+# generates the derivative from ``derivatives.yaml`` as
+# ``value_selecting_reduction_backward(grad, dim, indices, self.sym_sizes(),
+# keepdim)``: the upstream gradient of ``values`` is scattered onto the single
+# position ``indices`` recorded for each reduction group and every other input
+# element gets zero. ``indices`` is an integer output, so it carries no
+# gradient of its own; nothing else from the forward is needed.
+#
+# The kernels below write that same slab in one pass instead of materializing a
+# zero-filled buffer and scattering into it. The closed form is first-order
+# only, like ATen's helper: the result is a ``where``-style selection whose
+# mask follows an integer index, so ``create_graph=True`` still yields a tensor
+# without a graph.
+
+
+@libentry()
+@triton.jit
+def mode_backward_lastdim_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    N,
+    BLOCK: tl.constexpr,
+):
+    """Write the gradient slab for a reduction over the innermost dimension.
+
+    Program ``(o, pid)`` owns the ``BLOCK``-wide slice ``[pid*BLOCK,
+    pid*BLOCK+BLOCK)`` of row ``o`` of the flattened ``(outer, N)`` view. Row
+    ``o`` receives ``grad[o]`` exactly at ``index[o]`` and zeros elsewhere, so
+    the whole slab is produced in a single pass. ``o`` is the first grid axis
+    because the row count easily exceeds the 65535 limit of a CUDA y dimension.
+    """
+    row = tle.program_id(0)
+    offsets = tle.program_id(1).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < N
+    grad = tl.load(grad_ptr + row)
+    index = tl.load(index_ptr + row)
+    value = tl.where(offsets == index, grad, tl.zeros_like(grad))
+    tl.store(out_ptr + row.to(tl.int64) * N + offsets, value, mask=mask)
+
+
+@libentry()
+@triton.jit
+def mode_backward_lastdim_even_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    N,
+    BLOCK: tl.constexpr,
+):
+    """Same writer, specialised for a reduction axis that ``BLOCK`` divides.
+
+    Then ``offset < N`` holds for every launched program, so the compare, the
+    store predicate and the wide column index all disappear: the fast path is
+    load-load-select-store. The caller only selects this kernel when
+    ``reduction % BLOCK == 0``, so every program writes exactly ``BLOCK`` live
+    elements and the whole slab is still covered.
+    """
+    row = tl.program_id(0)
+    offsets = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    grad = tl.load(grad_ptr + row)
+    index = tl.load(index_ptr + row)
+    value = tl.where(offsets == index, grad, tl.zeros_like(grad))
+    tl.store(out_ptr + row.to(tl.int64) * N + offsets, value)
+
+
+@libentry()
+@triton.jit
+def mode_backward_tile_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    reduction,
+    inner,
+    chunk,
+    BJ: tl.constexpr,
+    BR: tl.constexpr,
+):
+    """Write the gradient slab when the reduced dimension is interior.
+
+    One program owns ``BJ`` columns of the ``inner`` plane and the ``chunk``
+    long slice of the reduction axis starting at ``pid_r * chunk``. The int64
+    mode index and the upstream gradient are loaded once and reused across the
+    loop, so index traffic stays at ``outer * inner`` elements instead of being
+    re-read at every reduction step. Program ``0`` is the plane index so it is
+    not limited to the 65535 entries of a CUDA y dimension.
+    """
+    outer = tle.program_id(0)
+    pid_j = tle.program_id(1)
+    pid_r = tle.program_id(2)
+    column = pid_j * BJ + tl.arange(0, BJ)
+    column_mask = column < inner
+    flat = outer.to(tl.int64) * inner + column
+    index = tl.load(index_ptr + flat, mask=column_mask, other=-1)
+    grad = tl.load(grad_ptr + flat, mask=column_mask, other=0.0)
+    zero = tl.zeros_like(grad)
+    base = out_ptr + outer.to(tl.int64) * (reduction * inner) + column
+    start = pid_r.to(tl.int64) * chunk
+    for offset_r in range(start, start + chunk, BR):
+        rows = offset_r.to(tl.int64) + tl.arange(0, BR)
+        row_mask = rows < reduction
+        hit = (rows[:, None] == index[None, :]) & row_mask[:, None]
+        value = tl.where(hit, grad[None, :], zero[None, :])
+        tl.store(
+            base + rows[:, None] * inner,
+            value,
+            mask=row_mask[:, None] & column_mask[None, :],
+        )
+
+
+# Column tile and reduction lanes of the interior-dimension gradient kernel.
+# The split of the reduction axis is capped so the grid stays near
+# ``_MODE_BACKWARD_PROGRAMS`` programs, which fills the device without turning a
+# large case into one program per element.
+_MODE_BACKWARD_COLUMNS = 1024
+_MODE_BACKWARD_PROGRAMS = 528
+
+
+def _mode_backward_geometry(sizes, dim):
+    """Return ``(outer, reduction, inner)`` of ``dim`` in ``sizes``."""
+    ndim = len(sizes)
+    dim = dim + ndim if dim < 0 else dim
+    assert 0 <= dim < ndim, f"Invalid dim {dim} for a {ndim}-D tensor"
+    outer = 1
+    for size in sizes[:dim]:
+        outer *= size
+    reduction = sizes[dim]
+    inner = 1
+    for size in sizes[dim + 1 :]:
+        inner *= size
+    return outer, reduction, inner
+
+
+def mode_backward(grad, dim, indices, sizes, keepdim):
+    """Gradient of ``torch.mode(self, dim, keepdim).values`` w.r.t. ``self``.
+
+    Mirrors ``aten::value_selecting_reduction_backward``, the helper ATen's
+    generated ``ModeBackward0`` calls: the values gradient is scattered onto
+    the int64 mode indices and every other element is zero. ``keepdim`` is
+    folded into the index shape, negative ``dim`` is normalized, and ties
+    follow the single index the forward selected.
+    """
+    logger.debug("GEMS MODE_BACKWARD")
+    # ``new_empty`` derives dtype and device from ``grad`` in one call.
+    out = grad.new_empty(sizes)
+    if out.numel() == 0:
+        return out
+    outer, reduction, inner = _mode_backward_geometry(sizes, dim)
+    # ``keepdim`` needs no handling: the flat (outer, reduction, inner) view of
+    # ``grad`` and ``indices`` is the same memory whether or not a size-1 dim
+    # sits at the reduced axis, so unsqueezing only cost host time.
+    # ``contiguous()`` already returns ``self`` for a contiguous tensor, so
+    # calling it unconditionally is cheaper than testing first.
+    grad = grad.contiguous()
+    index = indices.contiguous()
+    with torch_device_fn.device(grad.device):
+        if inner == 1:
+            # Size the block by bytes rather than elements: 4 KB of output per
+            # program is the footprint the FP32 shapes already run at, and the
+            # 2-byte dtypes need twice the elements to reach it. The block
+            # never exceeds the reduction, so a short reduction keeps its own
+            # power-of-two size and every launch stays exact.
+            block = 4096 // out.element_size()
+            if block > reduction:
+                block = 1 << (reduction - 1).bit_length()
+            grid = (outer, triton.cdiv(reduction, block))
+            if reduction % block == 0:
+                mode_backward_lastdim_even_kernel[grid](
+                    grad, index, out, reduction, block
+                )
+            else:
+                mode_backward_lastdim_kernel[grid](grad, index, out, reduction, block)
+        else:
+            columns = min(_MODE_BACKWARD_COLUMNS, triton.next_power_of_2(inner))
+            lanes = max(1, _MODE_BACKWARD_COLUMNS // columns)
+            tiles = triton.cdiv(inner, columns)
+            budget = max(1, _MODE_BACKWARD_PROGRAMS // (tiles * outer))
+            splits = min(triton.cdiv(reduction, lanes), budget)
+            chunk = triton.cdiv(reduction, splits)
+            splits = triton.cdiv(reduction, chunk)
+            mode_backward_tile_kernel[(outer, tiles, splits)](
+                grad,
+                index,
+                out,
+                reduction,
+                inner,
+                chunk,
+                columns,
+                lanes,
+            )
+    return out
+
+
+class ModeFunction(torch.autograd.Function):
+    """Autograd wrapper for ``flag_gems.mode``.
+
+    ``indices`` is an integer output and is marked non-differentiable, matching
+    the native contract. ``backward`` writes the values gradient at the saved
+    mode positions with the Triton kernel above. The backward is first-order,
+    like ATen's ``value_selecting_reduction_backward``.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        values, indices = mode(inp, dim=dim, keepdim=keepdim)
+        ctx.save_for_backward(indices)
+        ctx.dim = dim
+        ctx.keepdim = keepdim
+        ctx.sizes = tuple(inp.shape)
+        ctx.mark_non_differentiable(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        if not ctx.needs_input_grad[0] or grad_values is None:
+            return None, None, None
+        (indices,) = ctx.saved_tensors
+        return (
+            mode_backward(grad_values, ctx.dim, indices, ctx.sizes, ctx.keepdim),
+            None,
+            None,
+        )
