@@ -106,3 +106,29 @@ def test_log_softmax_backward_data_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.log_softmax_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_log_softmax_backward():
+    # ``aten::_log_softmax_backward_data`` is an independent ATen op, so this
+    # times the backward op directly on both sides -- the convention the other
+    # independent-backward benchmarks use (e.g. masked_softmax_backward).  The
+    # saved forward output is built once per case by the input function, so the
+    # forward is outside the timed region.
+    def log_softmax_backward_input_fn(shape, dtype, device):
+        inp = utils.generate_tensor_input(shape, dtype, device)
+        output = torch._log_softmax(inp, dim=-1, half_to_float=False)
+        grad_output = torch.randn_like(output)
+        yield grad_output, output, -1, dtype
+
+    bench = base.GenericBenchmark2DOnly(
+        op_name="log_softmax_backward_data",
+        input_fn=log_softmax_backward_input_fn,
+        torch_op=torch._log_softmax_backward_data,
+        dtypes=consts.FLOAT_DTYPES,
+        gems_op=flag_gems.log_softmax_backward,
+    )
+    bench.run()
