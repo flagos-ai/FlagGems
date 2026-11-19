@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 BENCHMARK_CASES = [
@@ -24,6 +26,16 @@ BENCHMARK_CASES = [
     ((2, 8, 20, 32, 48), (30, 40, 24), (None, None, None)),
     ((8, 32, 32, 48, 64), (16, 24, 32), (None, None, None)),
 ]
+
+
+# Native MUSA computes legacy nearest on these four geometries. Keep them in
+# the catalog and dummy preflight, but do not time that different operation.
+_MUSA_NATIVE_INEXACT = {
+    ((8, 16, 16), (12, 24, 24)),
+    ((24, 32, 40), (12, 16, 20)),
+    ((20, 32, 48), (30, 40, 24)),
+    ((32, 48, 64), (16, 24, 32)),
+}
 
 
 class UpsampleNearestExact3dBackwardBenchmark(base.Benchmark):
@@ -49,6 +61,14 @@ class UpsampleNearestExact3dBackwardBenchmark(base.Benchmark):
     def build_inputs(self, case):
         plan = case.builder_args[0]
         input_size, output_size, scales = plan.builder_args
+        if (
+            flag_gems.vendor_name == "mthreads"
+            and not base.Config.preflight_only
+            and (input_size[-3:], output_size) in _MUSA_NATIVE_INEXACT
+        ):
+            pytest.skip(
+                "MUSA native nearest-exact3d backward uses legacy nearest for this resize"
+            )
         grad_output = torch.randn(
             (*input_size[:2], *output_size),
             dtype=case.dtype,
