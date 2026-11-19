@@ -750,3 +750,113 @@ def test_linalg_eigvalsh_symmetric(batch, n, uplo, dtype):
     reference = _reference_eigvalsh(_reference_input(inp), uplo)
     result = flag_gems.linalg_eigvalsh(inp, UPLO=uplo)
     _assert_eigvalsh_close(result, reference, inp)
+
+
+def _symmetric(n, *, batch=(), dtype=torch.float32, seed=0):
+    generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
+    raw = torch.randn(
+        (*batch, n, n), dtype=dtype, device=flag_gems.device, generator=generator
+    )
+    return raw + raw.mT
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize(
+    "shape",
+    tu.selected_cases([(0, 0), (0, 3, 3), (2, 0, 0)], quick=[(0, 0), (0, 3, 3)]),
+)
+def test_linalg_eigvalsh_empty(shape):
+    inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    expected = _reference_input(inp).new_empty(shape[:-1])
+    _assert_eigvalsh_close(flag_gems.linalg_eigvalsh(inp), expected, inp)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_noncontiguous():
+    inp = _symmetric(5, batch=(2,)).mT
+    assert not inp.is_contiguous()
+    expected = _reference_eigvalsh(_reference_input(inp))
+    _assert_eigvalsh_close(flag_gems.linalg_eigvalsh(inp), expected, inp)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_identity():
+    inp = torch.eye(5, dtype=torch.float32, device=flag_gems.device)
+    expected = _reference_input(torch.ones_like(inp.diagonal()))
+    _assert_eigvalsh_close(flag_gems.linalg_eigvalsh(inp), expected, inp)
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize(
+    "diagonal",
+    [
+        pytest.param([2.0, 2.0, 5.0, 5.0], id="two_pairs"),
+        pytest.param([3.0, 3.0, 3.0], id="all_equal"),
+        pytest.param([1.0, 1.0, 1.0, 4.0], id="triple_plus_one"),
+    ],
+)
+def test_linalg_eigvalsh_degenerate_eigenvalues(diagonal):
+    values = torch.tensor(diagonal, dtype=torch.float32, device=flag_gems.device)
+    inp = torch.diag(values)
+    _assert_eigvalsh_close(flag_gems.linalg_eigvalsh(inp), _reference_input(values), inp)
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize("n", tu.selected_cases([2, 3, 5, 8], quick=[3, 5]))
+def test_linalg_eigvalsh_ascending_order(n):
+    inp = _symmetric(n, seed=n)
+    result = flag_gems.linalg_eigvalsh(inp)
+    assert result.device == inp.device
+    assert bool(torch.all(result[1:] >= result[:-1]))
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_trace_is_preserved():
+    inp = _symmetric(6, seed=3)
+    result = flag_gems.linalg_eigvalsh(inp)
+    assert result.device == inp.device
+    expected = _reference_input(inp).diagonal().sum()
+    _assert_eigvalsh_close(result.sum(), expected, inp)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_reads_requested_triangle():
+    inp = torch.tensor([[1.0, 2.0], [7.0, 1.0]], device=flag_gems.device)
+    ref_inp = _reference_input(inp)
+    lower = flag_gems.linalg_eigvalsh(inp, UPLO="L")
+    upper = flag_gems.linalg_eigvalsh(inp, UPLO="U")
+    _assert_eigvalsh_close(lower, _reference_eigvalsh(ref_inp, "L"), inp)
+    _assert_eigvalsh_close(upper, _reference_eigvalsh(ref_inp, "U"), inp)
+    assert not torch.allclose(lower, upper)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_default_uplo_is_lower():
+    inp = torch.tensor([[1.0, 2.0], [7.0, 1.0]], device=flag_gems.device)
+    default = flag_gems.linalg_eigvalsh(inp)
+    lower = flag_gems.linalg_eigvalsh(inp, UPLO="L")
+    assert default.device == lower.device == inp.device
+    assert torch.equal(default, lower)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_batch_independence():
+    a = _symmetric(4, seed=1)
+    b = _symmetric(4, seed=2)
+    batch = torch.stack([a, b])
+    result = flag_gems.linalg_eigvalsh(batch)
+    assert result.device == batch.device
+    for item, actual in zip((a, b), result, strict=True):
+        expected = flag_gems.linalg_eigvalsh(item)
+        assert expected.device == item.device
+        torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_fp64_preserved():
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inp = _symmetric(4, dtype=torch.float64)
+    result = flag_gems.linalg_eigvalsh(inp)
+    expected = _reference_eigvalsh(_reference_input(inp))
+    _assert_eigvalsh_close(result, expected, inp)
