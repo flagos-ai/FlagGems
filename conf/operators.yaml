@@ -13606,6 +13606,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: median_backward
+  description: The backward computation of `median()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - median
+  - median.dim
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: median_dim
   description: 'Returns a namedtuple `(values, indices)` where `values` contains the
     median
