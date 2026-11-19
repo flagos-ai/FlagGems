@@ -26,6 +26,8 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems import runtime
 
@@ -41,17 +43,6 @@ if _CAN_CAPTURE_NATIVE_KERNEL:
     _NATIVE_CONVOLUTION = torch.library.get_kernel(
         "aten::convolution", runtime.device.dispatch_key
     )
-    # Same capture pattern for the dtype conversion used by the fp16 branch:
-    # the conversion is part of this operator's cost, so it must not be routed
-    # back through another registered implementation.
-    try:
-        _NATIVE_COPY = torch.library.get_kernel(
-            "aten::copy_", runtime.device.dispatch_key
-        )
-    except Exception:  # pragma: no cover - older builds without the schema
-        _NATIVE_COPY = None
-else:
-    _NATIVE_COPY = None
 
 
 def _three(v):
@@ -61,11 +52,23 @@ def _three(v):
     return [int(v)] * 3
 
 
+@triton.jit
+def _cast_kernel(src_ptr, dst_ptr, n_elements, BLOCK: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    value = tl.load(src_ptr + offsets, mask=mask, other=0.0)
+    tl.store(dst_ptr + offsets, value.to(dst_ptr.dtype.element_ty), mask=mask)
+
+
 def _cast(x, dtype):
-    if _NATIVE_COPY is None:
-        return x.to(dtype)
+    if x.dtype == dtype:
+        return x
+    if not x.is_contiguous():
+        x = x.contiguous()
     out = torch.empty(x.shape, dtype=dtype, device=x.device)
-    _NATIVE_COPY.call_boxed(_NATIVE_KEY_SET, out, x, False)
+    n_elements = x.numel()
+    if n_elements:
+        _cast_kernel[(triton.cdiv(n_elements, 16384),)](x, out, n_elements, BLOCK=16384)
     return out
 
 
