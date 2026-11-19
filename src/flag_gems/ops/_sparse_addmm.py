@@ -258,7 +258,22 @@ def _sparse_addmm_impl(self, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
 
 
 def _sparse_addmm(self, mat1, mat2, *, beta=1.0, alpha=1.0):
+    """Differentiable ``_sparse_addmm`` entry.
+
+    ATen declares no ``_sparse_addmm_backward`` schema and keeps the
+    engine-generated ``SparseAddmmBackward0`` formula, which runs the native
+    sparse CUDA backward even when the forward kernel is FlagGems'.  Handing
+    the differentiable case to ``_SparseAddmmFunction`` (whose backward runs
+    the Triton kernels) keeps the whole path inside FlagGems; inference and
+    calls without a gradient stay on the plain forward.
+    """
     logger.debug("GEMS _SPARSE_ADDMM")
+    if torch.is_grad_enabled() and (
+        self.requires_grad or mat1.requires_grad or mat2.requires_grad
+    ):
+        from flag_gems.ops._sparse_addmm_backward import _SparseAddmmFunction
+
+        return _SparseAddmmFunction.apply(self, mat1, mat2, beta, alpha)
     return _sparse_addmm_impl(self, mat1, mat2, beta=beta, alpha=alpha)
 
 
