@@ -21,6 +21,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import kernelgen_test_utils as tu
+from .accuracy_utils import _SKIP_FP64
 
 DTYPES = [
     torch.bool,
@@ -32,7 +33,7 @@ DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    torch.float64,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
 ]
 
 
@@ -200,7 +201,13 @@ def test_cast_Char_strided(dtype, layout):
 
 @pytest.mark.cast_Char
 @pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=_SKIP_FP64),
+    ],
 )
 def test_cast_Char_fractional(dtype):
     _require_dtype(dtype)
@@ -247,7 +254,9 @@ def test_cast_Char_requires_grad(requires_grad):
 
 
 @pytest.mark.cast_Char
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_cast_Char_complex(dtype):
     _require_dtype(dtype)
     x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()

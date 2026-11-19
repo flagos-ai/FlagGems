@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 def _random_input(factory, shape, dtype):
@@ -31,7 +32,9 @@ def _random_input(factory, shape, dtype):
 @pytest.mark.histogramdd
 @pytest.mark.parametrize("shape", [(50, 2), (100, 3), (80, 4)])
 @pytest.mark.parametrize("bins", [[4, 5], [3, 4, 5], [2, 3, 4, 5]])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_histogramdd_basic(shape, bins, dtype):
     if len(bins) != shape[1]:
         pytest.skip("bins length must match D dimension")
@@ -62,7 +65,9 @@ def test_histogramdd_basic(shape, bins, dtype):
 
 @pytest.mark.histogramdd
 @pytest.mark.parametrize("shape", [(60, 2), (40, 3)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_histogramdd_with_range(shape, dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
@@ -94,7 +99,9 @@ def test_histogramdd_with_range(shape, dtype):
 
 @pytest.mark.histogramdd
 @pytest.mark.parametrize("shape", [(30, 2), (50, 3)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_histogramdd_density(shape, dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")

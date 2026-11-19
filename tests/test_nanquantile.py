@@ -19,16 +19,20 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 DTYPES = [torch.float32]
 if not cfg.QUICK_MODE:
     DTYPES.append(
         pytest.param(
             torch.float64,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "enflame",
-                reason="Enflame Float64 storage does not preserve double values",
-            ),
+            marks=[
+                _SKIP_FP64,
+                pytest.mark.skipif(
+                    flag_gems.vendor_name == "enflame",
+                    reason="Enflame Float64 storage does not preserve double values",
+                ),
+            ],
         )
     )
 INTERPOLATIONS = (

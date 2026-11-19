@@ -228,6 +228,10 @@ def _run_csc_index_child(case, override):
 
 @pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize("case", tuple(_CSC_INDEX_ERRORS))
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSC layout not supported on this device",
+)
 def test_validate_sparse_csc_tensor_args_invalid_indices(case, request):
     with pytest.raises(RuntimeError, match=_CSC_INDEX_ERRORS[case]):
         torch.ops.aten._validate_sparse_csc_tensor_args.default(
