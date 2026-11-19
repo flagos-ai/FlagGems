@@ -40,3 +40,36 @@ def test_min_dim():
         op_name="min_dim", torch_op=torch.min, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+def min_values(inp, dim=None, keepdim=False):
+    """Native reference: both min overloads, values only."""
+    if dim is None:
+        return torch.min(inp)
+    return torch.min(inp, dim, keepdim=keepdim).values
+
+
+def gems_min_values(inp, dim=None, keepdim=False):
+    """FlagGems candidate entry: both min overloads, values only."""
+    if dim is None:
+        return flag_gems.min(inp)
+    return flag_gems.min_dim(inp, dim, keepdim=keepdim).values
+
+
+@pytest.mark.min_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_min_backward():
+    # UnaryReductionBenchmark feeds (inp, 1) for every multi-dimensional shape
+    # and (inp,) for the 1-D shape, so this single benchmark covers both the
+    # value-selecting `min.dim` adjoint and the global `min` tie-splitting
+    # adjoint over the five core shapes.
+    bench = base.UnaryReductionBenchmark(
+        op_name="min",
+        torch_op=min_values,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(gems_min_values)
+    bench.run()

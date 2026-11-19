@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 from .conftest import QUICK_MODE
 
 # adjoint is a pure metadata view: no element data is read or written, so
@@ -34,7 +35,7 @@ if QUICK_MODE:
     COMPLEX_SHAPES = [(8, 16)]
 
 REAL_DTYPES = [torch.float16, torch.float32, torch.bfloat16, torch.int64, torch.bool]
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 
 
 def _make_input(shape, dtype, device):

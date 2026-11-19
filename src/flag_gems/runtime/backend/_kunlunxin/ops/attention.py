@@ -786,9 +786,12 @@ def scaled_dot_product_attention_forward(
     if padded_dq != head_dim:
         q_in = query.new_empty((batch, q_head_num, q_len, padded_dq), dtype=query.dtype)
         k_in = key.new_empty((batch, kv_head_num, kv_len, padded_dq), dtype=key.dtype)
-    if padded_dv != value_dim:
-        v_in = value.new_empty(
-            (batch, kv_head_num, kv_len, padded_dv), dtype=value.dtype
+    # Zero-pad V to the block boundary along the KV axis: the tail block of the
+    # output pass then loads V unmasked, and the padded rows contribute nothing.
+    v_padded = k_pad != kv_len
+    if padded_dv != value_dim or v_padded:
+        v_in = value.new_zeros(
+            (batch, kv_head_num, k_pad, padded_dv), dtype=value.dtype
         )
 
     if kv_len % BLOCK_N == 0:
@@ -909,7 +912,7 @@ def scaled_dot_product_attention_forward(
                 num_warps=4,
                 num_stages=1,
             )
-        if padded_dv != value_dim:
+        if padded_dv != value_dim or v_padded:
             pad_grid = (
                 batch * kv_head_num,
                 triton.cdiv(kv_len, 64),
@@ -982,6 +985,7 @@ def scaled_dot_product_attention_forward(
                 D_WIDTH=min(128, padded_dv - d_off),
                 D_OFF=d_off,
                 STORE_LSE=return_lse or return_weights,
+                V_PADDED=v_padded,
                 num_warps=8,
                 num_stages=1,
                 **common_v,
@@ -2064,6 +2068,7 @@ def _fa_lout_kernel(
     D_WIDTH: tl.constexpr,
     D_OFF: tl.constexpr,
     STORE_LSE: tl.constexpr,
+    V_PADDED: tl.constexpr,
 ):
     """Pass 2: ``p = exp(qk' - m)``, ``out = p @ V / sum``.
 
@@ -2100,7 +2105,12 @@ def _fa_lout_kernel(
         p = tl.exp(qk - m_i[:, None])
         p = tl.where((qk - m_i[:, None]) > -12.0, p, 0.0)
         v_ptrs = v_base + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd
-        value = tl.load(v_ptrs, mask=kv_mask[:, None], other=0.0)
+        # V is zero-padded to K_PAD along the KV axis, so the tail block reads
+        # valid rows and needs no mask here.
+        if V_PADDED:
+            value = tl.load(v_ptrs)
+        else:
+            value = tl.load(v_ptrs, mask=kv_mask[:, None], other=0.0)
         acc = tl.dot(p.to(value.dtype), value, acc=acc)
         l_i = l_i + tl.sum(p, 1)
     l_safe = tl.maximum(l_i, 1e-30)
@@ -2219,6 +2229,13 @@ def flash_attention_forward(
         )
     else:
         q_in, k_in, v_in = query, key, value
+    # Zero-pad V to the block boundary along the KV axis: the tail block of the
+    # output pass then loads V unmasked, and the padded rows contribute nothing.
+    v_padded = k_pad != k_len
+    if v_padded:
+        v_full = value.new_zeros((batch, k_pad, kv_head_num, v_in.shape[-1]))
+        v_full[:, :k_len].copy_(v_in)
+        v_in = v_full
 
     # cmask (B*H, Q, K_PAD): 0.0 = valid, 50.0 = masked (causal bound
     # n <= row+off, window bounds, and the n >= k_len padding).  Kernel A
@@ -2307,6 +2324,7 @@ def flash_attention_forward(
                 D_WIDTH=min(128, padded_d - d_off),
                 D_OFF=d_off,
                 STORE_LSE=(d_off == 0),
+                V_PADDED=v_padded,
                 num_warps=8,
                 num_stages=1,
                 **common,

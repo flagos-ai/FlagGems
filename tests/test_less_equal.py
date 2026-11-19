@@ -47,3 +47,32 @@ def test_less_equal_scalar(shape, dtype):
     res_out = flag_gems.less_equal_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.less_equal
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_less_equal_byte(shape, dtype):
+    inp1 = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
+
+    ref_out = torch.less_equal(ref_inp1, ref_inp2)
+    res_out = flag_gems.less_equal(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.less_equal_scalar
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_less_equal_scalar_byte(shape, dtype):
+    inp1 = torch.randint(1, 8, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = 4
+    ref_inp1 = utils.to_reference(inp1)
+
+    ref_out = torch.less_equal(ref_inp1, inp2)
+    res_out = flag_gems.less_equal_scalar(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)

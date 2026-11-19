@@ -185,9 +185,23 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           failed=0
-          for step_id in check-operators-yaml check-init-exports check-backend-imports check-kernelgen-tests check-operator-markers check-aten-operators check-no-torch-fallback; do
+          # Each entry is "step-id|Step name" — the name must match the `name:` field
+          # of the corresponding step above so the gate output lines up with what
+          # GitHub displays in the job summary.
+          checks=(
+            "check-operators-yaml|Check operators.yaml"
+            "check-init-exports|Check __init__.py exports and registry"
+            "check-backend-imports|Check vendor backend imports against shared code"
+            "check-kernelgen-tests|Check changed test files for use_gems"
+            "check-operator-markers|Check operator test files and markers"
+            "check-aten-operators|Check aten operator names"
+            "check-no-torch-fallback|Check no torch compute calls in operator code"
+          )
+          for entry in "${checks[@]}"; do
+            step_id="${entry%%|*}"
+            step_name="${entry##*|}"
             result=$(echo "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
-            echo "$step_id: $result"
+            echo "$step_name: $result"
             if [ "$result" = "failure" ]; then
               failed=1
             fi
