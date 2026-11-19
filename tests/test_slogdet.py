@@ -383,7 +383,6 @@ def test_slogdet_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_nan_inf(dtype):
     """Non-finite inputs follow the selected ATen reference, including NaNs."""
-    _skip_native_reference(dtype)
     inf_cases = {
         "inf": ([[float("inf"), 0.0], [0.0, 1.0]], 1.0),
         "neg_inf": ([[float("-inf"), 0.0], [0.0, 1.0]], -1.0),
@@ -408,8 +407,10 @@ def test_slogdet_nan_inf(dtype):
         )
         res_sign, res_logabsdet = _candidate_slogdet(A)
         ref_A = utils.to_reference(A)
-        if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
-            # The device FP64 solver can return zero for these NaN inputs.
+        if flag_gems.vendor_name == "mthreads" or (
+            flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+        ):
+            # These device solvers can report a zero sign for NaN inputs.
             ref_A = ref_A.cpu()
         reference = _reference_slogdet(ref_A)
         torch.testing.assert_close(res_sign.cpu(), reference.sign.cpu(), equal_nan=True)
