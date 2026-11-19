@@ -26,16 +26,19 @@ import inspect
 import os
 import sys
 
-from .. import ARCH_MAP, arch
+from .. import ARCH_MAP, alias_arch_submodules, arch
 
 _arch_name = ARCH_MAP[arch]
 _vendor_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+__path__ = [os.path.join(_vendor_dir, _arch_name, "ops")] + list(__path__)
 
 sys.path.insert(0, _vendor_dir)
 try:
     _arch_ops = importlib.import_module(f"{_arch_name}.ops")
 finally:
     sys.path.remove(_vendor_dir)
+
+alias_arch_submodules(__name__, _arch_ops, _arch_name, "ops")
 
 for _name, _fn in inspect.getmembers(_arch_ops, inspect.isfunction):
     globals()[_name] = _fn

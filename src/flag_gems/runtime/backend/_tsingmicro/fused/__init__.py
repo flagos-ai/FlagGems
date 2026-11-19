@@ -26,16 +26,19 @@ import inspect
 import os
 import sys
 
-from .. import ARCH_MAP, arch
+from .. import ARCH_MAP, alias_arch_submodules, arch
 
 _arch_name = ARCH_MAP[arch]
 _vendor_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+__path__ = [os.path.join(_vendor_dir, _arch_name, "fused")] + list(__path__)
 
 sys.path.insert(0, _vendor_dir)
 try:
     _arch_fused = importlib.import_module(f"{_arch_name}.fused")
 finally:
     sys.path.remove(_vendor_dir)
+
+alias_arch_submodules(__name__, _arch_fused, _arch_name, "fused")
 
 for _name, _fn in inspect.getmembers(_arch_fused, inspect.isfunction):
     globals()[_name] = _fn

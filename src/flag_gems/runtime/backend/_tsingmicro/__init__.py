@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import importlib
 import os
+import pkgutil
+import sys
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -37,6 +40,22 @@ except ImportError:
 
 os.environ["ARCH"] = str(arch)
 ARCH_MAP = {"1": "tx81", "2": "tx82"}
+
+def alias_arch_submodules(package_name, arch_package, arch_name, kind):
+    """Register ``<arch>.<kind>.<module>`` under ``<package_name>.<module>``.
+
+    After the per-chip split the operators live in isolated ``tx81/`` and
+    ``tx82/`` sub-packages, while downstream integrations still import the
+    legacy flat paths ``_tsingmicro.{ops,fused}.<module>``.  Aliasing the
+    modules in ``sys.modules`` keeps those imports working and makes both
+    paths resolve to the same module object, so the JITFunction instances and
+    their caches are not duplicated.
+    """
+    for mod in pkgutil.iter_modules(arch_package.__path__):
+        if mod.name.startswith("__"):
+            continue
+        real = importlib.import_module(f"{arch_name}.{kind}.{mod.name}")
+        sys.modules[f"{package_name}.{mod.name}"] = real
 
 # Torch device attribute and chip name of the detected generation.
 _ARCH_TORCH_DEVICE = {"1": "txda", "2": "raisa"}
