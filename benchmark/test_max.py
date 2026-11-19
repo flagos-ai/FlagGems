@@ -40,3 +40,46 @@ def test_max_dim():
         op_name="max_dim", torch_op=torch.max, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+def _max_backward_values(inp, dim=None):
+    """Native reference of the timed autograd chain for both torch.max overloads.
+
+    UnaryReductionBenchmark yields a 1-D tensor with no dim (full reduction via
+    `torch.max(x)`) and N-D tensors with dim=1 (`torch.max(x, dim).values`). With
+    `is_backward=True` the harness times `torch.autograd.grad` on the result, so
+    only the values output is returned here.
+    """
+    if dim is None:
+        return torch.max(inp)
+    return torch.max(inp, dim=dim).values
+
+
+def _max_backward_gems(inp, dim=None):
+    """Same chain through the FlagGems entries, including their backward."""
+    if dim is None:
+        return flag_gems.max(inp)
+    return flag_gems.max_dim(inp, dim=dim).values
+
+
+@pytest.mark.max_backward
+@pytest.mark.max
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_max_backward():
+    """Autograd latency of the max backward.
+
+    ATen exposes no `max_backward` operator to intercept, so the candidate is
+    the FlagGems public entry (`flag_gems.max` / `flag_gems.max_dim`) whose
+    `torch.autograd.Function` backward launches the Triton kernels. The baseline
+    is the native `torch.max` autograd formula on the same inputs.
+    """
+    bench = base.UnaryReductionBenchmark(
+        op_name="max_backward",
+        torch_op=_max_backward_values,
+        gems_op=_max_backward_gems,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

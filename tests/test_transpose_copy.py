@@ -311,9 +311,12 @@ def test_transpose_copy_invalid_dims(shape, dim0, dim1):
 @pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
 def test_accuracy_transpose_copy_float8(shape, dim0, dim1, non_contiguous, dtype):
     base_shape = (shape[0] * 2, *shape[1:]) if non_contiguous else shape
-    input_bytes = torch.arange(
-        math.prod(base_shape), dtype=torch.uint8, device=flag_gems.device
-    ).reshape(base_shape)
+    # Ascend does not support uint8 arange on the device.
+    input_bytes = (
+        torch.arange(math.prod(base_shape), dtype=torch.uint8, device="cpu")
+        .reshape(base_shape)
+        .to(flag_gems.device)
+    )
     if non_contiguous:
         input_bytes = input_bytes[::2]
     input = (

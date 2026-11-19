@@ -9307,6 +9307,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: greater_equal_scalar_
+  description: The scalar in-place version of `greater_equal()`, which is an alias
+    for `ge()`.
+  for:
+  - greater_equal_.Scalar
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: greater_out
   description: A variant of `greater` that saves the output to the specified `out`.
   for:
@@ -9430,11 +9443,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '3.0'
 - id: grouped_gemm_w8a8
-  description: Per-channel INT8 grouped NT GEMM with unpadded rows and BF16 output.
+  description: |
+    Per-channel grouped NT GEMM with unpadded rows, FP32 row/column scales and
+    caller-owned BF16 output. Supports matching signed INT8 operands on PPU
+    and MetaX, plus E4M3FN/FNUZ operands on MetaX. Uses packed expert indices
+    and row counts without padding.
   for:
   - grouped_gemm_nt_i8i8bf16_nopad
+  - grouped_gemm_w8a8
   labels:
   - fused
+  - non-aten
+  - MoE
+  - Quantization
   kind:
   - BLAS
   stages:
@@ -9471,21 +9492,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - beta: '5.3'
-- id: grouped_mm_w8a8
-  description: |
-    MetaX grouped matrix multiplication with matching signed INT8 or E4M3FN/FNUZ
-    operands and FP32 row/column scales. Writes preallocated BF16 output in
-    place using packed expert indices and row counts; no padding is required.
-  for:
-  - grouped_mm_w8a8
-  labels:
-  - non-aten
-  - MoE
-  - Quantization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5.0'
 - id: gru
   description: Gated recurrent unit (GRU). At each time step, computes a new hidden
     state from the input and the previous hidden state using a reset gate and an update
@@ -12370,6 +12376,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
+- id: log10_backward
+  description: The backward computation of `log10()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log10
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log10_out
   description: A variant of `log10()` that assigns the output to the provided `out`.
   for:
@@ -12411,6 +12430,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: log1p_backward
+  description: The backward computation of `log1p()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log1p
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log2
   description: Returns a new tensor with the logarithm to the base 2 of the elements
     of `input`.
@@ -12436,6 +12467,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: log2_backward
+  description: The backward computation of `log2()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log2
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log_
   description: The in-place version of `log()`. Computes the natural logarithm of
     each element in the input tensor in-place.
@@ -12640,6 +12684,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: logcumsumexp_backward
+  description: The backward computation of `logcumsumexp()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - logcumsumexp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: logcumsumexp_out
   description: 'A variant of `logcumsumexp` that allows the output to be assigned
     to an `out` tensor.
@@ -12848,6 +12904,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.3'
+- id: logsumexp_backward
+  description: The backward computation of `logsumexp()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - logsumexp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: lshift_scalar
   description: Applies a bitwise left shift to an integer tensor with a scalar shift
     value.
@@ -12979,6 +13047,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: lu_unpack_backward
+  description: The backward computation of `lu_unpack()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - lu_unpack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: lu_unpack_out
   description: Out-of-place variant of lu_unpack that writes results into pre-allocated
     output tensors.
@@ -13303,6 +13383,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_H
+  description: Returns a view of this matrix with its two dimensions conjugated and
+    transposed.
+  for:
+  - matrix_H
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: matrix_power
   description: Triton kernel implementation for matrix_power.
   for:
@@ -13338,6 +13430,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.0'
   cpp: '4.0'
+- id: max_backward
+  description: The backward computation of `max()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - max
+  - max.dim
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: max_dim
   description: 'Returns a namedtuple `(values, indices)` where `values` is the maximum
     value
@@ -13477,6 +13583,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: max_unpool2d_backward
+  description: The backward computation of `max_unpool2d()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - max_unpool2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: max_unpool3d
   description: Triton kernel implementation for max_unpool3d.
   for:
@@ -13488,6 +13606,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: max_unpool3d_backward
+  description: The backward computation of `max_unpool3d()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - max_unpool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: maximum
   description: Computes the element-wise maximum of `input` and `other`.
   for:
@@ -13530,6 +13660,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   description: Returns the median of the values in `input`.
   for:
   - median
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
+- id: median_backward
+  description: The backward computation of `median()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - median
+  - median.dim
   labels:
   - aten
   - KernelGen
@@ -13604,6 +13748,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.0'
+- id: min_backward
+  description: The backward computation of `min()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - min
+  - min.dim
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.4'
 - id: min_dim
   description: 'Returns a namedtuple `(values, indices)` where `values` is the minimum
     value of
@@ -18908,6 +19066,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '3.0'
+- id: sparse_addmm
+  description: |
+    Computes beta * self + alpha * (mat1 @ mat2), where mat1 is a sparse 2-D
+    tensor (CSR/CSC/COO) and self and mat2 are dense. The result is a dense
+    (M, N) tensor; self follows the standard addmm bias broadcasting rules.
+  for:
+  - _sparse_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
+- id: sparse_addmm_out
+  description: |
+    A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)
+    into the provided dense out tensor.
+  for:
+  - _sparse_addmm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_broadcast_to
   description: 'Broadcasts a sparse COO tensor to the target shape, replicating stored
     entries across newly prepended sparse dimensions and broadcast (size-1) dimensions.
@@ -19100,6 +19285,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_csr_prod
+  description: 'Multiplies the stored entries of a 2-D sparse CSR tensor along dim
+    and returns a sparse CSR tensor. Only stored entries participate, so the result
+    sparsity follows the layout; an implicit (unstored) zero is not multiplied in,
+    while an explicitly stored zero drives the product to zero.
+
+    '
+  for:
+  - _sparse_csr_prod
+  - _sparse_csr_prod.dim_dtype
+  - _sparse_csr_prod.dim_dtype_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_csr_sum
   description: 'Reduces a 2-D sparse CSR tensor along dim and returns a sparse CSR
     tensor. Only stored entries participate, so the result sparsity follows the
@@ -19246,6 +19449,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: sparse_mm_reduce_impl_backward
+  description: |
+    Backward of aten::_sparse_mm_reduce_impl: computes the (grad_self,
+    grad_other) pair for the SpMM reduce forward over a 2-D CSR tensor (M, K),
+    a dense grad_out (M, N) and weight (K, N) with sum / mean / amax / amin
+    reductions. grad_self keeps the input's CSR structure (mean divides by the
+    row's stored nnz; amax/amin route the gradient through the forward's
+    arg_out indices); grad_other scatters val * grad_out[row] back onto the
+    weight rows. output_mask gates the two returns.
+  for:
+  - _sparse_mm_reduce_impl_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_resize_
   description: |
     Resizes a sparse COO tensor in place to the requested sizes and
@@ -22669,11 +22890,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     - Tensor
   stages:
     - alpha: '5.5.0'
+- id: validate_sparse_bsc_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_bsc_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: validate_sparse_bsr_tensor_args
   description: |
     Validate BSR tensor metadata and compressed index invariants.
   for:
     - _validate_sparse_bsr_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
+- id: validate_sparse_compressed_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_compressed_tensor_args
   labels:
     - aten
     - KernelGen

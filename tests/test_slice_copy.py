@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 # Shape configurations for slice_copy testing: 1D, 2D, 3D and higher-rank tensors.
 SLICE_COPY_SHAPES = [
@@ -50,7 +51,11 @@ _ALL_NON_COMPLEX_DTYPES = list(
 _COMPLEX_DTYPES = (
     [torch.complex64]
     if cfg.QUICK_MODE
-    else [torch.complex32, torch.complex64, torch.complex128]
+    else [
+        torch.complex32,
+        torch.complex64,
+        pytest.param(torch.complex128, marks=_SKIP_FP64),
+    ]
 )
 
 
@@ -300,6 +305,11 @@ def test_slice_copy_complex(dtype):
         pytest.skip("complex128 is not supported by this device")
     # Triton exposes no complex scalar type, so the kernel copies complex data
     # through view_as_real; check against ATen on every kernel path.
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.complex32,
+        torch.complex128,
+    ):
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6, 5), dtype)
 
     cases = [
@@ -321,6 +331,11 @@ def test_slice_copy_lazy_conj_neg(dtype):
     # A conj/neg view carries the flag lazily: the raw bytes are un-negated, so
     # a plain bit copy would return the wrong values. ATen resolves them and
     # returns a tensor with the flag cleared.
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.complex32,
+        torch.complex128,
+    ):
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6), dtype)
     lazy = inp.conj() if dtype.is_complex else torch.ops.aten._neg_view(inp)
     ref_out = _aten_slice_copy(lazy, 1, 1, 5, 2)
@@ -417,6 +432,11 @@ def test_slice_copy_out_vs_aten_all_dtypes(dtype):
     # Compare slice_copy.Tensor_out against ATen directly for every dtype. The
     # reference runs on the reference device (CPU under --ref=cpu), so allocate
     # its out= there too.
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.complex32,
+        torch.complex128,
+    ):
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((5, 9), dtype)
     ref_inp = utils.to_reference(inp)
     for dim, start, end, step in [(0, 1, 5, 2), (1, 2, 8, 3), (1, 0, 9, 1)]:
@@ -435,6 +455,11 @@ def test_slice_copy_out_vs_aten_all_dtypes(dtype):
 def test_slice_copy_out_mismatched_size(dtype):
     # ATen resizes a mismatched non-empty out (with a deprecation warning) rather
     # than raising; the result must land in the resized tensor.
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.complex32,
+        torch.complex128,
+    ):
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6), dtype)
     ref_slice = _aten_slice_copy(inp, 1, 1, 5, 2)
 
@@ -452,6 +477,11 @@ def test_slice_copy_out_non_contiguous(dtype):
     # The kernels store at flat offsets, which is only valid for a contiguous
     # out. A transposed / strided / permuted out must still be filled correctly
     # and must not touch storage outside the view.
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.complex32,
+        torch.complex128,
+    ):
+        pytest.skip("enflame does not support complex32/complex128")
     inp = _make_input((4, 6), dtype)
     ref_slice = _aten_slice_copy(inp, 1, 1, 5, 2)  # (4, 2)
 
@@ -541,6 +571,11 @@ def test_slice_copy_out_device_mismatch():
 def test_slice_copy_out_overlapping(dtype):
     # out aliasing the input storage: slice_copy reads the whole slice before
     # writing, so a forward-overlapping out must see the original values.
+    if flag_gems.vendor_name == "enflame" and dtype in (
+        torch.complex32,
+        torch.complex128,
+    ):
+        pytest.skip("enflame does not support complex32/complex128")
     for out_lo, dim, start, end, step in [
         (1, 1, 0, 2, 1),  # out shifted forward by one column
         (1, 1, 1, 5, 2),  # out is exactly the sliced region

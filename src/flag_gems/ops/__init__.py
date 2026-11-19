@@ -393,6 +393,7 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
 from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
+from flag_gems.ops._sparse_addmm import _sparse_addmm, _sparse_addmm_out
 from flag_gems.ops._sparse_log_softmax import (
     _sparse_log_softmax,
     _sparse_log_softmax_int,
@@ -408,6 +409,9 @@ from flag_gems.ops._sparse_mask_projection import (
 )
 from flag_gems.ops._sparse_mm import _sparse_mm
 from flag_gems.ops._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
+from flag_gems.ops._sparse_mm_reduce_impl_backward import (
+    _sparse_mm_reduce_impl_backward,
+)
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
 from flag_gems.ops._sparse_semi_structured_apply_dense import (
@@ -481,8 +485,14 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
 from flag_gems.ops._validate_compressed_sparse_indices import (
     _validate_compressed_sparse_indices,
 )
+from flag_gems.ops._validate_sparse_bsc_tensor_args import (
+    _validate_sparse_bsc_tensor_args,
+)
 from flag_gems.ops._validate_sparse_bsr_tensor_args import (
     _validate_sparse_bsr_tensor_args,
+)
+from flag_gems.ops._validate_sparse_compressed_tensor_args import (
+    _validate_sparse_compressed_tensor_args,
 )
 from flag_gems.ops._validate_sparse_coo_tensor_args import (
     _validate_sparse_coo_tensor_args,
@@ -953,6 +963,8 @@ from flag_gems.ops.greater_equal import (
     greater_equal,
     greater_equal_,
     greater_equal_scalar,
+    greater_equal_scalar_,
+    greater_equal_tensor_,
 )
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler import grid_sampler
@@ -1193,6 +1205,7 @@ from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matmul_backward import matmul_backward
 from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
+from flag_gems.ops.matrix_H import matrix_H
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
@@ -1537,6 +1550,7 @@ from flag_gems.ops.sparse_coo_tensor_with_dims_and_tensors import (
 )
 from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from flag_gems.ops.sparse_csr_prod import sparse_csr_prod, sparse_csr_prod_out
 from flag_gems.ops.sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
@@ -2148,6 +2162,8 @@ __all__ = [
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
     "_sobol_engine_scramble_",
+    "_sparse_addmm",
+    "_sparse_addmm_out",
     "_sparse_log_softmax",
     "_sparse_log_softmax_backward_data",
     "_sparse_log_softmax_backward_data_out",
@@ -2157,6 +2173,7 @@ __all__ = [
     "_sparse_mask_projection_out",
     "_sparse_mm",
     "_sparse_mm_reduce_impl",
+    "_sparse_mm_reduce_impl_backward",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
     "_sparse_semi_structured_apply_dense",
@@ -2206,7 +2223,9 @@ __all__ = [
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_validate_compressed_sparse_indices",
+    "_validate_sparse_bsc_tensor_args",
     "_validate_sparse_bsr_tensor_args",
+    "_validate_sparse_compressed_tensor_args",
     "_validate_sparse_coo_tensor_args",
     "_validate_sparse_csc_tensor_args",
     "_validate_sparse_csr_tensor_args",
@@ -2671,6 +2690,8 @@ __all__ = [
     "greater_equal",
     "greater_equal_",
     "greater_equal_scalar",
+    "greater_equal_scalar_",
+    "greater_equal_tensor_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -2945,6 +2966,7 @@ __all__ = [
     "matmul_backward",
     "matrix_exp",
     "matrix_exp_backward",
+    "matrix_H",
     "matrix_power",
     "matrix_power_out",
     "max",
@@ -3306,6 +3328,8 @@ __all__ = [
     "sparse_coo_tensor_with_dims_out",
     "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
+    "sparse_csr_prod",
+    "sparse_csr_prod_out",
     "sparse_csr_sum",
     "sparse_csr_sum_out",
     "sparse_csr_tensor",

@@ -468,7 +468,7 @@ def _grouped_mm_quantized(
     if not is_int8 and self.dtype not in _E4M3_DTYPES:
         raise TypeError("the quantized grouped GEMM requires INT8 or E4M3 inputs")
 
-    logger.debug("GEMS_METAX GROUPED_MM_W8A8")
+    logger.debug("GEMS_METAX GROUPED_GEMM_W8A8")
     if scale_result is not None:
         raise RuntimeError("scale_result is not supported for quantized grouped GEMM")
     output_dtype = torch.bfloat16 if out_dtype is None else out_dtype
@@ -640,7 +640,7 @@ def _expert_offsets(
         tl.store(ActiveGroups + E, tl.sum(active.to(tl.int32), 0))
 
 
-def grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
+def grouped_gemm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
     """Write unpadded grouped NT GEMM into caller-owned BF16 C.
 
     A[M,K] and B[E,N,K] must have matching INT8 or E4M3 dtypes.
@@ -653,7 +653,7 @@ def grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
     """
     tensors = (A, As, B, Bs, C, m_indices, m_rows)
     if not all(isinstance(t, torch.Tensor) for t in tensors):
-        raise TypeError("all grouped_mm_w8a8 arguments must be tensors")
+        raise TypeError("all grouped_gemm_w8a8 arguments must be tensors")
     if A.ndim != 2 or B.ndim != 3:
         raise ValueError("A must be [M,K] and B must be [E,N,K]")
     m, k = A.shape

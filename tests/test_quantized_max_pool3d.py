@@ -462,6 +462,10 @@ def test_quantized_max_pool3d_out(
     _assert_qpool_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool3d_out
 @pytest.mark.parametrize(
     "out_shape", [(1, 1, 1, 1, 1), (4, 4, 4, 4, 4), (1, 2, 3, 3, 4)]
@@ -497,6 +501,10 @@ def test_quantized_max_pool3d_out_resizes(out_shape):
     _assert_qpool_equal(out_q, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool3d_out
 @pytest.mark.parametrize("out_qparams", [(0.9, 7), (1.0, 0), (0.02, 200)])
 def test_quantized_max_pool3d_out_adopts_input_qparams(out_qparams):
@@ -574,6 +582,10 @@ def test_quantized_max_pool3d_out_preserves_storage_offset():
     assert bool((big[0].int_repr() == ZERO_POINT).all())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="quantized tensor creation not supported on this device",
+)
 @pytest.mark.quantized_max_pool3d_out
 def test_quantized_max_pool3d_out_non_contiguous():
     """A non-contiguous ``out`` of the right shape keeps its strides.
