@@ -58,22 +58,14 @@ def _reference_input(inp):
     return tu.to_reference(inp)
 
 
-def _musa_selected_triangle(inp, uplo):
-    import numpy as np
-
-    array = inp.detach().resolve_conj().resolve_neg().numpy()
-    # Some LAPACK builds inspect the ignored triangle before solving. Zero it
-    # so ignored NaN/Inf cannot affect the reference; UPLO still selects the
-    # original lower or upper triangle, including its real diagonal.
-    return np.tril(array) if uplo.upper() == "L" else np.triu(array)
-
-
 class _MusaCpuEigvalsh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, uplo):
         import numpy as np
 
-        values, vectors = np.linalg.eigh(_musa_selected_triangle(inp, uplo), UPLO=uplo)
+        values, vectors = np.linalg.eigh(
+            inp.detach().resolve_conj().resolve_neg().numpy(), UPLO=uplo
+        )
         ctx.save_for_backward(torch.from_numpy(vectors))
         return torch.from_numpy(values)
 
@@ -96,7 +88,7 @@ def _reference_eigvalsh(inp, uplo="L", *, out=None):
         result = _MusaCpuEigvalsh.apply(inp, uplo)
     else:
         result = torch.from_numpy(
-            np.linalg.eigvalsh(_musa_selected_triangle(inp, uplo), UPLO=uplo)
+            np.linalg.eigvalsh(inp.resolve_conj().resolve_neg().numpy(), UPLO=uplo)
         )
     if out is None:
         return result
@@ -512,7 +504,12 @@ def _one_triangle_matrix(dtype, uplo, payload, payload_triangle):
     on the diagonal) with ``payload`` written into the triangle UPLO selects
     ("selected") or into the other one ("ignored").
     """
-    device = flag_gems.device
+    # MUSA masked writes corrupt the untouched triangle of complex tensors.
+    device = (
+        "cpu"
+        if flag_gems.vendor_name == "mthreads" and dtype.is_complex
+        else flag_gems.device
+    )
     side = _TRIANGLE_SIDE
     mat = torch.zeros((side, side), dtype=dtype, device=device)
     square = torch.ones((side, side), dtype=torch.bool, device=device)
@@ -528,7 +525,7 @@ def _one_triangle_matrix(dtype, uplo, payload, payload_triangle):
     else:
         target = upper if is_lower else lower
     mat[target] = payload
-    return mat
+    return mat.to(flag_gems.device)
 
 
 # nan or inf in the triangle UPLO ignores leaves the finite spectrum unchanged;
@@ -608,7 +605,7 @@ _COMPLEX_DIAGONAL_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype,uplo", _COMPLEX_DIAGONAL_CASES)
 def test_linalg_eigvalsh_complex_diagonal(dtype, uplo):
     side = 4
-    device = flag_gems.device
+    device = "cpu" if flag_gems.vendor_name == "mthreads" else flag_gems.device
     mat = torch.zeros((side, side), dtype=dtype, device=device)
     square = torch.ones((side, side), dtype=torch.bool, device=device)
     mat[torch.tril(square, -1)] = 0.25 + 0.1j
@@ -616,6 +613,7 @@ def test_linalg_eigvalsh_complex_diagonal(dtype, uplo):
     mat.diagonal().copy_(
         torch.tensor([1 + 5j, 2 + 7j, 3 + 9j, 4 + 11j], dtype=dtype, device=device)
     )
+    mat = mat.to(flag_gems.device)
     ref_inp = _reference_input(mat)
 
     ref_out = _reference_eigvalsh(ref_inp, uplo)
