@@ -1325,7 +1325,6 @@ _FULL_CONFIG = (
     ("deg2rad", deg2rad),
     ("deg2rad.out", deg2rad_out),
     ("deg2rad_", deg2rad_),
-    ("deg2rad_backward", deg2rad_backward),
     (
         "dense_dim",
         dense_dim,

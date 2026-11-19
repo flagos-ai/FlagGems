@@ -22,6 +22,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ _SMALL_NUM_WARPS = 1
 _SMALL_INPUT = 8192
 
 
+@libentry()
 @triton.jit
 def _deg2rad_backward_kernel(
     grad_output_ptr, grad_input_ptr, n_elements, scale, BLOCK_SIZE: tl.constexpr
@@ -60,22 +62,21 @@ def _deg2rad_backward_kernel(
     )
 
 
-def deg2rad_backward(grad_output: torch.Tensor, x: torch.Tensor):
+def deg2rad_backward(grad_output: torch.Tensor, x: torch.Tensor = None):
     """Gradient of ``deg2rad``: elementwise ``grad_output * (pi / 180)``.
 
     Args:
         grad_output: Gradient w.r.t. the ``deg2rad`` output.
-        x: Original input tensor (used only for shape/dtype/device).
 
     Returns:
-        Gradient w.r.t. the input, with the same dtype as ``x``.
+        Gradient w.r.t. the input, with the same dtype as ``grad_output``.
     """
     logger.debug("GEMS DEG2RAD_BACKWARD")
     if grad_output.numel() == 0:
-        return torch.empty(grad_output.shape, dtype=x.dtype, device=x.device)
+        return torch.empty_like(grad_output)
 
     grad_contig = grad_output.contiguous()
-    grad_input = torch.empty(grad_contig.shape, dtype=x.dtype, device=x.device)
+    grad_input = torch.empty_like(grad_contig)
     n_elements = grad_contig.numel()
     if n_elements <= _SMALL_INPUT:
         block_size = _SMALL_BLOCK_SIZE
@@ -110,12 +111,12 @@ class Deg2RadFunction(torch.autograd.Function):
     def forward(ctx, x):
         from flag_gems.ops.deg2rad import _deg2rad_impl
 
-        ctx.save_for_backward(x)
+        # The kernel only needs grad_output, so nothing is saved for backward:
+        # saving x would keep it alive for no reason.
         return _deg2rad_impl(x)
 
     @staticmethod
     def backward(ctx, grad_output):
-        (x,) = ctx.saved_tensors
         if not ctx.needs_input_grad[0]:
             return None
-        return deg2rad_backward(grad_output, x)
+        return deg2rad_backward(grad_output)

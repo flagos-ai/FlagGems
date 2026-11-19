@@ -70,7 +70,7 @@ def deg2rad(x: torch.Tensor):
         isinstance(x, torch.Tensor)
         and x.requires_grad
         and torch.is_grad_enabled()
-        and x.is_complex() is False
+        and not x.is_complex()
     ):
         from flag_gems.ops.deg2rad_backward import Deg2RadFunction
 
