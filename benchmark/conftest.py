@@ -59,13 +59,22 @@ CASE_LISTS = []
 REPORT_FILE = "benchmark_result.json"
 
 
-def update_result(op, data):
+def update_result(op, data, *, aggregate_by_dtype=False):
     if not Config.record_json:
         return
 
-    TEST_RESULTS.setdefault(op, {})
-    TEST_RESULTS[op].setdefault("details", [])
-    TEST_RESULTS[op]["details"].append(data)
+    details = TEST_RESULTS.setdefault(op, {}).setdefault("details", [])
+    if aggregate_by_dtype:
+        for row in data["result"]:
+            row["test_case"] = Config.current_nodeid
+        # Optest reads one result block per dtype. Keep latency-only rows with
+        # their native skip reason so they never enter native speedup averages.
+        fields = ("dtype", "mode", "level", "native_baseline_skip_reason")
+        for group in details:
+            if all(group.get(key) == data.get(key) for key in fields):
+                group["result"].extend(data["result"])
+                return
+    details.append(data)
 
 
 def update_case_list(data):
@@ -409,6 +418,17 @@ def pytest_addoption(parser):
     except ValueError:
         pass
 
+    parser.addoption(
+        "--kernel-check",
+        action="store_true",
+        default=False,
+        help=(
+            "Profile the torch baseline for each operator case and verify "
+            "that at least one device kernel is launched. Operators that do "
+            "not invoke any device kernel are reported at session end."
+        ),
+    )
+
     # Add dynamic operator override options
     add_override_arguments(parser)
 
@@ -477,6 +497,20 @@ def pytest_configure(config):
         )
 
     Config.profile_hook = config.hook.pytest_flaggems_profile_scope
+
+    Config.kernel_check = config.getoption("--kernel-check")
+    Config.kernel_check_records = []
+    if Config.kernel_check and (
+        Config.preflight_only
+        or Config.profile_only
+        or Config.reference_only
+        or Config.list_cases
+        or Config.query
+    ):
+        raise pytest.UsageError(
+            "--kernel-check cannot be combined with --preflight-only, "
+            "--profile-only, --reference-only, --list-cases or --query."
+        )
 
     level_value = config.getoption("--level")
     if level_value is None:
@@ -817,6 +851,33 @@ def pytest_sessionfinish(session, exitstatus):
             record["status"] != "passed" for record in Config.preflight_records
         )
         if incomplete and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if Config is not None and getattr(Config, "kernel_check", False):
+        # Per-operator check: every operator must have at least one record
+        # where invoked_kernel is True.  This prevents a kernel-launching
+        # operator in the same file from masking a no-kernel operator.
+        from collections import defaultdict
+
+        by_operator = defaultdict(list)
+        for record in Config.kernel_check_records:
+            by_operator[record.get("operator", "<unknown>")].append(record)
+
+        no_kernel_ops = sorted(
+            op
+            for op, records in by_operator.items()
+            if not any(r.get("invoked_kernel") for r in records)
+        )
+        if no_kernel_ops and session.exitstatus == pytest.ExitCode.OK:
+            import sys
+
+            print(
+                f"\n⚠️  kernel-check FAILED — operators with no device kernel: "
+                f"{', '.join(no_kernel_ops)}",
+                file=sys.stderr,
+            )
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        # Also fail when there are no records at all (nothing was checked).
+        if not Config.kernel_check_records and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is None or Config.case_ids is None:
         return

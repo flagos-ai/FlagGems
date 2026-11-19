@@ -20,7 +20,7 @@ import triton.language as tl
 import triton.language.extra.smt as smt
 
 from flag_gems import runtime
-from flag_gems.fused import outer  # noqa: E402
+from flag_gems.deprecated import outer  # noqa: E402
 from flag_gems.ops import mul  # noqa: E402
 from flag_gems.utils import libentry, libtuner
 

@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 def _make_sparse_coo(shape, nnz, dtype, device):
@@ -43,7 +44,9 @@ def _make_sparse_coo(shape, nnz, dtype, device):
 @pytest.mark.parametrize("N", [1, 8, 64])
 @pytest.mark.parametrize("nnz", [0, 1, 10, 100])
 # CUDA aten::hspmm only supports float32/float64 (fp16/bf16 not implemented)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_hspmm_accuracy(M, K, N, nnz, dtype):
     """Test hspmm correctness against dense reference."""
     device = flag_gems.device
@@ -71,7 +74,9 @@ def test_hspmm_accuracy(M, K, N, nnz, dtype):
 
 @pytest.mark.hspmm
 # CUDA aten::hspmm only supports float32/float64 (fp16/bf16 not implemented)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_hspmm_non_contiguous(dtype):
     """Test hspmm with non-contiguous mat2."""
     device = flag_gems.device
@@ -92,7 +97,9 @@ def test_hspmm_non_contiguous(dtype):
 
 @pytest.mark.hspmm
 # CUDA aten::hspmm only supports float32/float64 (fp16/bf16 not implemented)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_hspmm_uncoalesced_input(dtype):
     """Test hspmm with uncoalesced sparse input."""
     device = flag_gems.device

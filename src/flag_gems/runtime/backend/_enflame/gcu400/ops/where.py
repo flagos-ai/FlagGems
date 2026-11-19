@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.pointwise_dynamic import CodeGenConfig, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(
     is_tensor=[True, True, True],
     promotion_methods=[(1, 2, "NO_OPMATH")],
+    config=CodeGenConfig(8192, (48, 1, 1), 4, True, prefer_1d_tile=True),
 )
 @triton.jit
 def where_inner(condition, self, other):
