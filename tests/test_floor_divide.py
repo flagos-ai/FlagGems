@@ -154,6 +154,9 @@ def test_floor_divide_int(shape, dtype):
     if cfg.TO_CPU:
         inp1 = replace_zeros(inp1)
         inp2 = replace_zeros(inp2)
+    if IS_KUNLUNXIN and not inp1.is_floating_point():
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
 
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
@@ -197,6 +200,9 @@ def test_floor_divide_int_(shape, dtype):
     )
 
     if cfg.TO_CPU:
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
+    if IS_KUNLUNXIN and not inp1.is_floating_point():
         inp1 = replace_zeros(inp1)
         inp2 = replace_zeros(inp2)
 
