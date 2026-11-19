@@ -35,7 +35,6 @@ class ChebyshevPolynomialTBenchmark(base.GenericBenchmark):
             (64, 64, 2**i) for i in range(0, 20, 4)
         ]
 
-
     def get_tflops(self, op, *args, **kwargs):
         shape = list(args[0].shape)
         return torch.tensor(shape).prod().item()

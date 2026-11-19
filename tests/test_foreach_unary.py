@@ -23,6 +23,7 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_unary import UNARY_OPS
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     fp64_is_supported,
     gems_assert_close,
@@ -153,12 +154,12 @@ def _sample(shape, dtype, device, name=None):
     )
 
 
-def _assert_lists_close(res, ref, name):
+def _assert_lists_close(res, ref, name, *, equal_nan=False):
     assert len(res) == len(ref)
     for got, want in zip(res, ref):
         assert got.dtype == want.dtype, f"{name}: {got.dtype} != {want.dtype}"
         if got.dtype.is_floating_point or got.dtype.is_complex:
-            gems_assert_close(got, want, got.dtype)
+            gems_assert_close(got, want, got.dtype, equal_nan=equal_nan)
         else:
             gems_assert_equal(got, want)
 
@@ -263,6 +264,13 @@ def test_accuracy_foreach_unary_float(name, dtype):
 def test_accuracy_foreach_unary_int(name, dtype):
     if not _supports(name, dtype):
         return
+    if (
+        name == "sigmoid"
+        and dtype == torch.int32
+        and flag_gems.vendor_name == "enflame"
+        and not utils.TO_CPU
+    ):
+        pytest.skip("Enflame native foreach_sigmoid does not support Int32 reference")
     inp = [_sample((32,), dtype, flag_gems.device, name) for _ in range(3)]
     ref_inp = [to_reference(t) for t in inp]
 
@@ -299,6 +307,15 @@ def test_accuracy_foreach_unary_bool(name):
 def test_accuracy_foreach_unary_complex(name, dtype):
     if not _supports(name, dtype) or UNARY_OPS[name].complex_fn is None:
         return
+    if name == "tanh" and flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native foreach_tanh does not support complex NPU reference")
+    if (
+        flag_gems.vendor_name == "enflame"
+        and not utils.TO_CPU
+        and name
+        in {"neg", "reciprocal", "round", "rsqrt", "sigmoid", "sin", "sinh", "sqrt"}
+    ):
+        pytest.skip("Enflame native foreach does not support this complex reference")
     inp = [_sample((16,), dtype, flag_gems.device) for _ in range(2)]
     ref_inp = [to_reference(t) for t in inp]
 
@@ -670,6 +687,15 @@ def test_accuracy_foreach_unary_complex_large(name, dtype):
     """A large finite complex input must not overflow the modulus."""
     if not _supports(name, dtype) or UNARY_OPS[name].complex_fn is None:
         return
+    if name == "tanh" and flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native foreach_tanh does not support complex NPU reference")
+    if (
+        flag_gems.vendor_name == "enflame"
+        and not utils.TO_CPU
+        and name
+        in {"neg", "reciprocal", "round", "rsqrt", "sigmoid", "sin", "sinh", "sqrt"}
+    ):
+        pytest.skip("Enflame native foreach does not support this complex reference")
     mag = LARGE_COMPLEX[dtype]
     base = torch.tensor([complex(mag, mag), complex(mag, -mag)], dtype=dtype)
     inp = [base.to(flag_gems.device)]
@@ -702,3 +728,18 @@ def test_accuracy_foreach_abs_complex_large(dtype):
 
     assert torch.isfinite(res_out[0]).all(), f"{res_out[0].item()} overflowed"
     _assert_lists_close(res_out, ref_out, "abs")
+
+
+@pytest.mark.foreach_unary
+@pytest.mark.parametrize("name", _op_params(["acos", "asin"]))
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32, torch.int64])
+def test_foreach_inverse_trig_integer_nan(name, dtype):
+    if not _supports(name, dtype):
+        pytest.skip("backend does not support this integral foreach input")
+    inp = [torch.tensor([-2, -1, 0, 1, 2], dtype=dtype, device=flag_gems.device)]
+    reference = _torch_op(name)([to_reference(t) for t in inp])
+    result = _gems_op(name)(inp)
+    assert len(result) == len(inp)
+    for value, source in zip(result, inp):
+        assert value.device == source.device and value.shape == source.shape
+    _assert_lists_close(result, reference, name, equal_nan=True)
