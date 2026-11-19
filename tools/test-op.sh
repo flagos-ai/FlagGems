@@ -25,15 +25,20 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# Containerized backends (kunlunxin, metax, hygon, …) install test deps into
-# the system Python via `pip install .[test]` without activating a venv, so the
-# `coverage` console script may not be on PATH even though the package is
-# installed. Using `python3 -m coverage` reaches the installed module directly
-# without relying on the script being on PATH.
-if ! command -v coverage &>/dev/null; then
-  coverage() { python3 -m coverage "$@"; }
-  export -f coverage
-fi
+# Ensure console scripts installed by 'pip install .[test]' (coverage, pytest,
+# pytest-md-report, …) are on PATH. The native backend gets this automatically
+# from 'source .venv/bin/activate' in the workflow; containerized backends
+# (kunlunxin, metax, hygon, iluvatar, mthreads, thead, enflame) install into
+# the container's system Python without activating anything, so the scripts
+# directory (e.g. /flagos/bin) may be absent from PATH under bash --login.
+# sysconfig.get_path("scripts") returns the directory for whatever python3 is
+# currently in PATH, covering both venv and system installs correctly.
+_py_scripts=$(python3 -c 'import sysconfig; print(sysconfig.get_path("scripts"))')
+case ":${PATH}:" in
+  *":${_py_scripts}:"*) ;;  # already present, nothing to do
+  *) export PATH="${_py_scripts}:${PATH}" ;;
+esac
+unset _py_scripts
 
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
