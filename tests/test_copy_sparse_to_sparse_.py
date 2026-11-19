@@ -24,6 +24,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse layout not supported on this device",
+)
 @pytest.mark.copy_sparse_to_sparse_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("resize", [False, True])
@@ -68,6 +72,10 @@ def test_copy_sparse_to_sparse_self_alias():
     assert flag_gems.copy_sparse_to_sparse_(src, src) is src
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse layout not supported on this device",
+)
 @pytest.mark.copy_sparse_to_sparse_
 def test_copy_sparse_to_sparse_dtype_conversion():
     # Copy converts values to the destination dtype without replacing it.

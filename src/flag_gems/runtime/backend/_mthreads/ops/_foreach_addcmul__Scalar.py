@@ -1,0 +1,480 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+from triton.runtime import driver as _driver
+
+from flag_gems.ops._foreach_binary import (
+    _foreach_addcmul__Scalar as default__foreach_addcmul__Scalar,
+)
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
+
+# Moore Threads hardware does not support fp64.
+_SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
+
+_SLOTS = 16
+_BLOCK = 1024
+_BLOCK_WIDE = 2048
+_WIDE_NUMEL = 1 << 18
+_NUM_WARPS = 4
+_MAX_RANK = 8
+
+# (dtype, block, grid, numels, scalars, alignment) -> (compiled kernel, stream)
+_FAST = {}
+
+
+@triton.jit
+def _apply(a, b, c, v):
+    """MUSA body: ``a + v * b * c`` with fp32 opmath and one final rounding."""
+    af = a.to(tl.float32)
+    return (af + v.to(tl.float32) * b.to(tl.float32) * c.to(tl.float32)).to(a.dtype)
+
+
+@triton.jit
+def _fused(
+    a0,
+    b0,
+    c0,
+    n0,
+    v0,
+    a1,
+    b1,
+    c1,
+    n1,
+    v1,
+    a2,
+    b2,
+    c2,
+    n2,
+    v2,
+    a3,
+    b3,
+    c3,
+    n3,
+    v3,
+    a4,
+    b4,
+    c4,
+    n4,
+    v4,
+    a5,
+    b5,
+    c5,
+    n5,
+    v5,
+    a6,
+    b6,
+    c6,
+    n6,
+    v6,
+    a7,
+    b7,
+    c7,
+    n7,
+    v7,
+    a8,
+    b8,
+    c8,
+    n8,
+    v8,
+    a9,
+    b9,
+    c9,
+    n9,
+    v9,
+    a10,
+    b10,
+    c10,
+    n10,
+    v10,
+    a11,
+    b11,
+    c11,
+    n11,
+    v11,
+    a12,
+    b12,
+    c12,
+    n12,
+    v12,
+    a13,
+    b13,
+    c13,
+    n13,
+    v13,
+    a14,
+    b14,
+    c14,
+    n14,
+    v14,
+    a15,
+    b15,
+    c15,
+    n15,
+    v15,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    slot = tl.program_id(1)
+
+    pa = a0
+    pb = b0
+    pc = c0
+    np = n0
+    pv = v0
+    pa = tl.where(slot == 1, a1, pa)
+    pb = tl.where(slot == 1, b1, pb)
+    pc = tl.where(slot == 1, c1, pc)
+    np = tl.where(slot == 1, n1, np)
+    pv = tl.where(slot == 1, v1, pv)
+    pa = tl.where(slot == 2, a2, pa)
+    pb = tl.where(slot == 2, b2, pb)
+    pc = tl.where(slot == 2, c2, pc)
+    np = tl.where(slot == 2, n2, np)
+    pv = tl.where(slot == 2, v2, pv)
+    pa = tl.where(slot == 3, a3, pa)
+    pb = tl.where(slot == 3, b3, pb)
+    pc = tl.where(slot == 3, c3, pc)
+    np = tl.where(slot == 3, n3, np)
+    pv = tl.where(slot == 3, v3, pv)
+    pa = tl.where(slot == 4, a4, pa)
+    pb = tl.where(slot == 4, b4, pb)
+    pc = tl.where(slot == 4, c4, pc)
+    np = tl.where(slot == 4, n4, np)
+    pv = tl.where(slot == 4, v4, pv)
+    pa = tl.where(slot == 5, a5, pa)
+    pb = tl.where(slot == 5, b5, pb)
+    pc = tl.where(slot == 5, c5, pc)
+    np = tl.where(slot == 5, n5, np)
+    pv = tl.where(slot == 5, v5, pv)
+    pa = tl.where(slot == 6, a6, pa)
+    pb = tl.where(slot == 6, b6, pb)
+    pc = tl.where(slot == 6, c6, pc)
+    np = tl.where(slot == 6, n6, np)
+    pv = tl.where(slot == 6, v6, pv)
+    pa = tl.where(slot == 7, a7, pa)
+    pb = tl.where(slot == 7, b7, pb)
+    pc = tl.where(slot == 7, c7, pc)
+    np = tl.where(slot == 7, n7, np)
+    pv = tl.where(slot == 7, v7, pv)
+    pa = tl.where(slot == 8, a8, pa)
+    pb = tl.where(slot == 8, b8, pb)
+    pc = tl.where(slot == 8, c8, pc)
+    np = tl.where(slot == 8, n8, np)
+    pv = tl.where(slot == 8, v8, pv)
+    pa = tl.where(slot == 9, a9, pa)
+    pb = tl.where(slot == 9, b9, pb)
+    pc = tl.where(slot == 9, c9, pc)
+    np = tl.where(slot == 9, n9, np)
+    pv = tl.where(slot == 9, v9, pv)
+    pa = tl.where(slot == 10, a10, pa)
+    pb = tl.where(slot == 10, b10, pb)
+    pc = tl.where(slot == 10, c10, pc)
+    np = tl.where(slot == 10, n10, np)
+    pv = tl.where(slot == 10, v10, pv)
+    pa = tl.where(slot == 11, a11, pa)
+    pb = tl.where(slot == 11, b11, pb)
+    pc = tl.where(slot == 11, c11, pc)
+    np = tl.where(slot == 11, n11, np)
+    pv = tl.where(slot == 11, v11, pv)
+    pa = tl.where(slot == 12, a12, pa)
+    pb = tl.where(slot == 12, b12, pb)
+    pc = tl.where(slot == 12, c12, pc)
+    np = tl.where(slot == 12, n12, np)
+    pv = tl.where(slot == 12, v12, pv)
+    pa = tl.where(slot == 13, a13, pa)
+    pb = tl.where(slot == 13, b13, pb)
+    pc = tl.where(slot == 13, c13, pc)
+    np = tl.where(slot == 13, n13, np)
+    pv = tl.where(slot == 13, v13, pv)
+    pa = tl.where(slot == 14, a14, pa)
+    pb = tl.where(slot == 14, b14, pb)
+    pc = tl.where(slot == 14, c14, pc)
+    np = tl.where(slot == 14, n14, np)
+    pv = tl.where(slot == 14, v14, pv)
+    pa = tl.where(slot == 15, a15, pa)
+    pb = tl.where(slot == 15, b15, pb)
+    pc = tl.where(slot == 15, c15, pc)
+    np = tl.where(slot == 15, n15, np)
+    pv = tl.where(slot == 15, v15, pv)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < np
+    a = tl.load(pa + offs, mask=mask, other=0.0)
+    b = tl.load(pb + offs, mask=mask, other=0.0)
+    c = tl.load(pc + offs, mask=mask, other=0.0)
+    tl.store(pa + offs, _apply(a, b, c, pv), mask=mask)
+
+
+@triton.jit(
+    do_not_specialize=[
+        "n",
+        "v",
+        "d0",
+        "d1",
+        "d2",
+        "d3",
+        "d4",
+        "d5",
+        "d6",
+        "d7",
+        "t0",
+        "t1",
+        "t2",
+        "t3",
+        "t4",
+        "t5",
+        "t6",
+        "t7",
+    ]
+)
+def _strided(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    n,
+    v,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    t0,
+    t1,
+    t2,
+    t3,
+    t4,
+    t5,
+    t6,
+    t7,
+    RANK: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    rem = offs
+    src = offs * 0
+    if RANK >= 8:
+        src += (rem % d7) * t7
+        rem = rem // d7
+    if RANK >= 7:
+        src += (rem % d6) * t6
+        rem = rem // d6
+    if RANK >= 6:
+        src += (rem % d5) * t5
+        rem = rem // d5
+    if RANK >= 5:
+        src += (rem % d4) * t4
+        rem = rem // d4
+    if RANK >= 4:
+        src += (rem % d3) * t3
+        rem = rem // d3
+    if RANK >= 3:
+        src += (rem % d2) * t2
+        rem = rem // d2
+    if RANK >= 2:
+        src += (rem % d1) * t1
+        rem = rem // d1
+    src += rem * t0
+    a = tl.load(a_ptr + src, mask=mask, other=0.0)
+    b = tl.load(b_ptr + src, mask=mask, other=0.0)
+    c = tl.load(c_ptr + src, mask=mask, other=0.0)
+    tl.store(a_ptr + src, _apply(a, b, c, v), mask=mask)
+
+
+def _config(numel):
+    return _BLOCK_WIDE if numel >= _WIDE_NUMEL else _BLOCK
+
+
+def _dispatch(args, k, n_blocks, block, key):
+    """Launch the fused kernel, replaying the compiled variant once it exists."""
+    entry = _FAST.get(key)
+    if entry is not None:
+        compiled, stream = entry
+        try:
+            compiled.run(
+                n_blocks,
+                k,
+                1,
+                stream,
+                compiled.function,
+                compiled.packed_metadata,
+                None,
+                None,
+                None,
+                *args,
+                block,
+            )
+            return
+        except Exception:
+            # A stale handle (driver reload, changed hook set) must not break the
+            # call: drop it and take the ordinary launch path instead.
+            _FAST.pop(key, None)
+
+    compiled = _fused[(n_blocks, k)](*args, BLOCK=block, num_warps=_NUM_WARPS)
+    try:
+        drv = _driver.active
+        _FAST[key] = (compiled, drv.get_current_stream(drv.get_current_device()))
+    except Exception:
+        _FAST.pop(key, None)
+
+
+def _launch_chunk(rows, scalars, dtype):
+    """One launch for up to ``_SLOTS`` contiguous rows of (a, b, c, numel, value)."""
+    k = len(rows)
+    padded = list(rows) + [rows[0]] * (_SLOTS - k)
+    args = []
+    for s in range(_SLOTS):
+        a, b, c, numel, _ = padded[s]
+        args += [a, b, c, numel if s < k else 0, scalars[s] if s < k else 0.0]
+
+    numel_max = max(numel for _, _, _, numel, _ in rows)
+    block = _config(numel_max)
+    n_blocks = (numel_max + block - 1) // block
+    key = (
+        dtype,
+        block,
+        (n_blocks, k),
+        tuple(numel for _, _, _, numel, _ in rows),
+        tuple(scalars),
+        tuple(t.data_ptr() & 15 for row in rows for t in row[:3]),
+    )
+    _dispatch(args, k, n_blocks, block, key)
+
+
+def _collapse(t):
+    """Metadata-only (shape, stride) compaction: drop 1s, merge adjacent dims."""
+    dims = []
+    strides = []
+    for size, stride in zip(t.shape, t.stride()):
+        if size == 1:
+            continue
+        if dims and strides[-1] == stride * size:
+            dims[-1] *= size
+        else:
+            dims.append(size)
+            strides.append(stride)
+    return dims[::-1], strides[::-1]
+
+
+def _launch_strided(a, b, c, numel, value):
+    dims, strides = _collapse(a)
+    rank = len(dims)
+    if rank > _MAX_RANK:
+        raise RuntimeError("_foreach_addcmul__Scalar: unsupported tensor rank")
+    pd = dims + [1] * (_MAX_RANK - rank)
+    pt = strides + [0] * (_MAX_RANK - rank)
+    _strided[((numel + _BLOCK - 1) // _BLOCK,)](
+        a,
+        b,
+        c,
+        numel,
+        value,
+        pd[0],
+        pd[1],
+        pd[2],
+        pd[3],
+        pd[4],
+        pd[5],
+        pd[6],
+        pd[7],
+        pt[0],
+        pt[1],
+        pt[2],
+        pt[3],
+        pt[4],
+        pt[5],
+        pt[6],
+        pt[7],
+        RANK=rank,
+        BLOCK=_BLOCK,
+        num_warps=_NUM_WARPS,
+    )
+
+
+def _use_triton_kernel(t):
+    return t.device.type == "musa" and t.dtype in _SUPPORTED_DTYPES
+
+
+def _scalar_values(value, count):
+    """One float per list entry, or ``None`` when the value is not scalar-like."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return [float(value)] * count
+    try:
+        if isinstance(value, torch.Tensor) and value.dim() == 0:
+            return [float(value.item())] * count
+    except Exception:
+        return None
+    return None
+
+
+def _foreach_addcmul__Scalar(self, tensor1, tensor2, value=1):
+    logger.debug("GEMS_MTHREADS _FOREACH_ADDCMUL__SCALAR")
+
+    count = len(self)
+    if count == 0:
+        return None
+    scalars = _scalar_values(value, count)
+    if scalars is None:
+        return default__foreach_addcmul__Scalar(self, tensor1, tensor2, value)
+
+    tensors = list(self)
+    for a, b, c in zip(tensors, tensor1, tensor2):
+        if not isinstance(a, torch.Tensor) or not _use_triton_kernel(a):
+            return default__foreach_addcmul__Scalar(self, tensor1, tensor2, value)
+        if not _use_triton_kernel(b) or not _use_triton_kernel(c):
+            return default__foreach_addcmul__Scalar(self, tensor1, tensor2, value)
+
+    device = tensors[0].device
+    rows = []
+    scalars_ = []
+    dtype = None
+    with torch_device_fn.device(device):
+        for a, b, c, v in zip(tensors, tensor1, tensor2, scalars):
+            numel = a.numel()
+            if numel == 0:
+                continue
+            if b.numel() != numel or c.numel() != numel:
+                return default__foreach_addcmul__Scalar(self, tensor1, tensor2, value)
+            if not (a.is_contiguous() and b.is_contiguous() and c.is_contiguous()):
+                if rows:
+                    _launch_chunk(rows, scalars_, dtype)
+                    rows, scalars_ = [], []
+                _launch_strided(a, b, c, numel, v)
+                continue
+            if dtype is not None and a.dtype is not dtype:
+                if rows:
+                    _launch_chunk(rows, scalars_, dtype)
+                    rows, scalars_ = [], []
+            dtype = a.dtype
+            rows.append((a, b, c, numel, v))
+            scalars_.append(v)
+            if len(rows) == _SLOTS:
+                _launch_chunk(rows, scalars_, dtype)
+                rows, scalars_ = [], []
+        if rows:
+            _launch_chunk(rows, scalars_, dtype)
+
+    return None

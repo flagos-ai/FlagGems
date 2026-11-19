@@ -154,15 +154,23 @@ def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
 
 
 def load_operators_yaml() -> dict[str, dict]:
-    """Load operators.yaml and return a dict keyed by operator id."""
-    yaml_path = Path(OPERATORS_YAML)
-    if not yaml_path.exists():
-        print(f"::error::Cannot find {OPERATORS_YAML}", file=sys.stderr)
-        sys.exit(2)
-    with open(yaml_path) as f:
-        data = yaml.safe_load(f)
-    ops = data.get("ops", [])
-    return {op["id"]: op for op in ops if "id" in op}
+    """Load active and deprecated metadata, keyed by operator ID."""
+    operators = {}
+    for path in (Path(OPERATORS_YAML), Path("conf/deprecated_operators.yaml")):
+        if not path.exists():
+            print(f"::error::Cannot find {path}", file=sys.stderr)
+            sys.exit(2)
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        for op in data.get("ops", []):
+            if "id" in op:
+                if op["id"] in operators:
+                    print(
+                        f"::error::Duplicate operator ID: {op['id']}", file=sys.stderr
+                    )
+                    sys.exit(2)
+                operators[op["id"]] = op
+    return operators
 
 
 def filename_to_operator_id(filename: str) -> str | None:
@@ -293,8 +301,8 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
     changed_ops = set()
 
     for filepath in changed_files:
-        # Case 1: operators.yaml itself changed -> check all operators in diff
-        if filepath == OPERATORS_YAML:
+        # Case 1: either operator inventory changed -> validate metadata
+        if filepath in (OPERATORS_YAML, "conf/deprecated_operators.yaml"):
             # When operators.yaml changes, we flag all operators for full check
             # In practice, individual checks will determine what to validate
             changed_ops.add("__operators_yaml_changed__")
@@ -422,7 +430,11 @@ def main():
     # Set outputs
     ops_json = json.dumps(changed_ops)
     files_json = json.dumps(changed_files)
-    has_changes = "true" if changed_ops else "false"
+    metadata_changed = any(
+        path in (OPERATORS_YAML, "conf/deprecated_operators.yaml")
+        for path in changed_files
+    )
+    has_changes = "true" if changed_ops or metadata_changed else "false"
 
     set_output("changed_operators", ops_json)
     set_output("changed_files", files_json)

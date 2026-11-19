@@ -326,6 +326,10 @@ def test_accuracy_ccol_indices_copy_input_not_mutated():
     assert torch.equal(before, inp.ccol_indices())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSR layout not supported on this device",
+)
 @pytest.mark.ccol_indices_copy
 @pytest.mark.parametrize(
     "layout,layout_name",
@@ -478,6 +482,10 @@ def test_accuracy_ccol_indices_copy_out_dtype_mismatch():
     assert "dtype" in ref_exc_msg
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse CSR layout not supported on this device",
+)
 @pytest.mark.ccol_indices_copy_out
 def test_accuracy_ccol_indices_copy_out_rejects_non_column_compressed():
     inp = _make_csc((4, 6), 6).to_sparse_csr()
