@@ -30,7 +30,10 @@ def test_divide(shape, dtype, caplog, request):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.ops.aten.divide.Tensor(ref_inp1, ref_inp2)
-    original = [(x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in (inp1, inp2)]
+    original = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr())
+        for x in (inp1, inp2)
+    ]
     saved = [x.clone() for x in (inp1, inp2)]
     with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.divide)):
         res_out = flag_gems.divide(inp1, inp2)
@@ -41,7 +44,13 @@ def test_divide(shape, dtype, caplog, request):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
     for value, snapshot, metadata in zip((inp1, inp2), saved, original):
-        assert (value.device, value.dtype, tuple(value.shape), value.stride(), value.data_ptr()) == metadata
+        assert (
+            value.device,
+            value.dtype,
+            tuple(value.shape),
+            value.stride(),
+            value.data_ptr(),
+        ) == metadata
         assert torch.equal(
             value.detach().cpu().reshape(-1).view(torch.uint8),
             snapshot.detach().cpu().reshape(-1).view(torch.uint8),
