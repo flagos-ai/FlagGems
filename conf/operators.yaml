@@ -2535,6 +2535,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: binary_cross_entropy_with_logits_backward
+  description: First-order autograd rule for binary_cross_entropy_with_logits implemented
+    with Triton kernels or zero-copy gradient views.
+  for:
+  - binary_cross_entropy_with_logits
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: binomial
   description: 'Draws samples from a binomial distribution with the number of trials
 
