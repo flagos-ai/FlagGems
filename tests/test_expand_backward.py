@@ -34,10 +34,12 @@ def test_expand_backward(input_shape, size, dtype):
     expanded = inp.expand(tuple(size))
     grad_output = torch.randn(expanded.shape, dtype=dtype, device=flag_gems.device)
 
-    # Native autograd chain: ATen's ExpandBackward0 node (a sum_to_size).
-    ref_inp = inp.detach().clone().requires_grad_(True)
+    # Native autograd chain: ATen's ExpandBackward0 node (a sum_to_size).  The
+    # reference follows utils.to_reference so --ref=cpu builds it on the CPU.
+    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
+    ref_grad_output = utils.to_reference(grad_output, True)
     (ref_grad,) = torch.autograd.grad(
-        ref_inp.expand(tuple(grad_output.shape)), (ref_inp,), (grad_output,)
+        ref_inp.expand(tuple(ref_grad_output.shape)), (ref_inp,), (ref_grad_output,)
     )
     res_grad = flag_gems.expand_backward(grad_output, inp)
 
@@ -66,9 +68,10 @@ def test_expand_backward_autograd(input_shape, size, dtype):
     grad_output = torch.randn_like(out)
     (res_grad,) = torch.autograd.grad(out, (inp,), (grad_output,))
 
-    ref_inp = inp.detach().clone().requires_grad_(True)
+    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
+    ref_grad_output = utils.to_reference(grad_output, True)
     (ref_grad,) = torch.autograd.grad(
-        ref_inp.expand(tuple(grad_output.shape)), (ref_inp,), (grad_output,)
+        ref_inp.expand(tuple(ref_grad_output.shape)), (ref_inp,), (ref_grad_output,)
     )
     utils.gems_assert_close(
         res_grad, ref_grad, dtype, atol=1e-2 if dtype != torch.float32 else 1e-4
@@ -83,9 +86,10 @@ def test_expand_backward_non_contiguous(dtype):
     grad_output = torch.randn((2, 5, 8), dtype=dtype, device=flag_gems.device)
     assert not grad_output.transpose(0, 1).contiguous().transpose(0, 1).is_contiguous()
 
-    ref_inp = inp.detach().clone().requires_grad_(True)
+    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
+    ref_grad_output = utils.to_reference(grad_output, True)
     (ref_grad,) = torch.autograd.grad(
-        ref_inp.expand(tuple(grad_output.shape)), (ref_inp,), (grad_output,)
+        ref_inp.expand(tuple(ref_grad_output.shape)), (ref_inp,), (ref_grad_output,)
     )
     res_grad = flag_gems.expand_backward(
         grad_output.transpose(0, 1).contiguous().transpose(0, 1), inp
