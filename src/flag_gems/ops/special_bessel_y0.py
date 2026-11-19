@@ -286,6 +286,12 @@ def special_bessel_y0(A):
         block = _BLOCK_BIG
     else:
         block = min(max(_BLOCK, triton.next_power_of_2(n)), _BLOCK_BIG)
+    # The fat single-warp tiles were tuned for GCU. Their large expression
+    # graphs make CUDA compilation take minutes even for medium inputs.
+    num_warps = _NUM_WARPS
+    if x.device.type != "gcu":
+        block = min(block, 1024)
+        num_warps = 4
     nblocks = triton.cdiv(n, block)
     if nblocks <= _TARGET_ITERS:
         grid_n = nblocks
@@ -306,13 +312,13 @@ def special_bessel_y0(A):
         xw = x.view(-1).view(torch.float32)[:n]
         ow = out.view(-1).view(torch.float32)[:n]
         _bessel_y0_kernel_contig[grid](
-            xw, ow, n, USE_I64=use_i64, BLOCK=block, num_warps=_NUM_WARPS
+            xw, ow, n, USE_I64=use_i64, BLOCK=block, num_warps=num_warps
         )
         return out
 
     if x.is_contiguous():
         _bessel_y0_kernel_contig[grid](
-            x, out, n, USE_I64=use_i64, BLOCK=block, num_warps=_NUM_WARPS
+            x, out, n, USE_I64=use_i64, BLOCK=block, num_warps=num_warps
         )
     else:
         rank = x.dim()
@@ -341,6 +347,6 @@ def special_bessel_y0(A):
             RANK=rank,
             USE_I64=use_i64,
             BLOCK=block,
-            num_warps=_NUM_WARPS,
+            num_warps=num_warps,
         )
     return out
