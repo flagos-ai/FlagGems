@@ -13544,6 +13544,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: max_unpool3d_backward
+  description: The backward computation of `max_unpool3d()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - max_unpool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: maximum
   description: Computes the element-wise maximum of `input` and `other`.
   for:
