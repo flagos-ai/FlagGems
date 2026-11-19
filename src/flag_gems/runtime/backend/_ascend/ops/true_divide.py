@@ -283,7 +283,9 @@ def run(self, other, out=None, **kwargs):
     if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
         sa = a.shape
         sb = b.shape
-        shape = sa if sa == sb else torch.broadcast_shapes(sa, sb)
+        shape = (
+            sa if sa == sb else torch.broadcast_shapes(sa, sb)  # allow-torch-compute
+        )
         if out is None:
             out = torch.empty(shape, dtype=_out_dtype(a, b), device=a.device)
         n = out.numel()
