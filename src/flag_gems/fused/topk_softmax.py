@@ -1,4 +1,4 @@
-# Copyright 2026 FlagOS Contributors
+﻿# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,61 +24,83 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def topk_gating_softmax_kernel(
     input_ptr,
-    finished_ptr,  # interface reserved, not yet used
     output_ptr,
     indices_ptr,
     source_rows_ptr,
     num_rows,
-    k,
     num_experts,
-    start_expert,
-    end_expert,
     renormalize: tl.constexpr,
     INDEX_TY: tl.constexpr,
-    BLOCK_SIZE_ROWS: tl.constexpr,
-    BLOCK_SIZE_EXPERTS: tl.constexpr,
+    K: tl.constexpr,
+    KB: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_E: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    rows = tl.arange(0, BLOCK_SIZE_ROWS) + pid * BLOCK_SIZE_ROWS
-    valid_rows = rows < num_rows
+    rows = pid * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
+    row_mask = rows < num_rows
+    cols = tl.arange(0, BLOCK_E)
+    col_mask = cols < num_experts
 
-    cols = start_expert + tl.arange(0, BLOCK_SIZE_EXPERTS)
-    valid_cols = cols < end_expert
-
+    offs = rows[:, None] * num_experts + cols[None, :]
     logits = tl.load(
-        input_ptr + rows[:, None] * num_experts + cols[None, :],
-        mask=valid_rows[:, None] & valid_cols[None, :],
-        other=-float("inf"),
+        input_ptr + offs,
+        mask=row_mask[:, None] & col_mask[None, :],
+        other=0.0,
     ).to(tl.float32)
+    logits = tl.where(col_mask[None, :], logits, -float("inf"))
+    logits = tl.where(row_mask[:, None], logits, 0.0)
 
-    row_max = tl.max(logits, axis=1)[:, None]
-    exp_vals = tl.exp(logits - row_max)
-    probs = exp_vals / (tl.sum(exp_vals, axis=1)[:, None] + 1e-8)
-
-    selected_sum = tl.zeros([BLOCK_SIZE_ROWS], dtype=tl.float32)
-    for ki in range(k):
-        curr_max, curr_arg = tl.max(probs, axis=1, return_indices=True)
-
-        tl.store(output_ptr + rows * k + ki, curr_max, mask=valid_rows)
-        tl.store(indices_ptr + rows * k + ki, curr_arg.to(INDEX_TY), mask=valid_rows)
-        tl.store(
-            source_rows_ptr + rows * k + ki,
-            (ki * num_rows + rows).to(tl.int32),
-            mask=valid_rows,
-        )
-        if renormalize:
-            selected_sum += curr_max
-
-        probs = tl.where(
-            cols[None, :] == (curr_arg[:, None] - start_expert), -float("inf"), probs
-        )
+    k_ar = tl.arange(0, KB)
+    k_valid = k_ar < K
 
     if renormalize:
-        norm = selected_sum + 1e-8
-        for ki in range(k):
-            idx = rows * k + ki
-            val = tl.load(output_ptr + idx, mask=valid_rows)
-            tl.store(output_ptr + idx, val / norm, mask=valid_rows)
+        # softmax 的全局分母在 renorm 中约掉：直接在 logits 上做 top-k，
+        # 只对选中的 K 个 logit 做 exp + 归一化。
+        weights = tl.full([BLOCK_ROWS, KB], -float("inf"), dtype=tl.float32)
+        work = logits
+        for ki in tl.static_range(K):
+            val, idx = tl.max(work, axis=1, return_indices=True)
+            sel = k_ar[None, :] == ki
+            weights = tl.where(sel, val[:, None], weights)
+            tl.store(indices_ptr + rows * K + ki, idx.to(INDEX_TY), mask=row_mask)
+            tl.store(
+                source_rows_ptr + rows * K + ki,
+                (ki * num_rows + rows).to(tl.int32),
+                mask=row_mask,
+            )
+            work = tl.where(cols[None, :] == idx[:, None], -float("inf"), work)
+
+        top1 = tl.max(weights, axis=1)
+        e = tl.exp(weights - top1[:, None])
+        wsum = tl.sum(e, axis=1) + 1e-8
+        # fast div: one reciprocal + multiplies instead of per-element division
+        inv = tl.math.fdiv(1.0, wsum)
+        weights = e * inv[:, None]
+
+        out_offs = rows[:, None] * K + k_ar[None, :]
+        out_mask = row_mask[:, None] & k_valid[None, :]
+        tl.store(output_ptr + out_offs, weights, mask=out_mask)
+    else:
+        # 输出是 softmax 概率本身，需要完整的分母。
+        row_max = tl.max(logits, axis=1)
+        exp_vals = tl.exp(logits - row_max[:, None])
+        denom = tl.sum(exp_vals, axis=1) + 1e-8
+        # fast div: one reciprocal + multiplies instead of per-element division
+        inv = tl.math.fdiv(1.0, denom)
+        probs = exp_vals * inv[:, None]
+
+        work = probs
+        for ki in tl.static_range(K):
+            val, idx = tl.max(work, axis=1, return_indices=True)
+            tl.store(output_ptr + rows * K + ki, val, mask=row_mask)
+            tl.store(indices_ptr + rows * K + ki, idx.to(INDEX_TY), mask=row_mask)
+            tl.store(
+                source_rows_ptr + rows * K + ki,
+                (ki * num_rows + rows).to(tl.int32),
+                mask=row_mask,
+            )
+            work = tl.where(cols[None, :] == idx[:, None], -float("inf"), work)
 
 
 def topk_softmax(
@@ -103,35 +125,25 @@ def topk_softmax(
         raise TypeError("topk_indices must be int32/int64/uint32")
 
     max_total_threads = 1024
-    BLOCK_SIZE_EXPERTS = ((triton.next_power_of_2(num_experts) + 31) // 32) * 32
-    BLOCK_SIZE_EXPERTS = min(BLOCK_SIZE_EXPERTS, 1024)
-    BLOCK_SIZE_ROWS = max_total_threads // BLOCK_SIZE_EXPERTS
-    BLOCK_SIZE_ROWS = max(BLOCK_SIZE_ROWS, 1)
+    block_e = triton.next_power_of_2(num_experts)
+    block_e = min(block_e, max_total_threads)
+    block_rows = max(1, min(16, max_total_threads // block_e))
+    num_warps = 4 if block_e <= 256 else 8
+    kb = triton.next_power_of_2(topk)
 
-    # If num_experts > 128, intra-warp shuffling is forced for reduction,
-    # which requires the warp layout to be confined to a single row.
-    # Consequently, in the TTGIR, the second dimension of warpsPerCTA is fixed to 1.
-    if num_experts > 128:
-        BLOCK_SIZE_ROWS = 1
-        num_warps = 1
-    else:
-        num_warps = 4
-
-    grid = (triton.cdiv(num_tokens, BLOCK_SIZE_ROWS),)
+    grid = (triton.cdiv(num_tokens, block_rows),)
     topk_gating_softmax_kernel[grid](
         input_ptr=gating_output,
-        finished_ptr=None,
         output_ptr=topk_weights,
         indices_ptr=topk_indices,
         source_rows_ptr=token_expert_indices,
         num_rows=num_tokens,
-        k=topk,
         num_experts=num_experts,
-        start_expert=0,
-        end_expert=num_experts,
         renormalize=renormalize,
         INDEX_TY=index_ty,
-        BLOCK_SIZE_ROWS=BLOCK_SIZE_ROWS,
-        BLOCK_SIZE_EXPERTS=BLOCK_SIZE_EXPERTS,
+        K=topk,
+        KB=kb,
+        BLOCK_ROWS=block_rows,
+        BLOCK_E=block_e,
         num_warps=num_warps,
     )
