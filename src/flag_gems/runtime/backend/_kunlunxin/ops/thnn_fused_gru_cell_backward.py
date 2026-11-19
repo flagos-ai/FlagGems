@@ -52,9 +52,8 @@ def _gru_cell_backward_kernel(
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     n_elements = batch_size * hidden_size
     mask = offsets < n_elements
-    safe = tl.where(mask, offsets, 0)
-    rows = safe // hidden_size
-    cols = safe % hidden_size
+    rows = offsets // hidden_size
+    cols = offsets % hidden_size
 
     grad_hy_value = tl.load(
         grad_hy + rows * grad_hy_stride_0 + cols * grad_hy_stride_1,
@@ -150,9 +149,8 @@ def _gru_cell_backward_contiguous_kernel(
     """Row-major inputs: every plane offset folds into a single index."""
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < batch_size * HIDDEN
-    safe = tl.where(mask, offsets, 0)
-    rows = safe // HIDDEN
-    cols = safe % HIDDEN
+    rows = offsets // HIDDEN
+    cols = offsets % HIDDEN
 
     grad_hy_value = tl.load(grad_hy + offsets, mask=mask)
     workspace_base = rows * (5 * HIDDEN) + cols
