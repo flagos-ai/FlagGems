@@ -1291,7 +1291,6 @@ _FULL_CONFIG = (
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("cumsum_", cumsum_),
-    ("cumsum_backward", cumsum_backward),
     ("cumulative_trapezoid.dx", cumulative_trapezoid),
     ("deg2rad", deg2rad),
     ("deg2rad.out", deg2rad_out),

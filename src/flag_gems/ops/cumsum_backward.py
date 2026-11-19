@@ -22,6 +22,7 @@ import triton.language as tl
 
 from flag_gems.ops.cumsum import cumsum_wrapper
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ logger = logging.getLogger(__name__)
 _CUMSUM_BACKWARD_MAX_SINGLE_TILE = 1024
 
 
+@libentry()
 @triton.jit
 def _cumsum_backward_kernel(
     grad_ptr,
@@ -90,6 +92,7 @@ def _cumsum_backward_kernel(
     tl.store(grad_in_ptr + ptrs, cs.to(grad_in_ptr.dtype.element_ty), mask=mask)
 
 
+@libentry()
 @triton.jit
 def _cumsum_backward_chunk_kernel(
     grad_ptr,
@@ -138,6 +141,7 @@ def _cumsum_backward_chunk_kernel(
     tl.store(totals_ptr + totals_ptrs, total, mask=col_mask)
 
 
+@libentry()
 @triton.jit
 def _cumsum_backward_offset_kernel(
     grad_in_ptr,
@@ -170,7 +174,13 @@ def _cumsum_backward_offset_kernel(
     totals_ptrs = (
         outer * inner_size + inner_tile * BLOCK_I + cols[:, None]
     ) * num_chunks + cvec[None, :]
-    totals = tl.load(totals_ptr + totals_ptrs, mask=chunk_mask & col_mask[:, None])
+    # Masked-off lanes contribute 0.0 to the per-lane fold; without ``other``
+    # they read undefined values and would poison the offset.
+    totals = tl.load(
+        totals_ptr + totals_ptrs,
+        mask=chunk_mask & col_mask[:, None],
+        other=0.0,
+    )
     offset = tl.sum(totals, axis=1)
 
     ptrs = (
