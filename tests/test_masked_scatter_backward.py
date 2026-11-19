@@ -78,3 +78,35 @@ def test_accuracy_masked_scatter_backward(shape, dtype, threshold):
     res_out = flag_gems.masked_scatter_backward(grad_output, mask, sizes)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.masked_scatter_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend program-grid limits"
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "numel, density, extra_tail",
+    [
+        (262144, 0.5, 0),
+        (262145, 0.0, 0),
+        (262145, 0.5, 0),
+        (262145, 1.0, 0),
+        (262145, 0.5, 1024),
+        (262145, 0.5, 4097),
+        (4194305, 0.0, 0),
+        (4194305, 0.5, 0),
+        (4194305, 1.0, 0),
+        (4194305, 0.5, 4097),
+        (134215681, 0.5, 0),
+    ],
+)
+def test_accuracy_masked_scatter_backward_persistent(numel, density, extra_tail, dtype):
+    grad_output = torch.randn(numel, dtype=dtype, device=flag_gems.device)
+    mask = torch.rand(numel, device=flag_gems.device) < density
+    sizes = [numel + extra_tail]
+    ref_grad = utils.to_reference(grad_output)
+    ref_mask = utils.to_reference(mask)
+    ref_out = torch.ops.aten.masked_scatter_backward(ref_grad, ref_mask, sizes)
+    res_out = flag_gems.masked_scatter_backward(grad_output, mask, sizes)
+    utils.gems_assert_equal(res_out, ref_out)
