@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from math import prod
+
 import pytest
 import torch
 
@@ -108,10 +110,13 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     shape, uplo, *symmetric = plan.builder_args
-    if flag_gems.vendor_name == "thead" and dtype.is_complex and not (
+    if flag_gems.vendor_name == "thead" and not (
         base.Config.preflight_only or base.Config.profile_only
     ):
-        pytest.skip("PPU native eigvalsh aborts on complex inputs")
+        if dtype.is_complex:
+            pytest.skip("PPU native eigvalsh aborts on complex inputs")
+        if prod(shape[:-2]) > 1 and shape[-1] <= 32:
+            pytest.skip("PPU native eigvalsh does not support its small batched solver")
     # benchmark.utils.generate_tensor_input produces nothing for float64 and
     # complex128, so the input is built directly for every supported dtype.
     inp = torch.randn(shape, dtype=dtype, device=device)

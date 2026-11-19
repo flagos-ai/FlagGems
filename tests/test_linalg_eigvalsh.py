@@ -47,19 +47,10 @@ def _real_dtype(dtype):
     return _REAL_DTYPES.get(dtype, dtype)
 
 
-@pytest.fixture(autouse=True)
-def _skip_unsupported_ppu_dtype(request):
-    callspec = getattr(request.node, "callspec", None)
-    if (
-        flag_gems.vendor_name == "thead"
-        and callspec is not None
-        and callspec.params.get("dtype") in _REAL_DTYPES
-    ):
-        pytest.skip("PPU native eigvalsh aborts on complex inputs")
-
-
 def _reference_input(inp):
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in {"mthreads", "thead"}:
+        # PPU's native solver exits the process on unsupported batched and
+        # complex inputs, so always use CPU for this reference on PPU.
         inp = inp.cpu()
     return tu.to_reference(inp)
 
@@ -100,7 +91,7 @@ def _reference_eigvalsh(inp, uplo="L", *, out=None):
 
 def _assert_eigvalsh_close(actual, reference, inp, **kwargs):
     assert actual.device == inp.device
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in {"mthreads", "thead"}:
         actual = actual.cpu()
     tu.assert_result_close(actual, reference, **kwargs)
 
@@ -486,6 +477,8 @@ _SPECIAL_CASES = tu.selected_cases(
 @pytest.mark.linalg_eigvalsh
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_linalg_eigvalsh_special_values(dtype, scenario):
+    if flag_gems.vendor_name == "thead" and scenario == "inf":
+        pytest.skip("PPU CPU eigvalsh reference does not converge on infinite diagonals")
     # Diagonal embedding of the shared payloads, with the native result as oracle.
     inp = torch.diag_embed(tu.make_special_input(dtype, scenario))
     ref_inp = _reference_input(inp)
@@ -543,6 +536,12 @@ _TRIANGLE_PAYLOAD_CASES = tu.selected_cases(
 @pytest.mark.linalg_eigvalsh
 @pytest.mark.parametrize("dtype,uplo,payload,payload_triangle", _TRIANGLE_PAYLOAD_CASES)
 def test_linalg_eigvalsh_triangle_payload(dtype, uplo, payload, payload_triangle):
+    if (
+        flag_gems.vendor_name == "thead"
+        and payload == float("inf")
+        and payload_triangle == "selected"
+    ):
+        pytest.skip("PPU CPU eigvalsh reference does not converge on this infinite triangle")
     inp = _one_triangle_matrix(dtype, uplo, payload, payload_triangle)
     ref_inp = _reference_input(inp)
 
