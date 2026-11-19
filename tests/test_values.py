@@ -66,6 +66,10 @@ if QUICK_MODE:
     ]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 @pytest.mark.parametrize(
     "name, make",
@@ -89,6 +93,10 @@ def test_accuracy_values_coo(name, make, dtype):
     assert res_out.data_ptr() == inp._values().data_ptr()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_mutation_through_view():
     # Writing through the returned view must be visible through the native
@@ -154,6 +162,10 @@ def test_values_sparse_compressed():
         flag_gems.values(dense.to_sparse_csc())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_unsupported_layouts_reject_like_native():
     # Native ATen implements ``_values`` only on the Sparse{CPU,CUDA} keys:
@@ -196,6 +208,10 @@ def test_values_unsupported_layouts_reject_like_native():
         ), f"layout={tensor.layout}: ours: {ours!r}\nnative: {native!r}"
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 @pytest.mark.parametrize("dtype", [torch.int64, torch.int32, torch.bool])
 def test_values_non_float_dtypes_alias(dtype):
@@ -223,6 +239,10 @@ def test_values_non_float_dtypes_alias(dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_int_hybrid_alias():
     # Hybrid COO (trailing dense dims) with integer stored values: the alias
@@ -243,6 +263,10 @@ def test_values_int_hybrid_alias():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_requires_grad_nondifferentiable_contract():
     # ``_values`` is the *internal* accessor: on this build native returns a
@@ -292,6 +316,10 @@ def test_values_sparse_requires_grad_view_contract():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse tensor layout not supported on this device",
+)
 @pytest.mark.values
 def test_values_dispatch_stability():
     # Repeated calls and cross-op interference must stay stable: the impl

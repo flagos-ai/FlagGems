@@ -666,6 +666,24 @@ _FULL_CONFIG = (
     ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
     (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
         "_sparse_csr_sum",
         sparse_csr_sum,
         None,

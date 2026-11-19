@@ -26,6 +26,10 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
+# namedtuple class construction takes ~87us and would dominate small-shape kernel time per call, so reuse one at module
+# level.
+MaxOut = namedtuple("max", ["values", "indices"])
+
 
 @libentry()
 @triton.jit
@@ -100,7 +104,13 @@ def max_kernel_inner_1d(
     min_value = get_dtype_min(dtype)
 
     if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
-        acc_dtype = tl.float32
+        # max only compares and selects values, so keeping f16/bf16 instead
+        # of widening to f32 is bit-exact.  It also avoids a predicate that is
+        # computed through an f16 -> f32 widening and then drives the i32 index
+        # select, which GCU400 miscompiles: on (4096, 256) dim=1 the value is
+        # right but the index points at a non-maximum element for ~46% of the
+        # rows.  fp32 input, which is not widened, is unaffected.
+        acc_dtype = dtype
     elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
@@ -149,7 +159,9 @@ def max_kernel_non_inner(
 
     dtype = inp.type.element_ty
     if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
-        acc_dtype = tl.float32
+        # See max_kernel_inner_1d: bit-exact for max, and avoids the predicate
+        # computed through an f16 -> f32 widening that GCU400 miscompiles.
+        acc_dtype = dtype
     elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
@@ -173,7 +185,10 @@ def max_kernel_non_inner(
             mask = (n_idx[:, None] < N) & k_mask[None, :]
             vals = tl.load(inp + offset, mask=mask, other=orig_min).to(acc_dtype)
 
-            local_max = tl.max(vals, axis=0)
+            # tl.max promotes f16/bf16 to f32; cast back so the index select
+            # below still sees an f16 predicate.  The result is one of the
+            # inputs, so this is exact.
+            local_max = tl.max(vals, axis=0).to(acc_dtype)
             eq = vals == local_max[None, :]
             idx_matrix = tl.where(eq, n_idx[:, None], 2147483647)
             local_argmax = tl.min(idx_matrix, axis=0)
@@ -190,7 +205,8 @@ def max_kernel_non_inner(
 def max(inp):
     logger.debug("GEMS_ENFLAME MAX")
 
-    inp = inp.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
 
@@ -217,6 +233,21 @@ def max(inp):
     return out
 
 
+# gcu400 miscompiles a reduction whose lane vector reaches 512 B: the reduce
+# silently covers only part of the axis (the value becomes the max over a
+# subset and the index matches that wrong value).  Measured on
+# max_kernel_inner_1d, (4096, 256) dim=1: BLOCK_N=128 with fp32 and
+# BLOCK_N=256 with fp16/bf16 are wrong for ~94% of the rows, while 64 fp32
+# lanes and 128 fp16 lanes are exact.  Cap the reduction width at 256 B.
+_MAX_REDUCTION_BYTES = 256
+
+
+def _reduction_cap(inp):
+    # NB: the module-level ``max`` op shadows the builtin, so no max() here.
+    cap = _MAX_REDUCTION_BYTES // inp.element_size()
+    return cap if cap > 16 else 16
+
+
 def max_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_ENFLAME MAX_DIM")
 
@@ -228,15 +259,23 @@ def max_dim(inp, dim=None, keepdim=False):
     M = math.prod(shape[:dim])
     K = inp.numel() // M // N
 
-    inp = inp.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
 
     shape_list = list(shape)
-    shape_list[dim] = 1
+    if keepdim:
+        shape_list[dim] = 1
+    else:
+        # Both kernels write back in a flat m*K+k layout, so allocate the final shape directly,
+        # avoiding device sync and Python overhead from two torch.squeeze calls.
+        shape_list.pop(dim)
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+    # GCU400 Triton int32 indices store only 4 bytes per lane; writing directly into an int64
+    # output tensor yields many zeros, so use an int32 buffer for kernel writes and convert to int64 once.
+    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
 
     if K == 1:
-        BLOCK_N = min(triton.next_power_of_2(N), 4096)
+        BLOCK_N = min(triton.next_power_of_2(N), _reduction_cap(inp))
         grid_m = min(M, 48)
         num_stages = 3 if M > grid_m else 1
         with torch_device_fn.device(inp.device):
@@ -251,8 +290,28 @@ def max_dim(inp, dim=None, keepdim=False):
                 num_warps=1,
             )
     else:
-        BLOCK_K = min(triton.next_power_of_2(K), 128)
-        BLOCK_N = min(triton.next_power_of_2(N), 256)
+        # BLOCK_K is the width of the loop-carried accumulator (output
+        # columns; the reduction walks BLOCK_N).  GCU400 keeps such a vector
+        # in at most 512B of OACC: 128 int64 lanes need 1024B and the
+        # reduction then silently covers only part of the axis -- the value is
+        # the max over a subset and the index matches that wrong value.
+        # int64 dim=0 on (4096, 256) gets 219/256 columns wrong, while int32
+        # at the same 128 lanes (512B) is exact.  The wide tile is also ~12x
+        # slower.
+        _acc_bpes = {
+            torch.float64: 8,
+            torch.int64: 8,
+            torch.float32: 4,
+            torch.int32: 4,
+            torch.int16: 4,
+            torch.int8: 4,
+            torch.float16: 2,
+            torch.bfloat16: 2,
+        }
+        BLOCK_K = min(
+            triton.next_power_of_2(K), min(512 // _acc_bpes.get(inp.dtype, 8), 128)
+        )
+        BLOCK_N = min(triton.next_power_of_2(N), _reduction_cap(inp))
 
         num_k_tiles = triton.cdiv(K, BLOCK_K)
         total_work = M * num_k_tiles
@@ -270,13 +329,11 @@ def max_dim(inp, dim=None, keepdim=False):
                 BLOCK_K=BLOCK_K,
                 BLOCK_N=BLOCK_N,
                 num_stages=1,
-                num_warps=1,
+                # num_warps=1 miscompiles the second grid-stride iteration
+                # (total_work > 48): the last work items return the max over a
+                # subset (measured on (200, 2560, 3) dim=0 fp32: k = 6144..7678
+                # wrong, max err 2.0).  4 warps is exact.
+                num_warps=4,
             )
 
-    if not keepdim:
-        out_value = torch.squeeze(out_value, dim)
-        out_index = torch.squeeze(out_index, dim)
-
-    Max_out = namedtuple("max", ["values", "indices"])
-    out = Max_out(values=out_value, indices=out_index)
-    return out
+    return MaxOut(values=out_value, indices=out_index.to(torch.int64))

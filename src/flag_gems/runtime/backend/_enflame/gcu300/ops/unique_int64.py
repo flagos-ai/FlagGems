@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-unique_int64.py - 将所有 int32 改为 int64 的版本
-用于对比验证 int32 是否导致结果偏差
+unique_int64.py - variant with all int32 values changed to int64
+Used to verify by comparison whether int32 causes incorrect results
 """
 
 import torch
@@ -354,7 +354,7 @@ def global_quick_unique_flat_kernel_int64(
             return_counts,
         )
     else:  # grid-stride-loop style kernel
-        # 关键修改：int32 -> int64
+        # Key change: int32 -> int64
         total = tl.zeros([1], dtype=tl.int64)
         for j in range(0, tiles_per_cta):
             global_pid = pid + j * ctas_num
@@ -391,7 +391,7 @@ def sorted_quick_unique_flat_int64(sorted_data: torch.Tensor, return_counts: boo
     num_warps = 8 if tiles_per_cta == 1 else 32
     grid = (ctas_num, 1, 1)
 
-    # allocate tensor - 关键修改：int32 -> int64
+    # Allocate tensor - key change: int32 -> int64
     if return_counts:
         local_unique = None
         origin_idx = torch.empty_like(sorted_data, dtype=torch.int64)  # int32 -> int64
@@ -564,7 +564,7 @@ def global_cumsum_flat_impl_int64(
     total += tl.sum(pre_tile_sum)
     ne_result = tl.load(ne_result_ptr + i0, mask=mask)
     ne_result_i1 = ne_result.to(tl.int1)
-    # 关键修改：int32 -> int64
+    # Key change: int32 -> int64
     ne_result = ne_result.to(tl.int64)
     cumsum = tl.cumsum(ne_result)
 
@@ -633,7 +633,7 @@ def global_cumsum_flat_kernel_int64(
             return_counts,
         )
     else:  # grid-stride-loop style kernel
-        # 关键修改：int32 -> int64
+        # Key change: int32 -> int64
         total = tl.zeros([1], dtype=tl.int64)
         for j in range(0, tiles_per_cta):
             global_pid = pid + j * ctas_num
@@ -676,7 +676,7 @@ def sorted_indices_unique_flat_int64(
     num_warps = 8 if tiles_per_cta == 1 else 32
     grid = (ctas_num, 1, 1)
 
-    # allocate tensor - 关键修改：int32 -> int64
+    # Allocate tensor - key change: int32 -> int64
     ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
     tile_sum = torch.empty(
         (global_ctas_num,),
@@ -738,7 +738,7 @@ def sorted_indices_unique_flat_int64(
         data_out[:out_size],
         inverse_indices,
         counts,
-    )  # 不需要转换为 int64，已经是 int64
+    )  # No int64 conversion needed, already int64
 
 
 def simple_unique_flat_int64(
@@ -750,7 +750,7 @@ def simple_unique_flat_int64(
     num_tasks = sorted_data.numel()
     grid = (1, 1, 1)
 
-    # allocate tensor - 关键修改：int32 -> int64
+    # Allocate tensor - key change: int32 -> int64
     data_out = torch.empty_like(sorted_data)
     if return_inverse:
         inverse_indices = torch.empty_like(
@@ -796,7 +796,11 @@ def simple_unique_flat_int64(
                 tile_size=triton.next_power_of_2(out_size),
                 num_warps=8,
             )
-    return data_out[:out_size], inverse_indices, counts  # 不需要转换，已经是 int64
+    return (
+        data_out[:out_size],
+        inverse_indices,
+        counts,
+    )  # No conversion needed, already int64
 
 
 def _unique2_int64(

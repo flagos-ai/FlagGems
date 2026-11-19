@@ -22,6 +22,7 @@ import flag_gems
 from flag_gems.ops.quantize_per_tensor import _quantize_per_tensor_impl
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # ``quantize_per_tensor`` only accepts float32 tensors on the quantized CUDA
 # backend (Half/BFloat16/Double raise "Quantize only works on Float Tensor"),
@@ -170,7 +171,10 @@ def test_quantize_per_tensor_non_contiguous(in_dtype, layout):
 
 
 @pytest.mark.quantize_per_tensor
-@pytest.mark.parametrize("bad_dtype", [torch.float64, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "bad_dtype",
+    [pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16, torch.bfloat16],
+)
 def test_quantize_per_tensor_rejects_non_float32(bad_dtype):
     # ATen raises "Quantize only works on Float Tensor" rather than upcasting.
     inp = torch.randn(32, dtype=bad_dtype, device="cuda")

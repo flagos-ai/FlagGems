@@ -22,7 +22,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-NUM_SIPS = 24
+NUM_SIPS = 48
 
 
 @libentry()

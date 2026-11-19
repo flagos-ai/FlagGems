@@ -19,6 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support sparse BSC tensors",
+)
+
 BSC_UNSAFE_DTYPES = utils.FLOAT_DTYPES
 
 # 2x2 blocks on a (4, 4) canvas: 2 block rows x 2 block cols

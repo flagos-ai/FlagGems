@@ -35,8 +35,7 @@ def relu6_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
         off = block_id * BLOCK + arange
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        y = tl.maximum(x, 0.0)
-        y = tl.minimum(y, 6.0)
+        y = tl.minimum(tl.maximum(x, 0.0), 6.0)
         tl.store(out_ptr + off, y, mask=mask)
 
 
