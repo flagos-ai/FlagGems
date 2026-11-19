@@ -34,6 +34,10 @@ def _cuda_fp8_e4m3fn_available():
         )
     if FP8_DTYPE is None or not torch.cuda.is_available():
         return False
+    if flag_gems.rms_norm_w8a16_fp8.__module__.startswith(
+        "flag_gems.runtime.backend._hygon."
+    ):
+        return True
     # PPU and MetaX can store and cast e4m3fn even though they report sm_80.
     if flag_gems.vendor_name in ("thead", "metax"):
         return True
@@ -59,14 +63,14 @@ def _quantize_fp8_weight(weight, group_size=GROUP_SIZE):
 
 @pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("n", [256, 2048, 4096])
 @pytest.mark.parametrize("capture", [False, True], ids=["eager", "graph"])
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
+    flag_gems.vendor_name not in ("thead", "mthreads", "metax", "hygon")
     or not _cuda_fp8_e4m3fn_available(),
     reason="Regression test for backend W8A16 weight dequantization",
 )
-def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
-    n = 4096
+def test_rms_norm_w8a16_fp8_weight_updates(dtype, n, capture):
     inp = torch.randn((512, n), device=flag_gems.device, dtype=dtype)
     weight_q = torch.ones(n, device=inp.device, dtype=dtype).to(FP8_DTYPE)
     weight_scale = torch.ones(n // GROUP_SIZE, device=inp.device, dtype=dtype)
@@ -122,7 +126,7 @@ def test_rms_norm_w8a16_fp8_weight_updates(dtype, capture):
     [(2, 256, 128), (2, 384, 128), (2, 32768, 64), (2, 33024, 128), (513, 4096, 128)],
 )
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "mthreads", "metax")
+    flag_gems.vendor_name not in ("thead", "mthreads", "metax", "hygon")
     or not _cuda_fp8_e4m3fn_available(),
     reason="Backend E4M3FN byte decoding across all kernel paths",
 )
@@ -153,12 +157,23 @@ def test_rms_norm_w8a16_fp8_encodings(dtype, m, n, group_size):
         result, expected.expand_as(inp), rtol=0, atol=0, equal_nan=True
     )
     zero = expected == 0
-    assert torch.equal(
-        torch.signbit(result[:, zero]), torch.signbit(expected[zero]).expand(m, -1)
+    if flag_gems.vendor_name == "hygon" and dtype == torch.float16:
+        # Hygon's native FP16 conversion canonicalizes signed zero.
+        expected_sign = torch.zeros_like(result[:, zero], dtype=torch.bool)
+    else:
+        expected_sign = torch.signbit(expected[zero]).expand(m, -1)
+    utils.gems_assert_equal(
+        torch.signbit(result[:, zero]), utils.to_reference(expected_sign)
     )
 
 
 W8A16_SHAPES = [
+    (1, 256),
+    (17, 256),
+    (32768, 256),
+    (1, 2048),
+    (17, 2048),
+    (16384, 2048),
     (1, 4096),
     (128, 4096),
     (512, 4096),
@@ -208,6 +223,38 @@ def _run_rms_norm_w8a16_test(shape, quantize_weight, op):
 )
 def test_rms_norm_w8a16_fp8(shape):
     _run_rms_norm_w8a16_test(shape, _quantize_fp8_weight, flag_gems.rms_norm_w8a16_fp8)
+
+
+@pytest.mark.rms_norm_w8a16
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("shape", [(0, 256), (17, 384), (3, 1000), (2, 3, 256)])
+@pytest.mark.parametrize("group_size", [64, 128])
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon" or not _cuda_fp8_e4m3fn_available(),
+    reason="Hygon multiline RMSNorm shape and strided weight coverage",
+)
+def test_rms_norm_w8a16_fp8_hygon_shapes(dtype, shape, group_size):
+    torch.manual_seed(0)
+    width = shape[-1]
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    weight = torch.randn(width * 2, device=inp.device, dtype=dtype).to(FP8_DTYPE)
+    weight = weight.view(torch.uint8)[::2].view(FP8_DTYPE)
+    scale_count = (width + group_size - 1) // group_size
+    scale = torch.rand(scale_count * 2, device=inp.device, dtype=dtype)[::2] + 0.01
+    scale = scale.repeat_interleave(2)[::2]
+    reference_weight = (
+        weight.float() * scale.float().repeat_interleave(group_size)[:width]
+    ).to(dtype)
+    reference = torch.nn.functional.rms_norm(
+        utils.to_reference(inp),
+        (width,),
+        utils.to_reference(reference_weight),
+        eps=1e-5,
+    )
+    output = flag_gems.rms_norm_w8a16_fp8(
+        inp, (width,), weight, scale, eps=1e-5, group_size=group_size
+    )
+    utils.gems_assert_close(output, reference, dtype)
 
 
 @pytest.mark.rms_norm_w8a16
