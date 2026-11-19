@@ -54,6 +54,7 @@ from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
 from ._foreach_clamp_min__List import _foreach_clamp_min__List
 from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
 from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -93,6 +94,7 @@ from .conv2d import conv2d
 from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .convolution_overrideable import convolution_overrideable
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
@@ -280,6 +282,7 @@ __all__ = [
     "_foreach_clamp_min__List",
     "_foreach_clamp_min__Scalar",
     "_foreach_clamp_min__ScalarList",
+    "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
@@ -326,6 +329,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "convolution_backward",
+    "convolution_backward_out",
     "convolution_overrideable",
     "copy_",
     "cudnn_convolution",

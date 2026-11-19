@@ -104,6 +104,10 @@ class UpsampleBicubic2dAaBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.upsample_bicubic2d_aa_backward
+@pytest.mark.skip_native(
+    vendors="mthreads",
+    reason="MThreads muDNN rejects antialiasing in bicubic backward",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
