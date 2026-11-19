@@ -58,6 +58,53 @@ def _skip_unsupported_ppu_dtype(request):
         pytest.skip("PPU native eigvalsh aborts on complex inputs")
 
 
+def _reference_input(inp):
+    if flag_gems.vendor_name == "mthreads":
+        inp = inp.cpu()
+    return tu.to_reference(inp)
+
+
+class _MusaCpuEigvalsh(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, uplo):
+        import numpy as np
+
+        values, vectors = np.linalg.eigh(inp.detach().resolve_conj().numpy(), UPLO=uplo)
+        ctx.save_for_backward(torch.from_numpy(vectors))
+        return torch.from_numpy(values)
+
+    @staticmethod
+    def backward(ctx, grad):
+        (vectors,) = ctx.saved_tensors
+        return (vectors * grad.unsqueeze(-2)) @ vectors.mH, None
+
+
+def _reference_eigvalsh(inp, uplo="L", *, out=None):
+    if flag_gems.vendor_name != "mthreads":
+        if out is None:
+            return torch.ops.aten.linalg_eigvalsh.default(inp, uplo)
+        return torch.ops.aten.linalg_eigvalsh.out(inp, uplo, out=out)
+
+    import numpy as np
+
+    # The MUSA build routes eigvalsh to CPU but lacks LAPACK there too.
+    if inp.requires_grad:
+        result = _MusaCpuEigvalsh.apply(inp, uplo)
+    else:
+        result = torch.from_numpy(np.linalg.eigvalsh(inp.resolve_conj().numpy(), UPLO=uplo))
+    if out is None:
+        return result
+    out.copy_(result)
+    return out
+
+
+def _assert_eigvalsh_close(actual, reference, inp, **kwargs):
+    assert actual.device == inp.device
+    if flag_gems.vendor_name == "mthreads":
+        actual = actual.cpu()
+    tu.assert_result_close(actual, reference, **kwargs)
+
+
 # eigvalsh needs rank >= 2 with a square trailing pair, so the spec's 0-dim and
 # 1-dim levels can only appear as the negative cases below. The rectangular spec
 # levels keep their batch axes and square the trailing pair at a real trailing
@@ -127,12 +174,12 @@ VALUE_CASES = tu.selected_cases(
 @pytest.mark.parametrize("shape,value_range,dtype", VALUE_CASES)
 def test_linalg_eigvalsh_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, "L")
+    ref_out = _reference_eigvalsh(ref_inp, "L")
     res_out = flag_gems.linalg_eigvalsh(inp, "L")
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 # Endpoint fixtures, additional to the withheld raw draws above. Each is a
@@ -218,12 +265,12 @@ def _endpoint_bound(dtype, sign):
 @pytest.mark.parametrize("shape,fixture,sign,dtype", _ENDPOINT_CASES)
 def test_linalg_eigvalsh_endpoint(shape, fixture, sign, dtype):
     inp = _endpoint_matrix(dtype, shape, sign, fixture)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, "L")
+    ref_out = _reference_eigvalsh(ref_inp, "L")
     res_out = flag_gems.linalg_eigvalsh(inp, "L")
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 # Deterministic magnitude ladder: extra coverage only, not a substitute for the
@@ -262,12 +309,12 @@ _EXTREME_MAGNITUDE_CASES = tu.selected_cases(
 @pytest.mark.parametrize("shape,scale,dtype", _EXTREME_MAGNITUDE_CASES)
 def test_linalg_eigvalsh_extreme_magnitude(shape, scale, dtype):
     inp = _extremal_hermitian(dtype, shape, scale)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, "L")
+    ref_out = _reference_eigvalsh(ref_inp, "L")
     res_out = flag_gems.linalg_eigvalsh(inp, "L")
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 # UPLO selects the triangle that is read, so "L" and "U" hold different
@@ -288,12 +335,12 @@ _UPLO_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype", LINALG_EIGVALSH_DTYPES)
 def test_linalg_eigvalsh_uplo(shape, uplo, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, uplo)
+    ref_out = _reference_eigvalsh(ref_inp, uplo)
     res_out = flag_gems.linalg_eigvalsh(inp, uplo)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 _DEFAULT_UPLO_SHAPES = tu.selected_cases([(5, 5)], quick=[])
@@ -305,12 +352,12 @@ _DEFAULT_UPLO_SHAPES = tu.selected_cases([(5, 5)], quick=[])
 def test_linalg_eigvalsh_default_uplo(shape, dtype):
     # UPLO is omitted, so the candidate has to implement the schema default "L".
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp)
+    ref_out = _reference_eigvalsh(ref_inp)
     res_out = flag_gems.linalg_eigvalsh(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 def _out_buffer(shape, dtype, layout, device):
@@ -362,12 +409,12 @@ def test_linalg_eigvalsh_out(shape, uplo, layout, dtype):
     # strides and storage offset untouched; each side gets its own buffer on its
     # own device.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
     out_shape = shape[:-1]
     out_dtype = _real_dtype(dtype)
 
     ref_out = _out_buffer(out_shape, out_dtype, layout, ref_inp.device)
-    torch.ops.aten.linalg_eigvalsh.out(ref_inp, uplo, out=ref_out)
+    _reference_eigvalsh(ref_inp, uplo, out=ref_out)
 
     res_out = _out_buffer(out_shape, out_dtype, layout, inp.device)
     supplied_stride = res_out.stride()
@@ -377,7 +424,7 @@ def test_linalg_eigvalsh_out(shape, uplo, layout, dtype):
     assert res_returned is res_out
     assert res_out.stride() == supplied_stride
     assert res_out.storage_offset() == supplied_offset
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 _INPUT_LAYOUT_CASES = tu.selected_cases(
@@ -414,12 +461,12 @@ def test_linalg_eigvalsh_strided_input(shape, layout, dtype):
     # transposed layout is a valid input, so the operator has to follow the
     # input strides instead of assuming a dense, offset-zero matrix.
     inp = _strided_input(dtype, shape, layout)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, "L")
+    ref_out = _reference_eigvalsh(ref_inp, "L")
     res_out = flag_gems.linalg_eigvalsh(inp, "L")
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 _SPECIAL_CASES = tu.selected_cases(
@@ -441,12 +488,12 @@ _SPECIAL_CASES = tu.selected_cases(
 def test_linalg_eigvalsh_special_values(dtype, scenario):
     # Diagonal embedding of the shared payloads, with the native result as oracle.
     inp = torch.diag_embed(tu.make_special_input(dtype, scenario))
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, "L")
+    ref_out = _reference_eigvalsh(ref_inp, "L")
     res_out = flag_gems.linalg_eigvalsh(inp, "L")
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 _TRIANGLE_SIDE = 4
@@ -497,12 +544,12 @@ _TRIANGLE_PAYLOAD_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype,uplo,payload,payload_triangle", _TRIANGLE_PAYLOAD_CASES)
 def test_linalg_eigvalsh_triangle_payload(dtype, uplo, payload, payload_triangle):
     inp = _one_triangle_matrix(dtype, uplo, payload, payload_triangle)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, uplo)
+    ref_out = _reference_eigvalsh(ref_inp, uplo)
     res_out = flag_gems.linalg_eigvalsh(inp, uplo)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
 
 # Native rejection, distinct from the finite-input oracle gap above: a nan inside
@@ -555,12 +602,12 @@ def test_linalg_eigvalsh_complex_diagonal(dtype, uplo):
     mat.diagonal().copy_(
         torch.tensor([1 + 5j, 2 + 7j, 3 + 9j, 4 + 11j], dtype=dtype, device=device)
     )
-    ref_inp = tu.to_reference(mat)
+    ref_inp = _reference_input(mat)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, uplo)
+    ref_out = _reference_eigvalsh(ref_inp, uplo)
     res_out = flag_gems.linalg_eigvalsh(mat, uplo)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, mat)
 
 
 _BACKWARD_CASES = tu.selected_cases(
@@ -574,20 +621,20 @@ _BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype", tu.selected_cases(LINALG_EIGVALSH_DTYPES, quick=[]))
 def test_linalg_eigvalsh_backward(shape, uplo, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
     # eigvalsh returns real eigenvalues, so the upstream gradient is real even
     # for a complex input.
     upstream = tu.make_input(_real_dtype(dtype), shape[:-1], ["-1", "1"])
-    ref_upstream = tu.to_reference(upstream)
+    ref_upstream = _reference_input(upstream)
 
-    ref_out = torch.ops.aten.linalg_eigvalsh(ref_inp, uplo)
+    ref_out = _reference_eigvalsh(ref_inp, uplo)
     res_out = flag_gems.linalg_eigvalsh(inp, uplo)
-    tu.assert_result_close(res_out, ref_out)
+    _assert_eigvalsh_close(res_out, ref_out, inp)
 
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
 
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_eigvalsh_close(res_grad, ref_grad, inp)
 
 
 # Dtypes the native kernel does not implement (RuntimeError: "linalg_eigh_cuda"
@@ -688,7 +735,6 @@ def test_linalg_eigvalsh_symmetric(batch, n, uplo, dtype):
         (*batch, n, n), generator=generator, dtype=dtype, device=flag_gems.device
     )
     inp = raw + raw.transpose(-1, -2)
-    reference = torch.ops.aten.linalg_eigvalsh.default(tu.to_reference(inp), UPLO=uplo)
+    reference = _reference_eigvalsh(_reference_input(inp), uplo)
     result = flag_gems.linalg_eigvalsh(inp, UPLO=uplo)
-    assert result.device == inp.device
-    tu.assert_result_close(result, reference)
+    _assert_eigvalsh_close(result, reference, inp)

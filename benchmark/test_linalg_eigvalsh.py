@@ -153,6 +153,10 @@ class LinalgEigvalshBenchmark(OperatorBenchmark):
 
 @pytest.mark.linalg_eigvalsh
 def test_linalg_eigvalsh():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only or base.Config.profile_only
+    ):
+        pytest.skip("MUSA native eigvalsh requires unavailable CPU LAPACK support")
     bench = LinalgEigvalshBenchmark(
         op_name="linalg_eigvalsh",
         case_fn=_case_fn,
