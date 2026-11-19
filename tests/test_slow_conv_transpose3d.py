@@ -690,8 +690,8 @@ def test_slow_conv_transpose3d_rejects_output_padding_not_less_than_stride():
     )
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
             None,
             (2, 2, 2),
@@ -712,8 +712,8 @@ def test_slow_conv_transpose3d_rejects_negative_stride():
     )
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
             None,
             (-1, 1, 1),
@@ -734,8 +734,8 @@ def test_slow_conv_transpose3d_rejects_negative_dilation():
     )
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
             None,
             (1, 1, 1),
@@ -756,8 +756,8 @@ def test_slow_conv_transpose3d_rejects_int_dtype():
     if not _MUSA:
         with pytest.raises(RuntimeError):
             torch.ops.aten.slow_conv_transpose3d(
-                _reference_input(inp),
-                _reference_input(weight),
+                inp.cpu() if _MUSA else inp,
+                weight.cpu() if _MUSA else weight,
                 (3, 3, 3),
                 None,
                 (1, 1, 1),
@@ -777,8 +777,8 @@ def test_slow_conv_transpose3d_rejects_6d_input():
     weight = tu.make_input(torch.float32, (2, 1, 3, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
             None,
             (1, 1, 1),
@@ -798,8 +798,8 @@ def test_slow_conv_transpose3d_rejects_4d_weight():
     weight = tu.make_input(torch.float32, (2, 1, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
             None,
             (1, 1, 1),
@@ -819,8 +819,8 @@ def test_slow_conv_transpose3d_rejects_channel_mismatch():
     weight = tu.make_input(torch.float32, (3, 1, 3, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
             None,
             (1, 1, 1),
@@ -841,10 +841,10 @@ def test_slow_conv_transpose3d_rejects_bias_size_mismatch():
     bias = tu.make_input(torch.float32, (5,), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_transpose3d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             (3, 3, 3),
-            _reference_input(bias),
+            bias.cpu() if _MUSA else bias,
             (1, 1, 1),
             (1, 1, 1),
             (0, 0, 0),

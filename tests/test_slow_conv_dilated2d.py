@@ -395,10 +395,10 @@ def test_slow_conv_dilated2d_negative(case):
     # The reference rejects the inconsistent configuration...
     with pytest.raises(RuntimeError):
         torch.ops.aten.slow_conv_dilated2d(
-            _reference_input(inp),
-            _reference_input(weight),
+            inp.cpu() if _MUSA else inp,
+            weight.cpu() if _MUSA else weight,
             kernel_size,
-            _reference_input(bias),
+            bias.cpu() if _MUSA else bias,
             stride,
             padding,
             dilation,
@@ -421,10 +421,10 @@ def test_slow_conv_dilated2d_rejects_unsupported_dtype(dtype):
     if not (_MUSA and dtype in {torch.int8, torch.uint8, torch.int32, torch.int64}):
         with pytest.raises(RuntimeError):
             torch.ops.aten.slow_conv_dilated2d(
-                _reference_input(inp),
-                _reference_input(weight),
+                inp.cpu() if _MUSA else inp,
+                weight.cpu() if _MUSA else weight,
                 (3, 3),
-                _reference_input(bias),
+                bias.cpu() if _MUSA else bias,
                 (1, 1),
                 (0, 0),
                 (1, 1),
