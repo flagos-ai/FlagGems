@@ -17,6 +17,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # 2D/3D shapes covering small to medium width; pad1d operates on last dim
 REPLICATION_PAD1D_BACKWARD_SHAPES = [(2, 3, 8), (4, 16, 64), (1, 5, 16), (32, 256)]
@@ -46,7 +47,7 @@ REPLICATION_PAD1D_BACKWARD_PADDING = [
 # ComplexHalf'), so there would be no reference to compare against.
 REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ]
 
 
@@ -86,7 +87,9 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
 
 
 @pytest.mark.replication_pad1d_backward
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_replication_pad1d_backward_grad_input_takes_input_options(dtype):
     """grad_input has the input's dtype and device, matching at::empty_like(self)."""
     if (

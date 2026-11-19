@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -44,4 +46,16 @@ def test_log10_out():
         torch_op=torch.log10,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.log10_backward
+def test_log10_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="log10",
+        torch_op=torch.log10,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.log10)
     bench.run()

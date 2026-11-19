@@ -18,11 +18,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
 # fp64 cases are skipped at runtime on backends that do not support fp64.
-_TEST_DTYPES = [torch.float32, torch.float64]
+_TEST_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 # Shapes covering every routing path of the op, one representative per
 # scenario (the out= variant uses its own smaller list below; specialised

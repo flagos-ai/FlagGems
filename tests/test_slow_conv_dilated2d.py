@@ -187,14 +187,21 @@ def test_slow_conv_dilated2d_dispatch():
             include=["slow_conv_dilated2d_out"],
             registrar=flag_gems.GeneralOpRegistrar,
         )
-        cuda_entries = [
+        # The device key is "CUDA" only on an NVIDIA backend; gcu400 and the
+        # other vendor backends register under PrivateUse1.  Look for the key
+        # that actually belongs to the device under test instead of hardcoding
+        # CUDA, which made this assert unreachable off NVIDIA.
+        device_key = "CUDA" if flag_gems.device == "cuda" else "PrivateUse1"
+        device_entries = [
             line
             for line in torch._C._dispatch_dump(
                 "aten::slow_conv_dilated2d.out"
             ).splitlines()
-            if line.startswith("CUDA:")
+            if line.startswith(f"{device_key}:")
         ]
-        assert cuda_entries, "no CUDA kernel registered for the .out overload"
+        assert (
+            device_entries
+        ), f"no {device_key} kernel registered for the .out overload"
 
         # Dispatch through ``torch.ops.aten`` so the check cannot pass on the
         # Python entry point alone.  The reference is built with
