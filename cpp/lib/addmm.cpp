@@ -99,6 +99,8 @@ at::Tensor addmm(const at::Tensor& self,
     /* BLOCK_N = */ config.block_n,
     /* BLOCK_K = */ config.block_k,
     // self_b is already broadcast to a matrix; its strides encode broadcasting.
+    // self_b is broadcast to the full (M, N) shape, so the kernel always takes
+    // the strided bias path.
     /* BIAS_IS_VECTOR = */ false,
     /* BIAS_IS_SCALAR = */ false,
     /* HAS_K = */ mat1_sizes[1] > 0,
@@ -160,6 +162,8 @@ at::Tensor& addmm_out(const at::Tensor& self,
     /* BLOCK_N = */ config.block_n,
     /* BLOCK_K = */ config.block_k,
     // self_b is already broadcast to a matrix; its strides encode broadcasting.
+    // self_b is broadcast to the full (M, N) shape, so the kernel always takes
+    // the strided bias path.
     /* BIAS_IS_VECTOR = */ false,
     /* BIAS_IS_SCALAR = */ false,
     /* HAS_K = */ mat1_sizes[1] > 0,

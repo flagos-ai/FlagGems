@@ -94,7 +94,12 @@ def randn_kernel(
     r3 = uint_to_uniform_float(r3)
     n0, n1 = pair_uniform_to_normal_fast(r0, r1)
     n2, n3 = pair_uniform_to_normal_fast(r2, r3)
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    # `pid * BLOCK * 4` is an int32 product. Above 2**31 elements it wraps to a
+    # negative offset that still satisfies `off < N` for a 64-bit N, so the
+    # store lands 4 GiB before the allocation and the tail is never written.
+    # Compute the store offsets in int64; the philox counter above stays 32-bit
+    # on purpose. See Issue #7269.
+    off_0 = tl.program_id(0).to(tl.int64) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK

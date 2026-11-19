@@ -221,7 +221,8 @@ if HAS_TLE:
         i_bsq, i_gbh = tl.program_id(0), tl.program_id(1)
         i_b = i_bsq // SQ
         i_sq = i_bsq % SQ
-        i_g, i_bh = i_gbh // G, i_gbh % G
+        NH = tl.cdiv(G, BH)
+        i_g, i_bh = i_gbh // NH, i_gbh % NH
         q_base = q + i_b * stride_qb + i_sq * stride_qm + i_gbh * (BH * stride_qh)
         tq_base = q_base + D * stride_qd
         kv_base = kv + i_b * stride_kvb + i_g * stride_kvg
@@ -343,7 +344,7 @@ def triton_sparse_mla_fwd_interface(
         sm_scale = DT**-0.5
     # GCU400 DSM budget: cap BH so that q_blk/acc [BH, DP=512] tiles stay
     # small (DSM peak must fit dsmSize=1308672B). More chunks via NH.
-    BH = max(8, min(32, triton.next_power_of_2(G)))
+    BH = max(8, min(16, triton.next_power_of_2(G)))
     NH = triton.cdiv(G, BH)
     BK = 32
     output = torch.zeros((B, SQ, H, D), device=q.device, dtype=q.dtype)

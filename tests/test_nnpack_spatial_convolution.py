@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # ---------------------------------------------------------------------------
 # Shared value-range / shape helpers (mirrors the operator-test spec
@@ -278,7 +279,7 @@ _SPECIAL_ROWS = [
 # Every dtype the native kernel rejects on this backend, verified with a real
 # call; NNPACK implements float32 only.
 _UNSUPPORTED_DTYPES = [
-    torch.float64,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
     torch.float16,
     torch.bfloat16,
     torch.int8,
