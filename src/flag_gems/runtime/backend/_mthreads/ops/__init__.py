@@ -57,6 +57,7 @@ from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
 from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_div__ScalarList import _foreach_div__ScalarList
 from ._foreach_div__Tensor import _foreach_div__Tensor
+from ._foreach_erf import _foreach_erf
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -286,6 +287,7 @@ __all__ = [
     "_foreach_div__Scalar",
     "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
+    "_foreach_erf",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
