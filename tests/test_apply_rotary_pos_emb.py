@@ -301,3 +301,51 @@ def test_apply_rotary_pos_emb_inplace_pt2(rotary_interleaved):
         utils.gems_assert_close(k_eager, k_ref, dtype)
         torch.testing.assert_close(q_compiled, q_eager, rtol=0, atol=0)
         torch.testing.assert_close(k_compiled, k_eager, rtol=0, atol=0)
+
+
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.parametrize("interleaved", [False, True])
+@pytest.mark.parametrize("raise_on_second", [False, True])
+def test_rope_inplace_tuning_restores_candidate_inputs(interleaved, raise_on_second):
+    import triton
+
+    from flag_gems.fused.rotary_embedding import (
+        _RopeInplaceTuner,
+        _RopeInterleavedTuner,
+    )
+
+    configs = [
+        triton.Config({"HEAD_BLOCK_SIZE": 0}, num_warps=4, num_stages=3),
+        triton.Config({"HEAD_BLOCK_SIZE": 1}, num_warps=4, num_stages=3),
+    ]
+    q = torch.tensor([1.0, 2.0], device="cpu")
+    k = torch.tensor([3.0, 4.0], device="cpu")
+    original_q, original_k = q.clone(), k.clone()
+    tuner_class = _RopeInterleavedTuner if interleaved else _RopeInplaceTuner
+    # Exercise the real policy without constructing a kernel/autotuner. The
+    # fake benchmark checks its inputs, then models an in-place kernel mutation.
+    tuner = object.__new__(tuner_class)
+    args = (q, k, q, k) if interleaved else (q, k)
+    visited = []
+
+    def benchmark(config):
+        torch.testing.assert_close(q, original_q, rtol=0, atol=0)
+        torch.testing.assert_close(k, original_k, rtol=0, atol=0)
+        visited.append(config)
+        q.add_(7)
+        k.neg_()
+        if raise_on_second and config is configs[1]:
+            raise RuntimeError("candidate benchmark failed")
+        return [3.0] * 3 if config is configs[0] else [1.0] * 3
+
+    if raise_on_second:
+        with pytest.raises(RuntimeError, match="candidate benchmark failed"):
+            tuner.policy(benchmark, configs, args, {})
+    else:
+        best_config, timings = tuner.policy(benchmark, configs, args, {})
+        assert best_config is configs[1]
+        assert timings == {configs[0]: [3.0] * 3, configs[1]: [1.0] * 3}
+
+    assert visited == configs
+    torch.testing.assert_close(q, original_q, rtol=0, atol=0)
+    torch.testing.assert_close(k, original_k, rtol=0, atol=0)

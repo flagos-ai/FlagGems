@@ -200,13 +200,18 @@ class _RopeInplaceTuner(_RopeTuner):
         if len(configs) == 1:
             return configs[0], {}
 
-        # A standard restore_value hook clones and copies every mutated tensor
-        # on every timed launch. That overhead hides kernel differences for
-        # large q/k tensors. Back up once, benchmark without per-launch
-        # restoration, then restore before running the selected config.
+        # Back up once and restore before each candidate benchmark so every
+        # config starts from the same values. Keep the copies outside bench_fn
+        # so reset traffic is excluded from its event/CUDA Graph timings.
+        # Restore on exit as well, including when a benchmark raises.
         backups = (args[0].detach().clone(), args[1].detach().clone())
+        timings = {}
         try:
-            timings = {config: bench_fn(config) for config in configs}
+            for config in configs:
+                with torch.no_grad():
+                    args[0].copy_(backups[0])
+                    args[1].copy_(backups[1])
+                timings[config] = bench_fn(config)
         finally:
             with torch.no_grad():
                 args[0].copy_(backups[0])
