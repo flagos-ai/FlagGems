@@ -203,6 +203,12 @@ from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
 from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
+from ._scaled_dot_product_attention_math import (  # noqa: F401
+    _scaled_dot_product_attention_math,
+)
+from ._scaled_dot_product_attention_math_for_mps import (  # noqa: F401
+    _scaled_dot_product_attention_math_for_mps,
+)
 from ._scaled_dot_product_efficient_attention import (
     _scaled_dot_product_efficient_attention,
 )
@@ -210,6 +216,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
     _thnn_differentiable_gru_cell_backward,
@@ -780,6 +787,7 @@ from .pairwise_distance import pairwise_distance
 from .pdist_forward import pdist_forward
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .permute_copy import permute_copy
+from .pinverse import pinverse  # noqa: F401
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
 from .polygamma import polygamma, polygamma_, polygamma_out
@@ -884,6 +892,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .sparse_broadcast_to_copy import sparse_broadcast_to_copy  # noqa: F401
 from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe  # noqa: F401
 from .sparse_compressed_tensor import sparse_compressed_tensor  # noqa: F401
 from .sparse_sampled_addmm import (  # noqa: F401
@@ -1227,10 +1236,13 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_semi_structured_linear",
     "_thnn_fused_gru_cell",
     "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
@@ -1831,6 +1843,7 @@ __all__ = [
     "pdist_forward",
     "per_token_group_quant_fp8",
     "permute_copy",
+    "pinverse",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
     "polar",
@@ -1969,6 +1982,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "sparse_broadcast_to_copy",
     "special_bessel_j0",
     "special_bessel_j1",
     "special_bessel_y0",
