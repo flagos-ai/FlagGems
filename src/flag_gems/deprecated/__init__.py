@@ -12,18 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from flag_gems.deprecated.act_quant import act_quant_triton
-from flag_gems.deprecated.add_rms_norm import add_rms_norm
+# Deprecated operators migrated from FlagGems-vllm or TransformerEngine
+# These operators are retained here for compatibility but may be removed in future versions
+
 from flag_gems.deprecated.apply_repetition_penalties import apply_repetition_penalties
-from flag_gems.deprecated.beam_search_score import beam_search_score, beam_search_score_
-from flag_gems.deprecated.bf16_paged_mqa_logits import bf16_paged_mqa_logits
-from flag_gems.deprecated.bincount import bincount
 from flag_gems.deprecated.chunk_gated_delta_rule import chunk_gated_delta_rule
-from flag_gems.deprecated.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.deprecated.cp_gather_indexer_k_quant_cache import (
     cp_gather_indexer_k_quant_cache,
 )
-from flag_gems.deprecated.cross_entropy_loss import cross_entropy_loss
 from flag_gems.deprecated.cutlass_scaled_mm import cutlass_scaled_mm
 from flag_gems.deprecated.deepseek_v4_attention_combine_topk_swa_indices import (
     combine_topk_swa_indices,
@@ -52,10 +48,6 @@ from flag_gems.deprecated.fp8_fp4_mega_moe import (
 )
 from flag_gems.deprecated.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
 from flag_gems.deprecated.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
-from flag_gems.deprecated.fused_add_rms_norm import fused_add_rms_norm
-from flag_gems.deprecated.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
-    fused_deepseek_v4_qnorm_rope_kv_rope_insert,
-)
 from flag_gems.deprecated.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
 )
@@ -68,13 +60,8 @@ from flag_gems.deprecated.fused_moe import (
     invoke_fused_moe_triton_kernel,
     outplace_fused_experts,
 )
-from flag_gems.deprecated.geglu import dgeglu, geglu
-from flag_gems.deprecated.gelu_and_mul import gelu_and_mul
 from flag_gems.deprecated.grouped_topk import grouped_topk
 from flag_gems.deprecated.indexer_k_quant_and_cache import indexer_k_quant_and_cache
-from flag_gems.deprecated.instance_norm import instance_norm
-from flag_gems.deprecated.matmul_bias_activation import matmul_bias_activation
-from flag_gems.deprecated.matmuladd import matmuladd
 from flag_gems.deprecated.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
@@ -88,18 +75,11 @@ from flag_gems.deprecated.moe_align_block_size import (
     moe_align_block_size,
     moe_align_block_size_triton,
 )
-from flag_gems.deprecated.moe_load_balance_loss import moe_load_balance_loss
 from flag_gems.deprecated.moe_sum import moe_sum
 from flag_gems.deprecated.mrope import mrope
-from flag_gems.deprecated.outer import outer
 from flag_gems.deprecated.pack_seq import pack_seq_triton
-from flag_gems.deprecated.post_layer_norm_residual import post_layer_norm_residual
-from flag_gems.deprecated.reglu import dreglu, reglu
 from flag_gems.deprecated.reshape_and_cache import reshape_and_cache
-from flag_gems.deprecated.reshape_and_cache_flash import reshape_and_cache_flash
 from flag_gems.deprecated.rotary_embedding import apply_rotary_pos_emb
-from flag_gems.deprecated.rwkv_ka_fusion import rwkv_ka_fusion
-from flag_gems.deprecated.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.deprecated.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.deprecated.silu_and_mul_with_clamp import (
     silu_and_mul_with_clamp,
@@ -107,40 +87,24 @@ from flag_gems.deprecated.silu_and_mul_with_clamp import (
 )
 from flag_gems.deprecated.skip_layernorm import skip_layer_norm
 from flag_gems.deprecated.sparse_attention import sparse_attn_triton
-from flag_gems.deprecated.stage_deepseek_v4_mega_moe_inputs import (
-    stage_deepseek_v4_mega_moe_inputs,
-)
-from flag_gems.deprecated.swiglu import dswiglu, swiglu
 from flag_gems.deprecated.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.deprecated.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.deprecated.topk_softmax import topk_softmax
 from flag_gems.deprecated.topk_softplus_sqrt import topk_softplus_sqrt
 from flag_gems.deprecated.unpack_seq import unpack_seq_triton
-from flag_gems.deprecated.weight_norm import weight_norm
 
 __all__ = [
-    "add_rms_norm",
-    "act_quant_triton",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
-    "beam_search_score",
-    "beam_search_score_",
-    "bf16_paged_mqa_logits",
-    "bincount",
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
     "chunk_gated_delta_rule_fwd",
     "combine_topk_swa_indices",
     "compute_global_topk_indices_and_lens",
-    "concat_and_cache_mla",
     "cp_gather_indexer_k_quant_cache",
-    "cross_entropy_loss",
     "cutlass_scaled_mm",
     "dequantize_and_gather_k_cache",
-    "dgeglu",
     "dispatch_fused_moe_kernel",
-    "dreglu",
-    "dswiglu",
     "flash_mla",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
@@ -148,43 +112,29 @@ __all__ = [
     "fp8_fp4_mega_moe_torch_ref",
     "fp8_fp4_mqa_logits",
     "fp8_fp4_paged_mqa_logits",
-    "fused_add_rms_norm",
-    "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
     "fused_indexer_q_rope_quant",
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",
-    "geglu",
-    "gelu_and_mul",
     "grouped_topk",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
     "indexer_k_quant_and_cache",
     "inplace_fused_experts",
-    "instance_norm",
     "invoke_fused_moe_triton_kernel",
-    "matmul_bias_activation",
-    "matmuladd",
     "mhc_bwd",
     "mhc_bwd_ref",
     "mhc_post",
     "mhc_pre",
     "moe_align_block_size",
     "moe_align_block_size_triton",
-    "moe_load_balance_loss",
     "moe_sum",
     "mrope",
-    "outer",
     "outplace_fused_experts",
     "pack_seq_triton",
-    "post_layer_norm_residual",
-    "reglu",
     "reshape_and_cache",
-    "reshape_and_cache_flash",
-    "rwkv_ka_fusion",
-    "rwkv_mm_sparsity",
     "silu_and_mul",
     "silu_and_mul_out",
     "silu_and_mul_with_clamp",
@@ -192,13 +142,10 @@ __all__ = [
     "sinkhorn_forward",
     "skip_layer_norm",
     "sparse_attn_triton",
-    "stage_deepseek_v4_mega_moe_inputs",
-    "swiglu",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",
     "topk_softmax",
     "topk_softplus_sqrt",
     "triton_sparse_mla_fwd_interface",
     "unpack_seq_triton",
-    "weight_norm",
 ]
