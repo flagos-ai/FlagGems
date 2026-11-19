@@ -448,41 +448,4 @@ def te_rmsnorm_bwd(
     return dx.reshape(original_shape), dgamma
 
 
-def _patch_generic_wrapper():
-    """Route direct calls to the generic wrapper (flag_gems.ops.te_rmsnorm
-    module) to this backend override.
-
-    Tests and benchmarks import ``te_rmsnorm_bwd`` from
-    ``flag_gems.ops.te_rmsnorm`` (bypassing the top-level ``flag_gems``
-    registry that SpecOpRegistrar patches), so the generic Triton kernel
-    would still be hit on XPU (it cannot compile there: the 2D
-    ``tl.sum(..., axis=0)`` reduction in ``rmsnorm_bwd_dgamma_kernel`` is
-    rejected by the XPU legalizer with
-    ``axis must not be 0 for 2D+ shapes``).  Patching the module
-    attribute at import time keeps the change backend-local: the generic
-    module source is untouched and other vendor backends are unaffected
-    (this module is only imported for the kunlunxin backend).
-    """
-    try:
-        import sys
-
-        _generic_module = sys.modules.get("flag_gems.ops.te_rmsnorm")
-        if _generic_module is not None:
-            if hasattr(_generic_module, "te_rmsnorm_bwd"):
-                _generic_module.te_rmsnorm_bwd = te_rmsnorm_bwd
-            if hasattr(_generic_module, "te_rmsnorm_fwd"):
-                _generic_module.te_rmsnorm_fwd = te_rmsnorm_fwd
-        import flag_gems.ops as _ops
-
-        if hasattr(_ops, "te_rmsnorm_bwd"):
-            _ops.te_rmsnorm_bwd = te_rmsnorm_bwd
-        if hasattr(_ops, "te_rmsnorm_fwd"):
-            _ops.te_rmsnorm_fwd = te_rmsnorm_fwd
-    except ImportError:
-        pass
-
-
-_patch_generic_wrapper()
-
-
 __all__ = ["te_rmsnorm_bwd", "te_rmsnorm_fwd"]

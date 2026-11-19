@@ -37,6 +37,7 @@ _CEIL_BACKWARD = runtime_device.vendor_name in (
     "hygon",
     "iluvatar",
     "thead",
+    "metax",
 )
 
 

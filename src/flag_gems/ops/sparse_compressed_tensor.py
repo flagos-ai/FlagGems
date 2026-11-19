@@ -89,12 +89,22 @@ def _plain_max_kernel(ptr, out_ptr, n, BLOCK: tl.constexpr):
     Used only by the size-inference overload.  ``other=-1`` is the identity for
     the maximum of a non-negative index range, so fully masked programs write a
     harmless ``-1``.
+
+    The launcher caps the grid at ``_MAX_BLOCK`` programs, so the loop below is
+    a grid-stride one: each program covers every ``num_pid * BLOCK``-th chunk
+    rather than only its own, which keeps the scan total for any ``n``.  Without
+    it the elements past ``_MAX_BLOCK * BLOCK`` were never read and the inferred
+    size came out too small.
     """
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n
-    x = tl.load(ptr + offs, mask=mask, other=-1).to(tl.int64)
-    tl.atomic_max(out_ptr, tl.max(x, axis=0))
+    num_pid = tl.num_programs(0)
+    best = tl.full((), -1, dtype=tl.int64)
+    for start in range(pid * BLOCK, n, num_pid * BLOCK):
+        offs = start + tl.arange(0, BLOCK)
+        mask = offs < n
+        x = tl.load(ptr + offs, mask=mask, other=-1).to(tl.int64)
+        best = tl.maximum(best, tl.max(x, axis=0))
+    tl.atomic_max(out_ptr, best)
 
 
 def _infer_size(compressed_indices, plain_indices, values, layout):

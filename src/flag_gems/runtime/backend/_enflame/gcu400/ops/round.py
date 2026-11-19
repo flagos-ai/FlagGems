@@ -30,7 +30,7 @@ NUM_SIPS = 24
 def round_half_to_even_impl(x):
     r = tl.floor(x)
     d = x - r
-    is_odd = tl.abs(r - 2.0 * tl.floor(r / 2.0)) > 0.5
+    is_odd = (r - 2.0 * tl.floor(r * 0.5)) > 0.5
     return tl.where((d > 0.5) | ((tl.abs(d - 0.5) < 1e-10) & is_odd), r + 1.0, r)
 
 
@@ -95,7 +95,7 @@ def _launch_round(input, output, decimals):
     IS_FP32 = dtype == torch.float32
     IS_FP16 = dtype == torch.float16
     IS_BF16 = dtype == torch.bfloat16
-    BLOCK = 8192
+    BLOCK = 1024 if N_total < 65536 else 4096
     grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
 
     with torch_device_fn.device(input.device):
