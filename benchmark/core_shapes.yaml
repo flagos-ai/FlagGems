@@ -1378,6 +1378,13 @@ bmm_w8a8:
 
 # GEMM workloads from recent LLMs, with square controls and M/N/K tails.
 # B=1 is a placeholder for two-dimensional operations.
+row_tiled_mm:
+  shapes:
+    - [128, 448, 7168]
+    - [1424, 448, 7168]
+    - [4096, 896, 3584]
+  shape_desc: "M, N, K"
+
 mm:
   shapes: &id001
   - [1, 1, 1, 2048]
