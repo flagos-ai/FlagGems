@@ -226,7 +226,15 @@ class _MedianNativeReference:
         return self.op_name == "median" and not self.with_out
 
     def _requires_median_static(self):
-        return flag_gems.vendor_name == "enflame" and self._is_median_no_dim()
+        return (
+            flag_gems.vendor_name == "enflame"
+            and self._is_median_no_dim()
+            and (
+                base.Config.base_data is not None
+                or "latency_base" in self.to_bench_metrics
+                or "speedup" in self.to_bench_metrics
+            )
+        )
 
     def _require_external_reference(self, dtype, call, named_call=None):
         if not base.Config.skip_native or base.Config.base_data is None:

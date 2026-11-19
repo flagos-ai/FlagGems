@@ -237,6 +237,13 @@ def _masked_file_sha(path):
 
 
 class _MaskedH800Reference:
+    def _requires_masked_static(self):
+        return flag_gems.vendor_name == "enflame" and (
+            base.Config.base_data is not None
+            or "latency_base" in self.to_bench_metrics
+            or "speedup" in self.to_bench_metrics
+        )
+
     def _require_masked_static(self, args, kwargs, case_id):
         if not base.Config.skip_native or base.Config.base_data is None:
             raise ValueError(
@@ -345,14 +352,14 @@ class _MaskedH800Reference:
         return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None, dtype=None):
-        if flag_gems.vendor_name == "enflame":
+        if self._requires_masked_static():
             self._masked_checked = self._require_masked_static(
                 *self.unpack_to_args_kwargs(input), case_id
             )
         return super()._measure_input(input, case_id=case_id, dtype=dtype)
 
     def _apply_external_baseline(self, metric, dtype, context):
-        if flag_gems.vendor_name != "enflame":
+        if not self._requires_masked_static():
             return super()._apply_external_baseline(metric, dtype, context)
         baseline, captured, latency, key = self._masked_checked
         if (
