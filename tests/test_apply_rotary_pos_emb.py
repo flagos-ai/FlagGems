@@ -309,7 +309,7 @@ def test_apply_rotary_pos_emb_inplace_pt2(rotary_interleaved):
 def test_rope_inplace_tuning_restores_candidate_inputs(interleaved, raise_on_second):
     import triton
 
-    from flag_gems.fused.rotary_embedding import (
+    from flag_gems.deprecated.rotary_embedding import (
         _RopeInplaceTuner,
         _RopeInterleavedTuner,
     )

@@ -195,7 +195,7 @@ void rotary_embedding_inplace(
           : 1u;
 
   const TritonJITFunction& f = TritonJITFunction::get_instance(
-      std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
+      std::string(utils::get_flag_gems_src_path() / "deprecated" / "rotary_embedding.py"),
       "apply_rotary_pos_emb_inplace_kernel");
 
   // Ensure the default stream for the active backend is initialized.
@@ -311,7 +311,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   auto k_embed_stride = k_embed.strides();
 
   const TritonJITFunction& f = TritonJITFunction::get_instance(
-      std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
+      std::string(utils::get_flag_gems_src_path() / "deprecated" / "rotary_embedding.py"),
       "apply_rotary_pos_emb_kernel");
   // Ensure the default stream for the active backend is initialized.
   c10::DeviceGuard guard(q.device());
