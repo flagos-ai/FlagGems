@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._adaptive_avg_pool3d_backward import (
+    _adaptive_avg_pool3d_backward,
+    adaptive_avg_pool3d_backward_grad_input,
+)
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
@@ -71,6 +75,8 @@ from .clip_ import clip_
 from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
+from .conv_tbc import conv_tbc, conv_tbc_out
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .copy import copy, copy_
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
@@ -89,6 +95,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diff import diff
 from .dist import dist
+from .divide import divide
 from .dot import dot
 from .dropout_ import dropout_
 from .embedding import embedding
@@ -108,6 +115,7 @@ from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .fill_diagonal_ import fill_diagonal_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
@@ -288,6 +296,13 @@ from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
+from .true_divide import (
+    true_divide,
+    true_divide_,
+    true_divide_out,
+    true_divide_tensor,
+    true_divide_tensor_,
+)
 from .unbind_copy import unbind_copy
 from .uniform import uniform
 from .unique import _unique2
@@ -320,6 +335,7 @@ from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_adaptive_avg_pool3d_backward",
     "_dyn_quant_matmul_4bit",
     "_embedding_bag",
     "_embedding_bag_backward",
@@ -335,6 +351,7 @@ __all__ = [
     "acosh",
     "acosh_",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
@@ -387,6 +404,10 @@ __all__ = [
     "column_stack_out",
     "concat",
     "concatenate",
+    "conv_tbc",
+    "conv_tbc_out",
+    "convolution_backward",
+    "convolution_backward_out",
     "copy",
     "copy_",
     "cosh_",
@@ -406,6 +427,7 @@ __all__ = [
     "diagonal_backward",
     "diff",
     "dist",
+    "divide",
     "dot",
     "dropout_",
     "embedding",
@@ -425,6 +447,7 @@ __all__ = [
     "fill_scalar_",
     "fill_tensor",
     "fill_tensor_",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
@@ -664,6 +687,11 @@ __all__ = [
     "triangular_solve",
     "triangular_solve_out",
     "triu",
+    "true_divide",
+    "true_divide_",
+    "true_divide_out",
+    "true_divide_tensor",
+    "true_divide_tensor_",
     "unbind_copy",
     "uniform",
     "unique_dim",

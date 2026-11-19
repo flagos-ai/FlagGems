@@ -505,7 +505,7 @@ def _vendor_arch_names():
     vendor_dir = backend_dir / f"_{flag_gems.vendor_name}"
     if not vendor_dir.is_dir():
         return set()
-    excluded = ("ops", "fused")
+    excluded = ("ops", "deprecated")
     return {
         p.name
         for p in vendor_dir.iterdir()
