@@ -294,9 +294,9 @@ def test_thnn_conv2d_out(
     inp, weight, bias_t = _make_conv_inputs(
         inp_shape, weight_shape, bias, dtype, ["-1", "1"]
     )
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     out_shape = _conv_output_shape(
         inp_shape, weight_shape, kernel_size, stride, padding
@@ -314,7 +314,7 @@ def test_thnn_conv2d_out(
 
     # The .out overload must write into and return the caller's buffer.
     assert res_ret is res_out
-    _assert_close(res_out, ref_out.to(dtype), dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out.to(dtype), dtype)
 
 
 @pytest.mark.thnn_conv2d
@@ -324,7 +324,7 @@ def test_thnn_conv2d_rejects_kernel_size_mismatch():
     args = (inp, weight, (2, 2), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
         torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+            *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
         )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
@@ -337,7 +337,7 @@ def test_thnn_conv2d_rejects_channel_mismatch():
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
         torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+            *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
         )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
@@ -351,7 +351,7 @@ def test_thnn_conv2d_rejects_non_4d_input(bad_shape):
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
         torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+            *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
         )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
@@ -364,7 +364,7 @@ def test_thnn_conv2d_rejects_non_4d_weight():
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
         torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+            *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
         )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
@@ -379,10 +379,7 @@ def test_thnn_conv2d_rejects_bias_length_mismatch():
         args = (inp, weight, (3, 3), bad_bias, (1, 1), (0, 0))
         with pytest.raises(RuntimeError):
             torch.ops.aten.thnn_conv2d(
-                *(
-                    _reference_input(x) if isinstance(x, torch.Tensor) else x
-                    for x in args
-                )
+                *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
             )
         with pytest.raises(_GEMS_ERRORS):
             flag_gems.thnn_conv2d(*args)
@@ -396,7 +393,7 @@ def test_thnn_conv2d_rejects_nonpositive_stride(stride):
     args = (inp, weight, (3, 3), None, stride, (0, 0))
     with pytest.raises(RuntimeError):
         torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+            *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
         )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
@@ -409,7 +406,7 @@ def test_thnn_conv2d_rejects_kernel_larger_than_input():
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
         torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+            *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
         )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
@@ -441,10 +438,7 @@ def test_thnn_conv2d_rejects_unsupported_dtype(dtype):
     if not (_MUSA and dtype in {torch.int8, torch.uint8, torch.int32, torch.int64}):
         with pytest.raises(RuntimeError):
             torch.ops.aten.thnn_conv2d(
-                *(
-                    _reference_input(x) if isinstance(x, torch.Tensor) else x
-                    for x in args
-                )
+                *(x.cpu() if _MUSA and isinstance(x, torch.Tensor) else x for x in args)
             )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
