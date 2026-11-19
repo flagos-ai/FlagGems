@@ -30,6 +30,8 @@ SHAPES = [
     (128, 128),
     (256, 256),
     (512, 512),
+]
+MASTER_EXTRA_SHAPES = [
     (1024, 1024),
     (4096, 4096),
     (1024, 65536),
@@ -39,6 +41,11 @@ SHAPES = [
 class OperatorCaseBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
+        if not (
+            flag_gems.vendor_name == "mthreads"
+            and os.environ.get("FLAGGEMS_MUSA_LINALG_H800_BASELINE")
+        ):
+            self.shapes.extend(MASTER_EXTRA_SHAPES)
         self.shape_desc = "(*B), M, N"
 
 

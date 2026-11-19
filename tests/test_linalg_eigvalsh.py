@@ -47,6 +47,17 @@ def _real_dtype(dtype):
     return _REAL_DTYPES.get(dtype, dtype)
 
 
+@pytest.fixture(autouse=True)
+def _skip_unsupported_ppu_dtype(request):
+    callspec = getattr(request.node, "callspec", None)
+    if (
+        flag_gems.vendor_name == "thead"
+        and callspec is not None
+        and callspec.params.get("dtype") in _REAL_DTYPES
+    ):
+        pytest.skip("PPU native eigvalsh aborts on complex inputs")
+
+
 # eigvalsh needs rank >= 2 with a square trailing pair, so the spec's 0-dim and
 # 1-dim levels can only appear as the negative cases below. The rectangular spec
 # levels keep their batch axes and square the trailing pair at a real trailing
@@ -645,3 +656,39 @@ def test_linalg_eigvalsh_invalid_uplo(uplo):
 
     with pytest.raises(RuntimeError):
         flag_gems.linalg_eigvalsh(inp, uplo)
+
+
+_MASTER_SYMMETRIC_CASES = [
+    ((), 2, "L", torch.float32),
+    ((1,), 3, "U", torch.float32),
+    ((2,), 4, "L", torch.float64),
+    ((2, 3), 5, "U", torch.float32),
+    ((1,), 7, "L", torch.float64),
+    ((3,), 3, "U", torch.float32),
+    ((2, 2), 4, "L", torch.float32),
+    ((4,), 6, "U", torch.float64),
+    ((1, 2, 1), 3, "L", torch.float32),
+    ((2,), 8, "U", torch.float64),
+]
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize(
+    "batch,n,uplo,dtype",
+    tu.selected_cases(
+        _MASTER_SYMMETRIC_CASES,
+        quick=[_MASTER_SYMMETRIC_CASES[0], _MASTER_SYMMETRIC_CASES[3]],
+    ),
+)
+def test_linalg_eigvalsh_symmetric(batch, n, uplo, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    generator = torch.Generator(device=flag_gems.device).manual_seed(0)
+    raw = torch.randn(
+        (*batch, n, n), generator=generator, dtype=dtype, device=flag_gems.device
+    )
+    inp = raw + raw.transpose(-1, -2)
+    reference = torch.ops.aten.linalg_eigvalsh.default(tu.to_reference(inp), UPLO=uplo)
+    result = flag_gems.linalg_eigvalsh(inp, UPLO=uplo)
+    assert result.device == inp.device
+    tu.assert_result_close(result, reference)
