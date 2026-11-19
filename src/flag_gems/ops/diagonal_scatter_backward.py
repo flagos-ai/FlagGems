@@ -73,49 +73,34 @@ _DIAG_BLOCK = 512
 
 
 @triton.jit
-def _copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n_elements
-    tl.store(dst_ptr + offsets, tl.load(src_ptr + offsets, mask=mask), mask=mask)
-
-
-@triton.jit
-def _zero_diagonal_kernel(
+def _copy_zero_diagonal_kernel(
     grad_ptr,
-    n_l,
-    n_m,
-    n_r,
-    diag_len,
-    stride_l,
-    stride_m,
+    grad_input_ptr,
+    n_elements,
+    dim1_size,
+    dim2_size,
     stride_row,
     stride_col,
-    row_off,
-    col_off,
+    offset,
     BLOCK: tl.constexpr,
 ):
-    """Zero the scattered diagonal of a contiguous ``grad_input``."""
+    """Copy ``grad`` into ``grad_input`` with the scattered diagonal zeroed.
+
+    Single bandwidth-bound pass: each flat element is copied, except the
+    (row, col) positions satisfying ``col - row == offset`` on the
+    (dim1, dim2) plane, which are written as zero.
+    """
     pid = tl.program_id(axis=0)
     idx = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = idx < n_l * n_m * n_r * diag_len
+    mask = idx < n_elements
 
-    k = idx % diag_len
-    plane = idx // diag_len
-    r = plane % n_r
-    t = plane // n_r
-    m = t % n_m
-    lo = t // n_m
+    row = (idx // stride_row) % dim1_size
+    col = (idx // stride_col) % dim2_size
+    on_diag = (col - row) == offset
 
-    offset = (
-        lo * stride_l
-        + m * stride_m
-        + (k + row_off) * stride_row
-        + (k + col_off) * stride_col
-        + r
-    )
-    zero = tl.zeros((BLOCK,), dtype=grad_ptr.dtype.element_ty)
-    tl.store(grad_ptr + offset, zero, mask=mask)
+    value = tl.load(grad_ptr + idx, mask=mask)
+    value = tl.where(on_diag, 0, value)
+    tl.store(grad_input_ptr + idx, value, mask=mask)
 
 
 @triton.jit
@@ -242,34 +227,31 @@ def diagonal_scatter_backward(
     if n_elements == 0:
         return grad_input, grad_src
 
+    n_l, n_m, n_r, stride_l, stride_m, stride_row, stride_col = _diagonal_geometry(
+        grad.shape, a, b
+    )
+    row_off = max(-offset, 0)
+    col_off = max(offset, 0)
+
     with torch_device_fn.device(grad.device):
-        _copy_kernel[(triton.cdiv(n_elements, _COPY_BLOCK),)](
-            grad, grad_input, n_elements, BLOCK=_COPY_BLOCK
+        # Single bandwidth-bound pass: copy grad into grad_input and zero
+        # the scattered diagonal positions in the same launch (masked
+        # store) -- no separate full-copy + zero-diagonal pair.
+        _copy_zero_diagonal_kernel[(triton.cdiv(n_elements, _COPY_BLOCK),)](
+            grad,
+            grad_input,
+            n_elements,
+            grad.shape[a],
+            grad.shape[b],
+            stride_row,
+            stride_col,
+            offset,
+            BLOCK=_COPY_BLOCK,
         )
 
         if diag_len > 0:
-            n_l, n_m, n_r, stride_l, stride_m, stride_row, stride_col = (
-                _diagonal_geometry(grad.shape, a, b)
-            )
-            row_off = max(-offset, 0)
-            col_off = max(offset, 0)
-
             n_diag = n_l * n_m * n_r * diag_len
             grid = (triton.cdiv(n_diag, _DIAG_BLOCK),)
-            _zero_diagonal_kernel[grid](
-                grad_input,
-                n_l,
-                n_m,
-                n_r,
-                diag_len,
-                stride_l,
-                stride_m,
-                stride_row,
-                stride_col,
-                row_off,
-                col_off,
-                BLOCK=_DIAG_BLOCK,
-            )
             _gather_diagonal_kernel[grid](
                 grad,
                 grad_src,
@@ -287,3 +269,31 @@ def diagonal_scatter_backward(
             )
 
     return grad_input, grad_src
+
+
+class DiagonalScatterFunction(torch.autograd.Function):
+    """autograd bridge for ``flag_gems.diagonal_scatter``.
+
+    ``aten::diagonal_scatter`` is CompositeExplicitAutograd and exposes no
+    ``aten::diagonal_scatter_backward`` schema, so the FlagGems forward routes
+    differentiable inputs through this node and the backward evaluates the
+    Triton kernel above.
+    """
+
+    @staticmethod
+    def forward(ctx, input, src, offset, dim1, dim2):
+        from flag_gems.ops.diagonal_scatter import diagonal_scatter
+
+        ctx.offset = offset
+        ctx.dim1 = dim1
+        ctx.dim2 = dim2
+        ctx.save_for_backward(src)
+        return diagonal_scatter(input, src, offset, dim1, dim2)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (src,) = ctx.saved_tensors
+        grad_input, grad_src = diagonal_scatter_backward(
+            grad_output, src, ctx.offset, ctx.dim1, ctx.dim2
+        )
+        return grad_input, grad_src, None, None, None
