@@ -24,7 +24,7 @@ from . import base, consts, utils
 # an im2col-based 2-D convolution (groups=1, no dilation). No public benchmark
 # family models a conv, so this uses the two-phase GenericBenchmark with both
 # case_fn (one BenchmarkCasePlan per shape) and build_inputs_fn. ``torch_op`` is
-# the perf reference and ``gems_op`` the candidate; both share the exact same
+# the perf reference and the injected candidate both share the exact same
 # call semantics (self, weight, kernel_size, bias, stride, padding).
 #
 # The default shape set has no convolved input/weight pairs, so the local
@@ -74,6 +74,10 @@ class ThnnConv2dBenchmark(OperatorBenchmark):
 
 @pytest.mark.thnn_conv2d
 def test_thnn_conv2d():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("MUSA lacks the native thnn_conv2d reference")
     bench = ThnnConv2dBenchmark(
         op_name="thnn_conv2d",
         case_fn=_case_fn,
@@ -83,7 +87,6 @@ def test_thnn_conv2d():
         # checkout, so fall back to None: the candidate is supplied either by
         # KernelGen's --override thnn_conv2d:<file>:<function> or by the FlagGems
         # dispatcher fallback inside Benchmark._measure_input.
-        gems_op=getattr(flag_gems, "thnn_conv2d", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -75,6 +75,24 @@ def _make_conv_inputs(inp_shape, weight_shape, with_bias, dtype, value_range):
     return inp, weight, bias
 
 
+_MUSA = flag_gems.vendor_name == "mthreads"
+
+
+def _reference_input(tensor, upcast=False):
+    if not _MUSA or tensor is None:
+        return tu.to_reference(tensor, upcast)
+    # MUSA lacks this native convolution. Preserve the reference's intended
+    # precision and gradients while evaluating the corresponding CPU ATen API.
+    dtype = torch.float64 if upcast else tensor.dtype
+    reference = tensor.detach().to(device="cpu", dtype=dtype, copy=True)
+    return reference.requires_grad_(tensor.requires_grad)
+
+
+def _comparison_output(result, expected_device):
+    assert result.device == expected_device
+    return result.cpu() if _MUSA else result
+
+
 def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     # Supplement dtype-relative tolerance for the fp64 reference with absolute reduction-error bounds.
     if dtype == torch.bfloat16:
@@ -121,9 +139,9 @@ def test__slow_conv2d_forward(
     inp, weight, bias_t = _make_conv_inputs(
         inp_shape, weight_shape, bias, dtype, ["-1", "1"]
     )
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     ref_out = torch.ops.aten._slow_conv2d_forward(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
@@ -133,7 +151,7 @@ def test__slow_conv2d_forward(
         inp, weight, kernel_size, bias_t, stride, padding
     )
 
-    _assert_close(res_out, ref_out, dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
 
 
 @pytest.mark.underscore_slow_conv2d_forward
@@ -148,9 +166,9 @@ def test__slow_conv2d_forward_value_ranges(
     inp, weight, bias_t = _make_conv_inputs(
         inp_shape, weight_shape, True, dtype, value_range
     )
-    ref_inp = tu.to_reference(inp, not tu.is_extreme_range(value_range))
-    ref_weight = tu.to_reference(weight, not tu.is_extreme_range(value_range))
-    ref_bias = tu.to_reference(bias_t, not tu.is_extreme_range(value_range))
+    ref_inp = _reference_input(inp, not tu.is_extreme_range(value_range))
+    ref_weight = _reference_input(weight, not tu.is_extreme_range(value_range))
+    ref_bias = _reference_input(bias_t, not tu.is_extreme_range(value_range))
 
     ref_out = torch.ops.aten._slow_conv2d_forward(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
@@ -160,7 +178,9 @@ def test__slow_conv2d_forward_value_ranges(
         inp, weight, kernel_size, bias_t, stride, padding
     )
 
-    _assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_close(
+        _comparison_output(res_out, inp.device), ref_out, dtype, equal_nan=True
+    )
 
 
 @pytest.mark.underscore_slow_conv2d_forward
@@ -185,10 +205,10 @@ def test__slow_conv2d_forward_backward(
     )
     grad_out = tu.make_input(dtype, out_shape, ["-1", "1"])
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
-    ref_grad_out = tu.to_reference(grad_out, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
+    ref_grad_out = _reference_input(grad_out, True)
     ref_out = torch.ops.aten._slow_conv2d_forward(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
     )
@@ -206,7 +226,7 @@ def test__slow_conv2d_forward_backward(
         inp, weight, kernel_size, bias_t, stride, padding
     )
 
-    tu.assert_result_close(res_out, ref_out.to(dtype))
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out.to(dtype))
 
     in_reduce_dim, out_reduce_dim = _reduction_dims(inp_shape, weight_shape, out_shape)
     assert res_out.requires_grad
@@ -218,7 +238,10 @@ def test__slow_conv2d_forward_backward(
             res_out, (inp, weight, bias_t), grad_out
         )
     _assert_grads_close(
-        (res_gi, res_gw, res_gb),
+        tuple(
+            _comparison_output(grad, inp.device) if grad is not None else None
+            for grad in (res_gi, res_gw, res_gb)
+        ),
         (ref_gi, ref_gw, ref_gb),
         in_reduce_dim,
         out_reduce_dim,
@@ -247,9 +270,9 @@ def test__slow_conv2d_forward_nan_inf(dtype, scenario, special_arg):
     target = {"inp": inp, "weight": weight, "bias": bias}[special_arg]
     target.flatten()[: specials.numel()] = specials
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
     ref_out = torch.ops.aten._slow_conv2d_forward(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
     ).to(dtype)
@@ -258,7 +281,7 @@ def test__slow_conv2d_forward_nan_inf(dtype, scenario, special_arg):
         inp, weight, kernel_size, bias, stride, padding
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out)
 
 
 @pytest.mark.underscore_slow_conv2d_forward
@@ -273,9 +296,9 @@ def test__slow_conv2d_forward_out(
     inp, weight, bias_t = _make_conv_inputs(
         inp_shape, weight_shape, bias, dtype, ["-1", "1"]
     )
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     out_shape = _conv_output_shape(
         inp_shape, weight_shape, kernel_size, stride, padding
@@ -292,7 +315,7 @@ def test__slow_conv2d_forward_out(
 
     # The .output overload must write into and return the caller's buffer.
     assert res_ret is res_out
-    _assert_close(res_out, ref_out.to(dtype), dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out.to(dtype), dtype)
 
 
 @pytest.mark.underscore_slow_conv2d_forward
@@ -301,8 +324,8 @@ def test__slow_conv2d_forward_rejects_kernel_size_mismatch():
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             (2, 2),
             None,
             (1, 1),
@@ -318,8 +341,8 @@ def test__slow_conv2d_forward_rejects_kernel_larger_than_input():
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             (3, 3),
             None,
             (1, 1),
@@ -335,8 +358,8 @@ def test__slow_conv2d_forward_rejects_channel_mismatch():
     weight = tu.make_input(torch.float32, (1, 3, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             (3, 3),
             None,
             (1, 1),
@@ -352,8 +375,8 @@ def test__slow_conv2d_forward_rejects_non_4d_input():
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             (3, 3),
             None,
             (1, 1),
@@ -370,8 +393,8 @@ def test__slow_conv2d_forward_rejects_unsupported_dtype(dtype):
     weight = tu.make_input(dtype, (1, 2, 3, 3), ["0", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             (3, 3),
             None,
             (1, 1),
@@ -394,8 +417,8 @@ def test__slow_conv2d_forward_rejects_scalar_params(scalar_param):
         bad_kwargs = {"kernel_size": (3, 3), "stride": (1, 1), "padding": 1}
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             **bad_kwargs,
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
@@ -417,8 +440,8 @@ def test__slow_conv2d_forward_rejects_wrong_length_params(bad_kwargs):
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             **bad_kwargs,
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
@@ -439,8 +462,8 @@ def test__slow_conv2d_forward_rejects_invalid_params(bad_kwargs):
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._slow_conv2d_forward(
-            tu.to_reference(inp),
-            tu.to_reference(weight),
+            _reference_input(inp),
+            _reference_input(weight),
             **bad_kwargs,
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):

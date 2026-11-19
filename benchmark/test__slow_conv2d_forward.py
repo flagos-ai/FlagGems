@@ -75,12 +75,15 @@ def test__slow_conv2d_forward():
     # the candidate; before that the benchmark resolves the candidate through
     # the process-local override. Passing the attribute (when it exists) keeps
     # the same call semantics as the reference.
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("MUSA lacks the native _slow_conv2d_forward reference")
     bench = SlowConv2dForwardBenchmark(
         op_name="_slow_conv2d_forward",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._slow_conv2d_forward,
-        gems_op=getattr(flag_gems, "_slow_conv2d_forward", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

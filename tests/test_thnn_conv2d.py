@@ -80,6 +80,24 @@ def _make_conv_inputs(inp_shape, weight_shape, with_bias, dtype, value_range):
     return inp, weight, bias
 
 
+_MUSA = flag_gems.vendor_name == "mthreads"
+
+
+def _reference_input(tensor, upcast=False):
+    if not _MUSA or tensor is None:
+        return tu.to_reference(tensor, upcast)
+    # MUSA lacks this native convolution. Preserve the reference's intended
+    # precision and gradients while evaluating the corresponding CPU ATen API.
+    dtype = torch.float64 if upcast else tensor.dtype
+    reference = tensor.detach().to(device="cpu", dtype=dtype, copy=True)
+    return reference.requires_grad_(tensor.requires_grad)
+
+
+def _comparison_output(result, expected_device):
+    assert result.device == expected_device
+    return result.cpu() if _MUSA else result
+
+
 def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     # Supplement dtype-relative tolerance for the fp64 reference with absolute reduction-error bounds.
     if dtype == torch.bfloat16:
@@ -126,9 +144,9 @@ def test_thnn_conv2d(
     inp, weight, bias_t = _make_conv_inputs(
         inp_shape, weight_shape, bias, dtype, ["-1", "1"]
     )
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     ref_out = torch.ops.aten.thnn_conv2d(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
@@ -138,7 +156,7 @@ def test_thnn_conv2d(
 
     assert res_out.shape == ref_out.shape
     assert res_out.dtype == ref_out.dtype
-    _assert_close(res_out, ref_out, dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
 
 
 @pytest.mark.thnn_conv2d
@@ -153,9 +171,9 @@ def test_thnn_conv2d_value_ranges(
     inp, weight, bias_t = _make_conv_inputs(
         inp_shape, weight_shape, True, dtype, value_range
     )
-    ref_inp = tu.to_reference(inp, not tu.is_extreme_range(value_range))
-    ref_weight = tu.to_reference(weight, not tu.is_extreme_range(value_range))
-    ref_bias = tu.to_reference(bias_t, not tu.is_extreme_range(value_range))
+    ref_inp = _reference_input(inp, not tu.is_extreme_range(value_range))
+    ref_weight = _reference_input(weight, not tu.is_extreme_range(value_range))
+    ref_bias = _reference_input(bias_t, not tu.is_extreme_range(value_range))
 
     ref_out = torch.ops.aten.thnn_conv2d(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
@@ -163,7 +181,7 @@ def test_thnn_conv2d_value_ranges(
 
     res_out = flag_gems.thnn_conv2d(inp, weight, kernel_size, bias_t, stride, padding)
 
-    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out)
 
 
 @pytest.mark.thnn_conv2d
@@ -188,10 +206,10 @@ def test_thnn_conv2d_backward(
     )
     grad_out = tu.make_input(dtype, out_shape, ["-1", "1"])
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
-    ref_grad_out = tu.to_reference(grad_out, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
+    ref_grad_out = _reference_input(grad_out, True)
     ref_out = torch.ops.aten.thnn_conv2d(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
     )
@@ -207,7 +225,7 @@ def test_thnn_conv2d_backward(
 
     res_out = flag_gems.thnn_conv2d(inp, weight, kernel_size, bias_t, stride, padding)
 
-    tu.assert_result_close(res_out, ref_out.to(dtype))
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out.to(dtype))
 
     assert res_out.requires_grad, "candidate must preserve autograd"
 
@@ -220,7 +238,10 @@ def test_thnn_conv2d_backward(
             res_out, (inp, weight, bias_t), grad_out
         )
     _assert_grads_close(
-        (res_gi, res_gw, res_gb),
+        tuple(
+            _comparison_output(grad, inp.device) if grad is not None else None
+            for grad in (res_gi, res_gw, res_gb)
+        ),
         (ref_gi, ref_gw, ref_gb),
         in_reduce_dim,
         out_reduce_dim,
@@ -249,16 +270,16 @@ def test_thnn_conv2d_nan_inf(dtype, scenario, special_arg):
     target = {"inp": inp, "weight": weight, "bias": bias}[special_arg]
     target.flatten()[: specials.numel()] = specials
 
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
     ref_out = torch.ops.aten.thnn_conv2d(
         ref_inp, ref_weight, kernel_size, ref_bias, stride, padding
     ).to(dtype)
 
     res_out = flag_gems.thnn_conv2d(inp, weight, kernel_size, bias, stride, padding)
 
-    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(_comparison_output(res_out, inp.device), ref_out)
 
 
 @pytest.mark.thnn_conv2d_out
@@ -302,7 +323,9 @@ def test_thnn_conv2d_rejects_kernel_size_mismatch():
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     args = (inp, weight, (2, 2), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
@@ -313,7 +336,9 @@ def test_thnn_conv2d_rejects_channel_mismatch():
     weight = tu.make_input(torch.float32, (1, 3, 3, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
@@ -325,7 +350,9 @@ def test_thnn_conv2d_rejects_non_4d_input(bad_shape):
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
@@ -336,7 +363,9 @@ def test_thnn_conv2d_rejects_non_4d_weight():
     weight = tu.make_input(torch.float32, (1, 2, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
@@ -349,7 +378,12 @@ def test_thnn_conv2d_rejects_bias_length_mismatch():
         bad_bias = tu.make_input(torch.float32, (bad_len,), ["-1", "1"])
         args = (inp, weight, (3, 3), bad_bias, (1, 1), (0, 0))
         with pytest.raises(RuntimeError):
-            torch.ops.aten.thnn_conv2d(*args)
+            torch.ops.aten.thnn_conv2d(
+                *(
+                    _reference_input(x) if isinstance(x, torch.Tensor) else x
+                    for x in args
+                )
+            )
         with pytest.raises(_GEMS_ERRORS):
             flag_gems.thnn_conv2d(*args)
 
@@ -361,7 +395,9 @@ def test_thnn_conv2d_rejects_nonpositive_stride(stride):
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, stride, (0, 0))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
@@ -372,7 +408,9 @@ def test_thnn_conv2d_rejects_kernel_larger_than_input():
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, (1, 1), (0, 0))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
@@ -385,7 +423,9 @@ def test_thnn_conv2d_rejects_scalar_params(scalar_param):
     kwargs = {"kernel_size": (3, 3), "stride": (1, 1), "padding": (0, 0)}
     kwargs[scalar_param] = {"kernel_size": 3, "stride": 1, "padding": 0}[scalar_param]
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(inp, weight, **kwargs)
+        torch.ops.aten.thnn_conv2d(
+            _reference_input(inp), _reference_input(weight), **kwargs
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(inp, weight, **kwargs)
 
@@ -397,7 +437,9 @@ def test_thnn_conv2d_rejects_unsupported_dtype(dtype):
     weight = tu.make_input(dtype, (1, 2, 3, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, (1, 1), (1, 1))
     with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(*args)
+        torch.ops.aten.thnn_conv2d(
+            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
+        )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 

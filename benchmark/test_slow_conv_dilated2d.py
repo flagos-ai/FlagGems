@@ -78,6 +78,10 @@ class SlowConvDilated2dBenchmark(OperatorBenchmark):
 
 @pytest.mark.slow_conv_dilated2d
 def test_slow_conv_dilated2d():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("MUSA lacks the native slow_conv_dilated2d reference")
     bench = SlowConvDilated2dBenchmark(
         op_name="slow_conv_dilated2d",
         case_fn=_case_fn,
@@ -85,7 +89,6 @@ def test_slow_conv_dilated2d():
         torch_op=torch.ops.aten.slow_conv_dilated2d,
         # Resolved from the flag_gems namespace when the candidate is registered;
         # the KernelGen override is picked up by Benchmark._candidate_call internally.
-        gems_op=getattr(flag_gems, "slow_conv_dilated2d", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

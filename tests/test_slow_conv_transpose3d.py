@@ -238,6 +238,24 @@ def _make_conv_inputs(
     return inp, weight, bias
 
 
+_MUSA = flag_gems.vendor_name == "mthreads"
+
+
+def _reference_input(tensor, upcast=False):
+    if not _MUSA or tensor is None:
+        return tu.to_reference(tensor, upcast)
+    # MUSA lacks this native convolution. Preserve the reference's intended
+    # precision and gradients while evaluating the corresponding CPU ATen API.
+    dtype = torch.float64 if upcast else tensor.dtype
+    reference = tensor.detach().to(device="cpu", dtype=dtype, copy=True)
+    return reference.requires_grad_(tensor.requires_grad)
+
+
+def _comparison_output(result, expected_device):
+    assert result.device == expected_device
+    return result.cpu() if _MUSA else result
+
+
 def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     # Supplement dtype-relative tolerance for the fp64 reference with absolute reduction-error bounds.
     if dtype == torch.bfloat16:
@@ -282,9 +300,9 @@ def test_slow_conv_transpose3d(
     bias,
 ):
     inp, weight, bias_t = _make_conv_inputs(inp_shape, weight_shape, bias, dtype)
-    ref_inp = tu.to_reference(inp, True)
-    ref_weight = tu.to_reference(weight, True)
-    ref_bias = tu.to_reference(bias_t, True)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias_t, True)
 
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp,
@@ -302,7 +320,7 @@ def test_slow_conv_transpose3d(
     )
 
     assert res_out.shape == ref_out.shape
-    _assert_close(res_out, ref_out, dtype)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
 
 
 @pytest.mark.slow_conv_transpose3d
@@ -339,9 +357,9 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     inp = tu.make_input(dtype, inp_shape, value_range)
     weight = tu.make_input(dtype, weight_shape, value_range)
     bias_t = tu.make_input(dtype, (weight_shape[1],), value_range) if bias else None
-    ref_inp = tu.to_reference(inp, not tu.is_extreme_range(value_range))
-    ref_weight = tu.to_reference(weight, not tu.is_extreme_range(value_range))
-    ref_bias = tu.to_reference(bias_t, not tu.is_extreme_range(value_range))
+    ref_inp = _reference_input(inp, not tu.is_extreme_range(value_range))
+    ref_weight = _reference_input(weight, not tu.is_extreme_range(value_range))
+    ref_bias = _reference_input(bias_t, not tu.is_extreme_range(value_range))
 
     ref_out = torch.ops.aten.slow_conv_transpose3d(
         ref_inp,
@@ -361,7 +379,9 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     assert res_out.shape == ref_out.shape
     # neg-inf / +inf saturate the same way on both paths; equal_nan keeps the
     # inf + (-inf) = nan corner from being reported as a mismatch.
-    _assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_close(
+        _comparison_output(res_out, inp.device), ref_out, dtype, equal_nan=True
+    )
 
 
 @pytest.mark.slow_conv_transpose3d_out
