@@ -137,6 +137,7 @@ def test_upsample_nearest_exact3d_backward_uint8():
         grad_output, output_size, input_size
     )
     assert result.device == grad_output.device
+    assert result.dtype == grad_output.dtype
     if flag_gems.vendor_name == "mthreads":
         result = result.cpu()
     assert torch.equal(result, ref)

@@ -85,4 +85,7 @@ def test_nll_loss2d_backward(shape, dtype, ignore_index, reduction, weight):
         total_weight,
     )
 
+    assert res_in_grad.device == inp.device
+    assert res_in_grad.dtype == inp.dtype
+    assert res_in_grad.shape == inp.shape
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
