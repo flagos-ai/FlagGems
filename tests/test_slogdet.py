@@ -193,6 +193,9 @@ def test_slogdet_empty_matrix(dtype):
         )
         ref = torch.linalg.slogdet(ref_inp)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
+        if flag_gems.vendor_name == "mthreads":
+            assert res_sign.device == A.device
+            assert res_logabsdet.device == A.device
         assert res_sign.shape == ref.sign.shape
         assert torch.all(res_sign.cpu() == 1)
         assert torch.all(res_logabsdet.cpu() == 0)

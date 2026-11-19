@@ -44,6 +44,8 @@ def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     in_channels = kernel[0]
     out_channels = kernel[1]
     kernel_volume = kernel[2] * kernel[3] * kernel[4]
@@ -86,6 +88,8 @@ def test_conv_transpose3d_bias(shape, kernel, stride, padding, dtype):
         inp, weight, bias=bias, stride=stride, padding=padding, dilation=1
     )
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     in_channels = kernel[0]
     kernel_volume = kernel[2] * kernel[3] * kernel[4]
     utils.gems_assert_close(
@@ -179,6 +183,8 @@ def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
         groups=groups,
     )
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     in_channels_per_group = kernel[0] // groups
     kernel_volume = kernel[2] * kernel[3] * kernel[4]
     utils.gems_assert_close(

@@ -210,6 +210,8 @@ def test_quantized_max_pool3d_qint_dtypes(
     ref_out = torch.quantized_max_pool3d(ref_inp, **args)
     res_out = flag_gems.quantized_max_pool3d(qx, **args)
 
+    if prepare_on_cpu:
+        assert res_out.device == qx.device
     _assert_qpool_equal(res_out, ref_out, dtype=dtype)
 
 

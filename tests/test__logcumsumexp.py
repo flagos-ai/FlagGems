@@ -51,6 +51,8 @@ def test__logcumsumexp(shape, dtype):
     ref_out = torch._logcumsumexp(ref_inp, dim)
     res_out = flag_gems._logcumsumexp(inp, dim)
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 

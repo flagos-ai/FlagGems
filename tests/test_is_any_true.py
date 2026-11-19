@@ -64,7 +64,10 @@ def test_is_any_true_arbitrary_rank(rank):
     else:
         ref_inp = utils.to_reference(inp)
     reference = torch.ops.aten._is_any_true.default(ref_inp)
-    utils.gems_assert_equal(flag_gems._is_any_true(inp), reference)
+    result = flag_gems._is_any_true(inp)
+    if use_cpu_reference:
+        assert result.device == inp.device
+    utils.gems_assert_equal(result, reference)
 
 
 @pytest.mark.is_any_true

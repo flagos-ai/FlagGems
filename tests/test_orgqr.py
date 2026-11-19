@@ -23,7 +23,8 @@ def make_reflectors(shape, dtype):
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
-    if flag_gems.vendor_name == "mthreads" and shape[-1] == 0:
+    use_empty_cpu_reference = flag_gems.vendor_name == "mthreads" and shape[-1] == 0
+    if use_empty_cpu_reference:
         # The zero-column Q and reflector vector are empty, including without LAPACK.
         ref = torch.empty(shape, dtype=dtype, device="cpu")
         input = ref.to(flag_gems.device)
@@ -32,6 +33,8 @@ def test_accuracy_orgqr(shape, dtype):
         input, tau = make_reflectors(shape, dtype)
         ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
     result = flag_gems.orgqr(input, tau)
+    if use_empty_cpu_reference:
+        assert result.device == input.device
     utils.gems_assert_close(result, ref, dtype)
 
 

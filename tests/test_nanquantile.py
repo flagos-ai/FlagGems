@@ -73,6 +73,8 @@ def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
     result = flag_gems.nanquantile(
         inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
     )
+    if use_cpu_reference:
+        assert result.device == inp.device
     reduction_size = inp.numel() if dim is None else inp.shape[dim]
     _assert_close(result, reference, dtype, reduction_size)
 
