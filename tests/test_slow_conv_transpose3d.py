@@ -856,6 +856,101 @@ def test_slow_conv_transpose3d_rejects_bias_size_mismatch():
         )
 
 
+@pytest.mark.slow_conv_transpose3d
+def test_slow_conv_transpose3d_strided_bias():
+    """A non-contiguous bias must be indexed by logical channel, not storage."""
+    # bias = arange(12)[::2] holds [0, 2, 4, 6, 8, 10] with stride 2; the kernel
+    # must not read the interleaved storage as [0, 1, 2, 3, 4, 5].
+    shape = (1, 3, 5, 5, 5)
+    weight_shape = (3, 6, 2, 2, 2)
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.arange(12, device=flag_gems.device, dtype=dtype)[::2]
+    assert not bias.is_contiguous()
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+    ref_bias = _reference_input(bias, True)
+
+    kernel_size = [2, 2, 2]
+    stride = [1, 1, 1]
+    padding = [0, 0, 0]
+    output_padding = [0, 0, 0]
+    dilation = [1, 1, 1]
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp,
+        ref_weight,
+        kernel_size,
+        ref_bias,
+        stride,
+        padding,
+        output_padding,
+        dilation,
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_transpose3d
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_slow_conv_transpose3d_output_padding_dilation(dtype):
+    """Non-trivial output padding and dilation exercise the size formula."""
+    # A small 4x6x6 input keeps this extra case cheap on top of the main grid.
+    shape = (1, 2, 4, 6, 6)
+    weight_shape = (2, 3, 2, 2, 2)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    kernel_size = [2, 2, 2]
+    stride = [2, 2, 2]
+    padding = [0, 1, 1]
+    output_padding = [1, 1, 0]
+    dilation = [2, 2, 2]
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp,
+        ref_weight,
+        kernel_size,
+        None,
+        stride,
+        padding,
+        output_padding,
+        dilation,
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, None, stride, padding, output_padding, dilation
+    )
+
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_transpose3d
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_slow_conv_transpose3d_scalar_stride(dtype):
+    """Scalar int stride/padding are broadcast across all three spatial dims."""
+    # Odd-sized volume (1, 3, 5, 7, 9): exercises the int-broadcast path where
+    # the reference API needs explicit triples but the wrapper takes scalars.
+    shape = (1, 3, 5, 7, 9)
+    weight_shape = (3, 4, 3, 3, 3)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp, ref_weight, [3, 3, 3], None, [2, 2, 2], [1, 1, 1], [0, 0, 0], [1, 1, 1]
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, 3, None, stride=2, padding=1, output_padding=0, dilation=1
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
 @pytest.fixture(autouse=True)
 def full_precision():
     matmul_tf32 = torch.backends.cuda.matmul.allow_tf32

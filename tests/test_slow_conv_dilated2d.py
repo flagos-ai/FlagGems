@@ -433,6 +433,224 @@ def test_slow_conv_dilated2d_rejects_unsupported_dtype(dtype):
         flag_gems.slow_conv_dilated2d(inp, weight, (3, 3), bias, (1, 1), (0, 0), (1, 1))
 
 
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_projection(dtype):
+    """1 x 1 unit-stride unpadded kernel: the specialised plain-GEMM path."""
+    inp = torch.randn((3, 5, 6, 7), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((8, 5, 1, 1), dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_dilated2d(
+        ref_inp, ref_weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
+    )
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_dilated2d_out
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "buffer_kind",
+    [
+        "empty_buffer",
+        "wrong_shape",
+        "noncontiguous",
+    ],
+)
+def test_slow_conv_dilated2d_master_output_layout(dtype, buffer_kind):
+    """``out=`` writes in place, resizes like ATen, and keeps a non-contiguous layout.
+
+    ATen's ``.out`` overload resizes the destination to the required shape, so
+    an empty or wrongly shaped buffer is legal.  The kernels consume the
+    destination strides, so a non-contiguous buffer must keep its layout.
+    """
+    inp = torch.randn((2, 3, 9, 9), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_dilated2d(
+        ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [2, 2]
+    )
+
+    if buffer_kind == "empty_buffer":
+        out_buf = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    elif buffer_kind == "wrong_shape":
+        out_buf = torch.empty((1, 1, 1, 1), dtype=dtype, device=flag_gems.device)
+    else:
+        out_buf = torch.empty(
+            (2, 4, 7, 7), dtype=dtype, device=flag_gems.device
+        ).transpose(2, 3)
+        assert not out_buf.is_contiguous()
+    expected_stride = out_buf.stride() if buffer_kind == "noncontiguous" else None
+
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, [3, 3], None, [1, 1], [1, 1], [2, 2], out=out_buf
+    )
+
+    assert res_out is out_buf
+    assert res_out.shape == (2, 4, 7, 7)
+    if expected_stride is not None:
+        assert res_out.stride() == expected_stride
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_unbatched(dtype):
+    """3-D input matches ATen and the 4-D call's only batch element."""
+    x3 = torch.randn((3, 8, 8), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref_x3 = _reference_input(x3, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_dilated2d(
+        ref_x3, ref_weight, [3, 3], None, [1, 1], [0, 0], [1, 1]
+    )
+    assert ref_out.shape == (4, 6, 6)
+
+    res_out = flag_gems.slow_conv_dilated2d(
+        x3, weight, [3, 3], None, [1, 1], [0, 0], [1, 1]
+    )
+    assert res_out.shape == (4, 6, 6)
+    _assert_close(_comparison_output(res_out, x3.device), ref_out, dtype)
+
+    res_batched = flag_gems.slow_conv_dilated2d(
+        x3.unsqueeze(0), weight, [3, 3], None, [1, 1], [0, 0], [1, 1]
+    )
+    # Same kernel, same batch axis: the unbatched result is bit-identical to the
+    # batch-0 slice, not merely close.
+    assert torch.equal(res_out, res_batched[0])
+
+    # A 3-D ``out=`` buffer is written in place and returned unchanged, so the
+    # unbatched destination keeps the caller's rank rather than gaining a batch
+    # axis internally.
+    out_buf = torch.empty((4, 6, 6), dtype=dtype, device=flag_gems.device)
+    out_res = flag_gems.slow_conv_dilated2d(
+        x3, weight, [3, 3], None, [1, 1], [0, 0], [1, 1], out=out_buf
+    )
+    assert out_res is out_buf
+    assert out_buf.shape == (4, 6, 6)
+    _assert_close(_comparison_output(out_res, x3.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_strided_input(dtype):
+    """A transposed spatial plane exercises the non-unit input strides."""
+    inp = torch.randn((2, 3, 8, 9), dtype=dtype, device=flag_gems.device).transpose(
+        2, 3
+    )
+    weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    assert not inp.is_contiguous()
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_dilated2d(
+        ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
+    )
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_channels_last(dtype):
+    """Channels-last input keeps its NHWC strides and is still correct."""
+    inp = torch.randn((2, 3, 8, 8), dtype=dtype, device=flag_gems.device).to(
+        memory_format=torch.channels_last
+    )
+    weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    assert inp.is_contiguous(memory_format=torch.channels_last)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_dilated2d(
+        ref_inp, ref_weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
+    )
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, [3, 3], None, [1, 1], [1, 1], [1, 1]
+    )
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_empty(dtype):
+    """Empty batch and empty output-channel sets produce empty results.
+
+    ``c_in == 0`` is deliberately *not* covered: ATen's own reference path has
+    no comparable behaviour there, so there is nothing to compare against.
+    """
+    weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+
+    inp = torch.randn((0, 3, 8, 8), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.slow_conv_dilated2d(inp, weight, [3, 3], None, [1, 1], [1, 1])
+    assert res_out.shape == (0, 4, 8, 8)
+    assert res_out.device == inp.device
+    assert res_out.numel() == 0
+
+    inp = torch.randn((2, 3, 8, 8), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((0, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.slow_conv_dilated2d(inp, weight, [3, 3], None, [1, 1], [1, 1])
+    assert res_out.shape == (2, 0, 8, 8)
+    assert res_out.device == inp.device
+    assert res_out.numel() == 0
+
+
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_non_square_geometry(dtype):
+    """Non-square kernels and per-axis stride/padding/dilation are not transposed."""
+    inp = torch.randn((2, 3, 9, 11), dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+
+    for (k_h, k_w), stride, padding, dilation in [
+        ((1, 2), [1, 1], [1, 1], [1, 1]),
+        ((3, 1), [1, 1], [1, 1], [1, 1]),
+        ((2, 3), [1, 1], [1, 1], [1, 1]),
+        ((3, 3), [1, 2], [0, 0], [1, 1]),
+        ((3, 3), [2, 1], [1, 0], [1, 2]),
+    ]:
+        weight = torch.randn((4, 3, k_h, k_w), dtype=dtype, device=flag_gems.device)
+        ref_weight = _reference_input(weight, True)
+        ref_out = torch.ops.aten.slow_conv_dilated2d(
+            ref_inp, ref_weight, [k_h, k_w], None, stride, padding, dilation
+        )
+        res_out = flag_gems.slow_conv_dilated2d(
+            inp, weight, [k_h, k_w], None, stride, padding, dilation
+        )
+        assert res_out.shape == ref_out.shape
+        _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
+@pytest.mark.slow_conv_dilated2d
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_slow_conv_dilated2d_negative_padding(dtype):
+    """Negative padding crops the border instead of zero-extending it."""
+    inp = torch.randn((2, 3, 8, 8), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((4, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref_inp = _reference_input(inp, True)
+    ref_weight = _reference_input(weight, True)
+
+    ref_out = torch.ops.aten.slow_conv_dilated2d(
+        ref_inp, ref_weight, [3, 3], None, [1, 1], [-1, -1], [1, 1]
+    )
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, [3, 3], None, [1, 1], [-1, -1], [1, 1]
+    )
+
+    assert res_out.shape == (2, 4, 4, 4)
+    _assert_close(_comparison_output(res_out, inp.device), ref_out, dtype)
+
+
 @pytest.fixture(autouse=True)
 def full_precision():
     # Match native fp32 results against the fp64 reference without leaking flags.
