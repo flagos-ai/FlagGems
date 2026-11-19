@@ -25,6 +25,7 @@ from flag_gems.utils.random_utils import set_philox_state
 from . import base
 
 _SAFE_HEAD_SIZES = (64, 128)
+_NATIVE_SDPA_BHSD = flag_gems.vendor_name in ("hygon", "thead")
 
 
 def _is_unsafe_decode_causal(seq_len: int, is_causal: bool) -> bool:
@@ -246,7 +247,11 @@ def _missing_attention_baseline(exc):
 class _AttentionBackwardBenchmark(base.GenericBenchmark):
     def get_input_iter(self, dtype):
         inputs = super().get_input_iter(dtype)
-        if flag_gems.vendor_name not in ("metax", "hygon"):
+        ppu_cudnn = (
+            flag_gems.vendor_name == "thead"
+            and self.op_name == "scaled_dot_product_cudnn_attention_backward"
+        )
+        if flag_gems.vendor_name not in ("metax", "hygon") and not ppu_cudnn:
             yield from inputs
             return
 
@@ -258,7 +263,11 @@ class _AttentionBackwardBenchmark(base.GenericBenchmark):
             except StopIteration:
                 return
             except RuntimeError as exc:
-                if not _missing_attention_baseline(exc):
+                unsupported_descriptor = ppu_cudnn and (
+                    "SetAttribute CUDNN_ATTR_TENSOR_IS_BY_VALUE Failed cudnn_status: "
+                    "ACDNN_STATUS_BAD_PARAM" in str(exc)
+                )
+                if not (unsupported_descriptor or _missing_attention_baseline(exc)):
                     raise
                 pytest.skip(
                     f"Native baseline: N/A (saved forward state unavailable: {exc})"
@@ -282,6 +291,8 @@ class _AttentionBackwardBenchmark(base.GenericBenchmark):
 
 
 class FlashAttentionBackwardBenchmark(_AttentionBackwardBenchmark):
+    aggregate_results_by_dtype = True
+
     def __init__(self, *args, causal, head_size, **kwargs):
         self.causal = causal
         self.head_size = head_size
@@ -417,7 +428,7 @@ def _flash_attn_bwd_gems(
 @pytest.mark.parametrize("head_size", _SAFE_HEAD_SIZES, ids=lambda dim: f"d{dim}")
 def test_perf_flash_attention_backward(causal, head_size):
     bench = FlashAttentionBackwardBenchmark(
-        op_name=f"flash_attention_backward[dense,p=0,{'causal' if causal else 'noncausal'},d{head_size}]",
+        op_name="flash_attention_backward",
         input_fn=flash_attention_backward_input_fn,
         torch_op=torch.ops.aten._flash_attention_backward.default,
         dtypes=[torch.float16, torch.bfloat16],
@@ -449,6 +460,8 @@ _FLASH_BWD_NATIVE_FAMILIES = {
 
 
 class FlashAttentionBackwardNativeFamilyBenchmark(_AttentionBackwardBenchmark):
+    aggregate_results_by_dtype = True
+
     def __init__(self, *args, family, case_index, **kwargs):
         self.family = family
         self.case_index = case_index
@@ -572,7 +585,7 @@ def test_perf_flash_attention_backward_native_families(family, case_index):
     ):
         pytest.skip("CoreX 4.4 native unpadded FlashAttention rejects local windows")
     bench = FlashAttentionBackwardNativeFamilyBenchmark(
-        op_name=f"flash_attention_backward[{family}]",
+        op_name="flash_attention_backward",
         input_fn=flash_attention_backward_native_family_input_fn,
         torch_op=torch.ops.aten._flash_attention_backward.default,
         dtypes=[torch.float16, torch.bfloat16],
@@ -630,8 +643,8 @@ def sdp_flash_attn_bwd_input_fn(config, dtype, device):
     ).uniform_(-0.05, 0.05)
     dOut = torch.randn(batch, num_heads, seq_len, head_size, dtype=dtype, device=device)
 
-    if flag_gems.vendor_name == "hygon":
-        # DTK SDPA saves seed and offset separately, with the native BHSD output.
+    if _NATIVE_SDPA_BHSD:
+        # Keep the matching SDPA producer's output layout and RNG ABI.
         saved = torch.ops.aten._scaled_dot_product_flash_attention(
             Q, K, V, 0.0, is_causal, False, scale=scale
         )
@@ -651,7 +664,7 @@ def sdp_flash_attn_bwd_input_fn(config, dtype, device):
     K_bshd = K.transpose(1, 2).contiguous()
     V_bshd = V.transpose(1, 2).contiguous()
     out_bshd = out.transpose(1, 2)
-    if flag_gems.vendor_name != "hygon":
+    if not _NATIVE_SDPA_BHSD:
         out_bshd = out_bshd.contiguous()
     dOut_bshd = dOut.transpose(1, 2).contiguous()
 
@@ -692,7 +705,7 @@ def _sdp_flash_attn_bwd_aten(
     scale=None,
 ):
     inputs = (dOut_bshd, Q_bshd, K_bshd, V_bshd, out_bshd)
-    if flag_gems.vendor_name == "hygon":
+    if _NATIVE_SDPA_BHSD:
         inputs = tuple(tensor.transpose(1, 2) for tensor in inputs)
     return torch.ops.aten._scaled_dot_product_flash_attention_backward(
         *inputs,

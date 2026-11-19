@@ -93,6 +93,7 @@ def get_iter_count(fn):
 
 class Benchmark:
     device: str = device
+    aggregate_results_by_dtype = False
     DEFAULT_METRICS = consts.DEFAULT_METRICS
     DEFAULT_DTYPES = consts.FLOAT_DTYPES
     DEFAULT_SHAPES = consts.DEFAULT_SHAPES
@@ -527,7 +528,11 @@ class Benchmark:
             result_dict["native_baseline_skip_reason"] = (
                 Config.native_baseline_skip_reason
             )
-        update_result(self.op_name, result_dict)
+        update_result(
+            self.op_name,
+            result_dict,
+            aggregate_by_dtype=self.aggregate_results_by_dtype,
+        )
         emit_record_logger(result.to_json())
         return result
 
