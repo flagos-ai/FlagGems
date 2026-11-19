@@ -605,8 +605,10 @@ from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_peri
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
+from .l1_loss import l1_loss  # noqa: F401
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
+from .ldexp import ldexp, ldexp_, ldexp_out  # noqa: F401
 from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -980,6 +982,7 @@ from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
 from .stack import stack
 from .std import std
+from .std_mean import std_mean_correction  # noqa: F401
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
@@ -1609,6 +1612,7 @@ __all__ = [
     "kl_div",
     "kron",
     "kthvalue",
+    "l1_loss",
     "layer_norm",
     "layer_norm_backward",
     "lcm",
@@ -2045,6 +2049,7 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "std",
+    "std_mean_correction",
     "sub",
     "sub_",
     "subtract",
