@@ -16,6 +16,14 @@
 # limitations under the License.
 
 PR_ID=$1
+RUN_KERNEL_CHECK=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --kernel-check) RUN_KERNEL_CHECK=1 ;;
+    *) PR_ID="$1" ;;
+  esac
+  shift
+done
 
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
@@ -309,6 +317,9 @@ done
 # This ensures that a PR adding/modifying an operator implementation or its
 # unit tests still gets a kernel-check even when the PR does not touch the
 # benchmark file itself.
+# kernel-check is opt-in: set RUN_KERNEL_CHECK=1 to enable (e.g. python-op /
+# NVIDIA CI). Backend jobs leave it unset and skip this block entirely.
+if [[ "$RUN_KERNEL_CHECK" == "1" ]]; then
 KERNEL_CHECK_EXTRAS=()
 _already_checked=" ${PERF_TEST_CASES[*]} "
 for item in "${TEST_CASES[@]}"; do
@@ -334,6 +345,7 @@ for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
     FAILURES+=("${item} (kernel-check)")
   fi
 done
+fi
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default
