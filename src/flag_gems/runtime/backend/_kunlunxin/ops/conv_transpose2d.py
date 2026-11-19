@@ -324,8 +324,8 @@ def conv_transpose2d(
         # size from the (possibly folded) weight shape.
         scratch_w = _scratch_buf(weight.shape, weight.device)
     if fp32_ride:
-        input = _fast_cast(input, torch.float32)
-        weight = _fast_cast(weight, torch.float32)
+        input = input.to(torch.float32)
+        weight = weight.to(torch.float32)
 
     # output_padding identity: conv_transpose(s, p, op) equals
     #   conv_transpose(s, p - op, 0)[op : op + out]
@@ -463,7 +463,7 @@ def conv_transpose2d(
         else:
             out = _fast_cast(_fast_cast(out, torch.float32) + b, out.dtype)
     if fp32_ride:
-        out = _fast_cast(out, orig_dtype)
+        out = out.to(orig_dtype)
     if input_was_unbatched:
         out = out.squeeze(0)
     return out
