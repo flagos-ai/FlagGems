@@ -152,12 +152,15 @@ class CudnnConvolutionAddReluBenchmark(OperatorBenchmark):
 
 @pytest.mark.cudnn_convolution_add_relu
 def test_cudnn_convolution_add_relu():
+    if flag_gems.vendor_name in {"hygon", "mthreads"} and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("Native cudnn_convolution_add_relu requires cuDNN")
     bench = CudnnConvolutionAddReluBenchmark(
         op_name="cudnn_convolution_add_relu",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.cudnn_convolution_add_relu,
-        gems_op=getattr(flag_gems, "cudnn_convolution_add_relu", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()

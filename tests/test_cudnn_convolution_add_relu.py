@@ -16,6 +16,7 @@ import math
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -188,6 +189,66 @@ LAYOUT_VARIANTS = [
 LAYOUT_CASE_ROWS = tu.selected_cases(LAYOUT_VARIANTS, quick=[])
 
 
+
+_USE_CPU_REFERENCE = flag_gems.vendor_name in {"hygon", "mthreads"}
+
+
+def _cpu_cudnn_convolution_add_relu(
+    inp, weight, z, alpha, bias, stride, padding, dilation, groups, *, out=None
+):
+    # The fused ATen API is cuDNN-specific. Compose its math on CPU in wider
+    # precision, with the fused operation rounding the output only once.
+    if inp.ndim not in (4, 5) or not inp.dtype.is_floating_point:
+        raise RuntimeError("Expected a floating-point 4-D or 5-D convolution input")
+    if isinstance(alpha, torch.Tensor):
+        raise TypeError("alpha must be a scalar")
+    if out is not None and out.dtype != inp.dtype:
+        raise RuntimeError("out dtype must match the convolution input")
+
+    conv = F.conv2d if inp.ndim == 4 else F.conv3d
+    result = conv(
+        inp.to(device="cpu", dtype=torch.float64),
+        weight.to(device="cpu", dtype=torch.float64),
+        None,
+        stride,
+        padding,
+        dilation,
+        groups,
+    )
+    if bias is not None:
+        bias_shape = (1, weight.shape[0], *(1,) * (inp.ndim - 2))
+        result = result + bias.to(device="cpu", dtype=torch.float64).reshape(bias_shape)
+    scale = 1.0 if alpha is None else alpha
+    result = torch.relu(result + scale * z.to(device="cpu", dtype=torch.float64))
+    result = result.to(inp.dtype)
+    if out is not None:
+        return out.resize_(result.shape).copy_(result)
+    return result
+
+
+def _reference(inp, weight, z, alpha, bias, stride, padding, dilation, groups, *, out=None):
+    if _USE_CPU_REFERENCE:
+        return _cpu_cudnn_convolution_add_relu(
+            inp, weight, z, alpha, bias, stride, padding, dilation, groups, out=out
+        )
+    op = torch.ops.aten.cudnn_convolution_add_relu
+    if out is None:
+        return op(inp, weight, z, alpha, bias, stride, padding, dilation, groups)
+    return op.out(inp, weight, z, alpha, bias, stride, padding, dilation, groups, out=out)
+
+
+def _reference_input(tensor):
+    if _USE_CPU_REFERENCE and tensor is not None:
+        return tensor.to("cpu", copy=True)
+    return tu.to_reference(tensor)
+
+
+def _assert_result(result, reference, expected_device):
+    assert result.device == expected_device
+    if _USE_CPU_REFERENCE:
+        result = result.cpu()
+    tu.assert_result_close(result, reference)
+
 def _output_shape(x_shape, w_shape, stride, padding, dilation):
     return (x_shape[0], w_shape[0]) + tuple(
         (x_shape[i + 2] + 2 * padding[i] - dilation[i] * (w_shape[i + 2] - 1) - 1)
@@ -236,11 +297,11 @@ def test_cudnn_convolution_add_relu(conv_case, value_range, dtype):
     inp = tu.make_input(dtype, x_shape, value_range)
     weight = tu.make_input(dtype, w_shape, value_range)
     z = tu.make_input(dtype, out_shape, value_range)
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
 
-    ref_out = torch.ops.aten.cudnn_convolution_add_relu(
+    ref_out = _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -263,7 +324,7 @@ def test_cudnn_convolution_add_relu(conv_case, value_range, dtype):
         groups,
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
@@ -277,14 +338,13 @@ def test_cudnn_convolution_add_relu_out(conv_case, value_range, dtype):
     inp = tu.make_input(dtype, x_shape, value_range)
     weight = tu.make_input(dtype, w_shape, value_range)
     z = tu.make_input(dtype, out_shape, value_range)
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
 
-    # The out overload is callable on this backend and returns the caller
-    # buffer, so both paths call it directly.
+    # Both paths write into the caller-provided buffer.
     ref_out = torch.empty(out_shape, dtype=ref_inp.dtype, device=ref_inp.device)
-    torch.ops.aten.cudnn_convolution_add_relu.out(
+    _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -311,7 +371,7 @@ def test_cudnn_convolution_add_relu_out(conv_case, value_range, dtype):
     )
 
     assert res_ret is res_out
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
@@ -323,12 +383,12 @@ def test_cudnn_convolution_add_relu_out_resize(prelude, dtype):
     inp = tu.make_input(dtype, x_shape, ["-1", "1"])
     weight = tu.make_input(dtype, w_shape, ["-1", "1"])
     z = tu.make_input(dtype, out_shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
 
     ref_out = torch.empty(prelude, dtype=ref_inp.dtype, device=ref_inp.device)
-    torch.ops.aten.cudnn_convolution_add_relu.out(
+    _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -355,7 +415,7 @@ def test_cudnn_convolution_add_relu_out_resize(prelude, dtype):
     )
 
     assert res_ret is res_out
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
@@ -369,11 +429,11 @@ def test_cudnn_convolution_add_relu_alpha(param_case, alpha, dtype):
     inp = tu.make_input(dtype, x_shape, ["-1", "1"])
     weight = tu.make_input(dtype, w_shape, ["-1", "1"])
     z = tu.make_input(dtype, out_shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
 
-    ref_out = torch.ops.aten.cudnn_convolution_add_relu(
+    ref_out = _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -396,7 +456,7 @@ def test_cudnn_convolution_add_relu_alpha(param_case, alpha, dtype):
         groups,
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
@@ -422,12 +482,12 @@ def test_cudnn_convolution_add_relu_bias(param_case, bias_form, dtype):
     else:
         bias = tu.make_input(dtype, (1, channels, 1, 1), ["-1", "1"])
 
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
-    ref_bias = tu.to_reference(bias)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
+    ref_bias = _reference_input(bias)
 
-    ref_out = torch.ops.aten.cudnn_convolution_add_relu(
+    ref_out = _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -450,7 +510,7 @@ def test_cudnn_convolution_add_relu_bias(param_case, bias_form, dtype):
         groups,
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
@@ -479,12 +539,12 @@ def test_cudnn_convolution_add_relu_special_values(placement, dtype, scenario):
     else:
         bias = _special_tensor(dtype, scenario, (out_shape[1], 1, 1))
 
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
-    ref_bias = tu.to_reference(bias)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
+    ref_bias = _reference_input(bias)
 
-    ref_out = torch.ops.aten.cudnn_convolution_add_relu(
+    ref_out = _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -507,7 +567,7 @@ def test_cudnn_convolution_add_relu_special_values(placement, dtype, scenario):
         groups,
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
@@ -543,12 +603,12 @@ def test_cudnn_convolution_add_relu_layout(variant, dtype):
         buffer = tu.make_input(dtype, (channels + 2,), ["-1", "1"])
         bias = buffer[1 : channels + 1]
 
-    ref_inp = tu.to_reference(inp)
-    ref_weight = tu.to_reference(weight)
-    ref_z = tu.to_reference(z)
-    ref_bias = tu.to_reference(bias)
+    ref_inp = _reference_input(inp)
+    ref_weight = _reference_input(weight)
+    ref_z = _reference_input(z)
+    ref_bias = _reference_input(bias)
 
-    ref_out = torch.ops.aten.cudnn_convolution_add_relu(
+    ref_out = _reference(
         ref_inp,
         ref_weight,
         ref_z,
@@ -571,7 +631,7 @@ def test_cudnn_convolution_add_relu_layout(variant, dtype):
         groups,
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result(res_out, ref_out, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu
