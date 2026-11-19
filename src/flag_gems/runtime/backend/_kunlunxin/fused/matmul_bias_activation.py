@@ -54,9 +54,6 @@ logger = logging.getLogger(__name__)
 # can branch on the input dtype the same way matmuladd does).
 _FP16, _BF16, _FP32 = 0, 1, 2
 
-# bf16 reductions at least this long use the dedicated large-K kernel.
-LARGE_K_BF16_MIN_K = 4096
-
 
 def _dtype_code(dtype):
     return {torch.float16: _FP16, torch.bfloat16: _BF16, torch.float32: _FP32}[dtype]
@@ -232,61 +229,6 @@ def matmul_bias_activation_kernel(
     )
 
 
-@libentry()
-@triton.jit
-def matmul_bias_activation_large_k_kernel(
-    a_ptr,
-    b_ptr,
-    i_ptr,
-    c_ptr,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_im,
-    stride_in,
-    stride_cm,
-    stride_cn,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    DTYPE_CODE,
-    FUSE_RELU: tl.constexpr,
-    ALIGNED: tl.constexpr,
-    BIAS_IS_VEC: tl.constexpr,
-):
-    # Large-K bf16 only: no do_not_specialize here, so the reduction extent
-    # reaches the compiler as a constant.
-    _matmul_bias_activation_body(
-        a_ptr,
-        b_ptr,
-        i_ptr,
-        c_ptr,
-        M,
-        N,
-        K,
-        stride_am,
-        stride_ak,
-        stride_bk,
-        stride_bn,
-        stride_im,
-        stride_in,
-        stride_cm,
-        stride_cn,
-        BLOCK_SIZE_M,
-        BLOCK_SIZE_N,
-        BLOCK_SIZE_K,
-        GROUP_M,
-        FUSE_RELU,
-        ALIGNED,
-        BIAS_IS_VEC,
-    )
-
-
 @triton.jit
 def relu_kernel(
     x_ptr,
@@ -369,11 +311,7 @@ def matmul_bias_activation(input, weight, bias):
     fuse_relu = _fuse_relu(M, N, input.dtype)
     bm, bn, bk, warps = _tile_config(M, N, input.dtype)
     grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn),)
-    kernel = (
-        matmul_bias_activation_large_k_kernel
-        if input.dtype == torch.bfloat16 and K >= LARGE_K_BF16_MIN_K
-        else matmul_bias_activation_kernel
-    )
+    kernel = matmul_bias_activation_kernel
     with torch_device_fn.device(input.device):
         kernel[grid](
             input,
