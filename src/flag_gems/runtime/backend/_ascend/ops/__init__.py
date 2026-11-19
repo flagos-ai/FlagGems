@@ -76,6 +76,7 @@ from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
 from .conv_tbc import conv_tbc, conv_tbc_out
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .copy import copy, copy_
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
@@ -404,6 +405,8 @@ __all__ = [
     "concatenate",
     "conv_tbc",
     "conv_tbc_out",
+    "convolution_backward",
+    "convolution_backward_out",
     "copy",
     "copy_",
     "cosh_",
