@@ -89,6 +89,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diff import diff
 from .dist import dist
+from .divide import divide
 from .dot import dot
 from .dropout_ import dropout_
 from .embedding import embedding
@@ -406,6 +407,7 @@ __all__ = [
     "diagonal_backward",
     "diff",
     "dist",
+    "divide",
     "dot",
     "dropout_",
     "embedding",
