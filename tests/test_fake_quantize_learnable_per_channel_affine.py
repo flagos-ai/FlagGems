@@ -36,6 +36,13 @@ QUANT_RANGES = [(0, 255), (-128, 127)]
 _ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_channel_affine
 
 
+def _run_candidate(*args):
+    candidate = getattr(flag_gems, "fake_quantize_learnable_per_channel_affine", None)
+    if candidate is None:
+        candidate = flag_gems._fake_quantize_learnable_per_channel_affine
+    return candidate(*args)
+
+
 def _seed():
     torch.manual_seed(0)
     if torch.cuda.is_available():
@@ -71,7 +78,7 @@ def test_fake_quantize_learnable_per_channel_affine(
         quant_max,
         1.0,
     )
-    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+    result = _run_candidate(
         *inputs, axis, quant_min, quant_max, 1.0
     )
 
@@ -90,7 +97,7 @@ def test_fake_quantize_learnable_per_channel_affine_grad_factor(axis, grad_facto
     ref_out = _ATEN_OP(
         *(_reference(tensor) for tensor in inputs), axis, 0, 255, grad_factor
     )
-    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+    result = _run_candidate(
         *inputs, axis, 0, 255, grad_factor
     )
 
@@ -98,7 +105,7 @@ def test_fake_quantize_learnable_per_channel_affine_grad_factor(axis, grad_facto
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine
-def test_fake_quantize_learnable_per_channel_affine_autograd():
+def test_fake_quantize_learnable_per_channel_affine_autograd(request):
     _seed()
     inp = torch.randn((4, 8), device=flag_gems.device, requires_grad=True)
     scale = (torch.rand(8, device=flag_gems.device) * 0.5 + 0.01).requires_grad_()
@@ -113,8 +120,13 @@ def test_fake_quantize_learnable_per_channel_affine_autograd():
         ref_out, (ref_inp, ref_scale, ref_zero_point), ref_upstream
     )
 
-    with flag_gems.use_gems():
-        output = _ATEN_OP(inp, scale, zero_point, 1, -128, 127, 0.5)
+    registry = request.config._override_registry
+    if registry.get_override("fake_quantize_learnable_per_channel_affine") is None:
+        with flag_gems.use_gems():
+            output = _ATEN_OP(inp, scale, zero_point, 1, -128, 127, 0.5)
+            grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
+    else:
+        output = _run_candidate(inp, scale, zero_point, 1, -128, 127, 0.5)
         grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
 
     utils.gems_assert_close(output, ref_out, torch.float32)
@@ -129,6 +141,6 @@ def test_fake_quantize_learnable_per_channel_affine_rejects_integer_input():
     scale = torch.ones(8, device=flag_gems.device)
     zero_point = torch.zeros(8, device=flag_gems.device)
     with pytest.raises(TypeError):
-        flag_gems._fake_quantize_learnable_per_channel_affine(
+        _run_candidate(
             inp, scale, zero_point, 1, -128, 127, 1.0
         )

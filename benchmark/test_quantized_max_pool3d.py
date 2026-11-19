@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # quantized_max_pool3d operates on per-tensor quint8 tensors. PyTorch ships no
@@ -163,6 +165,10 @@ class QuantizedMaxPool3dBenchmark(base.GenericBenchmark):
 
 @pytest.mark.quantized_max_pool3d
 def test_quantized_max_pool3d():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("PyTorch has no native quantized_max_pool3d MUSA kernel")
     bench = QuantizedMaxPool3dBenchmark(
         input_fn=quantized_max_pool3d_input_fn,
         op_name="quantized_max_pool3d",
@@ -174,6 +180,10 @@ def test_quantized_max_pool3d():
 
 @pytest.mark.quantized_max_pool3d_out
 def test_quantized_max_pool3d_out():
+    if flag_gems.vendor_name in {"iluvatar", "mthreads"} and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("PyTorch has no native quantized_max_pool3d.out accelerator kernel")
     def out_input_fn(shape, dtype, device):
         for forward_args in quantized_max_pool3d_input_fn(shape, dtype, device):
             qx, params = forward_args

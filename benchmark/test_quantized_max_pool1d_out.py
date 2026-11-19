@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -70,4 +72,8 @@ def _torch_op(qx, **kwargs):
 
 @pytest.mark.quantized_max_pool1d_out
 def test_quantized_max_pool1d_out():
+    if flag_gems.vendor_name == "iluvatar" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("PyTorch has no native quantized_max_pool1d.out Iluvatar kernel")
     QuantizedMaxPool1dBenchmark(op_name="quantized_max_pool1d_out", torch_op=_torch_op, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=[QDTYPE], is_inplace=True, fresh_inputs=True).run()
