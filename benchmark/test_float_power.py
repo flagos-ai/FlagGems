@@ -528,6 +528,12 @@ def test_float_power_scalar_tensor():
     reason="native FloatPower Double out is unsupported; require matching H800 --base-data",
 )
 def test_float_power_tensor_tensor_out():
+    if (
+        flag_gems.vendor_name == "iluvatar"
+        and not (base.Config.list_cases or base.Config.preflight_only)
+        and base.Config.base_data is None
+    ):
+        pytest.skip("Iluvatar native float_power.Tensor_Tensor_out lacks Double output support")
     _run_out_benchmark(
         "float_power_tensor_tensor_out",
         _tensor_tensor_out_build,
