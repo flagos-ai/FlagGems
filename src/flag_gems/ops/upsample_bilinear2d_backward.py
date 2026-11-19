@@ -1323,9 +1323,7 @@ def upsample_bilinear2d_backward(
                 and ih & (ih - 1) == 0
                 and iw & (iw - 1) == 0
             )
-            fractional = (
-                ih < oh and iw < ow and 0.5 <= sh <= 0.75 and 0.5 <= sw <= 0.75
-            )
+            fractional = ih < oh and iw < ow and 0.5 <= sh <= 0.75 and 0.5 <= sw <= 0.75
             if (
                 (double or fractional)
                 and n * c * ih * iw >= 4096
@@ -1505,7 +1503,9 @@ def upsample_bilinear2d_backward(
                         scale,
                         taps,
                     ), (rows, patch) in zip(axes, configurations):
-                        programs = (n if channels_last else n * c) * triton.cdiv(h, rows)
+                        programs = (n if channels_last else n * c) * triton.cdiv(
+                            h, rows
+                        )
                         _upsample_bilinear2d_backward_ascend_axis[(programs,)](
                             source,
                             destination,
