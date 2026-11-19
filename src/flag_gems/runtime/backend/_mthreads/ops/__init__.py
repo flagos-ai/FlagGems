@@ -47,6 +47,7 @@ from ._foreach_asin_ import _foreach_asin_
 from ._foreach_atan import _foreach_atan
 from ._foreach_ceil import _foreach_ceil
 from ._foreach_clamp_max__List import _foreach_clamp_max__List
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
 from ._foreach_clamp_max_List import _foreach_clamp_max_List
 from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
 from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
@@ -268,6 +269,7 @@ __all__ = [
     "_foreach_atan",
     "_foreach_ceil",
     "_foreach_clamp_max__List",
+    "_foreach_clamp_max__Scalar",
     "_foreach_clamp_max_List",
     "_foreach_clamp_max_Scalar",
     "_foreach_clamp_max_ScalarList",
