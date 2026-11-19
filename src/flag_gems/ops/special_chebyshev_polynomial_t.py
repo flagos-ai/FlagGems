@@ -347,6 +347,8 @@ def _word_view(t, numel=None):
     On this backend int64 is stored as one dense int32 word per element, so the
     degree of element i is word i (a stride-2 read would take the wrong word).
     """
+    if t.device.type != "gcu":
+        return t.contiguous()
     if not t.is_contiguous():
         t = t.contiguous()
     words = t.reshape(-1).view(torch.int32)
@@ -455,11 +457,14 @@ def _chebyshev_polynomial_t(x, n, out=None):
     if out is None:
         res = torch.empty(out_shape, dtype=x.dtype, device=x.device)
     else:
-        if tuple(out.shape) != out_shape:
-            raise ValueError(
-                "Incompatible output shape: expected "
-                f"{out_shape}, got {tuple(out.shape)}"
+        if out.device != x.device:
+            raise RuntimeError("out must be on the same device as the input")
+        if not torch.can_cast(x.dtype, out.dtype):
+            raise RuntimeError(
+                f"result dtype {x.dtype} cannot be cast to out dtype {out.dtype}"
             )
+        if tuple(out.shape) != tuple(out_shape):
+            out.resize_(out_shape)
         # Strided stores are not supported; stage through a contiguous buffer
         # and copy back for a non-contiguous ``out``.
         res = (
