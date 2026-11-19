@@ -172,7 +172,7 @@ from ._functional_sym_constrain_range_for_size import (
 )
 from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
-from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
+from ._fused_rms_norm import _fused_rms_norm, _fused_rms_norm_backward  # noqa: F401
 from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
@@ -562,6 +562,10 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
 from .histogramdd import histogramdd
+from .histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -580,7 +584,7 @@ from .index_copy_ import (  # noqa: F401  (registered via _FULL_CONFIG)
 from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
-from .index_reduce import index_reduce_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inverse import inverse
@@ -593,14 +597,18 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .isreal import isreal  # noqa: F401
 from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
+from .l1_loss import l1_loss  # noqa: F401
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
+from .ldexp import ldexp, ldexp_, ldexp_out  # noqa: F401
 from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -615,6 +623,7 @@ from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_householder_product import linalg_householder_product
 from .linalg_inv import linalg_inv
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
@@ -971,6 +980,7 @@ from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
 from .stack import stack
 from .std import std
+from .std_mean import std_mean_correction  # noqa: F401
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
@@ -1189,6 +1199,8 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
     "_is_all_true",
     "_logcumsumexp",
@@ -1571,7 +1583,9 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
+    "index_reduce",
     "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
@@ -1586,12 +1600,17 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "isreal",
     "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kron",
     "kthvalue",
+    "l1_loss",
     "layer_norm",
     "layer_norm_backward",
     "lcm",
@@ -1626,6 +1645,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_householder_product",
     "linalg_inv",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu",
@@ -2024,6 +2044,7 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "std",
+    "std_mean_correction",
     "sub",
     "sub_",
     "subtract",

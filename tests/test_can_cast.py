@@ -20,6 +20,8 @@ import torch
 import flag_gems
 from flag_gems import _FULL_CONFIG
 
+from . import accuracy_utils as utils
+
 # The full dtype grid native ``can_cast`` is defined over on this build: the 13
 # standard scalar types plus the four float8 spellings when present.  Probed
 # rather than referenced directly so the suite still collects on older builds.
@@ -30,6 +32,9 @@ _FLOAT8_NAMES = (
     "float8_e5m2fnuz",
 )
 
+# This grid is iterated by a plain for-loop, not expanded by parametrize, so
+# every entry must be a real torch.dtype. Filter dtypes the current device
+# cannot allocate instead of wrapping them in pytest.param.
 _DTYPES = [
     torch.bool,
     torch.uint8,
@@ -40,10 +45,10 @@ _DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    torch.float64,
+    *([torch.float64] if utils.fp64_is_supported else []),
     torch.complex32,
     torch.complex64,
-    torch.complex128,
+    *([torch.complex128] if utils.fp64_is_supported else []),
 ] + [getattr(torch, n) for n in _FLOAT8_NAMES if hasattr(torch, n)]
 
 # Boundaries worth naming individually so a failure points at the category
@@ -71,6 +76,10 @@ _CATEGORY_BOUNDARIES = [
 @pytest.mark.can_cast
 @pytest.mark.parametrize("from_,to", _CATEGORY_BOUNDARIES)
 def test_can_cast_category_boundaries(from_, to):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128) for _dt in (from_, to)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     ref = torch.ops.aten.can_cast(from_, to)
     res = flag_gems.can_cast(from_, to)
     assert res == ref, f"can_cast({from_}, {to}): got {res}, expected {ref}"

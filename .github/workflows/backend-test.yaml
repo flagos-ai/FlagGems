@@ -56,6 +56,11 @@ on:
         required: false
         type: string
         default: ''
+      quick_tests:
+        description: 'Set to true to pass --quick to pytest (reduces test quantity for faster runs).'
+        required: false
+        type: string
+        default: ''
       container_image:
         description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (enflame-tops1106, hygon-dtk2604, iluvatar-corex450, kunlunxin-xre5371, metax-maca3810, mthreads-musa520). See .github/backends.json.'
         required: false
@@ -128,6 +133,7 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
           TOTAL_SHARDS: ${{ inputs.total_shards }}
           SHARD_INDEX: ${{ inputs.shard_index }}
+          QUICK_TESTS: ${{ inputs.quick_tests }}
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
