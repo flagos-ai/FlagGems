@@ -312,7 +312,8 @@ def test_accuracy_foreach_unary_complex(name, dtype):
     if (
         flag_gems.vendor_name == "enflame"
         and not utils.TO_CPU
-        and name in {"neg", "reciprocal", "round", "rsqrt", "sigmoid", "sin", "sinh", "sqrt"}
+        and name
+        in {"neg", "reciprocal", "round", "rsqrt", "sigmoid", "sin", "sinh", "sqrt"}
     ):
         pytest.skip("Enflame native foreach does not support this complex reference")
     inp = [_sample((16,), dtype, flag_gems.device) for _ in range(2)]
@@ -691,7 +692,8 @@ def test_accuracy_foreach_unary_complex_large(name, dtype):
     if (
         flag_gems.vendor_name == "enflame"
         and not utils.TO_CPU
-        and name in {"neg", "reciprocal", "round", "rsqrt", "sigmoid", "sin", "sinh", "sqrt"}
+        and name
+        in {"neg", "reciprocal", "round", "rsqrt", "sigmoid", "sin", "sinh", "sqrt"}
     ):
         pytest.skip("Enflame native foreach does not support this complex reference")
     mag = LARGE_COMPLEX[dtype]
