@@ -33,14 +33,25 @@ logger = logging.getLogger(__name__)
 
 _CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
 
-if _CAN_CAPTURE_NATIVE_KERNEL:
-    _NATIVE_CONVOLUTION = torch.library.get_kernel(
-        torch.ops.aten.convolution.default, runtime.device.dispatch_key
-    )
-
 _NATIVE_KEY_SET = torch._C.DispatchKeySet(
     getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
 )
+
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    _NATIVE_CONVOLUTION = torch.library.get_kernel(
+        "aten::convolution", runtime.device.dispatch_key
+    )
+    # Same capture pattern for the dtype conversion used by the fp16 branch:
+    # the conversion is part of this operator's cost, so it must not be routed
+    # back through another registered implementation.
+    try:
+        _NATIVE_COPY = torch.library.get_kernel(
+            "aten::copy_", runtime.device.dispatch_key
+        )
+    except Exception:  # pragma: no cover - older builds without the schema
+        _NATIVE_COPY = None
+else:
+    _NATIVE_COPY = None
 
 
 def _three(v):
@@ -48,6 +59,14 @@ def _three(v):
     if isinstance(v, (list, tuple)):
         return [int(x) for x in v]
     return [int(v)] * 3
+
+
+def _cast(x, dtype):
+    if _NATIVE_COPY is None:
+        return x.to(dtype)
+    out = torch.empty(x.shape, dtype=dtype, device=x.device)
+    _NATIVE_COPY.call_boxed(_NATIVE_KEY_SET, out, x, False)
+    return out
 
 
 def conv_transpose3d(
@@ -73,9 +92,9 @@ def conv_transpose3d(
         if input.dtype == torch.float16:
             out = _NATIVE_CONVOLUTION.call_boxed(
                 _NATIVE_KEY_SET,
-                input.to(torch.float32),
-                weight.to(torch.float32),
-                None if bias is None else bias.to(torch.float32),
+                _cast(input, torch.float32),
+                _cast(weight, torch.float32),
+                None if bias is None else _cast(bias, torch.float32),
                 _three(stride),
                 _three(padding),
                 _three(dilation),
@@ -83,7 +102,7 @@ def conv_transpose3d(
                 _three(output_padding),
                 groups,
             )
-            return out.to(torch.float16)
+            return _cast(out, torch.float16)
 
         return _NATIVE_CONVOLUTION.call_boxed(
             _NATIVE_KEY_SET,
