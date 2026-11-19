@@ -167,16 +167,23 @@ def logsumexp(inp, dim, keepdim=False):
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     dim = dim % inp.ndim
+
+    shape = list(inp.shape)
+    shape[dim] = 1
+    numel = inp.numel()
+    if numel == 0:
+        # The sum of exponentials over an empty axis is zero, so its log is -inf.
+        dtype = torch.result_type(inp, 0.0)
+        out = torch.full(shape, -float("inf"), dtype=dtype, device=inp.device)
+        return out if keepdim else out.squeeze(dim=dim)
+
     M = 1
     N = inp.shape[dim]
     for i in range(dim):
         M *= inp.shape[i]
     inp = inp.contiguous()
-    K = inp.numel() // M // N
+    K = numel // M // N
 
-    # Output shape with reduction dimension set to 1
-    shape = list(inp.shape)
-    shape[dim] = 1
     out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
