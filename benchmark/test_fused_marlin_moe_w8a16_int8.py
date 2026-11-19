@@ -181,6 +181,25 @@ class FusedMarlinMoEW8A16INT8Benchmark(base.Benchmark):
         )
 
 
+class FusedMarlinMoEW8A16INT8MXQBenchmark(FusedMarlinMoEW8A16INT8Benchmark):
+    """Qwen/MXQ W8A16 shape set for fused_marlin_moe INT8 benchmarking."""
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (1, 512, 4096, 1024, 10),
+            (4, 512, 4096, 1024, 10),
+            (16, 512, 4096, 1024, 10),
+            (64, 512, 4096, 1024, 10),
+            (128, 512, 4096, 1024, 10),
+            (256, 512, 4096, 1024, 10),
+            (512, 512, 4096, 1024, 10),
+            (1024, 512, 4096, 1024, 10),
+            (4096, 512, 4096, 1024, 10),
+            (16384, 512, 4096, 1024, 10),
+            (32768, 512, 4096, 1024, 10),
+        ]
+
+
 def _vllm_baseline_int8(
     hidden_states,
     w1_q_wna16,
@@ -249,6 +268,22 @@ def test_fused_marlin_moe_w8a16_int8():
     """
     bench = FusedMarlinMoEW8A16INT8Benchmark(
         op_name="fused_marlin_moe_w8a16_int8",
+        torch_op=_vllm_baseline_int8,
+        dtypes=[torch.bfloat16],
+    )
+    bench.set_gems(_gems_call_int8)
+    bench.run()
+
+
+@pytest.mark.fused_marlin_moe
+@pytest.mark.skipif(
+    not HAS_VLLM_FUSED_MARLIN_MOE, reason="vllm not installed; baseline unavailable"
+)
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="requires NVIDIA Hopper architecture")
+def test_fused_marlin_moe_int8_mxq():
+    """Benchmark the MXQ/Qwen 512-expert W8A16 shapes against vLLM Marlin."""
+    bench = FusedMarlinMoEW8A16INT8MXQBenchmark(
+        op_name="fused_marlin_moe_int8_mxq",
         torch_op=_vllm_baseline_int8,
         dtypes=[torch.bfloat16],
     )
