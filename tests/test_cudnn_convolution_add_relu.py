@@ -189,7 +189,6 @@ LAYOUT_VARIANTS = [
 LAYOUT_CASE_ROWS = tu.selected_cases(LAYOUT_VARIANTS, quick=[])
 
 
-
 _USE_CPU_REFERENCE = flag_gems.vendor_name in {"hygon", "mthreads"}
 
 
@@ -226,7 +225,9 @@ def _cpu_cudnn_convolution_add_relu(
     return result
 
 
-def _reference(inp, weight, z, alpha, bias, stride, padding, dilation, groups, *, out=None):
+def _reference(
+    inp, weight, z, alpha, bias, stride, padding, dilation, groups, *, out=None
+):
     if _USE_CPU_REFERENCE:
         return _cpu_cudnn_convolution_add_relu(
             inp, weight, z, alpha, bias, stride, padding, dilation, groups, out=out
@@ -234,7 +235,9 @@ def _reference(inp, weight, z, alpha, bias, stride, padding, dilation, groups, *
     op = torch.ops.aten.cudnn_convolution_add_relu
     if out is None:
         return op(inp, weight, z, alpha, bias, stride, padding, dilation, groups)
-    return op.out(inp, weight, z, alpha, bias, stride, padding, dilation, groups, out=out)
+    return op.out(
+        inp, weight, z, alpha, bias, stride, padding, dilation, groups, out=out
+    )
 
 
 def _reference_input(tensor):
@@ -248,6 +251,7 @@ def _assert_result(result, reference, expected_device):
     if _USE_CPU_REFERENCE:
         result = result.cpu()
     tu.assert_result_close(result, reference)
+
 
 def _output_shape(x_shape, w_shape, stride, padding, dilation):
     return (x_shape[0], w_shape[0]) + tuple(

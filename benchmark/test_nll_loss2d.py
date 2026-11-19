@@ -80,7 +80,11 @@ def nll_loss_backward_build_inputs_fn(plan, dtype, device):
         grad = torch.randn(target_shape, dtype=dtype, device=device)
         return grad, inp, target, weight, 0, 1, total_weight
     grad = torch.randn((), dtype=dtype, device=device)
-    total_weight = torch.full((), math.prod(target_shape), dtype=dtype, device=device)
+    # Construct the count in a wide dtype before converting, as the forward
+    # reduction does. Direct half construction rejects counts above 65504.
+    total_weight = torch.full(
+        (), math.prod(target_shape), dtype=torch.float32, device=device
+    ).to(dtype)
     return grad, inp, target, None, 1, -100, total_weight
 
 
