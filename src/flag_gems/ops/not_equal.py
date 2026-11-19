@@ -52,6 +52,8 @@ _DTYPE_CODE = {
     torch.int16: 7,
     torch.int8: 8,
     torch.uint8: 9,
+    torch.float8_e4m3fn: 1,
+    torch.float8_e5m2: 1,
 }
 
 _MAX_RANK = 8
@@ -97,8 +99,8 @@ def _ne_cmp(a, b, CAST: tl.constexpr):
 def _ne_tile(a_ptr, b_ptr, o_ptr, start, lim, BLOCK: tl.constexpr, CAST: tl.constexpr):
     offs = start + tl.arange(0, BLOCK)
     mask = offs < lim
-    a = tl.load(a_ptr + offs, mask=mask, other=0)
-    b = tl.load(b_ptr + offs, mask=mask, other=0)
+    a = tl.load(a_ptr + offs, mask=mask, other=0.0)
+    b = tl.load(b_ptr + offs, mask=mask, other=0.0)
     tl.store(o_ptr + offs, _ne_cmp(a, b, CAST), mask=mask)
 
 
@@ -172,8 +174,8 @@ def _ne_flat_big(
     if pid == 0:
         tail = nfull + tl.arange(0, BLOCK)
         tr = tail < n
-        a = tl.load(a_ptr + tail, mask=tr, other=0)
-        b = tl.load(b_ptr + tail, mask=tr, other=0)
+        a = tl.load(a_ptr + tail, mask=tr, other=0.0)
+        b = tl.load(b_ptr + tail, mask=tr, other=0.0)
         tl.store(o_ptr + tail, _ne_cmp(a, b, CAST), mask=tr)
 
 
@@ -196,7 +198,7 @@ def _ne_scalar_kernel(
         for start in tl.range(start0, lim, step):
             offs = start + tl.arange(0, BLOCK)
             mask = offs < lim
-            x = tl.load(x_ptr + offs, mask=mask, other=0)
+            x = tl.load(x_ptr + offs, mask=mask, other=0.0)
             tl.store(o_ptr + offs, _ne_cmp(x, other, CAST), mask=mask)
     else:
         lim = n
@@ -205,7 +207,7 @@ def _ne_scalar_kernel(
         for start in tl.range(start0, lim, step):
             offs = start + tl.arange(0, BLOCK)
             mask = offs < lim
-            x = tl.load(x_ptr + offs, mask=mask, other=0)
+            x = tl.load(x_ptr + offs, mask=mask, other=0.0)
             tl.store(o_ptr + offs, _ne_cmp(x, other, CAST), mask=mask)
 
 
@@ -285,8 +287,8 @@ def _ne_strided_kernel(
         oa += i7 * sa7
         ob += i7 * sb7
 
-        a = tl.load(a_ptr + oa, mask=mask, other=0)
-        b = tl.load(b_ptr + ob, mask=mask, other=0)
+        a = tl.load(a_ptr + oa, mask=mask, other=0.0)
+        b = tl.load(b_ptr + ob, mask=mask, other=0.0)
         tl.store(o_ptr + offs, _ne_cmp(a, b, CAST), mask=mask)
 
 
@@ -364,6 +366,7 @@ def _ne_run(self, other):
         cast = (
             0
             if a.dtype is b.dtype
+            and a.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2)
             else _DTYPE_CODE.get(torch.promote_types(a.dtype, b.dtype), 1)
         )
         if n <= _INT32_MAX:

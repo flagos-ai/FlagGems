@@ -190,15 +190,16 @@ def test_accuracy_linalg_matrix_rank_float64_tolerance_precision():
     ],
 )
 def test_accuracy_linalg_matrix_rank_well_separated_spectrum(dtype, k, tiny, atol):
-    generator = torch.Generator(device=flag_gems.device).manual_seed(20260807)
+    # Draw with a CPU generator and move the result: handing a CPU generator to
+    # a device-side randn raises on backends that validate the generator device.
+    generator = torch.Generator("cpu").manual_seed(20260807)
     orthogonal = torch.linalg.qr(
         torch.randn(
             (k, k),
             dtype=dtype,
-            device=flag_gems.device,
             generator=generator,
         )
-    ).Q
+    ).Q.to(flag_gems.device)
     spectrum = torch.ones(k, dtype=dtype, device=flag_gems.device)
     spectrum[-1] = tiny
     matrix = orthogonal @ torch.diag(spectrum) @ orthogonal.mT
@@ -617,11 +618,11 @@ def test_accuracy_linalg_matrix_rank_general_dense_low_rank(dtype):
 def test_accuracy_linalg_matrix_rank_hermitian_dense_low_rank(dtype):
     # Check a dense symmetric low-rank matrix with a clear spectral gap at
     # the tolerance.
-    generator = torch.Generator(device=flag_gems.device).manual_seed(1234)
+    generator = torch.Generator("cpu").manual_seed(1234)
     n, rank = 300, 250
-    basis = torch.randn(
-        n, rank, dtype=dtype, device=flag_gems.device, generator=generator
-    )
+    # CPU generator + CPU draw, then move: a CPU generator on a device-side
+    # randn raises on backends that validate the generator device.
+    basis = torch.randn(n, rank, dtype=dtype, generator=generator).to(flag_gems.device)
     weights = torch.linspace(2.0, 1.0, rank, dtype=dtype, device=flag_gems.device)
     matrix = basis @ torch.diag(weights) @ basis.mT
     expected = torch.tensor(rank, dtype=torch.int64, device=matrix.device)

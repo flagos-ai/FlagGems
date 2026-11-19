@@ -28,6 +28,8 @@ from flag_gems.utils.limits import get_dtype_max
 
 logger = logging.getLogger(__name__)
 
+MinResult = namedtuple("min", ["values", "indices"])
+
 
 @libentry()
 @triton.jit
@@ -111,6 +113,8 @@ def min_kernel(
 
 
 def min(inp):
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        return MinFunction.apply(inp)
     logger.debug("GEMS MIN")
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -128,6 +132,9 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
+    if torch.is_grad_enabled() and inp.requires_grad and inp.is_floating_point():
+        values, indices = MinDimFunction.apply(inp, dim, keepdim)
+        return MinResult(values, indices)
     logger.debug("GEMS MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
@@ -150,3 +157,338 @@ def min_dim(inp, dim=None, keepdim=False):
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Backward
+#
+# Neither `aten::min(Tensor)` nor `aten::min.dim` has an independently
+# registered backward kernel: both adjoints come from the autograd engine
+# (`evenly_distribute_backward` and `value_selecting_reduction_backward`
+# respectively).  We therefore attach the adjoint with `torch.autograd.Function`
+# and run it with Triton:
+#
+#   * global `min(x)` splits `grad_output` evenly between every entry that is
+#     equal to the minimum, so the tie count is a global reduction that has to
+#     run inside the backward;
+#   * `min(x, dim)` scatters `grad_output` onto the single saved argmin index
+#     (`indices` is a non-differentiable `int64` tensor), so the adjoint only
+#     needs the reduced layout.
+# ---------------------------------------------------------------------------
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def min_backward_global_count_kernel(
+    inp,
+    result,
+    partials,
+    n_elements,
+    NUM_PROGRAMS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    INT64_OFFSET: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if INT64_OFFSET:
+        pid = pid.to(tl.int64)
+    min_value = tl.load(result)
+    value_is_nan = min_value != min_value
+    total = tl.zeros((1,), dtype=tl.int32)
+    for start in range(pid * BLOCK_SIZE, n_elements, NUM_PROGRAMS * BLOCK_SIZE):
+        offset = start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+        value = tl.load(inp + offset, mask=mask, other=0)
+        is_min = (value == min_value) | ((value != value) & value_is_nan)
+        total += tl.sum((is_min & mask).to(tl.int32))
+    # One partial sum per program: the buffer is freshly allocated, so it needs
+    # no pre-zeroing and the whole global adjoint costs two launches.
+    tl.store(partials + pid, tl.sum(total, axis=0))
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def min_backward_global_fill_kernel(
+    inp,
+    grad_output,
+    result,
+    partials,
+    out,
+    n_elements,
+    NUM_PARTIALS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    INT64_OFFSET: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if INT64_OFFSET:
+        pid = pid.to(tl.int64)
+    dtype = inp.type.element_ty
+    acc_dtype = tl.float64 if dtype is tl.float64 else tl.float32
+    min_value = tl.load(result)
+    value_is_nan = min_value != min_value
+    count = tl.sum(tl.load(partials + tl.arange(0, NUM_PARTIALS)).to(tl.int64), axis=0)
+    scale = tl.load(grad_output).to(acc_dtype) / count.to(acc_dtype)
+    for start in range(pid * BLOCK_SIZE, n_elements, tl.num_programs(0) * BLOCK_SIZE):
+        offset = start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < n_elements
+        value = tl.load(inp + offset, mask=mask, other=0)
+        is_min = (value == min_value) | ((value != value) & value_is_nan)
+        grad_input = tl.where(is_min, scale, 0.0)
+        tl.store(out + offset, grad_input.to(dtype), mask=mask)
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def min_backward_dim_kernel(
+    grad_output,
+    indices,
+    out,
+    n_rows,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    ROWS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    INT64_OFFSET: tl.constexpr,
+):
+    # Tile counts are constexpr arithmetic: passing them as separate launch
+    # arguments costs binding time on every call.
+    n_tiles: tl.constexpr = (N + BLOCK_N - 1) // BLOCK_N
+    k_tiles: tl.constexpr = (K + BLOCK_K - 1) // BLOCK_K
+
+    pid = tl.program_id(0)
+    if INT64_OFFSET:
+        pid = pid.to(tl.int64)
+    tile_n = pid % n_tiles
+    rest = pid // n_tiles
+    tile_k = rest % k_tiles
+    first_row = (rest // k_tiles) * ROWS
+
+    dim_offset = tile_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    inner_offset = tile_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    dim_mask = dim_offset < N
+    inner_mask = inner_offset < K
+    store_mask = dim_mask[:, None] & inner_mask[None, :]
+
+    for step in range(ROWS):
+        row = first_row + step
+        # A row tile may overshoot the last row of the tensor; the guard has to
+        # cover the loads as well as the store.
+        row_mask = row < n_rows
+        reduced_offset = row * K + inner_offset
+        load_mask = inner_mask & row_mask
+        index = tl.load(indices + reduced_offset, mask=load_mask, other=-1)
+        grad = tl.load(grad_output + reduced_offset, mask=load_mask, other=0)
+        selected = (dim_offset[:, None] == index[None, :]) & dim_mask[:, None]
+        # A zero of the loaded dtype keeps the select/store pipeline in the input
+        # dtype instead of promoting the tile to fp32: same bits, half the
+        # register footprint.
+        zero = tl.zeros([BLOCK_N, BLOCK_K], dtype=grad.dtype)
+        grad_input = tl.where(selected, grad[None, :], zero)
+        offset = row * (N * K) + dim_offset[:, None] * K + inner_offset[None, :]
+        tl.store(out + offset, grad_input, mask=store_mask & row_mask)
+
+
+# Launch-shape caches: the backward is host-bound at small sizes, so the tile
+# arithmetic must not be recomputed on every call.
+_GLOBAL_PLAN_CACHE = {}
+_DIM_PLAN_CACHE = {}
+_PLAN_CACHE_LIMIT = 64
+
+
+def _global_plan(n_elements):
+    plan = _GLOBAL_PLAN_CACHE.get(n_elements)
+    if plan is None:
+        count_block = 4096
+        # `tl.arange` needs a power of two, and the count buffer is sized from
+        # it, so round up; programs with an empty range just store 0.
+        count_grid = triton.next_power_of_2(triton.cdiv(n_elements, count_block))
+        # The public `min` below shadows the builtin inside this module.
+        if count_grid > 1024:
+            count_grid = 1024
+        fill_block = 4096
+        fill_grid = triton.cdiv(n_elements, fill_block)
+        if fill_grid > 65535:
+            fill_grid = 65535
+        wide = n_elements >= 2147483648
+        plan = (count_grid, count_block, fill_grid, fill_block, wide)
+        if len(_GLOBAL_PLAN_CACHE) < _PLAN_CACHE_LIMIT:
+            _GLOBAL_PLAN_CACHE[n_elements] = plan
+    return plan
+
+
+def _dim_launch_config(outer_size, n_reduce, inner_size):
+    """Tile choice for the value-selecting adjoint.
+
+    ``BLOCK_K`` is the contiguous run length of a single store: whenever the
+    inner axis fits one program's tile (``inner_size <= 1024``) it is taken
+    whole, so a program's ``BLOCK_N x BLOCK_K`` store is one fully contiguous
+    slab instead of a strided set of ``BLOCK_K``-sized pieces.  For
+    ``inner_size == 1`` this is the plain "one program per row tile" shape.
+
+    A wide inner axis gets the larger 8192-element tile with eight warps: the
+    store is then 16 KiB per program, which halves the program count for the
+    multi-GiB cases where the store stream is the whole workload.
+    """
+    block_k = triton.next_power_of_2(inner_size)
+    wide = block_k > 256
+    if block_k > 1024:
+        block_k = 1024
+    elems = 8192 if wide else 2048
+    max_block_n = triton.next_power_of_2(n_reduce)
+    block_n = elems // block_k
+    if block_n > max_block_n:
+        block_n = max_block_n
+    if block_n < 1:
+        block_n = 1
+    rows = elems // (block_n * block_k)
+    if rows < 1:
+        rows = 1
+    n_tiles = triton.cdiv(n_reduce, block_n)
+    k_tiles = triton.cdiv(inner_size, block_k)
+    # Keep enough programs in flight for the very small tensors.
+    while rows > 1 and triton.cdiv(outer_size, rows) * n_tiles * k_tiles < 264:
+        rows //= 2
+    grid = (triton.cdiv(outer_size, rows) * n_tiles * k_tiles,)
+    num_warps = 8 if wide else 4
+    return grid, rows, block_n, block_k, n_tiles, k_tiles, num_warps
+
+
+def _dim_plan(shape, dim):
+    plan = _DIM_PLAN_CACHE.get((shape, dim))
+    if plan is not None:
+        return plan
+    n_reduce = shape[dim]
+    inner_size = 1
+    for size in shape[dim + 1 :]:
+        inner_size *= size
+    outer_size = 1
+    for size in shape[:dim]:
+        outer_size *= size
+    grid, rows, block_n, block_k, n_tiles, k_tiles, num_warps = _dim_launch_config(
+        outer_size, n_reduce, inner_size
+    )
+    wide = outer_size * n_reduce * inner_size >= 2147483648
+    plan = (
+        grid,
+        rows,
+        block_n,
+        block_k,
+        num_warps,
+        outer_size,
+        n_reduce,
+        inner_size,
+        wide,
+    )
+    if len(_DIM_PLAN_CACHE) < _PLAN_CACHE_LIMIT:
+        _DIM_PLAN_CACHE[(shape, dim)] = plan
+    return plan
+
+
+def _min_backward_global(grad_output, inp, result):
+    """Adjoint of the global reduction: `evenly_distribute_backward`."""
+    n_elements = inp.numel()
+    out = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
+    if n_elements == 0:
+        return out
+    # The forward kernels index `inp` linearly, so the adjoint inherits the same
+    # contiguous-input requirement.
+    source = inp if inp.is_contiguous() else inp.contiguous()
+    count_grid, count_block, fill_grid, fill_block, wide = _global_plan(n_elements)
+    partials = torch.empty(count_grid, dtype=torch.int32, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        min_backward_global_count_kernel[(count_grid,)](
+            source,
+            result,
+            partials,
+            n_elements,
+            NUM_PROGRAMS=count_grid,
+            BLOCK_SIZE=count_block,
+            INT64_OFFSET=wide,
+        )
+        min_backward_global_fill_kernel[(fill_grid,)](
+            source,
+            grad_output,
+            result,
+            partials,
+            out,
+            n_elements,
+            NUM_PARTIALS=count_grid,
+            BLOCK_SIZE=fill_block,
+            INT64_OFFSET=wide,
+        )
+    return out
+
+
+def _min_backward_dim(grad_output, inp, indices, dim):
+    """Adjoint of `min.dim`: scatter `grad_output` at the saved argmin index."""
+    if dim < 0:
+        dim += inp.ndim
+    (
+        grid,
+        rows,
+        block_n,
+        block_k,
+        num_warps,
+        outer_size,
+        n_reduce,
+        inner_size,
+        wide,
+    ) = _dim_plan(inp.shape, dim)
+
+    out = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
+    if out.numel() == 0:
+        return out
+
+    grad = grad_output if grad_output.is_contiguous() else grad_output.contiguous()
+    index = indices if indices.is_contiguous() else indices.contiguous()
+    # Positional constexpr arguments bind measurably faster than keywords.
+    args = (
+        grad,
+        index,
+        out,
+        outer_size,
+        n_reduce,
+        inner_size,
+        rows,
+        block_n,
+        block_k,
+        wide,
+    )
+    with torch_device_fn.device(inp.device):
+        if num_warps == 8:
+            min_backward_dim_kernel[grid](*args, num_warps=num_warps)
+        else:
+            min_backward_dim_kernel[grid](*args)
+    return out
+
+
+class MinFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp):
+        result = min(inp)
+        ctx.save_for_backward(inp, result)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if grad_output is None:
+            return None
+        inp, result = ctx.saved_tensors
+        return _min_backward_global(grad_output, inp, result)
+
+
+class MinDimFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        values, indices = min_dim(inp, dim, keepdim)
+        ctx.save_for_backward(inp, indices)
+        ctx.dim = dim
+        ctx.mark_non_differentiable(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        if grad_values is None:
+            return None, None, None
+        inp, indices = ctx.saved_tensors
+        return _min_backward_dim(grad_values, inp, indices, ctx.dim), None, None

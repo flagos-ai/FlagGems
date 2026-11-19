@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # The aten reference for ``_histogramdd_from_bin_tensors`` has no native CUDA
 # implementation in this PyTorch build, so the reference histogram is always
@@ -364,7 +365,9 @@ def test_histogramdd_from_bin_tensors_out_weighted(shape, num_bins, dtype):
 
 
 @pytest.mark.histogramdd_from_bin_tensors
-@pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
+@pytest.mark.parametrize(
+    "dtype", [pytest.param(torch.float64, marks=_SKIP_FP64), torch.float32]
+)
 def test_histogramdd_from_bin_tensors_bin_edge_precision(dtype):
     """Points exactly on a bin edge, and one ulp either side of it.
 
@@ -392,7 +395,9 @@ def test_histogramdd_from_bin_tensors_bin_edge_precision(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_tensors
-@pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
+@pytest.mark.parametrize(
+    "dtype", [pytest.param(torch.float64, marks=_SKIP_FP64), torch.float32]
+)
 def test_histogramdd_from_bin_tensors_density_zero_total(dtype):
     """density normalisation is applied even when the total weight is zero.
 
@@ -419,7 +424,9 @@ def test_histogramdd_from_bin_tensors_density_zero_total(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_tensors
-@pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
+@pytest.mark.parametrize(
+    "dtype", [pytest.param(torch.float64, marks=_SKIP_FP64), torch.float32]
+)
 def test_histogramdd_from_bin_tensors_density_signed_weights(dtype):
     """Cancelling and net-negative weights keep ATen's infinities and signs."""
     bins = tuple(
@@ -463,7 +470,9 @@ def test_histogramdd_from_bin_tensors_weight_dtype_mismatch():
 
 
 @pytest.mark.histogramdd_from_bin_tensors_out
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_histogramdd_from_bin_tensors_out_resize(dtype):
     """A mis-shaped out is resized in place and the caller's object returned."""
     dev = flag_gems.device
@@ -495,7 +504,9 @@ def test_histogramdd_from_bin_tensors_out_dtype_mismatch():
 
 
 @pytest.mark.histogramdd_from_bin_tensors_out
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_histogramdd_from_bin_tensors_out_non_contiguous(dtype):
     """A non-contiguous out of the right shape is accepted, as in ATen."""
     dev = flag_gems.device
