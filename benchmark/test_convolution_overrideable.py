@@ -129,7 +129,6 @@ def test_convolution_overrideable_out(monkeypatch):
         torch_op=torch.ops.aten.convolution.out,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
-        fresh_inputs=True,
     )
     bench.set_gems(stock_out)
     bench.run()
