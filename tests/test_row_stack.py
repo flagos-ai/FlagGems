@@ -154,6 +154,7 @@ def test_row_stack_memory_format(shape, memory_format, dtype):
 )
 def test_row_stack_mixed_dtype_promotion(dtype):
     """Mixed dtypes follow ATen's type promotion instead of being rejected."""
+    use_cpu_reference = flag_gems.vendor_name == "iluvatar" and dtype == torch.float32
     other = torch.float64 if dtype == torch.float32 else torch.int64
     if dtype in utils.FLOAT_DTYPES:
         a = torch.randn(3, 4, dtype=dtype, device=flag_gems.device)
@@ -161,7 +162,9 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     else:
         a = torch.randint(0, 100, (3, 4), dtype=dtype, device=flag_gems.device)
         b = torch.randint(0, 100, (2, 4), dtype=other, device=flag_gems.device)
-    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float32:
+    if (
+        flag_gems.vendor_name == "iluvatar" and dtype == torch.float32
+    ) or use_cpu_reference:
         ref_a, ref_b = a.cpu(), b.cpu()
     else:
         ref_a = utils.to_reference(a)
@@ -170,6 +173,8 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
 
+    if use_cpu_reference:
+        assert res_out.device == a.device
     assert res_out.dtype == ref_out.dtype
     assert res_out.device == a.device
     assert res_out.shape == ref_out.shape
@@ -310,10 +315,10 @@ def test_row_stack_out_dtype_cast():
         # a genuinely float64 out tensor cannot be created there.
         pytest.skip("float64 is not supported by this device")
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
-    ref_inp = [utils.to_reference(e) for e in inp]
-    if flag_gems.vendor_name == "iluvatar":
-        # Native out casts can return incorrect Double values on this backend.
-        ref_inp = [value.cpu() for value in ref_inp]
+    ref_inp = [
+        e.cpu() if flag_gems.vendor_name == "iluvatar" else utils.to_reference(e)
+        for e in inp
+    ]
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
     torch.row_stack(ref_inp, out=ref_out)
 

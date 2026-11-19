@@ -82,6 +82,11 @@ def test_replication_pad1d_backward(shape, padding, dtype):
         grad_shape = (*inp.shape[:-1], inp.shape[-1] + sum(padding))
         grad_output = torch.ones(grad_shape, dtype=dtype, device=inp.device)
         ref_inp, ref_grad = inp.cpu(), grad_output.cpu()
+    elif flag_gems.vendor_name == "mthreads" and dtype == torch.complex64:
+        ref_inp = inp.cpu()
+        padded_out = torch.ops.aten.replication_pad1d(ref_inp, padding)
+        grad_output = torch.ones_like(padded_out, device=inp.device)
+        ref_grad = grad_output.cpu()
     else:
         ref_inp = utils.to_reference(inp)
         padded_out = torch.ops.aten.replication_pad1d(inp, padding)

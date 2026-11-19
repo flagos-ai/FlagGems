@@ -31,14 +31,14 @@ else:
 
 
 def _make_complex_input(shape, dtype):
-    if flag_gems.vendor_name == "iluvatar":
+    if flag_gems.vendor_name in ("iluvatar", "ascend"):
         # Device Complex128 RNG can silently generate all-zero inputs.
         return torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
 
 def _complex_reference_input(x):
-    if flag_gems.vendor_name == "iluvatar":
+    if flag_gems.vendor_name in ("iluvatar", "ascend"):
         # The native device reference can drop nonzero powers for complex128.
         return x.cpu()
     return utils.to_reference(x, False)
