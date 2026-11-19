@@ -1546,6 +1546,7 @@ from flag_gems.ops.sparse_coo_tensor_with_dims import (
 )
 from flag_gems.ops.sparse_coo_tensor_with_dims_and_tensors import (
     sparse_coo_tensor_with_dims_and_tensors,
+    sparse_coo_tensor_with_dims_and_tensors_backward,
     sparse_coo_tensor_with_dims_and_tensors_out,
 )
 from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
@@ -3325,6 +3326,7 @@ __all__ = [
     "sparse_coo_tensor",
     "sparse_coo_tensor_with_dims",
     "sparse_coo_tensor_with_dims_and_tensors",
+    "sparse_coo_tensor_with_dims_and_tensors_backward",
     "sparse_coo_tensor_with_dims_and_tensors_out",
     "sparse_coo_tensor_with_dims_out",
     "sparse_csc_tensor",
