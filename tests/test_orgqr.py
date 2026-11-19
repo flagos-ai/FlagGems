@@ -24,9 +24,13 @@ def make_reflectors(shape, dtype):
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
     if flag_gems.vendor_name == "mthreads" and shape[-1] == 0:
-        pytest.skip("MUSA geqrf input preparation does not support zero columns")
-    input, tau = make_reflectors(shape, dtype)
-    ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
+        # The zero-column Q and reflector vector are empty, including without LAPACK.
+        ref = torch.empty(shape, dtype=dtype, device="cpu")
+        input = ref.to(flag_gems.device)
+        tau = torch.empty((*shape[:-2], 0), dtype=dtype, device=input.device)
+    else:
+        input, tau = make_reflectors(shape, dtype)
+        ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
     result = flag_gems.orgqr(input, tau)
     utils.gems_assert_close(result, ref, dtype)
 

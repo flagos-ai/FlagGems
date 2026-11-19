@@ -186,11 +186,12 @@ def test_slogdet_1x1(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_empty_matrix(dtype):
     """A 0x0 matrix is an empty product: sign 1, logabsdet 0."""
-    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU:
-        pytest.skip("MUSA native slogdet reports sign 0 for an empty matrix")
     for shape in [(0, 0), (2, 0, 0)]:
         A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        ref = torch.linalg.slogdet(utils.to_reference(A))
+        ref_inp = (
+            A.cpu() if flag_gems.vendor_name == "mthreads" else utils.to_reference(A)
+        )
+        ref = torch.linalg.slogdet(ref_inp)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
         assert res_sign.shape == ref.sign.shape
         assert torch.all(res_sign.cpu() == 1)
