@@ -196,6 +196,7 @@ from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .row_tiled_mm import row_tiled_mm
 
 try:
     from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
@@ -534,6 +535,7 @@ __all__ = [
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
     "router_gemm",
+    "row_tiled_mm",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
