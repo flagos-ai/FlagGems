@@ -12430,6 +12430,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: log1p_backward
+  description: The backward computation of `log1p()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log1p
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log2
   description: Returns a new tensor with the logarithm to the base 2 of the elements
     of `input`.
