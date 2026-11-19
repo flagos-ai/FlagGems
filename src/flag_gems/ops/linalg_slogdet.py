@@ -211,5 +211,39 @@ def linalg_slogdet(A):
     """Return the sign and log absolute determinant of a square matrix."""
     logger.debug("GEMS LINALG_SLOGDET")
     assert A.dtype == torch.float32
+    # ``aten::linalg_slogdet`` is CompositeImplicitAutograd in ATen, so its
+    # gradient comes from this decomposition. Overriding only the device key
+    # would drop it; route a differentiable call through the autograd node that
+    # carries the fused backward. Inside ``Function.apply`` grad mode is off, so
+    # this branch falls through to the decomposition below.
+    if torch.is_grad_enabled() and A.requires_grad:
+        return _LinalgSlogdetAutograd.apply(A)
     sign, logabsdet, _lu, _pivots = slogdet(A)
     return sign, logabsdet
+
+
+class _LinalgSlogdetAutograd(torch.autograd.Function):
+    """Autograd node for the public two-output ``aten::linalg_slogdet``.
+
+    ``linalg_slogdet`` is ``CompositeImplicitAutograd`` in ATen, so overriding
+    its device key with a forward-only kernel drops the decomposition gradient.
+    This node restores it and routes the backward through the fused
+    ``linalg_slogdet_backward`` kernel shared with ``_linalg_slogdet``.
+    """
+
+    @staticmethod
+    def forward(ctx, A):
+        # ``slogdet`` is the 4-output forward of this module; use it directly so
+        # the node never re-enters the differentiable public entry above.
+        sign, logabsdet, _lu, _pivots = slogdet(A)
+        ctx.save_for_backward(A)
+        return sign, logabsdet
+
+    @staticmethod
+    def backward(ctx, grad_sign, grad_logabsdet):
+        (A,) = ctx.saved_tensors
+        if not ctx.needs_input_grad[0]:
+            return None
+        from flag_gems.ops._linalg_slogdet import linalg_slogdet_backward
+
+        return linalg_slogdet_backward(grad_logabsdet, A)

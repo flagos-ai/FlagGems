@@ -131,6 +131,12 @@ def _linalg_slogdet(A):
         - pivots is the int32 pivot buffer (kept for schema parity)
     """
     logger.debug("GEMS _LINALG_SLOGDET")
+    # The device kernel below is forward-only, so a differentiable call needs
+    # the autograd node that carries the fused backward.  Inside
+    # ``Function.apply`` grad mode is disabled and this branch falls through to
+    # the kernel, so the two entries never recurse into each other.
+    if torch.is_grad_enabled() and A.requires_grad:
+        return _SlogdetAutograd.apply(A)
     assert A.dim() >= 2, "Input must be at least 2D"
     assert A.shape[-1] == A.shape[-2], "Input must be square"
     # The generated slogdet kernel uses float32 arithmetic; reject unsupported dtypes explicitly.
@@ -202,3 +208,163 @@ def _linalg_slogdet(A):
         )
 
     return sign, logabsdet, LU, pivots
+
+
+@libentry(cache_binding=True)
+@triton.jit
+def _slogdet_backward_kernel(
+    A,
+    grad_logabsdet,
+    grad_A,
+    N,
+    stride_A_batch,
+    stride_grad_batch,
+    BLOCK_N: tl.constexpr,
+):
+    """Fused ``grad_logabsdet[..., None, None] * A^{-H}`` for real input.
+
+    ATen computes this in ``slogdet_backward`` (FunctionsManual.cpp) as
+    ``lu_solve``/``linalg_solve`` on a diagonal right-hand side, which costs
+    several kernel launches plus a diag_embed.  This program inverts ``A`` in
+    one register tile with Gauss-Jordan elimination and partial pivoting and
+    writes the scaled conjugate transpose directly.
+
+    ``A`` is read as a contiguous ``(batch, N, N)`` buffer.  After the k-th
+    pivot, physical row ``p_k`` of the right-hand block holds logical inverse
+    row ``k``; ``pos`` records that scatter, so the store writes
+    ``grad_A[i, pos[j]] = grad * inv[j, i]``, i.e. ``grad * A^{-H}``.
+    """
+    pid = tl.program_id(0)
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_N)
+    mask = (rows[:, None] < N) & (cols[None, :] < N)
+
+    a = tl.load(
+        A + pid * stride_A_batch + rows[:, None] * N + cols[None, :],
+        mask=mask,
+        other=0.0,
+    )
+    x = tl.where(mask & (rows[:, None] == cols[None, :]), 1.0, 0.0)
+    grad = tl.load(grad_logabsdet + pid * stride_grad_batch)
+
+    zero_a = a * 0.0
+    zero_x = x * 0.0
+    used = tl.zeros((BLOCK_N,), dtype=tl.int32)
+    pos = tl.zeros((BLOCK_N,), dtype=tl.int32)
+
+    for k in range(0, N):
+        col_k = tl.sum(tl.where(cols[None, :] == k, a, zero_a), axis=1)
+        active = (rows < N) & (used == 0)
+        mag = tl.where(active, tl.abs(col_k), -1.0)
+        # One reduction instead of max+min: ``tie_break_left`` reproduces the
+        # lowest-row pivot the two-reduction search selected.
+        pivot_row = tl.argmax(mag, axis=0, tie_break_left=True)
+        pivot = tl.sum(tl.where(rows == pivot_row, col_k, 0.0), axis=0)
+        # A zero pivot means A is singular. Dividing by it (instead of masking)
+        # lets the inf/NaN propagate into the gradient, which is the native
+        # contract: ATen's slogdet_backward divides by the factorization and is
+        # likewise non-finite at a singular matrix. Masking would silently
+        # return a finite value for an undefined gradient.
+        inv_pivot = 1.0 / pivot
+
+        pivot_row_mask = rows == pivot_row
+        pivot_a = tl.sum(tl.where(pivot_row_mask[:, None], a, zero_a), axis=0)
+        pivot_x = tl.sum(tl.where(pivot_row_mask[:, None], x, zero_x), axis=0)
+        factor = col_k * inv_pivot
+        a = tl.where(
+            pivot_row_mask[:, None],
+            pivot_a * inv_pivot,
+            a - factor[:, None] * pivot_a,
+        )
+        x = tl.where(
+            pivot_row_mask[:, None],
+            pivot_x * inv_pivot,
+            x - factor[:, None] * pivot_x,
+        )
+        used = used | tl.where(pivot_row_mask, 1, 0)
+        pos = tl.where(pivot_row_mask, k, pos)
+
+    out_ptrs = grad_A + pid * stride_A_batch + cols[None, :] * N + pos[:, None]
+    tl.store(out_ptrs, x * grad, mask=mask)
+
+
+def linalg_slogdet_backward(grad_logabsdet, A):
+    """Real-input gradient of ``logabsdet`` with respect to ``A``.
+
+    Matches ``grad_A = grad_logabsdet[..., None, None] * A^{-H}`` from ATen's
+    ``slogdet_backward``.  ``sign`` carries no gradient for real input, so the
+    caller passes ``grad_sign=None``.
+    """
+    if grad_logabsdet is None:
+        return None
+    n = A.shape[-1]
+    batch_shape = A.shape[:-2]
+    batch_size = 1
+    for dim in batch_shape:
+        batch_size *= dim
+    grad_A = torch.empty(A.shape, dtype=A.dtype, device=A.device)
+    if batch_size == 0 or n == 0:
+        return grad_A
+    A_work = A if A.is_contiguous() else A.contiguous()
+    grad = (
+        grad_logabsdet
+        if grad_logabsdet.is_contiguous()
+        else grad_logabsdet.contiguous()
+    )
+    with torch_device_fn.device(A.device):
+        _slogdet_backward_kernel[(batch_size,)](
+            A_work,
+            grad,
+            grad_A,
+            n,
+            n * n,
+            grad.stride(-1) if grad.dim() > 0 else 0,
+            _slogdet_backward_block(n),
+            num_warps=_SLOGDET_BACKWARD_WARPS,
+        )
+    return grad_A
+
+
+# The kernel is one program per matrix on a 132-SM device, so these sizes are
+# launch-latency bound: a measured sweep of num_warps {1,2,4,8} over the five
+# default shapes moved the launch by <0.4us at n <= 16 and regressed badly at
+# num_warps=8 for n=32.  A fixed value therefore matches the best autotuned
+# configuration while avoiding the autotuner's per-call key lookup, which the
+# round history measured at several microseconds on this launch-bound workload.
+_SLOGDET_BACKWARD_WARPS = 4
+# The elimination tile must cover n; the kernel masks every access to n, so any
+# BLOCK_N >= n is correct.  The floor of 8 keeps small matrices off a padded
+# 16x16 tile without changing the numerics.
+_SLOGDET_BACKWARD_BLOCK_MIN = 8
+
+
+def _slogdet_backward_block(n):
+    return max(_SLOGDET_BACKWARD_BLOCK_MIN, triton.next_power_of_2(n))
+
+
+class _SlogdetAutograd(torch.autograd.Function):
+    """Autograd node for ``aten::_linalg_slogdet`` under FlagGems dispatch.
+
+    The device-key entry is a forward-only kernel, which would otherwise hide
+    the ATen ``LinalgSlogdetBackward0`` formula from ``torch.ops.aten`` and
+    ``torch.linalg.slogdet``.  This node restores a differentiable graph whose
+    backward is the fused :func:`_slogdet_backward_kernel`; ``LU`` and
+    ``pivots`` stay non-differentiable exactly as in the ATen schema.
+    """
+
+    @staticmethod
+    def forward(ctx, A):
+        sign, logabsdet, LU, pivots = _linalg_slogdet(A)
+        ctx.save_for_backward(A)
+        ctx.mark_non_differentiable(LU, pivots)
+        return sign, logabsdet, LU, pivots
+
+    @staticmethod
+    def backward(ctx, grad_sign, grad_logabsdet, grad_LU, grad_pivots):
+        (A,) = ctx.saved_tensors
+        if not ctx.needs_input_grad[0]:
+            return None
+        # The device forward only accepts real float32, where ``sign`` is a
+        # piecewise-constant +-1 and therefore has no gradient: ATen also
+        # returns an empty gradient when only ``sign`` is differentiated.
+        return linalg_slogdet_backward(grad_logabsdet, A)
