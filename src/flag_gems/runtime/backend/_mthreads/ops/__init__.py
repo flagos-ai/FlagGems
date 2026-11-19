@@ -119,6 +119,7 @@ from .fake_quantize_per_tensor_affine_cachemask import (
 )
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
+from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -359,6 +360,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fix",
+    "flash_attention_backward",
     "flip",
     "floor_divide",
     "floor_divide_",

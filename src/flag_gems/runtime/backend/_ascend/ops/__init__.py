@@ -115,6 +115,7 @@ from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .fill_diagonal_ import fill_diagonal_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
@@ -446,6 +447,7 @@ __all__ = [
     "fill_scalar_",
     "fill_tensor",
     "fill_tensor_",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
