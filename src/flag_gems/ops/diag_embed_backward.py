@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Backward of ``diag_embed``
+# Backward of ``diag_embed``.
 #
 # ``torch.diag_embed`` has no standalone ``aten::diag_embed_backward`` schema:
 # ATen derives the input gradient from ``DiagEmbedBackward0``, which extracts the
@@ -40,36 +40,54 @@ logger = logging.getLogger(__name__)
 # respectively, independent of the ``dim1 < dim2`` vs ``dim1 > dim2`` ordering).
 #
 # The Triton kernel below gathers those diagonal elements into a contiguous
-# gradient with the input's shape.  The default plane dims (``-2``, ``-1``) put the
-# plane at the last two dims of ``grad_output``, so the batch part is a
-# contiguous leading block and the gather is a flat 1-D index computation;
-# other ``dim1``/``dim2`` placements fall back to ``torch.diagonal`` (the exact
-# ATen formula, zero-copy).
+# tensor with exactly the shape and values of ATen's ``torch.diagonal`` view
+# (remaining dims of ``grad_output`` in order, diagonal appended last), for
+# every ``dim1``/``dim2`` placement.
 # ---------------------------------------------------------------------------
+
+# A tensor ranks up to 8; the diagonal view drops 2 dims, so at most 6 view
+# dims. 8 leaves headroom.
+_MAX_VIEW = 8
 
 
 @triton.jit
 def _diag_embed_backward_kernel(
     grad_output_ptr,  # pointer to the upstream gradient
     grad_input_ptr,  # pointer to the output gradient
-    outer,  # product of batch dims
-    diag_len,  # length of the diagonal (= input's last dim)
-    plane_size,  # L * L (plane size of grad_output)
+    diag_len,  # length of the diagonal
     row_off,  # start index on the row dim (dim1)
     col_off,  # start index on the col dim (dim2)
+    stride_row,  # stride of the dim1 axis of grad_output
+    stride_col,  # stride of the dim2 axis of grad_output
+    n_view,  # number of remaining (view) dims
+    view_sizes_ptr,  # [n_view] sizes of the remaining dims, in order
+    view_stride_ptr,  # [n_view] CONTIGUOUS strides of the view output
+    src_stride_ptr,  # [n_view] strides of the same dims in grad_output
+    n_total,  # prod(view shape) * diag_len
     BLOCK: tl.constexpr,
+    MAX_VIEW: tl.constexpr,
 ):
+    """Gather the (offset, dim1, dim2) diagonal of ``grad_output`` into a
+    contiguous tensor shaped exactly like ATen's ``torch.diagonal`` view."""
     pid = tl.program_id(axis=0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    n = outer * diag_len
-    batch = offs // diag_len
-    k = offs % diag_len
-    mask = offs < n
-    r = k + row_off
-    c = k + col_off
-    src = batch * plane_size + r * (diag_len + tl.abs(row_off) + col_off) + c
-    val = tl.load(grad_output_ptr + src, mask=mask, other=0.0)
-    tl.store(grad_input_ptr + offs, val, mask=mask)
+    idx = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = idx < n_total
+
+    k = idx % diag_len
+    rem = idx // diag_len
+
+    src_offset = (k + row_off).to(tl.int64) * stride_row + (k + col_off).to(
+        tl.int64
+    ) * stride_col
+    for i in range(MAX_VIEW):
+        size_i = tl.load(view_sizes_ptr + i, mask=i < n_view, other=1)
+        vstride_i = tl.load(view_stride_ptr + i, mask=i < n_view, other=1)
+        sstride_i = tl.load(src_stride_ptr + i, mask=i < n_view, other=0)
+        c = (rem // vstride_i) % size_i
+        src_offset += c.to(tl.int64) * sstride_i
+
+    val = tl.load(grad_output_ptr + src_offset, mask=mask, other=0.0)
+    tl.store(grad_input_ptr + idx, val, mask=mask)
 
 
 def diag_embed_backward(
@@ -98,15 +116,10 @@ def diag_embed_backward(
     if grad_output.numel() == 0:
         return torch.empty_like(x)
 
-    # The default plane dims put the (row, col) plane at the last two dims of
-    # ``grad_output`` — a contiguous leading batch block, so the diagonal
-    # gather is a flat 1-D index computation.
-    if a == rank - 2 and b == rank - 1 and grad_output.is_contiguous():
-        return _diag_embed_backward_impl(grad_output, x, offset, a, b)
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
 
-    # Other plane placements: return the ATen formula directly — a diagonal
-    # view of ``grad_output`` at (offset, dim1, dim2), zero-copy and bit-exact.
-    return torch.diagonal(grad_output, offset, a, b)  # allow-torch-compute
+    return _diag_embed_backward_impl(grad_output, x, offset, a, b)
 
 
 def _diag_embed_backward_impl(
@@ -115,25 +128,86 @@ def _diag_embed_backward_impl(
     """Gather the diagonal of ``grad_output`` into a contiguous gradient."""
     row_off = max(-offset, 0)
     col_off = max(offset, 0)
-    diag_len = x.shape[-1]
-    plane_size = (diag_len + abs(offset)) ** 2
-    grad_input = torch.empty_like(x)
-    outer = grad_output.numel() // plane_size
-    n = outer * diag_len
+    rank = grad_output.ndim
+    shape = list(grad_output.shape)
+    strides = [1] * rank
+    for d in range(rank - 2, -1, -1):
+        strides[d] = strides[d + 1] * shape[d + 1]
+
+    diag_len = min(shape[dim1] + min(offset, 0), shape[dim2] - max(offset, 0))
+    if diag_len <= 0:
+        return torch.empty_like(x)
+
+    view_sizes = [shape[d] for d in range(rank) if d != dim1 and d != dim2]
+    # Two stride sets are needed: the CONTIGUOUS strides of the materialised
+    # output view (to decompose the flat index) and the grad_output strides of
+    # the same axes (to address the source element).
+    view_strides = [1] * len(view_sizes)
+    for i in range(len(view_sizes) - 2, -1, -1):
+        view_strides[i] = view_strides[i + 1] * view_sizes[i + 1]
+    src_strides = [strides[d] for d in range(rank) if d != dim1 and d != dim2]
+    n_view = len(view_sizes)
+    n_total = 1
+    for s in view_sizes:
+        n_total *= s
+    n_total *= diag_len
+
+    dev = grad_output.device
+    view_sizes_t = torch.tensor(view_sizes, dtype=torch.int32, device=dev)
+    view_strides_t = torch.tensor(view_strides, dtype=torch.int32, device=dev)
+    src_strides_t = torch.tensor(src_strides, dtype=torch.int32, device=dev)
+
+    grad_input = torch.empty(
+        view_sizes + [diag_len], dtype=grad_output.dtype, device=grad_output.device
+    )
+
     # 1024 elements per program: this is a pure gather, so each program reads
     # a whole diagonal slice coalesced along the contiguous col stride; 1024
     # balances occupancy against per-program index arithmetic.
     BLOCK = 1024
-    grid = (triton.cdiv(n, BLOCK),)
+    grid = (triton.cdiv(n_total, BLOCK),)
     with torch_device_fn.device(grad_output.device):
         _diag_embed_backward_kernel[grid](
             grad_output,
             grad_input,
-            outer,
             diag_len,
-            plane_size,
             row_off,
             col_off,
+            strides[dim1],
+            strides[dim2],
+            n_view,
+            view_sizes_t,
+            view_strides_t,
+            src_strides_t,
+            n_total,
             BLOCK=BLOCK,
+            MAX_VIEW=_MAX_VIEW,
         )
     return grad_input
+
+
+class DiagEmbedFunction(torch.autograd.Function):
+    """autograd bridge so ``flag_gems.diag_embed`` differentiates through the
+    Triton gather kernel (ATen has no ``aten::diag_embed_backward`` schema)."""
+
+    @staticmethod
+    def forward(ctx, x, offset, dim1, dim2):
+        from flag_gems.ops.diag_embed import diag_embed
+
+        ctx.offset = offset
+        ctx.dim1 = dim1
+        ctx.dim2 = dim2
+        ctx.save_for_backward(x)
+        return diag_embed(x, offset, dim1, dim2)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        if not ctx.needs_input_grad[0]:
+            return None
+        return (
+            diag_embed_backward(grad_output, x, ctx.offset, ctx.dim1, ctx.dim2),
+            None,
+            None,
+            None,
+        )

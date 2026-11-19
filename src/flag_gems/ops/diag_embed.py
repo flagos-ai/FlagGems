@@ -31,6 +31,19 @@ def copy_func(x):
 def diag_embed(x, offset=0, dim1=-2, dim2=-1):
     logger.debug("GEMS DIAG_EMBED")
 
+    # Route differentiable inputs through the autograd bridge so the Triton
+    # gather kernel is reachable from ``flag_gems.diag_embed``; ATen has no
+    # ``aten::diag_embed_backward`` schema.
+    if (
+        torch.is_grad_enabled()
+        and isinstance(x, torch.Tensor)
+        and x.requires_grad
+        and x.is_floating_point()
+    ):
+        from flag_gems.ops.diag_embed_backward import DiagEmbedFunction
+
+        return DiagEmbedFunction.apply(x, offset, dim1, dim2)
+
     rank = x.ndim + 1
 
     assert dim1 >= -rank and dim1 < rank, f"Invalid dim1: {dim1}"
