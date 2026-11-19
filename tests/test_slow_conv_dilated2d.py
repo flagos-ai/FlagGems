@@ -117,7 +117,7 @@ _INVALID_SLOW_CONV_DILATED2D_CASES = [
     ((2, 3, 5, 5), (4, 5, 3, 3), (3, 3), (1, 1), (0, 0), (1, 1)),
     # weight spatial dims disagree with kernel_size
     ((2, 3, 5, 5), (4, 3, 4, 4), (3, 3), (1, 1), (0, 0), (1, 1)),
-    # input is not 4-D
+    # unbatched input has mismatched channels
     ((2, 3, 5), (4, 3, 3, 3), (3, 3), (1, 1), (0, 0), (1, 1)),
     # weight is not 4-D
     ((2, 3, 5, 5), (4, 3, 3), (3, 3), (1, 1), (0, 0), (1, 1)),
@@ -129,6 +129,8 @@ _INVALID_SLOW_CONV_DILATED2D_CASES = [
     ((2, 3, 5, 5), (4, 3, 3, 3), (3, 3), (1, 1), (0, 0), (0, 0)),
     # dilation so large the kernel no longer fits inside the input
     ((2, 3, 5, 5), (4, 3, 3, 3), (3, 3), (1, 1), (0, 0), (10, 10)),
+    # Negative padding crops farther than the input size.
+    ((1, 3, 8, 8), (4, 3, 3, 3), (3, 3), (1, 1), (-5, -5), (1, 1)),
 ]
 
 _UNSUPPORTED_DTYPES = [

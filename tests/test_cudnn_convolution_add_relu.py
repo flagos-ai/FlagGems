@@ -340,6 +340,24 @@ def test_cudnn_convolution_add_relu_master_geometries(case, alpha, has_bias, dty
 
 
 @pytest.mark.cudnn_convolution_add_relu
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_cudnn_convolution_add_relu_master_empty_batch(dtype):
+    inp = tu.make_input(dtype, (0, 4, 8, 8), ["-1", "1"])
+    weight = tu.make_input(dtype, (6, 4, 3, 3), ["-1", "1"])
+    residual = tu.make_input(dtype, (0, 6, 8, 8), ["-1", "1"])
+    args = (1.0, None, [1, 1], [1, 1], [1, 1], 1)
+    ref = _reference(
+        _reference_input(inp),
+        _reference_input(weight),
+        _reference_input(residual),
+        *args,
+    )
+    result = flag_gems.cudnn_convolution_add_relu(inp, weight, residual, *args)
+    assert result.shape == (0, 6, 8, 8)
+    _assert_result(result, ref, inp.device)
+
+
+@pytest.mark.cudnn_convolution_add_relu
 @pytest.mark.parametrize("conv_case", CONV_CASE_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
