@@ -422,8 +422,10 @@ from .digamma import digamma
 from .digamma_ import digamma_
 from .dist import dist
 from .div import (
-    div_mode,
-    div_mode_,
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
     divide,
     floor_divide,
     floor_divide_,
@@ -676,7 +678,16 @@ from .logspace import logspace
 from .logsumexp import logsumexp
 from .lstm import lstm
 from .lstm_cell import lstm_cell
-from .lt import less_, less_scalar_, lt, lt_, lt_scalar, lt_scalar_
+from .lt import (
+    less__scalar,
+    less__tensor,
+    less_scalar,
+    less_tensor,
+    lt__scalar,
+    lt__tensor,
+    lt_scalar,
+    lt_tensor,
+)
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
@@ -1435,8 +1446,10 @@ __all__ = [
     "digamma",
     "digamma_",
     "dist",
-    "div_mode",
-    "div_mode_",
+    "div__scalar_mode",
+    "div__tensor_mode",
+    "div_scalar_mode",
+    "div_tensor_mode",
     "divide",
     "dot",
     "dropout",
@@ -1626,12 +1639,14 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
-    "less_",
+    "less__scalar",
+    "less__tensor",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
-    "less_scalar_",
+    "less_scalar",
+    "less_tensor",
     "lgamma",
     "lgamma_",
     "lift_fresh_copy",
@@ -1704,9 +1719,10 @@ __all__ = [
     "lstm",
     "lstm_cell",
     "lt",
-    "lt_",
+    "lt__scalar",
+    "lt__tensor",
     "lt_scalar",
-    "lt_scalar_",
+    "lt_tensor",
     "lu_unpack",
     "lu_unpack_out",
     "margin_ranking_loss",

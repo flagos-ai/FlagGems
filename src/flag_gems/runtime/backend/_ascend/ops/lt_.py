@@ -169,7 +169,7 @@ _TL_DT = {
 }
 
 
-def lt_(A, B):
+def lt__tensor(A, B):
     numel = A.numel()
     if numel == 0:
         return A

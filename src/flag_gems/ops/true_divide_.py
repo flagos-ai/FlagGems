@@ -432,12 +432,12 @@ def run(self, other):
 def true_divide_(A, B):
     """Canonical Tensor overload for in-place true division."""
     logger.debug("GEMS TRUE_DIVIDE_")
-    if isinstance(A, torch.Tensor) and A.is_complex():
+    if isinstance(A, torch.Tensor) and (A.is_complex() or not A.is_contiguous()):
         return _div_true_divide_(A, B)
     return run(A, B)
 
 
 def true_divide_tensor_(A, B):
     """Canonical Tensor overload for in-place true division."""
-    logger.debug("GEMS TRUE_DIVIDE_")
+    logger.debug("GEMS TRUE_DIVIDE_TENSOR_")
     return true_divide_(A, B)

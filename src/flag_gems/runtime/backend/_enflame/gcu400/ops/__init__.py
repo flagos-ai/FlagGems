@@ -226,8 +226,10 @@ from .diagonal import diagonal_backward
 from .digamma import digamma, digamma_out
 from .digamma_ import digamma_
 from .div import (
-    div_mode,
-    div_mode_,
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -359,7 +361,7 @@ from .logical_xor import logical_xor
 from .logical_xor_ import logical_xor_
 from .logit import logit, logit_, logit_out
 from .logspace import logspace
-from .lt import lt, lt_scalar
+from .lt import less_scalar, less_tensor, lt_scalar, lt_tensor
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -1173,7 +1175,7 @@ from .igamma_ import igamma_
 from .igammac import igammac, igammac_out
 from .ior_scalar import ior_scalar
 from .is_nonzero import is_nonzero
-from .less_ import less_, less_scalar_
+from .less_ import less__scalar, less__tensor
 from .lift import lift, lift_out
 from .mH import mH
 from .mT import mT
@@ -1417,7 +1419,7 @@ from .log_normal_ import log_normal_
 from .logdet import logdet
 from .logit_backward import logit_backward
 from .logsumexp import logsumexp
-from .lt_ import lt_, lt_scalar_
+from .lt_ import lt__scalar, lt__tensor
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from .masked_scatter import masked_scatter, masked_scatter_
@@ -2272,8 +2274,10 @@ __all__ = [
     "dim_arange",
     "dimV",
     "dist",
-    "div_mode",
-    "div_mode_",
+    "div__scalar_mode",
+    "div__tensor_mode",
+    "div_scalar_mode",
+    "div_tensor_mode",
     "divide",
     "dot",
     "dropout",
@@ -2556,12 +2560,14 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
-    "less_",
+    "less__scalar",
+    "less__tensor",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
-    "less_scalar_",
+    "less_scalar",
+    "less_tensor",
     "lgamma",
     "lgamma_",
     "lift",
@@ -2677,10 +2683,10 @@ __all__ = [
     "logsumexp",
     "lstm",
     "lstm_cell",
-    "lt",
-    "lt_",
+    "lt__scalar",
+    "lt__tensor",
     "lt_scalar",
-    "lt_scalar_",
+    "lt_tensor",
     "lu_solve",
     "lu_solve_out",
     "lu_unpack",

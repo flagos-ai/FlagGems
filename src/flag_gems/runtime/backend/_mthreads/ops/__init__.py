@@ -98,7 +98,17 @@ from .cudnn_convolution import cudnn_convolution
 from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
-from .div import div_mode, div_mode_, floor_divide, floor_divide_, true_divide_out
+from .div import (
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
+    floor_divide,
+    floor_divide_,
+    true_divide,
+    true_divide_,
+    true_divide_out,
+)
 from .dropout import dropout, dropout_backward
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
@@ -221,8 +231,6 @@ from .square_ import square_
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
-from .true_divide import true_divide
-from .true_divide_ import true_divide_
 from .trunc import trunc, trunc_
 from .uniform import uniform
 from .unique import _unique2
@@ -330,8 +338,10 @@ __all__ = [
     "cummaxmin_backward",
     "deg2rad_",
     "diagonal_scatter",
-    "div_mode",
-    "div_mode_",
+    "div__scalar_mode",
+    "div__tensor_mode",
+    "div_scalar_mode",
+    "div_tensor_mode",
     "dropout",
     "dropout_backward",
     "erfinv",

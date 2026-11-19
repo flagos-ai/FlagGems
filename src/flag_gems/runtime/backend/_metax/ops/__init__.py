@@ -186,7 +186,7 @@ from .logcumsumexp import logcumsumexp
 from .logcumsumexp_out import logcumsumexp_out
 from .logical_not_ import logical_not_
 from .logical_or import logical_or, logical_or_
-from .lt_ import lt_, lt_scalar_
+from .lt_ import lt__scalar, lt__tensor
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_, masked_scatter_impl
 from .masked_scatter_backward import masked_scatter_backward
@@ -484,8 +484,8 @@ __all__ = [
     "logical_not_",
     "logical_or",
     "logical_or_",
-    "lt_",
-    "lt_scalar_",
+    "lt__scalar",
+    "lt__tensor",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",

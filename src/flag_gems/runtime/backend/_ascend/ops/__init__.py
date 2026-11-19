@@ -152,7 +152,7 @@ from .layernorm import layer_norm, native_layer_norm
 from .le_ import le_
 from .leaky_relu import leaky_relu
 from .leaky_relu_out import leaky_relu_out
-from .less_ import less_
+from .less_ import less__tensor
 from .less_equal import less_equal
 from .less_equal_ import less_equal_
 from .linalg_cross import linalg_cross, linalg_cross_out
@@ -192,8 +192,8 @@ from .logaddexp2_out import logaddexp2_out
 from .logical_not_ import logical_not_
 from .logical_xor_ import logical_xor_
 from .logit_ import logit_
-from .lt_ import lt_
-from .lt_scalar_ import lt_scalar_
+from .lt_ import lt__tensor
+from .lt_scalar_ import lt__scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
@@ -484,7 +484,7 @@ __all__ = [
     "le_",
     "leaky_relu",
     "leaky_relu_out",
-    "less_",
+    "less__tensor",
     "less_equal",
     "less_equal_",
     "linalg_cross",
@@ -532,8 +532,8 @@ __all__ = [
     "logical_not_",
     "logical_xor_",
     "logit_",
-    "lt_",
-    "lt_scalar_",
+    "lt__scalar",
+    "lt__tensor",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",

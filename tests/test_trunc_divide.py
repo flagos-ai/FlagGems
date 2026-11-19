@@ -20,6 +20,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.div import trunc_divide
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -31,7 +32,7 @@ from . import conftest as cfg
     flag_gems.vendor_name == "sunrise",
     reason="Issues #3839: trunc_divide's behavior is different.",
 )
-@pytest.mark.trunc_divide
+@pytest.mark.div_tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_trunc_div(shape, dtype):
@@ -52,7 +53,7 @@ def test_trunc_div(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
-    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_tensor_mode(inp1, inp2, rounding_mode="trunc")
 
     if not cfg.TO_CPU:
         logging.debug(
@@ -68,7 +69,7 @@ def test_trunc_div(shape, dtype):
     flag_gems.vendor_name == "sunrise",
     reason="Issues #3839: trunc_divide's behavior is different.",
 )
-@pytest.mark.trunc_divide_
+@pytest.mark.div__tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_trunc_divide_(shape, dtype):
@@ -88,7 +89,7 @@ def test_trunc_divide_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
-    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div__tensor_mode(inp1, inp2, rounding_mode="trunc")
 
     if not cfg.TO_CPU:
         logging.debug(
@@ -110,7 +111,7 @@ def test_trunc_divide_scalar_scalar(dtype):
         inp2 = random.randint(1, 100)
 
     ref_out = torch.div(inp1, inp2, rounding_mode="trunc")
-    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
+    res_out = trunc_divide(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -118,7 +119,7 @@ def test_trunc_divide_scalar_scalar(dtype):
         utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.trunc_divide
+@pytest.mark.div_tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + [torch.int64])
 def test_trunc_divide_tensor_int(shape, dtype):
@@ -140,12 +141,12 @@ def test_trunc_divide_tensor_int(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
-    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_tensor_mode(inp1, inp2, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.trunc_divide
+@pytest.mark.div_scalar_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + [torch.int64])
 def test_trunc_divide_tensor_scalar_int(shape, dtype):
@@ -162,7 +163,7 @@ def test_trunc_divide_tensor_scalar_int(shape, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
 
     ref_out = torch.div(ref_inp1, scalar, rounding_mode="trunc")
-    res_out = flag_gems.div_mode(inp1, scalar, rounding_mode="trunc")
+    res_out = flag_gems.div_scalar_mode(inp1, scalar, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -184,6 +185,6 @@ def test_trunc_div_scalar_tensor_int(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(scalar, ref_inp2, rounding_mode="trunc")
-    res_out = flag_gems.div_mode(scalar, inp2, rounding_mode="trunc")
+    res_out = trunc_divide(scalar, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

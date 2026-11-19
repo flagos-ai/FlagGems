@@ -46,7 +46,7 @@ def _num_cores():
     return 20
 
 
-def lt_scalar_(A, B):
+def lt__scalar(A, B):
     numel = A.numel()
     if numel == 0:
         return A

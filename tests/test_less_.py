@@ -20,10 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.less_
+@pytest.mark.less__tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_less_(shape, dtype):
+def test_less__tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -31,24 +31,24 @@ def test_less_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
     ref_out = ref_inp1.less_(ref_inp2)
 
-    res_out = flag_gems.less_(inp1, inp2)
+    res_out = flag_gems.less__tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp1, dtype)
     assert res_out is inp1
 
 
-@pytest.mark.less_scalar_
+@pytest.mark.less__scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_less_scalar_(shape, dtype):
+def test_less__scalar(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     scalar = 0
 
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = ref_inp.less_(scalar)
 
-    res_out = flag_gems.less_scalar_(inp, scalar)
+    res_out = flag_gems.less__scalar(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

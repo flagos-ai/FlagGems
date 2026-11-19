@@ -22,22 +22,21 @@ from . import accuracy_utils as utils
 SCALAR_VALUES = (0, 1.0, -1.0, 0.5)
 
 
-@pytest.mark.less
+@pytest.mark.less_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_less(shape, dtype):
+def test_less_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1)
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.less(ref_inp1, ref_inp2)
-    res_out = flag_gems.lt(inp1, inp2)
+    res_out = flag_gems.less_tensor(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.less
 @pytest.mark.less_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -46,7 +45,7 @@ def test_less_scalar(shape, dtype, scalar):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1)
 
-    ref_out = torch.less(ref_inp1, scalar)
-    res_out = flag_gems.lt_scalar(inp1, scalar)
+    ref_out = torch.ops.aten.less.Scalar(ref_inp1, scalar)
+    res_out = flag_gems.less_scalar(inp1, scalar)
 
     utils.gems_assert_equal(res_out, ref_out)

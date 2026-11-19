@@ -24,11 +24,11 @@ def _input_fn_scalar(shape, cur_dtype, device):
     yield inp1, inp2
 
 
-@pytest.mark.lt
-def test_lt():
+@pytest.mark.lt_tensor
+def test_lt_tensor():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="lt",
-        torch_op=torch.lt,
+        op_name="lt_tensor",
+        torch_op=torch.ops.aten.lt.Tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -39,7 +39,7 @@ def test_lt_scalar():
     bench = base.GenericBenchmark(
         op_name="lt_scalar",
         input_fn=_input_fn_scalar,
-        torch_op=torch.lt,
+        torch_op=torch.ops.aten.lt.Scalar,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

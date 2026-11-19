@@ -31,8 +31,8 @@ def lt_func(x, y, inplace):
     return x.to(tl.float32) < y
 
 
-def lt_(A, B):
-    logger.debug("GEMS_CAMBRICON LT_")
+def lt__tensor(A, B):
+    logger.debug("GEMS_CAMBRICON LT__TENSOR")
     lt_func(A, B, True, out0=A)
     return A
 
@@ -45,7 +45,7 @@ def lt_func_scalar(x, y, inplace):
     return x.to(tl.float32) < y
 
 
-def lt_scalar_(A, B):
-    logger.debug("GEMS_CAMBRICON LT_SCALAR_")
+def lt__scalar(A, B):
+    logger.debug("GEMS_CAMBRICON LT__SCALAR")
     lt_func_scalar(A, B, True, out0=A)
     return A

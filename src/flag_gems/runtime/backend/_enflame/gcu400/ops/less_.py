@@ -170,8 +170,8 @@ def _less_cmp_run(A, B):
     return _launch_flat(A, B, n, 8192, 4)
 
 
-def less_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 LESS_")
+def less__tensor(A, B):
+    logger.debug("GEMS_ENFLAME_GCU400 LESS__TENSOR")
     if (
         A.numel() >= _SMALL_N
         and A.device == B.device
@@ -187,8 +187,8 @@ def less_(A, B):
     return A
 
 
-def less_scalar_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 LESS_SCALAR_")
+def less__scalar(A, B):
+    logger.debug("GEMS_ENFLAME_GCU400 LESS__SCALAR")
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         n = A.numel()
         if n >= _SMALL_N:
