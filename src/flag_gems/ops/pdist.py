@@ -289,6 +289,8 @@ def pdist(x, p=2.0):
         Tensor of shape (N*(N-1)//2,) containing pairwise distances
     """
     logger.debug("GEMS PDIST")
+    if torch.is_grad_enabled() and x.requires_grad:
+        return PdistFunction.apply(x, p)
 
     assert x.ndim == 2, "pdist only supports 2D input"
     if x.dtype != torch.float32:
@@ -351,3 +353,257 @@ def pdist(x, p=2.0):
             )
 
     return out
+
+
+# ---------------------------------------------------------------------------
+# Fused first-order backward
+# ---------------------------------------------------------------------------
+#
+# ``aten::pdist`` is CompositeImplicitAutograd: ATen differentiates the
+# decomposition into ``aten::_pdist_forward`` followed by its generated
+# ``PdistBackward0`` formula.  Registering a device kernel for ``pdist``
+# replaces that composite formula, so without an explicit backward the operator
+# silently stops being differentiable.  ``PdistFunction`` restores a
+# first-order gradient and serves it from a single fused Triton launch.
+#
+# For a pair (i, j) with distance d and upstream gradient g every coordinate of
+# the pair receives ``g * sign(x_i - x_j) * w`` with a p-dependent weight:
+#
+#     p == 2   : w = |x_i - x_j| / d
+#     p == 1   : w = 1
+#     p == inf : w = 1 where |x_i - x_j| == d (ties accumulate, as in ATen)
+#     otherwise: w = (|x_i - x_j| / d) ** (p - 1)
+#
+# A pair with d == 0 contributes nothing, matching ATen's CUDA kernel, so
+# duplicated rows do not produce NaNs.  ``p == 0`` is identically zero because
+# that forward counts differing coordinates rather than taking a norm.
+
+# Coordinate (row) tile and pair tile, tuned on H800: the row tile stays within
+# one warp of lanes and the pair tile tracks the row count of the matrix.
+_PDIST_TILE_MIN = 8
+_PDIST_TILE_MAX = 64
+
+# (N, M) -> (mode, pair tile, row tile, warps, grid). pdist is normally called
+# repeatedly on the same matrix, and the backward sits on the launch-bound side
+# of the roofline, so the launch geometry is resolved once per shape.
+_PDIST_LAUNCH_PLANS = {}
+
+# (N, M, dtype, mode) -> pre-bound compiled-kernel launcher.  The kernel
+# binary and its grid depend only on N, M, the input dtype and the p mode (the
+# tiles are functions of N, M and all runtime scalars are positional), so a
+# launcher captured for one key is valid for every later call with the same
+# key.  Pointer alignment is a compile-time specialization, so a captured
+# launcher may only be reused while every tensor stays 16-byte aligned; calls
+# that do not qualify take the generic launch, which re-specializes.
+_PDIST_LAUNCHERS = {}
+_PDIST_LAUNCHERS_MAX = 64
+
+# Device index the cached launchers were captured on; a launcher baked for one
+# device must never be replayed on another.
+_PDIST_LAUNCHER_DEVICE = None
+
+
+def _pdist_aligned(*tensors):
+    return all(t.data_ptr() % 16 == 0 for t in tensors)
+
+
+@libentry()
+@triton.jit
+def _pdist_backward_fused_kernel(
+    grad_ptr,
+    x_ptr,
+    pdist_ptr,
+    out_ptr,
+    N,
+    M,
+    p_val,
+    stride_x,
+    stride_out,
+    P_MODE: tl.constexpr,
+    BJ: tl.constexpr,
+    BM: tl.constexpr,
+):
+    """Accumulate one input row's gradient in one program.
+
+    Program ``(i, m)`` owns ``BM`` coordinates of row ``i``.  The row stays in
+    registers while partner rows stream ``BJ`` at a time, so all ``N-1`` pair
+    contributions are summed without a second reduction pass or atomics.
+    """
+    row = tle.program_id(0).to(tl.int64)
+    m_offsets = tle.program_id(1) * BM + tl.arange(0, BM)
+    m_mask = m_offsets < M
+
+    acc = tl.zeros([BM], dtype=out_ptr.dtype.element_ty)
+    if P_MODE != 4:
+        x_row = tl.load(x_ptr + row * stride_x + m_offsets, mask=m_mask, other=0.0)
+        for j0 in range(0, N, BJ):
+            j = (j0 + tl.arange(0, BJ)).to(tl.int64)
+            pair_mask = (j < N) & (j != row)
+            # Condensed index of the (min, max) ordered pair.
+            upper = row * N - (row * (row + 1)) // 2 + (j - row - 1)
+            lower = j * N - (j * (j + 1)) // 2 + (row - j - 1)
+            pair_index = tl.where(j > row, upper, lower)
+
+            grad = tl.load(grad_ptr + pair_index, mask=pair_mask, other=0.0)
+            dist = tl.load(pdist_ptr + pair_index, mask=pair_mask, other=0.0)
+            x_j = tl.load(
+                x_ptr + j[:, None] * stride_x + m_offsets[None, :],
+                mask=pair_mask[:, None] & m_mask[None, :],
+                other=0.0,
+            )
+            diff = x_row[None, :] - x_j
+
+            if P_MODE == 0:
+                # Fold g/d once per pair, then one multiply per coordinate.
+                safe_dist = tl.where(dist != 0.0, dist, 1.0)
+                coef = tl.where(dist != 0.0, grad / safe_dist, 0.0)
+                acc += tl.sum(coef[:, None] * diff, axis=0)
+            else:
+                sign = tl.where(diff > 0.0, 1.0, tl.where(diff < 0.0, -1.0, 0.0))
+                if P_MODE == 1:
+                    weight = sign * 0.0 + 1.0
+                elif P_MODE == 2:
+                    weight = tl.where(tl.abs(diff) == dist[:, None], 1.0, 0.0)
+                else:
+                    safe_dist = tl.where(dist != 0.0, dist, 1.0)
+                    ratio = tl.abs(diff) / safe_dist[:, None]
+                    powered = tl.exp((p_val - 1.0) * tl.log(ratio))
+                    weight = tl.where(
+                        (ratio > 0.0) & (dist[:, None] != 0.0), powered, 0.0
+                    )
+                acc += tl.sum(grad[:, None] * sign * weight, axis=0)
+
+    tl.store(out_ptr + row * stride_out + m_offsets, acc, mask=m_mask)
+
+
+def pdist_backward(grad_output, x, p, pdist_out):
+    """First-order gradient of :func:`pdist` with respect to ``x``.
+
+    ``grad_output`` is the upstream gradient of the condensed distance vector,
+    ``x`` the forward input and ``pdist_out`` the forward distances (pdist's
+    gradient depends on them).  The result has ``x``'s shape, dtype and device;
+    a pair whose distance is exactly zero contributes nothing.
+    """
+    global _PDIST_LAUNCHER_DEVICE
+
+    logger.debug("GEMS PDIST_BACKWARD")
+    assert x.ndim == 2, "pdist only supports 2D input"
+
+    N, M = x.shape
+    if N < 2 or M == 0 or p == 0.0:
+        # Degenerate matrices and p == 0 (the forward counts differing
+        # coordinates instead of taking a norm, so its derivative is zero)
+        # have an identically zero gradient; ATen returns zeros for both.
+        return torch.zeros((N, M), dtype=x.dtype, device=x.device)
+    if p == 2.0:
+        mode = 0
+    elif p == 1.0:
+        mode = 1
+    elif math.isinf(p):
+        mode = 2
+    else:
+        mode = 3
+
+    grad_output = grad_output.contiguous()
+    x = x.contiguous()
+    pdist_out = pdist_out.contiguous()
+    out = torch.empty((N, M), dtype=x.dtype, device=x.device)
+
+    plan = _PDIST_LAUNCH_PLANS.get((N, M))
+    if plan is None:
+        bm = min(
+            max(triton.next_power_of_2(max(M, 1)) // 4, _PDIST_TILE_MIN),
+            _PDIST_TILE_MAX,
+        )
+        bj = min(
+            max(triton.next_power_of_2(max(N, 1)) // 2, _PDIST_TILE_MIN),
+            _PDIST_TILE_MAX,
+        )
+        # One warp per program keeps the launch cheap for the small matrices
+        # pdist is used with; a wider tile needs two warps to stay occupied.
+        num_warps = 1 if bm <= 32 else 2
+        plan = (bj, bm, num_warps, (N, triton.cdiv(M, bm)))
+        _PDIST_LAUNCH_PLANS[(N, M)] = plan
+    bj, bm, num_warps, grid = plan
+
+    # Warm launches reuse a pre-bound launcher (the same pattern as
+    # _metax/int_mm.py): the generic launch re-binds every argument on each
+    # call, and that re-binding dominates this launch-bound backward.  The
+    # launcher is specialized on everything the kernel binary depends on, so
+    # replaying it is only legal while every specialization matches: same
+    # device, all four tensors 16-byte aligned (pointer specialization) and
+    # the same (N, M, dtype, p mode) that selected the binary and the grid.
+    launcher = _PDIST_LAUNCHERS.get((N, M, x.dtype, mode))
+    if (
+        launcher is not None
+        and x.device.index == _PDIST_LAUNCHER_DEVICE
+        and _pdist_aligned(grad_output, x, pdist_out, out)
+    ):
+        launcher(
+            grad_output,
+            x,
+            pdist_out,
+            out,
+            N,
+            M,
+            float(p),
+            x.stride(0),
+            out.stride(0),
+            mode,
+            bj,
+            bm,
+        )
+        return out
+
+    with torch_device_fn.device(x.device):
+        kernel = _pdist_backward_fused_kernel[grid](
+            grad_output,
+            x,
+            pdist_out,
+            out,
+            N,
+            M,
+            float(p),
+            x.stride(0),
+            out.stride(0),
+            P_MODE=mode,
+            BJ=bj,
+            BM=bm,
+            num_warps=num_warps,
+        )
+    if len(_PDIST_LAUNCHERS) >= _PDIST_LAUNCHERS_MAX:
+        _PDIST_LAUNCHERS.clear()
+    if _pdist_aligned(grad_output, x, pdist_out, out):
+        # Only a 16-byte aligned launch may be cached: a misaligned capture
+        # would bake the wrong pointer specialization into the binary.
+        _PDIST_LAUNCHERS[(N, M, x.dtype, mode)] = kernel[0][(*grid, 1)]
+        _PDIST_LAUNCHER_DEVICE = x.device.index
+    return out
+
+
+class PdistFunction(torch.autograd.Function):
+    """Autograd wrapper giving ``pdist`` a fused first-order backward.
+
+    ``aten::pdist`` is CompositeImplicitAutograd, so overriding its device key
+    alone drops the generated autograd formula: ``flag_gems.pdist`` would return
+    a tensor without ``grad_fn`` and ``torch.pdist`` under ``use_gems()`` would
+    produce no gradient.  The wrapper saves the forward distances, which the
+    gradient needs, and dispatches to :func:`pdist_backward`.
+
+    ``forward`` calls :func:`pdist`, whose autograd branch is inert here because
+    the engine runs ``Function.forward`` with grad mode disabled.  Only the
+    first derivative is available, matching ATen, whose
+    ``PdistBackwardBackward0`` raises ``NotImplementedError``.
+    """
+
+    @staticmethod
+    def forward(ctx, x, p):
+        ctx.p = p
+        out = pdist(x, p)
+        ctx.save_for_backward(x, out)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, out = ctx.saved_tensors
+        return pdist_backward(grad_output, x, ctx.p, out), None
