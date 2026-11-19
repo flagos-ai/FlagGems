@@ -43,6 +43,10 @@ def test_softmax_backward():
         torch_op=torch.nn.functional.softmax,
         dtypes=consts.FLOAT_DTYPES,
         is_backward=True,
+        # The five core shapes include (256, 1024, 1024); the shared
+        # MAX_BACKWARD_ELEMENTS budget is a 40 GB-card heuristic and would
+        # silently measure only four of them on H800.
+        MAX_BACKWARD_ELEMENTS=None,
     )
 
     bench.run()
