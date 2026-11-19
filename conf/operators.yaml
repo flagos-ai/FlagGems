@@ -5179,6 +5179,23 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: digamma_backward
+  description: |
+    Backward pass for `digamma`: the gradient with respect to the input is the
+    elementwise product of the upstream gradient with polygamma(1, x) (the
+    trigamma function). polygamma(1) is computed in float32 opmath for fp16/bf16
+    and materialised in the input dtype before the multiply, matching ATen's
+    DigammaBackward0. Exposed through a `torch.autograd.Function` bridge because
+    this Torch build has no standalone `aten::digamma_backward` schema.
+  for:
+  - digamma_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: dim
   description: 'Returns the number of dimensions (rank) of a tensor: a pure metadata
     query independent of layout, dtype and stored data.
@@ -5973,6 +5990,20 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: expand_backward
+  description: |
+    Computes the gradient of `expand()` with respect to `input` by summing
+    `grad_output` over every broadcast dimension back to the input shape
+    (`grad_output.sum_to_size(input.shape)`).
+  for:
+    - expand_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.4'
 - id: expand_copy
   description: Returns a copy of the input tensor expanded by broadcasting singleton
     dimensions.

@@ -787,6 +787,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.digamma_backward import digamma_backward
 from flag_gems.ops.dim import dim
 from flag_gems.ops.dim_arange import _dim_arange as dim_arange
 from flag_gems.ops.dimV import _dimV as dimV
@@ -832,6 +833,7 @@ from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.expand import expand, expand_
+from flag_gems.ops.expand_backward import expand_backward
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential import exponential
@@ -2511,6 +2513,7 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "digamma_backward",
     "dim",
     "dim_arange",
     "dimV",
@@ -2555,6 +2558,7 @@ __all__ = [
     "exp_out",
     "expand",
     "expand_",
+    "expand_backward",
     "expand_copy",
     "expm1",
     "expm1_",
