@@ -438,23 +438,20 @@ def _lengths_to_tensor(values, device):
     return torch.tensor(list(values), dtype=torch.long, device=device)
 
 
-def _stage_packed(targets, input_lengths, target_lengths, device):
-    """Upload targets and lengths in one async H2D copy.
+def _upload_inputs(targets, input_lengths, target_lengths, device):
+    """Put targets, lengths and offsets on the device without a host round trip.
 
-    The lengths arrive as Python sequences (the ATen schema allows tensors too,
-    handled by the caller), but every kernel needs them on the device. A
-    blocking H2D copy of a few hundred bytes costs ~2ms of host time on the CUDA
-    backend and several of them per call dwarf the kernels.
+    Targets normally arrive on the CPU (cuDNN's own convention) and the lengths
+    as Python sequences, so the common path is pure H2D: the targets and both
+    length vectors are packed into one host vector and carried up in a single
+    copy. The non-blocking form is what makes that cheap -- a regular pageable
+    copy measured ~2.1ms on H20 (it bounces through a staging buffer), against
+    ~14us for the async form. The copy is ordered on the caller's stream, so the
+    kernels below still see the data.
 
-    Everything is packed into a single `int64` host vector so exactly one upload
-    happens. The int32 targets are widened into the *low* half of its head, so
-    once uploaded they form the contiguous upper half of the same buffer when
-    read back as int32 -- zero-copy for the kernel, with no device-side cast.
-
-    The non-blocking form of a regular *pageable* copy is what makes this cheap.
-    A pinned staging buffer followed immediately by a kernel serializes into a
-    ~2ms stall, whereas the pageable async path runs at ~8us. The copy is
-    ordered on the caller's stream, so the kernels below still see the data.
+    When the caller hands over device-resident targets they are copied straight
+    into the packed buffer instead: sending them down to the host only to bring
+    them back would add a device sync to every call.
     """
     batch = len(input_lengths)
     offsets = [0] * batch
@@ -463,25 +460,30 @@ def _stage_packed(targets, input_lengths, target_lengths, device):
         offsets[index] = running
         running += int(length)
     lengths_host = torch.tensor(
-        list(input_lengths) + list(target_lengths) + offsets, dtype=torch.int64
+        list(input_lengths) + list(target_lengths) + offsets, dtype=torch.long
     )
 
-    target_count = targets.numel()
     # The packed buffer is int32 at the head (so the targets stay contiguous for
     # the kernels) and int64 past it (so the lengths keep their natural width).
-    # `view(torch.int64)` needs the offset 8-byte aligned, so an odd target
-    # count gets one padding slot.
+    # `view(torch.long)` needs the offset 8-byte aligned, so an odd target count
+    # gets one padding slot.
+    target_count = targets.numel()
     target_slots = target_count + (target_count % 2)
     total_slots = target_slots + 2 * lengths_host.numel()
-    packed = torch.empty(total_slots, dtype=torch.int32)
-    packed[:target_count].copy_(targets.detach().to(device="cpu", dtype=torch.int32))
-    packed[target_slots:].view(torch.int64).copy_(lengths_host)
 
-    staged = torch.empty_like(packed, device=device)
-    staged.copy_(packed, non_blocking=True)
+    if targets.device.type == "cpu":
+        packed_host = torch.empty(total_slots, dtype=torch.int32)
+        packed_host[:target_count].copy_(targets.detach())
+        packed_host[target_slots:].view(torch.long).copy_(lengths_host)
+        packed = torch.empty_like(packed_host, device=device)
+        packed.copy_(packed_host, non_blocking=True)
+    else:
+        packed = torch.empty(total_slots, dtype=torch.int32, device=device)
+        packed[:target_count].copy_(targets.detach().to(dtype=torch.int32))
+        packed[target_slots:].view(torch.long).copy_(lengths_host, non_blocking=True)
 
-    work_targets = staged[:target_count]
-    lengths = staged[target_slots:].view(torch.int64)
+    work_targets = packed[:target_count]
+    lengths = packed[target_slots:].view(torch.long)
     return (
         work_targets,
         lengths[:batch],
@@ -697,15 +699,8 @@ def _launch_backward(
         )
 
 
-def _cudnn_ctc_loss_impl(
-    log_probs,
-    targets,
-    input_lengths,
-    target_lengths,
-    blank,
-    deterministic,
-    zero_infinity,
-):
+def _check_log_probs(log_probs, blank):
+    """Reject `log_probs`/`blank` combinations cuDNN itself refuses."""
     if log_probs.ndim != 3:
         raise RuntimeError(
             "Expected 3-dimensional tensor, but got "
@@ -721,7 +716,7 @@ def _cudnn_ctc_loss_impl(
     if blank != 0:
         raise RuntimeError("blank must be label 0 for cudnn_ctc_loss")
 
-    T, batch_size, num_classes = log_probs.shape
+    T, batch_size, _ = log_probs.shape
     # cuDNN rejects these with `CUDNN_STATUS_BAD_PARAM`. The Triton path has to
     # reject them up front instead: `log_alpha` is `(N, T, BLOCK_S)`, so with
     # `T == 0` every batch entry addresses offset 0 of an empty buffer and the
@@ -731,11 +726,21 @@ def _cudnn_ctc_loss_impl(
         raise RuntimeError("Expected log_probs to have a positive time dimension")
     if batch_size == 0:
         raise RuntimeError("Expected log_probs to have a positive batch dimension")
-    work_log_probs = log_probs.contiguous()
-    # cuDNN requires the targets to live on the CPU, but the Triton kernels
-    # run on the device. Targets and lengths are packed into a single host
-    # vector and uploaded in one go: separate small blocking copies cost
-    # milliseconds apiece on the CUDA backend.
+
+
+def _prepare_inputs(targets, input_lengths, target_lengths, device, batch_size):
+    """Move targets, lengths and offsets to the device; return them with the host lengths.
+
+    The lengths arrive as Python sequences (the ATen schema allows tensors too,
+    handled here), but every kernel needs them on the device. A blocking H2D
+    copy of a few hundred bytes costs ~2ms of host time on the CUDA backend, and
+    several of them per call dwarf the kernels, so the targets and both length
+    vectors go up in as few copies as possible.
+
+    A host copy of the lengths is returned as well: every range check below reads
+    it, and taking it once here means the tensor-argument path pays for a single
+    device sync instead of one per check.
+    """
     if not torch.is_tensor(input_lengths) and not torch.is_tensor(target_lengths):
         input_lengths = list(input_lengths)
         target_lengths = list(target_lengths)
@@ -748,13 +753,13 @@ def _cudnn_ctc_loss_impl(
             work_input_lengths,
             work_target_lengths,
             target_offsets,
-        ) = _stage_packed(targets, input_lengths, target_lengths, log_probs.device)
+        ) = _upload_inputs(targets, input_lengths, target_lengths, device)
     else:
-        work_targets = targets.to(device=log_probs.device, dtype=torch.int32)
-        work_targets = work_targets.contiguous()
-        work_input_lengths = _lengths_to_tensor(input_lengths, log_probs.device)
-        work_target_lengths = _lengths_to_tensor(target_lengths, log_probs.device)
-        target_offsets = _target_offsets(target_lengths, log_probs.device, batch_size)
+        work_targets = targets.to(device=device, dtype=torch.int32).contiguous()
+        work_input_lengths = _lengths_to_tensor(input_lengths, device)
+        work_target_lengths = _lengths_to_tensor(target_lengths, device)
+        target_offsets = _target_offsets(target_lengths, device, batch_size)
+
     if work_input_lengths.numel() != batch_size:
         raise RuntimeError("input_lengths needs to have size to match batch_size")
     if work_target_lengths.numel() != batch_size:
@@ -770,11 +775,18 @@ def _cudnn_ctc_loss_impl(
             f"Int; but got {targets.dtype} instead"
         )
 
-    # One host copy of both length vectors, shared by every check below, so the
-    # tensor-argument path pays for a single device sync instead of three.
     host_input_lengths, host_target_lengths = _host_lengths(
         input_lengths, target_lengths, batch_size
     )
+    return (
+        (work_targets, work_input_lengths, work_target_lengths, target_offsets),
+        host_input_lengths,
+        host_target_lengths,
+    )
+
+
+def _check_lengths(host_input_lengths, host_target_lengths, targets, num_classes, T):
+    """Range-check the lengths and labels; return `max(target_lengths)`."""
     min_target_len, max_target = _length_stats(host_target_lengths, "target_lengths")
     if min_target_len < 0:
         raise RuntimeError("target_lengths must be non-negative")
@@ -782,6 +794,32 @@ def _cudnn_ctc_loss_impl(
     if max_input > T:
         raise RuntimeError("input_lengths must be in [0, T]")
     _check_targets(targets, host_target_lengths, num_classes)
+    return max_target
+
+
+def _cudnn_ctc_loss_impl(
+    log_probs,
+    targets,
+    input_lengths,
+    target_lengths,
+    blank,
+    deterministic,
+    zero_infinity,
+):
+    _check_log_probs(log_probs, blank)
+    T, batch_size, num_classes = log_probs.shape
+    work_log_probs = log_probs.contiguous()
+
+    (
+        (work_targets, work_input_lengths, work_target_lengths, target_offsets),
+        host_input_lengths,
+        host_target_lengths,
+    ) = _prepare_inputs(
+        targets, input_lengths, target_lengths, log_probs.device, batch_size
+    )
+    max_target = _check_lengths(
+        host_input_lengths, host_target_lengths, targets, num_classes, T
+    )
 
     state_count_max = 2 * max_target + 1
     block_s = triton.next_power_of_2(state_count_max)
