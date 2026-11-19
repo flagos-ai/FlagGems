@@ -50,7 +50,11 @@ def test__pad_enum_constant(shape, value, dtype):
     assert tuple(res_out.shape) == tuple(expected_shape)
     assert res_out.data_ptr() != before[4]
     assert (
-        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+        inp.device,
+        inp.dtype,
+        tuple(inp.shape),
+        inp.stride(),
+        inp.data_ptr(),
     ) == before
     assert torch.equal(
         inp.detach().cpu().reshape(-1).view(torch.uint8),
@@ -85,7 +89,11 @@ def test__pad_enum_reflect(shape_pad, dtype):
     assert tuple(res_out.shape) == tuple(expected_shape)
     assert res_out.data_ptr() != before[4]
     assert (
-        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+        inp.device,
+        inp.dtype,
+        tuple(inp.shape),
+        inp.stride(),
+        inp.data_ptr(),
     ) == before
     assert torch.equal(
         inp.detach().cpu().reshape(-1).view(torch.uint8),
@@ -119,7 +127,11 @@ def test__pad_enum_replicate(shape_pad, dtype):
     assert tuple(res_out.shape) == tuple(expected_shape)
     assert res_out.data_ptr() != before[4]
     assert (
-        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+        inp.device,
+        inp.dtype,
+        tuple(inp.shape),
+        inp.stride(),
+        inp.data_ptr(),
     ) == before
     assert torch.equal(
         inp.detach().cpu().reshape(-1).view(torch.uint8),
@@ -154,7 +166,11 @@ def test__pad_enum_circular(shape_pad, dtype):
     assert tuple(res_out.shape) == tuple(expected_shape)
     assert res_out.data_ptr() != before[4]
     assert (
-        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+        inp.device,
+        inp.dtype,
+        tuple(inp.shape),
+        inp.stride(),
+        inp.data_ptr(),
     ) == before
     assert torch.equal(
         inp.detach().cpu().reshape(-1).view(torch.uint8),
