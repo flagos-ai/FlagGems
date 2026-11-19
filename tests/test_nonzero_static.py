@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 IS_ASCEND = flag_gems.vendor_name == "ascend"
 # Nonzero_static is not supported for cuda <= 11.4
@@ -44,7 +45,7 @@ DTYPES = (
 )
 CUDA_COMPLEX_DTYPES = [  # Complex input is supported by the CUDA path.
     torch.complex64,
-    torch.complex128,
+    pytest.param(torch.complex128, marks=_SKIP_FP64),
 ]
 
 QUICK_CASES = [

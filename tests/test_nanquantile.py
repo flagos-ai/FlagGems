@@ -19,8 +19,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
-DTYPES = [torch.float32] if cfg.QUICK_MODE else [torch.float32, torch.float64]
+DTYPES = (
+    [torch.float32]
+    if cfg.QUICK_MODE
+    else [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 INTERPOLATIONS = (
     ["linear"]
     if cfg.QUICK_MODE

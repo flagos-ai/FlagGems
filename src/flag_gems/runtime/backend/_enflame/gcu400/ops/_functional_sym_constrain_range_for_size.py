@@ -61,7 +61,7 @@ def _functional_sym_constrain_range_for_size(*args, **kwargs):
         if tensor_arg.is_contiguous():
             N_total = tensor_arg.numel()
             if N_total > 0:
-                BLOCK = 8192
+                BLOCK = 65536
                 grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
                 with torch_device_fn.device(tensor_arg.device):
                     _functional_sym_constrain_range_for_size_kernel[(grid_size,)](

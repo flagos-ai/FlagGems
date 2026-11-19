@@ -149,6 +149,11 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Double", "default"),
     ),
     (
+        "_cast_Float",
+        cast_Float,
+        lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
@@ -207,6 +212,11 @@ _FULL_CONFIG = (
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
     ("_efficientzerotensor", _efficientzerotensor),
+    (
+        "_efficientzerotensor.out",
+        _efficientzerotensor_out,
+        lambda: torch_has_aten_overload("_efficientzerotensor", "out"),
+    ),
     ("_embedding_bag", _embedding_bag),
     ("_embedding_bag_backward", _embedding_bag_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
@@ -630,7 +640,49 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    (
+        "_sparse_coo_tensor_with_dims",
+        sparse_coo_tensor_with_dims,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims.out",
+        sparse_coo_tensor_with_dims_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        sparse_coo_tensor_with_dims_and_tensors,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors.out",
+        sparse_coo_tensor_with_dims_and_tensors_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
+    (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     (
         "_sparse_csr_sum",
         sparse_csr_sum,
@@ -763,6 +815,18 @@ _FULL_CONFIG = (
         (SPARSE_DISPATCH_KEY,),
     ),
     (
+        "_sparse_sparse_matmul",
+        _sparse_sparse_matmul,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_sparse_matmul.out",
+        _sparse_sparse_matmul_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
         "_sparse_sum_backward",
         _sparse_sum_backward,
         None,
@@ -843,7 +907,9 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    ("_validate_compressed_sparse_indices", _validate_compressed_sparse_indices),
     ("_validate_sparse_bsr_tensor_args", _validate_sparse_bsr_tensor_args),
+    ("_validate_sparse_coo_tensor_args", _validate_sparse_coo_tensor_args),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
     ("_validate_sparse_csr_tensor_args", _validate_sparse_csr_tensor_args),
     (
@@ -1964,6 +2030,18 @@ _FULL_CONFIG = (
     ("replication_pad2d_backward.grad_input", replication_pad2d_backward_grad_input),
     ("replication_pad3d", replication_pad3d),
     ("replication_pad3d_backward", replication_pad3d_backward),
+    # reshape_as is CompositeImplicitAutograd and differentiable. Registering
+    # only the backend key drops the AutogradCUDA math kernel and leaves the
+    # VariableFallbackKernel in its place, which warns on every backward. A
+    # fallthrough hands the node back to torch's own view/autograd logic, so
+    # the view branch records ViewBackward and the copy branch records the
+    # autograd.Function it already calls.
+    (
+        "reshape_as",
+        reshape_as,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("resize", resize),
     ("resize_", resize_),
     ("resize_as", resize_as),
@@ -2090,6 +2168,7 @@ _FULL_CONFIG = (
     ("sparse_mask", sparse_mask, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_mask.out", sparse_mask_out, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_resize_", sparse_resize_, None, (SPARSE_DISPATCH_KEY,)),
+    ("sparse_resize_and_clear_", sparse_resize_and_clear_, None, [SPARSE_DISPATCH_KEY]),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",

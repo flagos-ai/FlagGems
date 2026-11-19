@@ -72,6 +72,7 @@ from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
 from .convolution_backward import convolution_backward, convolution_backward_out
+from .copy import copy, copy_
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
@@ -118,6 +119,7 @@ from .full_like import full_like
 from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
@@ -210,7 +212,7 @@ from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -229,7 +231,7 @@ from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .permute_copy import permute_copy
 from .polar import polar
-from .polygamma import polygamma_
+from .polygamma import polygamma, polygamma_, polygamma_out
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -248,7 +250,7 @@ from .replication_pad2d_backward import (
 )
 from .resize import resize
 from .resolve_neg import resolve_neg
-from .rms_norm import rms_norm
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
@@ -278,6 +280,7 @@ from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .subtract import subtract
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
@@ -314,7 +317,7 @@ from .xlogy_out import xlogy_out
 from .xlogy_tensor_scalar import xlogy_tensor_scalar
 from .xlogy_tensor_scalar_out import xlogy_tensor_scalar_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -387,6 +390,8 @@ __all__ = [
     "concatenate",
     "convolution_backward",
     "convolution_backward_out",
+    "copy",
+    "copy_",
     "cosh_",
     "cosine_embedding_loss",
     "count_nonzero",
@@ -437,6 +442,9 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "gelu",
+    "gelu_",
+    "gelu_backward",
     "geometric",
     "geometric_",
     "greater_",
@@ -557,6 +565,7 @@ __all__ = [
     "mm_w8a8_int8_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
@@ -582,7 +591,9 @@ __all__ = [
     "pairwise_distance",
     "permute_copy",
     "polar",
+    "polygamma",
     "polygamma_",
+    "polygamma_out",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
@@ -598,6 +609,8 @@ __all__ = [
     "resize",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "rms_norm_w8a16_int8",
     "rnn_tanh",
     "rnn_tanh_data",
@@ -640,6 +653,10 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "subtract",
+    "sum",
+    "sum_dim",
+    "sum_dim_out",
+    "sum_out",
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",
@@ -675,6 +692,7 @@ __all__ = [
     "xlogy_tensor_scalar",
     "xlogy_tensor_scalar_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]

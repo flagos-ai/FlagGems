@@ -19,6 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support sparse CSC tensors",
+)
+
 CSC_UNSAFE_DTYPES = utils.FLOAT_DTYPES
 
 
@@ -99,9 +104,11 @@ def test_sparse_csc_tensor_unsafe_hybrid(nnz, dtype):
 @pytest.mark.parametrize("dtype", CSC_UNSAFE_DTYPES)
 def test_sparse_csc_tensor_unsafe_dtype(nnz, dtype):
     """The dtype argument converts the payload through the Triton kernel."""
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported on this device")
     ccol, row, values = _make_components(nnz, dtype)
     size = (4, 4)
-    target = torch.float64
+    target = torch.float64 if utils.fp64_is_supported else torch.float32
 
     ref_values = utils.to_reference(values).to(target)
     ref = torch.ops.aten._sparse_csc_tensor_unsafe(

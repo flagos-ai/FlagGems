@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -33,6 +31,37 @@ class EfficientZeroTensorBenchmark(base.Benchmark):
             yield shape, {"dtype": dtype, "device": self.device}
 
 
+class EfficientZeroTensorOutBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        # Same case grid as the default factory benchmark: scalar, empty,
+        # small, and large logical spans.
+        self.shapes = [(), (0,), (64,), (65536,), (1048576,)]
+
+    def get_input_iter(self, dtype):
+        # The out buffer is allocated outside the timed region and reused for
+        # every repetition; both the native and Gems .out overloads zero it.
+        for shape in self.shapes:
+            out = torch.empty(shape, dtype=dtype, device=self.device)
+            yield shape, {"out": out}
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_out(monkeypatch):
+    out_op = getattr(torch.ops.aten._efficientzerotensor, "out", None)
+    if out_op is None:
+        pytest.skip("aten::_efficientzerotensor.out is not exposed by this build")
+    # The .out overload performs host metadata work plus the zero fill; keep
+    # the existing operator-mode timing so Python/launch overhead is included.
+    monkeypatch.setattr(base.Config, "mode", consts.BenchMode.OPERATOR)
+    bench = EfficientZeroTensorOutBenchmark(
+        op_name="efficientzerotensor_out",
+        torch_op=out_op,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.efficientzerotensor
 @pytest.mark.underscore_efficientzerotensor
 def test_efficientzerotensor(monkeypatch):
@@ -42,7 +71,6 @@ def test_efficientzerotensor(monkeypatch):
     bench = EfficientZeroTensorBenchmark(
         op_name="efficientzerotensor",
         torch_op=torch.ops.aten._efficientzerotensor.default,
-        gems_op=flag_gems._efficientzerotensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
