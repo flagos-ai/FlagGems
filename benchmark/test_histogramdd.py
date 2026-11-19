@@ -92,6 +92,10 @@ def _cpu_reference(inp, *, bins, range=None, weight=None, density=False):
 
 @pytest.mark.histogramdd
 def test_histogramdd():
+    if flag_gems.vendor_name == "iluvatar" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("Iluvatar has no native device histogramdd implementation")
     bench = HistogramddBenchmark(
         op_name="histogramdd",
         torch_op=_cpu_reference,
@@ -99,5 +103,7 @@ def test_histogramdd():
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32, torch.float64],
     )
-    bench.set_gems(lambda *args, **kwargs: flag_gems.histogramdd(*args, **kwargs))
+    registry = base.Config.override_registry
+    if registry is None or registry.get_override(bench.op_name) is None:
+        bench.set_gems(flag_gems.histogramdd)
     bench.run()
