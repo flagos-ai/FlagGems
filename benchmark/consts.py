@@ -71,6 +71,13 @@ DEFAULT_SHAPES = [
     (1024, 1024, 1024),  # from perf
 ]
 
+# Maximum number of elements allowed per shape in backward benchmarks.
+# Backward passes retain computation graphs and allocate gradient tensors,
+# consuming roughly 3-4x more VRAM than forward.  Capping at 2**27 (~128M)
+# elements keeps float32 backward well within the budget of a 40 GB card
+# (128M * 4 bytes * ~4 buffers ≈ 2 GB per shape).
+MAX_BACKWARD_ELEMENTS = 2**27  # ~128M elements
+
 
 def model_shapes():
     # batch sizes * seq lengths

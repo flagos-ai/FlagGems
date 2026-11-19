@@ -19,12 +19,14 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
 SHAPES = [(0,), (17,), (4096,), (4097,), (128, 256), (65536,), (65537,)]
 BOUNDARY_SHAPES = [(32769,), (262144,), (262145,)]
 if not cfg.QUICK_MODE:
     SHAPES += [(1024, 1024)]
+
 
 EXTENDED_DTYPES = [
     torch.bool,
@@ -237,7 +239,11 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize(
     "dtype",
-    [torch.complex64, torch.complex128] if utils.complex_is_supported else [],
+    (
+        [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+        if utils.complex_is_supported
+        else []
+    ),
 )
 def test_masked_select_backward_conjugated_grad(dtype):
     inp = torch.randn(73, dtype=dtype, device=flag_gems.device)
