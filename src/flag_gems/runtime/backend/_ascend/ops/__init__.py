@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._adaptive_avg_pool3d_backward import (
+    _adaptive_avg_pool3d_backward,
+    adaptive_avg_pool3d_backward_grad_input,
+)
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
@@ -321,6 +325,7 @@ from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_adaptive_avg_pool3d_backward",
     "_dyn_quant_matmul_4bit",
     "_embedding_bag",
     "_embedding_bag_backward",
@@ -336,6 +341,7 @@ __all__ = [
     "acosh",
     "acosh_",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
