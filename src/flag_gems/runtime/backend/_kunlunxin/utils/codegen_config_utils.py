@@ -47,6 +47,8 @@ class CodeGenConfig:
     kunlunAutoGrid: bool = False
     buffer_size_limit: int = 0
     unroll_num: int = 0
+    # Fixed 1D-tile CTA count. 0 keeps the auto-grid policy (kunlunAutoGrid).
+    # pointwise_dynamic's 1D-tile codegen reads this field (upstream #7212).
     num_ctas_1d: int = 0
 
     def __post_init__(self):

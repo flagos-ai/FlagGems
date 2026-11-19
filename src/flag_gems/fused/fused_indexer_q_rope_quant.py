@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 # MXFP4: 32 elements per block, packed 2 nibbles per byte, ue8m0 block scale.
 MXFP4_BLOCK_SIZE = 32
 
@@ -328,7 +330,9 @@ def fused_indexer_q_rope_quant(
     index_weights_out = torch.empty_like(index_weights, dtype=torch.float32)
 
     if use_fp4:
-        if not index_q.is_cuda:
+        if not index_q.is_cuda or runtime.device.vendor_name == "amd":
+            # The E2M1 conversion is NVIDIA PTX; AMD also reports a "major"
+            # >= 10 (e.g. gfx1201 -> 12) but cannot lower it.
             raise RuntimeError("MXFP4 fused_indexer_q_rope_quant requires CUDA")
         major, _ = torch.cuda.get_device_capability(index_q.device)
         if major < 10:

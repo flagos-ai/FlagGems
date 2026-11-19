@@ -286,10 +286,10 @@ def test_fused_moe_vs_ref(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -370,10 +370,10 @@ def test_fused_moe_vs_vllm(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -430,10 +430,10 @@ def test_accuracy_fused_moe_fp8(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Per-tensor quantization of weights
     finfo = torch.finfo(torch.float8_e4m3fn)
@@ -824,10 +824,10 @@ def test_fused_moe_int8(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
 
@@ -943,10 +943,10 @@ def test_fused_moe_int8_w8a16(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
     # Per-channel quantization
@@ -1025,10 +1025,10 @@ def test_fused_moe_int4_w4a16(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
     int4_max = 7
@@ -1104,10 +1104,10 @@ def test_fused_moe_inplace(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
@@ -1164,10 +1164,10 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)

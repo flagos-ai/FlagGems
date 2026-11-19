@@ -32,13 +32,15 @@ owned by the active backend.
 FlagGems 可以运行在多种加速器后端上，而每一种硬件都通过自己的一套环境变量来控制进程可见的设备。这些变量**没有统一的跨厂商名称**，FlagGems 也不去自创一个名字，而是直接读取当前生效的后端所对应的环境变量。
 
 <!--
-> **Warning** — every backend uses a *different* variable name. A name that works on one
+> [!WARNING]
+> Every backend uses a *different* variable name. A name that works on one
 > backend is silently ignored on another. Do not assume the variable you know from one
 > vendor applies to the backend you are currently targeting.
 -->
-> **警告**：每个后端使用的变量名**各不相同**。在某个后端上生效的变量名，换到另一个
-> 后端上会被直接忽略。请不要想当然地认为你在某个厂商那里熟悉的变量名同样适用于
-> 你当前所使用的后端。
+> [!WARNING]
+> 每个后端使用的变量名**各不相同**。在某个后端上生效的变量名，换到另一个
+> 后端上会被直接忽略。请不要想当然地认为您在某个厂商那里熟悉的变量名同样适用于
+> 您当前所使用的后端。
 
 <!--
 ## Background
@@ -207,7 +209,7 @@ benchmark drivers can restrict devices correctly:
 - Add an entry to the `vendor_env_map` dictionary in
   [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484),
   keyed by the vendor name used by the backend's `VendorDescriptor` (see
-  [Adding a new backend](/FlagGems/contribution/backend/)). Do not edit the fallback
+  [Adding a new backend](backend.md)). Do not edit the fallback
   branch instead — `vendor_env_map` is the single place a new backend is registered.
 - If the runtime accepts several aliases, list them all, most authoritative first.
   `get_env` sets every name in the list to the same value, so the aliases stay consistent
@@ -216,6 +218,6 @@ benchmark drivers can restrict devices correctly:
   honors it. Falling back to `CUDA_VISIBLE_DEVICES` on a non-CUDA backend, for example,
   produces a setting that is accepted but has no effect.
 -->
-- 在 [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484) 的 `vendor_env_map` 字典中新增一项，键名使用后端 `VendorDescriptor` 里声明的厂商名（参见[添加一种新的后端](/FlagGems/zh-cn/contribution/backend/)）。请勿改为修改兜底分支——`vendor_env_map` 才是登记新后端的唯一位置。
+- 在 [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484) 的 `vendor_env_map` 字典中新增一项，键名使用后端 `VendorDescriptor` 里声明的厂商名（参见[添加一种新的后端](backend.md)）。请勿改为修改兜底分支——`vendor_env_map` 才是登记新后端的唯一位置。
 - 如果运行时接受多个别名，请把它们全部列出，并把最权威的放在最前面。`get_env` 会把列表中的每个名字都设置为同一个值，因此各别名之间保持一致，已有启动脚本无论使用哪个名字都能继续正常工作。
 - 除非运行时确实读取，否则不要把其他厂商的变量当作兜底。例如在非 CUDA 后端上回退到 `CUDA_VISIBLE_DEVICES`，最终只会得到一个被接受但毫无效果的环境变量。

@@ -20,11 +20,12 @@ bookCollapseSection: true
  limitations under the License.
  -->
 
-# Backend optimization
+# Backend Hardware Optimization Guides
 
-Triton launch options and useful tile sizes depend on the device and compiler. Start with the architecture and compiler notes for your backend, then measure representative shapes with the [FlagGems tuning workflow](/FlagGems/usage/tuning/).
+On heterogeneous AI accelerators, the optimal launch configurations and tiling sizes for Triton kernels heavily depend on the physical hardware architecture and compiler backend. When optimizing for a specific hardware target, we recommend thoroughly understanding its memory hierarchy and instruction constraints before exploring tiling parameters via the [FlagGems tuning workflow](../usage/tuning.md).
 
-- [Ascend](ascend/): AI Core memory and compute paths, Triton-Ascend options, and NPU tuning.
-- [Hygon](hygon/): DCU/HIP memory hierarchy, Triton launch options, and tile tuning.
+- **[Huawei Ascend NPU Optimization](ascend/)**: AI Core memory and compute paths (Cube vs. Vector), on-chip buffer budgeting (L0/L1/UB), Triton-Ascend compiler parameters, and common bottleneck troubleshooting.
+- **[Hygon DCU Optimization](hygon/)**: DCU/HIP memory hierarchy, Wavefront occupancy limits, DUMMA hardware matrix instruction shapes, and grouped scheduling for L2 reuse.
 
-Treat the configurations in these guides as candidates. Check numerical results and latency on the target device and installed compiler before adopting them.
+> [!TIP]
+> The configurations and tuning suggestions in these guides represent empirical baselines. Always verify both numerical precision and end-to-end latency on the physical target device with your installed compiler toolchain before adopting them in production.

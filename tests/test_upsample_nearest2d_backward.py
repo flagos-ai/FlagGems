@@ -71,6 +71,14 @@ SCALE_CASES = [
     ((1, 2, 3, 5), (7, 11), 0.4, None),
     ((1, 1, 3, 5), (3, 5), 0.7, 2.2),
 ]
+SCALE_CONTRACT_CASES = SCALE_CASES + [
+    # FP32(10 * FP32(0.1)) is exactly 1, unlike the FP64 product.
+    ((1, 1, 11, 3), (6, 8), 0.1, 0.7),
+    ((1, 1, 3, 11), (8, 6), 0.7, 0.1),
+    # The last interval ends at ceil(input_size * scale), not output_size.
+    ((1, 1, 3, 5), (8, 12), 0.7, 0.7),
+    ((1, 1, 3, 5), (6, 10), None, None),
+]
 
 
 def _tensor(shape, dtype, layout="contiguous"):
@@ -114,6 +122,33 @@ def _ceil_cpu_reference(grad_output, output_size, input_size, sh, sw):
     return result
 
 
+def _legacy_cpu_reference(grad_output, output_size, input_size, sh, sw):
+    source = grad_output.cpu().to(torch.float64)
+    expected = torch.zeros(input_size, dtype=torch.float64)
+    indices = []
+    for input_length, output_length, scale in zip(
+        input_size[-2:], output_size, (sh, sw)
+    ):
+        if input_length == output_length:
+            indices.append(list(range(output_length)))
+        elif output_length == 2 * input_length:
+            indices.append([i >> 1 for i in range(output_length)])
+        else:
+            ratio = np.float32(
+                input_length / output_length if scale is None else 1 / scale
+            )
+            indices.append(
+                [
+                    min(int(np.float32(i) * ratio), input_length - 1)
+                    for i in range(output_length)
+                ]
+            )
+    for y, iy in enumerate(indices[0]):
+        for x, ix in enumerate(indices[1]):
+            expected[:, :, iy, ix] += source[:, :, y, x]
+    return expected
+
+
 def _reference(grad_output, output_size, input_size, sh, sw):
     if flag_gems.vendor_name == "mthreads" and tuple(input_size[-2:]) == tuple(
         output_size
@@ -127,6 +162,8 @@ def _reference(grad_output, output_size, input_size, sh, sw):
         "mthreads",
         "hygon",
         "iluvatar",
+        "thead",
+        "metax",
     ):
         return _ceil_cpu_reference(grad_output, output_size, input_size, sh, sw)
     return torch.ops.aten.upsample_nearest2d_backward.default(
@@ -284,26 +321,7 @@ def test_upsample_nearest2d_backward_cpu_legacy_reference(case):
     shape, size, sh, sw = case
     grad_output = torch.arange(math.prod((*shape[:2], *size)), dtype=torch.float64)
     grad_output = grad_output.reshape(*shape[:2], *size)
-    expected = torch.zeros(shape, dtype=torch.float64)
-    indices = []
-    for input_length, output_length, scale in zip(shape[-2:], size, (sh, sw)):
-        if input_length == output_length:
-            indices.append(list(range(output_length)))
-        elif output_length == 2 * input_length:
-            indices.append([i >> 1 for i in range(output_length)])
-        else:
-            ratio = np.float32(
-                input_length / output_length if scale is None else 1 / scale
-            )
-            indices.append(
-                [
-                    min(int(np.float32(i) * ratio), input_length - 1)
-                    for i in range(output_length)
-                ]
-            )
-    for y, iy in enumerate(indices[0]):
-        for x, ix in enumerate(indices[1]):
-            expected[:, :, iy, ix] += grad_output[:, :, y, x]
+    expected = _legacy_cpu_reference(grad_output, size, shape, sh, sw)
     actual = torch.ops.aten.upsample_nearest2d_backward.default(
         grad_output, size, shape, sh, sw
     )
@@ -322,7 +340,18 @@ def test_upsample_nearest2d_backward_native_device_scales(case, variant):
         else {"grad_input": torch.empty_like(_tensor(shape, torch.float32))}
     )
     native = getattr(torch.ops.aten.upsample_nearest2d_backward, variant)
-    expected = native(grad_output, size, shape, sh, sw, **kwargs).clone()
+    if flag_gems.vendor_name == "amd":
+        # ROCm's device kernel mis-maps explicit scales that disagree with
+        # size/shape (its forward differs from CPU too); use the CPU kernel.
+        cpu_kwargs = (
+            {}
+            if variant == "default"
+            else {"grad_input": torch.empty(shape, dtype=torch.float32)}
+        )
+        expected = native(grad_output.cpu(), size, shape, sh, sw, **cpu_kwargs)
+        expected = expected.to(grad_output.device)
+    else:
+        expected = native(grad_output, size, shape, sh, sw, **kwargs).clone()
     if variant == "default":
         actual = flag_gems.ops.upsample_nearest2d_backward(
             grad_output, size, shape, sh, sw
@@ -336,6 +365,79 @@ def test_upsample_nearest2d_backward_native_device_scales(case, variant):
         # oracle. Keep this required case and verify the identity contract.
         expected = grad_output
     torch.testing.assert_close(actual, expected)
+
+
+def _check_scale_contract(case, layout, variant):
+    shape, size, sh, sw = case
+    grad_output = _tensor((*shape[:2], *size), torch.float32, layout)
+    values = torch.arange(grad_output.numel(), dtype=torch.float32).reshape(
+        grad_output.shape
+    )
+    grad_output.copy_(values.to(flag_gems.device))
+    if flag_gems.vendor_name in (
+        "nvidia",
+        "ascend",
+        "mthreads",
+        "hygon",
+        "iluvatar",
+        "thead",
+        "metax",
+    ):
+        expected = _ceil_cpu_reference(grad_output, size, shape, sh, sw)
+    else:
+        expected = _legacy_cpu_reference(grad_output, size, shape, sh, sw)
+    output = _tensor(shape, torch.float32, layout)
+    stride = output.stride()
+    kwargs = {} if variant == "default" else {"grad_input": output}
+    native = getattr(torch.ops.aten.upsample_nearest2d_backward, variant)
+    if flag_gems.vendor_name == "amd":
+        # Follow the existing AMD reference convention for inconsistent scales.
+        # Gems still runs on the device and is checked against the independent oracle.
+        cpu_kwargs = (
+            {}
+            if variant == "default"
+            else {"grad_input": torch.empty(shape, dtype=torch.float32)}
+        )
+        native_result = native(grad_output.cpu(), size, shape, sh, sw, **cpu_kwargs)
+    else:
+        native_result = native(grad_output, size, shape, sh, sw, **kwargs)
+    # muDNN applies explicit scales even for equal spatial sizes. Keep the
+    # independent identity check for Gems rather than treating muDNN as its oracle.
+    if not (flag_gems.vendor_name == "mthreads" and tuple(shape[-2:]) == tuple(size)):
+        torch.testing.assert_close(
+            native_result.cpu().to(torch.float64), expected, rtol=0, atol=0
+        )
+    if variant == "default":
+        actual = flag_gems.ops.upsample_nearest2d_backward(
+            grad_output, size, shape, sh, sw
+        )
+    else:
+        actual = flag_gems.ops.upsample_nearest2d_backward_grad_input(
+            grad_output, size, shape, sh, sw, **kwargs
+        )
+    assert actual.dtype == grad_output.dtype
+    assert actual.device == grad_output.device
+    if variant == "grad_input":
+        assert actual is output
+        assert actual.stride() == stride
+    elif layout == "channels_last":
+        assert actual.is_contiguous(memory_format=torch.channels_last)
+    torch.testing.assert_close(actual.cpu().to(torch.float64), expected, rtol=0, atol=0)
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.parametrize("case", SCALE_CONTRACT_CASES)
+@pytest.mark.parametrize("layout", ["contiguous", "channels_last", "strided"])
+def test_upsample_nearest2d_backward_scale_contract(case, layout):
+    _check_scale_contract(case, layout, "default")
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.upsample_nearest2d_backward_grad_input
+@pytest.mark.parametrize("case", SCALE_CONTRACT_CASES)
+@pytest.mark.parametrize("layout", ["contiguous", "channels_last", "strided"])
+def test_upsample_nearest2d_backward_grad_input_scale_contract(case, layout):
+    _check_scale_contract(case, layout, "grad_input")
 
 
 @pytest.mark.upsample_nearest2d_backward
@@ -515,6 +617,8 @@ def test_upsample_nearest2d_backward_uint8(variant, case, layout):
             "mthreads",
             "hygon",
             "iluvatar",
+            "thead",
+            "metax",
         ):
             expected = _ceil_cpu_reference(grad_output, size, shape, sh, sw)
         else:

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from .matmul_bias_activation import matmul_bias_activation
-from .matmuladd import matmuladd
+from .matmuladd import run as matmuladd
 from .sparse_attention import sparse_attn_triton
 from .top_k_per_row_prefill import top_k_per_row_prefill
 

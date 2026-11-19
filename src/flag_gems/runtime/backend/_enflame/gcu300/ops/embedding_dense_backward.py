@@ -19,85 +19,75 @@ import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 
+@libentry()
 @triton.jit
 def _embedding_dense_backward_kernel(
     grad_output_ptr,
-    indices_ptr,
+    index_sorted_ptr,
+    order_ptr,
     grad_weight_ptr,
     num_weights,
-    padding_idx,
-    BLOCK_D: tl.constexpr,
-    EMBED_DIM: tl.constexpr,
-):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
-
-    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
-    mask_d = offs_d < EMBED_DIM
-
-    idx = tl.load(indices_ptr + pid_n)
-    valid = (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
-
-    go_ptrs = grad_output_ptr + pid_n * EMBED_DIM + offs_d
-    go = tl.load(go_ptrs, mask=mask_d, other=0).to(tl.float32)
-
-    gw_ptrs = grad_weight_ptr + idx * EMBED_DIM + offs_d
-    mask = mask_d & valid
-    tl.atomic_add(gw_ptrs, go, mask=mask)
-
-
-@triton.jit
-def _embedding_dense_backward_count_kernel(
-    indices_ptr,
-    counts_ptr,
     N,
-    num_weights,
-    padding_idx,
-    BLOCK_N: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offs < N
-    idx = tl.load(indices_ptr + offs, mask=mask, other=0).to(tl.int32)
-    valid = mask & (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
-    tl.atomic_add(counts_ptr + idx, 1, mask=valid)
-
-
-@triton.jit
-def _embedding_dense_backward_kernel_scale_by_freq(
-    grad_output_ptr,
-    indices_ptr,
-    counts_ptr,
-    grad_weight_ptr,
-    num_weights,
-    padding_idx,
     BLOCK_D: tl.constexpr,
     EMBED_DIM: tl.constexpr,
+    SCALE: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    # GCU300 cannot legalize `tt.atomic_rmw`, so the scatter is inverted into a
+    # segmented sum: `grad_weight[i] += sum_{j : indices[j] == i} grad_output[j]`.
+    # `index_sorted`/`order` come from a `torch.sort` in the wrapper, so each
+    # output row binary-searches the contiguous run of source rows that maps to
+    # it and accumulates them. No atomics are involved anywhere.
+    pid_r = tl.program_id(0)
+    pid_t = tl.program_id(1)
+    num_r = tl.num_programs(0)
+    num_t = tl.num_programs(1)
+    n_tiles = tl.cdiv(EMBED_DIM, BLOCK_D)
 
-    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
-    mask_d = offs_d < EMBED_DIM
+    for row in tl.range(pid_r, num_weights, num_r):
+        # start = lower_bound(index_sorted, row)
+        lo = 0
+        hi = N
+        while lo < hi:
+            mid = lo + (hi - lo) // 2
+            val = tl.load(index_sorted_ptr + mid)
+            lo = tl.where(val < row, mid + 1, lo)
+            hi = tl.where(val < row, hi, mid)
+        start = lo
 
-    idx = tl.load(indices_ptr + pid_n).to(tl.int32)
-    valid = (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
+        # end = lower_bound(index_sorted, row + 1) = upper_bound(row)
+        lo = start
+        hi = N
+        while lo < hi:
+            mid = lo + (hi - lo) // 2
+            val = tl.load(index_sorted_ptr + mid)
+            lo = tl.where(val < row + 1, mid + 1, lo)
+            hi = tl.where(val < row + 1, hi, mid)
+        end = lo
 
-    go_ptrs = grad_output_ptr + pid_n * EMBED_DIM + offs_d
-    # go = tl.load(go_ptrs, mask=mask_d, other=0.0).to(tl.float32)
-    go = tl.load(go_ptrs, mask=mask_d, other=0.0)
+        cnt = tl.maximum(end - start, 1)
+        for tile in tl.range(pid_t, n_tiles, num_t):
+            offs_d = tile * BLOCK_D + tl.arange(0, BLOCK_D)
+            mask = offs_d < EMBED_DIM
 
-    # cnt = tl.load(counts_ptr + idx, mask=valid, other=1).to(tl.float32)
-    cnt = tl.load(counts_ptr + idx, mask=valid, other=1)
-    go = go / cnt
+            acc = tl.zeros([BLOCK_D], dtype=tl.float32)
+            j = start
+            while j < end:
+                src_row = tl.load(order_ptr + j)
+                acc += tl.load(
+                    grad_output_ptr + src_row * EMBED_DIM + offs_d,
+                    mask=mask,
+                    other=0.0,
+                ).to(tl.float32)
+                j += 1
 
-    gw_ptrs = grad_weight_ptr + idx * EMBED_DIM + offs_d
-    mask = mask_d & valid
-    tl.atomic_add(gw_ptrs, go, mask=mask)
+            if SCALE:
+                acc = acc / cnt.to(tl.float32)
+            tl.store(grad_weight_ptr + row * EMBED_DIM + offs_d, acc, mask=mask)
 
 
 def embedding_dense_backward(
@@ -121,13 +111,6 @@ def embedding_dense_backward(
             f"Inputs must be {flag_gems.device} tensors on the same device."
         )
 
-    # GCU300: the (non-scale-by-freq) kernel loads the row index straight off
-    # the pointer without an int32 cast, so an int64 ``indices`` (what torch
-    # autograd passes) would hit the 64-bit path GCU rejects. Downcast here;
-    # the row index must be < num_weights, so int32 is exact.
-    if indices.dtype == torch.int64:
-        indices = indices.to(torch.int32)
-
     device = grad_output.device
     assert (
         grad_output.dim() >= 2
@@ -139,42 +122,53 @@ def embedding_dense_backward(
     N = idx.numel()
 
     assert go.shape[0] == N, "indices number must match grad_output rows."
-    grad_weight_fp32 = torch.zeros((num_weights, D), device=device, dtype=torch.float32)
 
-    BLOCK_D = 128
-    grid = (N, triton.cdiv(D, BLOCK_D))
+    if num_weights > 0 and N > 0 and D > 0:
+        # Both of the rewrites below happen on the host, because neither device
+        # call works on this backend's runner: `idx == pad` goes through
+        # `topsatenEq` and `torch.sort` dispatches into `at::_ops::sort_stable`
+        # whatever the `stable` argument, and both abort there with
+        # `Check failed: 0`. `idx` is one integer per row, so the round trip is
+        # O(N) against the O(N * D) gradient the kernel then streams.
+        #
+        # The padding rewrite has to come first: it moves those rows out of the
+        # valid range in the copy the kernel sees, and the positions (hence
+        # `order`) must stay aligned with `grad_output` rows.
+        idx_host = idx.to("cpu")
+        pad = padding_idx if padding_idx is not None else -1
+        if pad >= 0:
+            idx_host = torch.where(
+                idx_host == pad, torch.full_like(idx_host, num_weights), idx_host
+            )
+        idx_host = idx_host.to(torch.int32)
+        index_sorted, order = torch.sort(idx_host)
+        index_sorted = index_sorted.to(device)
+        order = order.to(torch.int32).to(device)
 
-    if scale_grad_by_freq:
-        counts = torch.zeros((num_weights,), device=device, dtype=torch.int32)
-        BLOCK_N = 512
-        _embedding_dense_backward_count_kernel[(triton.cdiv(N, BLOCK_N),)](
-            idx,
-            counts,
-            N,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_N=BLOCK_N,
+        BLOCK_D = min(1024, max(32, triton.next_power_of_2(D)))
+        grid = (
+            min(num_weights, 65535),
+            min(triton.cdiv(D, BLOCK_D), 255),
         )
 
-        _embedding_dense_backward_kernel_scale_by_freq[grid](
-            go,
-            idx,
-            counts,
-            grad_weight_fp32,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_D=BLOCK_D,
-            EMBED_DIM=D,
+        # Every (row, tile) pair is written exactly once by the grid.
+        grad_weight_fp32 = torch.empty(
+            (num_weights, D), device=device, dtype=torch.float32
         )
-    else:
         _embedding_dense_backward_kernel[grid](
             go,
-            idx,
+            index_sorted,
+            order,
             grad_weight_fp32,
             num_weights,
-            padding_idx if padding_idx is not None else -1,
+            N,
             BLOCK_D=BLOCK_D,
             EMBED_DIM=D,
+            SCALE=scale_grad_by_freq,
+        )
+    else:
+        grad_weight_fp32 = torch.zeros(
+            (num_weights, D), device=device, dtype=torch.float32
         )
 
     if grad_output.dtype != torch.float32:

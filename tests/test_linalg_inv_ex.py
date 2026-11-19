@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
@@ -27,7 +28,11 @@ DEVICE = flag_gems.device
 # the dynamic range for pivoted elimination
 _FP64 = utils.fp64_is_supported
 # Only fp32 and fp64 are numerically viable for LU factorization
-_TEST_DTYPES = [torch.float32, torch.float64] if _FP64 else [torch.float32]
+_TEST_DTYPES = (
+    [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+    if _FP64
+    else [torch.float32]
+)
 
 
 def _make_invertible_matrix(shape, dtype, device):

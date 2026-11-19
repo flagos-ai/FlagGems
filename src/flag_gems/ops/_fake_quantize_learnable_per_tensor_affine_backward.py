@@ -19,67 +19,133 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
-
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _rint_even(v):
+    # round-half-to-even (matches std::nearbyint) via the magic-constant trick.
+    # Exact for |v| < 2**22; outside that range the value is only used in
+    # comparisons against quant_min/quant_max, where any large magnitude is
+    # already unambiguously out of range.
+    return (v + 12582912.0) - 12582912.0
+
+
+@triton.jit
+def _fq_tiny_kernel(
+    grad_ptr,
+    x_ptr,
+    scale_ptr,
+    zp_ptr,
+    gs_ptr,
+    out_s_ptr,
+    out_z_ptr,
+    n,
+    num_tiles,
+    qmin,
+    qmax,
+    gf,
+    BLOCK: tl.constexpr,
+):
+    s = tl.load(scale_ptr).to(tl.float32)
+    z = tl.load(zp_ptr).to(tl.float32)
+    qminf = qmin.to(tl.float32)
+    qmaxf = qmax.to(tl.float32)
+    zr = tl.minimum(tl.maximum(_rint_even(z), qminf), qmaxf)
+    lo = qminf - zr
+    hi = qmaxf - zr
+
+    acc_ds = 0.0
+    acc_dz = 0.0
+    for tile in range(0, num_tiles):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < n
+        dy = tl.load(grad_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        q = tl.fdiv(x, s, ieee_rounding=True)
+        r = _rint_even(q)
+        u = r + zr
+        inr = (u >= qminf) & (u <= qmaxf)
+        tl.store(gs_ptr + offs, tl.where(inr, dy, 0.0), mask=mask)
+        ds_v = tl.where(inr, dy * (r - q), tl.where(u < qminf, lo * dy, hi * dy))
+        dz_v = tl.where(inr, 0.0, -dy * s)
+        acc_ds += tl.sum(ds_v, axis=0)
+        acc_dz += tl.sum(dz_v, axis=0)
+
+    tl.store(out_s_ptr, acc_ds * gf)
+    tl.store(out_z_ptr, acc_dz * gf)
 
 
 @triton.jit
 def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
     grad_ptr,
-    self_ptr,
+    x_ptr,
     scale_ptr,
-    zero_point_ptr,
-    grad_self_ptr,
-    grad_scale_ptr,
-    grad_zero_point_ptr,
-    n_elements,
-    quant_min,
-    quant_max,
-    grad_factor,
-    BLOCK_SIZE: tl.constexpr,
+    zp_ptr,
+    gs_ptr,
+    pds_ptr,
+    pdz_ptr,
+    n,
+    qmin,
+    qmax,
+    BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    pid = tl.program_id(0)
+    nprog = tl.num_programs(0)
+    num_tiles = (n + (BLOCK - 1)) // BLOCK
 
-    # Inputs are loaded in their original dtype and promoted to float32 for
-    # computation, matching the behavior of the ATen reference implementation
-    # (which requires float32 internally for the rounding/clamping math).
-    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    x = tl.load(self_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-    scale = tl.load(scale_ptr).to(tl.float32)
-    zero_point = tl.load(zero_point_ptr).to(tl.float32)
+    s = tl.load(scale_ptr).to(tl.float32)
+    z = tl.load(zp_ptr).to(tl.float32)
+    qminf = qmin.to(tl.float32)
+    qmaxf = qmax.to(tl.float32)
+    zr = tl.minimum(tl.maximum(_rint_even(z), qminf), qmaxf)
+    lo = qminf - zr
+    hi = qmaxf - zr
 
-    # Forward: y = (clamp(round(x / scale + zero_point), qmin, qmax) - zero_point) * scale
-    # The quantized integer value before rescaling.
-    q = tl_extra_shim.nearbyint(x / scale + zero_point)
-    # Straight-through estimator mask: gradient flows where the rounded
-    # quantized value lies inside [quant_min, quant_max] (i.e. clamping did not
-    # change the rounded value). Comparing the *rounded* value rather than the
-    # raw pre-quantization value matches the ATen reference, which allows a
-    # small neighborhood beyond the range that rounds back into range.
-    in_range = (q >= quant_min) & (q <= quant_max)
-    q = tl.clamp(q, quant_min, quant_max)
-    in_range_f = in_range.to(tl.float32)
+    acc_ds = tl.zeros([BLOCK], dtype=tl.float32)
+    acc_dz = tl.zeros([BLOCK], dtype=tl.float32)
 
-    # grad w.r.t self: grad * mask (STE gradient, gradient is zeroed for clamped elements)
-    grad_self = grad * in_range_f
-    tl.store(grad_self_ptr + offsets, grad_self, mask=mask)
+    for tile in range(pid, num_tiles, nprog):
+        offs = tile * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < n
+        dy = tl.load(grad_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
 
-    # grad w.r.t scale: sum over elements of grad * ((q - zero_point) - (x / scale) * mask) * grad_factor
-    grad_scale_contrib = (
-        grad * ((q - zero_point) - (x / scale) * in_range_f) * grad_factor
-    )
-    # grad w.r.t zero_point: sum over elements of grad * scale * (mask - 1) * grad_factor
-    grad_zero_point_contrib = grad * scale * (in_range_f - 1.0) * grad_factor
+        q = tl.fdiv(x, s, ieee_rounding=True)
+        r = _rint_even(q)
+        u = r + zr
+        inr = (u >= qminf) & (u <= qmaxf)
 
-    block_sum_scale = tl.sum(grad_scale_contrib, axis=0)
-    block_sum_zp = tl.sum(grad_zero_point_contrib, axis=0)
+        tl.store(gs_ptr + offs, tl.where(inr, dy, 0.0), mask=mask)
 
-    tl.atomic_add(grad_scale_ptr, block_sum_scale)
-    tl.atomic_add(grad_zero_point_ptr, block_sum_zp)
+        acc_ds += tl.where(inr, dy * (r - q), tl.where(u < qminf, lo * dy, hi * dy))
+        acc_dz += tl.where(inr, 0.0, -dy * s)
+
+    tl.store(pds_ptr + pid, tl.sum(acc_ds, axis=0))
+    tl.store(pdz_ptr + pid, tl.sum(acc_dz, axis=0))
+
+
+@triton.jit
+def _reduce_kernel(pds_ptr, pdz_ptr, out_s_ptr, out_z_ptr, g, gf, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    mask = offs < g
+    ds = tl.load(pds_ptr + offs, mask=mask, other=0.0)
+    dz = tl.load(pdz_ptr + offs, mask=mask, other=0.0)
+    tl.store(out_s_ptr, tl.sum(ds, axis=0) * gf)
+    tl.store(out_z_ptr, tl.sum(dz, axis=0) * gf)
+
+
+_G = 256
+_WORK_PER_PROG = 262144
+_TINY_BLOCK = 4096
+_TINY_LIMIT = 2 * _TINY_BLOCK
+# Static launch geometry instead of a triton.autotune sweep (whose per-call
+# dispatch is not free and which picked BLOCK=8192/num_warps=8, i.e. 137ms on
+# 1G fp32).  Measured on gcu:1 at n=2**30 fp32 (12GB of traffic):
+# BLOCK=32768/nw=4 -> 35.0ms, BLOCK=65536/nw=2 -> 34.6-39.3ms,
+# BLOCK=8192/nw=4 -> 54.9ms (the old autotuned pick).
+_MAIN_BLOCK = 32768
+_MAIN_WARPS = 4
 
 
 def _fake_quantize_learnable_per_tensor_affine_backward(
@@ -87,19 +153,16 @@ def _fake_quantize_learnable_per_tensor_affine_backward(
 ):
     logger.debug("GEMS FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE_BACKWARD")
 
-    if grad.device.type != "cuda" or self.device.type != "cuda":
-        raise ValueError("Inputs must be on a CUDA device.")
-
     if not (
-        grad.is_floating_point()
-        and self.is_floating_point()
-        and scale.is_floating_point()
-        and zero_point.is_floating_point()
+        torch.is_floating_point(grad)
+        and torch.is_floating_point(self)
+        and torch.is_floating_point(scale)
+        and torch.is_floating_point(zero_point)
     ):
         raise ValueError("All inputs must be floating-point tensors.")
 
-    # The ATen reference rejects float16 gradients ("Expected dY_.scalar_type() ==
-    # Float"); only float32 and bfloat16 inputs are supported.
+    # The ATen reference rejects float16 gradients ("Expected dY_.scalar_type()
+    # == Float"); only float32 and bfloat16 inputs are supported.
     if self.dtype not in (torch.float32, torch.bfloat16):
         raise ValueError(
             f"Unsupported dtype {self.dtype}; expected float32 or bfloat16."
@@ -108,36 +171,56 @@ def _fake_quantize_learnable_per_tensor_affine_backward(
     # The ATen reference implementation always returns float32 gradients
     # (it rejects float16 grads and promotes bfloat16 grads to float32), so we
     # match that contract: all three output gradients are float32.
-    grad_self = torch.empty(self.shape, dtype=torch.float32, device=self.device)
-    # grad_scale / grad_zero_point have the same shape as scale / zero_point
-    # (per-tensor: a 1-element tensor).
-    grad_scale = torch.zeros(scale.shape, dtype=torch.float32, device=scale.device)
-    grad_zero_point = torch.zeros(
-        zero_point.shape, dtype=torch.float32, device=zero_point.device
-    )
+    grad_self = torch.empty_like(self, dtype=torch.float32)
+    grad_scale = torch.empty_like(scale, dtype=torch.float32)
+    grad_zero_point = torch.empty_like(zero_point, dtype=torch.float32)
 
-    n_elements = self.numel()
-    if n_elements == 0:
+    n = self.numel()
+    gf = float(grad_factor)
+    qmin = int(quant_min)
+    qmax = int(quant_max)
+
+    if n <= _TINY_LIMIT:
+        _fq_tiny_kernel[(1,)](
+            grad,
+            self,
+            scale,
+            zero_point,
+            grad_self,
+            grad_scale,
+            grad_zero_point,
+            n,
+            (_TINY_BLOCK + n - 1) // _TINY_BLOCK if n > 0 else 0,
+            qmin,
+            qmax,
+            gf,
+            BLOCK=_TINY_BLOCK,
+            num_warps=4,
+        )
         return grad_self, grad_scale, grad_zero_point
 
-    # Tile size for the per-element backward kernel; 1024 elements per block.
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    pds = torch.empty((_G,), dtype=torch.float32, device=self.device)
+    pdz = torch.empty((_G,), dtype=torch.float32, device=self.device)
 
-    _fake_quantize_learnable_per_tensor_affine_backward_kernel[grid](
+    g = min(_G, max(1, (n + _WORK_PER_PROG - 1) // _WORK_PER_PROG))
+
+    _fake_quantize_learnable_per_tensor_affine_backward_kernel[(g,)](
         grad,
         self,
         scale,
         zero_point,
         grad_self,
-        grad_scale,
-        grad_zero_point,
-        n_elements,
-        quant_min,
-        quant_max,
-        float(grad_factor),
-        BLOCK_SIZE=BLOCK_SIZE,
+        pds,
+        pdz,
+        n,
+        qmin,
+        qmax,
+        BLOCK=_MAIN_BLOCK,
+        num_warps=_MAIN_WARPS,
     )
 
-    # All three gradients are float32, matching the ATen reference output dtype.
+    _reduce_kernel[(1,)](
+        pds, pdz, grad_scale, grad_zero_point, g, gf, BLOCK=_G, num_warps=4
+    )
+
     return grad_self, grad_scale, grad_zero_point

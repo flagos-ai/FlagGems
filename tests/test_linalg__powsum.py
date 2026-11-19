@@ -22,6 +22,11 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+pytestmark = pytest.mark.skipif(
+    not hasattr(torch.ops.aten, "linalg__powsum"),
+    reason="the installed PyTorch has no aten.linalg__powsum reference",
+)
+
 if cfg.QUICK_MODE:
     SHAPE_DIM_CASES = [((2, 32), [1])]
     ORD_LIST = [2]
@@ -108,6 +113,11 @@ def test_linalg__powsum_integer_input_with_float_dtype():
     ],
 )
 def test_linalg__powsum_complex(input_dtype, requested_dtype):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (input_dtype, requested_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     inp = torch.randn((5, 7), dtype=input_dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(

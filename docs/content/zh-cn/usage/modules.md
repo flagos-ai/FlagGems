@@ -23,74 +23,21 @@ weight: 80
 <!--
 # Building Custom Models Using Gems Operators
 -->
-# 使用 FlagGems 模块构造自己的模型
+# 基于 FlagGems 模块构建自定义模型
 
-<!--
-In some scenarios, users may want to build their own models from scratch
-or to adapt existing ones to better suit their specific use cases.
-To support this, *FlagGems* provides a growing collection of high-performance modules
-commonly used in large language models (LLMs).
--->
-在某些使用场景中，用户可能希望从头构建自己的 AI 模型，
-或者对现有的模型进行适配，以更好地满足自己的特定使用场景。
-为了支持这种需求，*FlagGems* 提供一个不断增长的高性能模块集合，
-这些模块在大语言模型（LLM）中使用很普遍。
+在部分前沿探索或模型研发场景中，算法工程师通常需要从零搭建新架构或对现有模型结构进行定制改动。为了支持这一需求，*FlagGems* 提炼并封装了一系列大语言模型（LLM）中核心的高性能神经网络模块（Modules）。
 
-<!--
-These components are implemented using *FlagGems*-accelerated operators
-and can be used in the way you use any standard `torch.nn.Module`.
-You can seamlessly integrate them into your system to benefit from
-kernel-level acceleration without writing custom CUDA code or Triton code.
--->
-这些组件是使用 *FlagGems* 加速过的算子实现的，可以像你使用标准的 `torch.nn.Module`
-一样使用。你可以将它们无缝集成到自己的系统重，在不需要编写定制的 CUDA
-代码或者 Triton 代码的前提下，从内核级的加速中获益。
+这些模块继承自标准的 `torch.nn.Module`，内部完全基于深度优化的 *FlagGems* 融合算子实现。开发者无需手写复杂的 CUDA/Triton 底层代码，只需像使用原生 PyTorch Layer 一样将其引入模型网络，即可直接享受极致的内核级性能加速。
 
-<!--
-Modules can be found in
-[flag_gems/modules](https://github.com/flagos-ai/FlagGems/tree/master/src/flag_gems/modules).
--->
-*FlagGems* 所支持的模块代码位于源码仓库的
-[flag_gems/modules](https://github.com/flagos-ai/FlagGems/tree/master/src/flag_gems/modules).
-目录下。
+所有模块源码均位于仓库的 [`src/flag_gems/modules`](https://github.com/flagos-ai/FlagGems/tree/master/src/flag_gems/modules) 目录下。
 
-<!--
-## Modules Available
--->
-## 可用的模块
+## 可用模块清单
 
-<table>
-<tr>
-<th><!--Module-->模块</th><th><!--Description-->描述</th><th><!--Supported Features-->支持的特性</th>
-</tr>
-<tbody>
-<tr>
-  <td><code>GemsRMSNorm</code></td>
-  <td>RMS LayerNorm</td>
-  <td>对残差求和进行融合，支持<code>inplace</code> <code>outplace</code> 模式</td>
-</tr>
-<tr>
-  <td><code>GemsRope</code></td>
-  <td>标准的旋转位置编码</td>
-  <td><code>inplace</code> 和 <code>outplace</code> 模式</td>
-</tr>
-<tr>
-  <td><code>GemsDeepseekYarnRoPE</code></td>
-  <td>带外推的旋转位置编码，用于 DeepSeek 风格的 LLM</td>
-  <td><code>inplace</code> 和 <code>outplace</code> 模式</td>
-</tr>
-<tr>
-  <td><code>GemsSiluAndMul</code></td>
-  <td>SiLU 激活函数与逐元素乘法的融合</td>
-  <td>仅支持 <code>outplace</code> 模式</td>
-</tr>
-</tbody>
-</table>
+| 模块类名 | 功能描述 | 支持特性 |
+| :------- | :------- | :------- |
+| `GemsRMSNorm` | 均方根层归一化（RMS LayerNorm） | 支持融合残差相加（Add-RMSNorm），支持 `inplace` 与 `outplace` 模式 |
+| `GemsRope` | 经典旋转位置编码（RoPE） | 支持高吞吐向量化计算，支持 `inplace` 与 `outplace` 模式 |
+| `GemsDeepseekYarnRoPE` | 基于 YaRN 插值外推的旋转位置编码（DeepSeek 风格） | 专为超长上下文外推优化，支持 `inplace` 与 `outplace` 模式 |
+| `GemsSiluAndMul` | SwiGLU 结构中的 SiLU 激活与逐元素乘法融合 | 消除中间写回显存，仅支持 `outplace` 模式 |
 
-<!--
-We encourage users to use these as drop-in replacements for the equivalent PyTorch layers.
-More components such as fused attention, MoE layers, and transformer blocks
-are under development.
--->
-我们鼓励用户将这些模块作为等价 PyTorch 层的替换方案。
-团队正在开发融合的注意力机制、MoE 层以及 Transformer 块等模块。
+开发者可直接将上述模块作为原生 PyTorch 层的直接替换（Drop-in Replacement）。更多诸如 Fused Attention、MoE 分发路由层与端到端 Transformer Block 正在持续扩充中。
