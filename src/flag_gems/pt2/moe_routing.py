@@ -26,18 +26,20 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.fused.grouped_topk import (
+from flag_gems.deprecated.grouped_topk import (
     group_idx_and_topk_triton as GROUPED_TOPK_SELECT_JIT,
 )
-from flag_gems.fused.grouped_topk import grouped_topk as _eager_grouped_topk
-from flag_gems.fused.grouped_topk import topk_with_k2_triton as GROUPED_TOPK_GROUP_JIT
-from flag_gems.fused.topk_softplus_sqrt import (
+from flag_gems.deprecated.grouped_topk import grouped_topk as _eager_grouped_topk
+from flag_gems.deprecated.grouped_topk import (
+    topk_with_k2_triton as GROUPED_TOPK_GROUP_JIT,
+)
+from flag_gems.deprecated.topk_softplus_sqrt import (
     _fused_topk_kernel as TOPK_SOFTPLUS_SQRT_JIT,
 )
-from flag_gems.fused.topk_softplus_sqrt import (
+from flag_gems.deprecated.topk_softplus_sqrt import (
     _hash_kernel as TOPK_HASH_SOFTPLUS_SQRT_JIT,
 )
-from flag_gems.fused.topk_softplus_sqrt import (
+from flag_gems.deprecated.topk_softplus_sqrt import (
     topk_softplus_sqrt as _eager_topk_softplus_sqrt,
 )
 from flag_gems.pt2.manifest import CompileKind, CompileOpSpec, register_compile_spec
@@ -412,8 +414,8 @@ GROUPED_TOPK_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::grouped_topk",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.grouped_topk.topk_with_k2_triton + "
-            "flag_gems.fused.grouped_topk.group_idx_and_topk_triton"
+            "flag_gems.deprecated.grouped_topk.topk_with_k2_triton + "
+            "flag_gems.deprecated.grouped_topk.group_idx_and_topk_triton"
         ),
         mutates_args=(),
         dynamic_dims=("num_tokens",),
@@ -425,7 +427,7 @@ TOPK_SOFTPLUS_SQRT_SPEC = register_compile_spec(
     CompileOpSpec(
         op_name="flag_gems_pt2::topk_softplus_sqrt",
         kind=CompileKind.TRITON_TRACEABLE,
-        source_kernel="flag_gems.fused.topk_softplus_sqrt._fused_topk_kernel",
+        source_kernel="flag_gems.deprecated.topk_softplus_sqrt._fused_topk_kernel",
         mutates_args=(
             "topk_weights",
             "topk_indices",
@@ -440,7 +442,7 @@ TOPK_HASH_SOFTPLUS_SQRT_SPEC = register_compile_spec(
     CompileOpSpec(
         op_name="flag_gems_pt2::topk_hash_softplus_sqrt",
         kind=CompileKind.TRITON_TRACEABLE,
-        source_kernel="flag_gems.fused.topk_softplus_sqrt._hash_kernel",
+        source_kernel="flag_gems.deprecated.topk_softplus_sqrt._hash_kernel",
         mutates_args=(
             "topk_weights",
             "topk_indices",
