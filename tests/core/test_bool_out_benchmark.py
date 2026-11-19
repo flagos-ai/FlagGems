@@ -64,10 +64,5 @@ def test_reference_only_uses_bool_out(monkeypatch, native):
     bench.shapes = [(2, 3)]
     case = bench.list_cases(initialize=False).cases[0]
 
-    def time_reference(op, *args, **kwargs):
-        op(*args, **kwargs)
-        return 1.0
-
-    monkeypatch.setattr(bench, "get_latency", time_reference)
     assert bench._run_reference_cases([case.case_id]) == [case.case_id]
     assert config.reference_records[0]["status"] == "PASSED"
