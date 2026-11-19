@@ -393,6 +393,7 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
 from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
+from flag_gems.ops._sparse_addmm import _sparse_addmm, _sparse_addmm_out
 from flag_gems.ops._sparse_log_softmax import (
     _sparse_log_softmax,
     _sparse_log_softmax_int,
@@ -481,8 +482,14 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
 from flag_gems.ops._validate_compressed_sparse_indices import (
     _validate_compressed_sparse_indices,
 )
+from flag_gems.ops._validate_sparse_bsc_tensor_args import (
+    _validate_sparse_bsc_tensor_args,
+)
 from flag_gems.ops._validate_sparse_bsr_tensor_args import (
     _validate_sparse_bsr_tensor_args,
+)
+from flag_gems.ops._validate_sparse_compressed_tensor_args import (
+    _validate_sparse_compressed_tensor_args,
 )
 from flag_gems.ops._validate_sparse_coo_tensor_args import (
     _validate_sparse_coo_tensor_args,
@@ -2149,6 +2156,8 @@ __all__ = [
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
     "_sobol_engine_scramble_",
+    "_sparse_addmm",
+    "_sparse_addmm_out",
     "_sparse_log_softmax",
     "_sparse_log_softmax_backward_data",
     "_sparse_log_softmax_backward_data_out",
@@ -2207,7 +2216,9 @@ __all__ = [
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_validate_compressed_sparse_indices",
+    "_validate_sparse_bsc_tensor_args",
     "_validate_sparse_bsr_tensor_args",
+    "_validate_sparse_compressed_tensor_args",
     "_validate_sparse_coo_tensor_args",
     "_validate_sparse_csc_tensor_args",
     "_validate_sparse_csr_tensor_args",

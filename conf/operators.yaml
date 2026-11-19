@@ -12442,6 +12442,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: log2_backward
+  description: The backward computation of `log2()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - log2
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: log_
   description: The in-place version of `log()`. Computes the natural logarithm of
     each element in the input tensor in-place.
@@ -12646,6 +12659,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: logcumsumexp_backward
+  description: The backward computation of `logcumsumexp()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - logcumsumexp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: logcumsumexp_out
   description: 'A variant of `logcumsumexp` that allows the output to be assigned
     to an `out` tensor.
@@ -18901,6 +18926,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '3.0'
+- id: sparse_addmm
+  description: |
+    Computes beta * self + alpha * (mat1 @ mat2), where mat1 is a sparse 2-D
+    tensor (CSR/CSC/COO) and self and mat2 are dense. The result is a dense
+    (M, N) tensor; self follows the standard addmm bias broadcasting rules.
+  for:
+  - _sparse_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
+- id: sparse_addmm_out
+  description: |
+    A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)
+    into the provided dense out tensor.
+  for:
+  - _sparse_addmm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_broadcast_to
   description: 'Broadcasts a sparse COO tensor to the target shape, replicating stored
     entries across newly prepended sparse dimensions and broadcast (size-1) dimensions.
@@ -22691,11 +22743,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     - Tensor
   stages:
     - alpha: '5.5.0'
+- id: validate_sparse_bsc_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_bsc_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: validate_sparse_bsr_tensor_args
   description: |
     Validate BSR tensor metadata and compressed index invariants.
   for:
     - _validate_sparse_bsr_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
+- id: validate_sparse_compressed_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_compressed_tensor_args
   labels:
     - aten
     - KernelGen
