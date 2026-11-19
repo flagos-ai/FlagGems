@@ -409,6 +409,9 @@ from flag_gems.ops._sparse_mask_projection import (
 )
 from flag_gems.ops._sparse_mm import _sparse_mm
 from flag_gems.ops._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
+from flag_gems.ops._sparse_mm_reduce_impl_backward import (
+    _sparse_mm_reduce_impl_backward,
+)
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
 from flag_gems.ops._sparse_semi_structured_apply_dense import (
@@ -960,6 +963,8 @@ from flag_gems.ops.greater_equal import (
     greater_equal,
     greater_equal_,
     greater_equal_scalar,
+    greater_equal_scalar_,
+    greater_equal_tensor_,
 )
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler import grid_sampler
@@ -1200,6 +1205,7 @@ from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matmul_backward import matmul_backward
 from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
+from flag_gems.ops.matrix_H import matrix_H
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
@@ -2167,6 +2173,7 @@ __all__ = [
     "_sparse_mask_projection_out",
     "_sparse_mm",
     "_sparse_mm_reduce_impl",
+    "_sparse_mm_reduce_impl_backward",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
     "_sparse_semi_structured_apply_dense",
@@ -2683,6 +2690,8 @@ __all__ = [
     "greater_equal",
     "greater_equal_",
     "greater_equal_scalar",
+    "greater_equal_scalar_",
+    "greater_equal_tensor_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -2957,6 +2966,7 @@ __all__ = [
     "matmul_backward",
     "matrix_exp",
     "matrix_exp_backward",
+    "matrix_H",
     "matrix_power",
     "matrix_power_out",
     "max",

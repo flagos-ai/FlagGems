@@ -336,7 +336,10 @@ def main() -> None:
             log("no bare triton/ directories found outside the venv")
 
     # Hard gate: what resolves now must be the pin.
-    # Reuse the already-collected installs list — no fourth metadata scan.
+    # Re-collect: the list above was taken before the cleanup and still holds
+    # the copies this run deleted, whose metadata now reads back empty -- they
+    # would win the sys.path ranking and fail the gate on a removed install.
+    installs = collect_installs(dist_name)[dist_name]
     have, root = resolved_version(dist_name, installs)
     if have is None:
         log(f"::error::{dist_name} no longer resolvable after cleanup")
