@@ -9307,6 +9307,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: greater_equal_scalar_
+  description: The scalar in-place version of `greater_equal()`, which is an alias
+    for `ge()`.
+  for:
+  - greater_equal_.Scalar
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: greater_out
   description: A variant of `greater` that saves the output to the specified `out`.
   for:
