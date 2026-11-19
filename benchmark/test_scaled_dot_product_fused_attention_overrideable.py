@@ -5,6 +5,8 @@ import flag_gems
 
 from . import base, consts
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 class ScaledDotProductFusedAttentionOverrideableBenchmark(base.GenericBenchmark):
     """
@@ -45,8 +47,67 @@ def test_scaled_dot_product_fused_attention_overrideable(is_causal):
         return_debug_mask=False,
         scale=None,
     ):
-        return flag_gems.ops.scaled_dot_product_attention_forward(
-            query, key, value, is_causal=is_causal
+        if not IS_KUNLUNXIN:
+            return flag_gems.ops.scaled_dot_product_attention_forward(
+                query, key, value, is_causal=is_causal
+            )
+
+        if attn_bias is None:
+            return torch.ops.aten._scaled_dot_product_flash_attention(
+                query, key, value, dropout_p, is_causal, return_debug_mask, scale=scale
+            )
+
+        out = torch.nn.functional.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attn_bias,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+        )
+
+        batch, num_heads, seq_q, head_dim = query.shape
+        seq_k = key.shape[2]
+        sm_scale = scale if scale is not None else head_dim**-0.5
+        qf = query.float()
+        kf = key.float()
+        if qf.shape[1] != kf.shape[1]:
+            kf = kf.repeat_interleave(qf.shape[1] // kf.shape[1], dim=1)
+        scores = torch.matmul(qf, kf.transpose(-1, -2)) * sm_scale
+        if attn_bias is not None:
+            scores = scores + attn_bias.float()
+        if is_causal:
+            rows = torch.arange(seq_q, device=query.device).reshape(-1, 1)
+            cols = torch.arange(seq_k, device=query.device).reshape(1, -1)
+            scores = scores.masked_fill(
+                ~(cols <= rows + (seq_k - seq_q)), float("-inf")
+            )
+        logsumexp = torch.logsumexp(scores, dim=-1)
+
+        cum_seq_q = torch.zeros((batch, 2), dtype=torch.int32, device=query.device)
+        cum_seq_k = torch.zeros((batch, 2), dtype=torch.int32, device=query.device)
+        cum_seq_q[:, 1] = seq_q
+        cum_seq_k[:, 1] = seq_k
+        philox_seed = torch.zeros(1, dtype=torch.int64, device=query.device)
+        philox_offset = torch.zeros(1, dtype=torch.int64, device=query.device)
+        if return_debug_mask:
+            debug_attn_mask = torch.zeros(
+                (batch, num_heads, seq_q, seq_k), dtype=query.dtype, device=query.device
+            )
+        else:
+            debug_attn_mask = torch.empty(0, dtype=query.dtype, device=query.device)
+
+        return (
+            out,
+            logsumexp,
+            cum_seq_q,
+            cum_seq_k,
+            seq_q,
+            seq_k,
+            philox_seed,
+            philox_offset,
+            debug_attn_mask,
         )
 
     def gems_op(

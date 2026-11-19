@@ -24,6 +24,7 @@ import triton.language as tl
 from packaging.version import parse as _parse_version
 
 from flag_gems.config import use_c_extension
+from flag_gems.ops.arange import arange_start as _arange
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.shape_utils import broadcasted_stride
 
@@ -426,7 +427,7 @@ def prob_dp_partial_kernel(
     n_safe = tl.where(n_mask, n_offs, 0)
     score = tl.zeros((BLOCK_N_,), dtype=tl.float32)
     dp = tl.zeros((BLOCK_N_,), dtype=tl.float32)
-    for d_offset in tl.static_range(RED_):
+    for d_offset in range(0, RED_):
         d_idx = d_chunk * RED_ + d_offset
         if d_idx < D:
             q_value = tl.load(Q + (query_bh * Q_LEN + q_idx) * D + d_idx)
@@ -483,12 +484,15 @@ def prob_ds_finalize_kernel(
     P,
     P_DV,
     DS,
+    BIAS,
     SCALE,
     Q_LEN: tl.constexpr,
     KV_LEN: tl.constexpr,
     D_CHUNKS: tl.constexpr,
     LSE_STRIDE_BH: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
+    CAUSAL_OFF: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
     BLOCK_N_: tl.constexpr,
 ):
     n_offs = tl.program_id(0) * BLOCK_N_ + tl.arange(0, BLOCK_N_)
@@ -504,13 +508,21 @@ def prob_ds_finalize_kernel(
         score += tl.load(SCORE_PARTIAL + partial_base + chunk, mask=n_mask, other=0.0)
         dp += tl.load(DP_PARTIAL + partial_base + chunk, mask=n_mask, other=0.0)
         delta += tl.load(DELTA_PARTIAL + delta_base + chunk)
+    # The bias is added to the logits AFTER the scale, so it must not be
+    # folded into `score`, which is multiplied by SCALE below.
+    bias_val = tl.zeros((BLOCK_N_,), dtype=tl.float32)
+    if HAS_BIAS:
+        bias_val = tl.load(
+            BIAS + (bh * Q_LEN + q_idx) * KV_LEN + n_offs, mask=n_mask, other=0.0
+        ).to(tl.float32)
     lse = tl.load(LSE + bh * LSE_STRIDE_BH + q_idx).to(tl.float32)
     valid = n_mask
     if IS_CAUSAL:
-        valid = valid & (n_offs <= q_idx)
-    p = tl.exp(score * SCALE)
+        # Row i attends keys 0 .. i + CAUSAL_OFF.
+        valid = valid & (n_offs <= q_idx + CAUSAL_OFF)
+    p = tl.exp(score * SCALE + bias_val)
     p = tl.where(valid, p, 0.0)
-    p_dv = tl.exp2(score * SCALE - lse)
+    p_dv = tl.exp2(score * SCALE + bias_val - lse)
     p_dv = tl.where(valid, p_dv, 0.0)
     ds = p * (dp - delta) * SCALE
     out_offs = (bh * Q_LEN + q_idx) * KV_LEN + n_offs
@@ -534,6 +546,8 @@ def normalize_prob_ds_kernel(
     offs = (bh * Q_LEN + q_idx) * KV_LEN + n_offs
     p = tl.load(P + offs, mask=mask, other=0.0)
     norm = tl.sum(p, axis=0)
+    # A row with no valid key has norm == 0; use 1.0 so it stays all zeros.
+    norm = tl.where(norm > 0.0, norm, 1.0)
     p /= norm
     ds = tl.load(DS + offs, mask=mask, other=0.0) / norm
     tl.store(P + offs, p, mask=mask)
@@ -696,7 +710,7 @@ def grad_finalize_kernel(
         d_idx = d_base + d_offset
         acc = 0.0
         compensation = 0.0
-        for chunk in tl.static_range(R_CHUNKS):
+        for chunk in range(0, R_CHUNKS):
             value = tl.load(
                 PARTIAL + ((bh * ROWS + row) * R_CHUNKS + chunk) * D + d_idx,
                 mask=d_idx < D,
@@ -1037,7 +1051,44 @@ def scaled_dot_product_attention_forward(
     return out
 
 
-def _staged_attention_backward(do, query, key, value, o, lse, sm_scale, is_causal):
+def _contiguous_attn_bias(attn_bias, batch, heads, q_len, kv_len):
+    """Materialise a 2D/3D/4D bias as a dense ``(B, H, Q, K)`` float32 tensor.
+
+    The backward kernel indexes the bias as a flat contiguous buffer, so a
+    broadcast or non-contiguous mask has to be expanded and copied first.
+    Boolean masks are converted to the additive ``0 / -1e30`` form, where
+    ``True`` means the cell is attended.
+    """
+    if attn_bias.dtype == torch.bool:
+        bias = (~attn_bias).to(torch.float32) * -1.0e30
+    else:
+        bias = attn_bias.to(torch.float32)
+    if bias.ndim == 2:
+        bias = bias[None, None]
+    elif bias.ndim == 3:
+        bias = bias[:, None]
+    elif bias.ndim != 4:
+        raise RuntimeError("attn_bias must be a dense 2D, 3D, or 4D tensor")
+    expected = (batch, heads, q_len, kv_len)
+    if any(actual not in (1, wanted) for actual, wanted in zip(bias.shape, expected)):
+        raise RuntimeError(
+            "attn_bias must broadcast to (batch, heads, query_seq, key_seq)"
+        )
+    return bias.expand(*expected).contiguous()
+
+
+def _staged_attention_backward(
+    do,
+    query,
+    key,
+    value,
+    o,
+    lse,
+    sm_scale,
+    is_causal,
+    attn_bias=None,
+    causal_top_left=True,
+):
     batch, query_heads, query_length, head_dim = query.shape
     key_batch, kv_heads, kv_length, key_head_dim = key.shape
     assert key.shape == value.shape
@@ -1047,6 +1098,10 @@ def _staged_attention_backward(do, query, key, value, o, lse, sm_scale, is_causa
     assert do.is_contiguous()
     assert query.is_contiguous() and key.is_contiguous()
     assert value.is_contiguous() and o.is_contiguous()
+    if attn_bias is not None:
+        attn_bias = _contiguous_attn_bias(
+            attn_bias, batch, query_heads, query_length, kv_length
+        )
 
     query_batch_heads = batch * query_heads
     kv_batch_heads = batch * kv_heads
@@ -1111,6 +1166,9 @@ def _staged_attention_backward(do, query, key, value, o, lse, sm_scale, is_causa
         RED_=_STAGED_RED,
         **launch_options,
     )
+    # HAS_BIAS is a constexpr, so the bias load compiles out when there is no
+    # bias; any live tensor serves as a harmless placeholder pointer.
+    bias_arg = lse if attn_bias is None else attn_bias
     prob_ds_finalize_kernel[
         (triton.cdiv(kv_length, _STAGED_BLOCK_N), query_length, query_batch_heads)
     ](
@@ -1121,12 +1179,15 @@ def _staged_attention_backward(do, query, key, value, o, lse, sm_scale, is_causa
         probability,
         probability_dv,
         ds,
+        bias_arg,
         sm_scale,
         Q_LEN=query_length,
         KV_LEN=kv_length,
         D_CHUNKS=dim_chunks,
         LSE_STRIDE_BH=lse.stride(1),
         IS_CAUSAL=is_causal,
+        CAUSAL_OFF=0 if causal_top_left else kv_length - query_length,
+        HAS_BIAS=attn_bias is not None,
         BLOCK_N_=_STAGED_BLOCK_N,
         **launch_options,
     )
@@ -1248,7 +1309,16 @@ def _staged_attention_backward(do, query, key, value, o, lse, sm_scale, is_causa
         BLOCK_D_=_STAGED_BLOCK_D,
         **launch_options,
     )
-    return dq, dk, dv
+    dbias = None
+    if attn_bias is not None:
+        # `ds` is dS * sm_scale; the bias enters the logits unscaled, so the
+        # bias gradient is `ds / sm_scale`.
+        dbias = (
+            (ds / sm_scale)
+            .view(batch, query_heads, query_length, kv_length)
+            .to(attn_bias.dtype)
+        )
+    return dq, dk, dv, dbias
 
 
 def scaled_dot_product_attention_backward(
@@ -1266,12 +1336,17 @@ def scaled_dot_product_attention_backward(
 ):
     logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     head_dim = query.shape[-1]
-    assert (
-        attn_mask is None
-    ), "staged attention backward does not support attention bias"
+    if attn_mask is not None and query.shape[1] != key.shape[1]:
+        raise NotImplementedError(
+            "staged attention backward does not support attention bias with "
+            "grouped-query attention (H_q != H_k)"
+        )
     assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
     sm_scale = 1.0 / math.sqrt(head_dim) if scale is None else scale
-    return _staged_attention_backward(do, query, key, value, o, M, sm_scale, is_causal)
+    dq, dk, dv, _ = _staged_attention_backward(
+        do, query, key, value, o, M, sm_scale, is_causal, attn_bias=attn_mask
+    )
+    return dq, dk, dv
 
 
 def efficient_attention_backward(
@@ -1316,7 +1391,7 @@ def efficient_attention_backward(
 
     q_len = query.shape[1]
     sm_scale = 1.0 / math.sqrt(query.shape[-1]) if scale is None else scale
-    d_query, d_key, d_value = _staged_attention_backward(
+    d_query, d_key, d_value, _ = _staged_attention_backward(
         grad_out_.permute(0, 2, 1, 3).contiguous(),
         query.permute(0, 2, 1, 3).contiguous(),
         key.permute(0, 2, 1, 3).contiguous(),
@@ -1325,12 +1400,22 @@ def efficient_attention_backward(
         logsumexp[:, :, :q_len].contiguous(),
         sm_scale,
         is_causal,
+        causal_top_left=False,
     )
     return (
         d_query.permute(0, 2, 1, 3).contiguous(),
         d_key.permute(0, 2, 1, 3).contiguous(),
         d_value.permute(0, 2, 1, 3).contiguous(),
         None,
+    )
+
+
+def _sdpa_attn_fwd_grid(args):
+    """Module-level (stable identity) launch grid for ``_attn_fwd``."""
+    return (
+        triton.cdiv(args["Q_CTX"], args["BLOCK_M"]),
+        args["Z"] * args["q_head_num"],
+        1,
     )
 
 
@@ -1376,11 +1461,7 @@ class ScaleDotProductAttention(torch.autograd.Function):
             "enable_gqa must be True to support different head numbers."
         )
 
-        grid = lambda args: (
-            triton.cdiv(query.shape[2], args["BLOCK_M"]),
-            query.shape[0] * query.shape[1],
-            1,
-        )
+        grid = _sdpa_attn_fwd_grid
 
         if attn_mask is not None:
             HAS_ATTN_MASK = True
@@ -1734,23 +1815,31 @@ def scaled_dot_product_efficient_attention_backward(
         raise NotImplementedError(
             "Kunlunxin efficient attention backward does not support dropout"
         )
-    if attn_bias is not None or need_dbias:
+    if attn_bias is not None and query.shape[1] != key.shape[1]:
         raise NotImplementedError(
-            "Kunlunxin efficient attention backward does not support attention bias"
+            "Kunlunxin efficient attention backward does not support attention "
+            "bias with grouped-query attention (H_q != H_k)"
+        )
+    if need_dbias and attn_bias is None:
+        raise NotImplementedError(
+            "Kunlunxin efficient attention backward cannot produce dBias "
+            "without attn_bias"
         )
 
     # The native efficient-attention LSE is already in the primitive's BHS layout.
     logsumexp_base2 = logsumexp.contiguous()
-    dq, dk, dv = scaled_dot_product_attention_backward(
+    sm_scale = 1.0 / math.sqrt(query.shape[-1]) if scale is None else scale
+    dq, dk, dv, dbias_full = _staged_attention_backward(
         grad_out.contiguous(),
         query.contiguous(),
         key.contiguous(),
         value.contiguous(),
         out.contiguous(),
         logsumexp_base2,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        scale=scale,
+        sm_scale,
+        is_causal,
+        attn_bias=attn_bias,
+        causal_top_left=False,
     )
     dbias = None
     if not need_dq:
@@ -1759,7 +1848,11 @@ def scaled_dot_product_efficient_attention_backward(
         dk = torch.zeros_like(key)
     if not need_dv:
         dv = torch.zeros_like(value)
-    if not need_dbias:
+    if need_dbias and attn_bias is not None:
+        dbias = dbias_full
+    else:
+        # The test asserts dBias is exactly None unless it was requested
+        # alongside a real bias.
         dbias = None
     return dq, dk, dv, dbias
 
@@ -2145,6 +2238,123 @@ def _fa_pad_d(t, padded):
     return tp
 
 
+# ---------------------------------------------------------------------------
+# Fast path: delegate the plain forward (no softcap / alibi / window / dropout)
+# to the tiled online-softmax kernel `_attn_fwd`; the materialising path below
+# (`_fa_qk_m_kernel` + `_fa_lout_kernel`) writes a full fp32 (B*H, Q, K_PAD)
+# score matrix and reads it back.
+# ---------------------------------------------------------------------------
+_TILED_GRID_CACHE = {}
+_TILED_HEAD_DIMS = (16, 32, 64, 96, 128, 192, 256)
+
+
+def _tiled_grid_for(seq_q, batch_heads):
+    """Stable grid callable per shape."""
+    key = (seq_q, batch_heads)
+    fn = _TILED_GRID_CACHE.get(key)
+    if fn is None:
+
+        def fn(args, _seq_q=seq_q, _batch_heads=batch_heads):
+            return (triton.cdiv(_seq_q, args["BLOCK_M"]), _batch_heads, 1)
+
+        _TILED_GRID_CACHE[key] = fn
+    return fn
+
+
+def _flash_forward_tiled(
+    query,
+    key,
+    value,
+    softmax_scale,
+    is_causal,
+    head_dim,
+    q_len,
+    k_len,
+    mask=None,
+    empty_rows=0,
+):
+    """Run the tiled flash kernel; returns (out_bshd, lse_bhq).
+
+    ``mask`` is an optional additive (B, H, S_q, S_k) bias; it must be a
+    materialised contiguous tensor.
+    """
+    batch, _, q_head_num, _ = query.shape
+    kv_head_num = key.shape[2]
+    padded_d = triton.next_power_of_2(head_dim)
+    if padded_d != head_dim:
+        q_in, k_in, v_in = (
+            _fa_pad_d(query, padded_d),
+            _fa_pad_d(key, padded_d),
+            _fa_pad_d(value, padded_d),
+        )
+    else:
+        q_in, k_in, v_in = query, key, value
+
+    # `_attn_fwd` indexes (batch, head, seq, dim), so make the BHSD copies
+    # explicitly.
+    q_t = q_in.transpose(1, 2).contiguous()
+    k_t = k_in.transpose(1, 2).contiguous()
+    v_t = v_in.transpose(1, 2).contiguous()
+    out_t = torch.empty(
+        (batch, q_head_num, q_len, padded_d), dtype=query.dtype, device=query.device
+    )
+    lse = torch.empty(
+        (batch, q_head_num, q_len), dtype=torch.float32, device=query.device
+    )
+    has_mask = mask is not None
+    stage = 3 if is_causal else 1
+    grid = _tiled_grid_for(q_len, batch * q_head_num)
+    with torch_device_fn.device(query.device):
+        _attn_fwd[grid](
+            q_t,
+            k_t,
+            v_t,
+            mask,
+            softmax_scale,
+            lse,
+            out_t,
+            q_t.stride(0),
+            q_t.stride(1),
+            q_t.stride(2),
+            q_t.stride(3),
+            k_t.stride(0),
+            k_t.stride(1),
+            k_t.stride(2),
+            k_t.stride(3),
+            v_t.stride(0),
+            v_t.stride(1),
+            v_t.stride(2),
+            v_t.stride(3),
+            *(mask.stride() if has_mask else (1, 1, 1, 1)),
+            out_t.stride(0),
+            out_t.stride(1),
+            out_t.stride(2),
+            out_t.stride(3),
+            batch,
+            q_head_num,
+            kv_head_num,
+            q_head_num // kv_head_num,
+            q_len,
+            k_len,
+            padded_d,
+            STAGE=stage,
+            HAS_ATTN_MASK=has_mask,
+            ACCUM_TYPE="float",
+            GEMM_TYPE="float",
+        )
+    if empty_rows > 0:
+        # `_attn_fwd` initialises its running denominator `l_i` to 1.0, so a row
+        # whose every cell is masked comes back as `v[argmax]` rather than 0.
+        # The operator contract (and the test's reference) zero those rows and
+        # give them lse = -inf.  This happens only on the window path with
+        # q_len > k_len + window_size_right.
+        out_t[:, :, :empty_rows, :] = 0
+        lse[:, :, :empty_rows] = float("-inf")
+    if padded_d != head_dim:
+        out_t = out_t[..., :head_dim].contiguous()
+    return out_t.transpose(1, 2), lse
+
+
 def flash_attention_forward(
     query,
     key,
@@ -2213,6 +2423,65 @@ def flash_attention_forward(
     wr = -1 if window_size_right is None else window_size_right
     has_window = wl >= 0 or wr >= 0
 
+    # Fast path: delegate to the tiled flash kernel when the shape needs none of
+    # the features it does not implement (softcap / alibi / window / dropout) and
+    # the caller did not ask for the debug mask.  Everything else keeps the
+    # existing materialising path below, unchanged.
+    if (
+        softcap == 0.0
+        and dropout_p == 0.0
+        and alibi_slopes is None
+        and not return_debug_mask
+        and head_dim in _TILED_HEAD_DIMS
+        and not (is_causal and q_len != k_len and q_len == 1)
+    ):
+        # `_attn_fwd`'s own causal mask is top-left aligned (n <= m) while the
+        # flash-attention contract is bottom-right aligned (n <= m + k_len -
+        # q_len); the two agree only when q_len == k_len.  Where they differ --
+        # and for every sliding window, which the kernel does not take at all --
+        # the mask is supplied explicitly, as a materialised contiguous
+        # (B, H, S_q, S_k) tensor.
+        need_mask = has_window or (is_causal and q_len != k_len)
+        window_mask = None
+        empty_rows = 0
+        if need_mask:
+            row = _arange(0, q_len, device=device)[:, None]
+            col = _arange(0, k_len, device=device)[None, :]
+            off = k_len - q_len
+            valid = torch.ones((q_len, k_len), dtype=torch.bool, device=device)
+            if is_causal:
+                valid = valid & (col <= (row + off))
+            if wl >= 0:
+                valid = valid & (col >= (row + off - wl))
+            if wr >= 0:
+                valid = valid & (col <= (row + off + wr))
+            window_mask = torch.full(
+                (q_len, k_len), -1.0e4, dtype=query.dtype, device=device
+            )
+            window_mask[valid] = 0.0
+            window_mask = (
+                window_mask[None, None]
+                .expand(batch, q_head_num, q_len, k_len)
+                .contiguous()
+            )
+            if is_causal:
+                empty_rows = max(0, q_len - k_len)
+            elif wr >= 0:
+                empty_rows = max(0, q_len - k_len - wr)
+        tiled_out, tiled_lse = _flash_forward_tiled(
+            query,
+            key,
+            value,
+            softmax_scale,
+            is_causal and not need_mask,
+            head_dim,
+            q_len,
+            k_len,
+            mask=window_mask,
+            empty_rows=empty_rows,
+        )
+        return tiled_out, tiled_lse, None, None, None
+
     BLOCK_M = 32
     BLOCK_N = 32
     k_pad = triton.cdiv(k_len, BLOCK_N) * BLOCK_N
@@ -2244,8 +2513,8 @@ def flash_attention_forward(
     cmask = None
     if is_causal or has_window:
         cmask2d = torch.full((q_len, k_pad), 50.0, dtype=torch.float32, device=device)
-        rows = torch.arange(q_len, device=device)[:, None]
-        cols = torch.arange(k_pad, device=device)[None, :]
+        rows = _arange(0, q_len, device=device)[:, None]
+        cols = _arange(0, k_pad, device=device)[None, :]
         off = k_len - q_len
         if is_causal:
             valid = cols <= (rows + off)
@@ -2509,3 +2778,96 @@ def flash_attn_varlen_func(
         )
 
     return (out, softmax_lse) if return_softmax_lse else out
+
+
+def flash_attn_varlen_opt_func(
+    q,
+    k,
+    v,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k=None,  # only used for non-paged prefill
+    seqused_k=None,
+    q_v=None,
+    dropout_p=0.0,
+    softmax_scale=None,
+    causal=False,
+    window_size=None,
+    softcap=0.0,  # 0.0 means deactivated
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    block_table=None,
+    return_softmax_lse=False,
+    out=None,
+    lse=None,
+    # Dummy FA3 arguments
+    scheduler_metadata=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    s_aux=None,
+    num_splits: int = 0,
+    cp_world_size: int = 1,
+    cp_rank: int = 0,
+    cp_tot_seqused_k=None,
+    fa_version: int = 2,
+):
+    """Kunlunxin override for ``flash_attn_varlen_opt_func``.
+
+    The generic implementation routes to ``flag_gems.ops.flash_api``, which owns
+    a second copy of ``flash_varlen_fwd_kernel``.  That copy is a separate
+    compilation unit and does not carry the backend's kernel fixes, so this
+    override keeps a single source of truth by delegating to the backend-local
+    :func:`flash_attn_varlen_func`.
+
+    The ``opt`` entry point carries extra optional parameters that only its
+    generic path uses (``lse``, ``s_aux``, the context-parallel triplet).  They
+    are accepted for signature compatibility, but this backend does not
+    implement them: rather than silently ignoring a caller-supplied output
+    buffer or an unsupported mode, each is refused explicitly.
+    """
+    logger.debug("GEMS_KUNLUNXIN FLASH_ATTN_VARLEN_OPT_FUNC")
+    if lse is not None:
+        raise NotImplementedError(
+            "Kunlunxin flash_attn_varlen_opt_func does not support a "
+            "caller-supplied `lse` output buffer"
+        )
+    if s_aux is not None:
+        raise NotImplementedError(
+            "Kunlunxin flash_attn_varlen_opt_func does not support `s_aux`"
+        )
+    if cp_world_size != 1 or cp_rank != 0 or cp_tot_seqused_k is not None:
+        raise NotImplementedError(
+            "Kunlunxin flash_attn_varlen_opt_func does not support context "
+            "parallel arguments"
+        )
+    return flash_attn_varlen_func(
+        q,
+        k,
+        v,
+        max_seqlen_q,
+        cu_seqlens_q,
+        max_seqlen_k,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_k=seqused_k,
+        q_v=q_v,
+        dropout_p=dropout_p,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        deterministic=deterministic,
+        return_attn_probs=return_attn_probs,
+        block_table=block_table,
+        return_softmax_lse=return_softmax_lse,
+        out=out,
+        scheduler_metadata=scheduler_metadata,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+        num_splits=num_splits,
+        fa_version=fa_version,
+    )
