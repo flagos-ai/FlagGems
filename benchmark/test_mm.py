@@ -120,6 +120,10 @@ class MmBackwardBenchmark(base.BlasBenchmark):
     both gradient products (``grad_a`` and ``grad_b``), not the forward.
     """
 
+    # Matrix storage scales with M*K + K*N + M*N. The B*M*N*K bound would
+    # discard the default GEMM cases before their inputs are allocated.
+    MAX_BACKWARD_ELEMENTS = None
+
     def get_tflops(self, op, *args, **kwargs):
         m, k = args[0].shape
         n = args[1].shape[1]
