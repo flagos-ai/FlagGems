@@ -341,6 +341,19 @@ def conv_transpose2d(
     pad_w = padding_w - output_padding_w if borrow_op else padding_w
     op_h = 0 if borrow_op else output_padding_h
     op_w = 0 if borrow_op else output_padding_w
+    # When the requested padding is zero the extra output_padding rows/cols sit
+    # outside the full-convolution support, so they are exactly zero.  Compute
+    # the unpadded result and add them here instead of forwarding
+    # output_padding to the handler, whose handling of it is unreliable.
+    zero_pad_op = (
+        (output_padding_h or output_padding_w)
+        and not borrow_op
+        and padding_h == 0
+        and padding_w == 0
+    )
+    if zero_pad_op:
+        op_h = 0
+        op_w = 0
 
     n, c, h, w = input.shape
     kh, kw = weight.shape[2], weight.shape[3]
@@ -364,6 +377,8 @@ def conv_transpose2d(
     # out0 + op, so the buffer needs exactly target + op
     alloc_h = out_h + (output_padding_h if borrow_op else 0)
     alloc_w = out_w + (output_padding_w if borrow_op else 0)
+    call_h = out_h - output_padding_h if zero_pad_op else alloc_h
+    call_w = out_w - output_padding_w if zero_pad_op else alloc_w
     if use_cast_ride:
         out = torch.empty(
             (n, out_c, alloc_h, alloc_w), device=input.device, dtype=torch.float32
@@ -393,8 +408,8 @@ def conv_transpose2d(
         h,
         w,
         out_c,
-        alloc_h,
-        alloc_w,
+        call_h,
+        call_w,
         input.stride(0),
         input.stride(1),
         input.stride(2),
@@ -427,6 +442,9 @@ def conv_transpose2d(
     )
     if use_cast_ride:
         out = out_final
+    if zero_pad_op:
+        out[..., call_h:, :] = 0
+        out[..., :, call_w:] = 0
     if borrow_op:
         out = out[
             ...,
