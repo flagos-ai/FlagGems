@@ -70,6 +70,8 @@ def test_replication_pad1d_backward(shape, padding, dtype):
     ref_out = torch.ops.aten.replication_pad1d_backward(ref_grad, ref_inp, padding)
     res_out = flag_gems.replication_pad1d_backward(grad_output, inp, padding)
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 

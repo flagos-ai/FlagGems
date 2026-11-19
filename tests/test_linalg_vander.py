@@ -114,6 +114,8 @@ def test_linalg_vander_complex(shape, dtype):
 
     res_out = flag_gems.linalg_vander(x)
 
+    if flag_gems.vendor_name == "ascend":
+        assert res_out.device == x.device
     _assert_vander_close(res_out, ref_out, dtype)
 
 
@@ -131,4 +133,6 @@ def test_linalg_vander_with_N_complex(shape, N, dtype):
 
     res_out = flag_gems.linalg_vander(x, N=N)
 
+    if flag_gems.vendor_name == "ascend":
+        assert res_out.device == x.device
     _assert_vander_close(res_out, ref_out, dtype)

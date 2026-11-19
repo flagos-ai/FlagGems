@@ -39,13 +39,15 @@ def _reference_hash(inp, dims, *, keepdim):
     return torch.from_numpy(np.asarray(hashed)).view(torch.uint64)
 
 
-def _assert_equal(res_out, ref_out):
+def _assert_equal(res_out, ref_out, input_device):
     """Compare two hash_tensor results, which are always uint64.
 
     Some device runtimes do not implement uint64 elementwise comparison
     (torch_xmlir's eq/equal reject it), so reinterpret the same bits as int64.
     The dtype view keeps the comparison bit-exact.
     """
+    if flag_gems.vendor_name == "iluvatar":
+        assert res_out.device == input_device
     if ref_out.device != res_out.device:
         res_out = res_out.cpu()
     utils.gems_assert_equal(res_out.view(torch.int64), ref_out.view(torch.int64))
@@ -66,7 +68,7 @@ def test_hash_tensor(shape, dtype, dim, keepdim):
     ref_out = _reference_hash(inp, dim_arg, keepdim=keepdim)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=keepdim, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -84,7 +86,7 @@ def test_hash_tensor_int_dtypes(shape, dtype, dim):
     ref_out = _reference_hash(inp, dim_arg, keepdim=False)
     res_out = flag_gems.hash_tensor(inp, dim_arg, keepdim=False, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -105,7 +107,7 @@ def test_hash_tensor_multidim(shape, dim, keepdim):
     ref_out = _reference_hash(inp, dim, keepdim=keepdim)
     res_out = flag_gems.hash_tensor(inp, dim, keepdim=keepdim, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)
 
 
 @pytest.mark.hash_tensor
@@ -115,4 +117,4 @@ def test_hash_tensor_scalar():
     ref_out = _reference_hash(inp, [], keepdim=False)
     res_out = flag_gems.hash_tensor(inp, [], keepdim=False, mode=0)
 
-    _assert_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, inp.device)

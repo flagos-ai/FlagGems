@@ -154,6 +154,8 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
 
+    if use_cpu_reference:
+        assert res_out.device == a.device
     assert res_out.dtype == ref_out.dtype
     utils.gems_assert_equal(res_out, ref_out)
 

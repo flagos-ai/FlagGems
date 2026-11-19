@@ -204,6 +204,8 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         reduction,
     )
     result = flag_gems.poisson_nll_loss(inp, target, log_input, full, 1e-8, reduction)
+    if use_cpu_reference:
+        assert result.device == inp.device
     assert result.dtype == reference.dtype
     utils.gems_assert_close(
         result,
