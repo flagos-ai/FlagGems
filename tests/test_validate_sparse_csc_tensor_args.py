@@ -223,7 +223,12 @@ def _run_csc_index_child(case, override):
         if line.startswith(prefix)
     ]
     assert len(reports) == 1, result.stdout[-2000:]
-    return json.loads(reports[0])
+    message = json.loads(reports[0])
+    if override is None:
+        # Triton device_assert writes the detailed validation reason to stderr;
+        # the Python CUDA exception only reports a device-side assertion.
+        message += "\n" + result.stderr
+    return message
 
 
 @pytest.mark.underscore_validate_sparse_csc_tensor_args
