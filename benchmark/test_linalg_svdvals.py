@@ -12,14 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import pytest
 import torch
+
+import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 from .test_linalg_cond import _MusaLinalgStaticBaseline
 
-SHAPES = [(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512)]
+SHAPES = [
+    (16, 16),
+    (32, 32),
+    (64, 64),
+    (128, 128),
+    (256, 256),
+    (512, 512),
+    (1024, 1024),
+    (4096, 4096),
+    (1024, 65536),
+]
 
 
 class OperatorCaseBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
@@ -47,6 +61,12 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.linalg_svdvals
 def test_linalg_svdvals():
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not (base.Config.list_cases or base.Config.preflight_only)
+        and not os.environ.get("FLAGGEMS_MUSA_LINALG_H800_BASELINE")
+    ):
+        pytest.skip("MUSA native SVD values require unavailable LAPACK support")
     OperatorCaseBenchmark(
         op_name="linalg_svdvals",
         torch_op=torch.linalg.svdvals,

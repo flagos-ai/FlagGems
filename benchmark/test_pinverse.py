@@ -353,6 +353,12 @@ class PinverseBenchmark(_PinverseH800Reference, base.Benchmark):
 
 @pytest.mark.pinverse
 def test_pinverse():
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not (base.Config.list_cases or base.Config.preflight_only)
+        and not os.environ.get("FLAGGEMS_PINVERSE_H800_BASELINE")
+    ):
+        pytest.skip("MUSA native pinverse requires unavailable LAPACK support")
     bench = PinverseBenchmark(
         op_name="pinverse",
         torch_op=torch.pinverse,
