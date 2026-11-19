@@ -442,7 +442,7 @@ def _launch(a, b, out):
 
 
 def _divide(a, b):
-    out_shape = torch.broadcast_shapes(a.shape, b.shape)
+    out_shape = torch.broadcast_shapes(a.shape, b.shape)  # allow-torch-compute
     dtype = torch.result_type(a, b)
     if not dtype.is_floating_point:
         # integer / bool inputs: true division promotes to the default float
