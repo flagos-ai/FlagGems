@@ -90,7 +90,6 @@ def _row_product_kernel(
 @triton.jit(do_not_specialize=["N", "total", "beta"])
 def _emit_kernel(
     starts_ptr,
-    flag_ptr,
     prod_ptr,
     input_ptr,
     idx_ptr,
@@ -100,14 +99,19 @@ def _emit_kernel(
     beta,
     BLOCK_N: tl.constexpr,
 ):
-    """Write the result pattern of one row: every column of a touched row."""
+    """Write the result pattern of one row: every column of a touched row.
+
+    The written width is taken from the row's own slot range (``starts``
+    difference) rather than from a conjunction with a per-row flag: the tile
+    keeps a single comparison as its store mask.
+    """
     r = tl.program_id(0)
     cn = tl.program_id(1)
     offs = cn * BLOCK_N + tl.arange(0, BLOCK_N)
     mask = offs < N
     N64 = N.to(tl.int64)
-    on = tl.load(flag_ptr + r) != 0
     start = tl.load(starts_ptr + r).to(tl.int64)
+    span = tl.load(starts_ptr + r + 1).to(tl.int64) - start
 
     base = r.to(tl.int64) * N64 + offs.to(tl.int64)
     v = (
@@ -116,7 +120,7 @@ def _emit_kernel(
     )
 
     dst = start + offs.to(tl.int64)
-    keep = mask & on
+    keep = offs.to(tl.int64) < span
     tl.store(val_ptr + dst, v.to(val_ptr.dtype.element_ty), mask=keep)
     tl.store(idx_ptr + dst, r.to(idx_ptr.dtype.element_ty), mask=keep)
     tl.store(
@@ -207,7 +211,6 @@ def _sspaddmm_impl(input, mat1, mat2, beta=1.0, alpha=1.0, out=None):
     with torch_device_fn.device(device):
         _emit_kernel[grid](
             starts,
-            flag,
             product,
             input_dense,
             indices,
