@@ -26,6 +26,16 @@ from . import conftest as cfg
 
 DEVICE = flag_gems.device
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason=(
+        "generic fft_rfft kernel does not compile on the XPU Triton backend "
+        "(TritonXPUCoreTiling: arith.addf encoding mismatch -> OutOfResources), "
+        "and the native fp16 rfft reference is unimplemented (kfloat16 -> "
+        "kcomplex64); tracked upstream"
+    ),
+)
+
 # Float16 cases use power-of-two transform lengths accepted by CUDA FFT.  The
 # float64 cases exercise complex128 output with an explicit comparator because
 # FlagGems' generic resolution table intentionally only lists complex64.
@@ -196,6 +206,10 @@ def test_fft_rfft_zero_dim_input():
 
 
 @pytest.mark.fft_rfft
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="complex tensors cannot be uploaded to this device",
+)
 def test_fft_rfft_rejects_complex():
     """``rfft`` is the real-input transform, so complex input is refused."""
     inp = _real((2, 16)).to(torch.complex64)
@@ -207,9 +221,10 @@ def test_fft_rfft_rejects_complex():
 def test_fft_rfft_defaults_bind():
     """Every argument but the input is defaulted by the ATen schema."""
     inp = _real((2, 16))
-    assert torch.equal(
-        flag_gems.fft_rfft(inp), flag_gems.fft_rfft(inp, n=None, dim=-1, norm=None)
-    )
+    a = flag_gems.fft_rfft(inp)
+    b = flag_gems.fft_rfft(inp, n=None, dim=-1, norm=None)
+    # torch.equal on complex64 is unimplemented on XPU; compare real/imag parts.
+    assert torch.equal(a.real, b.real) and torch.equal(a.imag, b.imag)
 
 
 @pytest.mark.fft_rfft

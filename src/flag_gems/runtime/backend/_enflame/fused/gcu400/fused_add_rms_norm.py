@@ -24,6 +24,8 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 MAX_BLOCK_N = 16384
+_GRID_SIZE = 48  # Fixed program count, tiered after sweeping over M sizes
+_NUM_WARPS = 1  # Launch config, fixed after sweeping
 
 
 @triton.jit(do_not_specialize=["eps", "inv_N"])
@@ -36,58 +38,59 @@ def fused_add_rms_norm_kernel(
     eps,
     inv_N,
     BLOCK_N: tl.constexpr,
+    SINGLE_BLOCK: tl.constexpr,
 ):
-    if tl.constexpr(input_ptr.dtype.element_ty == tl.float16) | tl.constexpr(
-        input_ptr.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = input_ptr.dtype.element_ty
+    # Accumulate always in fp32: fp16/bf16 inputs are promoted, fp32 inputs stay fp32
+    cdtype = tl.float32
 
     pid = ext.program_id(0)
     step = tl.num_programs(0)
 
     cols = tl.arange(0, BLOCK_N)
     mask = cols < N
+    # In the single-block path weight is identical for all rows, so load it once outside the loop
+    w_first = tl.load(w_ptr + cols, mask=mask, other=0.0)
 
-    row = pid
-    while row < M:
+    for row in tl.range(pid, M, step):
         row_in = input_ptr + row * N
         row_res = residual_ptr + row * N
 
-        # Single-block fast path: keep x in registers, avoid re-read
-        x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
-        r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
-        x += r
-        tl.store(row_res + cols, x, mask=mask)
-
-        var_acc = x * x
-        for off in range(BLOCK_N, N, BLOCK_N):
-            cols2 = off + tl.arange(0, BLOCK_N)
-            mask2 = cols2 < N
-            xi = tl.load(row_in + cols2, mask2, other=0.0).to(cdtype)
-            ri = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
-            xi += ri
-            tl.store(row_res + cols2, xi, mask=mask2)
-            var_acc += xi * xi
-
-        var = tl.sum(var_acc, axis=0) * inv_N
-        rrms = tl.math.rsqrt(var + eps)
-
-        # Normalize: use x from registers for first block
-        w = tl.load(w_ptr + cols, mask=mask, other=0.0)
-        y = (x * rrms * w).to(cdtype)
-        tl.store(row_in + cols, y, mask=mask)
-
-        for off in range(BLOCK_N, N, BLOCK_N):
-            cols2 = off + tl.arange(0, BLOCK_N)
-            mask2 = cols2 < N
-            xi = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
-            wi = tl.load(w_ptr + cols2, mask=mask2, other=0.0)
-            yi = (xi * rrms * wi).to(cdtype)
-            tl.store(row_in + cols2, yi, mask=mask2)
-
-        row += step
+        if SINGLE_BLOCK:
+            # One tile covers the whole row: x+r stays in registers, shared by residual and normalization
+            x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
+            r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
+            t = x + r
+            tl.store(row_res + cols, t, mask=mask)
+            var = tl.sum(t * t, axis=0) * inv_N
+            rrms = tl.math.rsqrt(var + eps)
+            y = (t * rrms * w_first).to(cdtype)
+            tl.store(row_in + cols, y, mask=mask)
+        else:
+            # Row wider than one tile: accumulate variance in chunks, then reread residual to normalize
+            x = tl.load(row_in + cols, mask, other=0.0).to(cdtype)
+            r = tl.load(row_res + cols, mask, other=0.0).to(cdtype)
+            t = x + r
+            tl.store(row_res + cols, t, mask=mask)
+            var_acc = t * t
+            for off in range(BLOCK_N, N, BLOCK_N):
+                cols2 = off + tl.arange(0, BLOCK_N)
+                mask2 = cols2 < N
+                xi = tl.load(row_in + cols2, mask2, other=0.0).to(cdtype)
+                ri = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
+                ti = xi + ri
+                tl.store(row_res + cols2, ti, mask=mask2)
+                var_acc += ti * ti
+            var = tl.sum(var_acc, axis=0) * inv_N
+            rrms = tl.math.rsqrt(var + eps)
+            y = (t * rrms * w_first).to(cdtype)
+            tl.store(row_in + cols, y, mask=mask)
+            for off in range(BLOCK_N, N, BLOCK_N):
+                cols2 = off + tl.arange(0, BLOCK_N)
+                mask2 = cols2 < N
+                ti = tl.load(row_res + cols2, mask2, other=0.0).to(cdtype)
+                wi = tl.load(w_ptr + cols2, mask=mask2, other=0.0)
+                yi = (ti * rrms * wi).to(cdtype)
+                tl.store(row_in + cols2, yi, mask=mask2)
 
 
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
@@ -102,12 +105,13 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     N = math.prod(normalized_shape)
 
     BLOCK_N = min(triton.next_power_of_2(N), MAX_BLOCK_N)
+    single_block = triton.next_power_of_2(N) <= MAX_BLOCK_N
 
     x = x.contiguous()
     residual = residual.contiguous()
     weight = weight.contiguous()
 
-    grid_size = min(48, M)
+    grid_size = min(_GRID_SIZE, M)
     inv_N = 1.0 / N
 
     with torch_device_fn.device(x.device):
@@ -120,6 +124,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
             eps,
             inv_N,
             BLOCK_N=BLOCK_N,
-            num_warps=1,
+            SINGLE_BLOCK=single_block,
+            num_warps=_NUM_WARPS,
         )
     return x, residual

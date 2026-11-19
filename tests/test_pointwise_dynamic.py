@@ -39,6 +39,8 @@ else:
 
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
+from .accuracy_utils import _SKIP_FP64
+
 MAX_GRID_SIZES = (65535, 65535, 65535)
 MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]
 
@@ -997,7 +999,7 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
 
 # Complex number tests
 
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)

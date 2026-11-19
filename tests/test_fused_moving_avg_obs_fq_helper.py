@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # (shape, ch_axis) pairs. ch_axis is only used in per-channel mode.
 FMAOFQ_SHAPES = [
@@ -28,7 +29,11 @@ FMAOFQ_SHAPES = [
     ((8, 1024), 0),
 ]
 
-UNSUPPORTED_DTYPES = [torch.float16, torch.bfloat16, torch.float64]
+UNSUPPORTED_DTYPES = [
+    torch.float16,
+    torch.bfloat16,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
+]
 
 
 def _run_reference(x, observer_on, fake_quant_on, per_channel, ch_axis, symmetric):

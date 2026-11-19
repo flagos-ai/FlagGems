@@ -30,25 +30,43 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def argmax_kernel_1(
+def argmax_kernel_flat(
     inp,
     mid_value,
     mid_index,
     M,
     BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
+    # Fixed Grid (GCU400: 48 CTAs) + grid-stride single-pass scan:
+    # each CTA strides over the whole input, keeping a local (max, index),
+    # and writes only GRID_SIZE partials, reduced by argmax_kernel_2.
     pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    min_value = get_dtype_min(inp.type.element_ty)
-    inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
-    max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
-    max_index = max_index + pid * BLOCK_SIZE
-    mid_value_ptr = mid_value + pid
-    max_index_ptr = mid_index + pid
-    tl.store(mid_value_ptr, max_val)
-    tl.store(max_index_ptr, max_index)
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+    min_value = get_dtype_min(cdtype)
+    max_value = tl.full([1], min_value, dtype=cdtype)
+    max_index = tl.full([1], 0, dtype=tl.int64)
+    num_tile = (M + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        offset = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=min_value)
+        tile_max, tile_argmax = tl.max(
+            inp_val, axis=0, return_indices=True, return_indices_tie_break_left=True
+        )
+        update = tile_max > max_value
+        max_value = tl.where(update, tile_max, max_value)
+        max_index = tl.where(
+            update, (tile_id * BLOCK_SIZE + tile_argmax).to(tl.int64), max_index
+        )
+    tl.store(mid_value + pid + tl.arange(0, 1), max_value.to(mid_value.type.element_ty))
+    tl.store(mid_index + pid + tl.arange(0, 1), max_index)
 
 
 @libentry()
@@ -77,39 +95,30 @@ def argmax_kernel_non_inner(
     TILE_K: tl.constexpr,
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
-    k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
+    # Fixed Grid (48) + grid-stride: each CTA strides over the (m, k) tile
+    # space; every tile is [TILE_N rows x TILE_K cols], reduced along N.
+    pid = ext.program_id(0)
+    num_k_tile = (K + TILE_K - 1) // TILE_K
+    num_tile = M * num_k_tile
+    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        pid_m = tile_id // num_k_tile
+        pid_k = tile_id % num_k_tile
+        k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = inp.dtype.element_ty
+        if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
+            inp.dtype.element_ty == tl.bfloat16
+        ):
+            cdtype = tl.float32
+        else:
+            cdtype = inp.dtype.element_ty
 
-    min_value = get_dtype_min(cdtype)
+        min_value = get_dtype_min(cdtype)
 
-    if ONE_TILE_PER_CTA:
-        n_offset = tl.arange(0, TILE_N)
-        offset = pid_m * N * K + n_offset[:, None] * K + k_offset
-        mask = (k_offset < K) & (n_offset[:, None] < N)
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
-        offset_index = pid_m * K + k_offset
-        out_index_ptrs = out_index + offset_index
-        mask1 = k_offset < K
-        tl.store(out_index_ptrs, local_argmax, mask=mask1)
-    else:
-        max_values = tl.full([TILE_K], dtype=cdtype, value=min_value)
-        argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0)
-
-        for start_n in range(0, N, TILE_N):
-            n_offset = start_n + tl.arange(0, TILE_N)
+        if ONE_TILE_PER_CTA:
+            n_offset = tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset
             mask = (k_offset < K) & (n_offset[:, None] < N)
             inp_ptrs = inp + offset
@@ -117,13 +126,30 @@ def argmax_kernel_non_inner(
             local_max, local_argmax = tl.max(
                 inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
             )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
-        offset_index = pid_m * K + k_offset
-        out_index_ptrs = out_index + offset_index
-        mask1 = k_offset < K
-        tl.store(out_index_ptrs, argmax_values, mask=mask1)
+            offset_index = pid_m * K + k_offset
+            out_index_ptrs = out_index + offset_index
+            mask1 = k_offset < K
+            tl.store(out_index_ptrs, local_argmax, mask=mask1)
+        else:
+            max_values = tl.full([TILE_K], dtype=cdtype, value=min_value)
+            argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0)
+
+            for start_n in range(0, N, TILE_N):
+                n_offset = start_n + tl.arange(0, TILE_N)
+                offset = pid_m * N * K + n_offset[:, None] * K + k_offset
+                mask = (k_offset < K) & (n_offset[:, None] < N)
+                inp_ptrs = inp + offset
+                inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
+                local_max, local_argmax = tl.max(
+                    inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+                )
+                update = local_max > max_values
+                max_values = tl.where(update, local_max, max_values)
+                argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+            offset_index = pid_m * K + k_offset
+            out_index_ptrs = out_index + offset_index
+            mask1 = k_offset < K
+            tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 
 @libentry()
@@ -135,61 +161,42 @@ def argmax_kernel_inner(
     M,
     N,
     TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
 ):
-    pid_m = ext.program_id(0)
-
-    dtype = inp.type.element_ty
-    min_value = get_dtype_min(dtype)
-
-    if ONE_TILE_PER_CTA:
-        n_offset = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offset
-        mask = n_offset < N
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
-        out_index_ptrs = out_index + pid_m
-        tl.store(out_index_ptrs, local_argmax)
+    # 2D tile (BLOCK_M rows x TILE_N cols) + Fixed Grid (48) + grid-stride:
+    # each CTA strides over multiple row blocks; rows are reduced along N in
+    # TILE_N chunks. tl.max with tie_break_left matches torch.argmax's
+    # first-maximum semantics.
+    pid = ext.program_id(0)
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
     else:
-        max_values = min_value
-        argmax_values = 0
-
-        loop_time = N // TILE_N
-        remainder = N % TILE_N
-        for start_n in range(0, loop_time):
-            n_offset = start_n * TILE_N + tl.arange(0, TILE_N)
-            offset = pid_m * N + n_offset
-            inp_ptrs = inp + offset
-            inp_vals = tl.load(inp_ptrs)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        cdtype = inp.dtype.element_ty
+    min_value = get_dtype_min(cdtype)
+    num_row_tile = (M + BLOCK_M - 1) // BLOCK_M
+    for row_tile in tl.range(pid, num_row_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        row = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        row_mask = row < M
+        max_values = tl.full([BLOCK_M], min_value, dtype=cdtype)
+        argmax_values = tl.full([BLOCK_M], 0, dtype=tl.int64)
+        for n_tile in tl.range(0, N, TILE_N, num_stages=NUM_STAGES):
+            n_offset = n_tile + tl.arange(0, TILE_N)
+            offset = row[:, None] * N + n_offset[None, :]
+            mask = row_mask[:, None] & (n_offset[None, :] < N)
+            inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+            tile_max, tile_argmax = tl.max(
+                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
             )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
+            update = tile_max > max_values
+            max_values = tl.where(update, tile_max, max_values)
             argmax_values = tl.where(
-                update, start_n * TILE_N + local_argmax, argmax_values
+                update, (n_tile + tile_argmax).to(tl.int64), argmax_values
             )
-
-        if remainder:
-            n_offset = loop_time * TILE_N + tl.arange(0, TILE_N)
-            offset = pid_m * N + n_offset
-            mask = n_offset < N
-            inp_ptrs = inp + offset
-            inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-            )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(
-                update, loop_time * TILE_N + local_argmax, argmax_values
-            )
-
-        out_index_ptrs = out_index + pid_m
-        tl.store(out_index_ptrs, argmax_values)
+        tl.store(out_index + row, argmax_values, mask=row_mask)
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
@@ -198,12 +205,19 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
+        # Fixed Grid: 48 CTAs on GCU400, grid-stride single-pass scan
+        # (replaces the two-stage mid_size-wide grid that reads data twice).
+        # Measured optimum: BLOCK=min(32768, npo2(M)) + num_stages=4 + num_warps=2.
+        GRID_SIZE = 48
+        block_size = min(32768, triton.next_power_of_2(M))
+        num_stages = 4
+        num_warps = 2
+        num_tile = triton.cdiv(M, block_size)
+        grid_size = min(GRID_SIZE, num_tile)
+        block_mid = triton.next_power_of_2(grid_size)
 
-        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
+        mid_value = torch.empty((grid_size,), dtype=dtype, device=inp.device)
+        mid_index = torch.empty((grid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
@@ -213,14 +227,17 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            argmax_kernel_1[(mid_size, 1, 1)](
+            argmax_kernel_flat[(grid_size, 1, 1)](
                 inp,
                 mid_value,
                 mid_index,
                 M,
                 block_size,
+                grid_size,
+                num_stages,
+                num_warps=num_warps,
             )
-            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, grid_size, block_mid)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -248,8 +265,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         with torch_device_fn.device(inp.device):
             if K > 1:
                 grid = lambda meta: (
-                    M,
-                    triton.cdiv(K, meta["TILE_K"]),
+                    min(48, M * triton.cdiv(K, meta["TILE_K"])),
+                    1,
+                    1,
                 )
                 argmax_kernel_non_inner[grid](
                     inp,
@@ -259,7 +277,11 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                     K,
                 )
             else:
-                grid = lambda meta: (M, 1, 1)
+                grid = lambda meta: (
+                    min(48, triton.cdiv(M, meta["BLOCK_M"])),
+                    1,
+                    1,
+                )
                 argmax_kernel_inner[grid](
                     inp,
                     out_index,
