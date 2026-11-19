@@ -1706,14 +1706,9 @@ def flash_attention_backward(
         dq_extra["ALIGNED_S"] = 1
         dkv_extra["ALIGNED_S"] = 1
     if dense_s5000:
-        dq_extra.update(
-            enable_backend_opt=False,
-            enable_llc_opt=False,
-            llc_options=(
-                "-mtgpu-opt-level=1 -mtgpu-combine-instr-with-burst=0 "
-                "-mtgpu-combine-fop-instr=1 -misched=mtgpu-max-ilp"
-            ),
-        )
+        # Select the compiler's SQMMA scheduling bundle. Older MUSA compilers
+        # cannot append custom llc_options to the unoptimized SQMMA flag set.
+        dq_extra.update(enable_backend_opt=True, enable_llc_opt=False)
         dkv_extra.update(
             enable_backend_opt=query.dtype == torch.bfloat16,
             enable_llc_opt=False,

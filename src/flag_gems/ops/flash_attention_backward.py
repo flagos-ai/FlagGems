@@ -32,6 +32,16 @@ except (ImportError, ModuleNotFoundError):
 
 logger = logging.getLogger(__name__)
 
+_COMPENSATED_DV_PRECISION = "split"
+if device.vendor_name == "ascend":
+    from torch_npu.npu.utils import get_cann_version
+
+    # CANN 9.1.1 miscompiles the FP32 dV dot. Keep IEEE accumulation on
+    # toolchains where it works, particularly for causal attention.
+    _COMPENSATED_DV_PRECISION = (
+        "scaled_split" if get_cann_version() == "9.1.1" else "ieee"
+    )
+
 
 @contextlib.contextmanager
 def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
@@ -566,10 +576,13 @@ def _flash_attn_bwd_dkv(
         else:
             p_hi = p.to(q.dtype)
             dv += tl.dot(tl.trans(p_hi), do)
-            if DV_PRECISION == "split":
-                # Preserve the residual from rounding the probability to the MMA dtype.
-                p_lo = (p - p_hi.to(tl.float32)).to(q.dtype)
-                dv += tl.dot(tl.trans(p_lo), do)
+            if DV_PRECISION != "input":
+                # Scale the residual before narrowing to retain FP16 subnormals on Ascend.
+                residual_scale: tl.constexpr = (
+                    4096.0 if DV_PRECISION == "scaled_split" else 1.0
+                )
+                p_lo = ((p - p_hi.to(tl.float32)) * residual_scale).to(q.dtype)
+                dv += tl.dot(tl.trans(p_lo), do) * (1.0 / residual_scale)
 
     tl.store(
         dK + k_base + offs_n[:, None] * stride_km + offs_d[None, :] * stride_kd,
@@ -1333,7 +1346,7 @@ def flash_attn_backward(
                 and not use_dropout
                 and Q.dtype in (torch.float16, torch.bfloat16)
             ):
-                dv_precision = "ieee" if device.vendor_name == "ascend" else "split"
+                dv_precision = _COMPENSATED_DV_PRECISION
             _flash_attn_bwd_dkv[grid_dkv](
                 Q,
                 K,
@@ -2098,9 +2111,9 @@ def _aten_flash_backward(
             )[0]
         except OverflowError:
             scale_log2 = math.copysign(math.inf, scale)
-    # Nonpositive scales on PPU use mathematical gradients, including an
-    # unrounded GQA head reduction. Positive scales follow native flash arithmetic.
-    if device.vendor_name == "thead" and scale <= 0:
+    # Nonpositive scales use mathematical gradients, including an unrounded
+    # GQA head reduction, on both CUDA and PPU.
+    if cuda_flash_arithmetic and scale <= 0:
         launch_options["FULL_PRECISION"] = True
     if cuda_flash_arithmetic:
         launch_options["enable_fp_fusion"] = False

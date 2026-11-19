@@ -220,7 +220,68 @@ def efficient_attn_sdp_forward_native(
     return out, lse_clipped, philox_seed, philox_offset
 
 
-class FlashAttentionBackwardBenchmark(base.GenericBenchmark):
+def _missing_attention_baseline(exc):
+    detail = str(exc)
+    return any(
+        message in detail
+        for message in (
+            "USE_FLASH_ATTENTION was not enabled",
+            "USE_MEM_EFF_ATTENTION was not enabled",
+            "not compiled with cuDNN Flash Attention enabled",
+        )
+    ) or (
+        isinstance(exc, NotImplementedError)
+        and detail.startswith(
+            (
+                "Could not run 'aten::_flash_attention_",
+                "Could not run 'aten::_efficient_attention_",
+                "Could not run 'aten::_scaled_dot_product_flash_attention",
+                "Could not run 'aten::_scaled_dot_product_cudnn_attention",
+                "Could not run 'aten::_scaled_dot_product_efficient_attention",
+            )
+        )
+    )
+
+
+class _AttentionBackwardBenchmark(base.GenericBenchmark):
+    def get_input_iter(self, dtype):
+        inputs = super().get_input_iter(dtype)
+        if flag_gems.vendor_name != "metax":
+            yield from inputs
+            return
+
+        # A native forward is required to construct the saved backward state.
+        # Probe the matching backward separately, outside the timed section.
+        while True:
+            try:
+                sample = next(inputs)
+            except StopIteration:
+                return
+            except RuntimeError as exc:
+                if not _missing_attention_baseline(exc):
+                    raise
+                pytest.skip(
+                    f"Native baseline: N/A (saved forward state unavailable: {exc})"
+                )
+
+            if not base.Config.skip_native:
+                args, kwargs = self.unpack_to_args_kwargs(sample)
+                try:
+                    self.torch_op(*args, **kwargs)
+                except RuntimeError as exc:
+                    if not _missing_attention_baseline(exc):
+                        raise
+                    with pytest.MonkeyPatch.context() as local:
+                        local.setattr(base.Config, "skip_native", True)
+                        local.setattr(
+                            base.Config, "native_baseline_skip_reason", str(exc)
+                        )
+                        yield sample
+                    continue
+            yield sample
+
+
+class FlashAttentionBackwardBenchmark(_AttentionBackwardBenchmark):
     def __init__(self, *args, causal, head_size, **kwargs):
         self.causal = causal
         self.head_size = head_size
@@ -387,7 +448,7 @@ _FLASH_BWD_NATIVE_FAMILIES = {
 }
 
 
-class FlashAttentionBackwardNativeFamilyBenchmark(base.GenericBenchmark):
+class FlashAttentionBackwardNativeFamilyBenchmark(_AttentionBackwardBenchmark):
     def __init__(self, *args, family, case_index, **kwargs):
         self.family = family
         self.case_index = case_index
@@ -504,7 +565,7 @@ def test_perf_flash_attention_backward_native_families(family, case_index):
     bench.run()
 
 
-class SdpFlashAttentionBackwardBenchmark(base.GenericBenchmark):
+class SdpFlashAttentionBackwardBenchmark(_AttentionBackwardBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
         for head_size in _SAFE_HEAD_SIZES:
@@ -678,7 +739,7 @@ def test_perf_scaled_dot_product_flash_attention_backward(is_causal):
     bench.run()
 
 
-class CudnnAttentionBackwardBenchmark(base.GenericBenchmark):
+class CudnnAttentionBackwardBenchmark(_AttentionBackwardBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
 
@@ -863,7 +924,7 @@ def test_perf_scaled_dot_product_cudnn_attention_backward():
     bench.run()
 
 
-class EfficientAttentionBackwardBenchmark(base.GenericBenchmark):
+class EfficientAttentionBackwardBenchmark(_AttentionBackwardBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
 
@@ -1067,7 +1128,7 @@ def test_perf_efficient_attention_backward():
     bench.run()
 
 
-class SdpEfficientAttentionBackwardBenchmark(base.GenericBenchmark):
+class SdpEfficientAttentionBackwardBenchmark(_AttentionBackwardBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
         _full_grad = (True, True, True, False)
