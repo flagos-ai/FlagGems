@@ -2,8 +2,13 @@
   "api_version": "v6.0",
   "name": "nll_loss2d_backward",
   "requires_triton_kernel": true,
-  "description": "Backward pass of the negative log likelihood loss for a 4D input (N, C, H, W).\nComputes the gradient with respect to the input log-probabilities.",
+  "description": "Backward pass of the negative log likelihood loss for a 4D input (N, C, H, W).\nComputes the gradient with respect to the input log-probabilities from grad_output. Pass the optional class weight as None when unused and the total_weight from the forward pass.",
   "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
     {
       "name": "self",
       "kind": "positional_or_keyword",
@@ -17,20 +22,22 @@
     {
       "name": "weight",
       "kind": "positional_or_keyword",
-      "required": false,
-      "default": null
+      "required": true
     },
     {
       "name": "reduction",
       "kind": "positional_or_keyword",
-      "required": false,
-      "default": 1
+      "required": true
     },
     {
       "name": "ignore_index",
       "kind": "positional_or_keyword",
-      "required": false,
-      "default": -100
+      "required": true
+    },
+    {
+      "name": "total_weight",
+      "kind": "positional_or_keyword",
+      "required": true
     }
   ],
   "outputs": [
