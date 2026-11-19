@@ -57,6 +57,10 @@ def test_accuracy_flipud_non_float(dtype, high):
 
 
 @pytest.mark.flipud
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="complex tensors are not supported on Kunlunxin XPU",
+)
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test_accuracy_flipud_complex(dtype):
     inp = torch.randn((3, 5), dtype=dtype, device=flag_gems.device).T
