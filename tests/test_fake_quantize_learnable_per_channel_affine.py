@@ -66,15 +66,6 @@ def _make_inputs(shape, axis, dtype):
     channels = shape[axis]
     scale = torch.rand(channels, device=flag_gems.device) * 0.5 + 0.01
     zero_point = torch.randn(channels, device=flag_gems.device)
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float32 and len(shape) == 4:
-        # CPU and MUSA can round opposite ways at a quantization half-step.
-        # Move only those inputs near a half-step away from that boundary.
-        view = [1] * len(shape)
-        view[axis] = channels
-        scale_view = scale.view(view)
-        scaled = inp / scale_view
-        near_tie = ((scaled - scaled.floor()) - 0.5).abs() < 1e-4
-        inp = torch.where(near_tie, inp + scale_view / 32, inp)
     return inp, scale, zero_point
 
 
@@ -133,6 +124,20 @@ def test_fake_quantize_learnable_per_channel_affine_alternate_grad_factor(axis, 
     _compare_output(
         _run_candidate(*inputs, axis, 0, 255, grad_factor), ref_out, inputs[0]
     )
+
+
+@pytest.mark.fake_quantize_learnable_per_channel_affine
+def test_fake_quantize_learnable_per_channel_affine_rounds_ties_to_even():
+    scale = torch.tensor([0.5, 0.25], device=flag_gems.device, dtype=torch.float32)
+    zero_point = torch.zeros_like(scale)
+    half_steps = scale.new_tensor([-2.5, -1.5, -0.5, 0.5, 1.5, 2.5])
+    inp = half_steps[:, None] * scale
+    expected = scale.new_tensor([-2, -2, 0, 0, 2, 2])[:, None] * scale
+    result = _run_candidate(inp, scale, zero_point, 1, -128, 127, 1.0)
+
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    flag_gems.testing.assert_equal(result, expected)
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine
