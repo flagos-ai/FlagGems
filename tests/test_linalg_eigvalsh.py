@@ -47,12 +47,25 @@ def _real_dtype(dtype):
     return _REAL_DTYPES.get(dtype, dtype)
 
 
+_CPU_REFERENCE_VENDORS = {"mthreads", "thead"}
+
+
 def _reference_input(inp):
-    if flag_gems.vendor_name in {"mthreads", "thead"}:
-        # PPU's native solver exits the process on unsupported batched and
-        # complex inputs, so always use CPU for this reference on PPU.
+    # MUSA lacks LAPACK and PPU's native solver exits on unsupported batched
+    # and complex inputs. The candidate still receives the original tensor.
+    if flag_gems.vendor_name in _CPU_REFERENCE_VENDORS:
         inp = inp.cpu()
     return tu.to_reference(inp)
+
+
+def _musa_selected_triangle(inp, uplo):
+    import numpy as np
+
+    array = inp.detach().resolve_conj().resolve_neg().numpy()
+    # Some LAPACK builds inspect the ignored triangle before solving. Zero it
+    # so ignored NaN/Inf cannot affect the reference; UPLO still selects the
+    # original lower or upper triangle, including its real diagonal.
+    return np.tril(array) if uplo.upper() == "L" else np.triu(array)
 
 
 class _MusaCpuEigvalsh(torch.autograd.Function):
@@ -60,7 +73,7 @@ class _MusaCpuEigvalsh(torch.autograd.Function):
     def forward(ctx, inp, uplo):
         import numpy as np
 
-        values, vectors = np.linalg.eigh(inp.detach().resolve_conj().numpy(), UPLO=uplo)
+        values, vectors = np.linalg.eigh(_musa_selected_triangle(inp, uplo), UPLO=uplo)
         ctx.save_for_backward(torch.from_numpy(vectors))
         return torch.from_numpy(values)
 
@@ -82,18 +95,20 @@ def _reference_eigvalsh(inp, uplo="L", *, out=None):
     if inp.requires_grad:
         result = _MusaCpuEigvalsh.apply(inp, uplo)
     else:
-        result = torch.from_numpy(np.linalg.eigvalsh(inp.resolve_conj().numpy(), UPLO=uplo))
+        result = torch.from_numpy(
+            np.linalg.eigvalsh(_musa_selected_triangle(inp, uplo), UPLO=uplo)
+        )
     if out is None:
         return result
     out.copy_(result)
     return out
 
 
-def _assert_eigvalsh_close(actual, reference, inp, **kwargs):
+def _assert_eigvalsh_close(actual, reference, inp):
     assert actual.device == inp.device
-    if flag_gems.vendor_name in {"mthreads", "thead"}:
+    if flag_gems.vendor_name in _CPU_REFERENCE_VENDORS:
         actual = actual.cpu()
-    tu.assert_result_close(actual, reference, **kwargs)
+    tu.assert_result_close(actual, reference)
 
 
 # eigvalsh needs rank >= 2 with a square trailing pair, so the spec's 0-dim and
@@ -477,8 +492,8 @@ _SPECIAL_CASES = tu.selected_cases(
 @pytest.mark.linalg_eigvalsh
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_linalg_eigvalsh_special_values(dtype, scenario):
-    if flag_gems.vendor_name == "thead" and scenario == "inf":
-        pytest.skip("PPU CPU eigvalsh reference does not converge on infinite diagonals")
+    if flag_gems.vendor_name in _CPU_REFERENCE_VENDORS and scenario == "inf":
+        pytest.skip("CPU eigvalsh reference does not converge on infinite diagonals")
     # Diagonal embedding of the shared payloads, with the native result as oracle.
     inp = torch.diag_embed(tu.make_special_input(dtype, scenario))
     ref_inp = _reference_input(inp)
@@ -537,11 +552,11 @@ _TRIANGLE_PAYLOAD_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype,uplo,payload,payload_triangle", _TRIANGLE_PAYLOAD_CASES)
 def test_linalg_eigvalsh_triangle_payload(dtype, uplo, payload, payload_triangle):
     if (
-        flag_gems.vendor_name == "thead"
+        flag_gems.vendor_name in _CPU_REFERENCE_VENDORS
         and payload == float("inf")
         and payload_triangle == "selected"
     ):
-        pytest.skip("PPU CPU eigvalsh reference does not converge on this infinite triangle")
+        pytest.skip("CPU eigvalsh reference does not converge on this infinite triangle")
     inp = _one_triangle_matrix(dtype, uplo, payload, payload_triangle)
     ref_inp = _reference_input(inp)
 

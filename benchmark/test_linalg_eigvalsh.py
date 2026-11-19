@@ -110,13 +110,6 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     shape, uplo, *symmetric = plan.builder_args
-    if flag_gems.vendor_name == "thead" and not (
-        base.Config.preflight_only or base.Config.profile_only
-    ):
-        if dtype.is_complex:
-            pytest.skip("PPU native eigvalsh aborts on complex inputs")
-        if prod(shape[:-2]) > 1 and shape[-1] <= 32:
-            pytest.skip("PPU native eigvalsh does not support its small batched solver")
     # benchmark.utils.generate_tensor_input produces nothing for float64 and
     # complex128, so the input is built directly for every supported dtype.
     inp = torch.randn(shape, dtype=dtype, device=device)
@@ -138,6 +131,22 @@ class LinalgEigvalshBenchmark(OperatorBenchmark):
                 builder_args=(shape, uplo, True),
             )
             yield self._case_from_plan(dtype, ordinal, plan)
+
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "thead" and not (
+            base.Config.preflight_only or base.Config.profile_only
+        ):
+            shape = case.builder_args[0].builder_args[0]
+            if case.dtype.is_complex:
+                reason = "PPU native eigvalsh aborts on complex inputs"
+            elif prod(shape[:-2]) > 1 and shape[-1] <= 32:
+                reason = "PPU native eigvalsh does not support its small batched solver"
+            else:
+                reason = None
+            if reason:
+                base.Config.skipped_case_ids.add(case.case_id)
+                pytest.skip(reason)
+        return super().build_inputs(case)
 
     def set_shapes(self, shape_file_path=None, *, default_shapes=None):
         # core_shapes.yaml has no linalg_eigvalsh entry, so the local square
