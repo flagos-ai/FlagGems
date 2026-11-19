@@ -75,6 +75,7 @@ def _probe_native_cutlass():
 def _native_available():
     return _probe_native_cutlass()[0]
 
+
 # The gems kernel supports fp16 / bf16 on all backends; the pure-PyTorch
 # reference is dtype-agnostic, so these run everywhere.
 FLOAT_DTYPES = [torch.float16, torch.bfloat16]
