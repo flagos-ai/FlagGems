@@ -159,8 +159,6 @@ def test_triplet_margin_loss_empty_feature_dim(margin, reduction):
 @pytest.mark.triplet_margin_loss
 def test_triplet_margin_loss_broadcast_and_promotion():
     # ATen accepts same-rank broadcastable shapes and promotes mixed dtypes.
-    if flag_gems.vendor_name == "iluvatar":
-        pytest.skip("Iluvatar float32-to-float64 promotion returns incorrect values")
     dtype_a = torch.float32
     dtype_p = torch.float64
     anchor = torch.randn(4, 16, dtype=dtype_a, device=flag_gems.device)
@@ -169,9 +167,15 @@ def test_triplet_margin_loss_broadcast_and_promotion():
 
     # to_reference places the reference on cpu/device per TO_CPU and upcasts to
     # fp64, matching the promoted output dtype without a manual .to(device).
-    ref_anchor = utils.to_reference(anchor, upcast=True)
-    ref_positive = utils.to_reference(positive, upcast=True)
-    ref_negative = utils.to_reference(negative, upcast=True)
+    if flag_gems.vendor_name == "iluvatar":
+        ref_anchor, ref_positive, ref_negative = (
+            t.to(device="cpu", dtype=torch.float64)
+            for t in (anchor, positive, negative)
+        )
+    else:
+        ref_anchor = utils.to_reference(anchor, upcast=True)
+        ref_positive = utils.to_reference(positive, upcast=True)
+        ref_negative = utils.to_reference(negative, upcast=True)
 
     ref_out = torch.ops.aten.triplet_margin_loss(
         ref_anchor, ref_positive, ref_negative, 1.0, 2.0, 1e-6, False, 1
