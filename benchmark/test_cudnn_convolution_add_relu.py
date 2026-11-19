@@ -61,6 +61,12 @@ _BENCH_CASES = [
         "none",
         None,
     ),
+    # Additional core geometries from the corresponding master overload.
+    ((16, 64, 56, 56), (128, 64, 1, 1), (1, 1), (0, 0), (1, 1), 1, "channel", 1.0),
+    ((8, 256, 64, 64), (256, 256, 3, 3), (1, 1), (1, 1), (1, 1), 1, "channel", 1.0),
+    ((16, 32, 32, 32), (32, 32, 3, 3), (1, 1), (2, 2), (2, 2), 1, "channel", 1.0),
+    ((8, 3, 224, 224), (16, 3, 3, 3), (1, 1), (1, 1), (1, 1), 1, "channel", 1.0),
+    ((16, 32, 56, 56), (32, 1, 3, 3), (1, 1), (1, 1), (1, 1), 32, "channel", 1.0),
 ]
 
 _BIAS_FORMS = ("none", "channel", "channel_11", "broadcast_1C11")

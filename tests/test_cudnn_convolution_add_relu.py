@@ -253,6 +253,27 @@ def _assert_result(result, reference, expected_device):
     tu.assert_result_close(result, reference)
 
 
+# Same-definition 2-D and 3-D geometries added on master.
+_MASTER_CONV_CASES = (
+    ((2, 4, 8, 8), (6, 4, 3, 3), 1, (1, 1), (1, 1), (1, 1)),
+    ((2, 3, 9, 9), (4, 3, 1, 1), 1, (2, 2), (0, 0), (1, 1)),
+    ((1, 8, 6, 6), (8, 1, 3, 3), 8, (1, 1), (0, 0), (1, 1)),
+    ((4, 4, 8, 8), (4, 2, 3, 3), 2, (1, 1), (1, 1), (1, 1)),
+    ((2, 2, 12, 12), (6, 2, 5, 3), 1, (2, 1), (1, 2), (2, 1)),
+    ((16, 16, 8, 8), (16, 16, 3, 3), 1, (1, 1), (1, 1), (1, 1)),
+    ((20, 64, 4, 4), (64, 64, 1, 1), 1, (1, 1), (0, 0), (1, 1)),
+    ((1, 4, 5, 5, 5), (4, 2, 3, 3, 3), 2, (1, 1, 1), (1, 1, 1), (1, 1, 1)),
+    ((2, 2, 6, 6, 6), (3, 2, 3, 3, 3), 1, (2, 2, 2), (0, 0, 0), (1, 1, 1)),
+)
+_MASTER_ALPHA_BIAS = (
+    (None, True),
+    (1.0, True),
+    (0.5, True),
+    (0.0, True),
+    (-2.0, False),
+)
+
+
 def _output_shape(x_shape, w_shape, stride, padding, dilation):
     return (x_shape[0], w_shape[0]) + tuple(
         (x_shape[i + 2] + 2 * padding[i] - dilation[i] * (w_shape[i + 2] - 1) - 1)
@@ -288,6 +309,34 @@ def _relayout(tensor, offset=0):
     )
     buffer[..., offset : offset + tensor.shape[-1]] = tensor
     return buffer[..., offset : offset + tensor.shape[-1]]
+
+
+@pytest.mark.cudnn_convolution_add_relu
+@pytest.mark.parametrize("case", tu.selected_cases(_MASTER_CONV_CASES, quick=[]))
+@pytest.mark.parametrize("alpha, has_bias", _MASTER_ALPHA_BIAS)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test_cudnn_convolution_add_relu_master_geometries(case, alpha, has_bias, dtype):
+    x_shape, w_shape, groups, stride, padding, dilation = case
+    out_shape = _output_shape(x_shape, w_shape, stride, padding, dilation)
+    inp = tu.make_input(dtype, x_shape, ["-1", "1"])
+    weight = tu.make_input(dtype, w_shape, ["-1", "1"])
+    z = tu.make_input(dtype, out_shape, ["-1", "1"])
+    bias = tu.make_input(dtype, (w_shape[0],), ["-1", "1"]) if has_bias else None
+    ref = _reference(
+        _reference_input(inp),
+        _reference_input(weight),
+        _reference_input(z),
+        alpha,
+        _reference_input(bias),
+        list(stride),
+        list(padding),
+        list(dilation),
+        groups,
+    )
+    result = flag_gems.cudnn_convolution_add_relu(
+        inp, weight, z, alpha, bias, list(stride), list(padding), list(dilation), groups
+    )
+    _assert_result(result, ref, inp.device)
 
 
 @pytest.mark.cudnn_convolution_add_relu

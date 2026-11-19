@@ -39,6 +39,18 @@ SLOW_CONV2D_BACKWARD_CASES = tu.selected_cases(
     ],
 )
 
+# Extra same-overload geometries covered by master. Keep the existing cases.
+FULL_MASK_CASES = SLOW_CONV2D_BACKWARD_CASES + tu.selected_cases(
+    [
+        ((2, 3, 8, 8), (5, 3, 1, 1), (1, 1), (1, 1), (0, 0)),
+        ((2, 4, 10, 10), (6, 4, 3, 3), (3, 3), (1, 1), (0, 0)),
+        ((3, 3, 9, 9), (4, 3, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((2, 3, 5, 5), (4, 3, 3, 3), (3, 3), (2, 2), (1, 1)),
+        ((1, 2, 7, 11), (3, 2, 2, 3), (2, 3), (2, 1), (1, 2)),
+    ],
+    quick=[],
+)
+
 SLOW_CONV2D_VALUE_RANGES_CASES = SLOW_CONV2D_BACKWARD_CASES[:4]
 
 _FULL_MASK = (True, True, True)
@@ -182,7 +194,7 @@ def test__slow_conv2d_backward_value_ranges(case, value_range, dtype):
 
 
 @pytest.mark.underscore_slow_conv2d_backward
-@pytest.mark.parametrize("case", SLOW_CONV2D_BACKWARD_CASES)
+@pytest.mark.parametrize("case", FULL_MASK_CASES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test__slow_conv2d_backward_output_mask_full(case, dtype):
     inp_shape, weight_shape, kernel_size, stride, padding = case

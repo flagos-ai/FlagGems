@@ -182,6 +182,85 @@ SLOW_CONV_TRANSPOSE3D_CASES = tu.selected_cases(
     ],
 )
 
+# Extra same-overload geometries covered by master. Keep the existing cases.
+TRANSPOSE_CASES = SLOW_CONV_TRANSPOSE3D_CASES + tu.selected_cases(
+    [
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (1, 1, 1),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (2, 2, 2),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (2, 1, 1),
+            (1, 0, 2),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (2, 4, 8, 16, 16),
+            (4, 8, 3, 3, 3),
+            (3, 3, 3),
+            (1, 2, 3),
+            (2, 2, 1),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (1, 1, 1),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (2, 2, 2),
+            (0, 0, 0),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (2, 1, 1),
+            (1, 0, 2),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+        (
+            (1, 8, 6, 8, 8),
+            (8, 4, 2, 2, 2),
+            (2, 2, 2),
+            (1, 2, 3),
+            (2, 2, 1),
+            (0, 0, 0),
+            (1, 1, 1),
+        ),
+    ],
+    quick=[],
+)
+
 BIASES = tu.selected_cases([True, False], quick=[True])
 
 SUPPORTED_DTYPES = [torch.float32, torch.bfloat16, torch.float16, torch.float64]
@@ -270,7 +349,7 @@ def _assert_close(res_out, ref_out, dtype, equal_nan=False):
 @pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize(
     "inp_shape, weight_shape, kernel_size, stride, padding, output_padding, dilation",
-    SLOW_CONV_TRANSPOSE3D_CASES,
+    TRANSPOSE_CASES,
 )
 @pytest.mark.parametrize(
     "dtype",

@@ -42,6 +42,24 @@ THNN_CONV2D_CASES = tu.selected_cases(
     ],
 )
 
+# Extra same-overload geometries covered by master. Keep the existing cases.
+THNN_FORWARD_CASES = THNN_CONV2D_CASES + tu.selected_cases(
+    [
+        ((2, 3, 16, 16), (4, 3, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((1, 1, 8, 8), (2, 1, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((4, 8, 9, 7), (8, 8, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((1, 16, 32, 32), (8, 16, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((8, 4, 28, 28), (4, 4, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((2, 3, 16, 16), (4, 3, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((2, 3, 16, 16), (4, 3, 1, 1), (1, 1), (1, 1), (0, 0)),
+        ((2, 3, 16, 16), (4, 3, 5, 5), (5, 5), (1, 1), (2, 2)),
+        ((2, 3, 16, 16), (4, 3, 3, 5), (3, 5), (1, 1), (1, 2)),
+        ((2, 3, 16, 16), (4, 3, 3, 3), (3, 3), (2, 2), (1, 1)),
+        ((2, 3, 16, 16), (4, 3, 4, 4), (4, 4), (3, 1), (0, 0)),
+    ],
+    quick=[],
+)
+
 BIASES = tu.selected_cases([True, False], quick=[True])
 
 _BACKWARD_CASES = THNN_CONV2D_CASES[:3]
@@ -134,7 +152,7 @@ def _assert_grads_close(res_grads, ref_grads, in_reduce_dim, out_reduce_dim, dty
 
 @pytest.mark.thnn_conv2d
 @pytest.mark.parametrize(
-    "inp_shape, weight_shape, kernel_size, stride, padding", THNN_CONV2D_CASES
+    "inp_shape, weight_shape, kernel_size, stride, padding", THNN_FORWARD_CASES
 )
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("bias", BIASES)

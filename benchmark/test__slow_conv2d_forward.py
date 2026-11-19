@@ -36,6 +36,11 @@ SLOW_CONV2D_SHAPES = [
     ((16, 32, 24, 24), (24, 32, 3, 3), (3, 3), (1, 1), (1, 1)),
     ((8, 64, 64, 64), (64, 64, 3, 3), (3, 3), (2, 2), (1, 1)),
     ((4, 256, 32, 32), (128, 256, 1, 1), (1, 1), (1, 1), (0, 0)),
+    # Additional core geometries from the corresponding master overload.
+    ((16, 32, 16, 16), (64, 32, 3, 3), (3, 3), (1, 1), (1, 1)),
+    ((16, 32, 32, 32), (64, 32, 3, 3), (3, 3), (1, 1), (1, 1)),
+    ((16, 64, 56, 56), (64, 64, 3, 3), (3, 3), (1, 1), (1, 1)),
+    ((16, 32, 32, 32), (64, 32, 3, 3), (3, 3), (2, 2), (1, 1)),
 ]
 
 
@@ -73,8 +78,7 @@ class SlowConv2dForwardBenchmark(OperatorBenchmark):
 def test__slow_conv2d_forward():
     # ``flag_gems._slow_conv2d_forward`` is only public once KernelGen registers
     # the candidate; before that the benchmark resolves the candidate through
-    # the process-local override. Passing the attribute (when it exists) keeps
-    # the same call semantics as the reference.
+    # the process-local override.
     if flag_gems.vendor_name == "mthreads" and not (
         base.Config.list_cases or base.Config.preflight_only
     ):

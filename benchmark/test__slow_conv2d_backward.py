@@ -44,6 +44,9 @@ _SLOW_CONV2D_BACKWARD_SHAPES = [
     (2, 3, 4, 4, 5, 3, 3, 1, 0),
     (64, 32, 8, 8, 64, 3, 3, 1, 1),
     (8, 64, 16, 16, 64, 3, 3, 2, 1),
+    # Additional core geometries from the corresponding master overload.
+    (8, 8, 16, 16, 16, 3, 3, 1, 0),
+    (4, 16, 32, 32, 32, 3, 3, 1, 0),
 ]
 
 _FULL_MASK = (True, True, True)

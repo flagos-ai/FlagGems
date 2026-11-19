@@ -34,17 +34,32 @@ SLOW_CONV_DILATED2D_SHAPES = [
     ((8, 128, 32, 32), (128, 128, 3, 3), (3, 3), (1, 1), (1, 1), (2, 2)),
     ((8, 64, 32, 32), (128, 64, 5, 5), (5, 5), (1, 1), (2, 2), (1, 1)),
     ((16, 32, 64, 64), (64, 32, 3, 3), (3, 3), (2, 2), (1, 1), (2, 2)),
+    # Master measures these geometries with and without bias.
+    ((2, 32, 32, 32), (64, 32, 1, 1), (1, 1), (1, 1), (0, 0), (1, 1), True),
+    ((2, 32, 32, 32), (64, 32, 1, 1), (1, 1), (1, 1), (0, 0), (1, 1), False),
+    ((2, 32, 32, 32), (64, 32, 3, 3), (3, 3), (2, 2), (1, 1), (1, 1), True),
+    ((2, 32, 32, 32), (64, 32, 3, 3), (3, 3), (2, 2), (1, 1), (1, 1), False),
+    ((2, 16, 32, 32), (32, 16, 3, 3), (3, 3), (1, 1), (1, 1), (2, 2), True),
+    ((2, 16, 32, 32), (32, 16, 3, 3), (3, 3), (1, 1), (1, 1), (2, 2), False),
+    ((4, 8, 64, 64), (16, 8, 3, 3), (3, 3), (1, 1), (1, 1), (1, 1), True),
+    ((4, 8, 64, 64), (16, 8, 3, 3), (3, 3), (1, 1), (1, 1), (1, 1), False),
+    ((8, 4, 28, 28), (8, 4, 3, 3), (3, 3), (2, 2), (1, 1), (2, 2), True),
+    ((8, 4, 28, 28), (8, 4, 3, 3), (3, 3), (2, 2), (1, 1), (2, 2), False),
+    ((2, 8, 256, 256), (32, 8, 3, 3), (3, 3), (1, 1), (1, 1), (1, 1), True),
+    ((2, 8, 256, 256), (32, 8, 3, 3), (3, 3), (1, 1), (1, 1), (1, 1), False),
+    ((2, 16, 256, 256), (32, 16, 3, 3), (3, 3), (1, 1), (1, 1), (1, 1), True),
+    ((2, 16, 256, 256), (32, 16, 3, 3), (3, 3), (1, 1), (1, 1), (1, 1), False),
 ]
 
 
 def _case_fn(shape, dtype):
     del dtype
-    inp_shape, weight_shape, kernel_size, stride, padding, dilation = shape
+    inp_shape, weight_shape, kernel_size, stride, padding, dilation, *bias = shape
     yield base.BenchmarkCasePlan(
         shape={"input": inp_shape, "weight": weight_shape},
         params={
             "kernel_size": kernel_size,
-            "bias": True,
+            "bias": bias[0] if bias else True,
             "stride": stride,
             "padding": padding,
             "dilation": dilation,
@@ -65,7 +80,11 @@ def _build_inputs_fn(plan, dtype, device):
     inp = utils.generate_tensor_input(inp_shape, dtype, device)
     weight = utils.generate_tensor_input(weight_shape, dtype, device)
     # weight is (C_out, C_in, kH, kW): bias has C_out elements.
-    bias = utils.generate_tensor_input((weight_shape[0],), dtype, device)
+    bias = (
+        utils.generate_tensor_input((weight_shape[0],), dtype, device)
+        if plan.params["bias"]
+        else None
+    )
     return inp, weight, kernel_size, bias, stride, padding, dilation, {}
 
 

@@ -39,6 +39,25 @@ SLOW_CONV2D_CASES = tu.selected_cases(
     ],
 )
 
+# Extra same-overload geometries covered by master. Keep the existing cases.
+FORWARD_CASES = SLOW_CONV2D_CASES + tu.selected_cases(
+    [
+        ((2, 3, 8, 8), (8, 3, 3, 3), (3, 3), (1, 1), (0, 0)),
+        ((2, 3, 8, 8), (8, 3, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((2, 3, 8, 8), (8, 3, 1, 1), (1, 1), (1, 1), (0, 0)),
+        ((2, 3, 8, 8), (8, 3, 3, 3), (3, 3), (2, 2), (1, 1)),
+        ((2, 4, 16, 16), (8, 4, 3, 3), (3, 3), (1, 1), (0, 0)),
+        ((2, 4, 16, 16), (8, 4, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((2, 4, 16, 16), (8, 4, 1, 1), (1, 1), (1, 1), (0, 0)),
+        ((2, 4, 16, 16), (8, 4, 3, 3), (3, 3), (2, 2), (1, 1)),
+        ((4, 8, 32, 32), (8, 8, 3, 3), (3, 3), (1, 1), (0, 0)),
+        ((4, 8, 32, 32), (8, 8, 3, 3), (3, 3), (1, 1), (1, 1)),
+        ((4, 8, 32, 32), (8, 8, 1, 1), (1, 1), (1, 1), (0, 0)),
+        ((4, 8, 32, 32), (8, 8, 3, 3), (3, 3), (2, 2), (1, 1)),
+    ],
+    quick=[],
+)
+
 BIASES = tu.selected_cases([True, False], quick=[True])
 
 UNSUPPORTED_DTYPES = [
@@ -129,7 +148,7 @@ def _assert_grads_close(res_grads, ref_grads, in_reduce_dim, out_reduce_dim, dty
 
 @pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
-    "inp_shape, weight_shape, kernel_size, stride, padding", SLOW_CONV2D_CASES
+    "inp_shape, weight_shape, kernel_size, stride, padding", FORWARD_CASES
 )
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("bias", BIASES)
