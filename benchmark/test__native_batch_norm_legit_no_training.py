@@ -64,3 +64,58 @@ def test_native_batch_norm_legit_no_training():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def native_batch_norm_legit_no_training_backward_input_fn(shape, dtype, device):
+    """Same tensors as the forward benchmark; the graph is built by the framework."""
+    for args in native_batch_norm_legit_no_training_input_fn(shape, dtype, device):
+        yield args
+
+
+def _infer_bn_output(inp, weight, bias, running_mean, running_var, momentum, eps):
+    """Baseline forward: single output tensor (the framework mimics autograd)."""
+    return torch.ops.aten._native_batch_norm_legit_no_training.default(
+        inp, weight, bias, running_mean, running_var, momentum, eps
+    )[0]
+
+
+def _infer_bn_output_gems(inp, weight, bias, running_mean, running_var, momentum, eps):
+    """Candidate forward through the FlagGems autograd.Function wrapper."""
+    return flag_gems._native_batch_norm_legit_no_training(
+        inp, weight, bias, running_mean, running_var, momentum, eps
+    )[0]
+
+
+class InferBNBackwardBenchmark(NormBenchmark):
+    """Autograd backward of the inference-only batch normalization.
+
+    ``Benchmark.unpack_to_args_kwargs`` marks every floating input as requiring a
+    gradient, but ATen rejects ``requires_grad`` on ``running_mean`` /
+    ``running_var``: they are constants of the no-training path. Only ``input``,
+    ``weight`` and ``bias`` take part in the backward, so they alone are marked.
+    """
+
+    def unpack_to_args_kwargs(self, input_tuple):
+        args = list(input_tuple)
+        for index in range(3):
+            if torch.is_tensor(args[index]) and torch.is_floating_point(args[index]):
+                args[index].requires_grad_(True)
+        return args, {}
+
+
+def test_native_batch_norm_legit_no_training_backward():
+    """Timed ``torch.autograd.grad`` on the default ``NormBenchmark`` shapes.
+
+    Baseline: native ATen forward + engine ``native_batch_norm_backward``
+    (train=False). Candidate: ``flag_gems._native_batch_norm_legit_no_training``
+    (autograd.Function) + ``flag_gems.batch_norm_backward`` (train=False).
+    """
+    bench = InferBNBackwardBenchmark(
+        input_fn=native_batch_norm_legit_no_training_backward_input_fn,
+        op_name="native_batch_norm_legit_no_training",
+        torch_op=_infer_bn_output,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(_infer_bn_output_gems)
+    bench.run()
