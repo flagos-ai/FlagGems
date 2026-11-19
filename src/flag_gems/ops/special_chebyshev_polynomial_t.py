@@ -459,7 +459,7 @@ def _chebyshev_polynomial_t(x, n, out=None):
     else:
         if out.device != x.device:
             raise RuntimeError("out must be on the same device as the input")
-        if not torch.can_cast(x.dtype, out.dtype):
+        if not torch.can_cast(x.dtype, out.dtype):  # allow-torch-compute: dtype query
             raise RuntimeError(
                 f"result dtype {x.dtype} cannot be cast to out dtype {out.dtype}"
             )
