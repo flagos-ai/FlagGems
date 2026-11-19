@@ -179,6 +179,7 @@ def _fused_bincount_launch(
 
 
 def bincount(input, weights=None, minlength=0):
+    logger.debug("GEMS_ENFLAME_GCU400 BINCOUNT")
     assert input.dim() == 1
     assert minlength >= 0
 

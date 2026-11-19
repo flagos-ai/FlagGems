@@ -27,6 +27,7 @@ from .addmm_ import addmm_
 from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
+from .attention import scaled_dot_product_attention
 from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
@@ -258,6 +259,7 @@ __all__ = [
     "replication_pad1d_backward",
     "resolve_neg",
     "run",
+    "scaled_dot_product_attention",
     "scatter_add_",
     "smm",
     "softplus_backward",

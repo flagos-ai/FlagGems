@@ -21,11 +21,14 @@ from . import accuracy_utils as utils
 
 # Merge duplicate COO coordinates and sum their stored values.
 # FP8 inputs are exercised by the rejection test.
+# This list feeds parametrize, a comprehension and _special_value_cases(), so
+# every entry must be a real torch.dtype: pytest.param marks only apply when
+# pytest expands a parametrization, not when the list is iterated directly.
 _COALESCE_DTYPES = [
     torch.float16,
     torch.bfloat16,
     torch.float32,
-    torch.float64,
+    *([torch.float64] if utils.fp64_is_supported else []),
     torch.int8,
     torch.uint8,
     torch.int16,
@@ -181,8 +184,8 @@ def _special_value_cases(dtypes):
     for dtype in dtypes:
         if not dtype.is_floating_point:
             continue
-        cases.append((dtype, "nan"))
-        cases.extend((dtype, kind) for kind in ("inf", "mixed"))
+        cases.append(pytest.param(dtype, "nan"))
+        cases.extend(pytest.param(dtype, kind) for kind in ("inf", "mixed"))
     return cases
 
 

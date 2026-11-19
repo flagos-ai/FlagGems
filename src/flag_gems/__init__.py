@@ -149,6 +149,11 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Double", "default"),
     ),
     (
+        "_cast_Float",
+        cast_Float,
+        lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
@@ -207,6 +212,11 @@ _FULL_CONFIG = (
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
     ("_efficientzerotensor", _efficientzerotensor),
+    (
+        "_efficientzerotensor.out",
+        _efficientzerotensor_out,
+        lambda: torch_has_aten_overload("_efficientzerotensor", "out"),
+    ),
     ("_embedding_bag", _embedding_bag),
     ("_embedding_bag_backward", _embedding_bag_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
@@ -621,6 +631,18 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    (
+        "_sparse_addmm",
+        _sparse_addmm,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
+    (
+        "_sparse_addmm.out",
+        _sparse_addmm_out,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
     ("_sparse_broadcast_to", sparse_broadcast_to, None, (SPARSE_DISPATCH_KEY,)),
     (
         "_sparse_broadcast_to_copy",
@@ -630,7 +652,49 @@ _FULL_CONFIG = (
     ),
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_bsr_tensor_unsafe", sparse_bsr_tensor_unsafe),
+    (
+        "_sparse_coo_tensor_with_dims",
+        sparse_coo_tensor_with_dims,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims.out",
+        sparse_coo_tensor_with_dims_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        sparse_coo_tensor_with_dims_and_tensors,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors.out",
+        sparse_coo_tensor_with_dims_and_tensors_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
+    (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     (
         "_sparse_csr_sum",
         sparse_csr_sum,
@@ -862,7 +926,12 @@ _FULL_CONFIG = (
         _upsample_nearest_exact3d_backward_grad_input,
     ),
     ("_validate_compressed_sparse_indices", _validate_compressed_sparse_indices),
+    ("_validate_sparse_bsc_tensor_args", _validate_sparse_bsc_tensor_args),
     ("_validate_sparse_bsr_tensor_args", _validate_sparse_bsr_tensor_args),
+    (
+        "_validate_sparse_compressed_tensor_args",
+        _validate_sparse_compressed_tensor_args,
+    ),
     ("_validate_sparse_coo_tensor_args", _validate_sparse_coo_tensor_args),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
     ("_validate_sparse_csr_tensor_args", _validate_sparse_csr_tensor_args),
@@ -2122,6 +2191,7 @@ _FULL_CONFIG = (
     ("sparse_mask", sparse_mask, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_mask.out", sparse_mask_out, None, (SPARSE_DISPATCH_KEY,)),
     ("sparse_resize_", sparse_resize_, None, (SPARSE_DISPATCH_KEY,)),
+    ("sparse_resize_and_clear_", sparse_resize_and_clear_, None, [SPARSE_DISPATCH_KEY]),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",
