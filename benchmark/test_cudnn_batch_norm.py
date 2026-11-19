@@ -90,8 +90,8 @@ def test_cudnn_batch_norm():
 
 
 @pytest.mark.cudnn_batch_norm_out
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "nvidia",
+@pytest.mark.skip_native(
+    vendors="nvidia",
     reason="Native cudnn_batch_norm.out can segfault on NVIDIA",
 )
 def test_cudnn_batch_norm_out():
