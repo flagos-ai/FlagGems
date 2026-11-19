@@ -25,6 +25,16 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+# Containerized backends (kunlunxin, metax, hygon, …) install test deps into
+# the system Python via `pip install .[test]` without activating a venv, so the
+# `coverage` console script may not be on PATH even though the package is
+# installed. Using `python3 -m coverage` reaches the installed module directly
+# without relying on the script being on PATH.
+if ! command -v coverage &>/dev/null; then
+  coverage() { python3 -m coverage "$@"; }
+  export -f coverage
+fi
+
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
 
