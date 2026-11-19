@@ -25,6 +25,21 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+# Ensure console scripts installed by 'pip install .[test]' (coverage, pytest,
+# pytest-md-report, …) are on PATH. The native backend gets this automatically
+# from 'source .venv/bin/activate' in the workflow; containerized backends
+# (kunlunxin, metax, hygon, iluvatar, mthreads, thead, enflame) install into
+# the container's system Python without activating anything, so the scripts
+# directory (e.g. /flagos/bin) may be absent from PATH under bash --login.
+# sysconfig.get_path("scripts") returns the directory for whatever python3 is
+# currently in PATH, covering both venv and system installs correctly.
+_py_scripts=$(python3 -c 'import sysconfig; print(sysconfig.get_path("scripts"))')
+case ":${PATH}:" in
+  *":${_py_scripts}:"*) ;;  # already present, nothing to do
+  *) export PATH="${_py_scripts}:${PATH}" ;;
+esac
+unset _py_scripts
+
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
 
