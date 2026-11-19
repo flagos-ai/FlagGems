@@ -116,12 +116,27 @@ _DKV_CONFIGS = [
 ]
 
 
+_SINGLE_STAGE_DENSE_CONFIG = triton.Config(
+    {"BLOCK_M": 32 if device.vendor_name == "metax" else 64, "BLOCK_N": 64},
+    num_warps=8,
+    num_stages=1,
+)
+
+
+def _prune_dense_dq_configs(configs, named_args, **kwargs):
+    if kwargs["S5000"] and kwargs["HEAD_DIM"] == 128:
+        # Pipelined D128 dQ candidates can fault during MUSA autotuning.
+        return [cfg for cfg in configs if cfg.num_stages == 1]
+    return [cfg for cfg in configs if cfg != _SINGLE_STAGE_DENSE_CONFIG]
+
+
 @triton.autotune(
-    configs=_DQ_CONFIGS,
+    configs=[*_DQ_CONFIGS, _SINGLE_STAGE_DENSE_CONFIG],
+    prune_configs_by={"early_config_prune": _prune_dense_dq_configs},
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD", "S5000"],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -182,6 +197,7 @@ def _flash_attn_bwd_dq_fused(
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     DO_BIAS_GRAD: tl.constexpr,
+    S5000: tl.constexpr,
 ):
     start_m = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -327,32 +343,21 @@ def _flash_attn_bwd_dq_fused(
     )
 
 
-_SPLIT_DV_CONFIG = triton.Config(
-    {"BLOCK_M": 32 if device.vendor_name == "metax" else 64, "BLOCK_N": 64},
-    num_warps=8,
-    num_stages=1,
-)
-
-
 def _prune_dense_dkv_configs(configs, named_args, **kwargs):
-    s5000 = kwargs.get("S5000", False)
-    split_dv = kwargs.get("DV_PRECISION") == "split" and (
-        s5000 or (device.vendor_name == "metax" and kwargs["HEAD_DIM"] == 128)
+    if kwargs.get("S5000", False):
+        # Multi-stage MUSA lowering can corrupt dK and dV on the S5000.
+        return [cfg for cfg in configs if cfg.num_stages == 1]
+
+    split_dv = (
+        kwargs.get("DV_PRECISION") == "split"
+        and device.vendor_name == "metax"
+        and kwargs["HEAD_DIM"] == 128
     )
-    configs = [cfg for cfg in configs if cfg != _SPLIT_DV_CONFIG or split_dv]
-    if not s5000 or kwargs["HEAD_DIM"] != 64:
-        return configs
-    # This exact tile faults or returns corrupt gradients on S5000.
-    return [
-        cfg
-        for cfg in configs
-        if (cfg.kwargs["BLOCK_M"], cfg.kwargs["BLOCK_N"], cfg.num_warps, cfg.num_stages)
-        != (64, 128, 4, 2)
-    ]
+    return [cfg for cfg in configs if cfg != _SINGLE_STAGE_DENSE_CONFIG or split_dv]
 
 
 @triton.autotune(
-    configs=[*_DKV_CONFIGS, _SPLIT_DV_CONFIG],
+    configs=[*_DKV_CONFIGS, _SINGLE_STAGE_DENSE_CONFIG],
     prune_configs_by={"early_config_prune": _prune_dense_dkv_configs},
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
@@ -1279,6 +1284,13 @@ def flash_attn_backward(
             attn_bias if has_bias else None
         )
 
+        s5000 = (
+            Q.device.type == "musa"
+            and Head_Dim in (64, 128)
+            and Q.dtype in (torch.float16, torch.bfloat16)
+            and "S5000" in torch.musa.get_device_name(Q.device)
+        )
+
         with _disable_aabs_for_small_seqlen(SeqLen_q, SeqLen_k):
             grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
             _flash_attn_bwd_dq_fused[grid_dq](
@@ -1337,6 +1349,7 @@ def flash_attn_backward(
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
                 DO_BIAS_GRAD=do_bias_grad,
+                S5000=s5000,
             )
 
             grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
@@ -1400,12 +1413,7 @@ def flash_attn_backward(
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
                 DV_PRECISION=dv_precision,
-                S5000=(
-                    Q.device.type == "musa"
-                    and Head_Dim in (64, 128)
-                    and Q.dtype in (torch.float16, torch.bfloat16)
-                    and "S5000" in torch.musa.get_device_name(Q.device)
-                ),
+                S5000=s5000,
             )
 
     return dQ, dK, dV, dBias

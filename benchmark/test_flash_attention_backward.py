@@ -246,7 +246,7 @@ def _missing_attention_baseline(exc):
 class _AttentionBackwardBenchmark(base.GenericBenchmark):
     def get_input_iter(self, dtype):
         inputs = super().get_input_iter(dtype)
-        if flag_gems.vendor_name != "metax":
+        if flag_gems.vendor_name not in ("metax", "hygon"):
             yield from inputs
             return
 
@@ -521,6 +521,24 @@ def flash_attention_backward_native_family_input_fn(config, dtype, device):
     )
 
 
+def _flash_family_param(family, index, case):
+    marks = ()
+    if flag_gems.vendor_name == "mthreads" and family == "dense-dropout":
+        from torch_musa.core import mudnn
+
+        q_heads, kv_heads = case[3:5]
+        if (
+            q_heads != kv_heads
+            and mudnn.version() == 3400
+            and "S5000" in torch.musa.get_device_name()
+        ):
+            marks = pytest.mark.skip_native(
+                vendors="mthreads",
+                reason="MuDNN 3400 dense GQA dropout backward returns incorrect gradients on S5000",
+            )
+    return pytest.param(family, index, id=f"{family}-case{index}", marks=marks)
+
+
 @pytest.mark.flash_attention_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -529,9 +547,9 @@ def flash_attention_backward_native_family_input_fn(config, dtype, device):
 @pytest.mark.parametrize(
     "family,case_index",
     [
-        pytest.param(family, index, id=f"{family}-case{index}")
+        _flash_family_param(family, index, case)
         for family, cases in _FLASH_BWD_NATIVE_FAMILIES.items()
-        for index in range(len(cases))
+        for index, case in enumerate(cases)
     ],
 )
 def test_perf_flash_attention_backward_native_families(family, case_index):
@@ -612,18 +630,29 @@ def sdp_flash_attn_bwd_input_fn(config, dtype, device):
     ).uniform_(-0.05, 0.05)
     dOut = torch.randn(batch, num_heads, seq_len, head_size, dtype=dtype, device=device)
 
-    out, lse, philox_seed, philox_offset = sdp_flash_attn_forward_native(
-        Q,
-        K,
-        V,
-        is_causal=is_causal,
-        softmax_scale=scale,
-    )
+    if flag_gems.vendor_name == "hygon":
+        # DTK SDPA saves seed and offset separately, with the native BHSD output.
+        saved = torch.ops.aten._scaled_dot_product_flash_attention(
+            Q, K, V, 0.0, is_causal, False, scale=scale
+        )
+        out, lse, cum_seq_q, cum_seq_k = saved[:4]
+        philox_seed, philox_offset = saved[6:8]
+    else:
+        cum_seq_q = cum_seq_k = None
+        out, lse, philox_seed, philox_offset = sdp_flash_attn_forward_native(
+            Q,
+            K,
+            V,
+            is_causal=is_causal,
+            softmax_scale=scale,
+        )
 
     Q_bshd = Q.transpose(1, 2).contiguous()
     K_bshd = K.transpose(1, 2).contiguous()
     V_bshd = V.transpose(1, 2).contiguous()
-    out_bshd = out.transpose(1, 2).contiguous()
+    out_bshd = out.transpose(1, 2)
+    if flag_gems.vendor_name != "hygon":
+        out_bshd = out_bshd.contiguous()
     dOut_bshd = dOut.transpose(1, 2).contiguous()
 
     yield (
@@ -633,8 +662,8 @@ def sdp_flash_attn_bwd_input_fn(config, dtype, device):
         V_bshd,
         out_bshd,
         lse,
-        None,
-        None,
+        cum_seq_q,
+        cum_seq_k,
         seq_len,
         seq_len,
         0.0,
@@ -662,12 +691,11 @@ def _sdp_flash_attn_bwd_aten(
     philox_offset,
     scale=None,
 ):
+    inputs = (dOut_bshd, Q_bshd, K_bshd, V_bshd, out_bshd)
+    if flag_gems.vendor_name == "hygon":
+        inputs = tuple(tensor.transpose(1, 2) for tensor in inputs)
     return torch.ops.aten._scaled_dot_product_flash_attention_backward(
-        dOut_bshd,
-        Q_bshd,
-        K_bshd,
-        V_bshd,
-        out_bshd,
+        *inputs,
         lse,
         cum_seq_q,
         cum_seq_k,
@@ -705,8 +733,8 @@ def _sdp_flash_attn_bwd_gems(
         V_bshd,
         out_bshd,
         lse,
-        cum_seq_q=cum_seq_q,
-        cum_seq_k=cum_seq_k,
+        cum_seq_q=None,
+        cum_seq_k=None,
         max_q=max_q,
         max_k=max_k,
         dropout_p=dropout_p,

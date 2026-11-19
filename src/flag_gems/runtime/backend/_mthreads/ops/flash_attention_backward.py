@@ -251,6 +251,14 @@ def _musa_round_probability(p, DTYPE: tl.constexpr):
     return p.to(DTYPE).to(tl.float32)
 
 
+@triton.jit
+def _musa_split_dot(x, y):
+    hi = x.to(y.dtype)
+    # Preserve FP16 residuals during the cast even at small probabilities.
+    lo = ((x - hi.to(tl.float32)) * 4096.0).to(y.dtype)
+    return tl.dot(hi, y) + tl.dot(lo, y) * (1.0 / 4096.0)
+
+
 @triton.jit(do_not_specialize=["seed", "rng_offset", "offset_intragraph"])
 def _musa_flash_bwd_dq(
     Q,
@@ -297,6 +305,8 @@ def _musa_flash_bwd_dq(
     OUT_HEADS: tl.constexpr = 0,
     ALIGNED_S: tl.constexpr = 0,
 ):
+    math_dropout: tl.constexpr = DROP_P > 0 and HQ != HK
+    drop_scale: tl.constexpr = 0.0 if DROP_KEEP == 0.0 else 1.0 / DROP_KEEP
     if DROP_P > 0 and RNG_DEVICE:
         seed = tl.load(tl.cast(seed, tl.pointer_type(tl.uint64)))
         rng_offset = tl.load(
@@ -423,11 +433,17 @@ def _musa_flash_bwd_dq(
             dp *= _musa_dropout(
                 seed, rng_offset, batch, head, m, kn, sq, sk, HQ, DROP_P, DROP_GROUP4
             )
-        # MuDNN dropout and D224/D256 MHA round P before forming dS.
-        if not FULL_PRECISION and (DROP_P > 0 or DIM == 224 or DIM == 256):
+        # MuDNN MHA dropout and D224/D256 MHA round P before forming dS.
+        if (
+            not FULL_PRECISION
+            and not math_dropout
+            and (DROP_P > 0 or DIM == 224 or DIM == 256)
+        ):
             p = _musa_round_probability(p, q.dtype)
-        ds = p * (dp - delta[:, None])
-        if DROP_P > 0:
+        # In the mathematical dropout path, delay the reciprocal until
+        # after accumulation to avoid widening the dot operands' range.
+        ds = p * (dp - delta[:, None] * (DROP_KEEP if math_dropout else 1.0))
+        if DROP_P > 0 and not math_dropout:
             # Match measured MuDNN backward saved-state semantics: forward O
             # already includes dropout scaling, while backward scales the
             # entire masked-dP minus dot(O,dO) difference once more.
@@ -441,6 +457,8 @@ def _musa_flash_bwd_dq(
         # MuDNN scales dS before its low-precision tensor-core operand cast.
         if FULL_PRECISION:
             dq += tl.dot(ds * scale, k.to(tl.float32), input_precision="ieee")
+        elif math_dropout:
+            dq += _musa_split_dot(ds * scale, k)
         else:
             if q.dtype == tl.bfloat16 and DROP_P == 0 and DIM <= 128:
                 if ALIGNED_S:
@@ -462,6 +480,8 @@ def _musa_flash_bwd_dq(
             else:
                 ds_scaled = ds * scale
             dq += tl.dot(ds_scaled.to(q.dtype), k)
+    if math_dropout:
+        dq *= drop_scale
     if ALIGNED_S:
         tl.store(DQ + qi, dq)
     else:
@@ -515,6 +535,8 @@ def _musa_flash_bwd_dkv(
     RNG_DEVICE: tl.constexpr = False,
     ALIGNED_S: tl.constexpr = 0,
 ):
+    math_dropout: tl.constexpr = DROP_P > 0 and HQ != HK
+    drop_scale: tl.constexpr = 0.0 if DROP_KEEP == 0.0 else 1.0 / DROP_KEEP
     if DROP_P > 0 and RNG_DEVICE:
         seed = tl.load(tl.cast(seed, tl.pointer_type(tl.uint64)))
         rng_offset = tl.load(
@@ -654,10 +676,16 @@ def _musa_flash_bwd_dkv(
                 dp *= keep
                 p_drop *= keep
             # MuDNN dropout and D224/D256 MHA round P before forming dS.
-            if not FULL_PRECISION and (DROP_P > 0 or DIM == 224 or DIM == 256):
+            if (
+                not FULL_PRECISION
+                and not math_dropout
+                and (DROP_P > 0 or DIM == 224 or DIM == 256)
+            ):
                 p = _musa_round_probability(p, q.dtype)
-            ds = p * (dp - delta[:, None])
-            if DROP_P > 0:
+            # In the mathematical dropout path, delay the reciprocal until
+            # after accumulation to avoid widening the dot operands' range.
+            ds = p * (dp - delta[:, None] * (DROP_KEEP if math_dropout else 1.0))
+            if DROP_P > 0 and not math_dropout:
                 if DROP_KEEP == 0.0:
                     ds *= 0.0
                 else:
@@ -671,6 +699,9 @@ def _musa_flash_bwd_dkv(
                 dv_head += tl.dot(
                     tl.trans(p_drop), do.to(tl.float32), input_precision="ieee"
                 )
+            elif math_dropout:
+                dk_head += _musa_split_dot(tl.trans(ds * scale), q)
+                dv_head += _musa_split_dot(tl.trans(p_drop), do)
             else:
                 if q.dtype == tl.bfloat16 and DROP_P == 0 and DIM <= 128:
                     ds_scaled = _musa_bf16_product(
@@ -699,6 +730,9 @@ def _musa_flash_bwd_dkv(
                 dv_head += tl.dot(tl.trans(dv_operand.to(q.dtype)), do)
         dk += dk_head
         dv += dv_head
+    if math_dropout:
+        dk *= drop_scale
+        dv *= drop_scale
     if ALIGNED_S:
         tl.store(DK + ki, tl.where(sq > 0, dk, 0.0))
         tl.store(DV + ki, tl.where(sq > 0, dv, 0.0))
@@ -1272,10 +1306,27 @@ def flash_attention_backward(
             raise NotImplementedError("native MUSA dropout has no local-window ABI")
         if dim in (136, 144, 152, 192):
             raise NotImplementedError("native MUSA dropout dimension is not validated")
-        if not musa_dense or hq != hk:
-            raise NotImplementedError(
-                "native MUSA dropout currently requires dense MHA"
-            )
+        if not musa_dense:
+            raise NotImplementedError("native MUSA dropout requires dense inputs")
+        if hq != hk:
+            from torch_musa.core import mudnn
+
+            sq, sk = query.shape[1], key.shape[1]
+            # The native forward mask has been verified for aligned causal D80
+            # GQA on S5000 with MuDNN 3400. Compute its mathematical backward.
+            if not (
+                is_causal
+                and (scale is None or scale >= 0.0)
+                and dim == 80
+                and 0 < sq <= sk
+                and sq % 128 == 0
+                and sk % 128 == 0
+                and mudnn.version() == 3400
+                and "S5000" in torch.musa.get_device_name(query.device)
+            ):
+                raise NotImplementedError(
+                    "MUSA GQA dropout requires aligned causal D80 on S5000/MuDNN 3400 and nonnegative scale"
+                )
         if not (
             isinstance(rng_state, torch.Tensor)
             and rng_state.device.type == "cpu"
@@ -1287,6 +1338,8 @@ def flash_attention_backward(
             raise NotImplementedError(
                 "expected native CPU uint64[2] or uint64[3] RNG state"
             )
+        if hq != hk and rng_state.numel() != 2:
+            raise NotImplementedError("MUSA GQA dropout requires eager Philox state")
         # MuDNN stores ordinary seed/offset on CPU. In graph mode its three
         # CPU words hold two device addresses and an intragraph offset; the
         # device kernel dereferences those addresses without a host readback.
