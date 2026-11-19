@@ -361,6 +361,7 @@ from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .choose_qparams_optimized import choose_qparams_optimized
+from .choose_qparams_per_tensor import choose_qparams_per_tensor
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -1375,6 +1376,7 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "choose_qparams_optimized",
+    "choose_qparams_per_tensor",
     "chunk_cat",
     "chunk_gated_delta_rule_fwd",
     "clamp",
