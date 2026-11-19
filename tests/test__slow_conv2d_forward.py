@@ -391,15 +391,18 @@ def test__slow_conv2d_forward_rejects_non_4d_input():
 def test__slow_conv2d_forward_rejects_unsupported_dtype(dtype):
     inp = tu.make_input(dtype, (1, 2, 5, 5), ["0", "1"])
     weight = tu.make_input(dtype, (1, 2, 3, 3), ["0", "1"])
-    with pytest.raises(RuntimeError):
-        torch.ops.aten._slow_conv2d_forward(
-            _reference_input(inp),
-            _reference_input(weight),
-            (3, 3),
-            None,
-            (1, 1),
-            (1, 1),
-        )
+    # CPU ATen accepts several integer types that the device implementation
+    # rejects. Keep the device contract check against the candidate.
+    if not (_MUSA and dtype in {torch.int8, torch.uint8, torch.int32, torch.int64}):
+        with pytest.raises(RuntimeError):
+            torch.ops.aten._slow_conv2d_forward(
+                _reference_input(inp),
+                _reference_input(weight),
+                (3, 3),
+                None,
+                (1, 1),
+                (1, 1),
+            )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._slow_conv2d_forward(inp, weight, (3, 3), None, (1, 1), (1, 1))
 

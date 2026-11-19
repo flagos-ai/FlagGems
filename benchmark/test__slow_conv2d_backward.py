@@ -88,12 +88,15 @@ class SlowConv2dBackwardBenchmark(OperatorBenchmark):
 
 @pytest.mark.underscore_slow_conv2d_backward
 def test__slow_conv2d_backward():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("MUSA lacks the native _slow_conv2d_backward.output_mask reference")
     bench = SlowConv2dBackwardBenchmark(
         op_name="_slow_conv2d_backward",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._slow_conv2d_backward.output_mask,
-        gems_op=getattr(flag_gems, "_slow_conv2d_backward", None),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

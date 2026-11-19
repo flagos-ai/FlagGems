@@ -436,10 +436,16 @@ def test_thnn_conv2d_rejects_unsupported_dtype(dtype):
     inp = tu.make_input(dtype, (1, 2, 5, 5), ["-1", "1"])
     weight = tu.make_input(dtype, (1, 2, 3, 3), ["-1", "1"])
     args = (inp, weight, (3, 3), None, (1, 1), (1, 1))
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.thnn_conv2d(
-            *(_reference_input(x) if isinstance(x, torch.Tensor) else x for x in args)
-        )
+    # CPU ATen accepts several integer types that the device implementation
+    # rejects. Keep the device contract check against the candidate.
+    if not (_MUSA and dtype in {torch.int8, torch.uint8, torch.int32, torch.int64}):
+        with pytest.raises(RuntimeError):
+            torch.ops.aten.thnn_conv2d(
+                *(
+                    _reference_input(x) if isinstance(x, torch.Tensor) else x
+                    for x in args
+                )
+            )
     with pytest.raises(_GEMS_ERRORS):
         flag_gems.thnn_conv2d(*args)
 
