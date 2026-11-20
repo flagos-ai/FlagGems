@@ -387,6 +387,9 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
 from flag_gems.ops._slow_conv2d_backward import _slow_conv2d_backward
+from flag_gems.ops._slow_conv2d_backward import (
+    _slow_conv2d_backward as slow_conv2d_forward_backward,
+)
 from flag_gems.ops._slow_conv2d_forward import _slow_conv2d_forward
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
@@ -3311,6 +3314,7 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv2d_forward_backward",
     "slow_conv_dilated2d",
     "slow_conv_dilated2d_out",
     "slow_conv_dilated3d",
