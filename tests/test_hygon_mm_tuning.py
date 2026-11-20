@@ -547,9 +547,11 @@ def test_hygon_small_mm_uses_launch_metadata_for_cached_post(
 def test_hygon_splitk_compares_local_split_for_both_layouts(
     hygon_splitk, monkeypatch, transpose_b
 ):
+    from contextlib import nullcontext
     from types import SimpleNamespace
 
     split = hygon_splitk
+    monkeypatch.setattr(split.torch_device_fn, "device", lambda _: nullcontext())
     a = torch.empty((2, 2048), dtype=torch.bfloat16)
     b = (
         torch.empty((64, 2048), dtype=torch.bfloat16).t()

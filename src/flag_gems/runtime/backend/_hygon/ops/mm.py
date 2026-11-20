@@ -1765,7 +1765,8 @@ def try_mm_splitk(a, b, c, *, compare_local_split=False):
     if not _splitk_eligible(a, b, c):
         return False
     if compare_local_split:
-        _mm_splitk_partial._apply_flagtune()
+        with torch_device_fn.device(a.device):
+            _mm_splitk_partial._apply_flagtune()
         tuner = _mm_splitk_partial.fn
         if tuner._run_mode == "normal":
             key = gemm_tuning_key(tuner)
@@ -2954,7 +2955,8 @@ def _mv_out(inp, vec, out):
 
 def _dispatch_hygon_mv(inp, vec, out):
     """Choose the vector reduction or a matrix-instruction candidate."""
-    mv_kernel._apply_flagtune()
+    with torch_device_fn.device(inp.device):
+        mv_kernel._apply_flagtune()
     tuner = mv_kernel.fn
     if tuner._run_mode == "normal":
         tuning_key = gemm_tuning_key(tuner)
@@ -3595,7 +3597,8 @@ def _dispatch_hygon_mm(a, b, c):
         return
     if try_mm_splitk(a, b, c, compare_local_split=True):
         return
-    mm_kernel._apply_flagtune()
+    with torch_device_fn.device(a.device):
+        mm_kernel._apply_flagtune()
     tuning_key = gemm_tuning_key(tuner)
     if not try_mm_family(
         a,

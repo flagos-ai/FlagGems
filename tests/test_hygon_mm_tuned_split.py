@@ -1,6 +1,6 @@
 """Contracts for the optional tuned global Split-K family."""
 
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from importlib import import_module
 from types import SimpleNamespace
 
@@ -105,3 +105,46 @@ def test_optional_family_dispatch_uses_symmetric_load_contract(ops, monkeypatch)
         is sentinel
     )
     assert seen == [((a, b, c), dict(symmetric_async=True))]
+
+
+@pytest.mark.parametrize("route", ["mm", "mv", "splitk"])
+def test_profile_resolution_uses_operand_device(ops, monkeypatch, route):
+    # Simulate a different ambient device without requiring heterogeneous GPUs.
+    # Target-dependent profile defaults must resolve inside the operand scope.
+    active = []
+    calls = []
+    device = object()
+
+    @contextmanager
+    def use_device(value):
+        active.append(value)
+        try:
+            yield
+        finally:
+            active.pop()
+
+    def apply():
+        assert active == [device]
+        calls.append(route)
+
+    tuner = SimpleNamespace(
+        _run_mode="normal", _flagtune_mode=ops.runtime.TuningMode.EXPANDED
+    )
+    entry = SimpleNamespace(fn=tuner, _apply_flagtune=apply)
+    monkeypatch.setattr(ops.torch_device_fn, "device", use_device)
+    monkeypatch.setattr(ops, "gemm_tuning_key", lambda _: ("test",))
+    monkeypatch.setattr(ops, "try_mm_family", lambda *a, **kw: True)
+    a = SimpleNamespace(device=device)
+    if route == "splitk":
+        monkeypatch.setattr(ops, "_mm_splitk_partial", entry)
+        monkeypatch.setattr(ops, "_splitk_eligible", lambda *a, **kw: True)
+        assert ops.try_mm_splitk(a, None, None, compare_local_split=True)
+    elif route == "mm":
+        monkeypatch.setattr(ops, "mm_kernel", entry)
+        monkeypatch.setattr(ops, "try_mm_splitk", lambda *a, **kw: False)
+        ops._dispatch_hygon_mm(a, None, None)
+    else:
+        monkeypatch.setattr(ops, "mv_kernel", entry)
+        monkeypatch.setattr(ops, "try_mv_mmac", lambda *a, **kw: True)
+        ops._dispatch_hygon_mv(a, None, None)
+    assert not active and calls == [route]
