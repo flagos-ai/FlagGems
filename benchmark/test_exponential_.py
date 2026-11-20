@@ -32,3 +32,20 @@ def test_exponential_inplace():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def _backward_input_fn(shape, dtype, device):
+    yield torch.empty(shape, dtype=dtype, device=device).clone(),
+
+
+@pytest.mark.exponential_backward_
+def test_exponential_backward_():
+    bench = base.GenericBenchmark(
+        op_name="exponential_backward_",
+        input_fn=_backward_input_fn,
+        torch_op=lambda x: x.clone().exponential_(),
+        gems_op=lambda x: flag_gems.exponential_(x.clone()),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

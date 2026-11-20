@@ -24,10 +24,18 @@ PADDINGS = [0, 1]
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
+    use_cpu_reference = (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and shape == (2, 16, 8, 8, 8)
+        and kernel == (16, 8, 2, 2, 2)
+    )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = inp.cpu().double() if use_cpu_reference else utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = utils.to_reference(weight, True)
+    ref_weight = (
+        weight.cpu().double() if use_cpu_reference else utils.to_reference(weight, True)
+    )
 
     ref_out = torch.nn.functional.conv_transpose3d(
         ref_inp, ref_weight, bias=None, stride=stride, padding=padding, dilation=1
@@ -36,6 +44,8 @@ def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     in_channels = kernel[0]
     out_channels = kernel[1]
     kernel_volume = kernel[2] * kernel[3] * kernel[4]
@@ -53,13 +63,23 @@ def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_bias(shape, kernel, stride, padding, dtype):
+    use_cpu_reference = (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and shape == (2, 16, 8, 8, 8)
+        and kernel == (16, 8, 2, 2, 2)
+    )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = inp.cpu().double() if use_cpu_reference else utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = utils.to_reference(weight, True)
+    ref_weight = (
+        weight.cpu().double() if use_cpu_reference else utils.to_reference(weight, True)
+    )
     out_channels = kernel[1]
     bias = torch.randn(out_channels, dtype=dtype, device=flag_gems.device)
-    ref_bias = utils.to_reference(bias, True)
+    ref_bias = (
+        bias.cpu().double() if use_cpu_reference else utils.to_reference(bias, True)
+    )
 
     ref_out = torch.nn.functional.conv_transpose3d(
         ref_inp, ref_weight, bias=ref_bias, stride=stride, padding=padding, dilation=1
@@ -68,6 +88,8 @@ def test_conv_transpose3d_bias(shape, kernel, stride, padding, dtype):
         inp, weight, bias=bias, stride=stride, padding=padding, dilation=1
     )
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     in_channels = kernel[0]
     kernel_volume = kernel[2] * kernel[3] * kernel[4]
     utils.gems_assert_close(
@@ -128,10 +150,19 @@ def test_conv_transpose3d_dilation(stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
+    use_cpu_reference = (
+        flag_gems.vendor_name == "mthreads"
+        and stride == 2
+        and groups == 3
+        and shape == (1, 12, 5, 5, 5)
+        and kernel == (12, 4, 2, 2, 2)
+    )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = inp.cpu().double() if use_cpu_reference else utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    ref_weight = utils.to_reference(weight, True)
+    ref_weight = (
+        weight.cpu().double() if use_cpu_reference else utils.to_reference(weight, True)
+    )
 
     ref_out = torch.nn.functional.conv_transpose3d(
         ref_inp,
@@ -152,6 +183,8 @@ def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
         groups=groups,
     )
 
+    if use_cpu_reference:
+        assert res_out.device == inp.device
     in_channels_per_group = kernel[0] // groups
     kernel_volume = kernel[2] * kernel[3] * kernel[4]
     utils.gems_assert_close(

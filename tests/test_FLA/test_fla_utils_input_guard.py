@@ -17,7 +17,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.FLA.utils import input_guard
+from flag_gems.deprecated.FLA.utils import input_guard
 
 DEVICE_TYPE = flag_gems.device
 DEVICE_COUNT = flag_gems.runtime.device.device_count

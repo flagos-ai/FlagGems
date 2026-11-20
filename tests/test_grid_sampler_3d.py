@@ -15,6 +15,25 @@ GRID_SAMPLER_3D_SHAPES = [
 ]
 
 
+def _reference_inputs(inp, grid, upcast):
+    """Reference inputs for the eager grid_sampler_3d.
+
+    On Kunlunxin the native grid_sampler_3d is not implemented for on-device
+    fp32 inputs (and crashes on extreme grid coordinates), so evaluate the
+    reference on CPU where the eager op is exact. Elsewhere keep the on-device
+    fp64 upcast of the inputs.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        refs = (inp.cpu(), grid.cpu())
+        if upcast:
+            refs = tuple(r.double() for r in refs)
+        return refs
+    return (
+        utils.to_reference(inp, upcast),
+        utils.to_reference(grid, upcast),
+    )
+
+
 @pytest.mark.grid_sampler_3d
 @pytest.mark.parametrize("input_shape", GRID_SAMPLER_3D_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -32,9 +51,8 @@ def test_grid_sampler_3d(
     grid = torch.randn(N, OD, OH, OW, 3, dtype=dtype, device=flag_gems.device)
     grid = grid * 1.5  # Extend grid range to cover more spatial regions
 
-    # Reference (PyTorch) computation in float32 for accuracy
-    ref_inp = utils.to_reference(inp, True)
-    ref_grid = utils.to_reference(grid, True)
+    # Reference (PyTorch) computation upcast for accuracy
+    ref_inp, ref_grid = _reference_inputs(inp, grid, True)
 
     ref_out = torch.ops.aten.grid_sampler_3d(
         ref_inp, ref_grid, interpolation_mode, padding_mode, align_corners
@@ -92,9 +110,8 @@ def test_grid_sampler_3d_varied_output_sizes(
     grid = torch.randn(N, OD, OH, OW, 3, dtype=dtype, device=flag_gems.device)
     grid = grid * 1.5  # Extend grid range to cover more spatial regions
 
-    # Reference (PyTorch) computation upcast to float64 for accuracy
-    ref_inp = utils.to_reference(inp, True)
-    ref_grid = utils.to_reference(grid, True)
+    # Reference (PyTorch) computation upcast for accuracy
+    ref_inp, ref_grid = _reference_inputs(inp, grid, True)
 
     ref_out = torch.ops.aten.grid_sampler_3d(
         ref_inp, ref_grid, interpolation_mode, padding_mode, align_corners
