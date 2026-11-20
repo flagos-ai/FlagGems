@@ -31,4 +31,8 @@ sorted by ``str.casefold`` (``tools/ci_checks/check_init_exports.py``).
 See ``a5/__init__.py`` for the import rules that apply to modules here.
 """
 
-__all__ = []
+from .foreach_add_list import foreach_add_list
+
+_foreach_add_List = foreach_add_list
+
+__all__ = ["_foreach_add_List", "foreach_add_list"]
