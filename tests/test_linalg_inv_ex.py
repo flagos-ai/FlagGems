@@ -93,9 +93,7 @@ def test_linalg_inv_ex(shape, dtype, check_errors):
     assert torch.all(res_result.info == 0)
 
     # Compare inverse directly (LU + solve accumulates O(n^2) error)
-    utils.gems_assert_close(
-        res_result.inverse, ref_inverse, dtype, reduce_dim=n * n
-    )
+    utils.gems_assert_close(res_result.inverse, ref_inverse, dtype, reduce_dim=n * n)
 
 
 @pytest.mark.linalg_inv_ex
