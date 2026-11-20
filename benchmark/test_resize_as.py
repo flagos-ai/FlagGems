@@ -21,7 +21,7 @@ def test_resize_as():
     bench = base.GenericBenchmark(
         input_fn=_resize_as_input_fn,
         op_name="resize_as",
-        torch_op=torch.Tensor.resize_as,
+        torch_op=torch.ops.aten.resize_as.default,
         dtypes=consts.FLOAT_DTYPES,
     )
 
@@ -33,7 +33,7 @@ def test_resize_as_():
     bench = base.GenericBenchmark(
         input_fn=_resize_as_input_fn,
         op_name="resize_as_",
-        torch_op=torch.Tensor.resize_as_,
+        torch_op=torch.ops.aten.resize_as_.default,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
