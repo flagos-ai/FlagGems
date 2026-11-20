@@ -146,6 +146,7 @@ from .foreach_maximum_scalar_list_ import foreach_maximum_scalar_list_
 from .foreach_minimum_list_ import foreach_minimum_list_
 from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
 from .foreach_mul_tensor import foreach_mul_tensor
+from .foreach_mul_tensor_ import foreach_mul_tensor_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -508,6 +509,7 @@ __all__ = [
     "foreach_minimum_list_",
     "foreach_mul_scalar_list_",
     "foreach_mul_tensor",
+    "foreach_mul_tensor_",
     "frac",
     "frac_",
     "full",
