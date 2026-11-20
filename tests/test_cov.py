@@ -24,6 +24,7 @@ from . import accuracy_utils as utils
 def _seed_random_inputs():
     torch.manual_seed(0)
 
+
 # cov treats rows as variables and columns as observations, so the input is a
 # 2D (variables x observations) matrix. These shapes cover a single-variable
 # degenerate case, square matrices, and tall/wide matrices.
@@ -137,9 +138,9 @@ def test_cov_fweights_aweights(dtype):
     ref_fweights = utils.to_reference(fweights)
     ref_aweights = utils.to_reference(aweights)
 
-    ref_out = torch.cov(
-        ref_inp, fweights=ref_fweights, aweights=ref_aweights
-    ).to(result_dtype)
+    ref_out = torch.cov(ref_inp, fweights=ref_fweights, aweights=ref_aweights).to(
+        result_dtype
+    )
 
     res_out = flag_gems.cov(inp, fweights=fweights, aweights=aweights)
 
