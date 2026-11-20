@@ -5283,6 +5283,22 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: diag_embed_backward
+  description: |
+    Backward pass for `diag_embed`: the gradient with respect to the input is the
+    diagonal of the upstream gradient at (offset, dim1, dim2), viewed with the
+    input's shape. The default plane dims (-2, -1) gather through a single
+    Triton kernel; other plane placements return the exact ATen formula
+    (`torch.diagonal`) as a zero-copy view.
+  for:
+  - diag_embed_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: diagflat
   description: 'Creates a 2-D tensor whose diagonal, selected by `offset`, holds the
     flattened `input` and whose remaining elements are zero.
