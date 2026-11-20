@@ -1031,7 +1031,12 @@ _FULL_CONFIG = (
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
-    ("addbmm", addbmm),
+    (
+        "addbmm",
+        addbmm,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addbmm_", addbmm_),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
