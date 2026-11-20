@@ -24,6 +24,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.rowwise_moments import rowwise_cascade_moments
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,10 @@ def layer_norm_persistent_kernel(
     N,
     eps,
     TILE_N: tl.constexpr,
+    USE_CASCADE: tl.constexpr = False,
+    MOMENTS_N: tl.constexpr = 0,
+    MOMENTS_DEPTH: tl.constexpr = 1,
+    MOMENTS_STACK: tl.constexpr = 1,
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
@@ -147,6 +152,23 @@ def layer_norm_persistent_kernel(
     s = tl.where(mask, d * d, 0)
     sum_square = tl.sum(s)  # sum of square of deviation
     var = sum_square / N
+    if USE_CASCADE:
+        accurate = (
+            ((var < m * m * 1.1920928955078125e-7) & (N > 1))
+            | (var != var)
+            | (tl.abs(m) == float("inf"))
+        )
+        if accurate:
+            stable_m, stable_var = rowwise_cascade_moments(
+                in_ptr,
+                pid + tl.arange(0, 1),
+                tl.full((1,), True, tl.int1),
+                MOMENTS_N,
+                MOMENTS_DEPTH,
+                MOMENTS_STACK,
+            )
+            m = tl.sum(stable_m, 0)
+            var = tl.sum(stable_var, 0)
     rstd = tl.math.rsqrt(var + eps)
 
     tl.store(out_mean_ptr + pid, m)
@@ -183,6 +205,10 @@ def layer_norm_persistent_kernel_multiline(
     eps,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
+    USE_CASCADE: tl.constexpr = False,
+    MOMENTS_N: tl.constexpr = 0,
+    MOMENTS_DEPTH: tl.constexpr = 1,
+    MOMENTS_STACK: tl.constexpr = 1,
 ):
     # Map the program id to the row of X and Y it should compute.
     pid = ext.program_id(0)
@@ -201,6 +227,18 @@ def layer_norm_persistent_kernel_multiline(
     s = tl.where(mask, d * d, 0)
     sum_square = tl.sum(s, axis=1)  # sum of square of deviation
     var = sum_square / N
+    if USE_CASCADE:
+        accurate = (
+            ((var < m * m * 1.1920928955078125e-7) & (N > 1))
+            | (var != var)
+            | (tl.abs(m) == float("inf"))
+        )
+        if tl.sum(accurate.to(tl.int32), 0) > 0:
+            stable_m, stable_var = rowwise_cascade_moments(
+                in_ptr, m_offsets, m_mask, MOMENTS_N, MOMENTS_DEPTH, MOMENTS_STACK
+            )
+            m = tl.where(accurate, stable_m, m)
+            var = tl.where(accurate, stable_var, var)
     rstd = tl.math.rsqrt(var + eps)
 
     tl.store(out_mean_ptr + m_offsets, m, mask=m_mask)
@@ -236,6 +274,10 @@ def layer_norm_loop_kernel(
     N,
     eps,
     TILE_N: tl.constexpr,
+    USE_CASCADE: tl.constexpr = False,
+    MOMENTS_N: tl.constexpr = 0,
+    MOMENTS_DEPTH: tl.constexpr = 1,
+    MOMENTS_STACK: tl.constexpr = 1,
 ):
     # Map the program id to the row of X and Y it should compute.
     pid = ext.program_id(0)
@@ -269,8 +311,25 @@ def layer_norm_loop_kernel(
 
     final_m = tl.sum(m * cnt) / N
     var = tl.sum(s + cnt * (m - final_m) * (m - final_m)) / N
-    rstd = tl.math.rsqrt(var + eps)
     m = final_m
+    if USE_CASCADE:
+        accurate = (
+            ((var < m * m * 1.1920928955078125e-7) & (N > 1))
+            | (var != var)
+            | (tl.abs(m) == float("inf"))
+        )
+        if accurate:
+            stable_m, stable_var = rowwise_cascade_moments(
+                in_ptr,
+                pid + tl.arange(0, 1),
+                tl.full((1,), True, tl.int1),
+                MOMENTS_N,
+                MOMENTS_DEPTH,
+                MOMENTS_STACK,
+            )
+            m = tl.sum(stable_m, 0)
+            var = tl.sum(stable_var, 0)
+    rstd = tl.math.rsqrt(var + eps)
     # Write mean / rstd
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
