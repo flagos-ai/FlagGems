@@ -177,7 +177,7 @@ def _cgdr_chunk_cumsum_kernel(
 
 
 def _chunk_size_for_sequence(T: int, is_varlen: bool) -> int:
-    # mirrors flag_gems.fused.FLA.chunk._chunk_size_for_sequence
+    # mirrors flag_gems.deprecated.FLA.chunk._chunk_size_for_sequence
     if is_varlen:
         return 64
     return min(64, max(16, 1 << (T - 1).bit_length()))

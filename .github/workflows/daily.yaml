@@ -32,11 +32,12 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Note that the time is in UTC, so we want this to start at 01:23+8:00
-    - cron: '23 17 * * *'
+    # Note that the time is in UTC, so we want this to start at 02:03+8:00
+    - cron: '3 18 * * *'
 
 jobs:
   prepare:
+    # Trivial job: echoes a date used to tag downstream shard runs.
     runs-on: ubuntu-latest
     outputs:
       datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
@@ -56,6 +57,11 @@ jobs:
       group: python-op-${{ needs.prepare.outputs.datetime }}-shard${{ matrix.shard_index }}
       cancel-in-progress: true
     runs-on: jiuding
+    # Without an explicit timeout, the runner's default cap cuts quick-mode
+    # shards off mid-run (every cancelled daily run died at ~95 min). 1440
+    # mirrors ops-test.yaml; quick mode finishes well under this, so the
+    # ceiling only protects against a genuinely hung shard.
+    timeout-minutes: 1440
     strategy:
       fail-fast: false
       matrix:

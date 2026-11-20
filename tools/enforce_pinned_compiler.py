@@ -59,6 +59,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import sysconfig
 from importlib import metadata
 from pathlib import Path
 
@@ -100,13 +101,29 @@ def find_installs(dist_name: str) -> list[metadata.Distribution]:
     importlib.metadata returns one Distribution per install location, so a
     package present both in the venv and baked outside it shows up twice.
     """
-    target = _norm(dist_name)
-    found = []
+    return collect_installs(dist_name)[dist_name]
+
+
+def collect_installs(*names: str) -> dict[str, list[metadata.Distribution]]:
+    """Single pass over metadata.distributions(), collecting every requested name.
+
+    metadata.distributions() walks every *.dist-info / *.egg-info dir on sys.path
+    and parses each METADATA — the only genuinely expensive step here. Calling it
+    once for flagtree, again for triton, and a third time in resolved_version
+    tripled that cost for no benefit, so callers that need more than one name
+    (main()) batch them here and reuse the result.
+    """
+    targets = {name: _norm(name) for name in names}
+    result: dict[str, list[metadata.Distribution]] = {name: [] for name in names}
     for dist in metadata.distributions():
-        name = dist.metadata["Name"]
-        if name and _norm(name) == target:
-            found.append(dist)
-    return found
+        raw = dist.metadata["Name"]
+        if not raw:
+            continue
+        normed = _norm(raw)
+        for name, target in targets.items():
+            if normed == target:
+                result[name].append(dist)
+    return result
 
 
 def _dist_root(dist: metadata.Distribution) -> Path:
@@ -136,7 +153,10 @@ def remove_dist(dist: metadata.Distribution) -> None:
     files = dist.files or []
     for rel in files:
         try:
-            paths.append(Path(dist.locate_file(rel)).resolve())
+            # locate_file already yields an absolute path; resolving adds a stat
+            # per RECORD entry (hundreds for a compiler package) for nothing,
+            # since unlink() takes any path that points at the file.
+            paths.append(Path(dist.locate_file(rel)))
         except Exception:
             continue
     # Remove files first, then any now-empty dirs (deepest first).
@@ -176,24 +196,54 @@ def _under(path: Path, prefix: Path) -> bool:
         return False
 
 
-def resolved_version(dist_name: str) -> tuple[str | None, Path | None]:
+def _install_path_suppressor(venv: Path, path_to_suppress: str) -> None:
+    """Write a .pth file into the venv that strips a sys.path entry at startup.
+
+    Used when a bare triton/ shadow lives on a read-only mount and cannot be
+    deleted. The .pth is processed by site.py on every Python startup that
+    uses this venv, so pytest subprocesses inherit the clean path without
+    needing an explicit PYTHONPATH edit in the CI workflow.
+    """
+    site_pkgs = Path(sysconfig.get_path("purelib"))
+    if not _under(site_pkgs, venv):
+        log(
+            f"  WARNING: venv site-packages {site_pkgs} is not under {venv}; "
+            f"suppressor not installed"
+        )
+        return
+    pth = site_pkgs / "flaggems-suppress-triton-shadow.pth"
+    # A .pth line starting with "import " is executed as Python code at startup.
+    # Use a private alias (_s) so we never collide with user code bound to `sys`.
+    code = (
+        f"import sys as _s; "
+        f"_s.path = [_p for _p in _s.path if _p != {path_to_suppress!r}]; "
+        f"del _s\n"
+    )
+    pth.write_text(code)
+    log(f"  installed sys.path suppressor: {pth}")
+
+
+def resolved_version(
+    dist_name: str,
+    installs: list[metadata.Distribution],
+) -> tuple[str | None, Path | None]:
     """Version + root of the install that WINS on the current sys.path.
 
     When a name is installed in several locations, the one earliest on sys.path
     is what `import` gets. We mirror that: pick the matching distribution whose
     root appears first in sys.path order.
+
+    Takes the already-collected installs list so main() does not need a fourth
+    pass through metadata.distributions() just for the hard-verify step.
+    The sys.path index is built once as a dict (O(1) lookup) rather than
+    searched linearly per distribution.
     """
-    installs = find_installs(dist_name)
     if not installs:
         return None, None
-    order = [Path(p).resolve() for p in sys.path if p]
+    order_index = {Path(p).resolve(): i for i, p in enumerate(sys.path) if p}
 
     def rank(dist: metadata.Distribution) -> int:
-        root = _dist_root(dist).resolve()
-        for i, entry in enumerate(order):
-            if entry == root:
-                return i
-        return len(order)  # not on sys.path -> lowest priority
+        return order_index.get(_dist_root(dist).resolve(), len(order_index))
 
     winner = min(installs, key=rank)
     return _dist_version(winner), _dist_root(winner)
@@ -214,7 +264,15 @@ def main() -> None:
     log(f"enforcing compiler pin {dist_name}=={want}")
 
     venv = _venv_prefix()
-    installs = find_installs(dist_name)
+
+    # Single pass over metadata.distributions() collecting both the compiler
+    # package and triton (needed for the flagtree shadow-eviction step below).
+    # This avoids three separate full scans — one for the compiler pin, one for
+    # triton shadows, and one inside resolved_version — cutting metadata I/O to
+    # a single walk of the site-packages *.dist-info directories.
+    collected = collect_installs(dist_name, "triton")
+    installs = collected[dist_name]
+
     if not installs:
         log(
             f"::error::{dist_name} not installed at all after reconcile; "
@@ -244,8 +302,81 @@ def main() -> None:
         log(f"removing stale shadow {dist_name} {ver} at {root}")
         remove_dist(dist)
 
+    # When the pin is flagtree, also evict any triton package baked outside the
+    # venv. flagtree installs into the 'triton' import namespace, so any copy of
+    # triton ahead of the venv on sys.path shadows flagtree regardless of whether
+    # flagtree is correctly pinned. setup.sh guards this with an explicit
+    # 'uv pip uninstall triton'; the reconcile path has no such step.
+    #
+    # Two forms of shadow must be handled:
+    #
+    #   1. pip-installed triton with dist-info: found in collected["triton"],
+    #      removed the same way as a stale flagtree shadow.
+    #
+    #   2. Bare directory on PYTHONPATH with no dist-info (e.g. /opt/triton
+    #      injected via PYTHONPATH=[/opt/triton]): importlib.metadata never sees
+    #      it, so collected["triton"] is empty. We scan every sys.path entry
+    #      that (a) is outside the venv and (b) contains a triton/ subdirectory
+    #      that looks like a real package (has __init__.py), then remove that
+    #      subdirectory directly with shutil.rmtree.
+    #
+    # We only act when flagtree is the declared compiler and only on copies
+    # outside the venv — triton inside the venv and backends that use triton
+    # directly are never touched.
+    if dist_name == "flagtree":
+        # Form 1: pip-installed triton with dist-info outside the venv.
+        triton_dist_shadows = [
+            d for d in collected["triton"] if not _under(_dist_root(d), venv)
+        ]
+        if triton_dist_shadows:
+            log(
+                f"flagtree is the pinned compiler; removing {len(triton_dist_shadows)} "
+                f"pip-installed triton shadow(s) outside the venv:"
+            )
+            for d in triton_dist_shadows:
+                log(f"  removing triton {_dist_version(d)} at {_dist_root(d)}")
+                remove_dist(d)
+        else:
+            log("no pip-installed triton shadows outside the venv found")
+
+        # Form 2: bare triton/ directory on sys.path with no dist-info.
+        # Covers images that inject /opt/triton via PYTHONPATH.
+        bare_removed = []
+        for entry in sys.path:
+            if not entry:
+                continue
+            p = Path(entry).resolve()
+            if _under(p, venv):
+                continue
+            triton_pkg = p / "triton"
+            if (triton_pkg / "__init__.py").exists():
+                log(
+                    f"found bare triton/ package at {triton_pkg} (no dist-info); "
+                    f"removing it"
+                )
+                try:
+                    shutil.rmtree(triton_pkg)
+                    bare_removed.append(str(triton_pkg))
+                    log(f"  removed {triton_pkg}")
+                except OSError as e:
+                    log(f"  could not remove {triton_pkg}: {e}")
+                    log("  falling back to sys.path suppressor")
+                    _install_path_suppressor(venv, entry)
+                    # Patch current process too so the hard-verify below sees a
+                    # clean sys.path, not the read-only shadow we could not delete.
+                    sys.path = [
+                        sp for sp in sys.path if Path(sp).resolve() != p.resolve()
+                    ]
+                    bare_removed.append(str(triton_pkg))
+        if not bare_removed:
+            log("no bare triton/ directories found outside the venv")
+
     # Hard gate: what resolves now must be the pin.
-    have, root = resolved_version(dist_name)
+    # Re-collect: the list above was taken before the cleanup and still holds
+    # the copies this run deleted, whose metadata now reads back empty -- they
+    # would win the sys.path ranking and fail the gate on a removed install.
+    installs = collect_installs(dist_name)[dist_name]
+    have, root = resolved_version(dist_name, installs)
     if have is None:
         log(f"::error::{dist_name} no longer resolvable after cleanup")
         sys.exit(1)

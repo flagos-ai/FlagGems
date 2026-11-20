@@ -25,10 +25,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.mhc.hc_head_fused_kernel import (
-    hc_head_fused_kernel,
-    hc_head_fused_kernel_ref,
-)
+from flag_gems import hc_head_fused_kernel, hc_head_fused_kernel_ref
 
 try:
     from vllm.model_executor.layers.mhc import (
@@ -38,13 +35,17 @@ try:
     HAS_VLLM = True
 except ImportError:
     HAS_VLLM = False
-from flag_gems.fused.mhc.hc_split_sinkhorn import (
+from flag_gems import (
     hc_split_sinkhorn,
-    mhc_split_sinkhorn_torch_ref,
+    mhc_bwd,
+    mhc_bwd_ref,
+    mhc_post,
+    mhc_pre,
+    sinkhorn_forward,
 )
-from flag_gems.fused.mhc.mhc_bwd import mhc_bwd, mhc_bwd_ref, sinkhorn_forward
-from flag_gems.fused.mhc.mhc_post import mhc_post, mhc_post_ref
-from flag_gems.fused.mhc.mhc_pre import mhc_pre, mhc_pre_ref
+from flag_gems.deprecated.mhc.hc_split_sinkhorn import mhc_split_sinkhorn_torch_ref
+from flag_gems.deprecated.mhc.mhc_post import mhc_post_ref
+from flag_gems.deprecated.mhc.mhc_pre import mhc_pre_ref
 
 from . import conftest as cfg
 

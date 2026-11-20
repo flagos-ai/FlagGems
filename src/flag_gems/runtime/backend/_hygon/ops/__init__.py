@@ -121,6 +121,7 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .flash_attention_backward import flash_attention_backward
 from .float_power_ import (
     float_power_scalar_tensor,
     float_power_scalar_tensor_out,
@@ -386,6 +387,7 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "float_power_scalar_tensor",
