@@ -20,7 +20,7 @@ import flag_gems
 from . import base, consts, utils
 
 
-def copysign_backward_case_fn(shape, dtype):
+def _copysign_backward_case_fn(shape, dtype):
     yield base.BenchmarkCasePlan(
         shape={"input": list(shape)},
         params={},
@@ -28,15 +28,18 @@ def copysign_backward_case_fn(shape, dtype):
     )
 
 
-def copysign_backward_build_inputs_fn(plan, dtype, device):
+def _copysign_backward_build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
-    grad_output = utils.generate_tensor_input(shape, dtype, device)
-    inp = utils.generate_tensor_input(shape, dtype, device).requires_grad_(True)
+    # copysign's VJP w.r.t. ``other`` is identically zero, so only ``self`` is
+    # differentiated; ``other`` is a plain sibling tensor.
+    inp = utils.generate_tensor_input(shape, dtype, device)
     other = utils.generate_tensor_input(shape, dtype, device)
+    grad_output = utils.generate_tensor_input(shape, dtype, device)
     return grad_output, inp, other
 
 
-def copysign_backward_torch_op(grad_output, inp, other):
+def _copysign_backward_torch_op(grad_output, inp, other):
+    inp = inp.detach().requires_grad_(True)
     (ref_in_grad,) = torch.autograd.grad(torch.copysign(inp, other), inp, grad_output)
     return ref_in_grad
 
@@ -47,10 +50,10 @@ def copysign_backward_torch_op(grad_output, inp, other):
 )
 def test_copysign_backward():
     bench = base.GenericBenchmarkExcluse1D(
-        case_fn=copysign_backward_case_fn,
-        build_inputs_fn=copysign_backward_build_inputs_fn,
+        case_fn=_copysign_backward_case_fn,
+        build_inputs_fn=_copysign_backward_build_inputs_fn,
         op_name="copysign_backward",
-        torch_op=copysign_backward_torch_op,
+        torch_op=_copysign_backward_torch_op,
         gems_op=flag_gems.copysign_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
