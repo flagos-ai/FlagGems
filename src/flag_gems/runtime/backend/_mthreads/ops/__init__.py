@@ -62,6 +62,7 @@ from ._foreach_erf_ import _foreach_erf_
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_exp_ import _foreach_exp_
 from ._foreach_frac import _foreach_frac
+from ._foreach_frac_ import _foreach_frac_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -297,6 +298,7 @@ __all__ = [
     "_foreach_erfc_",
     "_foreach_exp_",
     "_foreach_frac",
+    "_foreach_frac_",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
