@@ -505,3 +505,47 @@ def _nested_from_padded(
 
 
 __all__ = ["_nested_from_padded"]
+
+
+def nested_from_padded_backward(grad_values, padded, sizes, fuse_transform_0213=False):
+    """Scatter the gradient of packed values into the original padded shape.
+
+    sizes is the CPU int64 size table passed to the forward. grad_values has
+    the layout of the forward result's values() buffer.
+    """
+    dense_shape = padded.shape
+    if padded.is_complex() or grad_values.is_complex():
+        raise NotImplementedError(
+            "nested_from_padded_backward only supports real tensors"
+        )
+    if fuse_transform_0213:
+        batch, t, e, c = dense_shape
+        padded = padded.permute(0, 2, 1, 3).reshape(batch, e, t * c)
+    if sizes.device.type != "cpu" or sizes.dtype != torch.int64:
+        raise ValueError("sizes must be a CPU int64 tensor")
+    if sizes.shape != (padded.shape[0], padded.ndim - 1):
+        raise ValueError(
+            "sizes must provide the extents of each padded batch component"
+        )
+    if any(
+        not 0 <= s <= end
+        for row in sizes.tolist()
+        for s, end in zip(row, padded.shape[1:])
+    ):
+        raise ValueError("component sizes must lie within the padded shape")
+    totals = sizes.prod(dim=1)
+    starts = totals.cumsum(0) - totals
+    if grad_values.numel() != int(totals.sum()):
+        raise ValueError("grad_values must have one element per packed value")
+    plan = _nested_from_padded_backward_plan(
+        padded,
+        sizes,
+        totals_dev=totals.to(padded.device, non_blocking=True),
+        starts_dev=starts.to(padded.device, non_blocking=True),
+        contig=_prefix_is_contiguous(sizes, padded),
+        max_total=int(totals.max()) if totals.numel() else 0,
+    )
+    grad_padded = _nested_from_padded_backward(grad_values.reshape(-1), plan)
+    if fuse_transform_0213:
+        grad_padded = grad_padded.reshape(batch, e, t, c).permute(0, 2, 1, 3)
+    return grad_padded

@@ -315,7 +315,10 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
-from flag_gems.ops._nested_from_padded import _nested_from_padded
+from flag_gems.ops._nested_from_padded import (
+    _nested_from_padded,
+    nested_from_padded_backward,
+)
 from flag_gems.ops._nested_from_padded_and_nested_example import (
     _nested_from_padded_and_nested_example,
 )
@@ -3077,6 +3080,7 @@ __all__ = [
     "negative",
     "negative_",
     "nested_compute_contiguous_strides_offsets",
+    "nested_from_padded_backward",
     "nested_tensor_storage_offsets",
     "nested_to_padded_tensor",
     "new_full",
