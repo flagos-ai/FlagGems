@@ -212,7 +212,7 @@ def _mean_backward_bcast_kernel(
     else:
         offs = pid * BLOCK + tl.arange(0, BLOCK)
     idx = offs
-    src = tl.zeros([BLOCK], dtype=tl.int32)
+    src = tl.zeros([BLOCK], dtype=offs.dtype)
     for d in tl.static_range(len(SHAPE) - 1, -1, -1):
         size = SHAPE[d]
         coord = idx % size
@@ -248,6 +248,10 @@ def _mean_dtype(inp, dtype):
 
 def mean(inp, *, dtype=None):
     if torch.is_grad_enabled() and inp.requires_grad:
+        if inp.is_complex() or (dtype is not None and dtype.is_complex):
+            raise NotImplementedError(
+                "FlagGems mean backward does not support complex tensors"
+            )
         return _MeanFunction.apply(inp, dtype)
     logger.debug("GEMS MEAN")
     M = inp.numel()
@@ -263,15 +267,7 @@ def mean(inp, *, dtype=None):
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    # Keep the per-block partial sums in fp32 for 16-bit inputs.  Storing them
-    # in the input dtype rounds every partial sum twice (block sum then final
-    # sum) and loses most of the fp32 accumulation the kernels already do,
-    # which is visible when the mean is much smaller than the element
-    # magnitude (cancellation).
-    accum_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    if accum_dtype != dtype:
-        mid = torch.empty((mid_size,), dtype=accum_dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
@@ -794,5 +790,9 @@ def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS MEAN_DIM (wrapper)")
 
     if torch.is_grad_enabled() and inp.requires_grad:
+        if inp.is_complex() or (dtype is not None and dtype.is_complex):
+            raise NotImplementedError(
+                "FlagGems mean backward does not support complex tensors"
+            )
         return _MeanDimFunction.apply(inp, dim, keepdim, dtype)
     return mean_dim_comm(inp, dim, keepdim, dtype=dtype)

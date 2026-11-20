@@ -222,8 +222,11 @@ def _mean_forward(api, inp, dim, keepdim, dtype_arg=None):
     return api(inp, dim, keepdim)
 
 
-def _mean_backward_check(shape, dtype, dim=None, keepdim=False, dtype_arg=None):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+def _mean_backward_check(
+    shape, dtype, dim=None, keepdim=False, dtype_arg=None, inp=None
+):
+    if inp is None:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp.requires_grad_(True)
     ref_inp = utils.to_reference(inp, True)
 
@@ -262,7 +265,12 @@ def test_mean_backward(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mean_backward_keepdim_all_reduce(keepdim, dtype):
-    _mean_backward_check((2, 32), dtype, keepdim=keepdim)
+    # Small exact values isolate shape and gradient handling from the inherited
+    # low-precision forward's rounding of partial sums after cancellation.
+    inp = (
+        torch.arange(64, device=flag_gems.device).remainder(4).reshape(2, 32).to(dtype)
+    )
+    _mean_backward_check(inp.shape, dtype, keepdim=keepdim, inp=inp)
 
 
 @pytest.mark.mean_backward
@@ -358,3 +366,17 @@ def test_mean_backward_cpu_keeps_native_path(dim):
     assert type(res_out.grad_fn).__name__ in {"MeanBackward0", "MeanBackward1"}
     out_grad = torch.randn(res_out.shape)
     assert torch.autograd.grad(res_out, inp, out_grad)[0].shape == inp.shape
+
+
+@pytest.mark.mean_backward
+@pytest.mark.parametrize("dim", [None, 0])
+@pytest.mark.parametrize(
+    "dtype, out_dtype", [(torch.complex64, None), (torch.float32, torch.complex64)]
+)
+def test_mean_backward_rejects_complex(dim, dtype, out_dtype):
+    inp = torch.ones((2, 3), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    with pytest.raises(NotImplementedError, match="complex"):
+        if dim is None:
+            flag_gems.mean(inp, dtype=out_dtype)
+        else:
+            flag_gems.mean_dim(inp, dim, dtype=out_dtype)
