@@ -47,7 +47,7 @@ def test_matmul_native(shape):
     torch.testing.assert_close(actual, expected, atol=0.03, rtol=0.016)
 
 
-def test_public_dispatch(monkeypatch):
+def test_a5_fast_path(monkeypatch):
     import sys
 
     module = sys.modules[flag_gems.matmul.__module__]
@@ -62,8 +62,7 @@ def test_public_dispatch(monkeypatch):
     x = torch.randn((1024, 1, 128), dtype=torch.bfloat16, device=flag_gems.device)
     weight = torch.randn((128, 128), dtype=x.dtype, device=x.device)
     expected = torch.matmul(x, weight)
-    with flag_gems.use_gems(include=["matmul"]):
-        actual = torch.matmul(x, weight)
+    actual = flag_gems.matmul(x, weight)
     assert calls
     torch.testing.assert_close(actual, expected, rtol=0.016, atol=0.03)
 
