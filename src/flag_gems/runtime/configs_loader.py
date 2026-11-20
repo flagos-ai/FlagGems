@@ -144,8 +144,12 @@ class TunedConfigLoader(object):
 
         if op_name == "mm_hygon_splitk_post":
             return [
-                triton.Config(dict(BLOCK=block), num_stages=stages,
-                              num_warps=warps, pre_hook=pre_hook)
+                triton.Config(
+                    dict(BLOCK=block),
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
                 for block in ranges["BLOCK"]
                 for stages in ranges["s"]
                 for warps in ranges["w"]
@@ -1307,9 +1311,18 @@ class TunedConfigLoader(object):
             ),
             "mm_hygon_splitk": {
                 "yaml_op_name": "mm_hygon_splitk",
-                "key": ["M", "N", "K", "stride_bk", "stride_bn", "B_K_CONTIGUOUS",
-                        "ASYNC_LOAD_MASK", "WAVE_PRIVATE_SYNC_SUPPORTED",
-                        "M_ALIGNMENT", "N_ALIGNMENT"],
+                "key": [
+                    "M",
+                    "N",
+                    "K",
+                    "stride_bk",
+                    "stride_bn",
+                    "B_K_CONTIGUOUS",
+                    "ASYNC_LOAD_MASK",
+                    "WAVE_PRIVATE_SYNC_SUPPORTED",
+                    "M_ALIGNMENT",
+                    "N_ALIGNMENT",
+                ],
                 "default_strategy": ["default"] * 10,
                 "expand_yaml_path": hygon_mm_expand_yaml_path,
             },
@@ -1321,9 +1334,17 @@ class TunedConfigLoader(object):
             },
             "mm_hygon": {
                 "yaml_op_name": "mm",
-                "key": ["M", "N", "K", "stride_am", "stride_bk",
-                        "LARGE_TILE_CONFIGS", "ASYNC_LOAD_MASK", "K_DIVISIBLE_BY_16",
-                        "B_K_CONTIGUOUS"],
+                "key": [
+                    "M",
+                    "N",
+                    "K",
+                    "stride_am",
+                    "stride_bk",
+                    "LARGE_TILE_CONFIGS",
+                    "ASYNC_LOAD_MASK",
+                    "K_DIVISIBLE_BY_16",
+                    "B_K_CONTIGUOUS",
+                ],
                 "default_strategy": ["default"] * 9,
                 "expand_yaml_path": mm_expand_yaml_path,
             },

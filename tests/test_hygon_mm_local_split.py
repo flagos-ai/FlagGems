@@ -10,9 +10,7 @@ import torch
 
 @pytest.fixture(scope="module")
 def local():
-    return importlib.import_module(
-        "flag_gems.runtime.backend._hygon.ops.mm"
-    )
+    return importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
 
 
 def tensor(shape, stride, pointer, dtype):
@@ -178,3 +176,29 @@ def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
     assert protocols == [(5, 10, 3), (25, 100, 10)] * 2
     assert len(calls) == 24
     assert len(module._mv_mmac_choices) == 2
+
+
+def test_mv_global_split_shortlist_uses_layout_and_grid(local, monkeypatch):
+    monkeypatch.setattr(
+        local, "_splitk_eligible", lambda *args, allow_single_row: allow_single_row
+    )
+    monkeypatch.setattr(
+        local.torch_device_fn,
+        "get_device_properties",
+        lambda _: SimpleNamespace(multi_processor_count=80),
+    )
+
+    def shortlist(n, k, *, contiguous_k=False):
+        inp = torch.empty_strided(
+            (n, k), (k, 1) if contiguous_k else (1, n), dtype=torch.bfloat16
+        )
+        vec = torch.empty(k, dtype=inp.dtype)
+        out = torch.empty(n, dtype=inp.dtype)
+        return local._mv_splitk_candidates(inp, vec, out)
+
+    assert shortlist(512, 7152) == ((64, 64, 16), (128, 32, 32))
+    assert shortlist(256, 4096) == ((64, 64, 32), (128, 32, 64))
+    assert shortlist(576, 4096) == ((64, 64, 16), (128, 32, 32))
+    assert shortlist(520, 7168) == ((64, 64, 16), (128, 32, 32))
+    assert shortlist(525, 7168) == ()
+    assert shortlist(512, 7168, contiguous_k=True) == ()

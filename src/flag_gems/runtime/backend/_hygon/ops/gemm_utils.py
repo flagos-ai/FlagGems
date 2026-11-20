@@ -27,7 +27,11 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 # Leave room for a complete padded tile in signed i32 coordinate arithmetic.
 I32_GEMM_COORD_LIMIT = 1 << 30
-_CANDIDATE_FAILURES = (CompilationError, errors.OutOfResources) + tuple(
+_CANDIDATE_FAILURES = (
+    CompilationError,
+    errors.OutOfResources,
+    torch.OutOfMemoryError,
+) + tuple(
     getattr(errors, name)
     for name in ("BackendCompilerError", "HSACOError")
     if hasattr(errors, name)
@@ -45,7 +49,11 @@ def gemm_has_wide_storage(*tensors):
 
 
 def gemm_tuning_key(tuner):
-    return tuner.config_table_name, tuner._flagtune_mode, tuple(tuner._benchmark_protocol)
+    return (
+        tuner.config_table_name,
+        tuner._flagtune_mode,
+        tuple(tuner._benchmark_protocol),
+    )
 
 
 @dataclass(frozen=True)
@@ -102,7 +110,7 @@ def supports_hcu_options(options):
 
 
 def try_gemm_candidate(call, *args, **kwargs):
-    """Skip known compile/resource failures while propagating device errors."""
+    """Skip compile and allocation failures while propagating device errors."""
     try:
         return True, call(*args, **kwargs)
     except _CANDIDATE_FAILURES as error:
@@ -118,7 +126,10 @@ def gemm_replay_benchmarker(warmup_ms, measurement_ms, n_retries):
     from triton.flagtune.runtime.benchmark_protocol import resolve_benchmarker
 
     return resolve_benchmarker(
-        "replay", warmup_ms=warmup_ms, measurement_ms=measurement_ms, n_retries=n_retries
+        "replay",
+        warmup_ms=warmup_ms,
+        measurement_ms=measurement_ms,
+        n_retries=n_retries,
     ).benchmark
 
 
@@ -141,11 +152,15 @@ def capture_gemm_fallback(entry, args, kwargs):
 
     tuner = entry.fn
     named = dict(zip(tuner.arg_names, args))
-    named.update((key, value) for key, value in kwargs.items() if key in tuner.arg_names)
+    named.update(
+        (key, value) for key, value in kwargs.items() if key in tuner.arg_names
+    )
     if tuner._run_mode == "normal" and tuner.get_key(named) in tuner.cache:
         return None
 
-    configs = [c for c in tuner._flagtune_default_configs if not c.kwargs.get("ASYNC_LOAD")]
+    configs = [
+        c for c in tuner._flagtune_default_configs if not c.kwargs.get("ASYNC_LOAD")
+    ]
     if tuner.early_config_prune is not None:
         configs = tuner.early_config_prune(configs, named)
     # The Hygon GEMM Default fallbacks do not require a per-config pre-hook.

@@ -79,8 +79,10 @@ def test_entry_explicit_constexpr_value_is_in_do_not_specialize_key():
     # Triton still specializes explicit constexpr objects on a parameter with
     # do_not_specialize. Different values must not hit LibEntry's old binary.
     entry = SimpleNamespace(divisibility=16)
+
     def key(value):
         return libentry_mod.LibEntry.key(entry, [], [value], [])
+
     assert key(tl.constexpr(16)) != key(tl.constexpr(32))
     assert key(tl.constexpr(32)) == key(tl.constexpr(32))
     assert key(tl.constexpr(True)) != key(tl.constexpr(1))

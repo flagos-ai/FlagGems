@@ -445,8 +445,7 @@ def test_hygon_small_mm_resolver_and_timed_post(hygon_splitk):
         "mm", hygon_splitk.runtime.TuningMode.EXPANDED
     )
     assert [c.all_kwargs() for c in configs] == [
-        c.all_kwargs()
-        for c in hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
+        c.all_kwargs() for c in hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
     ]
     assert strategy == ["default"] * len(tuner.keys)
     # Exercise normalization after the actual Expanded mode switch.
@@ -551,7 +550,9 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
     monkeypatch.setattr(split, "_splitk_eligible", eligible)
     monkeypatch.setattr(split, "_launch_mm_splitk", launch)
     monkeypatch.setattr(
-        split, "_mm_splitk_partial", SimpleNamespace(fn=tuner, _apply_flagtune=lambda: None)
+        split,
+        "_mm_splitk_partial",
+        SimpleNamespace(fn=tuner, _apply_flagtune=lambda: None),
     )
 
     def compete(a, b, c, ordinary, *, ordinary_with_output, splitk_pool, **kwargs):
@@ -628,7 +629,9 @@ def test_hygon_small_mm_timed_post_grid_uses_post_metadata(hygon_splitk, monkeyp
 def test_hygon_mm_named_profiles_have_distinct_representatives(hygon_mm):
     from triton.backends.hcu.compiler import HIPOptions
 
-    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import build_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
+        build_mm_configs,
+    )
 
     names = [
         "generic_min",
@@ -699,7 +702,9 @@ def test_hygon_mm_expanded_covers_default_baseline_launches(hygon_mm):
 
 
 def test_hygon_mm_default_baselines_respect_launch_ranges(hygon_mm):
-    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import build_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
+        build_mm_configs,
+    )
 
     launches = {
         _mm_baseline_launch(config)
@@ -751,7 +756,9 @@ def test_hygon_mm_expanded_older_compiler_omits_ring_option(hygon_mm, monkeypatc
 def test_hygon_mm_scalar_copy_alias_needs_retained_control(hygon_mm):
     from triton.backends.hcu.compiler import HIPOptions
 
-    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import build_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
+        build_mm_configs,
+    )
 
     ranges = dict(BLOCK_M=[16], BLOCK_N=[64], BLOCK_K=[16], GROUP_M=[1], s=[2], w=[4])
     cases = [
@@ -837,6 +844,7 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
     # pool above. Count its configurations once; retain layout-specific legacy
     # algorithms separately. Dtype/shape/stride specializations are not new configs.
     from flag_gems.runtime.backend._hygon.ops.mm import _GROUPED_MV_CONFIGS
+
     python_candidates = (
         len(hygon_mm.shared_mm_configs())
         + len(hygon_mm.SHORT_K_MM_CONFIGS)
@@ -857,7 +865,10 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_hygon_grouped_mv_preserves_row_and_output_strides(hygon_mm, dtype):
-    from flag_gems.runtime.backend._hygon.ops.mm import GroupedMVConfig, launch_grouped_mv
+    from flag_gems.runtime.backend._hygon.ops.mm import (
+        GroupedMVConfig,
+        launch_grouped_mv,
+    )
 
     m, n, k = 3, 13, 2053
     a = torch.randn((m, k), device="cuda", dtype=dtype) / k**0.5

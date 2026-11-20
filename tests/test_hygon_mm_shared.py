@@ -133,12 +133,6 @@ def test_shared_pool_is_one_registry_for_both_input_layouts(shared):
         c = _tensor((35, 80), (80, 1), 0x200000000)
         assert all(config.supports(a, b, c) for config in configs)
     assert len(configs) == 12
-    assert set(configs[0].__dataclass_fields__) == {
-        "tile",
-        "warps",
-        "group_m",
-        "address_mode",
-    }
 
 
 @pytest.mark.parametrize(

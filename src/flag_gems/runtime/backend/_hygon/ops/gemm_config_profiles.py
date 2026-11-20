@@ -174,10 +174,17 @@ def build_mm_configs(ranges, pre_hook=None):
     selected = _profiles(
         ranges, tuple(p[0] for p in MM_PROFILES) + ("default_baselines",)
     )
-    if not supports_hcu_options((
-        "mmac_warps_m", "mmac_transposed", "optimize_epilogue", "schedule_hint",
-        "kpack", "waves_per_eu", "sched_latency",
-    )):
+    if not supports_hcu_options(
+        (
+            "mmac_warps_m",
+            "mmac_transposed",
+            "optimize_epilogue",
+            "schedule_hint",
+            "kpack",
+            "waves_per_eu",
+            "sched_latency",
+        )
+    ):
         return []
     supports_ring = supports_hcu_options(("sync_lds_buffers",))
     configs, seen = [], set()

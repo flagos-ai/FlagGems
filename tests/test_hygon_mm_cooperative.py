@@ -10,9 +10,7 @@ import torch
 
 @pytest.fixture(scope="module")
 def cooperative():
-    return importlib.import_module(
-        "flag_gems.runtime.backend._hygon.ops.mm"
-    )
+    return importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
 
 
 def operands(m, n, k, dtype=torch.bfloat16):
@@ -70,19 +68,22 @@ def test_output_alias_alignment_and_storage_layout(cooperative):
     assert not config.supports(a, b, c)
     a, b, c = operands(35, 80, 192)
     b.stride = lambda: (80, 1)
-    assert not config.supports(a, b, c)
+    assert config.supports(a, b, c)
 
 
 def test_output_local_offset_and_grouped_grid_limits(cooperative):
     config = cooperative.CooperativeMMConfig()
-    # 512*N, not the total output tensor size, bounds scalar local stores.
-    assert not config.supports(*operands(35, 2**22, 192))
-    large = operands(2**31 - 1, 2**22 - 1, 64)
-    # Move the conceptual arrays far enough apart for this metadata-only case.
+    # Wide global byte offsets use i64. Only tile coordinates and launch
+    # work-item bounds remain limited; total tensor bytes are not an i32 limit.
+    large = operands(131073, 8192, 64)
     for i, t in enumerate(large):
         t.data_ptr = lambda i=i: (i + 1) * 2**60
     assert config.supports(*large)
-    assert not replace(config, group_m=4).supports(*large)
+    assert replace(config, group_m=4).supports(*large)
+    too_many_rows = operands(256 * ((2**32 - 1) // (12 * 64)) + 1, 256, 64)
+    for i, t in enumerate(too_many_rows):
+        t.data_ptr = lambda i=i: (i + 1) * 2**60
+    assert not config.supports(*too_many_rows)
 
 
 def test_requires_typed_fence_binding(cooperative, monkeypatch):
@@ -99,3 +100,27 @@ def test_requires_typed_fence_binding(cooperative, monkeypatch):
             assert not cooperative._cooperative_supported()
     finally:
         cooperative._cooperative_supported.cache_clear()
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("transpose", [False, True])
+@pytest.mark.parametrize("shape", [(257, 520, 192), (513, 384, 320), (768, 256, 128)])
+def test_equivalent_traversals_preserve_both_layouts(
+    cooperative, dtype, transpose, shape
+):
+    if not torch.cuda.is_available():
+        pytest.skip("requires a Hygon device")
+    if torch.cuda.get_device_properties(0).gcnArchName.split(":")[0] != "gfx936":
+        pytest.skip("requires gfx936")
+    m, n, k = shape
+    a = torch.randn((m, k), dtype=dtype, device="cuda") / k**0.5
+    b = torch.randn((n, k) if transpose else (k, n), dtype=dtype, device=a.device)
+    b = b.t() if transpose else b
+    expected = a @ b
+    output = torch.empty_like(expected)
+    for width in (128, 256):
+        for group in (0, 4):
+            cooperative.launch_cooperative_mm(
+                a, b, output, cooperative.CooperativeMMConfig(group, column_tile=width)
+            )
+            torch.testing.assert_close(output, expected, rtol=0.025, atol=0.025)

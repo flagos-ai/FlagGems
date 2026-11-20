@@ -426,15 +426,21 @@ class LibTuner(triton.runtime.Autotuner):
         self._replay_screen = self._replay_final = None
         if replay_refinement is not None:
             if not use_cuda_graph or do_bench is not None:
-                raise ValueError("replay refinement requires replay mode without a custom benchmarker")
+                raise ValueError(
+                    "replay refinement requires replay mode without a custom benchmarker"
+                )
             final_warmup, final_rep = replay_refinement
             benchmark_retries = replay_retries
             self._replay_screen = resolve_benchmarker(
-                BenchmarkMode.REPLAY, warmup_ms=warmup, measurement_ms=rep,
+                BenchmarkMode.REPLAY,
+                warmup_ms=warmup,
+                measurement_ms=rep,
                 n_retries=replay_retries,
             )
             self._replay_final = resolve_benchmarker(
-                BenchmarkMode.REPLAY, warmup_ms=final_warmup, measurement_ms=final_rep,
+                BenchmarkMode.REPLAY,
+                warmup_ms=final_warmup,
+                measurement_ms=final_rep,
                 n_retries=DEFAULT_BENCHMARK_RETRIES,
             )
             do_bench = self._replay_screen.benchmark
@@ -575,12 +581,13 @@ class LibTuner(triton.runtime.Autotuner):
                 base = f"{base}_{intent.value}_fallback_v2"
         identity = tuple(self._benchmark_protocol)
         if LibTuner._uses_replay_refinement(self):
-            identity += ("refine_top4_within_3pct_v1", *self._replay_final.protocol.cache_key())
+            identity += (
+                "refine_top4_within_3pct_v1",
+                *self._replay_final.protocol.cache_key(),
+            )
         elif identity[0] == "triton_do_bench":
             return base
-        protocol_hash = hashlib.sha256(
-            repr(identity).encode("utf-8")
-        ).hexdigest()[:12]
+        protocol_hash = hashlib.sha256(repr(identity).encode("utf-8")).hexdigest()[:12]
         return f"{base}_benchmark_{protocol_hash}"
 
     def _uses_replay_refinement(self):
@@ -594,7 +601,11 @@ class LibTuner(triton.runtime.Autotuner):
         if not math.isfinite(best_ms):
             return best_config
         finalists = sorted(
-            (config for config, samples in timings.items() if samples[0] <= best_ms * 1.03),
+            (
+                config
+                for config, samples in timings.items()
+                if samples[0] <= best_ms * 1.03
+            ),
             key=timings.__getitem__,
         )[:4]
         if len(finalists) < 2:
@@ -608,7 +619,10 @@ class LibTuner(triton.runtime.Autotuner):
             self.do_bench = self._replay_final.benchmark
             if previous_metas is not None:
                 self.seen_tuned_metas = {}
-            results = {config: self._bench(*args, config=config, **kwargs) for config in finalists}
+            results = {
+                config: self._bench(*args, config=config, **kwargs)
+                for config in finalists
+            }
         finally:
             self.do_bench = previous_benchmark
             if previous_metas is not None:
@@ -1165,7 +1179,9 @@ class LibTuner(triton.runtime.Autotuner):
                         kwargs,
                     )
                 if not bypass_config_cache and LibTuner._uses_replay_refinement(self):
-                    best_config = self._refine_replay(best_config, timings, args, kwargs)
+                    best_config = self._refine_replay(
+                        best_config, timings, args, kwargs
+                    )
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 config = best_config

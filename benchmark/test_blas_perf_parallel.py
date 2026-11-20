@@ -40,7 +40,6 @@ from .consts import (
     FLOAT_DTYPES,
     BenchLevel,
     BenchmarkMetrics,
-    BenchmarkResult,
     OperationAttribute,
     model_shapes,
 )
