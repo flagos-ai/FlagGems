@@ -63,10 +63,10 @@ from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_exp_ import _foreach_exp_
 from ._foreach_frac import _foreach_frac
 from ._foreach_frac_ import _foreach_frac_
-from ._foreach_log10_ import _foreach_log10_
 from ._foreach_log1p_ import _foreach_log1p_
 from ._foreach_log2 import _foreach_log2
 from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10_ import _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
