@@ -150,7 +150,13 @@ def test_to_dense_backward_cast_boundaries():
 
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=utils._SKIP_FP64),
+    ],
 )
 def test_to_dense_backward_special_values(dtype):
     info = torch.finfo(dtype)
