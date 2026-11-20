@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import pack_seq_triton
+from flag_gems import pack_seq_triton
 
 from . import base
 

@@ -185,7 +185,7 @@ def test_index_fill_grid_stride(monkeypatch):
     # Cap the flat launch below the number of tile blocks so the kernel's
     # grid-stride loop runs several iterations; this is what keeps oversized
     # fills legal on backends with small grid limits.
-    index_fill_ops = importlib.import_module("flag_gems.ops.index_fill")
+    index_fill_ops = importlib.import_module(flag_gems.index_fill_.__module__)
 
     monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
 
