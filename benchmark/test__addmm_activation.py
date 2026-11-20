@@ -330,7 +330,10 @@ class _ActivationH800Reference:
                 baseline="literal native CUDA API on H800; not local GCU or CPU timing",
                 candidate="locally timed explicit candidate; bootstrap runs may use a CPU oracle",
                 input_identity="Exact original recipe/configuration; random cross-machine payload bytes differ",
-                timing="raw H800 median / local functional candidate timer; no normalization or isolated performance claim",
+                timing=(
+                    "raw H800 median / local functional candidate timer; "
+                    "no normalization or isolated performance claim"
+                ),
                 target_timing_mode=base.Config.mode.value,
             ),
             ("pr71:op_activation_current75_h800_baseline"),
