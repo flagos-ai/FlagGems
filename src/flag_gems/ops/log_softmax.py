@@ -268,9 +268,7 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
 def log_softmax_backward(grad_output, output, dim, input_dtype):
     logger.debug("GEMS LOG_SOFTMAX_BACKWARD")
     if output.is_cuda and grad_output.is_cuda:
-        return log_softmax_backward_optimized(
-            grad_output, output, dim, input_dtype
-        )
+        return log_softmax_backward_optimized grad_output, output, dim, input_dtype
     in_grad = torch.empty_like(output, dtype=input_dtype)
     return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)
 
@@ -338,7 +336,9 @@ def _rowwise(
         out_v = tl.load(output_ptr + ptrs).to(tl.float32)
     else:
         mask = offsets < N
-        grad_output = tl.load(grad_output_ptr + ptrs, mask=mask, other=0.0).to(tl.float32)
+        grad_output = tl.load(grad_output_ptr + ptrs, mask=mask, other=0.0).to(
+            tl.float32
+        )
         out_v = tl.load(output_ptr + ptrs, mask=mask, other=0.0).to(tl.float32)
 
     scale = tl.sum(grad_output, 0)
@@ -397,7 +397,9 @@ def _chunked(
                     ptrs = base + (start + cols) * INNER
                     mask = (start + cols) < N
                     acc += tl.load(
-                        grad_output_ptr + ptrs, mask=mask, other=0.0,
+                        grad_output_ptr + ptrs,
+                        mask=mask,
+                        other=0.0,
                         eviction_policy="evict_last",
                     ).to(tl.float32)
 
@@ -412,12 +414,12 @@ def _chunked(
             n_full = (N // BLOCK_C) * BLOCK_C
             for start in range(n_full - BLOCK_C, -BLOCK_C, -BLOCK_C):
                 ptrs = base + (start + cols) * INNER
-                g = tl.load(
-                    grad_output_ptr + ptrs, eviction_policy="evict_first"
-                ).to(tl.float32)
-                o = tl.load(
-                    output_ptr + ptrs, eviction_policy="evict_first"
-                ).to(tl.float32)
+                g = tl.load(grad_output_ptr + ptrs, eviction_policy="evict_first").to(
+                    tl.float32
+                )
+                o = tl.load(output_ptr + ptrs, eviction_policy="evict_first").to(
+                    tl.float32
+                )
                 tl.store(
                     grad_input_ptr + ptrs, g - tl.exp(o) * scale, cache_modifier=".cs"
                 )
