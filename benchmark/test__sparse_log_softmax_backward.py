@@ -85,9 +85,7 @@ class SparseLogSoftmaxBackwardBenchmark(OperatorBenchmark):
         out = op(*args, **kwargs)
         grad_out = torch.sparse_coo_tensor(
             out._indices(),
-            torch.randn(
-                out._values().shape, dtype=out.dtype, device=out.device
-            ),
+            torch.randn(out._values().shape, dtype=out.dtype, device=out.device),
             out.shape,
             device=out.device,
             dtype=out.dtype,

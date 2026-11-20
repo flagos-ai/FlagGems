@@ -917,7 +917,7 @@ class _SparseLogSoftmax(torch.autograd.Function):
                 ctx.ginfo,
             )
             return (
-                torch.sparse_coo_tensor(
+                torch.sparse_coo_tensor(  # allow-torch-compute: package gradient values
                     ctx.indices,
                     fast.reshape((nnz,) + tuple(ctx.dense_shape)),
                     ctx.size,
@@ -1035,7 +1035,6 @@ def _sparse_log_softmax(self, dim, half_to_float=False, dtype=None, out=None):
         return result
     out.copy_(result)
     return out
-
 
 
 @triton.jit
@@ -1207,24 +1206,32 @@ def _bwd_fast_dense(
     oi = tl.program_id(1) * BLOCK_CI + tl.arange(0, BLOCK_CI)
     lanes = row0 + tl.arange(0, BLOCK_ROWS)
     rm = lanes < ROWS
-    m = rm[:, None] & (oi < OI)[None, :]
-    o = oi // INNER
-    c = oi - o * INNER
-    base = lanes[:, None] * (OI * R) + o[None, :] * (R * INNER) + c[None, :]
     ch = tl.arange(0, CHUNK)
     lanes3 = lanes[:, None, None]
     oi3 = oi[None, None, :]
-    base3 = lanes3 * (OI * R) + (oi3 // INNER) * (R * INNER) + (oi3 - (oi3 // INNER) * INNER)
+    base3 = (
+        lanes3 * (OI * R)
+        + (oi3 // INNER) * (R * INNER)
+        + (oi3 - (oi3 // INNER) * INNER)
+    )
     ptr = base3 + ch[None, :, None] * INNER
     if F64:
         acc = tl.zeros([BLOCK_ROWS, BLOCK_CI], dtype=tl.float64)
         for r0 in range(0, R, CHUNK):
-            m3 = rm[:, None, None] & (oi < OI)[None, None, :] & (r0 + ch < R)[None, :, None]
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
             part = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
             for j in tl.static_range(CHUNK):
                 acc += tl.sum(tl.where(ch[None, :, None] == j, part, 0.0), axis=1)
         for r0 in range(0, R, CHUNK):
-            m3 = rm[:, None, None] & (oi < OI)[None, None, :] & (r0 + ch < R)[None, :, None]
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
             g2 = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
             ov = tl.load(y_vals + ptr + r0 * INNER, mask=m3, other=0.0)
             res = g2 - _ld.exp(ov) * acc[:, None, :]
@@ -1232,12 +1239,20 @@ def _bwd_fast_dense(
     else:
         acc = tl.zeros([BLOCK_ROWS, BLOCK_CI], dtype=tl.float32)
         for r0 in range(0, R, CHUNK):
-            m3 = rm[:, None, None] & (oi < OI)[None, None, :] & (r0 + ch < R)[None, :, None]
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
             part = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
             for j in tl.static_range(CHUNK):
                 acc += tl.sum(tl.where(ch[None, :, None] == j, part, 0.0), axis=1)
         for r0 in range(0, R, CHUNK):
-            m3 = rm[:, None, None] & (oi < OI)[None, None, :] & (r0 + ch < R)[None, :, None]
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
             g2 = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
             ov = tl.load(y_vals + ptr + r0 * INNER, mask=m3, other=0.0)
             res = g2 - _ld.exp(ov) * acc[:, None, :]
@@ -1316,8 +1331,17 @@ def _bwd_fast_gwrite(
         tl.store(DO + p * Dn + off, g2 - _ld.exp(ov) * a, mask=md)
 
 
-def _bwd_fast_backward(dim, sparse_dim, size, dense_shape, oval, y_indices,
-                       grad_indices, grad_values, ginfo):
+def _bwd_fast_backward(
+    dim,
+    sparse_dim,
+    size,
+    dense_shape,
+    oval,
+    y_indices,
+    grad_indices,
+    grad_values,
+    ginfo,
+):
     """Fused backward on the output support.
 
     ``oval`` is the saved forward payload (``nnz x dnumel``), ``y_indices`` the

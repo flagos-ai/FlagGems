@@ -20056,22 +20056,6 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
-- id: sparse_log_softmax_backward_data
-  description: 'Computes the gradient of stored values for sparse COO log_softmax
-    from grad_output and the output values, pooling the gradient over all entries
-    that share the reduced coordinate.
-
-    '
-  for:
-  - _sparse_log_softmax_backward_data
-  - _sparse_log_softmax_backward_data.out
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Reduction
-  stages:
-  - alpha: '5.5'
 - id: sparse_log_softmax_backward
   description: 'Autograd backward of sparse COO log_softmax: joins the upstream
     gradient to the forward output''s coalesced support and returns the input
@@ -20081,6 +20065,22 @@ ops:
     '
   for:
   - _sparse_log_softmax
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_log_softmax_backward_data
+  description: 'Computes the gradient of stored values for sparse COO log_softmax
+    from grad_output and the output values, pooling the gradient over all entries
+    that share the reduced coordinate.
+
+    '
+  for:
+  - _sparse_log_softmax_backward_data
+  - _sparse_log_softmax_backward_data.out
   labels:
   - aten
   - KernelGen

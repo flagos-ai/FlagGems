@@ -731,7 +731,9 @@ def _grad_for(out, scenario):
 @pytest.mark.parametrize("shape,sparse_dim,dim", SUPPORT_DIFF_ROWS)
 @pytest.mark.parametrize("scenario", _SUPPORT_SCENARIOS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
-def test__sparse_log_softmax_backward_support_diff(shape, sparse_dim, dim, scenario, dtype):
+def test__sparse_log_softmax_backward_support_diff(
+    shape, sparse_dim, dim, scenario, dtype
+):
     inp = _sparse_input(shape, sparse_dim, dtype, dim=dim, requires_grad=True)
     ref_inp = tu.to_reference(inp)
 
