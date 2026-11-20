@@ -6219,6 +6219,19 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: expm1_backward
+  description: The backward computation of `expm1()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - expm1
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: expm1_out
   description: A variant of `expm1` that saves the output to the specified `out`.
   for:
