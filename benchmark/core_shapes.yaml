@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+mixed_quant_sparse_flash_mla:
+  shapes:
+    - [1]
+    - [1024]
+    - [2048]
+  shape_desc: "Query tokens"

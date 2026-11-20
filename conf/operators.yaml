@@ -14364,6 +14364,17 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: mixed_quant_sparse_flash_mla
+  description: Single-sequence TND mixed-quant sparse MLA prefill and compressed decode.
+  for:
+  - mixed_quant_sparse_flash_mla
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: mkldnn_reorder_conv2d_weight
   description: 'Re-expresses the packed oneDNN (MkldnnCPU) conv2d weight in the blocked
     layout the mkldnn convolution primitive expects, preserving every element and

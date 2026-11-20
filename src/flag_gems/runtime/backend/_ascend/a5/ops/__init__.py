@@ -31,4 +31,6 @@ sorted by ``str.casefold`` (``tools/ci_checks/check_init_exports.py``).
 See ``a5/__init__.py`` for the import rules that apply to modules here.
 """
 
-__all__ = []
+from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla
+
+__all__ = ["mixed_quant_sparse_flash_mla"]
