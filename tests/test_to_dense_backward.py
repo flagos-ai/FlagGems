@@ -233,9 +233,7 @@ def _make_coo(nnd, nnz, size, dtype, seed=0):
     [
         pytest.param(
             masked_grad,
-            marks=(
-                _ASCEND_SPARSE_MASK_SKIP if masked_grad in (None, True) else ()
-            ),
+            marks=(_ASCEND_SPARSE_MASK_SKIP if masked_grad in (None, True) else ()),
         )
         for masked_grad in (None, True, False)
     ],
@@ -306,9 +304,7 @@ def test_to_dense_backward_sparse_compressed(layout):
     [
         pytest.param(
             masked_grad,
-            marks=(
-                _ASCEND_SPARSE_MASK_SKIP if masked_grad not in (0, False) else ()
-            ),
+            marks=(_ASCEND_SPARSE_MASK_SKIP if masked_grad not in (0, False) else ()),
         )
         for masked_grad in (1, 2, 0, -1)
     ],
