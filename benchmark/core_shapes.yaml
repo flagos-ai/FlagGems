@@ -1488,6 +1488,15 @@ amin_backward:
   - [1024, 1024]
   - [64, 512, 64]
   shape_desc: M, N
+angle_backward:
+  # Scalar, tail, square and large pointwise tiles cover launch boundaries.
+  shapes:
+  - [1]
+  - [257]
+  - [64, 64]
+  - [256, 512]
+  - [1024, 1024]
+  shape_desc: M, N
 mv:
   shapes: &id004
   - [1, 2048]
