@@ -38,7 +38,11 @@ QINT_ZERO_POINTS = {torch.quint8: 100, torch.qint8: -8, torch.qint32: 0}
 
 
 def _make_qinput(shape, device, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE):
-    if flag_gems.vendor_name == "mthreads" and torch.device(device).type == "musa" and 0 in shape:
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and torch.device(device).type == "musa"
+        and 0 in shape
+    ):
         # An empty quantized tensor needs metadata only.
         return torch._empty_affine_quantized(
             shape, scale=scale, zero_point=zero_point, dtype=dtype, device=device
