@@ -343,3 +343,172 @@ def test_aminmax_no_dim_strided(view, dtype, keepdim, with_out):
         if with_out:
             assert result.data_ptr() == out[i].data_ptr()
     torch.testing.assert_close(base.cpu(), base_cpu, rtol=0, atol=0)
+
+
+# PyTorch does not register an aminmax derivative, so the mathematical
+# reference composes its tie-aware amin and amax derivatives.
+AMINMAX_BACKWARD_CASES = [
+    ((), None, False),
+    ((31, 47), 1, False),
+    ((17, 33, 5), 0, False),
+    ((8, 9, 10), -2, True),
+]
+
+
+def _aminmax_reference(inp, dim=None, keepdim=False):
+    return (
+        torch.amin(inp, dim=dim, keepdim=keepdim),
+        torch.amax(inp, dim=dim, keepdim=keepdim),
+    )
+
+
+@pytest.mark.aminmax_backward
+@pytest.mark.parametrize("shape, dim, keepdim", AMINMAX_BACKWARD_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_aminmax_backward(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    min_output, max_output = flag_gems.aminmax(inp, dim=dim, keepdim=keepdim)
+    grad_min = torch.randn_like(min_output)
+    grad_max = torch.randn_like(max_output)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_min, ref_max = _aminmax_reference(ref_inp, dim=dim, keepdim=keepdim)
+    expected = torch.autograd.grad(
+        (ref_min, ref_max),
+        ref_inp,
+        (utils.to_reference(grad_min, False), utils.to_reference(grad_max, False)),
+    )[0]
+    result = flag_gems.aminmax_backward(
+        grad_min,
+        grad_max,
+        inp,
+        min_output,
+        max_output,
+        dim=dim,
+        keepdim=keepdim,
+    )
+    utils.gems_assert_close(result, expected, dtype)
+
+
+@pytest.mark.aminmax_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_aminmax_backward_ties(dtype):
+    inp = torch.tensor(
+        [[-2.0, -2.0, 3.0, 3.0], [1.0, 1.0, 1.0, 1.0]],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    min_output, max_output = flag_gems.aminmax(inp, dim=1)
+    grad_min = torch.tensor([2.0, -4.0], dtype=dtype, device=flag_gems.device)
+    grad_max = torch.tensor([6.0, 8.0], dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_min, ref_max = _aminmax_reference(ref_inp, dim=1)
+    expected = torch.autograd.grad(
+        (ref_min, ref_max),
+        ref_inp,
+        (utils.to_reference(grad_min, False), utils.to_reference(grad_max, False)),
+    )[0]
+    result = flag_gems.aminmax_backward(
+        grad_min, grad_max, inp, min_output, max_output, dim=1
+    )
+    utils.gems_assert_close(result, expected, dtype)
+
+
+@pytest.mark.aminmax_backward
+@pytest.mark.parametrize("use_min", [False, True])
+def test_aminmax_backward_selective_gradient(use_min):
+    dtype = utils.FLOAT_DTYPES[0]
+    inp = torch.randn((31, 47), dtype=dtype, device=flag_gems.device)
+    min_output, max_output = flag_gems.aminmax(inp, dim=1)
+    selected_grad = torch.randn_like(min_output)
+    zero_grad = torch.zeros_like(selected_grad)
+    grad_min, grad_max = (
+        (selected_grad, zero_grad) if use_min else (zero_grad, selected_grad)
+    )
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_output = torch.amin(ref_inp, dim=1) if use_min else torch.amax(ref_inp, dim=1)
+    expected = torch.autograd.grad(
+        ref_output, ref_inp, utils.to_reference(selected_grad, False)
+    )[0]
+    result = flag_gems.aminmax_backward(
+        grad_min, grad_max, inp, min_output, max_output, dim=1
+    )
+    utils.gems_assert_close(result, expected, dtype)
+
+
+@pytest.mark.aminmax_backward
+def test_aminmax_backward_registered_dispatch():
+    dtype = utils.FLOAT_DTYPES[0]
+    inp = torch.randn(
+        (31, 47), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    grad_min = torch.randn((31,), dtype=dtype, device=flag_gems.device)
+    grad_max = torch.randn((31,), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_min, ref_max = _aminmax_reference(ref_inp, dim=1)
+    expected = torch.autograd.grad(
+        (ref_min, ref_max),
+        ref_inp,
+        (utils.to_reference(grad_min, False), utils.to_reference(grad_max, False)),
+    )[0]
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["aminmax"])
+        min_output, max_output = torch.aminmax(inp, dim=1)
+        assert "AminmaxFunction" in type(min_output.grad_fn).__name__
+        result = torch.autograd.grad(
+            (min_output, max_output), inp, (grad_min, grad_max)
+        )[0]
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    utils.gems_assert_close(result, expected, dtype)
+
+
+@pytest.mark.aminmax_backward
+def test_aminmax_backward_noncontiguous_and_nan():
+    dtype = utils.FLOAT_DTYPES[0]
+    inp = torch.randn((13, 17, 19), dtype=dtype, device=flag_gems.device).transpose(
+        0, 2
+    )
+    inp[0, 0, 0] = float("nan")
+    min_output, max_output = flag_gems.aminmax(inp, dim=2)
+    grad_min = torch.randn_like(min_output)
+    grad_max = torch.randn_like(max_output)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_min, ref_max = _aminmax_reference(ref_inp, dim=2)
+    expected = torch.autograd.grad(
+        (ref_min, ref_max),
+        ref_inp,
+        (utils.to_reference(grad_min, False), utils.to_reference(grad_max, False)),
+    )[0]
+    result = flag_gems.aminmax_backward(
+        grad_min, grad_max, inp, min_output, max_output, dim=2
+    )
+    utils.gems_assert_close(result, expected, dtype, equal_nan=True)
+
+
+@pytest.mark.aminmax_backward
+def test_aminmax_backward_single_kernel():
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = torch.randn((64, 512), dtype=torch.float16, device=flag_gems.device)
+    min_output, max_output = flag_gems.aminmax(inp, dim=1)
+    grad_min = torch.randn_like(min_output)
+    grad_max = torch.randn_like(max_output)
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        flag_gems.aminmax_backward(
+            grad_min, grad_max, inp, min_output, max_output, dim=1
+        )
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "aminmax" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
