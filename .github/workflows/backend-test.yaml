@@ -206,18 +206,18 @@ jobs:
       - name: Install FlagGems (kunlunxin, reconcile deps with image)
         shell: bash --login -e -o pipefail {0}
         run: |
+          # The image keeps FlagTree in /opt/flagtree. Select the requested
+          # version through its own compiler helper before reconciling packages;
+          # a venv pip install cannot replace this side directory.
+          flagtree_pin=$(python3 -c 'import sys, yaml; cfg=yaml.safe_load(open("src/flag_gems/backends.yaml"))["backends"][sys.argv[1]]; print(cfg["flagtree"].split("==", 1)[1])' "${{ inputs.backend }}")
+          compiler flagtree "$flagtree_pin"
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
           pip install --no-deps .
           python3 tools/reconcile_backend_deps.py "${{ inputs.backend }}"
-          # The runtime image bakes flagtree OUTSIDE the venv (e.g. /opt/flagtree)
-          # and ahead of it on sys.path. reconcile reinstalls the backends.yaml pin
-          # INTO the venv but pip cannot uninstall the baked copy, so the stale
-          # version still wins at runtime. enforce_pinned_compiler deletes any copy
-          # that is both stale (!= pin) and outside the venv, then hard-verifies the
-          # pinned version resolves — failing the job instead of testing the wrong
-          # compiler build. Mirrors ops-test.yaml's reconcile+enforce pair.
+          # Verify the compiler selected by the image. Its /opt side trees are
+          # managed by `compiler` and must remain intact for later CI steps.
           BACKEND="${{ inputs.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
             python3 tools/enforce_pinned_compiler.py "${{ inputs.backend }}"
           pip install .[test]
@@ -274,6 +274,11 @@ jobs:
       - name: Install FlagGems (metax, reconcile deps with image)
         shell: bash --login -e -o pipefail {0}
         run: |
+          # The image keeps FlagTree in /opt/flagtree. Select the pinned version
+          # through its own compiler helper before reconciling packages; a venv
+          # pip install cannot replace this side directory.
+          flagtree_pin=$(python3 -c 'import sys, yaml; cfg=yaml.safe_load(open("src/flag_gems/backends.yaml"))["backends"][sys.argv[1]]; print((cfg.get("flagtree") or "").partition("==")[2])' "${{ inputs.backend }}")
+          if [ -n "$flagtree_pin" ]; then compiler flagtree "$flagtree_pin"; fi
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
@@ -409,6 +414,11 @@ jobs:
       - name: Install FlagGems (enflame, reconcile deps with image)
         shell: bash --login -e -o pipefail {0}
         run: |
+          # The image keeps FlagTree in /opt/flagtree. Select the pinned version
+          # through its own compiler helper before reconciling packages; a venv
+          # pip install cannot replace this side directory.
+          flagtree_pin=$(python3 -c 'import sys, yaml; cfg=yaml.safe_load(open("src/flag_gems/backends.yaml"))["backends"][sys.argv[1]]; print((cfg.get("flagtree") or "").partition("==")[2])' "${{ inputs.backend }}")
+          if [ -n "$flagtree_pin" ]; then compiler flagtree "$flagtree_pin"; fi
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
@@ -479,6 +489,11 @@ jobs:
       - name: Install FlagGems (hygon, reconcile deps with image)
         shell: bash --login -e -o pipefail {0}
         run: |
+          # The image keeps FlagTree in /opt/flagtree. Select the pinned version
+          # through its own compiler helper before reconciling packages; a venv
+          # pip install cannot replace this side directory.
+          flagtree_pin=$(python3 -c 'import sys, yaml; cfg=yaml.safe_load(open("src/flag_gems/backends.yaml"))["backends"][sys.argv[1]]; print((cfg.get("flagtree") or "").partition("==")[2])' "${{ inputs.backend }}")
+          if [ -n "$flagtree_pin" ]; then compiler flagtree "$flagtree_pin"; fi
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
@@ -539,6 +554,11 @@ jobs:
       - name: Install FlagGems (mthreads, reconcile deps with image)
         shell: bash --login -e -o pipefail {0}
         run: |
+          # The image keeps FlagTree in /opt/flagtree. Select the pinned version
+          # through its own compiler helper before reconciling packages; a venv
+          # pip install cannot replace this side directory.
+          flagtree_pin=$(python3 -c 'import sys, yaml; cfg=yaml.safe_load(open("src/flag_gems/backends.yaml"))["backends"][sys.argv[1]]; print((cfg.get("flagtree") or "").partition("==")[2])' "${{ inputs.backend }}")
+          if [ -n "$flagtree_pin" ]; then compiler flagtree "$flagtree_pin"; fi
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
@@ -601,6 +621,11 @@ jobs:
       - name: Install FlagGems (iluvatar, reconcile deps with image)
         shell: bash --login -e -o pipefail {0}
         run: |
+          # The image keeps FlagTree in /opt/flagtree. Select the pinned version
+          # through its own compiler helper before reconciling packages; a venv
+          # pip install cannot replace this side directory.
+          flagtree_pin=$(python3 -c 'import sys, yaml; cfg=yaml.safe_load(open("src/flag_gems/backends.yaml"))["backends"][sys.argv[1]]; print((cfg.get("flagtree") or "").partition("==")[2])' "${{ inputs.backend }}")
+          if [ -n "$flagtree_pin" ]; then compiler flagtree "$flagtree_pin"; fi
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
           pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
