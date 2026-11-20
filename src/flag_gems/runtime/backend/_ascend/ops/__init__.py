@@ -140,6 +140,7 @@ from .foreach_erf_ import foreach_erf_
 from .foreach_exp_ import foreach_exp_
 from .foreach_expm1_ import foreach_expm1_
 from .foreach_log10_ import foreach_log10_
+from .foreach_log1p_ import foreach_log1p_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -496,6 +497,7 @@ __all__ = [
     "foreach_exp_",
     "foreach_expm1_",
     "foreach_log10_",
+    "foreach_log1p_",
     "frac",
     "frac_",
     "full",
