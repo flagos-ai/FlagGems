@@ -191,7 +191,7 @@ def test_floor_hygon_contiguous_storage_offset():
 )
 def test_floor_hygon_aten_registration(numel, expected_route, monkeypatch):
     provider = inspect.getmodule(flag_gems.floor)
-    assert provider.__name__ == "flag_gems.runtime.backend._hygon.ops.floor"
+    assert provider.__name__.split(".")[-3:] == ["_hygon", "ops", "floor"]
     calls = []
     kernel = provider._floor_contiguous_kernel
     generic = provider._generic_floor
