@@ -61,9 +61,9 @@ class FakeQuantizeLearnablePerChannelAffineBenchmark(OperatorBenchmark):
         self.shapes = PER_CHANNEL_CASES
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 def test_fake_quantize_learnable_per_channel_affine():
-    op_name = "fake_quantize_learnable_per_channel_affine"
+    op_name = "_fake_quantize_learnable_per_channel_affine"
     bench = FakeQuantizeLearnablePerChannelAffineBenchmark(
         op_name=op_name,
         torch_op=torch.ops.aten._fake_quantize_learnable_per_channel_affine,

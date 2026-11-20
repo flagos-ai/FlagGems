@@ -36,13 +36,6 @@ QUANT_RANGES = [(0, 255), (-128, 127)]
 _ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_channel_affine
 
 
-def _run_candidate(*args):
-    candidate = getattr(flag_gems, "fake_quantize_learnable_per_channel_affine", None)
-    if candidate is None:
-        candidate = flag_gems._fake_quantize_learnable_per_channel_affine
-    return candidate(*args)
-
-
 def _compare_output(output, reference, inp):
     assert output.device == inp.device
     assert output.shape == inp.shape
@@ -69,7 +62,7 @@ def _make_inputs(shape, axis, dtype):
     return inp, scale, zero_point
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 @pytest.mark.parametrize("shape, axis", PER_CHANNEL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("quant_min, quant_max", QUANT_RANGES)
@@ -93,24 +86,29 @@ def test_fake_quantize_learnable_per_channel_affine(
         quant_max,
         1.0,
     )
-    result = _run_candidate(*inputs, axis, quant_min, quant_max, 1.0)
+    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+        *inputs, axis, quant_min, quant_max, 1.0
+    )
 
     _compare_output(result, ref_out, inputs[0])
     for value, snapshot in zip(inputs, snapshots):
         flag_gems.testing.assert_equal(value, snapshot)
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 @pytest.mark.parametrize("shape, axis", PER_CHANNEL_SHAPES)
 def test_fake_quantize_learnable_per_channel_affine_grad_factor(shape, axis):
     inputs = _make_inputs(shape, axis, torch.float32)
     ref_out = _ATEN_OP(
         *(_reference(tensor) for tensor in inputs), axis, 0, 255, 2.5
     )
-    _compare_output(_run_candidate(*inputs, axis, 0, 255, 2.5), ref_out, inputs[0])
+    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+        *inputs, axis, 0, 255, 2.5
+    )
+    _compare_output(result, ref_out, inputs[0])
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 @pytest.mark.parametrize("axis, grad_factor", [(1, 0.5), (-2, 0.5), (-2, 2.5)])
 def test_fake_quantize_learnable_per_channel_affine_alternate_grad_factor(axis, grad_factor):
     inputs = _make_inputs((2, 19, 7), axis, torch.float32)
@@ -121,26 +119,29 @@ def test_fake_quantize_learnable_per_channel_affine_alternate_grad_factor(axis, 
         255,
         grad_factor,
     )
-    _compare_output(
-        _run_candidate(*inputs, axis, 0, 255, grad_factor), ref_out, inputs[0]
+    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+        *inputs, axis, 0, 255, grad_factor
     )
+    _compare_output(result, ref_out, inputs[0])
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 def test_fake_quantize_learnable_per_channel_affine_rounds_ties_to_even():
     scale = torch.tensor([0.5, 0.25], device=flag_gems.device, dtype=torch.float32)
     zero_point = torch.zeros_like(scale)
     half_steps = scale.new_tensor([-2.5, -1.5, -0.5, 0.5, 1.5, 2.5])
     inp = half_steps[:, None] * scale
     expected = scale.new_tensor([-2, -2, 0, 0, 2, 2])[:, None] * scale
-    result = _run_candidate(inp, scale, zero_point, 1, -128, 127, 1.0)
+    result = flag_gems._fake_quantize_learnable_per_channel_affine(
+        inp, scale, zero_point, 1, -128, 127, 1.0
+    )
 
     assert result.device == inp.device
     assert result.dtype == inp.dtype
     flag_gems.testing.assert_equal(result, expected)
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 @pytest.mark.skipif(flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin regression")
 @pytest.mark.parametrize("axis", [0, 1])
 def test_fake_quantize_learnable_per_channel_affine_transposed(axis):
@@ -152,10 +153,11 @@ def test_fake_quantize_learnable_per_channel_affine_transposed(axis):
     reference = _ATEN_OP(
         *(_reference(tensor) for tensor in inputs), axis, -128, 127, 1.0
     )
-    _compare_output(_run_candidate(*inputs, axis, -128, 127, 1.0), reference, inp)
+    result = flag_gems._fake_quantize_learnable_per_channel_affine(*inputs, axis, -128, 127, 1.0)
+    _compare_output(result, reference, inp)
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 def test_fake_quantize_learnable_per_channel_affine_autograd(request):
     _seed()
     inp = torch.randn((4, 8), device=flag_gems.device, requires_grad=True)
@@ -172,12 +174,14 @@ def test_fake_quantize_learnable_per_channel_affine_autograd(request):
     )
 
     registry = request.config._override_registry
-    if registry.get_override("fake_quantize_learnable_per_channel_affine") is None:
+    if registry.get_override("_fake_quantize_learnable_per_channel_affine") is None:
         with flag_gems.use_gems():
             output = _ATEN_OP(inp, scale, zero_point, 1, -128, 127, 0.5)
             grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
     else:
-        output = _run_candidate(inp, scale, zero_point, 1, -128, 127, 0.5)
+        output = flag_gems._fake_quantize_learnable_per_channel_affine(
+            inp, scale, zero_point, 1, -128, 127, 0.5
+        )
         grads = torch.autograd.grad(output, (inp, scale, zero_point), upstream)
 
     assert output.device == inp.device
@@ -188,10 +192,12 @@ def test_fake_quantize_learnable_per_channel_affine_autograd(request):
     utils.gems_assert_close(grads[2], ref_grads[2], torch.float32, reduce_dim=4)
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 def test_fake_quantize_learnable_per_channel_affine_rejects_integer_input():
     inp = torch.ones((4, 8), dtype=torch.int32, device=flag_gems.device)
     scale = torch.ones(8, device=flag_gems.device)
     zero_point = torch.zeros(8, device=flag_gems.device)
     with pytest.raises(TypeError):
-        _run_candidate(inp, scale, zero_point, 1, -128, 127, 1.0)
+        flag_gems._fake_quantize_learnable_per_channel_affine(
+            inp, scale, zero_point, 1, -128, 127, 1.0
+        )

@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "fake_quantize_learnable_per_channel_affine",
+  "name": "_fake_quantize_learnable_per_channel_affine",
   "requires_triton_kernel": true,
   "description": "Representative schema: aten::_fake_quantize_learnable_per_channel_affine(Tensor self, Tensor scale, Tensor zero_point, int axis, int quant_min, int quant_max, float grad_factor=1.0) -> Tensor. Applies learnable affine fake quantization independently along one channel axis. Tests cover multiple ranks and positive or negative axes, signed and unsigned bounds, grad-factor forward invariance, input preservation, output metadata, invalid dtypes, and autograd gradients for input, scale, and zero point.",
   "parameters": [
