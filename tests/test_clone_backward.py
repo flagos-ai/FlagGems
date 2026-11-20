@@ -40,7 +40,9 @@ def test_clone_backward(shape, dtype):
     # clone is a pure copy, so its gradient is the upstream gradient verbatim;
     # that makes the comparison exact rather than tolerance based.
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
-    utils.gems_assert_equal(res_in_grad, out_grad)
+    # Compare against the reference-side grad_output so the expectation lives on
+    # the same device under --ref=cpu, where gems_assert_equal moves only res.
+    utils.gems_assert_equal(res_in_grad, utils.to_reference(out_grad))
     # The result must be a fresh allocation, never an alias of grad_output.
     if out_grad.numel():
         assert res_in_grad.untyped_storage().data_ptr() != (
