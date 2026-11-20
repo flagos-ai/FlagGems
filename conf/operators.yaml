@@ -16102,6 +16102,17 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: npu_transpose_quant_batchmatmul
+  description: MXFP8 batched matrix multiplication with token/batch transposes and block-32 E8M0 scaling.
+  for:
+  - npu_transpose_quant_batchmatmul
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nuclear_norm
   description: 'Computes the nuclear norm (sum of singular values) of a matrix.
 
