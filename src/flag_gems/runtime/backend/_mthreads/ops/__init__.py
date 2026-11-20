@@ -69,6 +69,7 @@ from ._foreach_log2_ import _foreach_log2_
 from ._foreach_log10_ import _foreach_log10_
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
 from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
 from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._functional_sym_constrain_range_for_size import (
@@ -314,6 +315,7 @@ __all__ = [
     "_foreach_log2_",
     "_foreach_maximum__Scalar",
     "_foreach_maximum_Scalar",
+    "_foreach_minimum__Scalar",
     "_foreach_minimum_Scalar",
     "_foreach_minimum_ScalarList",
     "_functional_sym_constrain_range_for_size",
