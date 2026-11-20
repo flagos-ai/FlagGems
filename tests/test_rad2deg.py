@@ -29,7 +29,10 @@ RAD2DEG_DTYPES = FLOAT_DTYPES + utils.BYTE_INT_DTYPES
 
 def _make_rad2deg_input(shape, dtype):
     if dtype in utils.BYTE_INT_DTYPES:
-        return torch.randint(-100, 100, shape, dtype=torch.int32, device="cpu").to(
+        # uint8 wraps negatives modulo 256 (bin913's P3: the intended
+        # negative-angle coverage is lost on uint8), so both byte ints draw
+        # from [0, 100) and the comparison stays against the same values.
+        return torch.randint(0, 100, shape, dtype=torch.int32, device="cpu").to(
             dtype=dtype, device=flag_gems.device
         )
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -52,7 +55,7 @@ def test_rad2deg(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_rad2deg_(shape, dtype):
-    inp = _make_rad2deg_input(shape, dtype)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone())
 
     ref_out = ref_inp.rad2deg_()
