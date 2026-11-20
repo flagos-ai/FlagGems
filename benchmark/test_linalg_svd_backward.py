@@ -58,8 +58,6 @@ class LinalgSvdBackwardBenchmark(base.Benchmark):
 
     def get_latency(self, op, *args, **kwargs):
         inp = args[0]
-        m, n = inp.shape[-2], inp.shape[-1]
-        k = min(m, n)
         work = inp.detach().clone().requires_grad_(True)
         u, s, vh = op(work)
         grad_u = torch.randn_like(u)

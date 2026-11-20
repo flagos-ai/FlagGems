@@ -420,9 +420,7 @@ def _svd_backward_reference(U, S, Vh, grad_U, grad_S, grad_Vh):
     )
     c = t - gram_u * sinv.unsqueeze(-2) - sinv.unsqueeze(-1) * gram_v.mH
     grad_a = (
-        u @ c @ vh
-        + (gu * sinv.unsqueeze(-2)) @ vh
-        + (u * sinv.unsqueeze(-2)) @ gvh
+        u @ c @ vh + (gu * sinv.unsqueeze(-2)) @ vh + (u * sinv.unsqueeze(-2)) @ gvh
     )
     return grad_a.to(U.dtype)
 
@@ -549,7 +547,11 @@ def test_accuracy_linalg_svd_backward_matches_native(dtype):
 
     assert torch.isfinite(res_grad).all()
     got = utils.to_reference(res_grad, True)
-    exp = ref_grad.to(torch.float64) if utils.TO_CPU else utils.to_reference(ref_grad, True)
+    exp = (
+        ref_grad.to(torch.float64)
+        if utils.TO_CPU
+        else utils.to_reference(ref_grad, True)
+    )
     rel = float((got - exp).norm() / exp.norm())
     assert rel < 1e-2, f"relative error against native {rel:.3e} exceeds 1e-2"
 
@@ -643,7 +645,9 @@ def test_accuracy_linalg_svd_backward_repeated_values_nan():
             torch.ones(k, 4, dtype=torch.float32, device=flag_gems.device),
         ),
     )
-    assert torch.isnan(grad_a).any(), "repeated singular values must reproduce native NaN"
+    assert torch.isnan(
+        grad_a
+    ).any(), "repeated singular values must reproduce native NaN"
 
 
 @pytest.mark.linalg_svd_backward

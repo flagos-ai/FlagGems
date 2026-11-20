@@ -155,9 +155,15 @@ def _svd_backward_coeff_kernel(
     # Same relation for Gv: the formula consumes (Gv_ji)^T, which is the (i, j)
     # block again.
     gv_ji_t = tl.trans(tl.dot(vh_j, tl.trans(gvh_i), input_precision="tf32x3"))
-    si = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_i, mask=i_valid, other=1.0)[:, None]
-    sj = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_j, mask=j_valid, other=1.0)[None, :]
-    gs_i = tl.load(gS_ptr + pid_b.to(tl.int64) * K + offs_i, mask=i_valid, other=0.0)[:, None]
+    si = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_i, mask=i_valid, other=1.0)[
+        :, None
+    ]
+    sj = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_j, mask=j_valid, other=1.0)[
+        None, :
+    ]
+    gs_i = tl.load(gS_ptr + pid_b.to(tl.int64) * K + offs_i, mask=i_valid, other=0.0)[
+        :, None
+    ]
     pair_valid = i_valid[:, None] & j_valid[None, :]
     on_diag = offs_i[:, None] == offs_j[None, :]
     # F_ij = 1 / (s_j^2 - s_i^2) with a zero diagonal, which is the sign
@@ -279,7 +285,9 @@ def _svd_backward_fused_kernel(
         other=0.0,
     )
     sinv = tl.where(k_valid, 1.0 / s, 0.0)[None, :]
-    acc = tl.dot(tl.dot(u_tile, coeff, input_precision=PREC), vh_tile, input_precision=PREC)
+    acc = tl.dot(
+        tl.dot(u_tile, coeff, input_precision=PREC), vh_tile, input_precision=PREC
+    )
     acc += tl.dot(gu_tile * sinv, vh_tile, input_precision=PREC)
     acc += tl.dot(u_tile * sinv, gvh_tile, input_precision=PREC)
     tl.store(
@@ -380,7 +388,10 @@ def _svd_backward_input_kernel(
             other=0.0,
         )
         gvh_band = tl.load(
-            gVh_ptr + pid_b.to(tl.int64) * K * N + offs_j[:, None] * N + offs_n[None, :],
+            gVh_ptr
+            + pid_b.to(tl.int64) * K * N
+            + offs_j[:, None] * N
+            + offs_n[None, :],
             mask=j_valid[:, None] & (offs_n[None, :] < N),
             other=0.0,
         )
@@ -430,7 +441,11 @@ def _svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh):
         if (k == grad_U.shape[-1] and grad_U.is_contiguous())
         else grad_U[..., :, :k].contiguous()
     )
-    vh_c = Vh if (k == Vh.shape[-2] and Vh.is_contiguous()) else Vh[..., :k, :].contiguous()
+    vh_c = (
+        Vh
+        if (k == Vh.shape[-2] and Vh.is_contiguous())
+        else Vh[..., :k, :].contiguous()
+    )
     gvh_c = (
         grad_Vh
         if (k == grad_Vh.shape[-2] and grad_Vh.is_contiguous())
@@ -480,9 +495,15 @@ def _svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh):
                 num_warps=8,
             )
             return grad_A
-        coeff = torch.empty(batch_shape + (kp, kp), dtype=torch.float32, device=S.device)
+        coeff = torch.empty(
+            batch_shape + (kp, kp), dtype=torch.float32, device=S.device
+        )
         _svd_backward_coeff_kernel[
-            (n_batch, triton.cdiv(k, _SVD_BWD_BLOCK_K), triton.cdiv(k, _SVD_BWD_BLOCK_K))
+            (
+                n_batch,
+                triton.cdiv(k, _SVD_BWD_BLOCK_K),
+                triton.cdiv(k, _SVD_BWD_BLOCK_K),
+            )
         ](
             u_c,
             s_c,
