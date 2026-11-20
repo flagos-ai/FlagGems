@@ -72,6 +72,33 @@
 #      30 21 * * 3,6 . /etc/github-actions/ops-test-trigger.env && \
 #        /opt/github-actions/trigger_workflow.sh
 #
+#      To schedule daily.yaml, create a separate env file. The cron time
+#      below matches 02:03 CST (UTC+8), replacing the unreliable GitHub
+#      built-in schedule in daily.yaml which has been observed to drift by
+#      up to six hours during peak load.
+#
+#      sudo tee /etc/github-actions/daily-trigger.env >/dev/null <<'EOF'
+#      export GITHUB_TOKEN=REPLACE_WITH_FINE_GRAINED_TOKEN
+#      export GITHUB_ORG=flagos-ai
+#      export GITHUB_REPO=FlagGems
+#      export GITHUB_REF=master
+#      export GITHUB_WORKFLOW=daily.yaml
+#      # Choose one proxy example, or omit GITHUB_HTTPS_PROXY for direct access.
+#      export GITHUB_HTTPS_PROXY=socks5h://127.0.0.1:1080
+#      # export GITHUB_HTTPS_PROXY=http://proxy.example.com:3128
+#      export GITHUB_ACTIONS_LOG_FILE=/var/log/github-actions/daily-trigger.log
+#      EOF
+#      sudo chmod 600 /etc/github-actions/daily-trigger.env
+#
+#      Add a crontab entry that fires at 02:03 CST every day:
+#
+#      3 2 * * * . /etc/github-actions/daily-trigger.env && \
+#        /opt/github-actions/trigger_workflow.sh
+#
+#      daily.yaml declares workflow_dispatch with no inputs, so no -f/--input
+#      flags are required. The workflow itself determines which runners and
+#      shards to allocate once it starts.
+#
 #      The script timestamps and appends stdout, stderr, curl errors, HTTP
 #      status codes, and non-empty GitHub response bodies to
 #      GITHUB_ACTIONS_LOG_FILE, so cron redirection is not required.
@@ -233,6 +260,31 @@
 #     --ref example_tag \
 #     --input environment=staging \
 #     --input test_level=full
+#
+# Example 7: trigger daily.yaml (no workflow inputs required):
+#   This replaces the unreliable GitHub built-in schedule in daily.yaml, which
+#   has been observed to drift by up to six hours during peak load. Run this
+#   from crontab on an always-on internal server at the target wall-clock time.
+#
+#   .github/scripts/trigger_workflow.sh \
+#     --org flagos-ai \
+#     --repo FlagGems \
+#     --workflow daily.yaml \
+#     --ref master
+#
+#   daily.yaml declares workflow_dispatch with no inputs; the workflow itself
+#   allocates runners and shards once it starts. No -f/--input flags are needed.
+#
+#   Equivalent crontab entry (CRON_TZ=Asia/Shanghai, fires at 02:03 CST):
+#
+#     SHELL=/bin/bash
+#     MAILTO=
+#     CRON_TZ=Asia/Shanghai
+#     3 2 * * * . /etc/github-actions/daily-trigger.env && \
+#       /opt/github-actions/trigger_workflow.sh
+#
+#   Equivalent gh CLI command:
+#     gh workflow run daily.yaml --repo flagos-ai/FlagGems --ref master
 #
 # The workflow must declare workflow_dispatch. If a workflow declares different
 # inputs, pass them with repeated --input/-f options without changing this
