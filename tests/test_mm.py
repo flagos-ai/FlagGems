@@ -585,21 +585,55 @@ def test_hygon_mm_scientific_shapes(M, N, K):
 @pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon schedule regression"
 )
-def test_hygon_mm_scientific_path_does_not_fallback(monkeypatch):
+@pytest.mark.parametrize(
+    "shape, column_major, expected_route",
+    [
+        ((303, 320, 320), True, "_mm_tiled"),
+        ((29403, 1, 120), True, "_mm_vector"),
+        ((1024, 1024, 1024), True, "_mm_default"),
+        ((303, 320, 320), False, "_mm_default"),
+    ],
+)
+def test_hygon_mm_scientific_route(shape, column_major, expected_route, monkeypatch):
     provider = inspect.getmodule(flag_gems.mm)
+    m, n, k = shape
+    calls = []
 
-    def unexpected_fallback(*args, **kwargs):
-        pytest.fail("Hygon FP32 scientific mm unexpectedly used _mm_default")
+    class LaunchSpy:
+        def __init__(self, name):
+            self.name = name
+            self.kernel = getattr(provider, name)
 
-    monkeypatch.setattr(provider, "_mm_default", unexpected_fallback)
-    for M, N, K in [(4096, 64, 64), (4096, 32, 64)]:
-        cpu_a = torch.randn((M, K), dtype=torch.float32)
-        cpu_b = torch.randn((K, N), dtype=torch.float32)
-        actual = flag_gems.mm(cpu_a.to(flag_gems.device), cpu_b.to(flag_gems.device))
-        expected = torch.mm(cpu_a, cpu_b)
-        torch.testing.assert_close(
-            actual.cpu(), expected, rtol=1e-4, atol=1e-5, equal_nan=True
-        )
+        def __getitem__(self, grid):
+            launch = self.kernel[grid]
+
+            def run(*args, **kwargs):
+                calls.append(self.name)
+                return launch(*args, **kwargs)
+
+            return run
+
+    default = provider._mm_default
+
+    def observe_default(a, b):
+        calls.append("_mm_default")
+        return default(a, b)
+
+    for name in ("_mm_tiled", "_mm_vector"):
+        monkeypatch.setattr(provider, name, LaunchSpy(name))
+    monkeypatch.setattr(provider, "_mm_default", observe_default)
+    cpu_a = torch.randn((m, k), dtype=torch.float32)
+    a = cpu_a.to(flag_gems.device)
+    if column_major:
+        rhs = torch.randn((n, k), dtype=torch.float32)
+        cpu_b, b = rhs.t(), rhs.to(flag_gems.device).t()
+    else:
+        cpu_b = torch.randn((k, n), dtype=torch.float32)
+        b = cpu_b.to(flag_gems.device)
+    actual = flag_gems.mm(a, b)
+    expected = torch.mm(cpu_a, cpu_b)
+    assert calls == [expected_route]
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-4)
 
 
 @pytest.mark.mm

@@ -130,6 +130,7 @@ HYGON_SCIENTIFIC_MM_SHAPES = [
 
 
 class HygonScientificMmBenchmark(base.Benchmark):
+    DEFAULT_METRICS = consts.DEFAULT_METRICS + ["tflops"]
     DEFAULT_SHAPE_DESC = "M, N, K"
 
     def set_shapes(self, shape_file_path=None):

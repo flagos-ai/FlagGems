@@ -309,16 +309,15 @@ def mm(a, b):
             )
         return out
 
-    # Bound the constexpr FP32 schedules and their 32-bit input address arithmetic.
-    # The original implementation handles other types and larger address ranges.
+    # The scientific benchmark covers dense A and transposed-dense B, with
+    # narrow N/K. Leave large squares and unmeasured layouts to the default.
     if (
         a.dtype != torch.float32
-        or M > 1048576
-        or N > 4096
-        or K > 4096
-        or M * N >= 2**31
-        or (M - 1) * a.stride(0) + (K - 1) * a.stride(1) >= 2**31
-        or (K - 1) * b.stride(0) + (N - 1) * b.stride(1) >= 2**31
+        or M > 126636
+        or N > 320
+        or K > 320
+        or a.stride() != (K, 1)
+        or b.stride() != (1, K)
     ):
         return _mm_default(a, b)
     out = torch.empty((M, N), dtype=a.dtype, device=a.device)
