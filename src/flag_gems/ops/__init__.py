@@ -1197,7 +1197,7 @@ from flag_gems.ops.make_per_tensor_quantized_tensor import (
     _make_per_tensor_quantized_tensor_out,
 )
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
-from flag_gems.ops.masked_fill import masked_fill, masked_fill_
+from flag_gems.ops.masked_fill import masked_fill, masked_fill_, masked_fill_backward
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
 from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
@@ -2958,6 +2958,7 @@ __all__ = [
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
+    "masked_fill_backward",
     "masked_scatter",
     "masked_scatter_",
     "masked_scatter_backward",

@@ -428,3 +428,15 @@ def masked_fill_(inp, mask, value):
 
     expand_mask = mask.expand(inp.shape)
     return masked_fill_kernel(inp, expand_mask, value, out0=inp)
+
+
+def masked_fill_backward(
+    grad_output, mask, value=None, *, needs_input_grad=(True, True)
+):
+    """Return the input gradient and, for a tensor fill value, its scalar gradient."""
+    need_input, need_value = needs_input_grad
+    grad_input = _masked_fill_input_grad(grad_output, mask) if need_input else None
+    grad_value = None
+    if need_value and torch.is_tensor(value):
+        grad_value = _masked_fill_value_grad(grad_output, mask).to(value.dtype)
+    return grad_input, grad_value
