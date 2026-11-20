@@ -119,6 +119,19 @@ from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
+from .foreach_abs_ import foreach_abs_
+from .foreach_acos_ import foreach_acos_
+from .foreach_add_scalar_list_ import foreach_add_scalar_list_
+from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
+from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
+from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
+from .foreach_atan_ import foreach_atan_
+from .foreach_ceil import foreach_ceil
+from .foreach_copy import foreach_copy
+from .foreach_copy_ import foreach_copy_
+from .foreach_cos_ import foreach_cos_
+from .foreach_cosh_ import foreach_cosh_
+from .foreach_div_scalar import foreach_div_scalar
 from .foreach_div_scalar_ import foreach_div_scalar_
 from .frac import frac
 from .frac_ import frac_
@@ -455,6 +468,19 @@ __all__ = [
     "flip",
     "float_power_scalar_tensor_out",
     "floor",
+    "foreach_abs_",
+    "foreach_acos_",
+    "foreach_add_scalar_list_",
+    "foreach_addcdiv_scalar_",
+    "foreach_addcdiv_scalar_list_",
+    "foreach_addcmul_scalar_",
+    "foreach_atan_",
+    "foreach_ceil",
+    "foreach_copy",
+    "foreach_copy_",
+    "foreach_cos_",
+    "foreach_cosh_",
+    "foreach_div_scalar",
     "foreach_div_scalar_",
     "frac",
     "frac_",
