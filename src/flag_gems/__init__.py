@@ -21,6 +21,7 @@ from packaging.version import parse as _parse_version
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list, resolve_user_setting
+from flag_gems.deprecated import *  # noqa: F403
 from flag_gems.experimental_ops import *  # noqa: F403
 from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
@@ -152,6 +153,11 @@ _FULL_CONFIG = (
         "_cast_Float",
         cast_Float,
         lambda: torch_has_aten_overload("_cast_Float", "default"),
+    ),
+    (
+        "_cast_Half",
+        cast_Half,
+        lambda: torch_has_aten_overload("_cast_Half", "default"),
     ),
     (
         "_cast_Long",
@@ -713,6 +719,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
     (
         "_sparse_log_softmax",
         _sparse_log_softmax,

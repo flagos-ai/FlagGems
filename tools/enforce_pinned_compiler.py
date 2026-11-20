@@ -59,6 +59,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import sysconfig
 from importlib import metadata
 from pathlib import Path
 
@@ -193,6 +194,33 @@ def _under(path: Path, prefix: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _install_path_suppressor(venv: Path, path_to_suppress: str) -> None:
+    """Write a .pth file into the venv that strips a sys.path entry at startup.
+
+    Used when a bare triton/ shadow lives on a read-only mount and cannot be
+    deleted. The .pth is processed by site.py on every Python startup that
+    uses this venv, so pytest subprocesses inherit the clean path without
+    needing an explicit PYTHONPATH edit in the CI workflow.
+    """
+    site_pkgs = Path(sysconfig.get_path("purelib"))
+    if not _under(site_pkgs, venv):
+        log(
+            f"  WARNING: venv site-packages {site_pkgs} is not under {venv}; "
+            f"suppressor not installed"
+        )
+        return
+    pth = site_pkgs / "flaggems-suppress-triton-shadow.pth"
+    # A .pth line starting with "import " is executed as Python code at startup.
+    # Use a private alias (_s) so we never collide with user code bound to `sys`.
+    code = (
+        f"import sys as _s; "
+        f"_s.path = [_p for _p in _s.path if _p != {path_to_suppress!r}]; "
+        f"del _s\n"
+    )
+    pth.write_text(code)
+    log(f"  installed sys.path suppressor: {pth}")
 
 
 def resolved_version(
@@ -332,6 +360,14 @@ def main() -> None:
                     log(f"  removed {triton_pkg}")
                 except OSError as e:
                     log(f"  could not remove {triton_pkg}: {e}")
+                    log("  falling back to sys.path suppressor")
+                    _install_path_suppressor(venv, entry)
+                    # Patch current process too so the hard-verify below sees a
+                    # clean sys.path, not the read-only shadow we could not delete.
+                    sys.path = [
+                        sp for sp in sys.path if Path(sp).resolve() != p.resolve()
+                    ]
+                    bare_removed.append(str(triton_pkg))
         if not bare_removed:
             log("no bare triton/ directories found outside the venv")
 
