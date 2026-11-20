@@ -268,3 +268,15 @@ def logaddexp_out(self, other, out):
     logger.debug("GEMS LOGADDEXP_OUT")
     logaddexp_func(self, other, out0=out)
     return out
+
+
+def logaddexp_backward(grad_output, x, y):
+    """Return first-order real gradients reduced to the two input shapes."""
+    if grad_output.is_complex() or x.is_complex() or y.is_complex():
+        raise NotImplementedError(
+            "FlagGems logaddexp backward does not support complex inputs"
+        )
+    grad_x, grad_y = _logaddexp_backward_values(grad_output, x, y)
+    return _reduce_to_shape(grad_x, x.shape).to(x.dtype), _reduce_to_shape(
+        grad_y, y.shape
+    ).to(y.dtype)
