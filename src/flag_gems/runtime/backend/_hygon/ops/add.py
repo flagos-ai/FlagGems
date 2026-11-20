@@ -11,6 +11,7 @@ import triton.language as tl
 
 from flag_gems.ops.add import add as _generic_add
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +110,17 @@ def _flat_add(
     tl.store(O + i, value, valid)
 
 
+def _broadcast_shape(a, b):
+    try:
+        return broadcast(a.shape, b.shape)
+    except ValueError as error:
+        raise RuntimeError(
+            "Shape mismatch: objects cannot be broadcast to a single shape"
+        ) from error
+
+
 def _launch_strided(a, b, alpha):
-    shape = torch.broadcast_shapes(a.shape, b.shape)
+    shape = _broadcast_shape(a, b)
     av, bv = a.broadcast_to(shape), b.broadcast_to(shape)
     size = av.numel()
     out = torch.empty(shape, dtype=a.dtype, device=a.device)
@@ -404,9 +414,7 @@ def add(a, b, *, alpha=1):
         or (not a.dtype.is_floating_point and not isinstance(alpha, int))
     ):
         return _legacy_add(a, b, alpha=alpha)
-    shape = (
-        tuple(a.shape) if scalar else tuple(torch.broadcast_shapes(a.shape, b.shape))
-    )
+    shape = tuple(a.shape) if scalar else _broadcast_shape(a, b)
     av = a.broadcast_to(shape)
     bv = None if scalar else b.broadcast_to(shape)
     size = math.prod(shape)

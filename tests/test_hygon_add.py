@@ -11,6 +11,14 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.add
+def test_hygon_add_incompatible_shapes_raise():
+    a = torch.empty((2, 3), device=flag_gems.device)
+    b = torch.empty((2, 4), device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="cannot be broadcast"):
+        flag_gems.add(a, b)
+
+
+@pytest.mark.add
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
 @pytest.mark.parametrize("shape", [(), (6,), (33, 78), (542, 30), (101, 3, 33)])
 @pytest.mark.parametrize("kind", ["scalar", "tensor", "vector"])
