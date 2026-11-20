@@ -62,6 +62,24 @@ mm_hygon_splitk:
               global_async_b, local_sync_s1, local_sync_s2]
     stages: [1, 2, 3]
     warps: [1, 2, 4, 8]
+  # The same regular large-tile domain is used for both matrix orientations.
+  # Wave count follows accumulator ownership; exact resources are compiled.
+  - param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        SPLITS: splits
+        PROFILE: profile
+      num_stages: stages
+      num_warps: warps
+    bm: [64, 128, 256]
+    bn: [64, 128, 256]
+    bk: [16, 32, 64]
+    splits: [1, 2, 4, 8, 16, 32, 64]
+    profile: [global_shared]
+    stages: [2]
+    warps: [4, 8]
 mm_hygon_splitk_post:
   - param_map:
       META:

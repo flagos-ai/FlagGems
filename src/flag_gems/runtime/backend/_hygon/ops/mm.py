@@ -47,6 +47,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from .gemm_config_profiles import SHARED_HCU_OPTIONS as _SHARED_HCU_OPTIONS
 from .gemm_utils import (
     I32_GEMM_COORD_LIMIT,
     GemmChoice,
@@ -1461,6 +1462,10 @@ def _splitk_post_hook(args, exception):
         )
 
 
+_SPLITK_WORKSPACE_BYTES = 16 * 1024 * 1024
+_TUNED_SPLITK_CANDIDATE = "tuned_split_k"
+
+
 def _splitk_default_configs():
     # Retain the two existing synchronous global-split families for Default.
     # Expanded replaces this list with the complete declared YAML space.
@@ -1493,8 +1498,17 @@ def _splitk_prune(configs, named_args, **kwargs):
             named_args.get("WAVE_PRIVATE_SYNC_SUPPORTED", False),
         )
     )
+    workspace = named_args.get("W")
+    elements = int(named_args.get("M", 0)) * int(named_args.get("N", 0))
     selected = []
     for config in configs:
+        if (
+            workspace is not None
+            and config.kwargs["KIND"] == 0
+            and config.kwargs["SPLITS"] > 1
+            and config.kwargs["SPLITS"] * elements > workspace.numel()
+        ):
+            continue
         if config.kwargs["LOAD_MODE"] & ~mask:
             continue
         if not supports_private and config.kwargs.get("wave_private_sync", False):
@@ -1533,6 +1547,12 @@ def _splitk_prune(configs, named_args, **kwargs):
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     prune_configs_by={"early_config_prune": _splitk_prune},
 )
+@triton.heuristics(
+    {
+        "FULL_K": lambda args: args["KIND"] == 0
+        and args["K"] % (args["BK"] * args["SPLITS"]) == 0,
+    }
+)
 @triton.jit
 def _mm_splitk_partial(
     A,
@@ -1555,6 +1575,7 @@ def _mm_splitk_partial(
     WAVE_PRIVATE_SYNC_SUPPORTED: tl.constexpr,
     M_ALIGNMENT: tl.constexpr = 1,
     N_ALIGNMENT: tl.constexpr = 1,
+    FULL_K: tl.constexpr = False,
 ):
     tl.static_assert(KIND == 0 or KIND == 1)
     tl.static_assert(LOAD_MODE >= 0 and LOAD_MODE <= 3)
@@ -1594,35 +1615,25 @@ def _mm_splitk_partial(
                 (1, 0),
             )
         acc = tl.zeros((BM, BN), tl.float32)
+        A_BOUNDS: tl.constexpr = (
+            (() if FULL_M else (0,)) if FULL_K else ((1,) if FULL_M else (0, 1))
+        )
+        B_BOUNDS: tl.constexpr = (
+            (() if FULL_N else (1,)) if FULL_K else ((0,) if FULL_N else (0, 1))
+        )
         for q in range(tl.cdiv(K, BK * SPLITS)):
-            if FULL_M:
-                a = tle.load(
-                    ap,
-                    boundary_check=(1,),
-                    padding_option="zero",
-                    is_async=(LOAD_MODE & 1) != 0,
-                )
-            else:
-                a = tle.load(
-                    ap,
-                    boundary_check=(0, 1),
-                    padding_option="zero",
-                    is_async=(LOAD_MODE & 1) != 0,
-                )
-            if FULL_N:
-                b = tle.load(
-                    bp,
-                    boundary_check=(0,),
-                    padding_option="zero",
-                    is_async=(LOAD_MODE & 2) != 0,
-                )
-            else:
-                b = tle.load(
-                    bp,
-                    boundary_check=(0, 1),
-                    padding_option="zero",
-                    is_async=(LOAD_MODE & 2) != 0,
-                )
+            a = tle.load(
+                ap,
+                boundary_check=A_BOUNDS,
+                padding_option="" if FULL_M and FULL_K else "zero",
+                is_async=(LOAD_MODE & 1) != 0,
+            )
+            b = tle.load(
+                bp,
+                boundary_check=B_BOUNDS,
+                padding_option="" if FULL_N and FULL_K else "zero",
+                is_async=(LOAD_MODE & 2) != 0,
+            )
             acc = tl.dot(a, b, acc)
             ap = tl.advance(ap, (0, BK * SPLITS))
             bp = tl.advance(bp, (BK * SPLITS, 0))
@@ -1690,7 +1701,7 @@ def _mm_splitk_partial(
             )
 
 
-def _splitk_eligible(a, b, c, *, allow_single_row=False):
+def _splitk_eligible(a, b, c, *, allow_single_row=False, expanded_pool=False):
     if not (HAS_HYGON_TLE and _HYGON_SPLITK_OPTIONS_SUPPORTED):
         return False
     if a.ndim != 2 or b.ndim != 2 or c.ndim != 2:
@@ -1700,9 +1711,13 @@ def _splitk_eligible(a, b, c, *, allow_single_row=False):
     if not (
         M >= (1 if allow_single_row else 2)
         and N >= 2
-        # K partitions supply parallel work for small output grids. Limit
-        # the grid to 64 tiles and the tuning workspace to 16MiB.
-        and triton.cdiv(M, 32) * triton.cdiv(N, 32) <= 64
+        # Default retains its small-grid domain. Expanded competes with
+        # other families wherever at least two FP32 planes fit in 16MiB.
+        and (
+            M * N <= _SPLITK_WORKSPACE_BYTES // 8
+            if expanded_pool
+            else triton.cdiv(M, 32) * triton.cdiv(N, 32) <= 64
+        )
         and K >= (8192 if N < 16 else 2048)
         and b.shape[0] == K
         and c.shape == (M, N)
@@ -1769,7 +1784,7 @@ def try_mm_splitk(a, b, c, *, compare_local_split=False):
     return True
 
 
-def _launch_mm_splitk(a, b, c):
+def _launch_mm_splitk(a, b, c, *, symmetric_async=False):
     M, K = a.shape
     N = b.shape[1]
     ma, na = _splitk_alignment_facts(M, N)
@@ -1777,17 +1792,23 @@ def _launch_mm_splitk(a, b, c):
     # pid axes. Arbitrary caller grids must retain the original checks.
     # All Expanded configurations share one workspace. CTA/GSU1 leave it
     # unused; every global split writes its complete disjoint FP32 partial.
-    workspace = torch.empty((64, M, N), device=a.device, dtype=torch.float32)
+    capacity = min(64, _SPLITK_WORKSPACE_BYTES // (4 * M * N))
+    max_splits = 1 << (capacity.bit_length() - 1)
+    workspace = torch.empty((max_splits, M, N), device=a.device, dtype=torch.float32)
     with torch_device_fn.device(a.device):
         # Preserve the qualified Split-K load modes while ordinary MM is
         # validated with the per-operand layout contract.
-        mask = _hygon_mm_async_load_mask(a, b, c, M, N, K) if b.is_contiguous() else 0
+        mask = (
+            _hygon_mm_async_load_mask(a, b, c, M, N, K)
+            if symmetric_async or b.is_contiguous()
+            else 0
+        )
         grid = lambda meta: (
             triton.cdiv(M, meta["BM"]),
             triton.cdiv(N, meta["BN"]),
             meta["SPLITS"] if meta["KIND"] == 0 else 1,
         )
-        _, meta = _mm_splitk_partial[grid](
+        partial, meta = _mm_splitk_partial[grid](
             a,
             b,
             workspace,
@@ -1805,6 +1826,7 @@ def _launch_mm_splitk(a, b, c):
         # LibEntry returns the metadata for this exact launch, including on
         # cache hits; do not read a mutable global tuner's best_config.
         _splitk_post_hook(dict(meta, W=workspace, C=c, M=M, N=N, K=K), None)
+        return partial, meta
 
 
 # Fixed Shared and short-K profiles for the ordinary kernel.
@@ -1905,18 +1927,6 @@ class SharedMMConfig:
         )
 
 
-_SHARED_HCU_OPTIONS = dict(
-    waves_per_eu=1,
-    loop_unroll_stage="post-pipeline",
-    schedule_hint="local-prefetch",
-    lds_dma_alias_workaround=True,
-    prefer_wide_async_copy=True,
-    kpack=2,
-    mmac_transposed=True,
-    optimize_epilogue=True,
-    rebase_buffer_store=False,
-    terminal_readonly_publication=False,
-)
 _SHARED_ADDRESS_HCU_OPTIONS = dict(
     coalesce_lgkm_waits=True,
     combine_shifted_disjoint_or=True,
@@ -3312,7 +3322,15 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False, expanded=False):
         allow_shared_reservation=expanded,
     )
     short_k = short_k_mm_candidates(a, b, c, extended=expanded)
-    return shared + cooperative + local + short_k
+    tuned_split = (
+        (_TUNED_SPLITK_CANDIDATE,)
+        if expanded
+        and _shared_supported()
+        and _mm_splitk_partial.fn._run_mode == "normal"
+        and _splitk_eligible(a, b, c, expanded_pool=True)
+        else ()
+    )
+    return shared + cooperative + local + short_k + tuned_split
 
 
 def _mm_candidate_label(candidate):
@@ -3555,6 +3573,8 @@ def mm(a, b):
 
 def _dispatch_hygon_mm_candidate(a, b, c, candidate):
     """Launch a fixed configuration selected by the family tuner."""
+    if candidate == _TUNED_SPLITK_CANDIDATE:
+        return _launch_mm_splitk(a, b, c, symmetric_async=True)
     if isinstance(candidate, SharedMMConfig):
         return launch_shared_mm(a, b, c, candidate)
     if isinstance(candidate, CooperativeMMConfig):

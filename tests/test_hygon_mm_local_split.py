@@ -202,3 +202,32 @@ def test_mv_global_split_shortlist_uses_layout_and_grid(local, monkeypatch):
     assert shortlist(520, 7168) == ((64, 64, 16), (128, 32, 32))
     assert shortlist(525, 7168) == ()
     assert shortlist(512, 7168, contiguous_k=True) == ()
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("transpose", [False, True])
+@pytest.mark.parametrize("shape", [(1, 17, 257), (19, 33, 13), (65, 80, 8320)])
+def test_staging_alias_proof_preserves_edges_and_changed_replay(
+    local, dtype, transpose, shape
+):
+    if not torch.cuda.is_available():
+        pytest.skip("requires a Hygon device")
+    if torch.cuda.get_device_properties(0).gcnArchName.split(":")[0] != "gfx936":
+        pytest.skip("requires gfx936")
+    m, n, k = shape
+    a = torch.empty((m, k), dtype=dtype, device="cuda")
+    b = torch.empty((n, k) if transpose else (k, n), dtype=dtype, device=a.device)
+    b = b.t() if transpose else b
+    storage = torch.full((m * n + 256,), 7, dtype=dtype, device=a.device)
+    output = storage[128:-128].view(m, n)
+    for config in local.local_split_mm_configs():
+        local.launch_local_split_mm(a, b, output, config)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            local.launch_local_split_mm(a, b, output, config)
+        for _ in range(2):
+            a.normal_().div_(k**0.5)
+            b.normal_()
+            graph.replay()
+            torch.testing.assert_close(output, a @ b, rtol=0.025, atol=0.025)
+            assert torch.all(storage[:128] == 7) and torch.all(storage[-128:] == 7)

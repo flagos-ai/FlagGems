@@ -341,6 +341,16 @@ def test_hygon_small_mm_expanded_regular_partition_profiles(hygon_splitk):
 
     def key(c):
         meta = dict(c.kwargs)
+        from triton.backends.compiler import GPUTarget
+        from triton.backends.hcu.compiler import HIPBackend
+
+        from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
+            SHARED_HCU_OPTIONS,
+        )
+
+        defaults = HIPBackend(GPUTarget("hip", "gfx936", 64)).parse_options({})
+        for field in SHARED_HCU_OPTIONS:
+            meta.setdefault(field, getattr(defaults, field))
         meta.setdefault("wave_private_sync", False)
         return tuple(sorted(meta.items())), c.num_warps, c.num_stages
 
@@ -351,7 +361,22 @@ def test_hygon_small_mm_expanded_regular_partition_profiles(hygon_splitk):
         key(c) for c in configs
     }
     geometry = set(product((16, 32, 64), (16, 32, 64), (16, 32, 64)))
-    global_configs = [c for c in configs if c.kwargs["KIND"] == 0]
+    global_configs = [
+        c for c in configs if c.kwargs["KIND"] == 0 and c.kwargs["LOAD_MODE"] != 3
+    ]
+    shared_configs = [c for c in configs if c.kwargs["LOAD_MODE"] == 3]
+    shared_geometry = set(product((64, 128, 256), (64, 128, 256), (16, 32, 64)))
+    assert len(global_configs) + sum(c.kwargs["KIND"] == 1 for c in configs) == 918
+    assert len(shared_configs) == 189
+    assert {
+        (c.kwargs["BM"], c.kwargs["BN"], c.kwargs["BK"], c.kwargs["SPLITS"])
+        for c in shared_configs
+    } == {(*t, sp) for t in shared_geometry for sp in (1, 2, 4, 8, 16, 32, 64)}
+    assert all(
+        c.num_stages == 2
+        and c.num_warps == (8 if c.kwargs["BM"] == c.kwargs["BN"] == 256 else 4)
+        for c in shared_configs
+    )
     local_configs = [c for c in configs if c.kwargs["KIND"] == 1]
     assert {
         (c.kwargs["BM"], c.kwargs["BN"], c.kwargs["BK"], c.kwargs["SPLITS"])
@@ -400,7 +425,7 @@ def test_hygon_small_mm_expanded_regular_partition_profiles(hygon_splitk):
 
 
 @pytest.mark.parametrize(
-    "mask,expected_modes", [(0, {0}), (1, {0}), (2, {0, 2}), (3, {0, 2})]
+    "mask,expected_modes", [(0, {0}), (1, {0}), (2, {0, 2}), (3, {0, 2, 3})]
 )
 def test_hygon_small_mm_prunes_capability_only(hygon_splitk, mask, expected_modes):
     configs = hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
@@ -851,7 +876,7 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
         + len(hygon_mm.cooperative_mm_configs())
         + len(hygon_mm.local_split_mm_configs())
         + len(_GROUPED_MV_CONFIGS)
-        + 1
+        + 2
     )
     total = (
         len(_expanded_configs(hygon_mm))
@@ -860,7 +885,8 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
         + len(hygon_mm.runtime.ops_get_configs("mv_hygon"))
         + python_candidates
     )
-    assert total <= 4000
+    # User-approved budget for independent regular geometry/profile spaces.
+    assert total <= 4200
 
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])

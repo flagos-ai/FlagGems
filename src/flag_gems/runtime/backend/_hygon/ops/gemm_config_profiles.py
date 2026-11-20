@@ -31,6 +31,20 @@ import yaml
 
 from .gemm_utils import supports_hcu_options
 
+SHARED_HCU_OPTIONS = dict(
+    waves_per_eu=1,
+    loop_unroll_stage="post-pipeline",
+    schedule_hint="local-prefetch",
+    lds_dma_alias_workaround=True,
+    prefer_wide_async_copy=True,
+    kpack=2,
+    mmac_transposed=True,
+    optimize_epilogue=True,
+    rebase_buffer_store=False,
+    terminal_readonly_publication=False,
+)
+
+
 # name, load mode, stages, K packing, transposed MMAC, epilogue, base waves, LDS slots
 MM_PROFILES = (
     ("generic_min", 0, 1, 1, False, False, 1, 1),
@@ -52,6 +66,7 @@ GLOBAL_SPLIT_PROFILES = (
     ("global_bandwidth", 0, 2, 2),
     ("global_throughput", 0, 2, 4),
     ("global_async_b", 2, 3, 2),
+    ("global_shared", 3, 2, 4),
 )
 LOCAL_SPLIT_PROFILES = (("local_sync_s1", 1), ("local_sync_s2", 2))
 
@@ -251,17 +266,31 @@ def build_split_configs(ranges, pre_hook=None):
     )
     if not supports_hcu_options(("optimize_epilogue", "schedule_hint")):
         return []
+    supports_shared = supports_hcu_options(tuple(SHARED_HCU_OPTIONS))
+    legacy_options = {}
+    if supports_shared:
+        from triton.backends.hcu.compiler import HIPBackend
+
+        defaults = HIPBackend(
+            triton.runtime.driver.active.get_current_target()
+        ).parse_options({})
+        legacy_options = {key: getattr(defaults, key) for key in SHARED_HCU_OPTIONS}
     configs, seen = [], set()
     for bm, bn, bk in product(ranges["BM"], ranges["BN"], ranges["BK"]):
         for splits in ranges["SPLITS"]:
             for name, mode, stages, waves in GLOBAL_SPLIT_PROFILES:
                 if name not in selected:
                     continue
+                if name == "global_shared":
+                    if not supports_shared:
+                        continue
+                    waves = _waves(bm, bn, waves)
                 if name == "global_latency":
                     # One wave per independent 16x16 MMAC output tile, capped
                     # at the latency profile's two-wave producer tier.
                     waves = _waves(bm, bn, waves)
                 meta = dict(
+                    legacy_options,
                     BM=bm,
                     BN=bn,
                     BK=bk,
@@ -272,6 +301,8 @@ def build_split_configs(ranges, pre_hook=None):
                     optimize_epilogue=False,
                     schedule_hint="local-prefetch",
                 )
+                if name == "global_shared":
+                    meta.update(SHARED_HCU_OPTIONS)
                 _append(configs, seen, meta, waves, stages, ranges, pre_hook)
         # This profile assigns one wave to each local K partition. Additional
         # logical partitions per wave are a different scheduling family.
@@ -282,6 +313,7 @@ def build_split_configs(ranges, pre_hook=None):
                 if name not in selected:
                     continue
                 meta = dict(
+                    legacy_options,
                     BM=bm,
                     BN=bn,
                     BK=bk,

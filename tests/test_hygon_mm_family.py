@@ -98,13 +98,18 @@ def test_family_cold_graph_never_tunes(router, monkeypatch):
     "fail_on_cache_hit, clear_on_failure",
     [(False, False), (True, False), (True, True)],
 )
+@pytest.mark.parametrize("candidate_kind", ["shared", "tuned_split_k"])
 def test_optional_mm_compile_failure_preserves_incumbent(
-    router, monkeypatch, fail_on_cache_hit, clear_on_failure
+    router, monkeypatch, fail_on_cache_hit, clear_on_failure, candidate_kind
 ):
     from triton.runtime.errors import OutOfResources
 
     install_benchmark(router, monkeypatch)
-    config = router.SharedMMConfig((64, 128, 32))
+    config = (
+        router.SharedMMConfig((64, 128, 32))
+        if candidate_kind == "shared"
+        else router._TUNED_SPLITK_CANDIDATE
+    )
     monkeypatch.setattr(router, "mm_family_candidates", lambda *a, **kw: (config,))
     fails = not fail_on_cache_hit
     selected = []
