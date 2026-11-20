@@ -201,7 +201,7 @@ def _native_batch_norm_legit_no_training(
     empty ``save_mean``/``save_var`` tensors, matching the schema which has no
     saved statistics in this mode.
     """
-    logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT_NO_TRAINING")
+    logger.debug("GEMS_HYGON _NATIVE_BATCH_NORM_LEGIT_NO_TRAINING")
 
     input_3d = make_3d_for_bn(input)
 

@@ -227,7 +227,7 @@ class _Baddbmm(torch.autograd.Function):
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
-    logger.debug("GEMS BADDBMM")
+    logger.debug("GEMS_HYGON BADDBMM")
     metadata = _validate(bias, A, B)
     if torch.is_grad_enabled() and (
         bias.requires_grad or A.requires_grad or B.requires_grad
@@ -237,7 +237,7 @@ def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
 
 
 def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
-    logger.debug("GEMS BADDBMM_OUT")
+    logger.debug("GEMS_HYGON BADDBMM_OUT")
     shape, bias_strides = _validate(bias, A, B)
     check_out_autograd("baddbmm", bias, A, B, out)
     if out.shape != shape or out.dtype != A.dtype or out.device != A.device:
