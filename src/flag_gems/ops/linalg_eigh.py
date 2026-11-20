@@ -688,8 +688,10 @@ def linalg_eigh(A, UPLO="L", compute_v=True):
     # so the recursive call inside _EighBackward.forward does not re-enter this
     # branch.  Complex inputs keep the plain forward: their eigenvector gradient
     # is only defined up to a phase, which the explicit contract check reports.
-    if torch.is_grad_enabled() and A.requires_grad and (
-        A.is_floating_point() or A.is_complex()
+    if (
+        torch.is_grad_enabled()
+        and A.requires_grad
+        and (A.is_floating_point() or A.is_complex())
     ):
         if A.is_complex():
             # Eigenvectors of a Hermitian matrix are defined only up to a phase
@@ -888,11 +890,6 @@ def _eigh_bwd_fused_kernel(
     tmp = tl.dot(v, y, input_precision="ieee")
     ga = tl.dot(tmp, tl.trans(v), input_precision="ieee")
     tl.store(GA + pid * N * N + off, ga, mask=mask)
-
-
-
-
-
 
 
 @libentry()
@@ -1149,7 +1146,9 @@ def _eigh_backward_launch(grad_w, grad_v, w, v):
         padded_w[:, n:] = hi + 4.0 * span + 4.0 + step
         work_w = padded_w
         if grad_w_use is not None:
-            grad_w_use = torch.nn.functional.pad(grad_w_use, (0, order - n))
+            from flag_gems.ops.pad import pad
+
+            grad_w_use = pad(grad_w_use, (0, order - n))
         if grad_v_use is not None:
             grad_v_use = _eigh_bwd_pad(grad_v_use, order)
 
@@ -1196,8 +1195,14 @@ def _eigh_backward_launch(grad_w, grad_v, w, v):
         )
     grad_a = torch.empty_like(mid)
     _eigh_bwd_mm_kernel[grid](
-        mid, work_v, grad_a, order, TRANS_A=False, TRANS_B=True,
-        IS_F64=is_f64, BLOCK=block,
+        mid,
+        work_v,
+        grad_a,
+        order,
+        TRANS_A=False,
+        TRANS_B=True,
+        IS_F64=is_f64,
+        BLOCK=block,
     )
     if order != n:
         grad_a = grad_a[:, :n, :n]

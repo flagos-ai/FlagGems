@@ -704,8 +704,6 @@ def test_underlying_linalg_eigh_no_vectors_complex_global(shape, dtype):
     assert res_v.numel() == 0
 
 
-
-
 # ---------------------------------------------------------------------------
 # First-order autograd backward.
 #
@@ -825,11 +823,15 @@ END_TO_END_RTOL = {torch.float32: 5e-3, torch.float64: 2e-2}
 
 
 @pytest.mark.linalg_eigh_backward
-@pytest.mark.parametrize("shape", [(2, 2), (3, 3), (8, 8), (17, 17), (32, 32), (48, 48)])
+@pytest.mark.parametrize(
+    "shape", [(2, 2), (3, 3), (8, 8), (17, 17), (32, 32), (48, 48)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_eigh_backward_gradients(shape, dtype):
     """Invariant-loss gradients match native autograd in float32 and float64."""
-    _skip_if_cpu_reference("test_linalg_eigh_backward_gradients needs the device reference branch")
+    _skip_if_cpu_reference(
+        "test_linalg_eigh_backward_gradients needs the device reference branch"
+    )
 
     inp = _make_eigh_input(shape, dtype)
     target, coef = _loss_data(shape, dtype, inp.device, 1)
@@ -844,14 +846,16 @@ def test_linalg_eigh_backward_gradients(shape, dtype):
     # forward, not of this backward and not something a gradient test can fix.
     utils.gems_assert_close(w, ref_w, dtype, atol=EIG_EVAL_ATOL[torch.float32])
     with ieee_float32_matmul():
-        ref_grad, = torch.autograd.grad(
+        (ref_grad,) = torch.autograd.grad(
             reconstruction_loss(ref_w, ref_v, target, coef), (ref_inp,)
         )
-    grad, = torch.autograd.grad(reconstruction_loss(w, v, target, coef), (inp,))
+    (grad,) = torch.autograd.grad(reconstruction_loss(w, v, target, coef), (inp,))
 
     torch.testing.assert_close(
-        utils.to_cpu(grad, ref_grad), ref_grad,
-        atol=1e-6, rtol=END_TO_END_RTOL[dtype],
+        utils.to_cpu(grad, ref_grad),
+        ref_grad,
+        atol=1e-6,
+        rtol=END_TO_END_RTOL[dtype],
     )
     assert grad.shape == inp.shape and grad.dtype == dtype
     # The backward must produce a symmetric gradient for a symmetric input.
@@ -873,7 +877,7 @@ def test_linalg_eigh_backward_matches_closed_form_exactly(shape, dtype):
     torch.manual_seed(8)
     grad_w = torch.randn_like(w)
     grad_v = torch.randn_like(v)
-    grad, = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
+    (grad,) = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
     with ieee_float32_matmul():
         expected = eigh_backward_closed_form(grad_w, grad_v, w.detach(), v.detach())
     # tl.dot with input_precision="ieee" rounds the same way as the reference
@@ -893,7 +897,7 @@ def test_linalg_eigh_backward_tiled_path_matches_fused(dtype):
     torch.manual_seed(9)
     grad_w = torch.randn_like(w)
     grad_v = torch.randn_like(v)
-    grad, = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
+    (grad,) = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
     with ieee_float32_matmul():
         expected = eigh_backward_closed_form(grad_w, grad_v, w.detach(), v.detach())
     saved = dict(eigh_module._EIGH_BWD_FUSED_MAX_N)
@@ -928,7 +932,7 @@ def test_linalg_eigh_backward_closed_form(dtype):
     torch.manual_seed(2)
     grad_w = torch.randn_like(w)
     grad_v = torch.randn_like(v)
-    grad, = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
+    (grad,) = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
 
     with ieee_float32_matmul():
         expected = eigh_backward_closed_form(grad_w, grad_v, w.detach(), v.detach())
@@ -939,9 +943,7 @@ def test_linalg_eigh_backward_closed_form(dtype):
     flip = torch.ones(n, dtype=dtype, device=inp.device)
     flip[0] = -1.0
     with ieee_float32_matmul():
-        other = eigh_backward_closed_form(
-            grad_w, grad_v, w.detach(), v.detach() * flip
-        )
+        other = eigh_backward_closed_form(grad_w, grad_v, w.detach(), v.detach() * flip)
     assert not torch.allclose(grad, other, atol=1e-4), "test would be vacuous"
 
 
@@ -949,7 +951,9 @@ def test_linalg_eigh_backward_closed_form(dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_eigh_backward_eigenvalue_only(dtype):
     """A pure eigenvalue loss reproduces native autograd exactly."""
-    _skip_if_cpu_reference("test_linalg_eigh_backward_eigenvalue_only needs the device reference branch")
+    _skip_if_cpu_reference(
+        "test_linalg_eigh_backward_eigenvalue_only needs the device reference branch"
+    )
 
     inp = _make_eigh_input((16, 16), dtype)
     ref_inp = utils.to_reference(inp).requires_grad_()
@@ -959,13 +963,15 @@ def test_linalg_eigh_backward_eigenvalue_only(dtype):
     ref_w, _ = torch.linalg.eigh(ref_inp)
     w, _ = flag_gems.linalg_eigh(inp)
     with ieee_float32_matmul():
-        ref_grad, = torch.autograd.grad((coef * ref_w).sum(), (ref_inp,))
-    grad, = torch.autograd.grad((coef * w).sum(), (inp,))
+        (ref_grad,) = torch.autograd.grad((coef * ref_w).sum(), (ref_inp,))
+    (grad,) = torch.autograd.grad((coef * w).sum(), (inp,))
     # V diag(coef) V^T inherits the forward's eigenvector accuracy, so this
     # shares the end-to-end tolerance used for the two-gradient cases.
     torch.testing.assert_close(
-        utils.to_cpu(grad, ref_grad), ref_grad,
-        atol=1e-6, rtol=END_TO_END_RTOL[dtype],
+        utils.to_cpu(grad, ref_grad),
+        ref_grad,
+        atol=1e-6,
+        rtol=END_TO_END_RTOL[dtype],
     )
     grad = utils.to_cpu(grad, ref_grad)
     torch.testing.assert_close(grad, grad.transpose(-2, -1), atol=1e-5, rtol=0)
@@ -975,7 +981,9 @@ def test_linalg_eigh_backward_eigenvalue_only(dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_linalg_eigh_backward_batched(dtype):
     """Batched inputs get an independent per-matrix gradient."""
-    _skip_if_cpu_reference("test_linalg_eigh_backward_batched needs the device reference branch")
+    _skip_if_cpu_reference(
+        "test_linalg_eigh_backward_batched needs the device reference branch"
+    )
 
     shape = (3, 4, 4)
     inp = _make_eigh_input(shape, dtype)
@@ -985,10 +993,10 @@ def test_linalg_eigh_backward_batched(dtype):
     ref_w, ref_v = torch.linalg.eigh(ref_inp)
     w, v = flag_gems.linalg_eigh(inp)
     with ieee_float32_matmul():
-        ref_grad, = torch.autograd.grad(
+        (ref_grad,) = torch.autograd.grad(
             reconstruction_loss(ref_w, ref_v, target, coef), (ref_inp,)
         )
-    grad, = torch.autograd.grad(reconstruction_loss(w, v, target, coef), (inp,))
+    (grad,) = torch.autograd.grad(reconstruction_loss(w, v, target, coef), (inp,))
     atol = 2e-4 if dtype == torch.float32 else 1e-8
     torch.testing.assert_close(
         utils.to_cpu(grad, ref_grad), ref_grad, atol=atol, rtol=1e-3
@@ -1001,7 +1009,9 @@ def test_linalg_eigh_backward_batched(dtype):
 @pytest.mark.parametrize("uplo", ["L", "U"])
 def test_linalg_eigh_backward_uplo(dtype, uplo):
     """UPLO chooses the forward triangle and leaves the backward Hermitian."""
-    _skip_if_cpu_reference("test_linalg_eigh_backward_uplo needs the device reference branch")
+    _skip_if_cpu_reference(
+        "test_linalg_eigh_backward_uplo needs the device reference branch"
+    )
 
     n = 9
     inp = _make_eigh_input((n, n), dtype, asymmetric=True)
@@ -1026,10 +1036,10 @@ def test_linalg_eigh_backward_uplo(dtype, uplo):
     ref_target, ref_coef = loss_parts(ref_inp.device)
     target, coef = loss_parts(inp.device)
     with ieee_float32_matmul():
-        ref_grad, = torch.autograd.grad(
+        (ref_grad,) = torch.autograd.grad(
             reconstruction_loss(ref_w, ref_v, ref_target, ref_coef), (ref_inp,)
         )
-    grad, = torch.autograd.grad(reconstruction_loss(w, v, target, coef), (inp,))
+    (grad,) = torch.autograd.grad(reconstruction_loss(w, v, target, coef), (inp,))
     atol = 2e-4 if dtype == torch.float32 else 1e-8
     torch.testing.assert_close(
         utils.to_cpu(grad, ref_grad), ref_grad, atol=atol, rtol=1e-3
@@ -1061,7 +1071,7 @@ def test_linalg_eigh_backward_uses_autograd_function(dtype):
 
     eigh_module._eigh_backward_launch = counting
     try:
-        grad, = torch.autograd.grad(w.sum(), (inp,))
+        (grad,) = torch.autograd.grad(w.sum(), (inp,))
     finally:
         eigh_module._eigh_backward_launch = original
     assert calls == [1], f"backward kernel launched {len(calls)} times"
@@ -1122,7 +1132,7 @@ def test_linalg_eigh_backward_trivial(shape, dtype):
     """Empty and single-element inputs follow the forward's own contract."""
     inp = _make_eigh_input(shape, dtype).requires_grad_()
     w, v = flag_gems.linalg_eigh(inp)
-    grad, = torch.autograd.grad(
+    (grad,) = torch.autograd.grad(
         (w * 1.0).sum() + (v * 1.0).sum() if v.numel() else (w * 1.0).sum(),
         (inp,),
         allow_unused=True,
@@ -1146,7 +1156,7 @@ def test_linalg_eigh_backward_non_contiguous_grad(dtype):
     grad_w, grad_v = _loss_grads(w, v, target, coef)
     grad_v = grad_v.transpose(-2, -1).contiguous().transpose(-2, -1)
     assert not grad_v.is_contiguous()
-    grad, = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
+    (grad,) = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
     with ieee_float32_matmul():
         expected = eigh_backward_closed_form(grad_w, grad_v, w.detach(), v.detach())
     atol = 1e-5 if dtype == torch.float32 else 1e-11
@@ -1164,7 +1174,7 @@ def test_linalg_eigh_backward_expanded_grad(dtype):
     base = torch.randn(1, dtype=dtype, device=inp.device)
     grad_w = base.expand(w.shape)
     grad_v = torch.zeros_like(v)
-    grad, = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
+    (grad,) = torch.autograd.grad((w, v), (inp,), (grad_w, grad_v))
     with ieee_float32_matmul():
         expected = eigh_backward_closed_form(grad_w, grad_v, w.detach(), v.detach())
     atol = 1e-5 if dtype == torch.float32 else 1e-12
@@ -1179,5 +1189,5 @@ def test_linalg_eigh_backward_repeated_eigenvalues_non_finite(dtype):
     w, v = flag_gems.linalg_eigh(eye)
     grad_w = torch.ones_like(w)
     grad_v = torch.ones_like(v)
-    grad, = torch.autograd.grad((w, v), (eye,), (grad_w, grad_v))
+    (grad,) = torch.autograd.grad((w, v), (eye,), (grad_w, grad_v))
     assert not torch.isfinite(grad).all(), "degenerate spectrum must not be masked"

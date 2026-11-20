@@ -105,7 +105,7 @@ class LinalgEighBackwardBenchmark(base.Benchmark):
         # ``case`` is a BenchmarkCaseSpec; ``builder_args`` carries the plan's
         # own builder tuple, whose single element is the (rows, cols) shape.
         plan = case.builder_args[0]
-        shape, = plan.builder_args
+        (shape,) = plan.builder_args
         torch.manual_seed(0)
         a = torch.randn(shape, dtype=case.dtype, device=self.device)
         # eigh reads one triangle; make the stored triangle symmetric so the
