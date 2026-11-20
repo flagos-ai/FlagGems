@@ -14,7 +14,7 @@
 
 """Tsingmicro (txda) specialization of ``top_k_per_row_decode``.
 
-Same radix-select algorithm as :mod:`flag_gems.fused.top_k_per_row_decode`
+Same radix-select algorithm as :mod:`flag_gems.deprecated.top_k_per_row_decode`
 (which is what the generic entry point runs on every non-TLE backend), with two
 txda-specific changes:
 
@@ -893,7 +893,7 @@ def top_k_per_row_decode(
 ):
     """Top-K per row for the decode phase (txda).
 
-    Drop-in for :func:`flag_gems.fused.top_k_per_row_decode`, with the same
+    Drop-in for :func:`flag_gems.deprecated.top_k_per_row_decode`, with the same
     algorithm and the same output, so a caller can switch between the generic
     and this txda implementation without moving a token.
 
