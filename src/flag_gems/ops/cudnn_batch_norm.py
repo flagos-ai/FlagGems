@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
@@ -26,6 +27,21 @@ logger = logging.getLogger(__name__)
 _MIN_EPSILON = 1e-5
 _STAT_BLOCK = 1024
 _ELEMENT_BLOCK = 1024
+_THEAD = tl.constexpr(runtime_device.vendor_name == "thead")
+
+
+@triton.jit
+def _bn_rsqrt(var):
+    inv = tl_extra_shim.rsqrt(var)
+    if _THEAD and var.dtype == tl.float64:
+        # Recover FP64 precision from PPU's low-precision rsqrt seed.
+        refined = inv
+        for _ in tl.static_range(2):
+            # Multiply var by the estimate first to avoid squaring a large or tiny value.
+            residual = tl.fma(-(var * refined), refined, 1.0)
+            refined = tl.fma(0.5 * refined, residual, refined)
+        inv = tl.where((var > 0) & (var < float("inf")), refined, inv)
+    return inv
 
 
 def _spatial_stride(input):
@@ -68,7 +84,7 @@ def _bn_fused(
     shift = tl.sum(centered, 0) / M
     delta = tl.where(r < M, centered - shift, 0)
     var = tl.sum(delta * delta, 0) / M
-    inv = tl_extra_shim.rsqrt(var + EPS)
+    inv = _bn_rsqrt(var + EPS)
     mean = anchor + shift
     tl.store(Mean + c, mean)
     tl.store(Inv + c, inv)
@@ -144,7 +160,7 @@ def _bn_merge(
     mean = tl.sum(means * counts, 0) / M
     delta = means - mean
     var = tl.sum(tl.where(p < PARTS, m2 + counts * delta * delta, 0), 0) / M
-    inv = tl_extra_shim.rsqrt(var + EPS)
+    inv = _bn_rsqrt(var + EPS)
     tl.store(MeanDelta + c, mean)
     anchor = tl.load(X + c * CS).to(acc)
     anchor = tl.where(tl.abs(anchor) < float("inf"), anchor, 0)
@@ -190,7 +206,7 @@ def _bn_apply(
         anchor = tl.load(X + c * (1 if CHANNELS_LAST else S), mask, 0).to(acc)
         anchor = tl.where(tl.abs(anchor) < float("inf"), anchor, 0)
         x -= anchor
-    inv = stat if TRAIN else tl_extra_shim.rsqrt(stat + EPS)
+    inv = stat if TRAIN else _bn_rsqrt(stat + EPS)
     tl.store(Y + i, (x - mean) * inv * w + bias, mask)
 
 
@@ -216,7 +232,7 @@ def _bn_eval_fp64(
     offset = r // S * NS + c * CS + r % S * SS
     # Each program shares one channel's expensive FP64 reciprocal square root.
     mean = tl.load(RM + c)
-    inv = tl_extra_shim.rsqrt(tl.load(RV + c) + EPS)
+    inv = _bn_rsqrt(tl.load(RV + c) + EPS)
     w = tl.load(W + c)
     bias = tl.load(Bias + c)
     x = tl.load(X + offset, r < M, 0)
@@ -247,7 +263,7 @@ def _bn_eval_backward(
     c = tl.program_id(0)
     acc: tl.constexpr = tl.float64 if DOUBLE else tl.float32
     mean = tl.load(RM + c).to(acc)
-    inv = tl_extra_shim.rsqrt(tl.load(RV + c).to(acc) + EPS)
+    inv = _bn_rsqrt(tl.load(RV + c).to(acc) + EPS)
     w = tl.load(W + c).to(acc)
     dw = tl.full((B,), 0, acc)
     db = tl.full((B,), 0, acc)

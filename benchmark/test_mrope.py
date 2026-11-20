@@ -215,7 +215,7 @@ class MropeBenchmark(base.Benchmark):
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
 @pytest.mark.mrope
 def test_mrope_gems_vs_torch():
-    from flag_gems.fused.mrope import mrope as gems_mrope
+    from flag_gems import mrope as gems_mrope
 
     bench = MropeBenchmark(
         op_name="mrope",

@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 
 MAXPOOL3D_BACKWARD_CONFIGS = [
@@ -40,6 +41,21 @@ MAXPOOL3D_BACKWARD_CONFIGS = [
     # Large batch
     ((8, 16, 8, 8, 8), 3, 1, 1, 1, False),
 ]
+
+
+@pytest.fixture(autouse=True)
+def _cpu_reference_on_kunlunxin(monkeypatch):
+    """Compute the reference on CPU on Kunlunxin.
+
+    CI runs this file without ``--ref cpu``. torch_xmlir's on-device eager
+    ``max_pool3d_with_indices`` (used here for the reference forward and its
+    autograd backward) returns all-zero indices and raises NOT IMPLEMENTED
+    for some configurations, so it cannot serve as the device reference.
+    Flip the shared ``--ref cpu`` switch for the duration of each test, so
+    the oracle is computed on CPU like that mode does.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        monkeypatch.setattr(utils, "TO_CPU", True)
 
 
 @pytest.mark.max_pool3d_with_indices_backward

@@ -65,7 +65,7 @@ repos:
       name: auto-sort __all__ and operators.yaml
       language: system
       entry: python tools/ci_checks/sort_exports.py --fix
-      files: ^(src/flag_gems/__init__\.py|src/flag_gems/ops/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py|conf/operators\.yaml)$
+      files: ^(src/flag_gems/__init__\.py|src/flag_gems/ops/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py|conf/(deprecated_)?operators\.yaml)$
       pass_filenames: false
     - id: check-init-exports
       name: check __init__.py exports
@@ -77,10 +77,18 @@ repos:
       name: check operators.yaml duplicates
       language: system
       entry: python tools/ci_checks/check_operators_yaml.py --operators '[]'
-      files: ^conf/operators\.yaml$
+      files: ^conf/(deprecated_)?operators\.yaml$
       pass_filenames: false
     - id: check-fullwidth-punct
       name: check fullwidth punctuation in code
       language: system
       entry: python tools/ci_checks/check_fullwidth_punct.py
+      types: [python]
+    # Compares the working tree with HEAD, so only lines added by the commit
+    # are checked and the legacy backlog is not flagged.
+    - id: check-no-torch-fallback
+      name: check no torch compute calls in operator code
+      language: system
+      entry: python tools/ci_checks/check_no_torch_fallback.py --base HEAD
+      files: ^src/flag_gems/(ops|fused|experimental_ops|runtime/backend/_[^/]+/.*)/.*\.py$
       types: [python]

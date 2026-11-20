@@ -173,7 +173,7 @@ kunlunxin-xre5371 = [
     "torch_xray==2.0.4",
     "xformers==0.0.29+1e7a8ec.d20260114",
     "xmlir==1.0.0.1",
-    "flagtree==0.7.0+xpu3.6",
+    "flagtree==0.7.1a1+xpu3.6",
 ]
 
 metax-maca3720 = [
@@ -316,6 +316,8 @@ flaggems-flagtune-train = "flag_gems.flagtune.offline.cli.train:main"
 flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 
 [tool.setuptools.package-data]
+
+"flaggems_benchmark" = ["core_shapes.yaml"]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
