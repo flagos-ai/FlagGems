@@ -728,6 +728,7 @@ def _grad_for(out, scenario):
 
 
 @pytest.mark.sparse_log_softmax
+@pytest.mark.sparse_log_softmax_backward
 @pytest.mark.parametrize("shape,sparse_dim,dim", SUPPORT_DIFF_ROWS)
 @pytest.mark.parametrize("scenario", _SUPPORT_SCENARIOS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
