@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops import cumprod as flag_gems_cumprod
+from flag_gems import cumprod as flag_gems_cumprod
 
 from . import base, consts
 
