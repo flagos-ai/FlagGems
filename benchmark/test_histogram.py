@@ -15,7 +15,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.histogram import histogram_bin_ct, histogram_bins_tensor
+from flag_gems import histogram_bin_ct, histogram_bins_tensor
 
 from . import base
 
