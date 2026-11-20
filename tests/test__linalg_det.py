@@ -159,9 +159,7 @@ def test_accuracy_linalg_det_backward(shape, dtype):
     ref_A = to_reference(A, False).requires_grad_(True)
 
     ref_result, ref_LU, ref_pivots = torch.ops.aten._linalg_det(ref_A)
-    (ref_grad,) = torch.autograd.grad(
-        ref_result, ref_A, to_reference(grad, False)
-    )
+    (ref_grad,) = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
 
     gems_A = A.detach().clone().requires_grad_(True)
     res_result, res_LU, res_pivots = flag_gems.ops._linalg_det(gems_A)
@@ -239,9 +237,7 @@ def test_accuracy_linalg_det_backward_noncontiguous(dtype):
     assert res_grad.shape == A.shape
     # The gradient is returned in contiguous layout.  ATen mirrors the input's
     # strided layout instead, so compare values (and shape) rather than strides.
-    gems_assert_close(
-        res_grad.contiguous(), ref_grad.contiguous(), dtype, atol=1e-4
-    )
+    gems_assert_close(res_grad.contiguous(), ref_grad.contiguous(), dtype, atol=1e-4)
 
 
 @pytest.mark.linalg_det_backward
@@ -268,7 +264,7 @@ def test_accuracy_linalg_det_backward_singular(dtype):
     res_result, _, _ = flag_gems.ops._linalg_det(A)
     (res_grad,) = torch.autograd.grad(res_result, A, grad)
     ref_result, _, _ = torch.ops.aten._linalg_det(ref_A)
-    ref_grad, = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
+    (ref_grad,) = torch.autograd.grad(ref_result, ref_A, to_reference(grad, False))
 
     assert torch.isfinite(res_grad).all(), "singular gradient must stay finite"
     assert torch.isfinite(ref_grad).all()
@@ -286,11 +282,14 @@ def test_accuracy_linalg_det_backward_singular(dtype):
         equal_nan=False,
     )
     # a batch mixing a nonsingular and a singular matrix keeps both entries finite
-    batch = torch.stack([torch.eye(3, dtype=dtype, device=flag_gems.device),
-                         A.detach().clone()])
+    batch = torch.stack(
+        [torch.eye(3, dtype=dtype, device=flag_gems.device), A.detach().clone()]
+    )
     batch = batch.detach().requires_grad_(True)
     b_res, _, _ = flag_gems.ops._linalg_det(batch)
-    b_grad, = torch.autograd.grad(b_res, batch, torch.ones(2, dtype=dtype, device=flag_gems.device))
+    (b_grad,) = torch.autograd.grad(
+        b_res, batch, torch.ones(2, dtype=dtype, device=flag_gems.device)
+    )
     assert torch.isfinite(b_grad).all(), "batched singular gradient must stay finite"
     assert torch.allclose(
         b_grad[0].cpu().double(),
