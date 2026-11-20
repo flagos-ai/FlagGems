@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def _remainder(x, y):
     r = x % y
+    if x.dtype.is_floating() or y.dtype.is_floating():
+        # Recover fmod(x, +/-inf) before applying the divisor-sign correction.
+        finite_x_infinite_y = (tl.abs(y) == float("inf")) & (tl.abs(x) != float("inf"))
+        r = tl.where(finite_x_infinite_y, x, r)
+        # fmod carries the dividend sign when its result is zero.
+        r = tl.where(r == 0, x * 0.0, r)
     c1 = r != 0
     c2 = (x < 0) ^ (y < 0)
     return tl.where(c1 & c2, r + y, r)
