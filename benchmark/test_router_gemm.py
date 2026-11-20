@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 ROUTER_GEMM_SHAPES = [
@@ -37,23 +39,6 @@ def torch_router_gemm(x, weight):
     return torch.mm(x, weight.t()).to(torch.float32)
 
 
-try:
-    from flag_gems.runtime.backend._nvidia.hopper.ops.mm import router_gemm
-
-    ROUTER_GEMM_AVAILABLE = True
-except Exception:
-    router_gemm = None
-    ROUTER_GEMM_AVAILABLE = False
-
-if base.vendor_name == "cambricon":
-    try:
-        from flag_gems.runtime.backend._cambricon.ops.mm import router_gemm
-
-        ROUTER_GEMM_AVAILABLE = True
-    except Exception:
-        pass
-
-
 class RouterGemmBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
@@ -67,8 +52,8 @@ class RouterGemmBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype) -> Generator:
         for m, n, k in self.shapes:
-            x = torch.randn((m, k), dtype=torch.bfloat16, device=self.device)
-            weight = torch.randn((n, k), dtype=torch.bfloat16, device=self.device)
+            x = torch.randn((m, k), dtype=dtype, device=self.device)
+            weight = torch.randn((n, k), dtype=dtype, device=self.device)
             yield x, weight
 
     def get_tflops(self, op, *args, **kwargs):
@@ -79,15 +64,11 @@ class RouterGemmBenchmark(base.Benchmark):
 
 
 @pytest.mark.router_gemm
-@pytest.mark.skipif(
-    not ROUTER_GEMM_AVAILABLE,
-    reason="router_gemm benchmark requires Cambricon or NVIDIA Hopper backend",
-)
 def test_perf_router_gemm():
     bench = RouterGemmBenchmark(
         op_name="router_gemm",
         torch_op=torch_router_gemm,
-        gems_op=router_gemm,
-        dtypes=[torch.bfloat16],
+        gems_op=flag_gems.router_gemm,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
     bench.run()

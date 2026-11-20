@@ -61,6 +61,36 @@ def _to_copy_contiguous_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out + offsets, values.to(out.dtype.element_ty), mask=mask)
 
 
+# Async/autogrid contiguous copy: this routes float->non-bf16-float casts
+# through the tuned pointwise_dynamic codegen with hardware DMA-queue streaming
+# (kunlunAutoGrid) and async load/store overlap (isCloseMemoryAsync=False),
+# which is the op-layer equivalent of the vendor cast kernel's TriplePtr
+# triple-buffered gm_load_async/gm_store_async pipeline. Measured on P800 (dev4)
+# this matches native aten device time (.to(f64) 16.7M: 0.53 -> 0.95 speedup;
+# 4.2M f16->f64: 0.55 -> 0.95) versus the plain single-buffer launch above.
+_async_copy_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseMemoryAsync=False,
+    kunlunAutoGrid=True,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[
+        True,
+    ],
+    promotion_methods=[(0, "DEFAULT")],
+    config=_async_copy_config,
+)
+@triton.jit
+def _to_copy_func_async(x):
+    return x
+
+
 @triton.jit
 def _to_copy_to_complex_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -83,18 +113,94 @@ def _to_copy_contiguous_to_bf16_kernel(inp, out, n_elements, BLOCK_SIZE: tl.cons
     tl.store(out_bits + offsets, bf16_bits, mask=mask)
 
 
+@triton.jit
+def _to_copy_from_bf16_contiguous_kernel(
+    inp, out, n_elements, BLOCK_SIZE: tl.constexpr
+):
+    # `inp` is a uint16 view of a bfloat16 tensor. Rebuilding the f32 value from
+    # the raw bits (shift + bitcast) rather than `values.to(tl.float32)` keeps the
+    # generated LLVM IR as `fptosi float`; the natural bf16->int widening is folded
+    # by InstCombine into `fptosi bfloat`, which the XPU LLVM shipped with flagtree
+    # 0.7.0 (used by CI) cannot select -- it aborts with "Cannot select: fp_to_sint
+    # ... bf16" (Fatal Python error: Aborted). The shift/bitcast form is portable.
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    bits = tl.load(inp + offsets, mask=mask).to(tl.uint32)
+    values = (bits << 16).to(tl.float32, bitcast=True)
+    tl.store(out + offsets, values.to(out.dtype.element_ty), mask=mask)
+
+
 def _to_copy_contiguous(inp, out, target_dtype):
     n_elements = inp.numel()
     if n_elements == 0:
         return out
-    block_size = 256
-    with torch_device_fn.device(inp.device):
-        kernel = (
-            _to_copy_contiguous_to_bf16_kernel
-            if target_dtype == torch.bfloat16
-            else _to_copy_contiguous_kernel
-        )
-        kernel[(triton.cdiv(n_elements, block_size),)](inp, out, n_elements, block_size)
+    # float -> non-bf16 float contiguous casts (which dominate the
+    # float_power / up-convert chains) go through the tuned pointwise_dynamic
+    # autogrid + async-DMA path (_to_copy_func_async): it streams via hardware
+    # DMA queues with load/store overlap, the op-layer equivalent of the vendor
+    # cast kernel's triple-buffered gm_load_async pipeline, and matches native
+    # aten device time (~0.95 vs the plain launch's ~0.53 at 16.7M). The bf16
+    # SOURCE case is excluded (its async load miscompiles / produces WRONG values
+    # on large shapes) and instead takes the big-tile plain kernel below, which
+    # is verified correct. int sources and ->bf16 targets keep the safe 256
+    # baseline (their vectorized vsitofp / ->bf16 paths abort at large tiles).
+    #
+    # SMALL shapes (<= 65536) are routed to the plain big-tile kernel below
+    # instead: pointwise_dynamic's host-side prep (dynamic shape/grid analysis)
+    # costs ~66us/call, which dwarfs the ~5us of device work on a tiny copy and
+    # stalls the whole float_power chain (3 casts * ~66us). A direct triton
+    # launch has only ~10-15us host overhead. The async DMA overlap only pays off
+    # once the device work is large enough to hide behind (>=1M elements).
+    if (
+        n_elements > 65536
+        and inp.is_floating_point()
+        and inp.dtype != torch.bfloat16
+        and target_dtype.is_floating_point
+        and target_dtype != torch.bfloat16
+    ):
+        return _to_copy_func_async(inp, out0=out)
+
+    if (
+        inp.is_floating_point()
+        and target_dtype.is_floating_point
+        and target_dtype != torch.bfloat16
+    ):
+        # bf16 source -> non-bf16 float: big power-of-two tile, capped so small
+        # tensors keep a single right-sized tile (verified correct at 16384).
+        # Inline bit-length instead of triton.next_power_of_2 (identical result:
+        # smallest pow2 >= n) -- the triton helper costs ~2.8us/call of pure
+        # Python, which on a tiny host-bound cast chain is pure latency tax.
+        block_size = 1 << (n_elements - 1).bit_length() if n_elements > 1 else 1
+        if block_size > 16384:
+            block_size = 16384
+    else:
+        # A 256-element tile serializes large contiguous copies into tens of
+        # thousands of tiny masked launches, but is the only safe size for the
+        # int->float / ->bf16 casts that miscompile at large tiles.
+        block_size = 256
+    if inp.dtype == torch.bfloat16 and not target_dtype.is_floating_point:
+        # bf16 -> integer: route through the bit-rebuilt kernel so the int cast
+        # is `fptosi float` instead of the unselectable `fptosi bfloat`. See
+        # _to_copy_from_bf16_contiguous_kernel.
+        src = inp.view(torch.uint16)
+        kernel = _to_copy_from_bf16_contiguous_kernel
+    elif target_dtype == torch.bfloat16:
+        src = inp
+        kernel = _to_copy_contiguous_to_bf16_kernel
+    else:
+        src = inp
+        kernel = _to_copy_contiguous_kernel
+    grid = ((n_elements + block_size - 1) // block_size,)
+    # The torch_device_fn.device() context manager costs ~4us/call of pure
+    # Python even when it is a no-op (device already current). On the common
+    # cast path the input is already on the current device, so guard the ctx
+    # with a cheap current_device() check (~0.4us) and launch directly when it
+    # would be a no-op; only pay the ctx when the device genuinely differs.
+    if inp.device.index == torch_device_fn.current_device():
+        kernel[grid](src, out, n_elements, block_size)
+    else:
+        with torch_device_fn.device(inp.device):
+            kernel[grid](src, out, n_elements, block_size)
     return out
 
 
@@ -188,6 +294,33 @@ def to_copy(
         raise NotImplementedError(
             "FlagGems to_copy does not yet support pin_memory=True."
         )
+
+    # Lean fast-track for the overwhelmingly common cast case (contiguous,
+    # same-device, real dtypes, no explicit memory_format). Cast chains such as
+    # float_power's fp64 round-trip dispatch _to_copy 3-4 times per call and the
+    # whole chain is host-bound by the per-call Python wrapper (~15-20us each on
+    # top of the ~15us triton launch floor). This branch skips the generic
+    # dtype/device/memory-format resolution, the duplicate bf16 probe and the
+    # _allocate_preserve_format aten query (is_non_overlapping_and_dense), going
+    # straight to a contiguous torch.empty + the tuned _to_copy_contiguous launch.
+    # Semantics are identical: contiguous x with preserve_format yields a
+    # contiguous output, which is exactly torch.empty(size). bf16 source keeps the
+    # stock path (its close-interleave handling is dtype-sensitive).
+    if (
+        dtype is not None
+        and device is None
+        and layout is None
+        and memory_format is None
+        and x.layout == torch.strided
+        and not x.is_quantized
+        and not x.dtype.is_complex
+        and not dtype.is_complex
+        and x.dtype != torch.bfloat16
+        and x.is_contiguous()
+    ):
+        out = torch.empty(x.size(), dtype=dtype, device=x.device)
+        return _to_copy_contiguous(x, out, dtype)
+
     if x.is_quantized:
         raise NotImplementedError(
             "Quantized tensors are not supported in FlagGems to_copy yet."

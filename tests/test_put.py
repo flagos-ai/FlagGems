@@ -26,7 +26,9 @@ PUT_INT_DTYPES = utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]
 # `complex32` is excluded on purpose: ATen has no `put_cuda` for ComplexHalf
 # (`NotImplementedError: "put_cuda" not implemented for 'ComplexHalf'`), so there
 # is no reference to compare against.
-PUT_COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+PUT_COMPLEX_DTYPES = [torch.complex64] + (
+    [torch.complex128] if utils.fp64_is_supported else []
+)
 PUT_ALL_DTYPES = (
     utils.ALL_FLOAT_DTYPES + PUT_INT_DTYPES + utils.BOOL_TYPES + PUT_COMPLEX_DTYPES
 )
@@ -227,6 +229,8 @@ def test_put_index_out_of_range(numel, bad_offset, negative, accumulate):
     # no host round trip -- so this runs in a subprocess (a tripped device
     # assertion poisons the CUDA context for the rest of the process) and
     # asserts both the failure and the absence of a host-side sync.
+    if flag_gems.vendor_name == "mthreads":
+        pytest.skip("MUSA native put has no target-device trap for invalid indices")
     bad = -numel - 1 - bad_offset if negative else numel + bad_offset
     code = textwrap.dedent(f"""
         import torch
@@ -245,6 +249,11 @@ def test_put_index_out_of_range(numel, bad_offset, negative, accumulate):
         print("NO_ERROR")
         """)
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    # The GCU driver dumps a ~500 MB device coredump when the SIP assert this test
+    # deliberately trips fires; disable it so the crash subprocess doesn't litter
+    # the working tree. A no-op on CUDA/ROCm.
+    if flag_gems.vendor_name == "enflame":
+        env["EFRT_ENABLE_GCU_COREDUMP"] = "false"
     proc = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, env=env
     )
@@ -252,9 +261,14 @@ def test_put_index_out_of_range(numel, bad_offset, negative, accumulate):
         "an out-of-range index was silently accepted; "
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
     )
-    assert "device-side assert" in proc.stderr or "trap" in proc.stderr.lower(), (
-        "expected a device-side failure, got: " + proc.stderr[-300:]
-    )
+    # CUDA reports a device-side assert/trap; ROCm surfaces the s_trap as an
+    # HSA hardware exception.
+    assert (
+        "device-side assert" in proc.stderr
+        or "trap" in proc.stderr.lower()
+        or "HSA_STATUS_ERROR_EXCEPTION" in proc.stderr
+        or "sip assert" in proc.stderr.lower()
+    ), ("expected a device-side failure, got: " + proc.stderr[-300:])
 
 
 @pytest.mark.put
@@ -447,9 +461,11 @@ def test_put_invalid_dtypes():
             index.to(torch.int32),
             gen_source(1, torch.float32, flag_gems.device),
         )
-    # source must share self's dtype
-    with pytest.raises(RuntimeError):
-        flag_gems.put(inp, index, gen_source(1, torch.float64, flag_gems.device))
+    # source must share self's dtype; fp64 is only a usable "different dtype"
+    # on devices that actually support it.
+    if utils.fp64_is_supported:
+        with pytest.raises(RuntimeError):
+            flag_gems.put(inp, index, gen_source(1, torch.float64, flag_gems.device))
     # index and source must have the same number of elements
     with pytest.raises(IndexError):
         flag_gems.put(
@@ -541,15 +557,17 @@ def test_put_out_invalid():
     index = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
     source = gen_source(1, torch.float32, flag_gems.device)
 
-    # `out` must share self's dtype and device.
-    with pytest.raises(RuntimeError):
-        flag_gems.put_out(
-            inp,
-            index,
-            source,
-            False,
-            out=torch.empty(16, dtype=torch.float64, device=flag_gems.device),
-        )
+    # `out` must share self's dtype and device; fp64 is only a usable
+    # "different dtype" on devices that actually support it.
+    if utils.fp64_is_supported:
+        with pytest.raises(RuntimeError):
+            flag_gems.put_out(
+                inp,
+                index,
+                source,
+                False,
+                out=torch.empty(16, dtype=torch.float64, device=flag_gems.device),
+            )
     with pytest.raises(RuntimeError):
         flag_gems.put_out(inp, index, source, False, out=torch.empty(16))
 
@@ -567,6 +585,8 @@ def test_put_out_error_leaves_out_untouched(bad_arg):
     copy ``self`` into ``out`` first, clobbering it before the dtype/numel
     validation ran.
     """
+    if bad_arg in ("source_dtype", "out_dtype") and not utils.fp64_is_supported:
+        pytest.skip("needs fp64 to build a different dtype")
     shape = (3, 4)
     inp = gen_input(shape, torch.float32, flag_gems.device)
     index = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)

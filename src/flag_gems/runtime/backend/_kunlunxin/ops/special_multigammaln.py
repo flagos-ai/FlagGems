@@ -19,8 +19,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
-# The shared accuracy test asserts on the *generic* logger name, so log there.
-logger = logging.getLogger("flag_gems.ops.special_multigammaln")
+logger = logging.getLogger(__name__)
 
 LOG_PI_OVER_4 = 0.28618247146235004  # log(pi) / 4
 

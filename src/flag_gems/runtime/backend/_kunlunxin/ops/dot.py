@@ -13,30 +13,55 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._kunlunxin.ops.sum import _launch_sum_flat
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
-# XPU reduction safety: tl.sum is only numerically reliable up to 8192 lanes
-# (verified with fp64 ground truth); masked (tail) loads are unreliable in
-# general, so tails are handled with exact power-of-two unmasked tiles that
-# never read out of bounds.
-SMALL_BLOCK = 512  # single reliable tile for the trivial case
-WIDE_BLOCK = 8192  # reliable tl.sum width for bulk reduction
-SMALL_N = 16384  # N <= this uses the historical 512-lane tree
-# Batched bulk reduction: one program reduces DOT_UNROLL x WIDE_BLOCK lanes
-# (multiple independent 8192-lane tl.sum, accumulated in fp32). Measured on
-# XPU6: 16M -15/-21/-17% (fp16/fp32/bf16), 2^28 -4~-6%, 655M -3~-5% vs the
-# single-tile kernel, with fp64-verified results; UNROLL=32 regresses
-# (register pressure), so 8 is the retained sweet spot.
+try:
+    import triton.experimental.tle.language as tle  # noqa: F401
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE = True
+except ImportError:  # triton without the XPU tile-language extension
+    _HAS_TLE = False
+
+# Small N uses the fp32-accumulating 512-lane tree (accurate for fp16 against the
+# fp64 reference); large N uses a fused TLE row-reduce that accumulates x*y in fp32
+# without materialising the product, landing near/above aten. The tree below is kept
+# only as a fallback for backends without the TLE extension.
+SMALL_BLOCK = 512
+WIDE_BLOCK = 8192
+SMALL_N = 8192
 DOT_UNROLL = 8
+# Fused TLE dot geometry: a [rows, cols] row-reduce; 256x128 is the measured optimum.
+_TLE_DOT_COLS = 4096
+_TLE_DOT_XBLOCK = 256
+_TLE_DOT_YBLOCK = 128
+_TLE_DOT_TL_DTYPE = {
+    torch.float16: tl.float16,
+    torch.float32: tl.float32,
+    torch.bfloat16: tl.bfloat16,
+}
+
+
+def _tle_available():
+    if not _HAS_TLE:
+        return False
+    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
+        return False
+    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+
+
+_TLE_AVAILABLE = _tle_available()
 
 
 @libentry()
@@ -163,6 +188,76 @@ def sum_kernel_tile(in_ptr, out_ptr, TILE: tl.constexpr):
     tl.store(out_ptr, tl.sum(v))
 
 
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["x_desc", "y_desc", "c_desc"],
+)
+def dot_kernel_tle(
+    x_desc,
+    y_desc,
+    c_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+    x_lmem = tle.gpu.alloc([XBLOCK, YBLOCK], dtype=IN_DTYPE, scope=tle.gpu.lmem)
+    y_lmem = tle.gpu.alloc([XBLOCK, YBLOCK], dtype=IN_DTYPE, scope=tle.gpu.lmem)
+    c_lmem = tle.gpu.alloc([XBLOCK], dtype=OUT_DTYPE, scope=tle.gpu.lmem)
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    x_ptrs = tle.gpu.local_ptr(x_lmem, (row_ids, col_ids))
+    y_ptrs = tle.gpu.local_ptr(y_lmem, (row_ids, col_ids))
+    c_ptrs = tle.gpu.local_ptr(c_lmem, (tl.arange(0, XBLOCK),))
+    acc = tl.zeros([XBLOCK], ACC_DTYPE)
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_ZERO:
+            if coff + YBLOCK > N:
+                tl.store(x_ptrs, tl.zeros([XBLOCK, YBLOCK], IN_DTYPE))
+                tl.store(y_ptrs, tl.zeros([XBLOCK, YBLOCK], IN_DTYPE))
+        tle.gpu.copy(x_desc, x_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        tle.gpu.copy(y_desc, y_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        acc = acc + tl.sum(
+            tl.load(x_ptrs).to(ACC_DTYPE) * tl.load(y_ptrs).to(ACC_DTYPE), axis=1
+        )
+    tl.store(c_ptrs, acc.to(OUT_DTYPE))
+    tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
+
+
+def _dot_tle(x, y, out, N):
+    """Fused TLE dot: [rows, cols] row-reduce of x*y, then flat-sum the partials."""
+    rows, tail = divmod(N, _TLE_DOT_COLS)
+    xb, yb = _TLE_DOT_XBLOCK, _TLE_DOT_YBLOCK
+    need_zero = _TLE_DOT_COLS % yb != 0
+    count = rows + (1 if tail else 0)
+    partials = torch.empty((count,), dtype=torch.float32, device=x.device)
+    if rows:
+        x_main = x[: rows * _TLE_DOT_COLS].view(rows, _TLE_DOT_COLS)
+        y_main = y[: rows * _TLE_DOT_COLS].view(rows, _TLE_DOT_COLS)
+        dot_kernel_tle[(-(-rows // xb),)](
+            TensorDescriptor.from_tensor(x_main, block_shape=[xb, yb]),
+            TensorDescriptor.from_tensor(y_main, block_shape=[xb, yb]),
+            TensorDescriptor.from_tensor(partials[:rows], block_shape=[xb]),
+            _TLE_DOT_COLS,
+            xb,
+            yb,
+            _TLE_DOT_TL_DTYPE[x.dtype],
+            tl.float32,
+            tl.float32,
+            need_zero,
+        )
+    if tail:
+        t = torch.empty((), dtype=torch.float32, device=x.device)
+        _dot_small(x[rows * _TLE_DOT_COLS :], y[rows * _TLE_DOT_COLS :], t, tail)
+        partials[rows] = t
+    _launch_sum_flat(partials, out, torch.float32)
+
+
 def _pow2_decomp(v):
     """Exact power-of-two aligned slices covering [0, v) with no overlap."""
     out = []
@@ -176,7 +271,10 @@ def _pow2_decomp(v):
 
 
 def _dot_large(x, y, out, N):
-    """Mask-free reduction: 8192 bulk + 512 tail + exact pow2 residue, tree."""
+    """Large-N dot: fused TLE row-reduce when available, else the masked tree."""
+    if _TLE_AVAILABLE and x.dtype in _TLE_DOT_TL_DTYPE:
+        _dot_tle(x, y, out, N)
+        return
     full, rem = divmod(N, WIDE_BLOCK)
     t512, tiny = divmod(rem, SMALL_BLOCK)
     t_tiles = _pow2_decomp(tiny)

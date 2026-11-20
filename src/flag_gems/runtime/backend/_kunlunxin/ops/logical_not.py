@@ -40,10 +40,33 @@ config_ = CodeGenConfig(
     # big shapes ([4096,4096], [1024,65536], [64,64,4096]) get a stable ~8%
     # latency drop across fp16/fp32/bf16 vs the old unroll_num=8 / default
     # (2048) buffer. Small shapes stay launch-floor bound (unchanged).
+    #
+    # kunlunAutoGrid=True for the single-CTA config: the 1-CTA path (numel
+    # <= 131072) is faster for tiny shapes, and >= 16384 elements is covered
+    # by the multi-CTA config below (hybrid dispatch, see logical_not()).
     kunlunAutoGrid=True,
     unroll_num=16,
     buffer_size_limit=4096,
 )
+
+config_multi_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    kunlunAutoGrid=False,
+    unroll_num=16,
+    buffer_size_limit=4096,
+)
+
+# Shapes below this numel keep the 1-CTA (kunlunAutoGrid=True) kernel; larger
+# shapes switch to the constant 12-CTA kernel. A/B measured 2026-10-19 on the
+# benchmark matrix: (64,64)/(64,64,1) and (1024,1) are 2-5x FASTER at 1-CTA
+# (5.7/5.5/5.3us vs 10.6/10.6/26.3us) while (1024,16), (64,64,16) and every
+# >= 262144-element shape are 1.2-2.2x faster at 12-CTA (6.8->5.5us,
+# 11.7->6.1us, 155->126us @16.7M for fp16).
+_MULTI_CTA_MIN_NUMEL = 16384
 
 
 @triton.jit
@@ -53,27 +76,28 @@ def _logical_not_body(x):
     # a floating-point compare (cmpf) lowered to i1 costs ~2x a plain icmp
     # (measured on XPU 7, 2026-08-13: [4096,4096] fp16 ~0.49ms for
     # `not x.to(tl.int1)` vs ~0.24ms for the bitcast-icmp body; [1024,65536]
-    # 1.60ms vs 0.64ms; same ratio for fp32/bf16).
-    #   u = bitcast(x, fp32)          -- value-exact upcast for fp16/bf16/fp32
-    #   (u & 0x7FFFFFFF) == 0         -- true only for 0x00000000/0x80000000
-    #                                    (+/-0.0); all other bit patterns,
-    #                                    incl. NaN/inf/subnormals, are non-zero
-    #                                    after the sign mask -> False.
-    # Result matches torch.logical_not bit-exactly for all float edge cases
-    # (NaN, +/-inf, -0.0, subnormals) verified on-device.
+    # 1.60ms vs 0.64ms; same ratio for fp32/bf16; re-verified 2026-10-19 on
+    # XPU 4: fp16-domain `x == 0.0` is ~2.0x slower than the icmp body).
+    #   u = bitcast(x, <same-width int>)     -- fp16 -> i16 (no widening!)
+    #   (u & signmask) == 0                  -- true only for +/-0.0
+    # All other bit patterns, incl. NaN/inf/subnormals, are non-zero after the
+    # sign mask -> False. Result matches torch.logical_not bit-exactly for all
+    # float edge cases (NaN, +/-inf, -0.0, subnormals) verified on-device.
     #
-    # Integer/bool inputs must NOT go through the x.to(f32).to(int32,bitcast)
-    # round-trip: for int16 the int16->f32 vector conversion (vsitofp, vector
-    # width 32->16) followed by the bitcast trips ConvertTritonXPUToLLVM with
-    # "size mismatch when packing elements for LLVM struct expected 2 but got 1"
-    # at large shapes. A direct integer compare is exact and already the icmp
-    # fast path.
+    # fp16 (and only fp16) stays in 16-bit arithmetic: the i16 bitcast-icmp is
+    # ~1.8-2.4x faster than the fp32-upcast round trip (micro-benchmark
+    # 2026-10-19: 16.7M elems 671us -> 373us; 67M 2633us -> 1465us), simply
+    # because the per-element fp16->fp32 conversion is skipped. bf16 must keep
+    # the fp32 upcast: the same-width `x.to(tl.int16, bitcast=True)` fails to
+    # compile on this backend (TritonXPUDtypeConvert: "Cannot bitcast
+    # data-type of size 32 to data-type of size 16"), and fp32 cannot bitcast
+    # down to i16 at all. The integer/bool paths use a direct integer compare.
     if tl.constexpr(x.dtype.is_fp32()):
         u = x.to(tl.int32, bitcast=True)
         return (u & 0x7FFFFFFF) == 0
     elif tl.constexpr(x.dtype.is_fp16()):
-        u = x.to(tl.float32).to(tl.int32, bitcast=True)
-        return (u & 0x7FFFFFFF) == 0
+        u = x.to(tl.int16, bitcast=True)
+        return (u & 0x7FFF) == 0
     elif tl.constexpr(x.dtype.is_bf16()):
         u = x.to(tl.float32).to(tl.int32, bitcast=True)
         return (u & 0x7FFFFFFF) == 0
@@ -87,9 +111,20 @@ def logical_not_func(x):
     return _logical_not_body(x)
 
 
+# Duplicate of logical_not_func with the constant 12-CTA config. The two
+# functions must be distinct @triton.jit functions (distinct source text) so
+# the in-process codegen cache can hold both variants side by side.
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")], config=config_multi_)
+@triton.jit
+def logical_not_func_multi_cta(x):
+    return _logical_not_body(x)
+
+
 def logical_not(A):
     logger.debug("GEMS_KUNLUNXIN LOGICAL_NOT")
-    return logical_not_func(A)
+    if A.numel() < _MULTI_CTA_MIN_NUMEL:
+        return logical_not_func(A)
+    return logical_not_func_multi_cta(A)
 
 
 def logical_not_(A):
@@ -97,7 +132,10 @@ def logical_not_(A):
     # ops/logical_not.py path with the default pointwise_dynamic config (tile 512,
     # buffer_size_limit=2048, no unroll/autoGrid) -> catastrophic (38-161ms on
     # large shapes, speedup ~0.001-0.005). Reuse the now-tuned logical_not_func
-    # with out0=A (same recipe as bitwise_not_).
+    # with out0=A (same recipe as bitwise_not_), same hybrid dispatch.
     logger.debug("GEMS_KUNLUNXIN LOGICAL_NOT_")
-    logical_not_func(A, out0=A)
+    if A.numel() < _MULTI_CTA_MIN_NUMEL:
+        logical_not_func(A, out0=A)
+    else:
+        logical_not_func_multi_cta(A, out0=A)
     return A

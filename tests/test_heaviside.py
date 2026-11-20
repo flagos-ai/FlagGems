@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.heaviside import heaviside_out
 
 from . import accuracy_utils as utils
 
@@ -41,9 +42,6 @@ def test_heaviside_out(shape, dtype):
     ref_out = torch.ops.aten.heaviside.out(ref_self, ref_values, out=ref_out_buf)
 
     act_out_buf = torch.empty_like(self_tensor)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.heaviside.out(
-            self_tensor, values_tensor, out=act_out_buf
-        )
+    act_out = heaviside_out(self_tensor, values_tensor, out=act_out_buf)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

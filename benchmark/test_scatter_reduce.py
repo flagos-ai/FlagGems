@@ -35,6 +35,16 @@ REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
 INCLUDE_SELF_CASES = (None, False)
 
 
+def scatter_reduce_more_shapes(shapes):
+    """Keep scatter_reduce comprehensive shapes bounded and two-dimensional."""
+    if flag_gems.vendor_name == "kunlunxin":
+        return []
+
+    return [(1, 262145), (1, 524287)] + [
+        shape for shape in shapes if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
+    ]
+
+
 class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
     """Benchmark scatter-style ATen operators with tensor index inputs."""
 
@@ -43,41 +53,33 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
-        """Keep comprehensive aten scatter_reduce shapes bounded and two-dimensional."""
-        if flag_gems.vendor_name == "kunlunxin":
-            return []
-
-        shapes = super().set_more_shapes()
-        return [
-            shape
-            for shape in shapes
-            if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
-        ]
+        return scatter_reduce_more_shapes(super().set_more_shapes())
 
 
-def scatter_reduce_input_fn_factory(
-    reduce, include_self, *, use_out=False, is_inplace=False
-):
-    """Build benchmark inputs for the three aten scatter_reduce overloads."""
+def scatter_reduce_input_fn_factory(*, use_out=False, is_inplace=False):
+    """Yield every parameter combination in one benchmark record per dtype."""
 
     def inner(shape, dtype, device):
-        """Yield one valid scatter_reduce argument set for a benchmark shape."""
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        dim = -1
-        index = torch.randint(0, shape[dim], shape, dtype=torch.long, device=device)
-        if is_inplace and reduce == "sum":
-            src = torch.zeros(shape, dtype=dtype, device=device)
-        elif is_inplace and reduce == "prod":
-            src = torch.ones(shape, dtype=dtype, device=device)
-        else:
-            src = torch.randn(shape, dtype=dtype, device=device)
+        for reduce in REDUCE_MODES:
+            for include_self in INCLUDE_SELF_CASES:
+                inp = torch.randn(shape, dtype=dtype, device=device)
+                dim = -1
+                index = torch.randint(
+                    0, shape[dim], shape, dtype=torch.long, device=device
+                )
+                if is_inplace and reduce == "sum":
+                    src = torch.zeros(shape, dtype=dtype, device=device)
+                elif is_inplace and reduce == "prod":
+                    src = torch.ones(shape, dtype=dtype, device=device)
+                else:
+                    src = torch.randn(shape, dtype=dtype, device=device)
 
-        kwargs = {"reduce": reduce}
-        if include_self is not None:
-            kwargs["include_self"] = include_self
-        if use_out:
-            kwargs["out"] = torch.empty_like(inp)
-        yield inp, dim, index, src, kwargs
+                kwargs = {"reduce": reduce}
+                if include_self is not None:
+                    kwargs["include_self"] = include_self
+                if use_out:
+                    kwargs["out"] = torch.empty_like(inp)
+                yield inp, dim, index, src, kwargs
 
     return inner
 
@@ -89,15 +91,27 @@ def gather_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.scatter_reduce
+def test_scatter_reduce_optest():
+    """Report every functional scatter_reduce case under the optest operator ID."""
+
+    bench = TensorSelectBenchmark(
+        op_name="scatter_reduce",
+        torch_op=torch.ops.aten.scatter_reduce,
+        input_fn=scatter_reduce_input_fn_factory(),
+        get_gbps=gather_scatter_gbps,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.scatter_reduce_two
-@pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-def test_scatter_reduce(reduce, include_self):
+def test_scatter_reduce():
     """Benchmark aten::scatter_reduce.two for every supported reduction mode."""
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_two",
         torch_op=torch.ops.aten.scatter_reduce.two,
-        input_fn=scatter_reduce_input_fn_factory(reduce, include_self),
+        input_fn=scatter_reduce_input_fn_factory(),
         get_gbps=gather_scatter_gbps,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -105,14 +119,12 @@ def test_scatter_reduce(reduce, include_self):
 
 
 @pytest.mark.scatter_reduce_two_
-@pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-def test_scatter_reduce_(reduce, include_self):
+def test_scatter_reduce_():
     """Benchmark aten::scatter_reduce_.two for every supported reduction mode."""
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_two_",
         torch_op=torch.ops.aten.scatter_reduce_.two,
-        input_fn=scatter_reduce_input_fn_factory(reduce, include_self, is_inplace=True),
+        input_fn=scatter_reduce_input_fn_factory(is_inplace=True),
         get_gbps=gather_scatter_gbps,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
@@ -121,14 +133,12 @@ def test_scatter_reduce_(reduce, include_self):
 
 
 @pytest.mark.scatter_reduce_two_out
-@pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-def test_scatter_reduce_out(reduce, include_self):
+def test_scatter_reduce_out():
     """Benchmark aten::scatter_reduce.two_out for every supported reduction mode."""
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce_two_out",
         torch_op=torch.ops.aten.scatter_reduce.two_out,
-        input_fn=scatter_reduce_input_fn_factory(reduce, include_self, use_out=True),
+        input_fn=scatter_reduce_input_fn_factory(use_out=True),
         get_gbps=gather_scatter_gbps,
         dtypes=consts.FLOAT_DTYPES,
     )

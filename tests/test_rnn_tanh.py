@@ -32,6 +32,11 @@ _RNN_ACCELERATOR_AVAILABLE = not cfg.TO_CPU and (
     or (
         flag_gems.device == "npu" and hasattr(torch, "npu") and torch.npu.is_available()
     )
+    or (
+        flag_gems.device == "musa"
+        and hasattr(torch, "musa")
+        and torch.musa.is_available()
+    )
 )
 
 

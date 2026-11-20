@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import logging
+import os
 
 import torch
 import triton
@@ -28,6 +30,20 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+# The 910B compiler reads the environment; keep compilation and launch aligned.
+@contextlib.contextmanager
+def _blockified():
+    previous = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TRITON_ALL_BLOCKS_PARALLEL", None)
+        else:
+            os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = previous
+
+
 _BMM_CONFIGS = runtime.get_tuned_config("bmm")
 
 
@@ -35,14 +51,34 @@ def _prune_bmm_configs(configs, named_args, **kwargs):
     args = {**named_args, **kwargs}
     A = args["A"]
     M, N, K = args["M"], args["N"], args["K"]
-    if A.dtype != torch.bfloat16 or A.shape[0] != 1 or M < 256 or K < 256:
-        return configs
-
+    batch = args["BATCH"]
+    # Keep one balanced tile for small aligned squares with enough programs
+    # to occupy the cores; timing noise otherwise selects padded large tiles.
+    square_programs = batch * (M // 128) * (N // 128)
+    small_square = (
+        A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and M == N == K
+        and 256 <= M <= 512
+        and M % 128 == 0
+        and 16 <= square_programs <= 64
+    )
+    short_k_fp16 = (
+        A.dtype == torch.float16
+        and batch == 1
+        and 256 <= M <= 512
+        and N >= 4096
+        and K == 256
+    )
     target = None
-    if N >= 4096:
+    if small_square:
+        target = (128, 128, 128)
+    elif short_k_fp16:
         target = (128, 256, 256)
-    elif N >= 1024 and K >= 4096:
-        target = (256, 128, 256)
+    elif A.dtype == torch.bfloat16 and batch == 1 and M >= 256 and K >= 256:
+        if N >= 4096:
+            target = (128, 256, 256)
+        elif N >= 1024 and K >= 4096:
+            target = (256, 128, 256)
     if target is None:
         return configs
 
@@ -63,7 +99,7 @@ def _prune_bmm_configs(configs, named_args, **kwargs):
 @libentry()
 @triton.autotune(
     configs=_BMM_CONFIGS,
-    key=["M", "N", "K", "DOT_PAD_ONLY_K"],
+    key=["M", "N", "K", "BATCH", "DOT_PAD_ONLY_K"],
     prune_configs_by={"early_config_prune": _prune_bmm_configs},
 )
 @triton.heuristics(_hcu.HEURISTICS_CONFIGS["bmm"])
@@ -75,6 +111,7 @@ def bmm_kernel(
     M,
     N,
     K,
+    BATCH: tl.constexpr,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
@@ -190,7 +227,7 @@ def bmm(A, B):
         batch,
     )
 
-    with torch_device_fn.device(A.device):
+    with torch_device_fn.device(A.device), _blockified():
         bmm_kernel[grid_fn](
             A,
             B,
@@ -198,6 +235,8 @@ def bmm(A, B):
             M,
             N,
             K,
+            BATCH=batch,
             DOT_PAD_ONLY_K=dot_pad_only_k,
+            enable_auto_blockify=True,
         )
     return out

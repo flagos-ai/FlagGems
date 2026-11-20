@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 @pytest.mark.hardshrink_backward
@@ -31,6 +32,13 @@ def test_hardshrink_backward(shape, dtype, lambd):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_grad = utils.to_reference(grad_output)
     ref_inp = utils.to_reference(inp)
+
+    # The XPU (xpu) device reference asserts lambd > 0, so the lambd = 0.0
+    # cases are skipped on the device run (reference-side limitation, not a
+    # kernel defect) and covered by the --ref=cpu run (test-op.sh
+    # TEST_CASES_CPU).
+    if not cfg.TO_CPU and lambd == 0.0:
+        pytest.skip("XPU device reference asserts lambd > 0; run with --ref=cpu")
 
     ref_out = torch.ops.aten.hardshrink_backward(ref_grad, ref_inp, lambd)
     res_out = flag_gems.hardshrink_backward(grad_output, inp, lambd)
@@ -63,6 +71,11 @@ def test_hardshrink_backward_grad_input(shape, dtype):
 
 @pytest.mark.hardshrink_backward
 def test_hardshrink_backward_special_values():
+    # The XPU (xpu) device reference returns 0 for a NaN input while ATen
+    # passes the gradient through; skipped on the device run (reference-side
+    # deviation, not a kernel defect) and covered by the --ref=cpu run.
+    if not cfg.TO_CPU:
+        pytest.skip("XPU device reference mishandles NaN; run with --ref=cpu")
     # Gradient must pass through at NaN / +-inf inputs, matching ATen behavior.
     inp = torch.tensor(
         [float("nan"), float("-inf"), float("inf"), 0.0, 0.5, -0.5, 0.7, -0.7],

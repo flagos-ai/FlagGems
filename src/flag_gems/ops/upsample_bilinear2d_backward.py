@@ -27,6 +27,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 _ILUVATAR = tl.constexpr(runtime_device.vendor_name == "iluvatar")
+_ASCEND = tl.constexpr(runtime_device.vendor_name == "ascend")
 
 _CANN_VERSION = None
 _CANN_SIZE_RATIO = False
@@ -187,9 +188,18 @@ def _upsample_bilinear2d_backward_kernel(
                         ox, x, IW, SW, ALIGN_CORNERS, acc_dtype
                     )
                     active = valid & (oy < OH) & (ox < OW) & match_y & match_x
-                    value = tl.load(source + oy * GS2 + ox * GS3, active, other=0).to(
-                        acc_dtype
-                    )
+                    if _ASCEND:
+                        # Ascend may issue scalar reads for masked gather lanes.
+                        # Keep inactive taps inside the allocation as well.
+                        load_offset = n * GS0 + c * GS1 + oy * GS2 + ox * GS3
+                        load_offset = tl.where(active, load_offset, 0)
+                        value = tl.load(GradOutput + load_offset, active, other=0).to(
+                            acc_dtype
+                        )
+                    else:
+                        value = tl.load(
+                            source + oy * GS2 + ox * GS3, active, other=0
+                        ).to(acc_dtype)
                     contribution = (wy * wx) * value
                     # Merging clamped taps must preserve an original 0 * Inf update.
                     contribution = tl.where(

@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 from torch import Tensor
+from triton.runtime import driver
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -13,6 +14,259 @@ from ._batch_norm_no_update import _batch_norm_no_update
 
 logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
+
+# ---------------------------------------------------------------------------
+# tle.raw hand-written XTDK (xpu3) batch_norm_backward payload.
+#
+# A single-launch cluster kernel (grid = min(feat, 12)) that folds the whole BN
+# backward (term1/term2 reduction + weight_grad/bias_grad + input_grad) into one
+# device launch, removing the 2-3 serial Triton launches the fused/3-stage paths
+# pay on tiny training shapes (feat<=16, small count) where those paths are
+# launch/wave bound.  Optional import: any failure leaves _HAS_BN_RAW False and
+# the existing Triton kernels run unchanged.
+_HAS_BN_RAW = False
+_BN_RAW_KERNELS = {}
+try:
+    import os as _os
+
+    import triton.experimental.tle as _tle
+
+    # Precompiled device object: stub names must equal the entry symbols in the .o
+    # and the signatures must match the C++ ABI.
+    _BN_RAW_DIR = _os.path.dirname(_os.path.abspath(__file__))
+    _BN_RAW_OBJ = _os.path.join(
+        _os.path.dirname(_BN_RAW_DIR), "payload", "obj", "batch_norm_backward_raw.o"
+    )
+
+    @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
+    def bn_bwd_f32(
+        grad,
+        inp,
+        mean_f32,
+        invstd_f32,
+        weight,
+        dx,
+        dw,
+        db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
+    ): ...
+
+    @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
+    def bn_bwd_f16(
+        grad,
+        inp,
+        mean_f32,
+        invstd_f32,
+        weight,
+        dx,
+        dw,
+        db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
+    ): ...
+
+    @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
+    def bn_bwd_bf16(
+        grad,
+        inp,
+        mean_f32,
+        invstd_f32,
+        weight,
+        dx,
+        dw,
+        db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
+    ): ...
+
+    _BN_RAW_DNS = [
+        "batch",
+        "feat",
+        "spatial",
+        "count",
+        "has_weight",
+        "need_ig",
+        "need_wg",
+        "need_bg",
+    ]
+    # Flat replay binds one CompiledKernel and replays it on freshly-allocated
+    # pointers whose alignment class varies call to call. Without this the bound
+    # kernel would emit aligned loads for pointers it was never compiled for
+    # (misfire) or force a recompile per alignment class -- either defeats the
+    # flat fast path. Nothing in the payload reads pointer alignment.
+    _BN_RAW_DNA = ["Grad", "Inp", "Mean", "Invstd", "Weight", "Dx", "Dw", "Db"]
+
+    @triton.jit(
+        do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA
+    )
+    def _bn_bwd_raw_kernel_f32(
+        Grad,
+        Inp,
+        Mean,
+        Invstd,
+        Weight,
+        Dx,
+        Dw,
+        Db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
+    ):
+        _tle.raw.call(
+            bn_bwd_f32,
+            (
+                Grad,
+                Inp,
+                Mean,
+                Invstd,
+                Weight,
+                Dx,
+                Dw,
+                Db,
+                batch,
+                feat,
+                spatial,
+                count,
+                has_weight,
+                need_ig,
+                need_wg,
+                need_bg,
+            ),
+        )
+
+    @triton.jit(
+        do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA
+    )
+    def _bn_bwd_raw_kernel_f16(
+        Grad,
+        Inp,
+        Mean,
+        Invstd,
+        Weight,
+        Dx,
+        Dw,
+        Db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
+    ):
+        _tle.raw.call(
+            bn_bwd_f16,
+            (
+                Grad,
+                Inp,
+                Mean,
+                Invstd,
+                Weight,
+                Dx,
+                Dw,
+                Db,
+                batch,
+                feat,
+                spatial,
+                count,
+                has_weight,
+                need_ig,
+                need_wg,
+                need_bg,
+            ),
+        )
+
+    @triton.jit(
+        do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA
+    )
+    def _bn_bwd_raw_kernel_bf16(
+        Grad,
+        Inp,
+        Mean,
+        Invstd,
+        Weight,
+        Dx,
+        Dw,
+        Db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
+    ):
+        _tle.raw.call(
+            bn_bwd_bf16,
+            (
+                Grad,
+                Inp,
+                Mean,
+                Invstd,
+                Weight,
+                Dx,
+                Dw,
+                Db,
+                batch,
+                feat,
+                spatial,
+                count,
+                has_weight,
+                need_ig,
+                need_wg,
+                need_bg,
+            ),
+        )
+
+    _BN_RAW_KERNELS = {
+        torch.float32: _bn_bwd_raw_kernel_f32,
+        torch.float16: _bn_bwd_raw_kernel_f16,
+        torch.bfloat16: _bn_bwd_raw_kernel_bf16,
+    }
+    _HAS_BN_RAW = True
+except Exception:  # pragma: no cover - environment without tle.raw
+    _HAS_BN_RAW = False
+    _BN_RAW_KERNELS = {}
+
+
+# Resolved once. `driver.active` is a lazy proxy, so the attribute walk is not
+# free at ~12us a launch.
+_BN_FLAT_MISS = object()
+_BN_FLAT = _BN_FLAT_MISS
+
+
+def _flat_launchers():
+    """`driver.active.flat_launchers`, resolved once (may be None on older triton)."""
+    global _BN_FLAT
+    if _BN_FLAT is _BN_FLAT_MISS:
+        _BN_FLAT = getattr(driver.active, "flat_launchers", None)
+    return _BN_FLAT
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -729,6 +983,220 @@ def _bn_fused_tile_s(spatial_dim):
     return 128, (spatial_dim % 128) != 0
 
 
+# ---------------------------------------------------------------------------
+# Training fast path: ONE launch covering both stats and normalize, a single
+# program with a [C, NB*W] block (column j -> (j // W) * NROW + (j % W)) so a
+# block row is one channel and tl.sum(acc, axis=1) is the per-channel
+# reduction (mirrors native_batch_norm.native_batch_norm_fused_kernel, which
+# reached 0.95-2.45x on the official shapes).  Measured on this device:
+# ~8 us fixed + ~8 us per 128 KiB of traffic; the per-slice 1D [TILE] kernels
+# below cost 3-10x more and are kept only as the fallback.
+#
+# TAIL handling (S % W != 0): 2D masked loads/stores are miscompiled on this
+# backend, so the dead lanes clamp their address to S-1 (in-bounds, unmasked
+# load) and the stats multiply the loaded values by a 0/1 column mask while
+# the normalize stores the (redundantly computed) value of the last element a
+# second time -- an idempotent write, so no corruption.  TAIL is a constexpr
+# so the clamp/mask path is only compiled for the last tile.
+# ---------------------------------------------------------------------------
+
+_BNF_MAX_LANES = 1 << 17
+_BNF_MAX_NIT = 8
+_BNF_MAX_W = 2048  # W=4096 + bfloat16 wedges the card (noc idle timeout)
+_BNF_MIN_LANES = 64
+
+
+def _is_pow2(value):
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def _bn_fused_plan(
+    batch_dim, feat_dim, spatial_dim, w_cap=_BNF_MAX_W, max_nit=_BNF_MAX_NIT
+):
+    """Pick (W, NB, IN, R, NIT) for the single-launch fused training kernel.
+
+    W is a power-of-two divisor of spatial_dim (exact fit, no masks), NB
+    divides batch_dim, 64 <= W <= w_cap, 64 <= C*NB*W <= 2^17 lanes.  The
+    static unroll NIT = (batch_dim // NB) * (spatial_dim // W) is capped at
+    max_nit: bfloat16 silently miscompiles / raises illegal memory access at
+    NIT in {11, 12, 16, 24} (measured), while fp32/fp16 tolerate 11.  Ties are
+    broken by the smallest NIT then the widest W.  Returns None if ineligible.
+    """
+    if not _is_pow2(feat_dim):
+        return None
+    best_key = None
+    best = None
+    w = 1
+    while w <= min(w_cap, max(spatial_dim, 1)):
+        if w >= _BNF_MIN_LANES or w == spatial_dim:
+            if spatial_dim % w == 0:
+                r = spatial_dim // w
+                nb = 1
+                while nb <= batch_dim:
+                    lanes = feat_dim * nb * w
+                    if (
+                        batch_dim % nb == 0
+                        and _BNF_MIN_LANES <= lanes <= _BNF_MAX_LANES
+                    ):
+                        nit = (batch_dim // nb) * r
+                        if nit <= max_nit:
+                            key = (nit, -w)
+                            if best_key is None or key < best_key:
+                                best_key = key
+                                best = (w, nb, batch_dim // nb, r, nit)
+                    nb *= 2
+        w *= 2
+    return best
+
+
+def _bn_max_nit(dtype):
+    """Static-unroll budget per dtype (see _bn_fused_plan)."""
+    return _BNF_MAX_NIT if dtype == torch.bfloat16 else 11
+
+
+@libentry()
+@triton.jit(do_not_specialize=["momentum", "eps", "var_correction"])
+def batch_norm_fused_train_kernel(
+    input_pointer,  # [N, C, S] contiguous, flattened
+    output_pointer,
+    mean_pointer,  # [C] f32 out
+    inv_std_pointer,  # [C] f32 out
+    save_mean_pointer,  # [C] input-dtype out
+    save_inv_std_pointer,  # [C] input-dtype out
+    running_mean_pointer,  # [C] in/out, or unused alias
+    running_var_pointer,  # [C] in/out, or unused alias
+    weight_pointer,  # [C], or unused alias
+    bias_pointer,  # [C], or unused alias
+    count,  # batch_dim * spatial_dim
+    momentum,
+    eps,
+    var_correction,  # count / (count - 1), 1.0 when count <= 1
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    C: tl.constexpr,
+    S: tl.constexpr,
+    NROW: tl.constexpr,  # C * S
+    W: tl.constexpr,
+    NB: tl.constexpr,
+    NBW: tl.constexpr,  # NB * W
+    IN: tl.constexpr,  # N // NB
+    R: tl.constexpr,  # ceil(S / W)
+    TAIL: tl.constexpr,
+):
+    row = tl.arange(0, C)[:, None] * S
+    j = tl.arange(0, NBW)
+    col = ((j // W) * NROW + (j % W))[None, :]
+    acc = tl.zeros([C, NBW], dtype=tl.float32)
+    acc_sq = tl.zeros([C, NBW], dtype=tl.float32)
+    for g in tl.static_range(IN):
+        for t in tl.static_range(R):
+            if TAIL and t * W + W > S:
+                # clamped in-bounds load; dead lanes read element S-1 and are
+                # zeroed by the column multiply, so the sums stay exact
+                mi = (t * W + (j % W) < S).to(tl.float32)
+                x = tl.load(
+                    input_pointer
+                    + (g * NB * NROW + t * W)
+                    + row
+                    + (j // W) * NROW
+                    + tl.minimum(j % W, S - 1 - t * W)
+                ).to(tl.float32)
+                x = x * mi[None, :]
+                acc += x
+                acc_sq += x * x
+            else:
+                x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
+                    tl.float32
+                )
+                acc += x
+                acc_sq += x * x
+
+    idx = tl.arange(0, C)
+    keep = idx < C
+    mean = tl.sum(acc, axis=1) / count
+    var = tl.sum(acc_sq, axis=1) / count - mean * mean
+    inv_std = rsqrt(var + eps)
+    if HAS_WEIGHT:
+        weight = tl.load(weight_pointer + idx, mask=keep, other=0.0).to(tl.float32)
+    else:
+        weight = tl.full([C], 1.0, tl.float32)
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + idx, mask=keep, other=0.0).to(tl.float32)
+    else:
+        bias = tl.zeros([C], dtype=tl.float32)
+    gain = weight * inv_std
+    scale = gain[:, None]
+    shift = (bias - mean * gain)[:, None]
+
+    for g in tl.static_range(IN):
+        for t in tl.static_range(R):
+            if TAIL and t * W + W > S:
+                # idempotent store: dead lanes re-write the value of element
+                # S-1 at its own address (same channel, same scalar math)
+                x = tl.load(
+                    input_pointer
+                    + (g * NB * NROW + t * W)
+                    + row
+                    + (j // W) * NROW
+                    + tl.minimum(j % W, S - 1 - t * W)
+                ).to(tl.float32)
+                tl.store(
+                    output_pointer
+                    + (g * NB * NROW + t * W)
+                    + row
+                    + (j // W) * NROW
+                    + tl.minimum(j % W, S - 1 - t * W),
+                    (x * scale + shift).to(output_pointer.dtype.element_ty),
+                )
+            else:
+                # inline at the load and at the store: binding the address to a
+                # Python local makes TritonXPUUnrollControl report
+                # `operand #1 does not dominate this use` for f16/bf16
+                x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
+                    tl.float32
+                )
+                tl.store(
+                    output_pointer + (g * NB * NROW + t * W) + row + col,
+                    (x * scale + shift).to(output_pointer.dtype.element_ty),
+                )
+
+    # Epilogue AFTER every wide store: a `mask=` on an earlier load can leak
+    # its predicate into a later wide store in the same program, so all wide
+    # traffic above is maskless and all narrow traffic is here.
+    tl.store(
+        save_mean_pointer + idx, mean.to(save_mean_pointer.dtype.element_ty), mask=keep
+    )
+    tl.store(
+        save_inv_std_pointer + idx,
+        inv_std.to(save_inv_std_pointer.dtype.element_ty),
+        mask=keep,
+    )
+    if HAS_RM:
+        running_mean = tl.load(running_mean_pointer + idx, mask=keep, other=0.0).to(
+            tl.float32
+        )
+        tl.store(
+            running_mean_pointer + idx,
+            ((1.0 - momentum) * running_mean + momentum * mean).to(
+                running_mean_pointer.dtype.element_ty
+            ),
+            mask=keep,
+        )
+    if HAS_RV:
+        running_var = tl.load(running_var_pointer + idx, mask=keep, other=0.0).to(
+            tl.float32
+        )
+        tl.store(
+            running_var_pointer + idx,
+            ((1.0 - momentum) * running_var + momentum * var * var_correction).to(
+                running_var_pointer.dtype.element_ty
+            ),
+            mask=keep,
+        )
+
+
 def batch_norm(
     input: Tensor,
     weight=None,
@@ -788,6 +1256,57 @@ def batch_norm(
         (count / (count - 1)) if (unbiased_running_var and count > 1) else 1.0
     )
 
+    # Single-launch fused plan (stats + normalize in one launch): exact-fit
+    # power-of-two tiles, one program, static unroll bounded per dtype.
+    plan = _bn_fused_plan(
+        batch_dim,
+        feat_dim,
+        spatial_dim,
+        w_cap=_BNF_MAX_W,
+        max_nit=_bn_max_nit(input.dtype),
+    )
+    if plan is not None:
+        w_plan, nb, inn, r_plan, _ = plan
+        mean_d = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+        inv_std_d = torch.empty_like(mean_d)
+        with torch_device_fn.device(input.device):
+            batch_norm_fused_train_kernel[(1,)](
+                input_flat,
+                output_flat,
+                mean_d,
+                inv_std_d,
+                mean_d,
+                inv_std_d,
+                running_mean if has_rm else mean_d,
+                running_var if has_rv else inv_std_d,
+                weight if has_weight else mean_d,
+                bias if has_bias else inv_std_d,
+                count,
+                momentum,
+                eps,
+                var_correction,
+                HAS_RM=has_rm,
+                HAS_RV=has_rv,
+                HAS_WEIGHT=has_weight,
+                HAS_BIAS=has_bias,
+                C=feat_dim,
+                S=spatial_dim,
+                NROW=feat_dim * spatial_dim,
+                W=w_plan,
+                NB=nb,
+                NBW=nb * w_plan,
+                IN=inn,
+                R=r_plan,
+                TAIL=(r_plan * w_plan) != spatial_dim,
+                num_warps=4,
+                isCloseVectorization=False,
+                buffer_size_limit=8192,
+            )
+        return output.view_as(input), mean_d, inv_std_d
+
+    # Fallback: the 3-stage per-slice path (kept from the original vendor
+    # implementation), used when the exact-fit plan does not apply (non-pow2
+    # channels, prime spatial sizes, huge tensors, bf16 NIT limits).
     if count <= BN_FUSED_TRAIN_MAX_ELEMS:
         fused_tile_s, fused_need_m = _bn_fused_tile_s(spatial_dim)
         mean_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
@@ -999,6 +1518,106 @@ def batch_norm_backward(
     input_flat = input_3d.reshape(-1)
     grad_flat = grad_3d.reshape(-1)
     has_weight = weight is not None
+
+    # Restricted fast path: fold the whole BN backward into one hand-written
+    # tle.raw cluster launch for the tiny training shapes that are launch/wave
+    # bound on the Triton fused/3-stage paths.  Requires input_grad and a small,
+    # bounded shape; everything else falls through UNCHANGED (zero regression).
+    if (
+        _HAS_BN_RAW
+        and output_mask[0]
+        and input.dtype in _BN_RAW_KERNELS
+        and batch_dim <= 32
+        and count <= 131072
+        and n_slices <= 4096
+    ):
+        try:
+            raw_kernel = _BN_RAW_KERNELS[input.dtype]
+            grid = min(feat_dim, 12)
+            # dw/db must be a VALID same-dtype pointer even when not requested;
+            # use input_flat (tensor dtype) as the dummy -- NOT the fp32 save_mean.
+            weight_ptr = weight if has_weight else input_flat
+            dw_ptr = weight_grad if output_mask[1] else input_flat
+            db_ptr = bias_grad if output_mask[2] else input_flat
+            input_grad_flat = input_grad.reshape(-1)
+
+            # `fn[grid]` JITFunction.run costs ~8-16us of pure python per call on
+            # these tiny host-bound shapes. Bind the CompiledKernel once and replay
+            # it through the flat launcher ABI afterwards. The key carries grid,
+            # which participates in compilation on XPU; dtype is already
+            # distinguished because each dtype uses a different `raw_kernel` object,
+            # and `acquire` keys on the kfn too. Pointers are deliberately absent,
+            # which is only sound because the kernels drop alignment specialization
+            # (do_not_specialize_on_alignment above).
+            key = (grid,)
+
+            def _run_direct():
+                # Direct `fn[grid]` -- runs the launch correctly AND returns the
+                # CompiledKernel that flat replay binds. Also the fallback path.
+                return raw_kernel[(grid,)](
+                    grad_flat,
+                    input_flat,
+                    save_mean,
+                    save_invstd,
+                    weight_ptr,
+                    input_grad_flat,
+                    dw_ptr,
+                    db_ptr,
+                    batch_dim,
+                    feat_dim,
+                    spatial_dim,
+                    count,
+                    1 if has_weight else 0,
+                    1,
+                    1 if output_mask[1] else 0,
+                    1 if output_mask[2] else 0,
+                )
+
+            launchers = _flat_launchers()
+            with torch_device_fn.device(input.device):
+                if launchers is None:  # triton without the launcher cache
+                    _run_direct()
+                else:
+                    try:
+                        launch, stream = launchers.acquire(raw_kernel, key)
+                        if launch is None:
+                            kernel = _run_direct()
+                            launchers.bind(raw_kernel, key, kernel, (grid,))
+                        else:
+                            # FLAT ABI: the 16 non-constexpr params in signature
+                            # order -- 8 pointers as `.data_ptr()` ints, then 8 ints.
+                            launch(
+                                stream,
+                                grad_flat.data_ptr(),
+                                input_flat.data_ptr(),
+                                save_mean.data_ptr(),
+                                save_invstd.data_ptr(),
+                                weight_ptr.data_ptr(),
+                                input_grad_flat.data_ptr(),
+                                dw_ptr.data_ptr(),
+                                db_ptr.data_ptr(),
+                                batch_dim,
+                                feat_dim,
+                                spatial_dim,
+                                count,
+                                1 if has_weight else 0,
+                                1,
+                                1 if output_mask[1] else 0,
+                                1 if output_mask[2] else 0,
+                            )
+                    except Exception as flat_e:  # any flat failure -> direct call
+                        logger.debug(
+                            "flat bn backward replay failed, using direct: %s",
+                            flat_e,
+                        )
+                        _run_direct()
+            return (
+                input_grad.view_as(input),
+                weight_grad,
+                bias_grad,
+            )
+        except Exception as e:  # pragma: no cover - defensive fallback
+            logger.debug("raw bn backward path failed, falling back: %s", e)
 
     if count <= BNB_FUSED_MAX_ELEMS:
         with torch_device_fn.device(input.device):

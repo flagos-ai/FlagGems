@@ -16,12 +16,11 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry
-from flag_gems.utils.limits import get_dtype_min
+from flag_gems.ops.max_pool3d_with_indices import max_pool3d_with_indices
+from flag_gems.ops.max_pool3d_with_indices_backward import (
+    max_pool3d_with_indices_backward,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,118 +81,31 @@ def _parse_pool3d_params(kernel_size, stride, padding, dilation):
     return kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw
 
 
-@libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("max_pool3d"),
-    key=[
-        "out_d",
-        "out_h",
-        "out_w",
-        "kernel_d",
-        "kernel_h",
-        "kernel_w",
-        "stride_d",
-        "stride_h",
-        "stride_w",
-    ],
-)
-@triton.jit
-def max_pool3d_forward_kernel(
-    input_ptr,
-    output_ptr,
-    # Input tensor strides
-    in_stride_n,
-    in_stride_c,
-    in_stride_d,
-    in_stride_h,
-    in_stride_w,
-    # Input/Output shapes
-    in_c,
-    in_d,
-    in_h,
-    in_w,
-    out_d,
-    out_h,
-    out_w,
-    # Pooling parameters
-    kernel_d: tl.constexpr,
-    kernel_h: tl.constexpr,
-    kernel_w: tl.constexpr,
-    stride_d: tl.constexpr,
-    stride_h: tl.constexpr,
-    stride_w: tl.constexpr,
-    padding_d: tl.constexpr,
-    padding_h: tl.constexpr,
-    padding_w: tl.constexpr,
-    dilation_d: tl.constexpr,
-    dilation_h: tl.constexpr,
-    dilation_w: tl.constexpr,
-    # Meta-parameters for tiling
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
-):
-    """Forward kernel for 3-D max pooling, producing max values only.
+class _MaxPool3DFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, kernel_size, stride, padding, dilation, ceil_mode):
+        output, indices = max_pool3d_with_indices(
+            input, kernel_size, stride, padding, dilation, ceil_mode
+        )
+        ctx.save_for_backward(input, indices)
+        ctx.pool_params = (kernel_size, stride, padding, dilation, ceil_mode)
+        return output
 
-    Grid: (N * C, num_d_blocks * num_h_blocks * num_w_blocks)
-    where num_h_blocks = cdiv(out_h, BLOCK_H),
-          num_w_blocks = cdiv(out_w, BLOCK_W).
-    The depth dimension is iterated by mapping each output depth position
-    to a distinct program in axis 1.
-    """
-    pid_nc = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
-
-    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-
-    d_block_idx = pid_dhw // (num_h_blocks * num_w_blocks)
-    hw_remainder = pid_dhw % (num_h_blocks * num_w_blocks)
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
-
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
-
-    d_out = d_block_idx
-
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
-    dtype = input_ptr.type.element_ty
-    min_val = get_dtype_min(dtype)
-    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-
-    for kd in tl.static_range(0, kernel_d):
-        d_in = d_out * stride_d - padding_d + kd * dilation_d
-        d_valid = (d_in >= 0) & (d_in < in_d)
-        for kh in tl.static_range(0, kernel_h):
-            for kw in tl.static_range(0, kernel_w):
-                h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-                w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-                in_mask = (
-                    d_valid & (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-                )
-                input_offset = (
-                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
-                )
-                current_val = tl.load(
-                    input_base_ptr + input_offset, mask=in_mask, other=min_val
-                )
-                max_val_acc = tl.where(
-                    current_val > max_val_acc, current_val, max_val_acc
-                )
-
-    out_spatial = out_h * out_w
-    out_base_offset = pid_nc * out_d * out_spatial + d_out * out_spatial
-    out_base_ptr = output_ptr + out_base_offset
-    output_block_ptr = (
-        out_base_ptr + h_out_offsets[:, None] * out_w + w_out_offsets[None, :]
-    )
-
-    out_mask = (h_out_offsets[:, None] < out_h) & (w_out_offsets[None, :] < out_w)
-    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, indices = ctx.saved_tensors
+        kernel_size, stride, padding, dilation, ceil_mode = ctx.pool_params
+        grad_input = max_pool3d_with_indices_backward(
+            grad_output,
+            input,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            ceil_mode,
+            indices,
+        )
+        return grad_input, None, None, None, None, None
 
 
 def max_pool3d(
@@ -207,60 +119,12 @@ def max_pool3d(
     """Compute 3-D max pooling, returning the pooled max values.
 
     This matches ``aten::max_pool3d`` which returns only the value tensor
-    (no argmax indices).
+    (no argmax indices). The pooling primitive is the value/indices pair
+    computed by ``max_pool3d_with_indices``; the autograd function binds it
+    to the ``max_pool3d_with_indices_backward`` kernel so gradients flow
+    without relying on the standalone value kernel (which has no derivative).
     """
     logger.debug("GEMS MAX_POOL3D")
-    input = input.contiguous()
-
-    params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
-    kd, kh, kw, sd, sh, sw, pd, ph, pw, dd, dh, dw = params
-
-    in_n, in_c, in_d, in_h, in_w = input.shape
-    out_d = pool3d_output_size(in_d, kd, sd, pd, dd, ceil_mode)
-    out_h = pool3d_output_size(in_h, kh, sh, ph, dh, ceil_mode)
-    out_w = pool3d_output_size(in_w, kw, sw, pw, dw, ceil_mode)
-
-    output = torch.empty(
-        (in_n, in_c, out_d, out_h, out_w), device=input.device, dtype=input.dtype
+    return _MaxPool3DFunction.apply(
+        input, kernel_size, stride, padding, dilation, ceil_mode
     )
-
-    if output.numel() == 0:
-        return output
-
-    grid = lambda meta: (
-        in_n * in_c,
-        out_d
-        * triton.cdiv(out_h, meta["BLOCK_H"])
-        * triton.cdiv(out_w, meta["BLOCK_W"]),
-    )
-
-    max_pool3d_forward_kernel[grid](
-        input,
-        output,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
-        input.stride(4),
-        in_c,
-        in_d,
-        in_h,
-        in_w,
-        out_d,
-        out_h,
-        out_w,
-        kd,
-        kh,
-        kw,
-        sd,
-        sh,
-        sw,
-        pd,
-        ph,
-        pw,
-        dd,
-        dh,
-        dw,
-    )
-
-    return output

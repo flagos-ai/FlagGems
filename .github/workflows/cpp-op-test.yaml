@@ -27,11 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/setup-flaggems
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: nvidia-cuda133
-          gpu_check_script: tools/gpu_check_nvidia.sh
+          vllm-version: '0.21.0'
+          gpu-check-script: tools/gpu_check_nvidia.sh
 
       - shell: bash
         run: |

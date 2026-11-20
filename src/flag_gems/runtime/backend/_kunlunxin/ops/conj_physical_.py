@@ -11,14 +11,22 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def conj_physical__kernel(ptr, n_real_elements, BLOCK_SIZE: tl.constexpr):
+def conj_physical__kernel(
+    ptr, n_real_elements, BLOCK_SIZE: tl.constexpr, EVEN: tl.constexpr
+):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_real_elements
-    x = tl.load(ptr + offsets, mask=mask)
-    # even offsets are real parts (kept), odd offsets are imag parts (negated)
-    y = tl.where((offsets % 2) == 1, -x, x)
-    tl.store(ptr + offsets, y, mask=mask)
+    if EVEN:
+        x = tl.load(ptr + offsets)
+        # even offsets are real parts (kept), odd offsets are imag parts (negated)
+        y = tl.where((offsets & 1) == 1, -x, x)
+        tl.store(ptr + offsets, y)
+    else:
+        mask = offsets < n_real_elements
+        x = tl.load(ptr + offsets, mask=mask)
+        # even offsets are real parts (kept), odd offsets are imag parts (negated)
+        y = tl.where((offsets & 1) == 1, -x, x)
+        tl.store(ptr + offsets, y, mask=mask)
 
 
 def conj_physical_(input: torch.Tensor) -> torch.Tensor:
@@ -38,6 +46,8 @@ def conj_physical_(input: torch.Tensor) -> torch.Tensor:
 
     BLOCK_SIZE = 8192
     grid = (triton.cdiv(n, BLOCK_SIZE),)
-    conj_physical__kernel[grid](flat, n, BLOCK_SIZE=BLOCK_SIZE, num_warps=8)
+    conj_physical__kernel[grid](
+        flat, n, BLOCK_SIZE=BLOCK_SIZE, EVEN=(n % BLOCK_SIZE) == 0, num_warps=8
+    )
 
     return input

@@ -57,8 +57,9 @@ requires_flagtree_flagtune = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def isolate_cost_model_state(monkeypatch):
     """Mode resolution must not probe; each test owns independent fuse state."""
-    # Test-only isolation: production fuses last until the process restarts.
+    # Each test owns independent AUTO cooldown state.
     monkeypatch.setattr(cost_model_mod, "_COST_MODEL_DISABLED_OPS", set())
+    monkeypatch.setattr(cost_model_mod, "_COST_MODEL_RETRY_AFTER", {})
     monkeypatch.setattr(cost_model_mod, "_COST_MODEL_IDENTITIES", {})
     monkeypatch.setattr(cost_model_mod, "_FLAGTUNE_AVAILABILITY", None)
 
@@ -710,6 +711,7 @@ class ResolvedDescriptor:
 def descriptor_module(monkeypatch):
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     return module
 
 
@@ -728,6 +730,7 @@ def test_descriptor_cache_key_uses_resolved_type(descriptor_module):
 
 def test_descriptor_cache_key_without_descriptor_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", None)
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     value = object()
     assert libentry_mod._descriptor_cache_key(value) is value
 
@@ -754,7 +757,9 @@ def test_model_bundle_missing_error_supports_older_flagtree(
 def test_libentry_key_without_vendor_hook(monkeypatch):
     """Tensor-like arguments key on dtype and pointer alignment."""
     monkeypatch.setattr(libentry_mod, "device", SimpleNamespace(vendor_name="nvidia"))
-    entry = SimpleNamespace(divisibility=16)
+    entry = SimpleNamespace(
+        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
+    )
 
     aligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
     misaligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 33)
@@ -768,7 +773,7 @@ def test_libentry_key_without_vendor_hook(monkeypatch):
 
 @pytest.mark.parametrize("backend_state", ["missing", "no_hook", "with_hook"])
 def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
-    """Preserve optional Hygon tensor specialization without a helper cache."""
+    """Resolve optional Hygon tensor specialization when creating the entry."""
     backend = SimpleNamespace()
     if backend_state == "with_hook":
         backend.get_tensor_specialization = lambda arg: "hcu"
@@ -779,7 +784,9 @@ def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
         "triton.backends.hcu.compiler",
         None if backend_state == "missing" else SimpleNamespace(HIPBackend=backend),
     )
-    entry = SimpleNamespace(divisibility=16)
+    entry = SimpleNamespace(
+        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
+    )
     tensor = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
     tensor_key = ("f32", True, "hcu") if backend_state == "with_hook" else ("f32", True)
 
@@ -805,8 +812,9 @@ def test_libentry_key_normalizes_descriptor_arguments(descriptor_module):
 
 
 @pytest.mark.parametrize("keyword_first", [False, True])
+@pytest.mark.parametrize("cache_binding", [False, True])
 def test_libentry_run_normalizes_keyword_descriptors(
-    monkeypatch, descriptor_module, keyword_first
+    monkeypatch, descriptor_module, keyword_first, cache_binding
 ):
     """Both calling styles share a cache key and pass real descriptors on launch."""
 
@@ -814,9 +822,9 @@ def test_libentry_run_normalizes_keyword_descriptors(
     def kernel(a_desc):
         pass
 
-    entry = libentry_mod.LibEntry(kernel)
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
     entry._has_flagtune_tuner = True
-    monkeypatch.setattr(entry, "_apply_flagtune", lambda: None)
+    monkeypatch.setattr(entry, "_apply_flagtune", lambda device=None, *args: None)
     monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
     launches = []
     compiled_calls = []
@@ -1084,6 +1092,7 @@ def test_flagtree_policy_uses_cost_model_by_default_for_adapted_operator(monkeyp
         """Convert one synthetic feature/config schema for proposer testing."""
 
         param_names = ["BLOCK"]
+        param_space = SimpleNamespace(validate=lambda config: True)
 
         @staticmethod
         def normalize_inputs(_nargs):
@@ -1180,6 +1189,7 @@ def test_enabled_flagtree_policy_propagates_contract_failures(
 
     class FakeVariantInfo:
         param_names = ["BLOCK"]
+        param_space = SimpleNamespace(validate=lambda config: True)
 
         @staticmethod
         def normalize_inputs(_nargs):
@@ -1310,7 +1320,7 @@ def test_cost_model_failures_fuse_only_auto(monkeypatch, capsys, phase, setting)
         assert f"phase={phase}" in output
         assert "caused_by=" in output
 
-        # Repairing the model path does not re-enable AUTO in this process.
+        # Repairing the source does not retry until the cooldown expires.
         def repaired_load(*args):
             calls["load"] += 1
             return object()
@@ -1323,88 +1333,92 @@ def test_cost_model_failures_fuse_only_auto(monkeypatch, capsys, phase, setting)
         assert calls["load"] == 1
         assert calls["fallback"] == 3
         assert cost_model_mod._COST_MODEL_DISABLED_OPS == {
-            ("flaggems/mm", "general_tma")
+            cost_model_mod.failure_key(tuner, tuner.nargs)
         }
     assert not getattr(tuner, "_flagtune_strict_benchmark", False)
 
 
 @requires_flagtree_flagtune
-def test_auto_fuse_covers_all_devices_and_dtypes_of_only_one_variant(
-    monkeypatch, capsys
+@pytest.mark.parametrize(
+    "failure_name",
+    ["ModelSourceError", "ModelUnavailableError", "ModelValidationError"],
+)
+def test_auto_source_failure_warns_once_retries_and_recovers(
+    monkeypatch, caplog, failure_name
 ):
-    FlagTuneError = pytest.importorskip(
-        "triton.flagtune.runtime.errors",
-        reason="AUTO fuse tests require FlagTree's unified runtime errors",
-    ).FlagTuneError
-
+    errors = pytest.importorskip("triton.flagtune.runtime.errors")
+    failure = getattr(errors, failure_name)
     monkeypatch.delenv("USE_FLAGTUNE", raising=False)
     monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
     monkeypatch.setattr(libentry_mod, "_HAS_FLAGTREE_FLAGTUNE", True)
+    now, attempts = [0.0], []
+    monkeypatch.setattr(cost_model_mod.time, "monotonic", lambda: now[0])
     candidates = [triton.Config({"BLOCK": 1}), triton.Config({"BLOCK": 2})]
-    loads, fallbacks = [], []
+    tuner = SimpleNamespace(
+        _flagtune_op_name="mm",
+        _flagtune_op_id="flaggems/mm",
+        _flagtune_variant="general_tma",
+        nargs={},
+        arg_names=[],
+    )
+    repaired = [False]
 
-    def tuner(op_id, variant, device, dtype):
-        return SimpleNamespace(
-            _flagtune_op_name=op_id.rsplit("/", 1)[-1],
-            _flagtune_op_id=op_id,
-            _flagtune_variant=variant,
-            arg_names=["A"],
-            nargs={"A": SimpleNamespace(device=device, dtype=dtype)},
-        )
-
-    def load(current, *args):
-        loads.append((current._flagtune_op_id, current._flagtune_variant))
-        if current._flagtune_op_id == "flaggems/mm":
-            raise FileNotFoundError("missing MM model")
+    def load(*args):
+        attempts.append(1)
+        if not repaired[0]:
+            raise failure(
+                "manifest 404 at https://user:password@example.invalid/file?token=secret"
+            )
         return object()
-
-    def fallback(current, *args):
-        fallbacks.append(current._flagtune_variant)
-        return candidates[0], {}
 
     monkeypatch.setattr(cost_model_mod, "runtime_candidates", lambda *a: candidates)
     monkeypatch.setattr(cost_model_mod, "load_model", load)
-    monkeypatch.setattr(cost_model_mod, "run_proposer", lambda *a: (candidates[0], {}))
-    monkeypatch.setattr(libentry_mod, "_flagtune_legacy_fallback", fallback)
-    policy = LibTuner.get("flagtune").policy
-    mm0 = tuner("flaggems/mm", "general_tma", "cuda:0", "bfloat16")
-    mm1 = tuner("flaggems/mm", "gemv", "cuda:1", "float32")
-    mul1 = tuner("flaggems/mul", "scalar", "cuda:1", "float32")
-
-    policy(mm0, None, candidates, (), {})
-    policy(
-        tuner("flaggems/mm", "general_tma", "cuda:1", "float32"),
-        None,
-        candidates,
-        (),
-        {},
+    monkeypatch.setattr(cost_model_mod, "run_proposer", lambda *a: (candidates[1], {}))
+    monkeypatch.setattr(
+        libentry_mod, "_flagtune_legacy_fallback", lambda *a: (candidates[0], {})
     )
-    assert loads == [("flaggems/mm", "general_tma")]
-    policy(mm1, None, candidates, (), {})
-    assert loads == [("flaggems/mm", "general_tma"), ("flaggems/mm", "gemv")]
-    assert fallbacks == ["general_tma", "general_tma", "gemv"]
-    assert cost_model_mod._COST_MODEL_DISABLED_OPS == {
-        ("flaggems/mm", "general_tma"),
-        ("flaggems/mm", "gemv"),
-    }
-    assert capsys.readouterr().err.count("AUTO fallback") == 2
+    policy = LibTuner.get("flagtune").policy
+    for _ in range(3):
+        assert policy(tuner, None, candidates, (), {})[0] is candidates[0]
+    assert len(attempts) == 1
+    assert cost_model_mod.is_auto_disabled(
+        *cost_model_mod.failure_key(tuner, tuner.nargs)
+    )
+    warnings = [
+        record
+        for record in caplog.records
+        if "FlagTune model unavailable" in record.message
+    ]
+    assert len(warnings) == 1
+    assert "using default tuning" in warnings[0].message
+    assert (
+        "password" not in warnings[0].message
+        and "token=secret" not in warnings[0].message
+    )
 
-    policy(mul1, None, candidates, (), {})
-    assert loads[-1] == ("flaggems/mul", "scalar")
-    assert len(fallbacks) == 3
-
+    # Explicit REQUIRED mode must report the original error during AUTO cooldown.
     monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", "1")
-    with pytest.raises(FlagTuneError, match="missing MM model"):
-        policy(mm1, None, candidates, (), {})
-    assert loads[-1] == ("flaggems/mm", "gemv")
-    assert len(fallbacks) == 3
-
+    with pytest.raises(failure, match="manifest 404"):
+        policy(tuner, None, candidates, (), {})
+    assert len(attempts) == 2
     monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL")
-    # A REQUIRED attempt does not clear the existing AUTO fuse.
-    policy(mm1, None, candidates, (), {})
-    assert len(loads) == 4
-    assert len(fallbacks) == 4
-    assert fallbacks[-1] == "gemv"
+
+    now[0] = cost_model_mod._AUTO_RETRY_SECONDS
+    assert policy(tuner, None, candidates, (), {})[0] is candidates[0]
+    assert len(attempts) == 3
+    assert (
+        len([r for r in caplog.records if "FlagTune model unavailable" in r.message])
+        == 1
+    )
+    repaired[0] = True
+    now[0] += cost_model_mod._AUTO_RETRY_SECONDS
+    assert policy(tuner, None, candidates, (), {})[0] is candidates[1]
+    assert len(attempts) == 4
+    assert not cost_model_mod.auto_failure_state(
+        *cost_model_mod.failure_key(tuner, tuner.nargs)
+    )[0]
 
 
 @pytest.mark.parametrize("expanded", [False, True])
@@ -1440,6 +1454,9 @@ def test_operator_fuse_invalidates_existing_dispatch_caches(monkeypatch, expande
         current.apply_flagtune()
         return SimpleNamespace(
             fn=current,
+            lock=threading.Lock(),
+            _flagtune_state=None,
+            _flagtune_tuners=(current,),
             kernel_cache=({"device0": object()}, {"device1": object()}),
             _cpu_cache={"old": object()},
         )
@@ -1447,7 +1464,7 @@ def test_operator_fuse_invalidates_existing_dispatch_caches(monkeypatch, expande
     mm_entries = [entry("flaggems/mm", v) for v in ("general_tma", "gemv")]
     mul_entry = entry("flaggems/mul", "scalar")
     cost_model_mod._COST_MODEL_DISABLED_OPS.update(
-        {("flaggems/mm", "general_tma"), ("flaggems/mm", "gemv")}
+        {cost_model_mod.failure_key(current.fn, {}) for current in mm_entries}
     )
     for current in mm_entries:
         libentry_mod.LibEntry._apply_flagtune(current)

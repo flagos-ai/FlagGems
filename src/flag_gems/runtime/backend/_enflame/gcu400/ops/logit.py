@@ -71,9 +71,9 @@ def _to_triton_dtype(dtype):
 
 def _choose_block(n_elements, is_fp32):
     if n_elements <= 65536:
-        return 8192
+        return 4096
     if n_elements <= 16777216:
-        return 65536
+        return 32768
     return 65536 if is_fp32 else 131072
 
 

@@ -34,32 +34,36 @@ def clip_func(x, min_val, max_val):
     return result.to(x.dtype)
 
 
-def clip(A, min_val=None, max_val=None):
+def clip(A, mini=None, maxi=None):
+    # The keyword names are part of the public API: `torch.clip` and the generic
+    # implementation both call them `mini` / `maxi`, and callers (including the
+    # operator's own test file) pass them by keyword. Keep this signature in
+    # sync with `flag_gems/ops/clip.py`.
     logger.debug("GEMS_ENFLAME CLIP")
-    if min_val is None and max_val is None:
+    if mini is None and maxi is None:
         return A.clone()
-    if min_val is None:
+    if mini is None:
         from .clamp import clamp
 
-        return clamp(A, min=None, max=max_val)
-    if max_val is None:
+        return clamp(A, mini=None, maxi=maxi)
+    if maxi is None:
         from .clamp import clamp
 
-        return clamp(A, min=min_val, max=None)
-    return clip_func(A, min_val, max_val)
+        return clamp(A, mini=mini, maxi=None)
+    return clip_func(A, mini, maxi)
 
 
-def clip_(A, min_val=None, max_val=None):
+def clip_(A, mini=None, maxi=None):
     logger.debug("GEMS_ENFLAME CLIP_")
-    if min_val is None and max_val is None:
+    if mini is None and maxi is None:
         return A
-    if min_val is None:
+    if mini is None:
         from .clamp import clamp_
 
-        return clamp_(A, min=None, max=max_val)
-    if max_val is None:
+        return clamp_(A, mini=None, maxi=maxi)
+    if maxi is None:
         from .clamp import clamp_
 
-        return clamp_(A, min=min_val, max=None)
-    clip_func(A, min_val, max_val, out0=A)
+        return clamp_(A, mini=mini, maxi=None)
+    clip_func(A, mini, maxi, out0=A)
     return A

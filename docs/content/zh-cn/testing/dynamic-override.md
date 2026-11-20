@@ -36,7 +36,7 @@ source file under `src/flag_gems/ops/` for every variant you want to try.
 -->
 `tests/` 目录下的大多数精度测试都会直接调用 *FlagGems* 的算子 API，
 例如 `flag_gems.softmax(x)` 或 `flag_gems._list_to_tensor(...)`。
-当你正在迭代开发一个新的内核实现，或者想要并排比较若干候选实现时，
+当您正在迭代开发一个新的内核实现，或者想要并排比较若干候选实现时，
 每试一个新版本就去修改 `src/flag_gems/ops/` 下的算子源码文件，往往并不方便。
 
 <!--
@@ -183,7 +183,7 @@ python my_test.py \
 The `op_name=filepath[:func_name]` form is also accepted, if you prefer `=`
 over `:` as the top-level separator.
 -->
-如果你更喜欢用 `=` 而不是 `:` 作为顶层分隔符，`op_name=filepath[:func_name]`
+如果您更喜欢用 `=` 而不是 `:` 作为顶层分隔符，`op_name=filepath[:func_name]`
 这种写法也同样被支持。
 
 <!--
@@ -278,9 +278,9 @@ the module's internal config tuple at import time:
 -->
 `GeneralOpRegistrar` 是负责将每个 `flag_gems.<算子名>` 实现绑定到对应
 ATen 调度键的类，它在注册每一项配置之前，都会重新在当前的 `flag_gems`
-模块上解析一次对应的实现。这意味着，如果你在 `flag_gems.enable()` /
+模块上解析一次对应的实现。这意味着，如果您在 `flag_gems.enable()` /
 `only_enable()` 运行之前（或者算子因为其他原因被重新注册之前）就应用了重载，
-调度表会使用你的重载实现，而不是模块内部配置元组在导入时捕获的那个旧引用：
+调度表会使用您的重载实现，而不是模块内部配置元组在导入时捕获的那个旧引用：
 
 ```python
 with DynamicOpOverride() as registry:

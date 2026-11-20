@@ -29,6 +29,7 @@ def _scalar_input_fn(shape, dtype, device):
     yield inp1, 0.5
 
 
+@pytest.mark.rsub
 @pytest.mark.rsub_tensor
 def test_rsub_tensor():
     bench = base.GenericBenchmark(
@@ -40,6 +41,7 @@ def test_rsub_tensor():
     bench.run()
 
 
+@pytest.mark.rsub
 @pytest.mark.rsub_scalar
 def test_rsub_scalar():
     bench = base.GenericBenchmark(

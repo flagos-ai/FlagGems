@@ -23,7 +23,7 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
+NUM_SIPS = 12
 
 
 @libentry()
@@ -84,5 +84,15 @@ def ceil_(A):
     logger.debug("GEMS_ENFLAME CEIL_")
     inp = A.contiguous()
     N_total = inp.numel()
-    _launch_ceil(inp, A, N_total)
+    _launch_ceil(inp, inp, N_total)
+    if inp is not A:
+        A.copy_(inp)
     return A
+
+
+def ceil_out(A, *, out=None):
+    logger.debug("GEMS_ENFLAME CEIL_OUT")
+    if out is None:
+        return ceil(A)
+    _launch_ceil(A, out, A.numel())
+    return out
