@@ -554,6 +554,16 @@ sparse_addmm:
     - [8, 4096, 256, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
 
+sparse_sum:
+  shapes:
+    - [128, 128]
+    - [512, 512]
+    - [2048, 2048]
+    - [4096, 4096]
+    - [1024, 4096]
+    - [4096, 256]
+  shape_desc: "M, N"   # 2-D sparse COO shapes; density is set by the benchmark input fn
+
 sparse_sampled_addmm:
   shapes:
     - [2, 128, 128, 128]
@@ -1595,6 +1605,28 @@ LayernormBenchmark:
     - [[200, 40999], [40999], 1e-05]
     - [[2, 32], [32], 1e-05]
     - [[65536, 1, 1152], [1152], 1e-06]
+
+atanh_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
+atanh_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
 
 block_diag_backward:
   shapes:
