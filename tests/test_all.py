@@ -600,14 +600,20 @@ class TestHygonAllDim:
 
     @pytest.mark.parametrize("dim", [None, -1, 1])
     @pytest.mark.parametrize("keepdim", [False, True])
-    def test_offset_alias_and_dispatch(self, dim, keepdim):
+    def test_offset_alias_and_dispatch(self, dim, keepdim, monkeypatch):
         # The data pointer already includes the nonzero storage offset.
         backing = torch.ones(7 + 5 * 129, device=flag_gems.device)
         inp = backing[7:].view(5, 129)
         inp[2, -1] = 0
         self._check(inp, dim, keepdim)
-        with flag_gems.use_gems():
-            actual = torch.all(inp, dim=dim, keepdim=keepdim)
+        with monkeypatch.context() as registration:
+            registration.setattr(flag_gems, "current_work_registrar", None)
+            library = torch.library.Library("aten", "IMPL")
+            try:
+                flag_gems.only_enable(lib=library, include=["all_dim"])
+                actual = torch.all(inp, dim=dim, keepdim=keepdim)
+            finally:
+                library._destroy()
         torch.testing.assert_close(
             actual.cpu(), torch.all(inp.cpu(), dim=dim, keepdim=keepdim), rtol=0, atol=0
         )
