@@ -562,7 +562,7 @@ def test_quantize_per_tensor_out_uses_triton_not_native_copy(monkeypatch):
     kernel. This counts the Triton launches and asserts no ``aten::copy_`` is
     dispatched, so the guard fails if a ``copy_`` is reintroduced.
     """
-    gems_impl = importlib.import_module("flag_gems.ops.quantize_per_tensor")
+    gems_impl = importlib.import_module(flag_gems.quantize_per_tensor.__module__)
 
     calls = []
 
