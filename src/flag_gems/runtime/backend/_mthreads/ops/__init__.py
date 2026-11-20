@@ -234,6 +234,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
 from .special_multigammaln import special_multigammaln
+from .special_ndtri import special_ndtri
 from .special_round import special_round
 from .special_round_out import special_round_out
 from .square_ import square_
@@ -507,6 +508,7 @@ __all__ = [
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
+    "special_ndtri",
     "special_round",
     "special_round_out",
     "square_",
