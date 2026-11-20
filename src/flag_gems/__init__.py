@@ -1167,7 +1167,7 @@ _FULL_CONFIG = (
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
     ("cdist", cdist),
-    ("ceil", ceil),
+    ("ceil", ceil, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("ceil.out", ceil_out),
     ("ceil_", ceil_),
     ("celu", celu),
