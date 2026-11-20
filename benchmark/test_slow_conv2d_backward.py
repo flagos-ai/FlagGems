@@ -30,8 +30,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
-from . import utils
+from . import base, consts, utils
 from .test_slow_conv2d_forward import SLOW_CONV2D_FORWARD_SHAPES
 
 
