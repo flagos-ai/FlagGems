@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 ops:
 - id: _adaptive_avg_pool3d
   description: 'Applies a three-dimensional adaptive average pooling over an input
@@ -84,9 +70,9 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _coalesce
-  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
-    by their linear index, sorts the unique coordinates ascending and sums the
-    duplicated values. Returns a fresh coalesced tensor.
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates by
+    their linear index, sorts the unique coordinates ascending and sums the duplicated
+    values. Returns a fresh coalesced tensor.
 
     '
   for:
@@ -99,8 +85,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _coalesce_out
-  description: A variant of `_coalesce()` that writes the coalesced result into
-    the `out` sparse tensor.
+  description: A variant of `_coalesce()` that writes the coalesced result into the
+    `out` sparse tensor.
   for:
   - _coalesce.out
   labels:
@@ -111,9 +97,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _conj
-  description: 'The private conjugate primitive backing ``torch.conj`` and
-    ``torch._conj``. Raises on non-complex inputs.
-    '
+  description: 'The private conjugate primitive backing ``torch.conj`` and ``torch._conj``.
+    Raises on non-complex inputs. '
   for:
   - _conj
   labels:
@@ -276,8 +261,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _indices_copy_out
-  description: A variant of `_indices_copy()` that writes the indices copy into
-    the `out` tensor.
+  description: A variant of `_indices_copy()` that writes the indices copy into the
+    `out` tensor.
   for:
   - _indices_copy.out
   labels:
@@ -333,8 +318,8 @@ ops:
     with partial pivoting and forward/backward substitution in a single Triton kernel;
     the private primitive backing torch.linalg.solve_ex and the autograd formula of
     torch.linalg.solve. Returns (result, LU, pivots, info) where LU and pivots are
-    the factorization of A that the backward pass reuses and info indicates
-    singularity status.
+    the factorization of A that the backward pass reuses and info indicates singularity
+    status.
 
     '
   for:
@@ -361,8 +346,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _logcumsumexp
-  description: 'Returns the log of the cumulative sum of exponentials of elements along a
-    dimension, computed in a numerically stable way. Underscored variant of
+  description: 'Returns the log of the cumulative sum of exponentials of elements
+    along a dimension, computed in a numerically stable way. Underscored variant of
     `torch.logcumsumexp`.
 
     '
@@ -376,7 +361,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _logcumsumexp_out
-  description: 'A variant of `_logcumsumexp` that assigns the output to the `out` tensor.
+  description: 'A variant of `_logcumsumexp` that assigns the output to the `out`
+    tensor.
 
     '
   for:
@@ -403,10 +389,14 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _philox_uniform_
-  description: |
-    Fills the tensor in place with samples from a uniform distribution over
+  description: 'Fills the tensor in place with samples from a uniform distribution
+    over
+
     [low, high) drawn from a stateless Philox RNG stream identified by the
+
     (seed, offset) pair in `key`.
+
+    '
   for:
   - _philox_uniform_
   labels:
@@ -416,7 +406,7 @@ ops:
   kind:
   - Distribution
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: _pin_memory
   description: 'Pins a strided CPU tensor into page-locked host memory (the internal
     aten entry dispatched on the CPU key).
@@ -432,8 +422,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _remove_batch_dim
-  description: Removes a batch dimension by returning an expanded zero-copy view
-    of the input.
+  description: Removes a batch dimension by returning an expanded zero-copy view of
+    the input.
   for:
   - _remove_batch_dim
   labels:
@@ -444,11 +434,11 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _reshape_alias_copy
-  description: 'Returns a contiguous copy of the input tensor viewed through the
-    given size and stride. It is the copy companion of _reshape_alias: the view
-    described by size/stride is formed exactly as _reshape_alias does (reusing
-    the storage offset) and then materialized into fresh contiguous storage, so
-    the result never aliases the input.
+  description: 'Returns a contiguous copy of the input tensor viewed through the given
+    size and stride. It is the copy companion of _reshape_alias: the view described
+    by size/stride is formed exactly as _reshape_alias does (reusing the storage offset)
+    and then materialized into fresh contiguous storage, so the result never aliases
+    the input.
 
     '
   for:
@@ -459,7 +449,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: _reshape_copy
   description: 'Returns a contiguous copy of the input tensor reshaped to the requested
     size. The row-major logical order of the input is materialized into fresh contiguous
@@ -477,7 +467,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: _saturate_weight_to_fp16
   description: Triton kernel implementation for _saturate_weight_to_fp16.
   for:
@@ -490,12 +480,17 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _scaled_mm_v2
-  description: |
-    Recipe-driven scaled matrix multiply: `mat_a @ mat_b` where the low
+  description: 'Recipe-driven scaled matrix multiply: `mat_a @ mat_b` where the low
+
     precision (fp8/fp4) operands carry decoding scales described by
+
     `recipe_a`/`recipe_b`. Supports the `TensorWise` (one scalar factor per
+
     operand) and `RowWise` (one factor per row of `mat_a` / column of
+
     `mat_b`) recipes, with an optional bias added to the result.
+
+    '
   for:
   - _scaled_mm_v2
   labels:
@@ -504,11 +499,14 @@ ops:
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: _stack
-  description: |
-    Concatenates a sequence of tensors along a new dimension. This is the
+  description: 'Concatenates a sequence of tensors along a new dimension. This is
+    the
+
     internal `_stack` implementation that mirrors `stack`.
+
+    '
   for:
   - _stack
   labels:
@@ -544,8 +542,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: _values_copy
-  description: 'Returns a fresh non-aliasing copy of the values tensor of a
-sparse COO tensor, shaped (nnz,) + dense_shape.
+  description: 'Returns a fresh non-aliasing copy of the values tensor of a sparse
+    COO tensor, shaped (nnz,) + dense_shape.
 
     '
   for:
@@ -558,8 +556,8 @@ sparse COO tensor, shaped (nnz,) + dense_shape.
   stages:
   - alpha: '5.5'
 - id: _values_copy_out
-  description: 'A variant of `_values_copy()` that writes the copied COO values
-tensor into the caller-supplied `out` buffer.
+  description: 'A variant of `_values_copy()` that writes the copied COO values tensor
+    into the caller-supplied `out` buffer.
 
     '
   for:
@@ -696,6 +694,16 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: act_quant_triton
+  description: This is a fused operator.
+  for:
+  - None
+  labels:
+  - fused
+  kind:
+  - Quantization
+  stages:
+  - beta: '5.3'
 - id: adaptive_avg_pool1d
   description: 'Applies a one-dimensional adaptive average pooling over an input signal,
 
@@ -788,8 +796,8 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.1'
 - id: adaptive_avg_pool3d_out
   description: 'Applies a three-dimensional adaptive average pooling over an input
-    signal composed of several input planes, writing the result into a
-    pre-allocated output tensor.
+    signal composed of several input planes, writing the result into a pre-allocated
+    output tensor.
 
     '
   for:
@@ -926,6 +934,20 @@ tensor into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.4'
+- id: add_rms_norm
+  description: 'Add two inputs element-wise and apply Root Mean Square Layer Normalization.
+
+    '
+  for:
+  - add_rms_norm
+  labels:
+  - aten
+  - KernelGen
+  - Normalization
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.4'
 - id: addbmm
@@ -1092,10 +1114,13 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: addmm_activation
-  description: |
-    Performs `addmm` followed by an activation function. Computes
+  description: 'Performs `addmm` followed by an activation function. Computes
+
     `beta * input + alpha * (mat1 @ mat2)` and applies ReLU, or GELU (tanh
+
     approximation) when `use_gelu` is True.
+
+    '
   for:
   - _addmm_activation
   labels:
@@ -1106,7 +1131,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: addmm_activation_out
-  description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
+  description: A variant of `_addmm_activation()` that assigns the output to the provided
+    `out` parameter.
   for:
   - _addmm_activation.out
   labels:
@@ -1168,8 +1194,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.4'
 - id: addmm_vector_bias
-  description: A variant of `addmm` that exercises the vector bias (1-D `input`)
-    broadcast path.
+  description: A variant of `addmm` that exercises the vector bias (1-D `input`) broadcast
+    path.
   for:
   - addmm
   labels:
@@ -1252,8 +1278,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '4.0'
 - id: adjoint
-  description: 'Returns the conjugate transpose view of a tensor: out[..., j, i]
-    = conj(self[..., i, j]).
+  description: 'Returns the conjugate transpose view of a tensor: out[..., j, i] =
+    conj(self[..., i, j]).
 
     '
   for:
@@ -1890,10 +1916,14 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: argwhere
-  description: |
-    Returns a tensor containing the indices of all non-zero elements of the input
+  description: 'Returns a tensor containing the indices of all non-zero elements of
+    the input
+
     tensor. Each row in the result contains the multi-dimensional index of a
+
     non-zero element. Uses a Triton-based prefix-sum compaction kernel.
+
+    '
   for:
   - argwhere
   labels:
@@ -2091,6 +2121,30 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: atanh_backward
+  description: First-order autograd rule for atanh implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - atanh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
+- id: atanh_backward_
+  description: Extended first-order gradient for atanh_; validated against the out-of-place
+    PyTorch operation.
+  for:
+  - atanh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: atleast_1d
   description: Returns a view of the input tensor with at least one dimension (view
     operation).
@@ -2305,9 +2359,12 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: batch_norm_elemt
-  description: |
-    Applies the elementwise Batch Normalization transform using precomputed
-    per-channel mean and inverse standard deviation: out = (input - mean) * invstd * weight + bias.
+  description: 'Applies the elementwise Batch Normalization transform using precomputed
+
+    per-channel mean and inverse standard deviation: out = (input - mean) * invstd
+    * weight + bias.
+
+    '
   for:
   - batch_norm_elemt
   labels:
@@ -2331,8 +2388,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: batch_norm_gather_stats_with_counts
-  description: |
-    Triton kernel implementation for gathering per-device batch normalization statistics with per-segment counts into global mean and inverse standard deviation.
+  description: 'Triton kernel implementation for gathering per-device batch normalization
+    statistics with per-segment counts into global mean and inverse standard deviation.
+
+    '
   for:
   - batch_norm_gather_stats_with_counts
   labels:
@@ -2399,8 +2458,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: batch_norm_update_stats
-  description: |
-    Triton kernel implementation for computing per-channel mean and invstd from input and updating running statistics.
+  description: 'Triton kernel implementation for computing per-channel mean and invstd
+    from input and updating running statistics.
+
+    '
   for:
   - batch_norm_update_stats
   labels:
@@ -2411,8 +2472,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: batch_norm_with_update
-  description: Applies training-mode Batch Normalization using batch statistics and updates
-    running_mean/running_var in place.
+  description: Applies training-mode Batch Normalization using batch statistics and
+    updates running_mean/running_var in place.
   for:
   - _batch_norm_with_update
   labels:
@@ -2432,6 +2493,29 @@ tensor into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: beam_search_score
+  description: Computes beam search scores by adding cumulative log probabilities
+    with new token scores.
+  for:
+  - beam_search_score
+  labels:
+  - KernelGen
+  - fused
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: beam_search_score_
+  description: In-place version of beam search score computation.
+  for:
+  - beam_search_score_
+  labels:
+  - KernelGen
+  - fused
+  kind:
+  - Math
   stages:
   - alpha: '5.4'
 - id: bernoulli
@@ -2460,6 +2544,23 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - beta: '5.3'
+- id: bf16_paged_mqa_logits
+  description: 'Compute multi-head weighted ReLU attention logits on paged BF16
+
+    KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
+
+    with zero-constexpr dispatch for decode-phase inference.
+
+    '
+  for:
+  - bf16_paged_mqa_logits
+  labels:
+  - fused
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: bilinear
   description: 'Applies a bilinear transformation to the incoming data: y = x1^T A
     x2 + b.
@@ -2535,6 +2636,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: bincount
+  description: Count the frequency of each value in an array of non-negative integers.
+  for:
+  - bincount
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - stable: '5.0'
 - id: binomial
   description: 'Draws samples from a binomial distribution with the number of trials
 
@@ -2934,7 +3047,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cast_Byte
-  description: Casts a tensor to uint8, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to uint8, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Byte
   labels:
@@ -2944,7 +3058,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cast_Char
-  description: Casts a tensor to int8, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to int8, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Char
   labels:
@@ -2954,7 +3069,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cast_Double
-  description: Casts a tensor to float64, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to float64, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Double
   labels:
@@ -2965,7 +3081,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cast_Float
-  description: Casts a tensor to float32, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to float32, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Float
   labels:
@@ -2975,8 +3092,20 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: cast_Half
+  description: Casts a tensor to float16, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Half
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cast_Long
-  description: Casts a tensor to int64, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to int64, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Long
   labels:
@@ -2987,7 +3116,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cast_Short
-  description: Casts a tensor to int16, returning the input unchanged when its dtype already matches.
+  description: Casts a tensor to int16, returning the input unchanged when its dtype
+    already matches.
   for:
   - _cast_Short
   labels:
@@ -3473,9 +3603,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: coalesce
-  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
-    by their linear index, sorts unique coordinates ascending and sums duplicated
-    values.
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates by
+    their linear index, sorts unique coordinates ascending and sums duplicated values.
 
     '
   for:
@@ -3537,8 +3666,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: col_indices_copy
-  description: 'Returns a fresh non-aliasing copy of the column indices of a
-    sparse CSR/BSR tensor, shaped (batch_dims + (nnz,)).
+  description: 'Returns a fresh non-aliasing copy of the column indices of a sparse
+    CSR/BSR tensor, shaped (batch_dims + (nnz,)).
 
     '
   for:
@@ -3551,8 +3680,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: col_indices_copy_out
-  description: A variant of `col_indices_copy()` that writes the column indices
-    copy into the `out` tensor.
+  description: A variant of `col_indices_copy()` that writes the column indices copy
+    into the `out` tensor.
   for:
   - col_indices_copy.out
   labels:
@@ -3590,8 +3719,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: combinations
-  description: Returns a tensor of all combinations of r elements from the input
-    1-D tensor.
+  description: Returns a tensor of all combinations of r elements from the input 1-D
+    tensor.
   for:
   - combinations
   labels:
@@ -3649,6 +3778,20 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: concat_and_cache_mla
+  description: 'Writes the latent and RoPE value into KV cache for Multi-head Latent
+    Attention forward case.
+
+    '
+  for:
+  - _C_cache_ops.concat_and_cache_mla
+  labels:
+  - fused
+  - MLA
+  kind:
+  - Attention
+  stages:
+  - beta: '3.0'
 - id: concatenate
   description: An alias of `cat()`.
   for:
@@ -3932,8 +4075,8 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.4'
 - id: convert_indices_from_coo_to_csr
   description: Converts a COO row-index vector plus a row count into the CSR row pointer
-    tensor of length `size + 1`, where `out[k]` is the number of stored
-    indices below row `k`.
+    tensor of length `size + 1`, where `out[k]` is the number of stored indices below
+    row `k`.
   for:
   - _convert_indices_from_coo_to_csr
   labels:
@@ -3944,8 +4087,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: convert_indices_from_coo_to_csr_out
-  description: A variant of `_convert_indices_from_coo_to_csr()` that writes the CSR row
-    pointers into the `out` tensor.
+  description: A variant of `_convert_indices_from_coo_to_csr()` that writes the CSR
+    row pointers into the `out` tensor.
   for:
   - _convert_indices_from_coo_to_csr.out
   labels:
@@ -3957,8 +4100,7 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: convert_indices_from_csr_to_coo
   description: Decodes COO coordinates from CSR row pointers and stored column indices,
-    returning a `(nd + 2, N * nnz)` table of batch coordinates, rows and
-    column positions.
+    returning a `(nd + 2, N * nnz)` table of batch coordinates, rows and column positions.
   for:
   - _convert_indices_from_csr_to_coo
   labels:
@@ -3992,7 +4134,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: convolution
-  description: Generic N-dimensional convolution forward operator implemented with a Triton implicit-GEMM kernel.
+  description: Generic N-dimensional convolution forward operator implemented with
+    a Triton implicit-GEMM kernel.
   for:
   - convolution
   labels:
@@ -4003,7 +4146,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: convolution_backward
-  description: Computes input, weight and bias gradients for batched 1D, 2D and 3D convolutions.
+  description: Computes input, weight and bias gradients for batched 1D, 2D and 3D
+    convolutions.
   for:
   - convolution_backward
   labels:
@@ -4024,8 +4168,7 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: convolution_backward_overrideable
   description: 'Computes the gradients of a convolution with respect to the input,
-    weight, and bias, returning (grad_input, grad_weight, grad_bias).
-    '
+    weight, and bias, returning (grad_input, grad_weight, grad_bias). '
   for:
   - convolution_backward_overrideable
   labels:
@@ -4037,8 +4180,7 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: convolution_backward_overrideable_out
   description: 'A variant of convolution_backward_overrideable() that writes the result
-    into the out tensors.
-    '
+    into the out tensors. '
   for:
   - convolution_backward_overrideable.out
   labels:
@@ -4182,7 +4324,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: copy_from_and_resize_out
   description: 'A variant of `_copy_from_and_resize()` that also mirrors the resized
     result into the `out` tensor and returns `out`.
@@ -4197,19 +4339,21 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: copy_sparse_to_sparse_
-  description: |
-    Copy COO indices, values, and coalesced metadata into a sparse destination in place.
+  description: 'Copy COO indices, values, and coalesced metadata into a sparse destination
+    in place.
+
+    '
   for:
-    - copy_sparse_to_sparse_
+  - copy_sparse_to_sparse_
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
@@ -4341,10 +4485,14 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: cosine_similarity
-  description: |
-    Computes the cosine similarity between x1 and x2 along dim, broadcasting the
+  description: 'Computes the cosine similarity between x1 and x2 along dim, broadcasting
+    the
+
     inputs to a common shape first. Returns <x1, x2> / (max(||x1||_2, eps) *
+
     max(||x2||_2, eps)) reduced over dim, with eps guarding against zero norms.
+
+    '
   for:
   - cosine_similarity
   labels:
@@ -4393,7 +4541,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: cross
-  description: Computes the cross product of two 3-dimensional vectors along a dimension of size 3.
+  description: Computes the cross product of two 3-dimensional vectors along a dimension
+    of size 3.
   for:
   - cross
   labels:
@@ -4403,11 +4552,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cross_attention
-  description: 'Forward-only dense cross attention over BNSD tensors: computes
-    softmax(scale * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero
-    entries block the corresponding key.  Supports MHA, GQA and MQA, and a value
-    head dimension smaller than the query/key head dimension.
-    '
+  description: 'Forward-only dense cross attention over BNSD tensors: computes softmax(scale
+    * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero entries block the
+    corresponding key.  Supports MHA, GQA and MQA, and a value head dimension smaller
+    than the query/key head dimension. '
   for:
   - cross_attention
   labels:
@@ -4418,6 +4566,18 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
   cpp: '5.5'
+- id: cross_entropy_loss
+  description: Computes the cross entropy loss between input logits and target.
+  for:
+  - CrossEntropyLoss
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '2.0'
+  - removed: '3.0'
 - id: cross_out
   description: A variant of `cross` that allows the output to be assigned to `out`.
   for:
@@ -4429,10 +4589,14 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: crow_indices
-  description: |
-    Returns the compressed row pointer array of a sparse CSR/BSR tensor as a
+  description: 'Returns the compressed row pointer array of a sparse CSR/BSR tensor
+    as a
+
     zero-copy alias of the internal crow storage, shaped
+
     `batch_dims + (nrows + 1)`.
+
+    '
   for:
   - crow_indices
   labels:
@@ -4484,10 +4648,10 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: ctc_loss_backward
-  description: The backward computation of `ctc_loss()`, exercised through the
-    autograd of the forward operator.
+  description: The backward computation of `ctc_loss()`, exercised through the autograd
+    of the forward operator.
   for:
   - ctc_loss.Tensor
   labels:
@@ -4498,8 +4662,9 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.4'
 - id: cudnn_affine_grid_generator
-  description: |
-    Triton kernel implementation for cudnn_affine_grid_generator.
+  description: 'Triton kernel implementation for cudnn_affine_grid_generator.
+
+    '
   for:
   - cudnn_affine_grid_generator
   labels:
@@ -4508,7 +4673,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_affine_grid_generator_backward
   description: Triton kernel implementation for cudnn_affine_grid_generator_backward.
   for:
@@ -4519,9 +4684,10 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_affine_grid_generator_backward_out
-  description: A variant of cudnn_affine_grid_generator_backward() that writes the result into the out tensor.
+  description: A variant of cudnn_affine_grid_generator_backward() that writes the
+    result into the out tensor.
   for:
   - cudnn_affine_grid_generator_backward.out
   labels:
@@ -4530,7 +4696,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_affine_grid_generator_out
   description: A variant of cudnn_affine_grid_generator() that writes the result into
     the out tensor.
@@ -4542,12 +4708,12 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_attention_backward
   description: 'Backward kernel for cuDNN attention, computing gradients of query,
 
-    key, and value from the cuDNN attention forward pass.  Uses a BHSD-native
-    two-kernel design that eliminates the BHSD-BSHD permute+contiguous overhead.
+    key, and value from the cuDNN attention forward pass.  Uses a BHSD-native two-kernel
+    design that eliminates the BHSD-BSHD permute+contiguous overhead.
 
     '
   for:
@@ -4578,7 +4744,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.5'
 - id: cudnn_batch_norm
-  description: Batch normalization with paired Gems backward and saved inverse standard deviation.
+  description: Batch normalization with paired Gems backward and saved inverse standard
+    deviation.
   for:
   - cudnn_batch_norm
   labels:
@@ -4599,7 +4766,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: cudnn_batch_norm_out
-  description: Batch normalization with paired Gems backward and saved inverse standard deviation.
+  description: Batch normalization with paired Gems backward and saved inverse standard
+    deviation.
   for:
   - cudnn_batch_norm.out
   labels:
@@ -4622,8 +4790,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: cudnn_convolution_add_relu
-  description: |
-    Fused convolution, bias add, scaled addend and ReLU, as performed by the cuDNN backend.
+  description: 'Fused convolution, bias add, scaled addend and ReLU, as performed
+    by the cuDNN backend.
+
+    '
   for:
   - cudnn_convolution_add_relu
   labels:
@@ -4634,8 +4804,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cudnn_convolution_add_relu_out
-  description: |
-    A variant of cudnn_convolution_add_relu() that writes the result into the out tensor.
+  description: 'A variant of cudnn_convolution_add_relu() that writes the result into
+    the out tensor.
+
+    '
   for:
   - cudnn_convolution_add_relu.out
   labels:
@@ -4646,8 +4818,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cudnn_convolution_relu
-  description: |
-    Fused cuDNN-style convolution followed by a ReLU, computing relu(conv(input, weight) + bias).
+  description: 'Fused cuDNN-style convolution followed by a ReLU, computing relu(conv(input,
+    weight) + bias).
+
+    '
   for:
   - cudnn_convolution_relu
   labels:
@@ -4658,8 +4832,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: cudnn_convolution_relu_out
-  description: |
-    A variant of cudnn_convolution_relu() that writes the result into the out tensor.
+  description: 'A variant of cudnn_convolution_relu() that writes the result into
+    the out tensor.
+
+    '
   for:
   - cudnn_convolution_relu.out
   labels:
@@ -4693,7 +4869,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_grid_sampler_backward
   description: Triton kernel implementation for cudnn_grid_sampler_backward.
   for:
@@ -4704,10 +4880,10 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_grid_sampler_backward_out
-  description: A variant of cudnn_grid_sampler_backward() that writes the result
-    into the out0 and out1 tensors.
+  description: A variant of cudnn_grid_sampler_backward() that writes the result into
+    the out0 and out1 tensors.
   for:
   - cudnn_grid_sampler_backward.out
   labels:
@@ -4716,12 +4892,12 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
-    the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and
-    GRU modes with multi-layer, bidirectional, LSTM projection (proj_size > 0),
-    dropout during training, and packed variable-length sequences.
+    the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and GRU
+    modes with multi-layer, bidirectional, LSTM projection (proj_size > 0), dropout
+    during training, and packed variable-length sequences.
 
     '
   for:
@@ -4763,7 +4939,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cudnn_rnn_flatten_weight_out
   description: A variant of _cudnn_rnn_flatten_weight() that writes the result into
     the out tensor.
@@ -4775,7 +4951,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cummax
   description: 'Returns a named tuple `(values, indices)` where `values` is the cumulative
     maximum of elements
@@ -4898,12 +5074,22 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: cumprod_backward
-  description: |
-    Backward pass for `cumprod`. Given the output gradient, the forward input and the forward
-    output, computes the gradient with respect to the input. Zero elements along the reduction
-    dimension are handled explicitly: the reverse cumulative sum of `grad * output` divided by
-    `input` gives the gradient for non-zero positions, while the first zero position uses a
-    modified cumulative product. Accumulation is performed in float32 for numerical stability.
+  description: 'Backward pass for `cumprod`. Given the output gradient, the forward
+    input and the forward
+
+    output, computes the gradient with respect to the input. Zero elements along the
+    reduction
+
+    dimension are handled explicitly: the reverse cumulative sum of `grad * output`
+    divided by
+
+    `input` gives the gradient for non-zero positions, while the first zero position
+    uses a
+
+    modified cumulative product. Accumulation is performed in float32 for numerical
+    stability.
+
+    '
   for:
   - cumprod_backward
   labels:
@@ -4912,7 +5098,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: cumsum
   description: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
@@ -5048,6 +5234,24 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: dgeglu
+  description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
+    function.
+
+    This is for the backward case.
+
+    '
+  for:
+  - dgeglu
+  labels:
+  - fused
+  - Transformer
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '4.2'
+  - beta: '5.0'
+  - stable: '5.0'
 - id: diag
   description: "- If `input` is a vector (1-D tensor), then returns a 2-D square tensor\n\
     \  with the elements of `input` as the diagonal.\n- If `input` is a matrix (2-D\
@@ -5079,6 +5283,22 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.2'
+- id: diag_embed_backward
+  description: |
+    Backward pass for `diag_embed`: the gradient with respect to the input is the
+    diagonal of the upstream gradient at (offset, dim1, dim2), viewed with the
+    input's shape. The default plane dims (-2, -1) gather through a single
+    Triton kernel; other plane placements return the exact ATen formula
+    (`torch.diagonal`) as a zero-copy view.
+  for:
+  - diag_embed_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: diagflat
   description: 'Creates a 2-D tensor whose diagonal, selected by `offset`, holds the
     flattened `input` and whose remaining elements are zero.
@@ -5137,6 +5357,22 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: diagonal_scatter_backward
+  description: |
+    Backward pass for `diagonal_scatter`: the input gradient keeps the upstream
+    gradient off the overwritten diagonal and is zero on it, while the `src`
+    gradient is the contiguous diagonal of the upstream gradient. A flat copy
+    kernel produces the input gradient and two small kernels zero and gather the
+    diagonal entries.
+  for:
+  - diagonal_scatter_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: diff
   description: 'Computes the n-th forward difference along the given dimension.
 
@@ -5194,9 +5430,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: dim_arange
-  description: 'Returns a 1-D int64 tensor containing 0..n-1 where n is the size of `like`
-    along `dim`, mirroring `aten::_dim_arange`.
-    '
+  description: 'Returns a 1-D int64 tensor containing 0..n-1 where n is the size of
+    `like` along `dim`, mirroring `aten::_dim_arange`. '
   for:
   - _dim_arange
   labels:
@@ -5207,9 +5442,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: dimI
-  description: 'Returns the number of sparse dimensions of a sparse COO tensor,
-    i.e. the leading dimension of its index matrix.
-    '
+  description: 'Returns the number of sparse dimensions of a sparse COO tensor, i.e.
+    the leading dimension of its index matrix. '
   for:
   - _dimI
   labels:
@@ -5218,10 +5452,9 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: dimV
-  description: 'Returns the number of dense dimensions of a sparse COO tensor.
-    '
+  description: 'Returns the number of dense dimensions of a sparse COO tensor. '
   for:
   - _dimV
   labels:
@@ -5379,6 +5612,23 @@ tensor into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - stable: '3.0'
+- id: dreglu
+  description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
+    of
+
+    the sigmoid function for gating. This is the backward case.
+
+    '
+  for:
+  - dreglu
+  labels:
+  - fused
+  - Transformer
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '4.2'
+  - beta: '5.3'
 - id: dropout
   description: An internal IR for implementing `torch.nn.functional.dropout`.
   for:
@@ -5403,8 +5653,8 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: dstack
   description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
-    are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
-    single depth slot.
+    are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a single
+    depth slot.
 
     '
   for:
@@ -5416,6 +5666,23 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: dswiglu
+  description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
+    function.
+
+    This is for the backward case.
+
+    '
+  for:
+  - dswiglu
+  labels:
+  - fused
+  - Transformer
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.0'
+  - beta: '5.3'
 - id: dyn_quant_matmul_4bit
   description: Dynamic per-row INT8 activation and signed INT4 weight matrix multiplication.
   for:
@@ -5457,18 +5724,20 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.4'
 - id: efficientzerotensor
-  description: |
-    Create a lazy immutable ZeroTensor with native dispatch metadata and no materialized data.
+  description: 'Create a lazy immutable ZeroTensor with native dispatch metadata and
+    no materialized data.
+
+    '
   for:
-    - _efficientzerotensor
-    - _efficientzerotensor.out
+  - _efficientzerotensor
+  - _efficientzerotensor.out
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: einsum
   description: 'Sums the product of the elements of the input `operands` along dimensions
     specified using a notation
@@ -5519,6 +5788,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: elu_backward_out
+  description: A variant of `elu_backward` that assigns the output to the `grad_input`
+    tensor.
+  for:
+  - elu_backward.grad_input
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '4.0'
 - id: embedding
   description: 'Generate a simple lookup table that looks up embeddings in a fixed
     dictionary and size.
@@ -5548,7 +5829,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '3.0'
 - id: embedding_bag
-  description: Reduce indexed embedding rows into bags using the shared embedding bag implementation.
+  description: Reduce indexed embedding rows into bags using the shared embedding
+    bag implementation.
   for:
   - embedding_bag
   labels:
@@ -5649,9 +5931,11 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: embedding_sparse_backward
-  description: |
-    Calculates the sparse gradient of the weight matrix for an embedding
+  description: 'Calculates the sparse gradient of the weight matrix for an embedding
+
     layer during backpropagation, returning an uncoalesced sparse COO tensor.
+
+    '
   for:
   - embedding_sparse_backward
   labels:
@@ -5663,10 +5947,9 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: embedding_spmdm
-  description: 'Fixed-length embedding lookup followed by an optional per-sample
-    weighted sum; equivalent to F.embedding_bag with mode="sum" for a 2D
-    [B, bag_size] index matrix, returning a [B, D] tensor.
-    '
+  description: 'Fixed-length embedding lookup followed by an optional per-sample weighted
+    sum; equivalent to F.embedding_bag with mode="sum" for a 2D [B, bag_size] index
+    matrix, returning a [B, D] tensor. '
   for:
   - GenerateEmbeddingSpMDM
   labels:
@@ -5682,8 +5965,7 @@ tensor into the caller-supplied `out` buffer.
   description: 'Standalone backward of embedding_spmdm: scatters the [B, D] upstream
     gradient, optionally scaled by per-sample weights, into a [V, D] embedding-table
     gradient and, when per-sample weights were used, also returns their [B, bag_size]
-    gradient.
-    '
+    gradient. '
   for:
   - GenerateEmbeddingSpMDMGrad
   labels:
@@ -5709,8 +5991,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: empty_affine_quantized
-  description: 'Tensor factory operator — allocates an uninitialized per-tensor
-    affine quantized tensor carrying the supplied scale and zero point.
+  description: 'Tensor factory operator — allocates an uninitialized per-tensor affine
+    quantized tensor carrying the supplied scale and zero point.
 
     '
   for:
@@ -5724,9 +6006,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: empty_per_channel_affine_quantized
-  description: 'Tensor factory operator — allocates an uninitialized per-channel
-    affine quantized tensor carrying the supplied scales, zero points and channel
-    axis.
+  description: 'Tensor factory operator — allocates an uninitialized per-channel affine
+    quantized tensor carrying the supplied scales, zero points and channel axis.
 
     '
   for:
@@ -6006,6 +6287,19 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
+- id: expm1_backward
+  description: The backward computation of `expm1()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - expm1
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: expm1_out
   description: A variant of `expm1` that saves the output to the specified `out`.
   for:
@@ -6041,6 +6335,17 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
   cpp: '4.0'
+- id: exponential_backward_
+  description: Backward of in-place exponential sampling through autograd.
+  for:
+  - exponential_
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.4'
 - id: eye
   description: Returns a 2-D tensor with ones on the diagonal and zeros elsewhere.
   for:
@@ -6312,8 +6617,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.3'
 - id: fft_ifftshift
-  description: Shifts the zero-frequency component to the beginning of the
-    tensor, the inverse of torch.fft.fftshift().
+  description: Shifts the zero-frequency component to the beginning of the tensor,
+    the inverse of torch.fft.fftshift().
   for:
   - fft_ifftshift
   labels:
@@ -6345,6 +6650,18 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: fill_backward
+  description: Backward of fill for scalar and tensor values through autograd.
+  for:
+  - fill.Scalar
+  - fill.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -6577,6 +6894,17 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.1'
+- id: flip_backward
+  description: Backward of flip through autograd using the same reversed dimensions.
+  for:
+  - flip
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fliplr
   description: 'Flips a tensor in the left-to-right direction by reversing dimension
     1.
@@ -6722,6 +7050,17 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: floor_backward
+  description: Backward of floor through autograd; input gradients are zero.
+  for:
+  - floor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: floor_divide_scalar
   description: Computes `input` divided by `other`, elementwise, and floors the result.
   for:
@@ -8591,8 +8930,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: fp8_paged_mqa_logits
-  description: |
-    The `fp8_paged_mqa_logits` operator is used in the decoding phase of DeepSeek sparse attention.
+  description: 'The `fp8_paged_mqa_logits` operator is used in the decoding phase
+    of DeepSeek sparse attention.
+
+    '
   for:
   - fp8_paged_mqa_logits
   name:
@@ -8656,8 +8997,10 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: fractional_max_pool3d
-  description: |
-    Applies 3D fractional max pooling over an input signal composed of several input planes.
+  description: 'Applies 3D fractional max pooling over an input signal composed of
+    several input planes.
+
+    '
   for:
   - fractional_max_pool3d
   labels:
@@ -8668,8 +9011,9 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: fractional_max_pool3d_backward
-  description: |
-    Computes the gradient of fractional_max_pool3d.
+  description: 'Computes the gradient of fractional_max_pool3d.
+
+    '
   for:
   - fractional_max_pool3d_backward
   labels:
@@ -8692,9 +9036,11 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: frobenius_norm
-  description: |
-    Computes the Frobenius norm (L2 norm) of a tensor over specified dimensions.
+  description: 'Computes the Frobenius norm (L2 norm) of a tensor over specified dimensions.
+
     Equivalent to sqrt(sum(x * x, dim=dim)).
+
+    '
   for:
   - frobenius_norm.dim
   labels:
@@ -8833,6 +9179,36 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: fused_add_rms_norm
+  description: Adds the input to the residual in place and applies weighted RMS normalization,
+    storing the sum in the residual and the normalized result in the input.
+  for:
+  - add_rms_norm
+  labels:
+  - fused
+  - Normalization
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '2.0'
+  cpp: '4.0'
+- id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
+  description: 'Horizontally-fused DeepseekV4-MLA BF16 variant.
+
+    per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + bf16 paged
+
+    cache insert for KV, all in one kernel launch. No FP8 quantization.
+
+    '
+  for:
+  - fused_deepseek_v4_qnorm_rope_kv_rope_insert
+  labels:
+  - fused
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
@@ -8892,10 +9268,14 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: fused_sgd_
-  description: |
-    The in-place version of `fused_sgd()`. Covers both the default overload and
+  description: 'The in-place version of `fused_sgd()`. Covers both the default overload
+    and
+
     `_fused_sgd_.tensor_lr`, which takes the learning rate as a tensor so a
+
     scheduler can update it without a host round-trip; both share one kernel.
+
+    '
   for:
   - _fused_sgd_
   - _fused_sgd_.tensor_lr
@@ -8907,8 +9287,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: fw_primal_copy
-  description: 'Returns a fresh copy of the primal value saved by `fw_primal`,
-the copy companion of `_fw_primal`.
+  description: 'Returns a fresh copy of the primal value saved by `fw_primal`, the
+    copy companion of `_fw_primal`.
 
     '
   for:
@@ -8922,7 +9302,7 @@ the copy companion of `_fw_primal`.
   - alpha: '5.5'
 - id: fw_primal_copy_out
   description: 'A variant of `fw_primal_copy()` that writes the fresh copy of the
-primal value saved by `fw_primal` into the caller-supplied `out` buffer.
+    primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 
     '
   for:
@@ -8969,10 +9349,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.4'
 - id: gather_sparse_backward
   description: 'Backward of `gather()` producing a sparse (COO) gradient w.r.t. `self`.
-    Each entry of the flattened `grad`/`index` contributes one non-zero at the
-    gather position `index[..., ]` along `dim` (the other coordinates are the
-    unraveled index of the entry). The result is an uncoalesced sparse COO
-    tensor of size `self.size()`.
+    Each entry of the flattened `grad`/`index` contributes one non-zero at the gather
+    position `index[..., ]` along `dim` (the other coordinates are the unraveled index
+    of the entry). The result is an uncoalesced sparse COO tensor of size `self.size()`.
 
     '
   for:
@@ -9066,6 +9445,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: geglu
+  description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
+    function.
+  for:
+  - geglu
+  labels:
+  - fused
+  - Activation
+  - Transformer
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '4.2'
+  - beta: '5.3'
 - id: gelu
   description: 'Apply Cumulative Distribution Function for Gaussian Distribution function
     element-wise.
@@ -9094,6 +9487,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: gelu_and_mul
+  description: An activation function for GeGLU.
+  for:
+  - GeluAndMul
+  labels:
+  - fused
+  - pointwise
+  - Activation
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '2.0'
 - id: gelu_backward
   description: The backward version of `gelu()`.
   for:
@@ -9127,10 +9532,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.1'
 - id: geqrf
-  description: 'Computes the packed Householder QR factorization of a (batched)
-    m x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the
-    Householder vectors below it, `tau` holds the scalar factors with shape
-    (*, min(m, n)).
+  description: 'Computes the packed Householder QR factorization of a (batched) m
+    x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the Householder
+    vectors below it, `tau` holds the scalar factors with shape (*, min(m, n)).
 
     '
   for:
@@ -9217,9 +9621,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: glu_jvp
-  description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
+  description: This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.
   for:
   - glu_jvp
   labels:
@@ -9228,13 +9632,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: gradient
-  description: Computes the numerical gradient of a tensor along the given
-    dimensions with second-order accurate central differences in the interior
-    and first- or second-order one-sided differences at the boundaries
-    (edge_order). Spacing may be unspecified, a Scalar, a list of Scalars, or
-    a list of 1-D coordinate Tensors.
+  description: Computes the numerical gradient of a tensor along the given dimensions
+    with second-order accurate central differences in the interior and first- or second-order
+    one-sided differences at the boundaries (edge_order). Spacing may be unspecified,
+    a Scalar, a list of Scalars, or a list of 1-D coordinate Tensors.
   for:
   - gradient.array
   - gradient.scalarint
@@ -9249,7 +9652,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: greater
   description: Test if input is greater than `other` elementwise.
   for:
@@ -9443,11 +9846,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '3.0'
 - id: grouped_gemm_w8a8
-  description: |
-    Per-channel grouped NT GEMM with unpadded rows, FP32 row/column scales and
+  description: 'Per-channel grouped NT GEMM with unpadded rows, FP32 row/column scales
+    and
+
     caller-owned BF16 output. Supports matching signed INT8 operands on PPU
+
     and MetaX, plus E4M3FN/FNUZ operands on MetaX. Uses packed expert indices
+
     and row counts without padding.
+
+    '
   for:
   - grouped_gemm_nt_i8i8bf16_nopad
   - grouped_gemm_w8a8
@@ -9596,8 +10004,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: hamming_window_periodic_alpha
-  description: A variant of hamming_window() that takes an explicit periodic flag and
-    alpha parameter.
+  description: A variant of hamming_window() that takes an explicit periodic flag
+    and alpha parameter.
   for:
   - hamming_window.periodic_alpha
   labels:
@@ -9637,10 +10045,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: hardshrink_backward
-  description: |
-    Computes the gradient of the Hard Shrink activation function with respect to its input
-    during backpropagation. The gradient is passed through where the input magnitude is
+  description: 'Computes the gradient of the Hard Shrink activation function with
+    respect to its input
+
+    during backpropagation. The gradient is passed through where the input magnitude
+    is
+
     strictly greater than the threshold lambd, and is zero elsewhere.
+
+    '
   for:
   - hardshrink_backward
   labels:
@@ -9650,7 +10063,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: hardshrink_out
   description: 'Out-variant of hardshrink. Writes the element-wise result into the
     `out` tensor.
@@ -9914,9 +10327,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: has_same_storage_numel
-  description: 'Returns True if the two tensors have the same number of elements in their
-    underlying storages.
-    '
+  description: 'Returns True if the two tensors have the same number of elements in
+    their underlying storages. '
   for:
   - _has_same_storage_numel
   labels:
@@ -10017,7 +10429,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: histogramdd
   description: 'Computes D-dimensional histogram over (N, D) input tensor. Returns
     histogram tensor and list of bin edge tensors per dimension.
@@ -10033,8 +10445,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: histogramdd_from_bin_cts
-  description: 'Computes a multi-dimensional histogram of the values in a tensor using a
-    sequence of per-dimension bin counts (equal-width bins).
+  description: 'Computes a multi-dimensional histogram of the values in a tensor using
+    a sequence of per-dimension bin counts (equal-width bins).
 
     '
   for:
@@ -10047,8 +10459,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: histogramdd_from_bin_cts_out
-  description: 'A variant of `_histogramdd_from_bin_cts()` that assigns the output to
-    the given `out` parameter.
+  description: 'A variant of `_histogramdd_from_bin_cts()` that assigns the output
+    to the given `out` parameter.
 
     '
   for:
@@ -10061,10 +10473,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: histogramdd_from_bin_tensors
-  description: 'Triton kernel implementation for _histogramdd_from_bin_tensors.
-    Computes a multi-dimensional histogram from explicit per-dimension
-    bin-edge tensors, supporting optional weights and density
-    normalisation.
+  description: 'Triton kernel implementation for _histogramdd_from_bin_tensors. Computes
+    a multi-dimensional histogram from explicit per-dimension bin-edge tensors, supporting
+    optional weights and density normalisation.
 
     '
   for:
@@ -10122,7 +10533,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: hstack
   description: 'Stack tensors in sequence horizontally (column wise). This is equivalent
     to concatenation
@@ -10594,8 +11005,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: indices_copy_out
-  description: A variant of `indices_copy()` that writes the indices copy into
-    the `out` tensor.
+  description: A variant of `indices_copy()` that writes the indices copy into the
+    `out` tensor.
   for:
   - indices_copy.out
   labels:
@@ -10619,7 +11030,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: inner
   description: Computes the inner product of two tensors by contracting their last
     dimension, keeping the leading dimensions of each operand per-side without broadcasting.
@@ -10631,7 +11042,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
+- id: instance_norm
+  description: 'Apply Instance Normalization independently for each channel in every
+    data sample within a batch.
+
+    '
+  for:
+  - instance_norm
+  labels:
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '2.2'
+  - removed: '3.0'
+  - beta: '5.3'
 - id: int_mm
   description: Performs matrix multiplication of two two-dimensional int8 tensors
     and returns a contiguous int32 tensor.
@@ -10654,10 +11080,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: int_repr
-  description: |
-    Returns the raw integer codes stored by an affine-quantized tensor, mapping
+  description: 'Returns the raw integer codes stored by an affine-quantized tensor,
+    mapping
+
     quint8/qint8/qint32 storage to uint8/int8/int32 without applying the scale
+
     or zero point.
+
+    '
   for:
   - int_repr
   labels:
@@ -10679,11 +11109,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: inverse
-  description: |
-    Computes the inverse of a square matrix, batched over the leading dimensions
+  description: 'Computes the inverse of a square matrix, batched over the leading
+    dimensions
+
     and equivalent to torch.inverse. Small real matrices use a fused pivoted
+
     Gauss-Jordan Triton kernel; larger real matrices and complex inputs are
+
     delegated to the vendor (cuSOLVER) inverse.
+
+    '
   for:
   - inverse
   labels:
@@ -10693,7 +11128,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.4'
-
 - id: ior_scalar
   description: The scalar version of `ior_tensor`.
   for:
@@ -10705,7 +11139,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
-
 - id: ior_tensor
   description: The in-place version of bitwise or operation for two tensors.
   for:
@@ -10717,7 +11150,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
-
 - id: irshift
   description: Triton kernel implementation for __irshift__.
   for:
@@ -10743,17 +11175,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: is_any_true
-  description: |
-    Return whether any logical element of a boolean tensor is true.
+  description: 'Return whether any logical element of a boolean tensor is true.
+
+    '
   for:
-    - _is_any_true
+  - _is_any_true
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Reduction
+  - Reduction
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: is_nonzero
   description: Returns True if the single-element input tensor is not equal to zero.
   for:
@@ -10904,11 +11337,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: isreal
-  description: |
-    Tests whether each element is real, i.e. whether its imaginary part is
+  description: 'Tests whether each element is real, i.e. whether its imaginary part
+    is
+
     zero, and returns a bool tensor. Real-valued dtypes are always True; for
+
     complex dtypes the imaginary component is compared against an exact zero
+
     (a negative zero counts as zero).
+
+    '
   for:
   - isreal
   labels:
@@ -10919,12 +11357,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: istft
-  description: |
-    Computes the inverse short-time Fourier transform of an stft spectrogram,
+  description: 'Computes the inverse short-time Fourier transform of an stft spectrogram,
+
     equivalent to torch.istft. The spectrum is inverted frame by frame with
+
     cuFFT (irfft/ifft), windowed, overlap-added, and normalized by the
+
     squared-window envelope; the overlap-add, envelope and normalization run in
+
     fused Triton kernels.
+
+    '
   for:
   - istft
   labels:
@@ -10933,8 +11376,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
-
+  - alpha: 5.5.0
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -10975,7 +11417,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: kaiser_window_beta
   description: A variant of kaiser_window() that takes an explicit periodic flag and
     beta shape parameter.
@@ -10987,7 +11429,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: kaiser_window_periodic
   description: A variant of kaiser_window() that takes an explicit periodic flag.
   for:
@@ -10998,12 +11440,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: kl_div
-  description: |
-    Compute the Kullback-Leibler divergence loss between the input
+  description: 'Compute the Kullback-Leibler divergence loss between the input
+
     (log-probabilities) and the target, supporting none/mean/sum reductions
+
     and both the probability and log-space target interpretations.
+
+    '
   for:
   - kl_div
   labels:
@@ -11012,7 +11457,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: kron
   description: Computes the Kronecker product of `input` and `other`.
   for:
@@ -11036,9 +11481,11 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: l1_loss
-  description: |
-    Compute the L1 loss between input and target tensors, i.e. the element-wise
+  description: 'Compute the L1 loss between input and target tensors, i.e. the element-wise
+
     absolute difference, with optional none/mean/sum reduction.
+
+    '
   for:
   - l1_loss
   labels:
@@ -11049,7 +11496,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: layer_norm
   description: An internal IR for applying Layer Normalization for last certain number
     of dimensions.
@@ -11444,7 +11891,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: linalg_cholesky_ex
-  description: Computes the Cholesky decomposition of a symmetric positive-definite matrix and returns an info tensor.
+  description: Computes the Cholesky decomposition of a symmetric positive-definite
+    matrix and returns an info tensor.
   for:
   - linalg_cholesky_ex
   labels:
@@ -11578,7 +12026,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: linalg_eigvalsh_out
-  description: A variant of `linalg_eigvalsh` that allows the output to be assigned to `out`.
+  description: A variant of `linalg_eigvalsh` that allows the output to be assigned
+    to `out`.
   for:
   - linalg_eigvalsh.out
   labels:
@@ -12141,10 +12590,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: linalg_solve_ex
-  description: |
-    Solves a linear system AX = B via fused LU decomposition with partial pivoting
-    and forward/backward substitution in a single Triton kernel. Returns (result, info)
+  description: 'Solves a linear system AX = B via fused LU decomposition with partial
+    pivoting
+
+    and forward/backward substitution in a single Triton kernel. Returns (result,
+    info)
+
     where info indicates singularity status.
+
+    '
   for:
   - linalg_solve_ex
   labels:
@@ -12218,9 +12672,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: linalg_tensorinv_out
-  description: |-
-    Out-of-place variant of linalg_tensorinv: computes the tensor inverse
-    and writes the result into the provided out tensor.
+  description: 'Out-of-place variant of linalg_tensorinv: computes the tensor inverse
+
+    and writes the result into the provided out tensor.'
   for:
   - linalg_tensorinv.out
   labels:
@@ -12377,8 +12831,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: log10_backward
-  description: The backward computation of `log10()`, exercised through
-    the autograd of the forward operator.
+  description: The backward computation of `log10()`, exercised through the autograd
+    of the forward operator.
   for:
   - log10
   labels:
@@ -13011,9 +13465,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: lu_solve
-  description: |
-    Returns the LU solve of the linear system Ax = b using the partially pivoted
+  description: 'Returns the LU solve of the linear system Ax = b using the partially
+    pivoted
+
     LU factorization of A from lu_factor.
+
+    '
   for:
   - lu_solve
   labels:
@@ -13024,8 +13481,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: lu_solve_out
-  description: Out-of-place variant of lu_solve that writes the result into the
-    out tensor.
+  description: Out-of-place variant of lu_solve that writes the result into the out
+    tensor.
   for:
   - lu_solve.out
   labels:
@@ -13072,11 +13529,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: lu_with_info
-  description: |
-    Computes a compact LU factorization with partial pivoting of a matrix,
+  description: 'Computes a compact LU factorization with partial pivoting of a matrix,
+
     returning the packed LU matrix, the 1-indexed pivots and an info tensor
+
     that reports the first singular diagonal of U (0 on success). This is the
+
     deprecated `torch._lu_with_info` interface mirrored on `linalg.lu_factor_ex`.
+
+    '
   for:
   - _lu_with_info
   labels:
@@ -13101,8 +13562,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: make_dual_copy_out
-  description: 'A variant of `make_dual_copy()` that writes the independent copy
-    of the primal tensor into the caller-supplied `out` buffer.
+  description: 'A variant of `make_dual_copy()` that writes the independent copy of
+    the primal tensor into the caller-supplied `out` buffer.
 
     '
   for:
@@ -13132,8 +13593,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: make_per_tensor_quantized_tensor
   description: 'Wraps an integer tensor into a per-tensor affine quantized tensor,
-    storing the given scale and zero point verbatim and copying the values into
-    the integer representation.
+    storing the given scale and zero point verbatim and copying the values into the
+    integer representation.
 
     '
   for:
@@ -13305,7 +13766,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
 - id: masked_select_backward
-  description: 'Backward of `masked_select` with respect to `input`. Scatters the compact
+  description: 'Backward of `masked_select` with respect to `input`. Scatters the
+    compact
 
     gradient into a zero tensor at the True mask positions after broadcasting
 
@@ -13320,11 +13782,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: masked_softmax
-  description: |
-    Apply a softmax over `dim` while excluding positions where the boolean
+  description: 'Apply a softmax over `dim` while excluding positions where the boolean
+
     mask is True. mask_type selects how the mask broadcasts: 2 for an
+
     elementwise mask, 1 for a (B, L) attention padding mask, and 0 for an
+
     (L, L) source mask.
+
+    '
   for:
   - _masked_softmax
   labels:
@@ -13335,19 +13801,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: masked_softmax_backward
-  description: |
-    Computes the input gradient of a masked softmax: masked positions are
+  description: 'Computes the input gradient of a masked softmax: masked positions
+    are
+
     zeroed and the remaining positions follow the standard softmax backward
+
     formula output * (grad_output - sum(output * grad_output over dim)).
+
+    '
   for:
-    - _masked_softmax_backward
+  - _masked_softmax_backward
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - NeuralNetwork
+  - NeuralNetwork
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: matmul_backward
   description: Computes gradients for matrix multiplication backward pass.
   for:
@@ -13359,6 +13829,27 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: matmul_bias_activation
+  description: Fused matrix multiplication with bias addition and ReLU activation.
+  for:
+  - matmul_bias_activation
+  labels:
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: matmuladd
+  description: Computes matrix multiplication followed by bias addition.
+  for:
+  - matmuladd
+  labels:
+  - fused
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: matrix_exp
   description: Computes the matrix exponential of one or more square matrices via
     scaling-and-squaring with a degree-18 Taylor polynomial, evaluated entirely with
@@ -13407,8 +13898,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: matrix_power_out
-  description: An out variant of `matrix_power()` that writes the result into a
-    pre-allocated output tensor.
+  description: An out variant of `matrix_power()` that writes the result into a pre-allocated
+    output tensor.
   for:
   - matrix_power.out
   labels:
@@ -13736,7 +14227,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: min
   description: Returns the minimum value of all elements in the `input` tensor.
   for:
@@ -13792,8 +14283,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
 - id: miopen_batch_norm
-  description: Computes batch normalization on the input tensor using the MIOpen
-    convention and updates the running statistics.
+  description: Computes batch normalization on the input tensor using the MIOpen convention
+    and updates the running statistics.
   for:
   - miopen_batch_norm
   labels:
@@ -13874,9 +14365,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: mkldnn_reorder_conv2d_weight
-  description: 'Re-expresses the packed oneDNN (MkldnnCPU) conv2d weight in the
-    blocked layout the mkldnn convolution primitive expects, preserving every
-    element and dtype bit-for-bit.
+  description: 'Re-expresses the packed oneDNN (MkldnnCPU) conv2d weight in the blocked
+    layout the mkldnn convolution primitive expects, preserving every element and
+    dtype bit-for-bit.
 
     '
   for:
@@ -13889,8 +14380,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: mkldnn_reorder_conv2d_weight_out
-  description: A variant of `mkldnn_reorder_conv2d_weight()` that writes the
-    reordered weight into the `out` mkldnn buffer.
+  description: A variant of `mkldnn_reorder_conv2d_weight()` that writes the reordered
+    weight into the `out` mkldnn buffer.
   for:
   - mkldnn_reorder_conv2d_weight.out
   labels:
@@ -14005,6 +14496,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - beta: '5.3'
+- id: moe_load_balance_loss
+  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss L_ib = N_e
+    * sum_i f_i P_i, where f_i is expert i''s Top-K assignment frequency and P_i its
+    mean routing probability. Both statistics are computed in fp32 from the router
+    logits; an optional attention_mask excludes zero entries from both statistics
+    and the denominator. Returns a float32 scalar. '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  - MoE
+  kind:
+  - MoE
+  stages:
+  - beta: '5.5'
 - id: moveaxis
   description: 'Returns a view of the original tensor with the axes in `source` moved
     to the positions in `destination`.
@@ -14022,7 +14529,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: movedim
   description: 'Returns a view of the original tensor with the axes in `source` moved
     to the positions in `destination`.
@@ -14040,7 +14547,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: mse_loss
   description: Compute the element-wise mean squared error, with optional weighting.
   for:
@@ -14098,7 +14605,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: mul
   description: Multiplies `input` by `other`.
   for:
@@ -14183,8 +14690,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: multilabel_margin_loss_backward
-  description: 'Gradient of the multi-label margin loss with respect to its input,
-    taking the forward per-class target membership mask alongside the target.'
+  description: Gradient of the multi-label margin loss with respect to its input,
+    taking the forward per-class target membership mask alongside the target.
   for:
   - multilabel_margin_loss_backward
   labels:
@@ -14196,8 +14703,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: multilabel_margin_loss_forward
-  description: 'Computes the forward multi-label margin loss and returns both the
-    loss and the per-class target membership mask.'
+  description: Computes the forward multi-label margin loss and returns both the loss
+    and the per-class target membership mask.
   for:
   - multilabel_margin_loss_forward
   labels:
@@ -14406,9 +14913,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.4'
 - id: nanquantile
-  description: |
-    Computes the q-th quantiles of each row of the `input` tensor along the
+  description: 'Computes the q-th quantiles of each row of the `input` tensor along
+    the
+
     dimension `dim`, ignoring `NaN` values.
+
+    '
   for:
   - nanquantile
   labels:
@@ -14686,7 +15196,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Reduction
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: ne
   description: Computes that `input` is not equal to `other` element-wise.
   for:
@@ -14761,8 +15271,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: neg_view_copy_out
-  description: A variant of `_neg_view_copy()` that writes the result into the
-    `out` tensor.
+  description: A variant of `_neg_view_copy()` that writes the result into the `out`
+    tensor.
   for:
   - _neg_view_copy.out
   labels:
@@ -14798,8 +15308,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.4'
 - id: nested_compute_contiguous_strides_offsets
   description: 'Computes the contiguous strides and storage offsets of a nested tensor
-    from its per-component sizes, mirroring
-    `aten::_nested_compute_contiguous_strides_offsets`.
+    from its per-component sizes, mirroring `aten::_nested_compute_contiguous_strides_offsets`.
 
     '
   for:
@@ -14812,10 +15321,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: nested_from_padded
-  description: |
-    Constructs a nested tensor from a padded dense tensor, keeping the
+  description: 'Constructs a nested tensor from a padded dense tensor, keeping the
+
     left-aligned prefix box described by ``cpu_nested_shape_example`` per
+
     component.
+
+    '
   for:
   - _nested_from_padded
   labels:
@@ -14826,9 +15338,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: nested_from_padded_and_nested_example
-  description: |
-    Constructs a (strided-layout) nested tensor from a padded tensor, using
+  description: 'Constructs a (strided-layout) nested tensor from a padded tensor,
+    using
+
     the metadata of an example nested tensor to describe the output structure.
+
+    '
   for:
   - _nested_from_padded_and_nested_example
   labels:
@@ -14853,10 +15368,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: nested_select_backward
-  description: |
-    Triton kernel implementation for the backward of nested tensor `select`
+  description: 'Triton kernel implementation for the backward of nested tensor `select`
+
     along the batch dimension. Scatters the gradient of the selected
+
     component into a zero buffer with the same nested structure as the input.
+
+    '
   for:
   - _nested_select_backward
   labels:
@@ -14886,19 +15404,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: nested_tensor_from_mask
-  description: |
-    Builds a nested tensor from a padded dense tensor of shape (N, L, D) and a
+  description: 'Builds a nested tensor from a padded dense tensor of shape (N, L,
+    D) and a
+
     boolean padding mask of shape (N, L), using the mask to determine the ragged
+
     length of each component.
+
+    '
   for:
-    - _nested_tensor_from_mask
+  - _nested_tensor_from_mask
   labels:
   - aten
   - KernelGen
   kind:
   - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: nested_tensor_from_mask_left_aligned
   description: 'Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean
     padding
@@ -14928,7 +15450,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: nested_tensor_size
   description: 'Returns the per-constituent sizes metadata of a nested tensor as a
     CPU int64 tensor of shape (num_tensors, max_rank).
@@ -14944,10 +15466,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: nested_tensor_softmax_with_shape
-  description: |
-    Computes softmax over the last dimension of nested-tensor attention scores,
-    deriving the per-batch sequence length from the query tensor's nested shape
+  description: 'Computes softmax over the last dimension of nested-tensor attention
+    scores,
+
+    deriving the per-batch sequence length from the query tensor''s nested shape
+
     and masking the out-of-range entries to zero.
+
+    '
   for:
   - _nested_tensor_softmax_with_shape
   labels:
@@ -14956,7 +15482,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: nested_tensor_storage_offsets
   description: 'Returns a zero-copy view of the per-tensor storage-offset metadata
     of a nested tensor.
@@ -14996,10 +15522,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: nested_view_from_buffer
-  description: |
-    Creates a strided nested tensor viewing a flat buffer, using component sizes, strides and offsets.
+  description: 'Creates a strided nested tensor viewing a flat buffer, using component
+    sizes, strides and offsets.
+
+    '
   for:
   - _nested_view_from_buffer
   labels:
@@ -15096,8 +15624,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: new_zeros
-  description: 'Returns a Tensor of size `size` filled with 0, with the same
-    `torch.dtype` and `torch.device` as the input tensor.
+  description: 'Returns a Tensor of size `size` filled with 0, with the same `torch.dtype`
+    and `torch.device` as the input tensor.
 
     '
   for:
@@ -15123,17 +15651,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: new_zeros_with_same_feature_meta
-  description: |
-    Create zeros preserving the feature tensor dtype, device, strides, and storage offset.
+  description: 'Create zeros preserving the feature tensor dtype, device, strides,
+    and storage offset.
+
+    '
   for:
-    - _new_zeros_with_same_feature_meta
+  - _new_zeros_with_same_feature_meta
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: nextafter
   description: Return the next floating-point value after input towards other, elementwise.
   for:
@@ -15299,10 +15829,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: nnz
-  description: 'Returns the number of stored entries of a sparse tensor: the
-    number of values in the COO storage, or of entries in the compressed
-    index buffer for CSR/CSC/BSR/BSC.
-    '
+  description: 'Returns the number of stored entries of a sparse tensor: the number
+    of values in the COO storage, or of entries in the compressed index buffer for
+    CSR/CSC/BSR/BSC. '
   for:
   - _nnz
   labels:
@@ -15311,7 +15840,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: nonzero
   description: 'Returns a 2-D tensor where each row is the index for a nonzero value.
 
@@ -15472,10 +16001,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
 - id: normal_functional
-  description: |
-    Returns a fresh tensor of random numbers drawn from a normal distribution
+  description: 'Returns a fresh tensor of random numbers drawn from a normal distribution
+
     parameterized by a float mean and a float std. This is the out-of-place
+
     functional variant of normal_ (aten::normal_functional).
+
+    '
   for:
   - normal_functional
   labels:
@@ -15486,7 +16018,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Distribution
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: normal_tensor_float
   description: 'Returns a tensor of random numbers drawn from separate normal distributions
 
@@ -15596,8 +16128,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: numpy_T
-  description: 'Returns a view of the input with its dimensions reversed, the
-    zero-copy equivalent of ``numpy.ndarray.T``.
+  description: 'Returns a view of the input with its dimensions reversed, the zero-copy
+    equivalent of ``numpy.ndarray.T``.
 
     '
   for:
@@ -15716,10 +16248,29 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: outer
+  description: 'Computes outer product of self and the input vector.
+
+    If the self tensor is a vector of size `n` and the input tensor is a vector of
+    size `m`,
+
+    the `out` tensor (if specified) must be a matrix of size `n * m`.
+
+    '
+  for:
+  - outer.Tensor
+  labels:
+  - fused
+  kind:
+  - BLAS
+  stages:
+  - stable: '2.0'
 - id: pack_padded_sequence
-  description: |
-    Packs a padded batch of variable length sequences into a PackedSequence
+  description: 'Packs a padded batch of variable length sequences into a PackedSequence
+
     data tensor together with the per-time-step batch sizes.
+
+    '
   for:
   - _pack_padded_sequence
   labels:
@@ -15728,7 +16279,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: pad
   description: This pads a tenor using the specified mode.
   for:
@@ -15742,10 +16293,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
 - id: pad_circular
-  description: |
-    Pads the last one to three dimensions of an N-D tensor using circular
+  description: 'Pads the last one to three dimensions of an N-D tensor using circular
+
     (periodic wrap-around) boundary values. Negative padding crops.
+
     This is an IR representation, not a public API.
+
+    '
   for:
   - _pad_circular
   labels:
@@ -15757,10 +16311,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: pad_enum
-  description: |
-    Integer-mode dispatcher backing torch.nn.functional.pad. Pads an N-D
+  description: 'Integer-mode dispatcher backing torch.nn.functional.pad. Pads an N-D
+
     tensor where `mode` is an integer enum (0 reflect, 1 replicate,
+
     2 circular, 3 constant); `value` is only used for constant padding.
+
+    '
   for:
   - _pad_enum
   labels:
@@ -15771,11 +16328,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: pad_packed_sequence
-  description: |
-    Pads a packed batch of variable length sequences back into a dense
+  description: 'Pads a packed batch of variable length sequences back into a dense
+
     (T, B, *) tensor together with the per-batch-element sequence lengths.
+
+    '
   for:
   - _pad_packed_sequence
   labels:
@@ -15784,7 +16343,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: pad_sequence
   description: Pads a list of variable length tensors with a given padding value and
     stacks them into a single padded batch tensor.
@@ -15900,10 +16459,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: philox_normal_
-  description: |
-    Fills the tensor in place with samples from a normal distribution with
+  description: 'Fills the tensor in place with samples from a normal distribution
+    with
+
     the given mean and std, drawn from a stateless Philox RNG stream
+
     identified by the (seed, offset) pair in `key`.
+
+    '
   for:
   - _philox_normal_
   labels:
@@ -15913,7 +16476,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Distribution
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: pin_memory
   description: 'Public entry that pins a strided CPU tensor into page-locked host
     memory; delegates to _pin_memory.
@@ -16059,6 +16622,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: post_layer_norm_residual
+  description: Fuses LayerNorm followed by a residual addition.
+  for:
+  - None
+  labels:
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: pow_scalar
   description: 'Takes the power of each element in `input` with `exponent` and returns
     a tensor with the result.
@@ -16210,10 +16783,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   labels:
   - aten
 - id: put
-  description: |
-    Copies the elements of `source` into `self` at the flattened (row-major)
+  description: 'Copies the elements of `source` into `self` at the flattened (row-major)
+
     positions given by `index`. When `accumulate` is `True`, the values are
+
     added to the existing elements of `self` instead of overwriting them.
+
+    '
   for:
   - put
   labels:
@@ -16235,8 +16811,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: put_out
-  description: |
-    A variant of `put()` that writes the result into the `out` tensor.
+  description: 'A variant of `put()` that writes the result into the `out` tensor.
+
+    '
   for:
   - put.out
   labels:
@@ -16258,10 +16835,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.2'
 - id: quantize_per_channel
-  description: |
-    Triton kernel implementation for quantize_per_channel. Quantizes a float
+  description: 'Triton kernel implementation for quantize_per_channel. Quantizes a
+    float
+
     tensor per channel with the given scales and zero_points along the
+
     specified axis, producing a per-channel affine quantized tensor.
+
+    '
   for:
   - quantize_per_channel
   labels:
@@ -16272,8 +16853,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: quantize_per_channel_out
-  description: |
-    A variant of quantize_per_channel() that writes the result into the out tensor.
+  description: 'A variant of quantize_per_channel() that writes the result into the
+    out tensor.
+
+    '
   for:
   - quantize_per_channel.out
   labels:
@@ -16284,10 +16867,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: quantize_per_tensor
-  description: |
-    Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8 / qint32)
+  description: 'Quantizes a float32 tensor to a quantized tensor (torch.quint8 / qint8
+    / qint32)
+
     with the given scale and zero point, using round-half-to-even rounding and
+
     clamping to the representable integer range.
+
+    '
   for:
   - quantize_per_tensor
   labels:
@@ -16298,9 +16885,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: quantize_per_tensor_out
-  description: |
-    A variant of `quantize_per_tensor()` that writes the result into the `out`
+  description: 'A variant of `quantize_per_tensor()` that writes the result into the
+    `out`
+
     quantized tensor. Computed with the same Triton kernel as the base variant.
+
+    '
   for:
   - quantize_per_tensor.out
   labels:
@@ -16322,8 +16912,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: quantized_batch_norm_out
-  description: |
-    A variant of quantized_batch_norm() that writes the result into the out tensor.
+  description: 'A variant of quantized_batch_norm() that writes the result into the
+    out tensor.
+
+    '
   for:
   - quantized_batch_norm.out
   labels:
@@ -16373,8 +16965,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: quantized_max_pool1d_out
-  description: |
-    A variant of quantized_max_pool1d() that writes the result into the out tensor.
+  description: 'A variant of quantized_max_pool1d() that writes the result into the
+    out tensor.
+
+    '
   for:
   - quantized_max_pool1d.out
   labels:
@@ -16385,10 +16979,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: quantized_max_pool2d
-  description: |
-    Triton kernel implementation for quantized_max_pool2d. Applies 2D max pooling
+  description: 'Triton kernel implementation for quantized_max_pool2d. Applies 2D
+    max pooling
+
     over a quantized input tensor by pooling the underlying integer
+
     representation.
+
+    '
   for:
   - quantized_max_pool2d
   labels:
@@ -16399,8 +16997,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: quantized_max_pool2d_out
-  description: |
-    A variant of quantized_max_pool2d() that writes the result into the out tensor.
+  description: 'A variant of quantized_max_pool2d() that writes the result into the
+    out tensor.
+
+    '
   for:
   - quantized_max_pool2d.out
   labels:
@@ -16422,8 +17022,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: quantized_max_pool3d_out
-  description: |
-    A variant of quantized_max_pool3d() that writes the result into the out tensor.
+  description: 'A variant of quantized_max_pool3d() that writes the result into the
+    out tensor.
+
+    '
   for:
   - quantized_max_pool3d.out
   labels:
@@ -16587,17 +17189,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: real
-  description: |
-    Returns the real component of a complex tensor as a zero-copy view. For
+  description: 'Returns the real component of a complex tensor as a zero-copy view.
+    For
+
     non-complex tensors, returns the input tensor unchanged.
+
+    '
   for:
-    - real
+  - real
   labels:
-    - aten
+  - aten
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: reciprocal
   description: Returns a new tensor with the reciprocal of the elements of `input`.
   for:
@@ -16736,6 +17341,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.1'
+- id: reglu
+  description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
+    of the sigmoid function for gating.
+
+    '
+  for:
+  - reglu
+  labels:
+  - fused
+  - Transformer
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '4.2'
+  - beta: '5.3'
 - id: relu
   description: Apply the RELU (Rectified Linear Unit) activation function element-wise.
   for:
@@ -16770,10 +17390,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - beta: '5.0'
   - stable: '5.3'
 - id: relu6_
-  description: |
-    In-place version of `relu6()`. Applies the element-wise function
+  description: 'In-place version of `relu6()`. Applies the element-wise function
+
     `f(x)=min(max(0,x),6)` to the input tensor and stores the result back
+
     into it.
+
+    '
   for:
   - relu6_
   labels:
@@ -16784,7 +17407,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: relu_
   description: This is the in-place version of `relu()`.
   for:
@@ -17068,12 +17691,28 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: reshape_and_cache_flash
+  description: Store the key/value token states into the pre-allcated kv_cache buffers
+    of paged attention.
+  for:
+  - reshape_and_cache_flash
+  labels:
+  - fused
+  kind:
+  - Attention
+  stages:
+  - stable: '3.0'
+  cpp: '4.0'
 - id: reshape_as
-  description: |
-    Returns `self` with the same shape as `other`, equivalent to
+  description: 'Returns `self` with the same shape as `other`, equivalent to
+
     `self.reshape(other.size())`. Any input whose target shape is
+
     stride-expressible returns a zero-copy view; only layouts a view cannot
+
     express are materialized with a Triton copy kernel.
+
+    '
   for:
   - reshape_as
   labels:
@@ -17082,10 +17721,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: reshape_from_tensor
-  description: |
-    Reshape using a tensor of dimensions, preserving views when possible and copying otherwise.
+  description: 'Reshape using a tensor of dimensions, preserving views when possible
+    and copying otherwise.
+
+    '
   for:
   - _reshape_from_tensor
   labels:
@@ -17140,17 +17781,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: resize_as_sparse_
-  description: |
-    Resize a sparse COO tensor in place to match the shape and sparse/dense dimensions of a COO or strided template, preserving its index and value buffers.
+  description: 'Resize a sparse COO tensor in place to match the shape and sparse/dense
+    dimensions of a COO or strided template, preserving its index and value buffers.
+
+    '
   for:
-    - resize_as_sparse_
+  - resize_as_sparse_
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: resize_output
   description: 'Resizes tensor output storage and copies overlapping elements.
 
@@ -17365,7 +18008,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: router_gemm
-  description: Computes x @ weight.T for the MoE router gate with BF16 inputs and FP32 output.
+  description: Computes x @ weight.T for the MoE router gate with BF16 inputs and
+    FP32 output.
   for:
   - router_gemm
   labels:
@@ -17376,7 +18020,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: row_indices
-  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor.
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse
+    tensor.
   for:
   - row_indices
   labels:
@@ -17387,7 +18032,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: row_indices_copy
-  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor as a contiguous strided tensor.
+  description: Returns the row indices of a column-compressed (CSC or BSC) sparse
+    tensor as a contiguous strided tensor.
   for:
   - row_indices_copy
   labels:
@@ -17398,8 +18044,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: row_indices_copy_out
-  description: |
-    A variant of row_indices_copy() that writes the result into the out tensor.
+  description: 'A variant of row_indices_copy() that writes the result into the out
+    tensor.
+
+    '
   for:
   - row_indices_copy.out
   labels:
@@ -17410,8 +18058,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: row_stack
-  description: |
-    Stack tensors in sequence vertically (row wise). Alias of vstack.
+  description: 'Stack tensors in sequence vertically (row wise). Alias of vstack.
+
+    '
   for:
   - row_stack
   labels:
@@ -17420,10 +18069,11 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: row_stack_out
-  description: |
-    A variant of row_stack() that writes the result into the out tensor.
+  description: 'A variant of row_stack() that writes the result into the out tensor.
+
+    '
   for:
   - row_stack.out
   labels:
@@ -17432,13 +18082,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: rowwise_prune
-  description: |
-    Computes the compressed row indices for a rowwise prune of a dense weight
+  description: 'Computes the compressed row indices for a rowwise prune of a dense
+    weight
+
     matrix: for every kept row (mask True) the output holds the number of kept
+
     rows preceding it, and pruned rows get -1. Returns the selected weight rows
+
     together with that index tensor.
+
+    '
   for:
   - _rowwise_prune
   labels:
@@ -17449,10 +18104,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: rrelu
-  description: |
-    Applies the randomized leaky ReLU (RReLU) function element-wise. In training
+  description: 'Applies the randomized leaky ReLU (RReLU) function element-wise. In
+    training
+
     mode the slope for negative inputs is drawn uniformly from [lower, upper],
+
     while in evaluation mode the average of lower and upper is used.
+
+    '
   for:
   - rrelu
   labels:
@@ -17461,14 +18120,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: rrelu_
-  description: |
-    In-place Randomized Leaky ReLU (RReLU). Applies RReLU in place: positive
+  description: 'In-place Randomized Leaky ReLU (RReLU). Applies RReLU in place: positive
+
     inputs are passed through unchanged, while negative inputs are multiplied
+
     by a slope. During training the slope is sampled uniformly from
+
     [lower, upper] per element, and at evaluation time the constant slope
+
     (lower + upper) / 2 is used.
+
+    '
   for:
   - rrelu_
   labels:
@@ -17478,10 +18142,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: rrelu_with_noise
-  description: 'Triton kernel implementation for rrelu_with_noise
-    '
+  description: 'Triton kernel implementation for rrelu_with_noise '
   for:
   - rrelu_with_noise
   labels:
@@ -17491,8 +18154,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.5'
 - id: rrelu_with_noise_
-  description: 'Triton kernel implementation for rrelu_with_noise_
-    '
+  description: 'Triton kernel implementation for rrelu_with_noise_ '
   for:
   - rrelu_with_noise_
   labels:
@@ -17636,6 +18298,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.3'
+- id: rwkv_ka_fusion
+  description: 'Merges, aligns, and enhances features from different data sources
+    or spatial directions
+
+    using the efficient, linear-time RWKV framework.
+
+    '
+  for:
+  - rwkv_ka_fusion
+  labels:
+  - fused
+  kind:
+  - RWKV
+  stages:
+  - stable: '4.1'
+  cpp: '4.0'
+- id: rwkv_mm_sparsity
+  description: Optimized, lossless sparse matrix multiplication in RWKV-7 models.
+  for:
+  - rwkv_mm_sparsity
+  labels:
+  - fused
+  kind:
+  - RWKV
+  stages:
+  - stable: '4.1'
+  cpp: '4.0'
 - id: safe_softmax
   description: 'Apply a softmax function. Note this version may not be functional.
 
@@ -17742,7 +18431,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: scaled_dot_product_cudnn_attention
   description: 'Computes scaled dot product attention using the cuDNN attention API
 
@@ -17852,9 +18541,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: scaled_dot_product_fused_attention_overrideable_backward
-  description: |
-    Backward pass of the overrideable fused scaled dot product attention, computing
+  description: 'Backward pass of the overrideable fused scaled dot product attention,
+    computing
+
     gradients of query, key, value and attention bias for privateuse1-style backends.
+
+    '
   for:
   - _scaled_dot_product_fused_attention_overrideable_backward
   labels:
@@ -17864,7 +18556,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: scaled_grouped_mm
   description: 'Performs grouped matrix multiplication with row-wise and column-wise
     scaling,
@@ -17881,11 +18573,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.4'
 - id: scaled_grouped_mm_v2
-  description: |
-    Recipe-driven grouped scaled matrix multiply: a stack of per-group GEMMs
+  description: 'Recipe-driven grouped scaled matrix multiply: a stack of per-group
+    GEMMs
+
     whose operands carry per-row (RowWise) or per-tensor (TensorWise) decoding
+
     scales, with the jagged dimension described by an int32 `offs` tensor.
+
     Backs quantized Mixture-of-Experts layers.
+
+    '
   for:
   - _scaled_grouped_mm_v2
   labels:
@@ -17895,7 +18592,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: scaled_mm
   description: Scaled FP8 matrix multiplication with FP32 scales and optional bias.
   for:
@@ -18225,12 +18922,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: select_copy
-  description: |
-    Returns a copy of the input with the selected slice along the given
+  description: 'Returns a copy of the input with the selected slice along the given
+
     dimension at the given index removed. This is the out-of-place counterpart
+
     of `torch.select()`: the output has one dimension less than the input and
+
     is freshly created instead of aliasing the input, equivalent to
+
     `self.select(dim, index).clone()`.
+
+    '
   for:
   - select_copy.int
   labels:
@@ -18374,9 +19076,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: shape_as_tensor
-  description: 'Returns the sizes of a tensor as a fresh 1-D int64 tensor on the
-    CPU device (native resolves the result device from the factory default,
-    not from the input), mirroring `aten::_shape_as_tensor`.
+  description: 'Returns the sizes of a tensor as a fresh 1-D int64 tensor on the CPU
+    device (native resolves the result device from the factory default, not from the
+    input), mirroring `aten::_shape_as_tensor`.
 
     '
   for:
@@ -18441,9 +19143,11 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: sign_
-  description: |
-    The in-place version of `sign()`, writing the element-wise sign back
+  description: 'The in-place version of `sign()`, writing the element-wise sign back
+
     into the input tensor.
+
+    '
   for:
   - sign_
   labels:
@@ -18627,10 +19331,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '5.0'
 - id: slice_copy
-  description: |
-    Performs the same operation as `torch.slice`, but all output tensors are freshly
+  description: 'Performs the same operation as `torch.slice`, but all output tensors
+    are freshly
+
     created instead of aliasing the input. Returns a new tensor containing the
+
     selected slice of `self` along the given dimension.
+
+    '
   for:
   - slice_copy.Tensor
   labels:
@@ -18641,8 +19349,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: slice_copy_out
-  description: |
-    A variant of `slice_copy()` that assigns the output to an `out` tensor.
+  description: 'A variant of `slice_copy()` that assigns the output to an `out` tensor.
+
+    '
   for:
   - slice_copy.Tensor_out
   labels:
@@ -18667,11 +19376,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.2'
 - id: slogdet
-  description: |
-    Computes the sign and natural logarithm of the absolute value of the
+  description: 'Computes the sign and natural logarithm of the absolute value of the
+
     determinant of a square matrix (or a batch of square matrices) using LU
+
     decomposition with partial pivoting. This is the public alias for
+
     `torch.linalg.slogdet`.
+
+    '
   for:
   - slogdet
   labels:
@@ -18682,9 +19395,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: slow_conv2d_backward
-  description: |
-    Backward computation for the slow reference conv2d, returning the gradients
+  description: 'Backward computation for the slow reference conv2d, returning the
+    gradients
+
     of the input, weight, and bias.
+
+    '
   for:
   - _slow_conv2d_backward
   labels:
@@ -18693,12 +19409,15 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: slow_conv2d_forward
-  description: |
-    An internal slow reference implementation of the 2-D convolution forward
+  description: 'An internal slow reference implementation of the 2-D convolution forward
+
     pass that applies a 2-D cross-correlation over the input with the given
+
     kernel.
+
+    '
   for:
   - _slow_conv2d_forward
   labels:
@@ -18707,12 +19426,12 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: slow_conv_dilated2d
-  description: Applies a 2D dilated convolution over an input signal composed of
-    several input planes, using the slow (non-cuDNN) reference path. The operator
-    takes `kernel_size`, `stride`, `padding` and `dilation` as two-element pairs
-    and supports an optional bias.
+  description: Applies a 2D dilated convolution over an input signal composed of several
+    input planes, using the slow (non-cuDNN) reference path. The operator takes `kernel_size`,
+    `stride`, `padding` and `dilation` as two-element pairs and supports an optional
+    bias.
   for:
   - slow_conv_dilated2d
   labels:
@@ -18721,7 +19440,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: slow_conv_dilated2d_out
   description: 'A variant of slow_conv_dilated2d() that writes the result into the
     out tensor.
@@ -18735,13 +19454,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: slow_conv_dilated3d
-  description: |
-    Applies a 3D dilated convolution operator over an input image composed of
+  description: 'Applies a 3D dilated convolution operator over an input image composed
+    of
+
     several input planes, using the slow (im2col-free) direct algorithm.
+
     The ``weight`` tensor uses the plain convolution layout
+
     ``(out_channels, in_channels, kD, kH, kW)`` and no kernel flip is applied.
+
+    '
   for:
   - slow_conv_dilated3d
   labels:
@@ -18752,9 +19476,11 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: slow_conv_dilated3d_out
-  description: |
-    Out variant of ``slow_conv_dilated3d``: writes the 3D dilated convolution
+  description: 'Out variant of ``slow_conv_dilated3d``: writes the 3D dilated convolution
+
     result into the caller-provided ``out`` tensor and returns it.
+
+    '
   for:
   - slow_conv_dilated3d.out
   labels:
@@ -18765,13 +19491,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: slow_conv_transpose2d
-  description: |
-    Applies a 2D transposed convolution operator over an input image composed of
+  description: 'Applies a 2D transposed convolution operator over an input image composed
+    of
+
     several input planes, sometimes also called a fractionally-strided
+
     convolution or a deconvolution. It can be seen as the gradient of `Conv2d`
+
     with respect to its input: the input is promoted to 4D, scattered onto the
+
     output grid according to `stride`, `padding`, `output_padding` and
+
     `dilation`, and correlated with the `(C_in, C_out, kH, kW)` weight.
+
+    '
   for:
   - slow_conv_transpose2d
   labels:
@@ -18780,13 +19513,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: slow_conv_transpose3d
-  description: |
-    Applies a 3D transposed convolution operator over an input image composed of
+  description: 'Applies a 3D transposed convolution operator over an input image composed
+    of
+
     several input planes, using the slow (im2col/col2im) reference algorithm.
+
     The ``weight`` tensor uses the transposed-convolution layout
+
     ``(in_channels, out_channels, kD, kH, kW)``.
+
+    '
   for:
   - slow_conv_transpose3d
   labels:
@@ -18795,15 +19533,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: smm
-  description: |
-    Performs a matrix multiplication of the sparse (COO) matrix `self` with the
+  description: 'Performs a matrix multiplication of the sparse (COO) matrix `self`
+    with the
+
     dense matrix `mat` using a fused Triton kernel. The sparse operand is
+
     materialized to dense, the product is computed with `tl.dot`, and the COO
+
     output (indices + values) is written directly to match `torch.smm`
+
     semantics: every row that appears in the sparse input contributes all
+
     output columns.
+
+    '
   for:
   - smm
   labels:
@@ -18864,10 +19609,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: sobol_engine_initialize_state_
-  description: |
-    Initializes Sobol quasi-random number generator state with direction numbers.
+  description: 'Initializes Sobol quasi-random number generator state with direction
+    numbers.
+
     This is a low-level operation that fills a (dimension, 30) state tensor with
+
     pre-computed Sobol direction numbers used for generating low-discrepancy sequences.
+
+    '
   for:
   - _sobol_engine_initialize_state_
   labels:
@@ -18877,7 +19626,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: soft_margin_loss
   description: Compute the soft margin loss.
   for:
@@ -19005,10 +19754,14 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - beta: '5.0'
   - stable: '5.3'
 - id: softshrink_backward
-  description: |
-    Computes the gradient of the `softshrink` activation. Gradients flow through
+  description: 'Computes the gradient of the `softshrink` activation. Gradients flow
+    through
+
     only where the magnitude of the original input exceeds `lambd`; elsewhere
+
     the gradient is zero.
+
+    '
   for:
   - softshrink_backward
   labels:
@@ -19019,7 +19772,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: softshrink_out
   description: 'This is a variant of `softshrink` that supports an output tensor.
 
@@ -19108,8 +19861,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_broadcast_to_copy
   description: 'Broadcasts a sparse COO tensor to the target shape, always materialising
-    a fresh copy of the broadcast indices and values; the copy variant of
-    ``aten::_sparse_broadcast_to`` supporting the out= form.
+    a fresh copy of the broadcast indices and values; the copy variant of ``aten::_sparse_broadcast_to``
+    supporting the out= form.
 
     '
   for:
@@ -19122,9 +19875,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: sparse_bsc_tensor
-  description: 'Constructs a block-compressed sparse column (BSC) tensor from its stored
-    components (ccol_indices, row_indices, and the block values payload) with an optional
-    explicit size.
+  description: 'Constructs a block-compressed sparse column (BSC) tensor from its
+    stored components (ccol_indices, row_indices, and the block values payload) with
+    an optional explicit size.
 
     '
   for:
@@ -19139,9 +19892,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_bsc_tensor_unsafe
   description: 'Assembles a torch.sparse_bsc layout tensor from already-materialised
-    ccol/row indices and values without validating the compressed indices; the
-    payload dtype conversion requested via the dtype argument runs in a Triton
-    kernel before the native assembly.
+    ccol/row indices and values without validating the compressed indices; the payload
+    dtype conversion requested via the dtype argument runs in a Triton kernel before
+    the native assembly.
 
     '
   for:
@@ -19155,9 +19908,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_bsr_tensor
   description: 'Assembles a block-compressed sparse row (BSR) tensor from its stored
-    components: the block-row pointers (crow_indices), the block-column indices
-    (col_indices) and the block payload (values), with an optional explicit logical
-    size.
+    components: the block-row pointers (crow_indices), the block-column indices (col_indices)
+    and the block payload (values), with an optional explicit logical size.
 
     '
   for:
@@ -19172,9 +19924,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_bsr_tensor_unsafe
   description: 'Assembles a torch.sparse_bsr layout tensor from already-materialised
-    crow/col indices and values without validating the compressed indices; the
-    payload dtype conversion requested via the dtype argument runs in a Triton
-    kernel before the native assembly.
+    crow/col indices and values without validating the compressed indices; the payload
+    dtype conversion requested via the dtype argument runs in a Triton kernel before
+    the native assembly.
 
     '
   for:
@@ -19189,8 +19941,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 - id: sparse_compressed_tensor
   description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
     components: the compressed-axis index vector, the plain-axis index vector and
-    the payload (values), with an explicit logical size or one inferred from the
-    component buffers.
+    the payload (values), with an explicit logical size or one inferred from the component
+    buffers.
 
     '
   for:
@@ -19205,8 +19957,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_coo_tensor
   description: 'Assembles a sparse COO tensor from its stored components: the coordinate
-    index matrix and the payload (values), with an explicit logical size or one
-    inferred from the stored coordinates.
+    index matrix and the payload (values), with an explicit logical size or one inferred
+    from the stored coordinates.
 
     '
   for:
@@ -19236,9 +19988,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: sparse_coo_tensor_with_dims_and_tensors
-  description: 'Assembles a sparse COO tensor from an explicit (indices, values)
-    payload with the requested sparse/dense dimension split and logical size,
-    recording the coalesced flag without reordering or deduplicating entries.
+  description: 'Assembles a sparse COO tensor from an explicit (indices, values) payload
+    with the requested sparse/dense dimension split and logical size, recording the
+    coalesced flag without reordering or deduplicating entries.
 
     '
   for:
@@ -19254,8 +20006,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 - id: sparse_csc_tensor
   description: 'Assembles a compressed sparse column (CSC) tensor from its stored
     components: the column-pointer vector (ccol_indices), the row indices (row_indices)
-    and the payload (values), with an explicit logical size or one inferred from
-    the component buffers.
+    and the payload (values), with an explicit logical size or one inferred from the
+    component buffers.
 
     '
   for:
@@ -19270,9 +20022,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_csc_tensor_unsafe
   description: 'Assembles a torch.sparse_csc layout tensor from already-materialised
-    ccol/row indices and values without validating the compressed indices; the
-    payload dtype conversion requested via the dtype argument runs in a Triton
-    kernel before the native assembly.
+    ccol/row indices and values without validating the compressed indices; the payload
+    dtype conversion requested via the dtype argument runs in a Triton kernel before
+    the native assembly.
 
     '
   for:
@@ -19304,9 +20056,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_csr_sum
   description: 'Reduces a 2-D sparse CSR tensor along dim and returns a sparse CSR
-    tensor. Only stored entries participate, so the result sparsity follows the
-    layout: a row or column keeps one entry when it stores at least one value,
-    and a full reduction keeps a single entry only when the input stores anything.
+    tensor. Only stored entries participate, so the result sparsity follows the layout:
+    a row or column keeps one entry when it stores at least one value, and a full
+    reduction keeps a single entry only when the input stores anything.
 
     '
   for:
@@ -19322,14 +20074,30 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - alpha: '5.5'
 - id: sparse_csr_tensor
   description: 'Assembles a compressed sparse row (CSR) tensor from its stored components:
-    the row-pointer vector (crow_indices), the column indices (col_indices) and
-    the payload (values), with an explicit logical size or one inferred from
-    the component buffers.
+    the row-pointer vector (crow_indices), the column indices (col_indices) and the
+    payload (values), with an explicit logical size or one inferred from the component
+    buffers.
 
     '
   for:
   - sparse_csr_tensor.crow_col_value
   - sparse_csr_tensor.crow_col_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_csr_tensor_unsafe
+  description: 'Assembles a torch.sparse_csr layout tensor from already-materialised
+    crow/col indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_csr_tensor_unsafe
   labels:
   - aten
   - KernelGen
@@ -19417,11 +20185,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: sparse_mm
-  description: |
-    Computes the sparse-times-dense product of a 2-D CSR tensor (M, K) and a
+  description: 'Computes the sparse-times-dense product of a 2-D CSR tensor (M, K)
+    and a
+
     dense (K, N) matrix, returning a dense (M, N) tensor. The .reduce overload
+
     applies a reduction (sum / mean / amax / amin) over the per-nnz products of
+
     each output element.
+
+    '
   for:
   - _sparse_mm
   - _sparse_mm.reduce
@@ -19431,14 +20204,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: sparse_mm_reduce_impl
-  description: |
-    Backend of aten::_sparse_mm.reduce: computes the sparse-times-dense
+  description: 'Backend of aten::_sparse_mm.reduce: computes the sparse-times-dense
+
     product of a 2-D CSR tensor (M, K) and a dense (K, N) matrix with a
-    sum / mean / amax / amin reduction over each row's stored nnz products,
-    returning the (output, arg_out) pair. arg_out mirrors aten's contract
+
+    sum / mean / amax / amin reduction over each row''s stored nnz products,
+
+    returning the (output, arg_out) pair. arg_out mirrors aten''s contract
+
     (empty int64 tensor outside grad mode).
+
+    '
   for:
   - _sparse_mm_reduce_impl
   labels:
@@ -19467,10 +20245,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5.0'
 - id: sparse_resize_
-  description: |
-    Resizes a sparse COO tensor in place to the requested sizes and
+  description: 'Resizes a sparse COO tensor in place to the requested sizes and
+
     sparse/dense dimension split, preserving the stored entries. A non-empty
+
     tensor may only grow, mirroring aten::sparse_resize_ semantics.
+
+    '
   for:
   - sparse_resize_
   labels:
@@ -19481,17 +20262,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: sparse_resize_and_clear_
-  description: |
-    Drop every stored element of a sparse COO tensor (nnz becomes 0) and resize it in place to the requested size and sparse/dense dimension counts.
+  description: 'Drop every stored element of a sparse COO tensor (nnz becomes 0) and
+    resize it in place to the requested size and sparse/dense dimension counts.
+
+    '
   for:
-    - sparse_resize_and_clear_
+  - sparse_resize_and_clear_
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor
@@ -19645,11 +20428,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: sparse_sparse_matmul
-  description: 'SpGEMM: multiplies two 2-D sparse COO matrices with a five-phase
-    Triton pipeline (B-CSR grouping, dense-flag/product accumulation, exact per-row
-    counting and row-major emission); the output is a coalesced row-major COO whose
-    support set is the deterministic intersection pattern with structural zeros
-    preserved.
+  description: 'SpGEMM: multiplies two 2-D sparse COO matrices with a five-phase Triton
+    pipeline (B-CSR grouping, dense-flag/product accumulation, exact per-row counting
+    and row-major emission); the output is a coalesced row-major COO whose support
+    set is the deterministic intersection pattern with structural zeros preserved.
 
     '
   for:
@@ -19660,6 +20442,26 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - BLAS
+  stages:
+  - alpha: 5.5.0
+- id: sparse_sum
+  description: |
+    Sparse COO sum (``aten::_sparse_sum``): sums a sparse COO tensor. The default
+    and ``.dtype`` overloads reduce every stored value into a 0-D dense scalar;
+    the ``.dim`` / ``.dim_dtype`` / ``.dim_out`` overloads sum along the given
+    sparse or dense dimensions, producing a coalesced sparse tensor when at
+    least one sparse dim is kept.
+  for:
+  - _sparse_sum
+  - _sparse_sum.dim
+  - _sparse_sum.dim_dtype
+  - _sparse_sum.dim_out
+  - _sparse_sum.dtype
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
   stages:
   - alpha: '5.5.0'
 - id: sparse_sum_backward
@@ -20097,8 +20899,9 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.1'
 - id: special_hermite_polynomial_he
-  description: |
-    Probabilists' Hermite polynomial He_n(input).
+  description: 'Probabilists'' Hermite polynomial He_n(input).
+
+    '
   for:
   - special.hermite_polynomial_he
   kind:
@@ -20235,23 +21038,25 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: special_laguerre_polynomial_l
-  description: |
-    Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+  description: 'Computes the Laguerre polynomial :math:`L_n(x)` element-wise for tensor
+
     and scalar x/n overloads, including destination-passing variants.
+
+    '
   for:
-    - special_laguerre_polynomial_l
-    - special_laguerre_polynomial_l.out
-    - special_laguerre_polynomial_l.x_scalar
-    - special_laguerre_polynomial_l.x_scalar_out
-    - special_laguerre_polynomial_l.n_scalar
-    - special_laguerre_polynomial_l.n_scalar_out
+  - special_laguerre_polynomial_l
+  - special_laguerre_polynomial_l.out
+  - special_laguerre_polynomial_l.x_scalar
+  - special_laguerre_polynomial_l.x_scalar_out
+  - special_laguerre_polynomial_l.n_scalar
+  - special_laguerre_polynomial_l.n_scalar_out
   labels:
-    - aten
-    - pointwise
+  - aten
+  - pointwise
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: special_legendre_polynomial_p
   description: 'Computes the Legendre polynomial P_n(x) of degree n for each element
     in the input tensor,
@@ -20414,7 +21219,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: special_modified_bessel_i1_out
   description: 'A variant of `special_modified_bessel_i1()` with output saved to
 
@@ -20430,7 +21235,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: special_modified_bessel_k0
   description: Triton kernel implementation for special_modified_bessel_k0.
   for:
@@ -20524,8 +21329,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: special_psi
-  description: 'Computes the digamma function (psi) of `input` element-wise, the
-    logarithmic derivative of the gamma function.
+  description: 'Computes the digamma function (psi) of `input` element-wise, the logarithmic
+    derivative of the gamma function.
 
     '
   for:
@@ -20582,8 +21387,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: special_scaled_modified_bessel_k0
-  description: 'Computes the scaled modified Bessel function of the second kind
-    of order 0 (scaled K_0(x) = exp(x)*K_0(x)) for each element in the input tensor.
+  description: 'Computes the scaled modified Bessel function of the second kind of
+    order 0 (scaled K_0(x) = exp(x)*K_0(x)) for each element in the input tensor.
 
     '
   for:
@@ -20597,8 +21402,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: special_scaled_modified_bessel_k0_out
-  description: 'A variant of `special_scaled_modified_bessel_k0` with output
-    written to provided `out`.
+  description: 'A variant of `special_scaled_modified_bessel_k0` with output written
+    to provided `out`.
 
     '
   for:
@@ -20734,7 +21539,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: special_xlog1py
   description: 'Computes `x * log1p(y)` for each element pair in the input tensors
     `x` and `y`.
@@ -20843,12 +21648,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: split_copy
-  description: |
-    Splits a tensor into chunks along a given dimension, each of the given
+  description: 'Splits a tensor into chunks along a given dimension, each of the given
+
     split_size, and returns a list of contiguous copies. This is the
+
     out-of-place counterpart of `torch.split()`: the last chunk is smaller
+
     when the dimension size is not divisible by split_size, and every output
+
     chunk is freshly created instead of aliasing the input.
+
+    '
   for:
   - split_copy.Tensor
   labels:
@@ -20941,8 +21751,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.3'
 - id: squeeze
-  description: |
-    Returns a tensor with all specified dimensions of input of size 1 removed.
+  description: 'Returns a tensor with all specified dimensions of input of size 1
+    removed.
+
+    '
   for:
   - squeeze
   - squeeze.dim
@@ -20955,8 +21767,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: squeeze_
-  description: |
-    Removes all dimensions of size 1 from the tensor, in place, and returns the same tensor.
+  description: 'Removes all dimensions of size 1 from the tensor, in place, and returns
+    the same tensor.
+
+    '
   for:
   - squeeze_
   labels:
@@ -20967,8 +21781,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: squeeze__dim
-  description: |
-    Removes the given dimension of the tensor in place, but only if that dimension has size 1.
+  description: 'Removes the given dimension of the tensor in place, but only if that
+    dimension has size 1.
+
+    '
   for:
   - squeeze_.dim
   labels:
@@ -20979,8 +21795,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: squeeze__dims
-  description: |
-    Removes all the given dimensions of the tensor in place, but only those that have size 1.
+  description: 'Removes all the given dimensions of the tensor in place, but only
+    those that have size 1.
+
+    '
   for:
   - squeeze_.dims
   labels:
@@ -21035,6 +21853,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '2.2'
+- id: stage_deepseek_v4_mega_moe_inputs
+  description: 'Stages DeepSeekV4 Mega-MoE inputs by quantizing hidden states to FP8
+
+    with UE8M0 scales and copying top-k indices and weights to output buffers.
+
+    '
+  for:
+  - stage_deepseek_v4_mega_moe_inputs
+  labels:
+  - fused
+  - DeepSeekV4
+  - MoE
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: standard_gamma
   description: Triton kernel implementation for _standard_gamma.
   for:
@@ -21297,9 +22131,11 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: swapaxes
-  description: |
-    Returns a view of the input tensor with the two specified dimensions
+  description: 'Returns a view of the input tensor with the two specified dimensions
+
     swapped; equivalent to torch.transpose().
+
+    '
   for:
   - swapaxes
   labels:
@@ -21308,11 +22144,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: swapaxes_
-  description: |
-    In-place version of torch.swapaxes(): swaps the two specified dimensions
-    of the input tensor's size and stride metadata.
+  description: 'In-place version of torch.swapaxes(): swaps the two specified dimensions
+
+    of the input tensor''s size and stride metadata.
+
+    '
   for:
   - swapaxes_
   labels:
@@ -21321,11 +22159,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: swapdims
-  description: |
-    Returns a view of the input tensor with the two specified dimensions
+  description: 'Returns a view of the input tensor with the two specified dimensions
+
     swapped; equivalent to torch.transpose().
+
+    '
   for:
   - swapdims
   labels:
@@ -21334,11 +22174,13 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: swapdims_
-  description: |
-    In-place version of torch.swapdims(): swaps the two specified dimensions
-    of the input tensor's size and stride metadata.
+  description: 'In-place version of torch.swapdims(): swaps the two specified dimensions
+
+    of the input tensor''s size and stride metadata.
+
+    '
   for:
   - swapdims_
   labels:
@@ -21347,7 +22189,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
+- id: swiglu
+  description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
+    function.
+  for:
+  - swiglu
+  labels:
+  - fused
+  - Transformer
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '5.0'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
@@ -21746,8 +22600,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '2.1'
 - id: to_copy
-  description: Copies a tensor to a different dtype, layout, device, or memory
-    format, exposed as the low-level `_to_copy` aten operator.
+  description: Copies a tensor to a different dtype, layout, device, or memory format,
+    exposed as the low-level `_to_copy` aten operator.
   for:
   - _to_copy
   condition:
@@ -21764,8 +22618,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - beta: '4.1'
   - stable: '5.3'
 - id: to_dense_backward
-  description: Converts grad into the scalar type and sparse layout carried by
-    input, implementing the backward of to_dense.
+  description: Converts grad into the scalar type and sparse layout carried by input,
+    implementing the backward of to_dense.
   for:
   - to_dense_backward
   labels:
@@ -21776,8 +22630,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: to_sparse_semi_structured
-  description: Compresses a dense 2D tensor to the CUTLASS semi-structured (2:4
-    / 1:2) sparse representation, returning the packed values and metadata.
+  description: Compresses a dense 2D tensor to the CUTLASS semi-structured (2:4 /
+    1:2) sparse representation, returning the packed values and metadata.
   for:
   - _to_sparse_semi_structured
   labels:
@@ -21870,59 +22724,72 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.1'
 - id: transpose_
-  description: |
-    Swaps two dimensions of a tensor in place. This rewrites the sizes and
+  description: 'Swaps two dimensions of a tensor in place. This rewrites the sizes
+    and
+
     strides of the operand without moving any data and returns the operand
+
     itself.
+
+    '
   for:
-    - transpose_
+  - transpose_
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: transpose_copy
-  description: |
-    Returns a new contiguous tensor with the two specified dimensions swapped.
+  description: 'Returns a new contiguous tensor with the two specified dimensions
+    swapped.
+
     The result does not alias the input tensor.
+
+    '
   for:
-    - transpose_copy.int
+  - transpose_copy.int
   labels:
-    - aten
+  - aten
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: trapezoid
-  description: |
-    A variant of trapezoid() that uses a tensor x to specify sample points
+  description: 'A variant of trapezoid() that uses a tensor x to specify sample points
+
     along the integration dimension.
+
+    '
   for:
-    - trapezoid.x
+  - trapezoid.x
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Reduction
+  - Reduction
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: trapz
-  description: |
-    Computes the trapezoidal rule along a dimension using constant spacing dx.
+  description: 'Computes the trapezoidal rule along a dimension using constant spacing
+    dx.
+
     Integrates the input tensor along the specified dimension using the
+
     trapezoidal rule with uniform spacing.
+
+    '
   for:
-    - trapezoid.dx
-    - trapz.dx
+  - trapezoid.dx
+  - trapz.dx
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Math
+  - Math
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: triangular_solve
   description: Solves a dense triangular system and returns a full coefficient clone.
   for:
@@ -22163,8 +23030,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: underscore_linalg_det
-  description: Computes the determinant of a square matrix (or a batch of square
-    matrices), returning it together with the LU factorisation and pivots.
+  description: Computes the determinant of a square matrix (or a batch of square matrices),
+    returning it together with the LU factorisation and pivots.
   for:
   - _linalg_det
   labels:
@@ -22173,7 +23040,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: underscore_sobol_engine_draw
   description: 'Generates quasi-random Sobol sequence points. XOR-based algorithm
     using Gray code for low-discrepancy sampling.
@@ -22187,7 +23054,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Distribution
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: underscore_sobol_engine_scramble_
   description: 'Scrambles Sobol quasi-random number generator state using Owen scrambling.
     Performs in-place matrix multiplication in GF(2) (binary field) for each dimension. '
@@ -22199,20 +23066,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - RandomSampling
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: unflatten_dense_tensors
-  description: |
-    Given a flat buffer and a list of template tensors, returns one view per template carved out of the buffer at a running offset, preserving the buffer's alias, strides and storage offset; zero-numel templates yield fresh empty tensors. Metadata-only view op (no element-wise computation).
+  description: 'Given a flat buffer and a list of template tensors, returns one view
+    per template carved out of the buffer at a running offset, preserving the buffer''s
+    alias, strides and storage offset; zero-numel templates yield fresh empty tensors.
+    Metadata-only view op (no element-wise computation).
+
+    '
   for:
-    - unflatten_dense_tensors
+  - unflatten_dense_tensors
   labels:
-    - aten
-    - KernelGen
-    - view
+  - aten
+  - KernelGen
+  - view
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: unfold
   description: Return a view of the tensor with a sliding window along the given dimension.
   for:
@@ -22258,7 +23129,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: uniform
-  description: Returns a new tensor filled with numbers sampled from the continuous uniform distribution.
+  description: Returns a new tensor filled with numbers sampled from the continuous
+    uniform distribution.
   for:
   - uniform
   labels:
@@ -22468,7 +23340,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '5.0'
 - id: upsample_bicubic2d_backward
-  description: Computes non-antialiased bicubic interpolation gradients using deterministic gather.
+  description: Computes non-antialiased bicubic interpolation gradients using deterministic
+    gather.
   for:
   - upsample_bicubic2d_backward
   labels:
@@ -22878,89 +23751,98 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: validate_compressed_sparse_indices
-  description: |
-    Validate sparse tensor arguments and index invariants without modifying inputs.
+  description: 'Validate sparse tensor arguments and index invariants without modifying
+    inputs.
+
+    '
   for:
-    - _validate_compressed_sparse_indices
+  - _validate_compressed_sparse_indices
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: validate_sparse_bsc_tensor_args
   description: |
     Validate sparse tensor arguments and index invariants without modifying inputs.
   for:
-    - _validate_sparse_bsc_tensor_args
+  - _validate_sparse_bsc_tensor_args
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: validate_sparse_bsr_tensor_args
-  description: |
-    Validate BSR tensor metadata and compressed index invariants.
+  description: 'Validate BSR tensor metadata and compressed index invariants.
+
+    '
   for:
-    - _validate_sparse_bsr_tensor_args
+  - _validate_sparse_bsr_tensor_args
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: validate_sparse_compressed_tensor_args
   description: |
     Validate sparse tensor arguments and index invariants without modifying inputs.
   for:
-    - _validate_sparse_compressed_tensor_args
+  - _validate_sparse_compressed_tensor_args
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: validate_sparse_coo_tensor_args
-  description: |
-    Validate sparse tensor arguments and index invariants without modifying inputs.
+  description: 'Validate sparse tensor arguments and index invariants without modifying
+    inputs.
+
+    '
   for:
-    - _validate_sparse_coo_tensor_args
+  - _validate_sparse_coo_tensor_args
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: validate_sparse_csc_tensor_args
-  description: |
-    Validate sparse tensor arguments and index invariants without modifying inputs.
+  description: 'Validate sparse tensor arguments and index invariants without modifying
+    inputs.
+
+    '
   for:
-    - _validate_sparse_csc_tensor_args
+  - _validate_sparse_csc_tensor_args
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: validate_sparse_csr_tensor_args
-  description: |
-    Validate sparse tensor arguments and index invariants without modifying inputs.
+  description: 'Validate sparse tensor arguments and index invariants without modifying
+    inputs.
+
+    '
   for:
-    - _validate_sparse_csr_tensor_args
+  - _validate_sparse_csr_tensor_args
   labels:
-    - aten
-    - KernelGen
+  - aten
+  - KernelGen
   kind:
-    - Tensor
+  - Tensor
   stages:
-    - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: value_selecting_reduction_backward
   description: 'Computes the gradient of a value-selecting reduction (such as `max.dim`
 
@@ -22979,8 +23861,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: values
-  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view.
-    '
+  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view. '
   for:
   - _values
   labels:
@@ -22991,8 +23872,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: values_copy
-  description: 'Returns a fresh non-aliasing copy of the stored values of a
-    compressed sparse tensor (CSR/CSC/BSR/BSC).
+  description: 'Returns a fresh non-aliasing copy of the stored values of a compressed
+    sparse tensor (CSR/CSC/BSR/BSC).
 
     '
   for:
@@ -23005,8 +23886,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: values_copy_out
-  description: A variant of `values_copy()` that writes the values copy into the
-    `out` tensor.
+  description: A variant of `values_copy()` that writes the values copy into the `out`
+    tensor.
   for:
   - values_copy.out
   labels:
@@ -23103,8 +23984,8 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - stable: '2.0'
 - id: version
   description: 'Returns the version counter of a tensor: an integer bumped by one
-    on every dispatched in-place call. Inference tensors do not track a version
-    counter and raise RuntimeError, mirroring aten::_version.
+    on every dispatched in-place call. Inference tensors do not track a version counter
+    and raise RuntimeError, mirroring aten::_version.
 
     '
   for:
@@ -23128,12 +24009,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: view_as_complex_copy
-  description: |
-    Copies a real tensor whose last dimension has size 2 and stride 1 into a
+  description: 'Copies a real tensor whose last dimension has size 2 and stride 1
+    into a
+
     freshly allocated complex tensor. This is the out-of-place counterpart of
+
     `torch.view_as_complex()`: float32 becomes complex64, float64 becomes
+
     complex128 and float16 becomes complex32, the batch dimensions may be
+
     non-contiguous, and the result never aliases the input.
+
+    '
   for:
   - view_as_complex_copy
   labels:
@@ -23142,14 +24029,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: 5.5.0
 - id: view_as_real_copy
-  description: |
-    Copies a complex tensor into a freshly allocated real tensor whose last
+  description: 'Copies a complex tensor into a freshly allocated real tensor whose
+    last
+
     dimension has size 2. This is the out-of-place counterpart of
+
     `torch.view_as_real()`: complex64 becomes float32, complex128 becomes
+
     float64 and complex32 becomes float16, the batch dimensions may be
+
     non-contiguous, and the result never aliases the input.
+
+    '
   for:
   - view_as_real_copy
   labels:
@@ -23245,6 +24138,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
+- id: weight_norm
+  description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
+    (g)
+
+    from its direction (v). It is a hook that compute the actual weight before
+
+    each forward pass.
+
+    '
+  for:
+  - weight_norm
+  labels:
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '3.0'
 - id: weight_norm_differentiable_backward
   description: 'Computes the differentiable gradients for the magnitude and direction
 
