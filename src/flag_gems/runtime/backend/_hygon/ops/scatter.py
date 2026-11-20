@@ -18,7 +18,12 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
+from flag_gems.ops.scatter import _scatter_sorted_rows
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -27,7 +32,139 @@ from flag_gems.utils.shape_utils import (
     restride_dim,
 )
 
+from .scatter_reduce import (
+    hygon_scatter_reduce_init_heads_kernel,
+    hygon_scatter_reduce_prod_build_lists_kernel,
+    hygon_scatter_reduce_prod_finalize_lists_kernel,
+)
+
 logger = logging.getLogger(__name__)
+_PRODUCT_TILE = 128
+_PRODUCT_TILE_LOOPS = 4
+_PRODUCT_OUTPUT_TILE = 512
+
+
+def _split_grid(programs):
+    first = min(programs, 65535)
+    return first, triton.cdiv(programs, first)
+
+
+@triton.jit
+def _multiply(left, right):
+    return left * right
+
+
+@libentry()
+@triton.jit
+def _scatter_small_row(
+    inp,
+    index,
+    src,
+    out,
+    WIDTH: tl.constexpr,
+    IN_TILE: tl.constexpr,
+    PRODUCT: tl.constexpr,
+    OUT_TILE: tl.constexpr,
+):
+    row = tl.program_id(0)
+    target = tl.program_id(1) * OUT_TILE + tl.arange(0, OUT_TILE)
+    col = tl.arange(0, IN_TILE)
+    key = tl.load(index + row * WIDTH + col, mask=col < WIDTH, other=-1)
+    source = tl.load(src + row * WIDTH + col, mask=col < WIDTH, other=0).to(tl.float32)
+    belongs = target[:, None] == key[None, :]
+    value = tl.load(inp + row * WIDTH + target, mask=target < WIDTH, other=0).to(
+        tl.float32
+    )
+    if PRODUCT:
+        updates = tl.reduce(tl.where(belongs, source[None, :], 1.0), 1, _multiply)
+        result = value * updates
+    else:
+        updates = tl.sum(tl.where(belongs, source[None, :], 0.0), 1)
+        result = value + updates
+    result = tl.where(tl.sum(belongs.to(tl.int32), 1) > 0, result, value)
+    tl.store(out + row * WIDTH + target, result, mask=target < WIDTH)
+
+
+def _use_scatter_row(inp, dim, index, src, reduce, *, inplace):
+    return (
+        reduce in ("add", "multiply")
+        and inp.ndim == 2
+        and dim in (-1, 1)
+        and inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and src.dtype == inp.dtype
+        and index.dtype == torch.int64
+        and inp.shape == src.shape == index.shape
+        and inp.is_contiguous()
+        and src.is_contiguous()
+        and index.is_contiguous()
+        and 0 < inp.numel() < 1 << 31
+        and (
+            (inp.shape[1] <= 64 and inp.shape[0] <= 65535)
+            or 64 < inp.shape[1] <= 1024
+            or (reduce == "multiply" and inp.shape[1] > 1024)
+        )
+        and (not inplace or not torch._C._overlaps(inp, src))
+    )
+
+
+def _scatter_row(inp, index, src, reduce, *, inplace):
+    rows, columns = inp.shape
+    if 64 < columns <= 1024:
+        return _scatter_sorted_rows(inp, index, src, reduce, inplace=inplace)
+    out = inp if inplace else torch.empty_like(inp)
+    with torch_device_fn.device(inp.device):
+        if columns <= 64:
+            tile = 8
+            _scatter_small_row[(rows, triton.cdiv(columns, tile))](
+                inp,
+                index,
+                src,
+                out,
+                columns,
+                triton.next_power_of_2(columns),
+                reduce == "multiply",
+                tile,
+            )
+            return out
+
+        # Build a source list per destination. Each output is reduced by one
+        # lane, avoiding value CAS retries and an initial clone of self.
+        count = inp.numel()
+        heads = torch.empty(count, dtype=torch.int32, device=inp.device)
+        links = torch.empty_like(heads)
+        init_grid = _split_grid(triton.cdiv(count, 1024))
+        build_grid = _split_grid(
+            triton.cdiv(count, _PRODUCT_TILE * _PRODUCT_TILE_LOOPS)
+        )
+        finish_grid = _split_grid(triton.cdiv(count, _PRODUCT_OUTPUT_TILE))
+        hygon_scatter_reduce_init_heads_kernel[init_grid](heads, count, BLOCK=1024)
+        hygon_scatter_reduce_prod_build_lists_kernel[build_grid](
+            index,
+            src,
+            heads,
+            links,
+            count,
+            columns,
+            columns,
+            columns,
+            True,
+            BLOCK=_PRODUCT_TILE,
+            LOOP=_PRODUCT_TILE_LOOPS,
+        )
+        hygon_scatter_reduce_prod_finalize_lists_kernel[finish_grid](
+            inp,
+            src,
+            heads,
+            links,
+            out,
+            count,
+            columns,
+            columns,
+            True,
+            BLOCK=_PRODUCT_OUTPUT_TILE,
+            num_warps=4,
+        )
+    return out
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -209,7 +346,7 @@ def generate_scatter_kernel(
             code.writeline("if IS_ADD: ")
             with code.indent():
                 code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                    "tl.atomic_add(out + inp_offsets, cur_src.to(out.dtype.element_ty), mask=mask, sem='relaxed')"
                 )
             code.writeline("elif IS_MUL: ")
             with code.indent():
@@ -396,30 +533,21 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
-def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS_HYGON SCATTER")
-    out = inp.clone()
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
-    if has_internal_overlapping(out) == MemOverlap.Yes:
-        out = out.contiguous()
-
+def _scatter_launch(out, dim, index, src, reduce):
+    if index.numel() == 0:
+        return out
     src_strided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
+    out_restrided = restride_dim(out, dim, index.shape)
+    dim_size = out.size(dim)
+    dim_stride = out.stride(dim)
     N = index.numel()
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
-    use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
+    use_int32_offset = all(map(int32_size_dim, (out, index, src)))
     _scatter_func(
         src_strided,
         index,
-        inp_restrided,
+        out_restrided,
         out,
         dim_size,
         dim_stride,
@@ -431,37 +559,35 @@ def scatter(inp, dim, index, src, reduce=None):
     return out
 
 
+def _scatter_bf16(inp, dim, index, src, reduce, *, inplace):
+    # Accumulate in FP32 with the legacy kernel, whose BF16 atomics are unsupported.
+    work = inp.to(torch.float32)
+    _scatter_launch(work, dim, index, src, reduce)
+    if inplace:
+        inp.copy_(work)
+        return inp
+    return work.to(torch.bfloat16)
+
+
+def scatter(inp, dim, index, src, reduce=None):
+    logger.debug("GEMS_HYGON SCATTER")
+    if _use_scatter_row(inp, dim, index, src, reduce, inplace=False):
+        return _scatter_row(inp, index, src, reduce, inplace=False)
+    if reduce is not None and inp.dtype == torch.bfloat16:
+        return _scatter_bf16(inp, dim, index, src, reduce, inplace=False)
+    out = inp.clone()
+    if has_internal_overlapping(out) == MemOverlap.Yes:
+        out = out.contiguous()
+    return _scatter_launch(out, dim, index, src, reduce)
+
+
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_HYGON SCATTER_")
-    out = inp
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     assert (
-        has_internal_overlapping(out) != MemOverlap.Yes
+        has_internal_overlapping(inp) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
-
-    src_restrided = src.as_strided(index.shape, src.stride())
-    inp_restrided = restride_dim(inp, dim, index.shape)
-    dim_size = inp.size(dim)
-    dim_stride = inp.stride(dim)
-    N = index.numel()
-
-    int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
-    use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
-    _scatter_func(
-        src_restrided,
-        index,
-        inp_restrided,
-        out,
-        dim_size,
-        dim_stride,
-        N,
-        reduce,
-        int32_offset=use_int32_offset,
-    )
-
-    return inp
+    if _use_scatter_row(inp, dim, index, src, reduce, inplace=True):
+        return _scatter_row(inp, index, src, reduce, inplace=True)
+    if reduce is not None and inp.dtype == torch.bfloat16:
+        return _scatter_bf16(inp, dim, index, src, reduce, inplace=True)
+    return _scatter_launch(inp, dim, index, src, reduce)
