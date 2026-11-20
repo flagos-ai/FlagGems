@@ -20432,6 +20432,26 @@ ops:
   - BLAS
   stages:
   - alpha: 5.5.0
+- id: sparse_sum
+  description: |
+    Sparse COO sum (``aten::_sparse_sum``): sums a sparse COO tensor. The default
+    and ``.dtype`` overloads reduce every stored value into a 0-D dense scalar;
+    the ``.dim`` / ``.dim_dtype`` / ``.dim_out`` overloads sum along the given
+    sparse or dense dimensions, producing a coalesced sparse tensor when at
+    least one sparse dim is kept.
+  for:
+  - _sparse_sum
+  - _sparse_sum.dim
+  - _sparse_sum.dim_dtype
+  - _sparse_sum.dim_out
+  - _sparse_sum.dtype
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_sum_backward
   description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
     back onto the sorted-unique coordinate support of the input sparse tensor, keeping
