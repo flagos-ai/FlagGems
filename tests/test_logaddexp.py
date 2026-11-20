@@ -258,7 +258,7 @@ def test_logaddexp_backward_mixed_dtype():
 
 
 @pytest.mark.logaddexp_backward
-def test_logaddexp_backward_public_broadcast():
+def test_logaddexp_backward_autograd_broadcast():
     x = torch.randn((4, 1), device=flag_gems.device, requires_grad=True)
     y = torch.randn((1, 8), device=flag_gems.device, requires_grad=True)
     grad = torch.randn((4, 8), device=flag_gems.device)
@@ -267,8 +267,11 @@ def test_logaddexp_backward_public_broadcast():
     ref = torch.autograd.grad(
         torch.logaddexp(ref_x, ref_y), (ref_x, ref_y), utils.to_reference(grad)
     )
-    result = flag_gems.logaddexp_backward(grad, x, y)
+    out = flag_gems.logaddexp(x, y)
+    assert type(out.grad_fn).__name__ == "LogaddexpFunctionBackward"
+    result = torch.autograd.grad(out, (x, y), grad)
     for actual, expected in zip(result, ref):
+        assert actual.shape == expected.shape and actual.dtype == expected.dtype
         utils.gems_assert_close(actual, expected, expected.dtype)
 
 
@@ -282,5 +285,3 @@ def test_logaddexp_backward_rejects_complex():
     )
     with pytest.raises(NotImplementedError, match="complex"):
         flag_gems.logaddexp(y, x)
-    with pytest.raises(NotImplementedError, match="complex"):
-        flag_gems.logaddexp_backward(y, x, y)

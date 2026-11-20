@@ -211,18 +211,6 @@ def _logaddexp_backward_values(grad_output, x, y):
     return logaddexp_backward_func(grad_output, x, y)
 
 
-def logaddexp_backward(grad_output, x, y):
-    """Return first-order real gradients reduced to the original operand shapes."""
-    if grad_output.is_complex() or x.is_complex() or y.is_complex():
-        raise NotImplementedError(
-            "FlagGems logaddexp backward does not support complex tensors"
-        )
-    grad_x, grad_y = _logaddexp_backward_values(grad_output, x, y)
-    return _reduce_to_shape(grad_x, x.shape).to(x.dtype), _reduce_to_shape(
-        grad_y, y.shape
-    ).to(y.dtype)
-
-
 class LogaddexpFunction(torch.autograd.Function):
     """Autograd wrapper for the differentiable ``aten::logaddexp`` op.
 
