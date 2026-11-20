@@ -30,7 +30,6 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.ops.linalg_matrix_power import _pivots_to_perm_gpu
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -901,7 +900,8 @@ def _linalg_solve_ex_backward_run(grad_result, result, A, LU, pivots, left, vect
     ab = A.shape[:-2]
     xb = gX.shape[:-2]
     same = ab == xb
-    batch = ab if same else torch.broadcast_shapes(ab, xb)
+    # Infer the output batch tuple without touching tensor data.
+    batch = ab if same else torch.broadcast_shapes(ab, xb)  # allow-torch-compute
     # Number of right-hand sides: gX is (n, k) for a left solve and (k, n) for
     # a right one, so the k axis is the *second to last* dimension there.
     nrhs = gX.shape[-1] if left else gX.shape[-2]
