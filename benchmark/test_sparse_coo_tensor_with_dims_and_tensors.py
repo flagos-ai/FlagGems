@@ -89,9 +89,7 @@ class SparseCooTensorWithDimsAndTensorsBackwardBenchmark(
         # kernel). Build a dense gradient of the logical shape instead; ATen
         # accepts a dense ``grad_output`` for a sparse output.
         out = op(*args, **kwargs)
-        dout = torch.randn(
-            tuple(out.shape), dtype=out.dtype, device=out.device
-        )
+        dout = torch.randn(tuple(out.shape), dtype=out.dtype, device=out.device)
         xs = [arg for arg in args if torch.is_tensor(arg) and arg.requires_grad]
         return (
             lambda: torch.autograd.grad(
