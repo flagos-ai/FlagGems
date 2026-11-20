@@ -1292,6 +1292,7 @@ _FULL_CONFIG = (
     ("conj_physical", conj_physical),
     ("conj_physical_", conj_physical_),
     ("constant_pad_nd", constant_pad_nd),
+    ("constant_pad_nd_backward", constant_pad_nd_backward),
     ("conv1d", conv1d),
     ("conv1d.padding", conv1d),
     ("conv2d", conv2d),
