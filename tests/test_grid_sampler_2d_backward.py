@@ -29,6 +29,26 @@ GRID_SAMPLER_PADDING_MODE = [0, 1, 2]  # 0=zeros, 1=border, 2=reflection
 GRID_SAMPLER_ALIGN_CORNERS = [True, False]
 
 
+def _reference_inputs(grad_output, input, grid, upcast):
+    """Reference inputs for the eager grid_sampler_2d_backward.
+
+    On Kunlunxin the native op is unreliable (rejects fp16, and miscomputes
+    grad_grid at border/reflection elements), so evaluate the reference on
+    CPU where the eager op is exact. Elsewhere keep the on-device fp64
+    upcast of the inputs.
+    """
+    if flag_gems.vendor_name == "kunlunxin":
+        refs = (grad_output.cpu(), input.cpu(), grid.cpu())
+        if upcast:
+            refs = tuple(r.double() for r in refs)
+        return refs
+    return (
+        utils.to_reference(grad_output, upcast),
+        utils.to_reference(input, upcast),
+        utils.to_reference(grid, upcast),
+    )
+
+
 @pytest.mark.grid_sampler_2d_backward
 @pytest.mark.parametrize("shape", GRID_SAMPLER_SHAPES)
 @pytest.mark.parametrize("interp_mode", GRID_SAMPLER_INTERP_MODE)
@@ -48,9 +68,9 @@ def test_grid_sampler_2d_backward(
     # Reference: compare against the float32 upcast of the inputs, cast down
     # to `dtype`, so low-precision reference rounding does not mask real
     # differences.
-    ref_grad_output = utils.to_reference(grad_output, upcast=True)
-    ref_input = utils.to_reference(input, upcast=True)
-    ref_grid = utils.to_reference(grid, upcast=True)
+    ref_grad_output, ref_input, ref_grid = _reference_inputs(
+        grad_output, input, grid, upcast=True
+    )
     ref_grad_input, ref_grad_grid = torch.ops.aten.grid_sampler_2d_backward(
         ref_grad_output,
         ref_input,
@@ -85,9 +105,9 @@ def test_accuracy_grid_sampler_2d_backward_grad_input_only(shape, dtype):
     grid = torch.rand(N, OH, OW, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
     grad_output = torch.randn(N, C, OH, OW, dtype=dtype, device=flag_gems.device)
 
-    ref_grad_output = utils.to_reference(grad_output, upcast=True)
-    ref_input = utils.to_reference(input, upcast=True)
-    ref_grid = utils.to_reference(grid, upcast=True)
+    ref_grad_output, ref_input, ref_grid = _reference_inputs(
+        grad_output, input, grid, upcast=True
+    )
     # aten always returns both tensors; slice the one we requested.
     ref_grad_input = torch.ops.aten.grid_sampler_2d_backward(
         ref_grad_output, ref_input, ref_grid, 0, 0, False, [True, False]
@@ -111,9 +131,9 @@ def test_accuracy_grid_sampler_2d_backward_grad_grid_only(shape, dtype):
     grid = torch.rand(N, OH, OW, 2, dtype=dtype, device=flag_gems.device) * 2 - 1
     grad_output = torch.randn(N, C, OH, OW, dtype=dtype, device=flag_gems.device)
 
-    ref_grad_output = utils.to_reference(grad_output, upcast=True)
-    ref_input = utils.to_reference(input, upcast=True)
-    ref_grid = utils.to_reference(grid, upcast=True)
+    ref_grad_output, ref_input, ref_grid = _reference_inputs(
+        grad_output, input, grid, upcast=True
+    )
     ref_grad_grid = torch.ops.aten.grid_sampler_2d_backward(
         ref_grad_output, ref_input, ref_grid, 0, 0, False, [False, True]
     )[1]
@@ -138,9 +158,7 @@ def test_grid_sampler_2d_backward_out_of_range_grid(interp_mode, padding_mode):
     grad_output = torch.randn(N, C, OH, OW, device=flag_gems.device)
 
     ref_grad_input, ref_grad_grid = torch.ops.aten.grid_sampler_2d_backward(
-        utils.to_reference(grad_output),
-        utils.to_reference(input),
-        utils.to_reference(grid),
+        *_reference_inputs(grad_output, input, grid, upcast=False),
         interp_mode,
         padding_mode,
         False,
@@ -195,9 +213,7 @@ def test_grid_sampler_2d_backward_reflection_boundaries(align_corners):
                 grid[n, oh, ow, 1] = to_grid(y_pix)
 
     ref_grad_input, ref_grad_grid = torch.ops.aten.grid_sampler_2d_backward(
-        utils.to_reference(grad_output),
-        utils.to_reference(input),
-        utils.to_reference(grid),
+        *_reference_inputs(grad_output, input, grid, upcast=False),
         0,
         2,
         align_corners,

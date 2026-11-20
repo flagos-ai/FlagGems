@@ -214,8 +214,9 @@ from .fill import (
 )
 from .flip import flip
 from .flipud import flipud
-from .float_power_ import float_power_scalar_tensor_out
+from .float_power_ import float_power_scalar_tensor, float_power_scalar_tensor_out
 from .float_power_tensor_scalar import float_power_tensor_scalar
+from .float_power_tensor_tensor_out import float_power_tensor_tensor_out
 from .floor import floor, floor_, floor_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
@@ -284,7 +285,7 @@ from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm, router_gemm
+from .mm import mm, mm_out, router_gemm
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
@@ -620,8 +621,10 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "flipud",
+    "float_power_scalar_tensor",
     "float_power_scalar_tensor_out",
     "float_power_tensor_scalar",
+    "float_power_tensor_tensor_out",
     "floor",
     "floor_",
     "floor_divide",
@@ -722,6 +725,7 @@ __all__ = [
     "min_dim",
     "minimum",
     "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multinomial",

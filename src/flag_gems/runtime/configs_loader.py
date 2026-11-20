@@ -75,18 +75,19 @@ class TunedConfigLoader(object):
             self.arch_heuristics_config = None
             self.vendor_primitive_yaml_config = self.get_vendor_tune_config()
             self.default_primitive_yaml_config = self.get_default_tune_config()
-            self.vendor_heuristics_config = self.get_vendor_heuristics_config()
-            self.default_heuristics_config = self.get_default_heuristics_config()
+            # Heuristics configs are loaded lazily on first use (see
+            # get_heuristics_config) to avoid importing all vendor op modules
+            # at startup.  Set sentinels here so the lazy-load path can tell
+            # whether loading has been attempted yet.
+            self.vendor_heuristics_config = None
+            self.default_heuristics_config = None
+            self._heuristics_loaded = False
             self.update_config_from_arch()
 
-            if self.vendor_heuristics_config is None:
-                vendorname = self.device.vendor_name
-                warnings.warn(
-                    f"The {vendorname} configuration of heuristics_config is None"
-                )
             # gen_key is an identifier that indicates whether the current config needs to be generated automatically
             self.gen_key = "gen"
             # loaded_triton_config is wrapped in triton.Config according to primitive_yaml_config
+            # and populated lazily by get_tuned_config on first access per op.
             self.loaded_triton_config = {}
             self.triton_config_default = {
                 "num_stages": 2,
@@ -97,7 +98,6 @@ class TunedConfigLoader(object):
             if self.device.vendor_name == "hygon":
                 self.triton_config_default["num_ldmatrixes"] = 0
             self.expand_config_registry = self._build_expand_registry()
-            self.load_all()
 
     def update_config_from_arch(self):
         try:
@@ -1531,12 +1531,33 @@ class TunedConfigLoader(object):
     def get_vendor_tune_config(self):
         return backend.get_tune_config(self.device.vendor_name)
 
+    def _ensure_heuristics_loaded(self):
+        """Load vendor and default heuristics configs on first use.
+
+        Deferred from __init__ to avoid importing all vendor op modules at
+        startup, which on slow CI file systems accounts for the majority of
+        the ~125 s import cost per pytest process invocation.
+        """
+        if self._heuristics_loaded:
+            return
+        self._heuristics_loaded = True
+        self.vendor_heuristics_config = self.get_vendor_heuristics_config()
+        self.default_heuristics_config = self.get_default_heuristics_config()
+        if self.vendor_heuristics_config is None:
+            vendorname = self.device.vendor_name
+            warnings.warn(
+                f"The {vendorname} configuration of heuristics_config is None"
+            )
+
     def get_heuristics_config(self, op_name):
+        self._ensure_heuristics_loaded()
         if self.arch_heuristics_config and op_name in self.arch_heuristics_config:
             return self.arch_heuristics_config[op_name]
-        elif op_name in self.vendor_heuristics_config:
+        elif self.vendor_heuristics_config and op_name in self.vendor_heuristics_config:
             return self.vendor_heuristics_config[op_name]
-        elif op_name in self.default_heuristics_config:
+        elif (
+            self.default_heuristics_config and op_name in self.default_heuristics_config
+        ):
             return self.default_heuristics_config[op_name]
         else:
             warnings.warn(f"No heuristics config found for {op_name}")

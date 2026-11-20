@@ -44,10 +44,42 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 _MAGIC_C = tl.constexpr(8388608.0)  # 2**23
 _BLOCK_MAX = 131072  # grid.x stays far below 65535 for any real tensor
+
+
+# Only XPU needs the extern-free rounding below; every other backend keeps its
+# exact magic-add rounding so its numerics are unchanged.
+_NEEDS_FLOOR_ROUND = runtime.device.vendor_name == "kunlunxin"
+
+
+@triton.jit
+def _round_half_even(x):
+    """``nearbyint``/``rint`` without the extern call.
+
+    XPU lowers these extern roundings into a vector-layout value whose use in a
+    ``tl.minimum``/``tl.maximum`` chain emits a ``triton_xpu.unpack`` that cannot
+    be legalized ("reached lowering without a bufPtr") for blocks above 256
+    lanes. Rounding through ``floor`` is exact for every finite float (values at
+    or above 2**23 are already integers) and reproduces round-half-to-even; the
+    non-finite inputs are passed through because this backend's ``floor``
+    saturates them to 2**31.
+
+    This path is used on XPU only. An earlier revision selected it on every
+    backend and changed the rounded integer for 7 of 7.8M float32 elements at
+    scale=0.03 on CUDA, where ``nearbyint`` already worked.
+    """
+    f = tl.floor(x)
+    frac = x - f
+    up = frac > 0.5
+    tie_odd = (frac == 0.5) & ((f * 0.5) != tl.floor(f * 0.5))
+    r = tl.where(up | tie_odd, f + 1.0, f)
+    r = tl.where(tl.abs(x) == float("inf"), x, r)
+    return tl.where(x != x, x, r)
 
 
 @triton.jit
@@ -59,6 +91,7 @@ def fake_quantize_per_tensor_affine_kernel(
     scale,
     lo,
     hi,
+    FLOOR_ROUND: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -67,13 +100,16 @@ def fake_quantize_per_tensor_affine_kernel(
 
     p = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32) * inv
 
-    # nearbyint(p), ties to even, on the magnitude: |p| + 2**23 lands in
-    # [2**23, 2**24) where the ulp is one, so the hardware add rounds |p| to an
-    # integer (round half to even).  |p| >= 2**23 is already integral and any
-    # error there is absorbed by the clamp (quant ranges are far below 2**23).
-    ap = tl.abs(p)
-    r = (ap + _MAGIC_C) - _MAGIC_C
-    r = tl.where(p < 0.0, -r, r)
+    if FLOOR_ROUND:
+        r = _round_half_even(p)
+    else:
+        # nearbyint(p), ties to even, on the magnitude: |p| + 2**23 lands in
+        # [2**23, 2**24) where the ulp is one, so the hardware add rounds |p| to an
+        # integer (round half to even).  |p| >= 2**23 is already integral and any
+        # error there is absorbed by the clamp (quant ranges are far below 2**23).
+        ap = tl.abs(p)
+        r = (ap + _MAGIC_C) - _MAGIC_C
+        r = tl.where(p < 0.0, -r, r)
 
     r = tl.minimum(tl.maximum(r, lo), hi)
     tl.store(out_ptr + offs, (r * scale).to(out_ptr.dtype.element_ty), mask=mask)
@@ -147,6 +183,7 @@ def fake_quantize_per_tensor_affine(input, scale, zero_point, quant_min, quant_m
         s32,
         quant_min - zero_point + 0.0,
         quant_max - zero_point + 0.0,
+        FLOOR_ROUND=_NEEDS_FLOOR_ROUND,
         BLOCK=block,
         num_warps=_num_warps(block, grid[0]),
     )
