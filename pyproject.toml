@@ -317,6 +317,8 @@ flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 
 [tool.setuptools.package-data]
 
+"flaggems_benchmark" = ["core_shapes.yaml"]
+
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
 "flag_gems.runtime.backend._metax" = ["stft_fft_shim.cpp"]
