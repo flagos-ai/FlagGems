@@ -204,7 +204,10 @@ class _OrgqrH800Baseline:
                 operator=key,
                 collection_task=task,
                 environment=environment,
-                input_identity="Same unseeded caller-RNG factory and complete configuration; not cross-device random-byte identity",
+                input_identity=(
+                    "Same unseeded caller-RNG factory and complete configuration; "
+                    "not cross-device random-byte identity"
+                ),
                 ratio="Raw native H800 latency / locally timed candidate; no scaling",
                 timing_qualification="Shared functional collection, mean latency only; no NCU metrics",
             ),
@@ -296,7 +299,9 @@ class _OrgqrH800Baseline:
             return super()._measure_input(input, case_id)
         if not os.environ.get("FLAGGEMS_ORGQR_H800_BASELINE"):
             raise ValueError(
-                "Ascend native orgqr uses CPU fallback; set FLAGGEMS_ORGQR_H800_BASELINE to the reviewed native H800 core artifact"
+                "Ascend native orgqr uses CPU fallback; set "
+                "FLAGGEMS_ORGQR_H800_BASELINE to the reviewed native H800 core "
+                "artifact"
             )
         if self.is_backward or "tflops" in self.to_bench_metrics:
             raise ValueError(
