@@ -320,7 +320,7 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS_HYGON ALLCLOSE")
+    logger.debug("GEMS_HYGON ISIN")
 
     if (
         torch.is_tensor(in0)

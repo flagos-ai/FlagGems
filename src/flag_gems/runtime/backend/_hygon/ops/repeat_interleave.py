@@ -38,7 +38,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_SELF_INT")
+    logger.debug("GEMS_HYGON REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -101,7 +101,7 @@ def repeat_interleave_tensor_kernel(
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
+    logger.debug("GEMS_HYGON REPEAT_INTERLEAVE_TENSOR")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
     repeats = repeats.contiguous()
@@ -324,7 +324,7 @@ class _RepeatInterleaveGatherBackward(torch.autograd.Function):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
+    logger.debug("GEMS_HYGON REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if repeats.numel() == 0:
         return inp.clone()

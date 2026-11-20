@@ -170,7 +170,7 @@ def nll_loss_nd_forward(
     reduction: int = 1,
     ignore_index: int = -100,
 ):
-    logger.debug("GEMS NLL_LOSS_ND_FWD")
+    logger.debug("GEMS_HYGON NLL_LOSS_ND_FWD")
     if target.numel() == 0:
         shape = target.shape if reduction == 0 else ()
         out = torch.empty(shape, device=input.device, dtype=input.dtype)
