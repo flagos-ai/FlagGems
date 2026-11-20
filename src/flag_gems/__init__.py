@@ -1137,7 +1137,6 @@ _FULL_CONFIG = (
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
-    ("clamp_backward", clamp_backward),
     ("clamp_max", clamp_max),
     ("clamp_max_", clamp_max_),
     ("clamp_min", clamp_min),

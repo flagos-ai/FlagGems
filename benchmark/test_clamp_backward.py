@@ -12,45 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
+
 import pytest
 import torch
 
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
+
+_CLAMP_MIN = -0.5
+_CLAMP_MAX = 0.5
 
 
-def clamp_backward_case_fn(shape, dtype):
-    yield base.BenchmarkCasePlan(
-        shape={"input": list(shape)},
-        params={"min_value": -0.5, "max_value": 0.5},
-        builder_args=(shape,),
-    )
-
-
-def clamp_backward_build_inputs_fn(plan, dtype, device):
-    (shape,) = plan.builder_args
-    grad_output = utils.generate_tensor_input(shape, dtype, device)
-    inp = utils.generate_tensor_input(shape, dtype, device).requires_grad_(True)
-    # clamp_backward's ABI is (grad_output, self, min_value, max_value) with
-    # scalar bounds only.
-    return grad_output, inp, -0.5, 0.5
-
-
-def clamp_backward_torch_op(grad_output, inp, min_value, max_value):
-    out = torch.clamp(inp, min=min_value, max=max_value)
-    (ref_in_grad,) = torch.autograd.grad(out, inp, grad_output)
-    return ref_in_grad
+def _clamp(inp):
+    return torch.clamp(inp, min=_CLAMP_MIN, max=_CLAMP_MAX)
 
 
 @pytest.mark.clamp_backward
 def test_clamp_backward():
-    bench = base.GenericBenchmarkExcluse1D(
-        case_fn=clamp_backward_case_fn,
-        build_inputs_fn=clamp_backward_build_inputs_fn,
-        op_name="clamp_backward",
-        torch_op=clamp_backward_torch_op,
-        gems_op=flag_gems.clamp_backward,
+    # ``is_backward=True`` times ``torch.autograd.grad(out, xs, dout)``, so the
+    # reference (torch.clamp's autograd) and the candidate (flag_gems.clamp's
+    # ClampFunction) each run their own backward.
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="clamp",
+        torch_op=_clamp,
         dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
+    bench.set_gems(functools.partial(flag_gems.clamp, mini=_CLAMP_MIN, maxi=_CLAMP_MAX))
     bench.run()
