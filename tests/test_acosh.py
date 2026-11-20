@@ -77,10 +77,11 @@ def test_acosh__integer_rejects(shape, dtype):
 def test_acosh_backward(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.1
     grad = torch.randn_like(inp)
-    ref_inp = inp.detach().clone().requires_grad_()
+    ref_inp = utils.to_reference(inp.detach().clone()).requires_grad_()
+    ref_grad_output = utils.to_reference(grad)
     res_inp = inp.detach().clone().requires_grad_()
 
-    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, grad)[0]
+    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, ref_grad_output)[0]
     res_grad = torch.autograd.grad(flag_gems.acosh(res_inp), res_inp, grad)[0]
 
     utils.gems_assert_close(res_grad, ref_grad, dtype)
@@ -96,8 +97,9 @@ def test_acosh_backward_registered_dispatch(dtype):
         torch.rand((64, 64), dtype=dtype, device=flag_gems.device) + 1.1
     ).requires_grad_()
     grad = torch.randn_like(inp)
-    ref_inp = inp.detach().clone().requires_grad_()
-    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, grad)[0]
+    ref_inp = utils.to_reference(inp.detach().clone()).requires_grad_()
+    ref_grad_output = utils.to_reference(grad)
+    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, ref_grad_output)[0]
 
     lib = torch.library.Library("aten", "IMPL")
     previous_registrar = getattr(flag_gems, "current_work_registrar", None)
@@ -130,10 +132,11 @@ def test_acosh_backward_special_values(dtype):
     ]
     inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
     grad = torch.ones_like(inp)
-    ref_inp = inp.detach().clone().requires_grad_()
+    ref_inp = utils.to_reference(inp.detach().clone()).requires_grad_()
+    ref_grad_output = utils.to_reference(grad)
     res_inp = inp.detach().clone().requires_grad_()
 
-    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, grad)[0]
+    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, ref_grad_output)[0]
     res_grad = torch.autograd.grad(flag_gems.acosh(res_inp), res_inp, grad)[0]
 
     utils.gems_assert_equal(res_grad, ref_grad, equal_nan=True)
@@ -148,10 +151,13 @@ def test_acosh_backward_noncontiguous(dtype):
     )
     assert not inp.is_contiguous()
     grad = torch.randn_like(inp)
-    ref_inp = inp.detach().clone(memory_format=torch.preserve_format).requires_grad_()
+    ref_inp = utils.to_reference(
+        inp.detach().clone(memory_format=torch.preserve_format)
+    ).requires_grad_()
+    ref_grad_output = utils.to_reference(grad)
     res_inp = inp.detach().clone(memory_format=torch.preserve_format).requires_grad_()
 
-    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, grad)[0]
+    ref_grad = torch.autograd.grad(torch.acosh(ref_inp), ref_inp, ref_grad_output)[0]
     res_grad = torch.autograd.grad(flag_gems.acosh(res_inp), res_inp, grad)[0]
 
     utils.gems_assert_close(res_grad, ref_grad, dtype)
