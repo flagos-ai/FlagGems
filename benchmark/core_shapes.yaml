@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+paged_decode_attention_out:
+  shapes:
+    - [1025]
+    - [1280]
+    - [2047]
+  shape_desc: "KV length"
