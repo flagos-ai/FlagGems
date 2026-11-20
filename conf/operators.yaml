@@ -16102,6 +16102,17 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: npu_transpose_batchmatmul
+  description: BF16 batched matrix multiplication with input and output token/batch transposes.
+  for:
+  - npu_transpose_batchmatmul
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nuclear_norm
   description: 'Computes the nuclear norm (sum of singular values) of a matrix.
 
