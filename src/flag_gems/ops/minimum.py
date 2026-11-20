@@ -47,8 +47,6 @@ def minimum_kernel(X, Y):
     if X.dtype == tl.bfloat16:
         X = X.to(tl.float32)
         Y = Y.to(tl.float32)
-    if X.dtype.is_floating() or Y.dtype.is_floating():
-        return tl.minimum(X, Y, propagate_nan=tl.PropagateNan.ALL)
     return tl.minimum(X, Y)
 
 

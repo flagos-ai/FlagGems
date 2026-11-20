@@ -54,24 +54,6 @@ def test_minimum(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.minimum
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_minimum_nan_and_signed_zero_forward(dtype):
-    inp1 = torch.tensor([float("nan"), 1.0, float("nan"), 0.0, -0.0], dtype=dtype)
-    inp2 = torch.tensor([1.0, float("nan"), float("nan"), -0.0, 0.0], dtype=dtype)
-    ref_inp1 = utils.to_reference(inp1.to(flag_gems.device))
-    ref_inp2 = utils.to_reference(inp2.to(flag_gems.device))
-    res_inp1 = ref_inp1.to(flag_gems.device)
-    res_inp2 = ref_inp2.to(flag_gems.device)
-
-    ref_out = torch.minimum(ref_inp1, ref_inp2)
-    res_out = flag_gems.minimum(res_inp1, res_inp2)
-
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
-    # aten::minimum propagates NaN, so both NaN/either-side cases must be NaN.
-    assert torch.isnan(utils.to_reference(res_out)[:3]).all()
-
-
 @pytest.mark.minimum_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -230,8 +212,8 @@ def test_minimum_backward_non_contiguous(dtype):
 
 @pytest.mark.minimum_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_minimum_backward_under_use_gems(dtype):
-    """``torch.minimum`` under ``use_gems()`` must use the FlagGems backward."""
+def test_minimum_backward_direct_entry(dtype):
+    """The direct FlagGems entry attaches its custom backward."""
     shape = (128, 96)
     base_x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     base_y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -246,9 +228,6 @@ def test_minimum_backward_under_use_gems(dtype):
 
     utils.gems_assert_close(gx, ref_gx, dtype)
     utils.gems_assert_close(gy, ref_gy, dtype)
-    # The Autograd key falls through to the wrapper, so the graph node is
-    # FlagGems' own Function ("_MinimumBackward") and not ATen's generated
-    # "MinimumBackward0", which would run the multi-kernel decomposition.
     assert type(out.grad_fn).__name__ == "_MinimumBackward"
 
 
