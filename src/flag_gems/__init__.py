@@ -2686,5 +2686,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "sparse_coo_tensor_with_dims_and_tensors_backward",
     "use_gems",
 ]
