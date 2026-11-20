@@ -530,38 +530,43 @@ class _LinalgDetFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_result, grad_LU, grad_pivots):
         A, det = ctx.saved_tensors
-        # LU and pivots are not differentiable; their incoming gradients are
-        # ignored exactly as the native rule does.
-        if grad_result is None:
-            return None
-        n = A.shape[-1]
-        if n > _DET_BACKWARD_MAX_N:
-            raise NotImplementedError(
-                "_linalg_det backward currently supports matrices up to "
-                f"{_DET_BACKWARD_MAX_N} x {_DET_BACKWARD_MAX_N}, got {n} x {n}"
-            )
-        grad_input = torch.empty(
-            A.shape,
-            dtype=A.dtype,
-            device=A.device,
-            memory_format=torch.contiguous_format,
+        return linalg_det_backward(grad_result, A, det)
+
+
+def linalg_det_backward(grad_result, A, det):
+    """Return the matrix gradient using the saved determinant of a real matrix."""
+    if A.dtype not in (torch.float32, torch.float64):
+        raise TypeError("linalg_det_backward only supports float32 and float64")
+    if grad_result is None:
+        return None
+    n = A.shape[-1]
+    if n > _DET_BACKWARD_MAX_N:
+        raise NotImplementedError(
+            "_linalg_det backward currently supports matrices up to "
+            f"{_DET_BACKWARD_MAX_N} x {_DET_BACKWARD_MAX_N}, got {n} x {n}"
         )
-        if n == 0 or A.numel() == 0:
-            return grad_input
-        batch = math.prod(A.shape[:-2]) if A.dim() > 2 else 1
-        block_n = triton.next_power_of_2(n)
-        # Two live tiles: the warp count follows their combined area.
-        num_warps = min(8, max(1, (block_n * block_n * 8) // 8192))
-        with torch_device_fn.device(A.device):
-            _det_backward_kernel[(batch,)](
-                A.contiguous().reshape(-1),
-                det.contiguous().reshape(-1),
-                grad_result.contiguous().reshape(-1),
-                grad_input.reshape(-1),
-                n,
-                torch.finfo(A.dtype).eps,
-                BLOCK_N=block_n,
-                num_warps=num_warps,
-                num_stages=1,
-            )
+    grad_input = torch.empty(
+        A.shape,
+        dtype=A.dtype,
+        device=A.device,
+        memory_format=torch.contiguous_format,
+    )
+    if n == 0 or A.numel() == 0:
         return grad_input
+    batch = math.prod(A.shape[:-2]) if A.dim() > 2 else 1
+    block_n = triton.next_power_of_2(n)
+    # Two live tiles: the warp count follows their combined area.
+    num_warps = min(8, max(1, (block_n * block_n * 8) // 8192))
+    with torch_device_fn.device(A.device):
+        _det_backward_kernel[(batch,)](
+            A.contiguous().reshape(-1),
+            det.contiguous().reshape(-1),
+            grad_result.contiguous().reshape(-1),
+            grad_input.reshape(-1),
+            n,
+            torch.finfo(A.dtype).eps,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            num_stages=1,
+        )
+    return grad_input
