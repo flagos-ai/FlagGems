@@ -544,7 +544,7 @@ from flag_gems.ops.adaptive_max_pool2d import adaptive_max_pool2d
 from flag_gems.ops.adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from flag_gems.ops.adaptive_max_pool3d import adaptive_max_pool3d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
-from flag_gems.ops.add import add, add_
+from flag_gems.ops.add import add, add_, add_backward
 from flag_gems.ops.addbmm import addbmm, addbmm_, addbmm_backward
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
@@ -2283,6 +2283,7 @@ __all__ = [
     "adaptive_max_pool3d_backward",
     "add",
     "add_",
+    "add_backward",
     "addbmm",
     "addbmm_",
     "addbmm_backward",
