@@ -1270,7 +1270,6 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("clamp_min_", clamp_min_),
-    ("clamp_min_backward", clamp_min_backward),
     ("clip", clip),
     ("clip_", clip_),
     (
