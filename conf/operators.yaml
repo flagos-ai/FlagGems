@@ -912,6 +912,19 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: add_backward
+  description: Computes both gradients of add with one fused Triton kernel launch at
+    most.
+  for:
+  - add.Tensor
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: add_relu
   description: Triton kernel implementation for _add_relu.
   for:

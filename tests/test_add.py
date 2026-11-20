@@ -181,3 +181,206 @@ def test_add_scalar_scalar(dtype, caplog):
         utils.gems_assert_equal(res_out, ref_out)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("alpha", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_add_backward(shape, alpha, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_other = utils.to_reference(other.detach()).requires_grad_()
+    ref_grad_output = utils.to_reference(grad)
+    res_inp = inp.detach().requires_grad_()
+    res_other = other.detach().requires_grad_()
+
+    ref_out = torch.add(ref_inp, ref_other, alpha=alpha)
+    res_out = flag_gems.add(res_inp, res_other, alpha=alpha)
+    ref_grads = torch.autograd.grad(ref_out, (ref_inp, ref_other), ref_grad_output)
+    res_grads = torch.autograd.grad(res_out, (res_inp, res_other), grad)
+
+    utils.gems_assert_close(res_grads[0], ref_grads[0], dtype)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], dtype)
+    direct_grads = flag_gems.add_backward(grad, alpha)
+    assert direct_grads[0].data_ptr() == grad.data_ptr()
+    utils.gems_assert_close(direct_grads[0], ref_grads[0], dtype)
+    utils.gems_assert_close(direct_grads[1], ref_grads[1], dtype)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "shape,other_shape",
+    [((8, 7, 5), (5,)), ((8, 7, 5), (1, 7, 1)), ((1, 7, 5), (8, 1, 5))],
+)
+def test_add_backward_broadcast(shape, other_shape, dtype):
+    # These pairs exercise both leading-dimension and singleton broadcasting.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    other = torch.randn(other_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_other = utils.to_reference(other.detach()).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+    res_other = other.detach().requires_grad_()
+    grad = torch.randn_like(res_inp + res_other)
+
+    ref_out = torch.add(ref_inp, ref_other, alpha=-0.75)
+    res_out = flag_gems.add(res_inp, res_other, alpha=-0.75)
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_inp, ref_other), utils.to_reference(grad)
+    )
+    res_grads = torch.autograd.grad(res_out, (res_inp, res_other), grad)
+
+    utils.gems_assert_close(res_grads[0], ref_grads[0], dtype)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], dtype)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_add_backward_registered_dispatch(dtype):
+    inp = torch.randn((64, 64), dtype=dtype, device=flag_gems.device).requires_grad_()
+    other = torch.randn_like(inp, requires_grad=True)
+    grad = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_other = utils.to_reference(other.detach()).requires_grad_()
+    ref_grads = torch.autograd.grad(
+        torch.add(ref_inp, ref_other, alpha=0.5),
+        (ref_inp, ref_other),
+        utils.to_reference(grad),
+    )
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["add"])
+        res_out = torch.add(inp, other, alpha=0.5)
+        assert "AddFunction" in type(res_out.grad_fn).__name__
+        res_grads = torch.autograd.grad(res_out, (inp, other), grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    utils.gems_assert_close(res_grads[0], ref_grads[0], dtype)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], dtype)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_add_backward_complex(dtype):
+    inp = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)
+    other = torch.randn_like(inp)
+    grad = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_other = utils.to_reference(other.detach()).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+    res_other = other.detach().requires_grad_()
+    # The existing complex add forward accepts real alpha values; backward still
+    # exercises interleaved complex gradients and the conjugate-alpha formula.
+    alpha = 0.5
+
+    ref_grads = torch.autograd.grad(
+        torch.add(ref_inp, ref_other, alpha=alpha),
+        (ref_inp, ref_other),
+        utils.to_reference(grad),
+    )
+    res_grads = torch.autograd.grad(
+        flag_gems.add(res_inp, res_other, alpha=alpha),
+        (res_inp, res_other),
+        grad,
+    )
+
+    utils.gems_assert_close(res_grads[0], ref_grads[0], dtype)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], dtype)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("self_requires_grad", [True, False])
+def test_add_backward_single_input(dtype, self_requires_grad):
+    inp = torch.randn(
+        (64, 64),
+        dtype=dtype,
+        device=flag_gems.device,
+        requires_grad=self_requires_grad,
+    )
+    other = torch.randn_like(inp, requires_grad=not self_requires_grad)
+    grad = torch.randn_like(inp)
+    target = inp if self_requires_grad else other
+
+    res_grad = torch.autograd.grad(flag_gems.add(inp, other, alpha=0.5), target, grad)[
+        0
+    ]
+
+    expected = grad if self_requires_grad else grad * 0.5
+    utils.gems_assert_equal(res_grad, expected)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize(
+    "self_dtype,other_dtype",
+    [(torch.float16, torch.float32), (torch.float32, torch.float16)],
+)
+def test_add_backward_mixed_dtype(self_dtype, other_dtype):
+    # Mixed dtypes exercise the self-gradient cast inside the same fused kernel.
+    inp = torch.randn(
+        (64, 64), dtype=self_dtype, device=flag_gems.device, requires_grad=True
+    )
+    other = torch.randn(
+        (64, 64), dtype=other_dtype, device=flag_gems.device, requires_grad=True
+    )
+    grad = torch.randn_like(inp + other)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_other = utils.to_reference(other.detach()).requires_grad_()
+
+    ref_grads = torch.autograd.grad(
+        torch.add(ref_inp, ref_other, alpha=-0.75),
+        (ref_inp, ref_other),
+        utils.to_reference(grad),
+    )
+    res_grads = torch.autograd.grad(
+        flag_gems.add(inp, other, alpha=-0.75), (inp, other), grad
+    )
+
+    utils.gems_assert_close(res_grads[0], ref_grads[0], self_dtype)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], other_dtype)
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_add_backward_empty(dtype):
+    inp = torch.empty((0,), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    other = torch.empty_like(inp, requires_grad=True)
+    out = flag_gems.add(inp, other, alpha=0.5)
+    grads = torch.autograd.grad(out, (inp, other), torch.empty_like(out))
+
+    assert grads[0].shape == inp.shape
+    assert grads[1].shape == other.shape
+    assert grads[0].dtype == dtype
+    assert grads[1].dtype == dtype
+
+
+@pytest.mark.add_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_add_backward_fused_kernel_count(dtype):
+    """Identity self-grad plus the scaled other-grad use one Triton launch."""
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = torch.randn((4096,), dtype=dtype, device=flag_gems.device).requires_grad_()
+    other = torch.randn_like(inp, requires_grad=True)
+    out = flag_gems.add(inp, other, alpha=0.5)
+    grad = torch.randn_like(out)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(out, (inp, other), grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "add_backward" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
