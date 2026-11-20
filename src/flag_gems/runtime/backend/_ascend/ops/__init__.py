@@ -153,6 +153,7 @@ from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
 from .foreach_reciprocal_ import foreach_reciprocal_
 from .foreach_sigmoid_ import foreach_sigmoid_
+from .foreach_sign_ import foreach_sign_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -522,6 +523,7 @@ __all__ = [
     "foreach_pow_scalar_list_",
     "foreach_reciprocal_",
     "foreach_sigmoid_",
+    "foreach_sign_",
     "frac",
     "frac_",
     "full",
