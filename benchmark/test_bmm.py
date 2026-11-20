@@ -16,8 +16,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm import bmm_out as triton_bmm_out
-from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
+from flag_gems import bmm_out as triton_bmm_out
+from flag_gems import bmm_w8a8_fp8
 
 from . import base, consts
 
@@ -41,7 +41,7 @@ def test_bmm(monkeypatch):
         op_name="bmm",
         input_fn=_input_fn,
         torch_op=torch.bmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -67,7 +67,7 @@ def test_bmm_out(monkeypatch):
         op_name="bmm_out",
         input_fn=_input_fn_out,
         torch_op=torch.bmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
