@@ -32,3 +32,16 @@ def test_abs_inplace():
         op_name="abs_", torch_op=torch.abs_, dtypes=consts.FLOAT_DTYPES, is_inplace=True
     )
     bench.run()
+
+
+@pytest.mark.abs_backward
+def test_abs_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="abs",
+        torch_op=torch.abs,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # abs registers the Autograd fallthrough, so the default use_gems() path
+    # routes torch.abs through AbsFunction and times abs_backward.
+    bench.run()

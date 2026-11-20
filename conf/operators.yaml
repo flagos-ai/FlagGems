@@ -617,6 +617,18 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: abs_backward
+  description: Computes the gradient of abs in one fused Triton kernel.
+  for:
+  - abs
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: absolute
   description: 'This is an alias for `abs()` with the low-level operations implemented
 
