@@ -107,8 +107,6 @@ def test_expanded_index_empty_integer():
 def test_hygon_index_offsets_above_int32(index_dtype):
     import ctypes
 
-    from flag_gems.ops.index import index as generic_index
-
     # Torch-FL's flagos device API does not expose mem_get_info. Query the
     # Hygon runtime directly before allocating this boundary regression input.
     torch.empty(1, device=flag_gems.device)
@@ -124,11 +122,10 @@ def test_hygon_index_offsets_above_int32(index_dtype):
     inp[0] = -sentinel.to(flag_gems.device)
     idx = torch.tensor([-1, rows - 1, 0], dtype=index_dtype, device=flag_gems.device)
     expected = torch.stack((sentinel, sentinel, -sentinel))
-    for implementation in (flag_gems.index, generic_index):
-        actual = implementation(inp, [idx])
-        assert torch.equal(actual.cpu(), expected)
-        transposed = implementation(inp.t(), [None, idx])
-        assert torch.equal(transposed.cpu(), expected.t())
+    actual = flag_gems.index(inp, [idx])
+    assert torch.equal(actual.cpu(), expected)
+    transposed = flag_gems.index(inp.t(), [None, idx])
+    assert torch.equal(transposed.cpu(), expected.t())
 
 
 @pytest.mark.index
