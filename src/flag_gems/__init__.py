@@ -1231,6 +1231,7 @@ _FULL_CONFIG = (
     ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
+    ("convolution_overrideable_backward", convolution_overrideable_backward),
     (
         "copy_",
         copy_,
