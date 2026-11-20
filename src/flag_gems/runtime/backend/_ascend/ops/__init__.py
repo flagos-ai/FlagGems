@@ -130,6 +130,7 @@ from .foreach_ceil import foreach_ceil
 from .foreach_copy import foreach_copy
 from .foreach_copy_ import foreach_copy_
 from .foreach_cos_ import foreach_cos_
+from .foreach_cosh_ import foreach_cosh_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -476,6 +477,7 @@ __all__ = [
     "foreach_copy",
     "foreach_copy_",
     "foreach_cos_",
+    "foreach_cosh_",
     "frac",
     "frac_",
     "full",
