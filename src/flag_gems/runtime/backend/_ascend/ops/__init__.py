@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._adaptive_avg_pool3d_backward import (
+    _adaptive_avg_pool3d_backward,
+    adaptive_avg_pool3d_backward_grad_input,
+)
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .absolute_ import absolute_
 from .acos_ import acos_
 from .acosh import acosh
@@ -70,6 +75,9 @@ from .clip_ import clip_
 from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
+from .conv_tbc import conv_tbc, conv_tbc_out
+from .convolution_backward import convolution_backward, convolution_backward_out
+from .copy import copy, copy_
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
@@ -87,6 +95,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diff import diff
 from .dist import dist
+from .divide import divide
 from .dot import dot
 from .dropout_ import dropout_
 from .embedding import embedding
@@ -116,6 +125,7 @@ from .full_like import full_like
 from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
@@ -208,7 +218,7 @@ from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -227,7 +237,7 @@ from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .permute_copy import permute_copy
 from .polar import polar
-from .polygamma import polygamma_
+from .polygamma import polygamma, polygamma_, polygamma_out
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -246,7 +256,7 @@ from .replication_pad2d_backward import (
 )
 from .resize import resize
 from .resolve_neg import resolve_neg
-from .rms_norm import rms_norm
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
@@ -276,6 +286,7 @@ from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .subtract import subtract
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
@@ -284,6 +295,13 @@ from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
+from .true_divide import (
+    true_divide,
+    true_divide_,
+    true_divide_out,
+    true_divide_tensor,
+    true_divide_tensor_,
+)
 from .unbind_copy import unbind_copy
 from .uniform import uniform
 from .unique import _unique2
@@ -312,15 +330,17 @@ from .xlogy_out import xlogy_out
 from .xlogy_tensor_scalar import xlogy_tensor_scalar
 from .xlogy_tensor_scalar_out import xlogy_tensor_scalar_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_adaptive_avg_pool3d_backward",
     "_dyn_quant_matmul_4bit",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_scaled_dot_product_flash_attention",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -330,6 +350,7 @@ __all__ = [
     "acosh",
     "acosh_",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
@@ -382,6 +403,12 @@ __all__ = [
     "column_stack_out",
     "concat",
     "concatenate",
+    "conv_tbc",
+    "conv_tbc_out",
+    "convolution_backward",
+    "convolution_backward_out",
+    "copy",
+    "copy_",
     "cosh_",
     "cosine_embedding_loss",
     "count_nonzero",
@@ -399,6 +426,7 @@ __all__ = [
     "diagonal_backward",
     "diff",
     "dist",
+    "divide",
     "dot",
     "dropout_",
     "embedding",
@@ -432,6 +460,9 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "gelu",
+    "gelu_",
+    "gelu_backward",
     "geometric",
     "geometric_",
     "greater_",
@@ -552,6 +583,7 @@ __all__ = [
     "mm_w8a8_int8_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
@@ -577,7 +609,9 @@ __all__ = [
     "pairwise_distance",
     "permute_copy",
     "polar",
+    "polygamma",
     "polygamma_",
+    "polygamma_out",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
@@ -593,6 +627,8 @@ __all__ = [
     "resize",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "rms_norm_w8a16_int8",
     "rnn_tanh",
     "rnn_tanh_data",
@@ -635,6 +671,10 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "subtract",
+    "sum",
+    "sum_dim",
+    "sum_dim_out",
+    "sum_out",
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",
@@ -645,6 +685,11 @@ __all__ = [
     "triangular_solve",
     "triangular_solve_out",
     "triu",
+    "true_divide",
+    "true_divide_",
+    "true_divide_out",
+    "true_divide_tensor",
+    "true_divide_tensor_",
     "unbind_copy",
     "uniform",
     "unique_dim",
@@ -670,6 +715,7 @@ __all__ = [
     "xlogy_tensor_scalar",
     "xlogy_tensor_scalar_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]

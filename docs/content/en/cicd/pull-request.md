@@ -44,47 +44,63 @@ labels are always in place before label-gated jobs decide whether to run.
 
 ## 2. `rule-check.yaml` — static rule checks
 
-**Trigger:** `pull_request` on `opened`, `reopened`, `synchronize`.
+**Trigger:** `pull_request` on `opened`, `reopened`, `synchronize`; also
+`push` to `master`.
 
-Runs a set of lightweight Python scripts (under `tools/ci_checks/`) against
-the operators changed in the PR, derived by diffing `conf/operators.yaml`
-and related source files between the PR base and head:
+A single job, `rule-check-required`, runs on `ubuntu-latest` (15-minute
+timeout) and executes the steps below in order. It uses a plain
+`actions/checkout` with full history, because the changed-operator step diffs
+the PR base against its head.
 
-| Job | Enforces |
-|---|---|
-| `derive-changed-operators` | Computes the operator/file diff used by all jobs below |
-| `check-operators-yaml` | New/changed operators are registered correctly in `conf/operators.yaml` |
-| `check-init-exports` | Operators exported in `__init__.py` are registered and vice versa |
-| `check-kernelgen-tests` | Test files don't call `use_gems()` (bypasses reference comparison) |
-| `check-operator-markers` | Each operator has a test file and a matching `@pytest.mark.<id>` |
-| `check-aten-operators` | `for:` entries in `operators.yaml` match valid ATen operator names |
-| `check-api-logs` | *(warning-only, always exits 0)* operators follow the API logging convention |
-| `check-benchmark-coverage` | *(warning-only, always exits 0)* changed operators have a benchmark file |
+First it runs `pre-commit`, the same hooks contributors run locally via
+`pre-commit install`. On a PR only the files the PR changed are linted
+(`--from-ref`/`--to-ref`); on a push to `master` the whole tree is linted. A
+hook failure fails the job immediately.
 
-Most jobs are gated with `if: needs.derive-changed-operators.outputs.has_changes
-== 'true'` and are **skipped** for PRs that don't touch operator-related
-files (e.g. a docs-only or CI-only PR).
+On pull requests it then runs lightweight Python scripts from
+`tools/ci_checks/`. `derive_changed_operators.py` maps the files changed
+between the PR base and head to operator IDs using `conf/operators.yaml` and
+`conf/deprecated_operators.yaml`, and the operator-scoped steps only run when
+it finds changes:
 
-A `rule-check-required` job aggregates the results of all jobs above and
-always runs (`if: always()`), treating skipped upstream jobs as passing.
-Branch protection should require this aggregate job rather than the
-individual jobs — requiring a job that gets skipped on some PRs leaves the
-check permanently pending and blocks merges.
+| Step | Runs when | Enforces |
+|---|---|---|
+| `check-operators-yaml` | operators changed | New/changed operators are registered correctly in `conf/operators.yaml` |
+| `check-init-exports` | every PR | Operators exported in `__init__.py` are registered and vice versa |
+| `check-backend-imports` | every PR | Vendor backend code still imports names that exist in shared code (`utils/`, `runtime/`, `ops/`), so a rename can't break a vendor whose own CI never runs |
+| `check-kernelgen-tests` | operators changed | Test files don't call `use_gems()` (bypasses reference comparison) |
+| `check-operator-markers` | operators changed | Each operator has a test file and a matching `@pytest.mark.<id>` |
+| `check-aten-operators` | operators changed | `for:` entries in `operators.yaml` match valid ATen operator names |
+| `check-no-torch-fallback` | every PR | Lines added by the PR in operator code don't call PyTorch compute APIs (see below) |
+| `check-api-logs` | operators changed | *(warning-only)* operators follow the API logging convention |
+| `check-benchmark-coverage` | operators changed | *(warning-only)* changed operators have a benchmark file |
+
+The blocking checks above (all except the last two) run with
+`continue-on-error`, so one failure doesn't hide the others. A final
+`Verify required checks passed` step then fails the job if any of them failed.
+The two warning-only scripts always exit 0 and emit `::warning` annotations
+instead.
+
+`check-no-torch-fallback` checks only the lines a PR adds under `ops/`,
+`fused/`, `experimental_ops/` and the vendor `ops/`, `fused/`, `fla/`
+directories, so existing violations are not reported. It flags calls to
+`torch.<op>()`, `torch.nn.functional.*` and `torch.ops.aten.*`. Allocation and
+metadata helpers (`torch.empty`, `torch.zeros`, `torch.cuda.*`, ...) are
+allowed. Append `# allow-torch-compute` to a line to exempt it; reviewers
+should question every use. The same check runs locally as a `pre-commit` hook
+that compares the working tree with `HEAD`; in CI that comparison is empty, so
+the dedicated step above is what enforces it.
+
+Steps that don't apply to a PR are skipped, not failed, and the job itself
+always exists. Branch protection can therefore require
+`rule-check / rule-check-required` directly.
 
 `ci-report-feishu.yaml` listens for `rule-check` completion (`workflow_run`)
 and posts a summary to a Feishu Bitable, including for PRs from forks (since
 `workflow_run` also executes in the base repo context with access to
 secrets).
 
-## 3. `linter.yml` — code style
-
-**Trigger:** `pull_request` on `opened`, `edited`, `reopened`, `synchronize`;
-also `push` to `master`.
-
-Runs `pre-commit` (the same hooks contributors run locally via
-`pre-commit install`) to check Python formatting and basic style rules.
-
-## 4. `unittest.yaml` — operator and backend tests
+## 3. `unittest.yaml` — operator and backend tests
 
 **Trigger:** `pull_request` on `opened`, `synchronize`, `reopened`,
 `labeled`, `unlabeled`; also `push` to `master` and manual
@@ -112,14 +128,17 @@ The `python-op` job is the gatekeeper for generic operator correctness and basel
 - **Hardware Runner**: Deployed on a dedicated self-hosted runner (`runs-on: jiuding`) equipped with **NVIDIA A100-40G** GPUs.
 - **Compiler Stack**: The environment installs and uses the **official upstream Triton compiler rather than the FlagTree compiler**. This guarantees that all generic baseline implementations in `src/flag_gems/ops`, `src/flag_gems/fused`, and `src/flag_gems/experimental_ops` adhere strictly to standard community Triton semantics and maintain guaranteed compatibility with NVIDIA Ampere architecture.
 
-`backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR,
-runs the vendor's GPU-availability check, sets up the environment via the
-`setup-flaggems` composite action, then runs `tools/test-op.sh` (or an
+`backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR
+with `checkout-retry`, runs the vendor's GPU-availability check, installs
+FlagGems (with `flagos-ai/FlagOps`'s `setup-project` action on native runners,
+or a vendor-specific install step in the containerized jobs), then runs `tools/test-op.sh` (or an
 alternate `test_script` for `alpha-ops`) scoped to the PR's changed files.
 
-Five vendors (Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin) only have their
-driver/runtime available inside a vendor container, so those jobs run inside
-that container. The container image, `docker run` options, volume mounts, and
+Seven vendors (Enflame, Hygon, Iluvatar, Kunlunxin, MetaX, MooreThreads,
+T-Head) only have their driver/runtime available inside a vendor container, so
+each has its own `test-<vendor>` job that runs inside that container. Those
+jobs install FlagGems on top of the image's existing dependencies instead of
+running `setup.sh`, which would rebuild a venv and reinstall torch. The container image, `docker run` options, volume mounts, and
 runner labels all come from the `container` block of each backend's entry in
 `.github/backends.json`: `unittest.yaml` reads them into the test matrix and
 passes them through to `backend-test.yaml` as `workflow_call` inputs. This
@@ -133,7 +152,7 @@ Because these jobs are skipped when the corresponding label is absent, a
 protection can require a single, always-present check instead of the
 individual label-gated jobs.
 
-## 5. On-demand and comment-triggered workflows
+## 4. On-demand and comment-triggered workflows
 
 These respond to `issue_comment` events on a PR, so anyone with write access
 can trigger them by commenting:
@@ -147,18 +166,21 @@ can trigger them by commenting:
   pushes the fix if anything changed, and comments the outcome.
 
 `command.yaml` has one generic job plus one job per containerized vendor
-(Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin). Because the workflow is
+(Enflame, Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin, T-Head). Because the workflow is
 triggered by `issue_comment` rather than `pull_request`, the default checkout
 doesn't land on the PR branch, so each job checks it out explicitly via the
-`gh pr checkout` in the `checkout-pr` composite action. The per-vendor jobs
+`gh pr checkout` in the `checkout-pr` action. The per-vendor jobs
 resolve their container image, options, and runner labels from the same
 `container` block in `.github/backends.json` (looked up in `preprocess`), so
 the container configuration is not duplicated between `command.yaml` and
-`backend-test.yaml`. The shared step logic lives in composite actions under
-`.github/actions/`:
+`backend-test.yaml`. Most jobs use the shared actions from
+`flagos-ai/FlagOps` (`checkout-retry`, `checkout-pr`, `setup-project`,
+`run-ondemand-test`). Only the Enflame job uses this repository's own
+composite actions under `.github/actions/`:
 
 | Composite action | Used for |
 |---|---|
+| `checkout-retry` | Check out the repository with up to 3 attempts, sleeping 30s between failures |
 | `checkout-pr` | Install the `gh` CLI if missing (picking the binary matching the runner's CPU arch), then `gh pr checkout` the PR branch |
 | `setup-flaggems` | Run `setup.sh` for the backend and the GPU-availability check |
 | `ondemand-test` | Run the single-operator accuracy/perf comparison, upload the result artifact, and post the PR comment |
@@ -170,8 +192,7 @@ prefer the aggregate/gate jobs over individual sub-jobs wherever a workflow
 has conditional (`if:`) or label-gated jobs:
 
 - `rule-check / rule-check-required`
-- `unittest / unittest-required`
-- `linter / code-style` (not gated, safe to require directly)
+- `unit-test / unittest-required`
 
 Requiring a job that GitHub Actions may legitimately skip for some PRs
 leaves that check in a permanent "Expected" state and blocks auto-merge

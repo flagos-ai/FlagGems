@@ -170,3 +170,32 @@ def test__indices_copy_out():
 
     assert res_ret is res_out
     utils.gems_assert_equal(res_out, res_inp._indices())
+
+
+@pytest.mark.underscore_indices_copy_out
+def test__indices_copy_out_noncontiguous_out():
+    res_inp = _make_coo(2, 16, (8, 8), flag_gems.device, seed=5)
+    out_base = torch.full((2, 32), -1, dtype=torch.int64, device=flag_gems.device)
+    out = out_base[:, ::2]
+    assert not out.is_contiguous()
+    expected = torch.full_like(out_base, -1)
+    expected[:, ::2] = res_inp._indices()
+    if utils.TO_CPU:
+        expected = expected.cpu()
+
+    res_ret = flag_gems._indices_copy_out(res_inp, out=out)
+
+    assert res_ret is out
+    utils.gems_assert_equal(out_base, expected)
+
+
+@pytest.mark.underscore_indices_copy
+def test__indices_copy_noncoo_layout_raises_not_implemented():
+    inp = torch.randn(4, 4, device=flag_gems.device)
+    with pytest.raises(NotImplementedError):
+        torch.ops.aten._indices_copy(utils.to_reference(inp))
+    with pytest.raises(NotImplementedError):
+        flag_gems._indices_copy(inp)
+    out = torch.empty((2, 0), dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(NotImplementedError):
+        flag_gems._indices_copy_out(inp, out=out)

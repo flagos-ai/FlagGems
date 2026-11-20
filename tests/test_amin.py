@@ -35,32 +35,33 @@ KEEPDIM_DIMS_SHAPE = (
 
 @pytest.mark.amin
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", FLOAT_DTYPES + utils.SMALL_INT_DTYPES + utils.ALL_INT_DTYPES
+)
 def test_amin(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = utils.make_reduction_input(shape, dtype)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
-    # Direct GEMS call: the dispatcher lifts an int dim to IntList, so normalise
-    # it here to match amin's own contract.
-    dims = dim if isinstance(dim, (list, tuple)) else [dim]
-    res_out = flag_gems.amin(inp, dim=dims, keepdim=keepdim)
+    # amin normalises an int dim to a list the same way the dispatcher lifts an
+    # int dim to IntList, so both call forms are exercised here.
+    res_out = flag_gems.amin(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.amin_
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", FLOAT_DTYPES + utils.SMALL_INT_DTYPES + utils.ALL_INT_DTYPES
+)
 def test_amin_(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = utils.make_reduction_input(shape, dtype)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.amin(ref_inp, dim=dim, keepdim=True)
     ref_out = ref_out.expand_as(inp)
-    # Direct GEMS call: the dispatcher lifts an int dim to IntList.
-    dims = dim if isinstance(dim, (list, tuple)) else [dim]
-    res_out = flag_gems.amin_(inp, dim=dims, keepdim=keepdim)
+    res_out = flag_gems.amin_(inp, dim=dim, keepdim=keepdim)
 
     assert res_out is inp
     utils.gems_assert_equal(res_out, ref_out)

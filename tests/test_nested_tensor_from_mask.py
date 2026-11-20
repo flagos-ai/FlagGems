@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame dose not support torch nest tensor completely",
+)
+
+
 # (N, L, D) shapes for the padded dense tensor `t` and the (N, L) mask.
 NESTED_FROM_MASK_SHAPES = [
     (1, 4, 3),

@@ -34,6 +34,7 @@ from .bmm import bmm, bmm_out
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .compute_linear_combination import _compute_linear_combination
+from .conv2d import conv2d
 from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose3d import conv_transpose3d
@@ -48,10 +49,12 @@ from .fused_rms_norm_backward import _fused_rms_norm_backward
 from .gcd_ import gcd, gcd_
 from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .gru import gru
 from .igamma import igamma
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .linalg_cholesky import linalg_cholesky
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -67,6 +70,7 @@ from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .nuclear_norm import nuclear_norm
@@ -134,6 +138,7 @@ __all__ = [
     "bmm_out",
     "bmm_w8a8",
     "cholesky_inverse",
+    "conv2d",
     "conv_tbc_backward",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
@@ -149,11 +154,13 @@ __all__ = [
     "gcd_",
     "greater_",
     "grid_sampler_3d_backward",
+    "grouped_gemm_w8a8",
     "gru",
     "igamma",
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "layer_norm",
     "lcm",
     "lcm_",
     "linalg_cholesky",
@@ -178,6 +185,11 @@ __all__ = [
     "mul_",
     "mv",
     "mvlgamma",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
+    "native_layer_norm",
     "nll_loss_backward",
     "nonzero_numpy",
     "nuclear_norm",

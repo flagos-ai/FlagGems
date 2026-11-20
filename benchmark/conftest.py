@@ -134,6 +134,37 @@ class BenchConfig:
         self.skip_native = False
         self.native_baseline_skip_reason = None
         self.base_data = None
+        # Model profiling YAML loaded from --model-profile; None means disabled.
+        # When set, each op's profiling.prefill/decode metadata is attached to
+        # BenchmarkMetrics.time_share so it appears as an extra column.
+        self.model_profile = None
+
+
+def _load_model_profile(path):
+    """Load a model-profiling shapes YAML for the optional 'Time Share' column.
+
+    Returns a dict  {op_name: {"prefill": {...}, "decode": {...}}}  extracted
+    from each op's ``profiling:`` sub-block, or None on error.  Never raises.
+    """
+    if not path:
+        return None
+    try:
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            print(f"[model-profile] {path} 不是有效的 mapping，'Time Share' 列关闭。")
+            return None
+        result = {}
+        for op_name, entry in data.items():
+            if not isinstance(entry, dict):
+                continue
+            profiling = entry.get("profiling")
+            if isinstance(profiling, dict):
+                result[op_name] = profiling
+        return result or None
+    except Exception as e:
+        print(f"[model-profile] 加载失败 {path}: {e}；'Time Share' 列关闭。")
+        return None
 
 
 def _get_native_baseline_skip_reason(marker, current_vendor):
@@ -353,6 +384,22 @@ def pytest_addoption(parser):
         ),
     )
 
+    parser.addoption(
+        "--model-profile",
+        action="store",
+        default=None,
+        required=False,
+        help=(
+            "Path to a model-profiling shapes YAML "
+            "(e.g. benchmark/models_shapes/285B.yaml). "
+            "When provided: (1) --shape_file is overridden with this path, "
+            "so only shapes defined in the YAML are benchmarked; "
+            "(2) each op's profiling.prefill/decode metadata (pct, calls) "
+            "is loaded and shown as a 'Time Share' column. "
+            "Ops not present in the YAML are silently skipped."
+        ),
+    )
+
     try:
         parser.addoption(
             "--collect-marks",
@@ -361,6 +408,17 @@ def pytest_addoption(parser):
         )
     except ValueError:
         pass
+
+    parser.addoption(
+        "--kernel-check",
+        action="store_true",
+        default=False,
+        help=(
+            "Profile the torch baseline for each operator case and verify "
+            "that at least one device kernel is launched. Operators that do "
+            "not invoke any device kernel are reported at session end."
+        ),
+    )
 
     # Add dynamic operator override options
     add_override_arguments(parser)
@@ -431,6 +489,20 @@ def pytest_configure(config):
 
     Config.profile_hook = config.hook.pytest_flaggems_profile_scope
 
+    Config.kernel_check = config.getoption("--kernel-check")
+    Config.kernel_check_records = []
+    if Config.kernel_check and (
+        Config.preflight_only
+        or Config.profile_only
+        or Config.reference_only
+        or Config.list_cases
+        or Config.query
+    ):
+        raise pytest.UsageError(
+            "--kernel-check cannot be combined with --preflight-only, "
+            "--profile-only, --reference-only, --list-cases or --query."
+        )
+
     level_value = config.getoption("--level")
     if level_value is None:
         level_value = "core" if Config.reference_only else "comprehensive"
@@ -452,6 +524,19 @@ def pytest_configure(config):
     shape_file_str = config.getoption("--shape_file")
     Config.shape_file = shape_file_str
     Config.base_data = BaselineData.load(config.getoption("--base-data"))
+
+    # --model-profile: load profiling YAML and force --shape_file to it so
+    # only the ops/shapes defined there are benchmarked.
+    model_profile_path = config.getoption("--model-profile")
+    if model_profile_path:
+        loaded = _load_model_profile(model_profile_path)
+        if loaded is not None:
+            Config.model_profile = loaded
+            Config.shape_file = model_profile_path
+            print(
+                f"[model-profile] 已加载 {model_profile_path}："
+                f"{len(loaded)} 个算子；--shape_file 已覆盖为该文件。"
+            )
 
     Config.record_log = config.getoption("--record") == "log"
     Config.record_json = config.getoption("--record") == "json"
@@ -757,6 +842,33 @@ def pytest_sessionfinish(session, exitstatus):
             record["status"] != "passed" for record in Config.preflight_records
         )
         if incomplete and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if Config is not None and getattr(Config, "kernel_check", False):
+        # Per-operator check: every operator must have at least one record
+        # where invoked_kernel is True.  This prevents a kernel-launching
+        # operator in the same file from masking a no-kernel operator.
+        from collections import defaultdict
+
+        by_operator = defaultdict(list)
+        for record in Config.kernel_check_records:
+            by_operator[record.get("operator", "<unknown>")].append(record)
+
+        no_kernel_ops = sorted(
+            op
+            for op, records in by_operator.items()
+            if not any(r.get("invoked_kernel") for r in records)
+        )
+        if no_kernel_ops and session.exitstatus == pytest.ExitCode.OK:
+            import sys
+
+            print(
+                f"\n⚠️  kernel-check FAILED — operators with no device kernel: "
+                f"{', '.join(no_kernel_ops)}",
+                file=sys.stderr,
+            )
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        # Also fail when there are no records at all (nothing was checked).
+        if not Config.kernel_check_records and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is None or Config.case_ids is None:
         return

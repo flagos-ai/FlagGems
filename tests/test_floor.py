@@ -59,3 +59,18 @@ def test_floor_out(shape, dtype):
     flag_gems.floor_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)
+
+
+@pytest.mark.floor
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_floor_byte(shape, dtype):
+    # floor on integers is the identity and keeps the input dtype.
+    inp = torch.randint(0, 8, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.floor(ref_inp)
+    res_out = flag_gems.floor(inp)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out, ref_out)

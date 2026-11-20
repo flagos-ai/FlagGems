@@ -69,92 +69,113 @@ fork 的 PR，它也有权限写入标签。该工作流会：
 <!--
 ## 2. `rule-check.yaml` — static rule checks
 
-**Trigger:** `pull_request` on `opened`, `reopened`, `synchronize`.
+**Trigger:** `pull_request` on `opened`, `reopened`, `synchronize`; also
+`push` to `master`.
 
-Runs a set of lightweight Python scripts (under `tools/ci_checks/`) against
-the operators changed in the PR, derived by diffing `conf/operators.yaml`
-and related source files between the PR base and head:
--->
-## 2. `rule-check.yaml` — 静态规则检查
+A single job, `rule-check-required`, runs on `ubuntu-latest` (15-minute
+timeout) and executes the steps below in order. It uses a plain
+`actions/checkout` with full history, because the changed-operator step diffs
+the PR base against its head.
 
-**触发条件：** `pull_request` 事件，类型为 `opened`、`reopened`、`synchronize`。
+First it runs `pre-commit`, the same hooks contributors run locally via
+`pre-commit install`. On a PR only the files the PR changed are linted
+(`--from-ref`/`--to-ref`); on a push to `master` the whole tree is linted. A
+hook failure fails the job immediately.
 
-针对 PR 中变更的算子（通过对比 PR 基线与头部提交中 `conf/operators.yaml`
-及相关源码文件的差异得出），运行一系列轻量级 Python 脚本（位于
-`tools/ci_checks/` 目录下）：
+On pull requests it then runs lightweight Python scripts from
+`tools/ci_checks/`. `derive_changed_operators.py` maps the files changed
+between the PR base and head to operator IDs using `conf/operators.yaml` and
+`conf/deprecated_operators.yaml`, and the operator-scoped steps only run when
+it finds changes:
 
-<!--
-| Job | Enforces |
-|---|---|
-| `derive-changed-operators` | Computes the operator/file diff used by all jobs below |
-| `check-operators-yaml` | New/changed operators are registered correctly in `conf/operators.yaml` |
-| `check-init-exports` | Operators exported in `__init__.py` are registered and vice versa |
-| `check-kernelgen-tests` | Test files don't call `use_gems()` (bypasses reference comparison) |
-| `check-operator-markers` | Each operator has a test file and a matching `@pytest.mark.<id>` |
-| `check-aten-operators` | `for:` entries in `operators.yaml` match valid ATen operator names |
-| `check-api-logs` | *(warning-only, always exits 0)* operators follow the API logging convention |
-| `check-benchmark-coverage` | *(warning-only, always exits 0)* changed operators have a benchmark file |
--->
-| 作业 | 检查内容 |
-|---|---|
-| `derive-changed-operators` | 计算变更的算子/文件列表，供以下所有作业使用 |
-| `check-operators-yaml` | 新增/变更的算子是否在 `conf/operators.yaml` 中正确注册 |
-| `check-init-exports` | `__init__.py` 中导出的算子是否已注册，以及反向的一致性检查 |
-| `check-kernelgen-tests` | 测试文件是否调用了 `use_gems()`（会绕过与参考实现的比较） |
-| `check-operator-markers` | 每个算子是否都有对应的测试文件和匹配的 `@pytest.mark.<id>` 标记 |
-| `check-aten-operators` | `operators.yaml` 中的 `for:` 字段是否为合法的 ATen 算子名称 |
-| `check-api-logs` | （仅警告，始终以状态码 0 退出）算子是否遵循 API 日志规范 |
-| `check-benchmark-coverage` | （仅警告，始终以状态码 0 退出）变更的算子是否有对应的性能测试文件 |
+| Step | Runs when | Enforces |
+|---|---|---|
+| `check-operators-yaml` | operators changed | New/changed operators are registered correctly in `conf/operators.yaml` |
+| `check-init-exports` | every PR | Operators exported in `__init__.py` are registered and vice versa |
+| `check-backend-imports` | every PR | Vendor backend code still imports names that exist in shared code (`utils/`, `runtime/`, `ops/`), so a rename can't break a vendor whose own CI never runs |
+| `check-kernelgen-tests` | operators changed | Test files don't call `use_gems()` (bypasses reference comparison) |
+| `check-operator-markers` | operators changed | Each operator has a test file and a matching `@pytest.mark.<id>` |
+| `check-aten-operators` | operators changed | `for:` entries in `operators.yaml` match valid ATen operator names |
+| `check-no-torch-fallback` | every PR | Lines added by the PR in operator code don't call PyTorch compute APIs (see below) |
+| `check-api-logs` | operators changed | *(warning-only)* operators follow the API logging convention |
+| `check-benchmark-coverage` | operators changed | *(warning-only)* changed operators have a benchmark file |
 
-<!--
-Most jobs are gated with `if: needs.derive-changed-operators.outputs.has_changes
-== 'true'` and are **skipped** for PRs that don't touch operator-related
-files (e.g. a docs-only or CI-only PR).
+The blocking checks above (all except the last two) run with
+`continue-on-error`, so one failure doesn't hide the others. A final
+`Verify required checks passed` step then fails the job if any of them failed.
+The two warning-only scripts always exit 0 and emit `::warning` annotations
+instead.
 
-A `rule-check-required` job aggregates the results of all jobs above and
-always runs (`if: always()`), treating skipped upstream jobs as passing.
-Branch protection should require this aggregate job rather than the
-individual jobs — requiring a job that gets skipped on some PRs leaves the
-check permanently pending and blocks merges.
--->
-上述大部分作业都通过 `if: needs.derive-changed-operators.outputs.has_changes
-== 'true'` 进行门控，对于不涉及算子相关文件改动的 PR（例如纯文档或纯 CI
-脚本改动），这些作业会被**跳过**。
+`check-no-torch-fallback` checks only the lines a PR adds under `ops/`,
+`fused/`, `experimental_ops/` and the vendor `ops/`, `fused/`, `fla/`
+directories, so existing violations are not reported. It flags calls to
+`torch.<op>()`, `torch.nn.functional.*` and `torch.ops.aten.*`. Allocation and
+metadata helpers (`torch.empty`, `torch.zeros`, `torch.cuda.*`, ...) are
+allowed. Append `# allow-torch-compute` to a line to exempt it; reviewers
+should question every use. The same check runs locally as a `pre-commit` hook
+that compares the working tree with `HEAD`; in CI that comparison is empty, so
+the dedicated step above is what enforces it.
 
-`rule-check-required` 作业会汇总以上所有作业的结果，并始终运行
-（`if: always()`），将被跳过的上游作业视为通过。分支保护规则应当要求这个
-汇总作业，而不是逐个要求单独的子作业 —— 如果某个检查在部分 PR 上会被跳过，
-将其设为 required 会导致该检查永久停留在 pending 状态，从而阻塞合并。
+Steps that don't apply to a PR are skipped, not failed, and the job itself
+always exists. Branch protection can therefore require
+`rule-check / rule-check-required` directly.
 
-<!--
 `ci-report-feishu.yaml` listens for `rule-check` completion (`workflow_run`)
 and posts a summary to a Feishu Bitable, including for PRs from forks (since
 `workflow_run` also executes in the base repo context with access to
 secrets).
 -->
+## 2. `rule-check.yaml` — 静态规则检查
+
+**触发条件：** `pull_request` 事件，类型为 `opened`、`reopened`、`synchronize`；
+此外推送到 `master` 分支时也会触发。
+
+单个作业 `rule-check-required` 在 `ubuntu-latest` 上运行（超时 15 分钟），
+按顺序执行下列步骤。它使用带完整历史的普通 `actions/checkout`，因为“变更算子”
+步骤需要对比 PR 基线与头部提交。
+
+首先运行 `pre-commit`，即贡献者通过 `pre-commit install` 在本地执行的同一组钩子。
+PR 上只检查该 PR 改动的文件（`--from-ref`/`--to-ref`）；推送到 `master` 时检查
+整个代码树。钩子失败会让作业立即失败。
+
+在 PR 上，随后运行 `tools/ci_checks/` 下的轻量级 Python 脚本。
+`derive_changed_operators.py` 依据 `conf/operators.yaml` 和
+`conf/deprecated_operators.yaml`，把 PR 基线与头部提交之间变更的文件映射为算子
+ID；与算子相关的步骤只有在检测到变更时才会运行：
+
+| 步骤 | 运行时机 | 检查内容 |
+|---|---|---|
+| `check-operators-yaml` | 有算子变更 | 新增/变更的算子是否在 `conf/operators.yaml` 中正确注册 |
+| `check-init-exports` | 每个 PR | `__init__.py` 中导出的算子是否已注册，以及反向的一致性检查 |
+| `check-backend-imports` | 每个 PR | 厂商后端代码引用的名称在共享代码（`utils/`、`runtime/`、`ops/`）中仍然存在，避免重命名破坏自身 CI 不会运行的厂商后端 |
+| `check-kernelgen-tests` | 有算子变更 | 测试文件是否调用了 `use_gems()`（会绕过与参考实现的比较） |
+| `check-operator-markers` | 有算子变更 | 每个算子是否都有对应的测试文件和匹配的 `@pytest.mark.<id>` 标记 |
+| `check-aten-operators` | 有算子变更 | `operators.yaml` 中的 `for:` 字段是否为合法的 ATen 算子名称 |
+| `check-no-torch-fallback` | 每个 PR | PR 在算子代码中新增的行不得调用 PyTorch 计算接口（详见下文） |
+| `check-api-logs` | 有算子变更 | （仅警告）算子是否遵循 API 日志规范 |
+| `check-benchmark-coverage` | 有算子变更 | （仅警告）变更的算子是否有对应的性能测试文件 |
+
+上述阻塞型检查（除最后两项外）都以 `continue-on-error` 运行，因此一项失败不会
+掩盖其他项。随后由最后的 `Verify required checks passed` 步骤在其中任何一项
+失败时让作业失败。两个仅警告的脚本始终以状态码 0 退出，只输出 `::warning` 注解。
+
+`check-no-torch-fallback` 只检查 PR 在 `ops/`、`fused/`、`experimental_ops/`
+以及各厂商后端 `ops/`、`fused/`、`fla/` 目录中新增的行，存量违规不会被报告。
+它会拦截 `torch.<op>()`、`torch.nn.functional.*` 和 `torch.ops.aten.*` 调用；
+`torch.empty`、`torch.zeros`、`torch.cuda.*` 等内存分配和元数据接口允许使用。
+在行末添加 `# allow-torch-compute` 可豁免该行，评审时应对每处豁免提出质疑。
+本地可通过 `pre-commit` 钩子运行同一检查，它将工作区与 `HEAD` 比较；在 CI 中该
+比较结果为空，真正起拦截作用的是上面的独立步骤。
+
+不适用于某个 PR 的步骤会被跳过而不是失败，且该作业本身始终存在，因此分支保护
+规则可以直接要求 `rule-check / rule-check-required`。
+
 `ci-report-feishu.yaml` 会监听 `rule-check` 的完成事件（`workflow_run`），
 将结果汇总上报到飞书多维表格（Bitable），即使 PR 来自 fork 仓库也能正常上报
 （因为 `workflow_run` 同样运行在基础仓库上下文中，具备访问 secrets 的权限）。
 
 <!--
-## 3. `linter.yml` — code style
-
-**Trigger:** `pull_request` on `opened`, `edited`, `reopened`, `synchronize`;
-also `push` to `master`.
-
-Runs `pre-commit` (the same hooks contributors run locally via
-`pre-commit install`) to check Python formatting and basic style rules.
--->
-## 3. `linter.yml` — 代码风格检查
-
-**触发条件：** `pull_request` 事件，类型为 `opened`、`edited`、`reopened`、
-`synchronize`；此外推送到 `master` 分支时也会触发。
-
-运行 `pre-commit`（与贡献者通过 `pre-commit install` 在本地执行的钩子相同），
-检查 Python 代码格式和基本风格规范。
-
-<!--
-## 4. `unittest.yaml` — operator and backend tests
+## 3. `unittest.yaml` — operator and backend tests
 
 **Trigger:** `pull_request` on `opened`, `synchronize`, `reopened`,
 `labeled`, `unlabeled`; also `push` to `master` and manual
@@ -167,7 +188,7 @@ filtered to backends whose `vendor/*` label is present on the PR). All
 other jobs are **label-gated** — a job only runs if the PR carries the
 matching label:
 -->
-## 4. `unittest.yaml` — 算子与后端测试
+## 3. `unittest.yaml` — 算子与后端测试
 
 **触发条件：** `pull_request` 事件，类型为 `opened`、`synchronize`、
 `reopened`、`labeled`、`unlabeled`；此外推送到 `master` 分支和手动触发
@@ -204,14 +225,17 @@ matching label:
 - **编译器选型**：在 `python-op` 测试环境中，**默认安装并使用的是官方上游原生 Triton 编译器，而非 FlagTree 编译器**。这一策略用于严格检验所有公版算子实现（位于 `src/flag_gems/ops`、`src/flag_gems/fused` 以及 `src/flag_gems/experimental_ops`）与官方社区 Triton 语义及 NVIDIA Ampere 架构的基线兼容性，防止依赖特定编译器衍生分支的代码合入公版目录。
 
 <!--
-`backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR,
-runs the vendor's GPU-availability check, sets up the environment via the
-`setup-flaggems` composite action, then runs `tools/test-op.sh` (or an
+`backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR
+with `checkout-retry`, runs the vendor's GPU-availability check, installs
+FlagGems (with `flagos-ai/FlagOps`'s `setup-project` action on native runners,
+or a vendor-specific install step in the containerized jobs), then runs `tools/test-op.sh` (or an
 alternate `test_script` for `alpha-ops`) scoped to the PR's changed files.
 
-Five vendors (Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin) only have their
-driver/runtime available inside a vendor container, so those jobs run inside
-that container. The container image, `docker run` options, volume mounts, and
+Seven vendors (Enflame, Hygon, Iluvatar, Kunlunxin, MetaX, MooreThreads,
+T-Head) only have their driver/runtime available inside a vendor container, so
+each has its own `test-<vendor>` job that runs inside that container. Those
+jobs install FlagGems on top of the image's existing dependencies instead of
+running `setup.sh`, which would rebuild a venv and reinstall torch. The container image, `docker run` options, volume mounts, and
 runner labels all come from the `container` block of each backend's entry in
 `.github/backends.json`: `unittest.yaml` reads them into the test matrix and
 passes them through to `backend-test.yaml` as `workflow_call` inputs. This
@@ -230,22 +254,26 @@ The `python-op` and `examples` jobs in `unittest.yaml`, plus the jobs in
 `actions/checkout` with `continue-on-error`, then call `checkout-retry`.
 The composite action makes at most three attempts (one initial attempt and
 two retries, waiting 30s before each retry), so these PR test jobs can make
-up to four checkout attempts in total. `rule-check.yaml` and `linter.yml`
-instead use `robust-checkout` with `rounds: 30` (the action defaults to 3).
-Each round tries SSH when a key is available, then HTTPS, and stops after a
-successful fetch. Each link has a 10s connection probe and a 180s hard fetch
-timeout. HTTP fetch also aborts after 20s below 20 KiB/s; SSH uses keepalives
-every 5s and aborts after two unanswered probes. There is no fixed wait
-between rounds. The 30-round setting counts link-rotation cycles, not checkout
-retries; the four-attempt limit above does not apply to these workflows.
+up to four checkout attempts in total. `rule-check.yaml` does not retry; it
+uses a plain `actions/checkout`. `ci-report-feishu.yaml` instead uses
+`robust-checkout` from `flagos-ai/FlagOps` with `rounds: 5` (the action
+defaults to 3). Each round tries SSH when a key is available, then HTTPS, and
+stops after a successful fetch. Each link has a 10s connection probe and a 180s
+hard fetch timeout. HTTP fetch also aborts after 20s below 20 KiB/s; SSH uses
+keepalives every 5s and aborts after two unanswered probes. There is no fixed wait
+between rounds. The round count counts link-rotation cycles, not checkout
+retries; the four-attempt limit above does not apply to that workflow.
 -->
-`backend-test.yaml`（一个可复用的 `workflow_call` 工作流）会检出 PR 代码、
-运行对应厂商的 GPU 可用性检查、通过 `setup-flaggems` 组合动作搭建环境，
+`backend-test.yaml`（一个可复用的 `workflow_call` 工作流）会通过 `checkout-retry`
+检出 PR 代码、运行对应厂商的 GPU 可用性检查、安装 FlagGems（原生 runner 上使用
+`flagos-ai/FlagOps` 的 `setup-project` 动作，容器化作业中使用各厂商专用的安装步骤），
 然后针对 PR 变更的文件运行 `tools/test-op.sh`（`alpha-ops` 场景下使用
 另一个 `test_script`）。
 
-其中五个厂商（Hygon、MetaX、MooreThreads、Iluvatar、Kunlunxin）的驱动/运行时
-只在厂商容器内可用，因此这些作业需在对应容器中运行。容器镜像、`docker run`
+其中七个厂商（Enflame、Hygon、Iluvatar、Kunlunxin、MetaX、MooreThreads、T-Head）
+的驱动/运行时只在厂商容器内可用，因此每个厂商都有各自的 `test-<vendor>` 作业，
+在对应容器中运行。这些作业在镜像已有依赖的基础上安装 FlagGems，而不是运行
+`setup.sh`（后者会重建 venv 并重新安装 torch）。容器镜像、`docker run`
 选项、卷挂载以及 runner 标签，全部来自 `.github/backends.json` 中各后端条目下的
 `container` 配置块：`unittest.yaml` 将其读入测试矩阵，并作为 `workflow_call`
 入参透传给 `backend-test.yaml`。这样容器配置就保存在单一数据源
@@ -262,16 +290,17 @@ retries; the four-attempt limit above does not apply to these workflows.
 3 次（首次检出加最多 2 次重试，每次重试前等待 30 秒），因此这类 PR 测试
 作业合计最多可尝试检出 4 次。
 
-`rule-check.yaml` 和 `linter.yml` 均将 `robust-checkout` 的 `rounds`
-设为 30（动作默认值为 3）。每轮先尝试 SSH（有密钥时），再尝试 HTTPS；
+`rule-check.yaml` 不做重试，使用普通的 `actions/checkout`。
+`ci-report-feishu.yaml` 则使用 `flagos-ai/FlagOps` 的 `robust-checkout`，并将
+`rounds` 设为 5（动作默认值为 3）。每轮先尝试 SSH（有密钥时），再尝试 HTTPS；
 任一链路成功就结束，密钥为空时跳过 SSH。每条链路的连接探测最多 10 秒，
 fetch 的硬超时为 180 秒。HTTP fetch 若连续 20 秒低于 20 KiB/s 也会中止；
 SSH 每隔 5 秒发送 keepalive，连续 2 次无响应则中止。
-轮次之间没有固定等待。“30 轮”指链路轮转次数，并非重试检出 30 次；
-上述 4 次检出上限不适用于这两个工作流。
+轮次之间没有固定等待。“5 轮”指链路轮转次数，并非重试检出 5 次；
+上述 4 次检出上限不适用于该工作流。
 
 <!--
-## 5. On-demand and comment-triggered workflows
+## 4. On-demand and comment-triggered workflows
 
 These respond to `issue_comment` events on a PR, so anyone with write access
 can trigger them by commenting:
@@ -285,23 +314,26 @@ can trigger them by commenting:
   pushes the fix if anything changed, and comments the outcome.
 
 `command.yaml` has one generic job plus one job per containerized vendor
-(Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin). Because the workflow is
+(Enflame, Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin, T-Head). Because the workflow is
 triggered by `issue_comment` rather than `pull_request`, the default checkout
 doesn't land on the PR branch, so each job checks it out explicitly via the
-`gh pr checkout` in the `checkout-pr` composite action. The per-vendor jobs
+`gh pr checkout` in the `checkout-pr` action. The per-vendor jobs
 resolve their container image, options, and runner labels from the same
 `container` block in `.github/backends.json` (looked up in `preprocess`), so
 the container configuration is not duplicated between `command.yaml` and
-`backend-test.yaml`. The shared step logic lives in composite actions under
-`.github/actions/`:
+`backend-test.yaml`. Most jobs use the shared actions from
+`flagos-ai/FlagOps` (`checkout-retry`, `checkout-pr`, `setup-project`,
+`run-ondemand-test`). Only the Enflame job uses this repository's own
+composite actions under `.github/actions/`:
 
 | Composite action | Used for |
 |---|---|
+| `checkout-retry` | Check out the repository with up to 3 attempts, sleeping 30s between failures |
 | `checkout-pr` | Install the `gh` CLI if missing (picking the binary matching the runner's CPU arch), then `gh pr checkout` the PR branch |
 | `setup-flaggems` | Run `setup.sh` for the backend and the GPU-availability check |
 | `ondemand-test` | Run the single-operator accuracy/perf comparison, upload the result artifact, and post the PR comment |
 -->
-## 5. 按需触发与评论触发的工作流
+## 4. 按需触发与评论触发的工作流
 
 以下工作流响应 PR 下的 `issue_comment` 事件，任何具有写权限的用户都可以
 通过评论触发：
@@ -314,17 +346,19 @@ the container configuration is not duplicated between `command.yaml` and
   `tools/ci_checks/sort_exports.py --fix` 脚本对 PR 分支执行修复，
   如有变更则自动提交并推送，同时评论说明处理结果。
 
-`command.yaml` 包含一个通用作业，外加每个容器化厂商各一个作业（Hygon、MetaX、
-MooreThreads、Iluvatar、Kunlunxin）。由于该工作流由 `issue_comment` 而非
+`command.yaml` 包含一个通用作业，外加每个容器化厂商各一个作业（Enflame、Hygon、MetaX、
+MooreThreads、Iluvatar、Kunlunxin、T-Head）。由于该工作流由 `issue_comment` 而非
 `pull_request` 触发，默认的检出不会落在 PR 分支上，因此每个作业都通过
-`checkout-pr` 组合动作里的 `gh pr checkout` 显式检出 PR 分支。各厂商作业从
+`checkout-pr` 动作里的 `gh pr checkout` 显式检出 PR 分支。各厂商作业从
 `.github/backends.json` 中相同的 `container` 配置块解析容器镜像、选项和 runner
 标签（在 `preprocess` 中查表），因而容器配置不会在 `command.yaml` 和
-`backend-test.yaml` 之间重复。共享的步骤逻辑放在 `.github/actions/` 下的组合
-动作中：
+`backend-test.yaml` 之间重复。大多数作业使用 `flagos-ai/FlagOps` 提供的共享动作
+（`checkout-retry`、`checkout-pr`、`setup-project`、`run-ondemand-test`）；只有
+Enflame 作业使用本仓库 `.github/actions/` 下的组合动作：
 
 | 组合动作 | 用途 |
 |---|---|
+| `checkout-retry` | 最多尝试 3 次检出仓库，每次失败后等待 30 秒 |
 | `checkout-pr` | 若缺失则安装 `gh` CLI（按 runner 的 CPU 架构选择对应二进制），再 `gh pr checkout` 检出 PR 分支 |
 | `setup-flaggems` | 针对该后端运行 `setup.sh` 及 GPU 可用性检查 |
 | `ondemand-test` | 运行单算子精度/性能对比、上传结果产物并发布 PR 评论 |
@@ -337,8 +371,7 @@ prefer the aggregate/gate jobs over individual sub-jobs wherever a workflow
 has conditional (`if:`) or label-gated jobs:
 
 - `rule-check / rule-check-required`
-- `unittest / unittest-required`
-- `linter / code-style` (not gated, safe to require directly)
+- `unit-test / unittest-required`
 
 Requiring a job that GitHub Actions may legitimately skip for some PRs
 leaves that check in a permanent "Expected" state and blocks auto-merge
@@ -352,8 +385,7 @@ as equivalent to "passed" for that purpose.
 单独的子作业：
 
 - `rule-check / rule-check-required`
-- `unittest / unittest-required`
-- `linter / code-style`（该作业未被门控，可以直接安全地设为 required）
+- `unit-test / unittest-required`
 
 如果将某个在部分 PR 上会被 GitHub Actions 合理跳过的作业设为 required，
 该检查会永久停留在"Expected"状态，从而无限期阻塞 auto-merge —— 因为在

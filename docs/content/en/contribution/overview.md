@@ -71,7 +71,15 @@ These conversion rules ensure a one-to-one correspondence between FlagGems opera
 
 ## 4. Operator metadata management {#operator-metadata-management}
 
-Starting from v4.2, the FlagGems project introduced an operator inventory which can be found as the `conf/operators.yaml` file. Each operator has a unique ID denoted as the `id` field. The fields are described as follows:
+Starting from v4.2, the FlagGems project introduced an operator inventory. `conf/operators.yaml` records actively maintained operators, while `conf/deprecated_operators.yaml` preserves metadata for deprecated operators, including descriptions of the corresponding operators under `src/flag_gems/fused`. For these fused operators, use the implementations in [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm). New vLLM-specific operators and optimizations should also be contributed to that repository.
+
+Both inventories use the same `ops` list structure and field definitions. Operator IDs must be unique across both files, and entries in each file must be sorted by `id.casefold()`. CI metadata checks and label lookups read both inventories. By default, `tools/run_tests.py` selects operators only from `conf/operators.yaml`; deprecated operators can still be selected explicitly with `--ops`. Run the following command to validate required fields, duplicate IDs, and ordering in both inventories:
+
+```shell
+python tools/ci_checks/check_operators_yaml.py --all
+```
+
+Each operator has a unique ID denoted as the `id` field. The fields are described as follows:
 
 | Field       | Type            | Purpose                                                                 | Constraints                                                           |
 | ----------- | --------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -114,7 +122,7 @@ Example yaml file entry:
 
 ## 5. Operator deliverables {#operator-deliverables}
 
-Before developing a new operator, check the `for` field in `conf/operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
+Before developing a new operator, check the `for` field in both `conf/operators.yaml` and `conf/deprecated_operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
 
 > [!IMPORTANT]
 > **Notice on vLLM Operator Contributions**:

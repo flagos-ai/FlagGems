@@ -11,10 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -79,19 +82,19 @@ def topk_gating_softmax_kernel(
 
 
 def _pick_block_size(num_tokens, num_experts, topk):
-    """BLOCK_SIZE_EXPERTS / BLOCK_SIZE_ROWS / num_warps 启发式分派。
+    """Heuristic dispatch for BLOCK_SIZE_EXPERTS / BLOCK_SIZE_ROWS / num_warps.
 
-    列宽(experts 数)对齐到 >=128 的 2 幂: GCU 实测表明窄 tile(如 64 列)的
-    axis=1 归约布局明显退化, pad 到 128+ 可获 ~4x 提升; 行数按
-    'topk 越大 tile 越小' 与 grid 并行度折衷选取。gcu400 验证结论:
-    topk<=8 走 4096 元素大 tile, topk>8 且 E==128 走 512 小 tile,
-    其余 1024。默认 num_warps=8; decode 小 batch (T<=16) 降为
-    rows=4/warps=4 (~1.6x, 16 行 tile 仅 1 行有效时空转严重)。
+    Align the column width (expert count) to a power of two >= 128: GCU measurements show narrow tiles (e.g. 64 columns)
+    significantly degrade the axis=1 reduction layout; padding to 128+ gives ~4x. The row count
+    trades off "larger topk -> smaller tile" against grid parallelism. gcu400 measurements:
+    topk<=8 uses a 4096-element tile, topk>8 with E==128 uses a 512 tile,
+    otherwise 1024. Default num_warps=8; decode with a small batch (T<=16) uses
+    rows=4/warps=4 (~1.6x, a 16-row tile with only one active row wastes most of the work).
 
-    用纯 Python 位运算实现 (避免 torch/triton API 热路径开销,
-    topk_softmax 在 decode 场景每 token 调起)。
+    Implemented with pure Python bit operations (avoids torch/triton API overhead on the hot path;
+    topk_softmax is launched per token in decode).
     """
-    # round-up to power-of-2, 再 round 到 32 倍数 (2 幂>=32 时等价其本身)
+    # Round up to a power of two, then to a multiple of 32 (a no-op for powers >= 32)
     p2 = 1 << (num_experts - 1).bit_length()
     experts_block = (p2 + 31) // 32 * 32
     if experts_block < 128:
@@ -114,17 +117,18 @@ def _pick_block_size(num_tokens, num_experts, topk):
         rows_block = 2
     num_warps = 8
     if num_tokens <= 16:
-        # decode 小 batch: 单/少量 token 的行, 收敛 tile 减少空转
+        # Decode small batch: shrink the tile for single/few-token rows to reduce idle work
         if rows_block > 4:
             rows_block = 4
         num_warps = 4
     elif num_tokens >= 4096 and rows_block == 16 and experts_block <= 512:
-        # 大批量 + 宽 tile (如 8192x256x8): rows=32/warps=16 更优 (~6%)
+        # Large batch + wide tile (e.g. 8192x256x8): rows=32/warps=16 is ~6% better
         rows_block = 32
         num_warps = 16
     elif num_tokens >= 32:
-        # 小 batch 保 grid 并行度 (>=32 programs)。num_tokens//32 一般不是
-        # 2 的幂 (如 T=496 -> 15), 必须向下取 2 的幂, 否则 tl.arange 编译失败。
+        # For small batches, keep grid parallelism (>=32 programs). num_tokens//32
+        # is usually not a power of two (e.g. T=496 -> 15), so round down to a power of two; otherwise tl.arange fails
+        # to compile.
         g = num_tokens // 32
         if g > 0:
             g = 1 << (g.bit_length() - 1)
@@ -132,7 +136,7 @@ def _pick_block_size(num_tokens, num_experts, topk):
                 rows_block = g
     if rows_block < 1:
         rows_block = 1
-    # 防御性检查: tl.arange(0, BLOCK_SIZE_ROWS) 要求 2 的幂, 防止启发式回归
+    # Defensive check: tl.arange(0, BLOCK_SIZE_ROWS) requires a power of two, guarding against heuristic regressions
     if rows_block & (rows_block - 1):
         raise ValueError(f"rows_block={rows_block} must be a power of two")
     return experts_block, rows_block, num_warps
@@ -145,6 +149,7 @@ def topk_softmax(
     gating_output: torch.Tensor,
     renormalize: bool = False,
 ) -> None:
+    logger.debug("GEMS_ENFLAME_GCU400 TOPK_SOFTMAX")
     num_tokens = gating_output.shape[0]
     num_experts = gating_output.shape[1]
     topk = topk_weights.shape[1]
@@ -164,7 +169,7 @@ def topk_softmax(
 
     grid = (-(-num_tokens // rows_block),)
 
-    # 位置参数 launch: 减少 kwargs 绑定的 host 开销 (decode 热路径)
+    # Launch with positional arguments to reduce host-side kwargs binding overhead (decode hot path)
     topk_gating_softmax_kernel[grid](
         gating_output,
         None,

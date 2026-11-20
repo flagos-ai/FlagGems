@@ -1476,9 +1476,9 @@ class LibEntry(triton.KernelInterface):
         self.signature = fn.signature
         self._tensor_spec_fn = self._resolve_tensor_spec_fn()
         self._kernel_params = frozenset(p.name for p in self.jit_function.params)
-        # The cached binder follows Triton 3.3-3.6 launch argument conventions.
-        self._cache_binding = (
-            cache_binding and major_version == 3 and 3 <= minor_version <= 6
+        # The cached binder follows the Triton 3.3-3.9 launch argument convention.
+        self._cache_binding = cache_binding and (
+            (3, 3) <= (major_version, minor_version) <= (3, 9)
         )
         if self._cache_binding:
             self._init_cached_binding()
@@ -1721,7 +1721,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(arg)
             else:
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if (3, 3) <= (major_version, minor_version) <= (3, 9):
                     k_args[param_names[i]] = arg
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
@@ -1734,7 +1734,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if (3, 3) <= (major_version, minor_version) <= (3, 9):
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -1839,7 +1839,7 @@ class LibEntry(triton.KernelInterface):
             for pre_hook, hook_kwargs in launch_pre_hooks:
                 pre_hook({**hook_nargs, **hook_kwargs})
 
-        if major_version == 3 and 3 <= minor_version <= 6:
+        if (3, 3) <= (major_version, minor_version) <= (3, 9):
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):

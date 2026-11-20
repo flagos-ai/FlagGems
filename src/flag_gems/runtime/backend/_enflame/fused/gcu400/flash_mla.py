@@ -64,6 +64,7 @@ def flash_mla_attn_kernel(
     PAGE_SIZE: tl.constexpr,
     HEAD_DIM_V: tl.constexpr,
     HEAD_DIM: tl.constexpr,
+    AFFINE: tl.constexpr,
 ):
     cur_head_id = ext.program_id(0)
     cur_batch_id = ext.program_id(1)
@@ -100,10 +101,20 @@ def flash_mla_attn_kernel(
     cur_batch_seq_len = tl.load(B_seq_len + cur_batch_id)
     loop_time = cur_batch_seq_len // BLOCK_N
     remainder = cur_batch_seq_len % BLOCK_N
-    offs_n = tl.arange(0, BLOCK_N)
+    local = tl.arange(0, BLOCK_N)
+    base = 0
     for i in range(0, loop_time):
-        kv_page_number = tl.load(Req_to_tokens + offs_n // PAGE_SIZE)
-        kv_loc = kv_page_number * PAGE_SIZE + offs_n % PAGE_SIZE
+        # AFFINE (host-gated on PAGE_SIZE % BLOCK_N == 0): each BLOCK_N tile
+        # stays inside one page, so the page number is a per-iteration scalar
+        # and the row offsets stay affine (base % PAGE_SIZE + arange) instead
+        # of a data-dependent gather, which keeps tl.dot on the fast path.
+        if AFFINE:
+            kv_page_number = tl.load(Req_to_tokens + base // PAGE_SIZE)
+            kv_loc = kv_page_number * PAGE_SIZE + base % PAGE_SIZE + local
+        else:
+            offs_n = base + local
+            kv_page_number = tl.load(Req_to_tokens + offs_n // PAGE_SIZE)
+            kv_loc = kv_page_number * PAGE_SIZE + offs_n % PAGE_SIZE
         offs_v_c = kv_loc[:, None] * stride_kv_bs + offs_d_ckv[None, :]
         v_c = tl.load(Kv_cache + offs_v_c)
         k_c = tl.trans(v_c)
@@ -124,16 +135,21 @@ def flash_mla_attn_kernel(
 
         e_sum = e_sum * re_scale + tl.sum(p, 1)
         e_max = n_e_max
-        offs_n += BLOCK_N
+        base += BLOCK_N
 
     if remainder:
+        offs_n = base + local
         mask_kvsplit = offs_n < cur_batch_seq_len
-        kv_page_number = tl.load(
-            Req_to_tokens + offs_n // PAGE_SIZE,
-            mask=mask_kvsplit,
-            other=0,
-        )
-        kv_loc = kv_page_number * PAGE_SIZE + offs_n % PAGE_SIZE
+        if AFFINE:
+            kv_page_number = tl.load(Req_to_tokens + base // PAGE_SIZE)
+            kv_loc = kv_page_number * PAGE_SIZE + base % PAGE_SIZE + local
+        else:
+            kv_page_number = tl.load(
+                Req_to_tokens + offs_n // PAGE_SIZE,
+                mask=mask_kvsplit,
+                other=0,
+            )
+            kv_loc = kv_page_number * PAGE_SIZE + offs_n % PAGE_SIZE
         offs_v_c = kv_loc[:, None] * stride_kv_bs + offs_d_ckv[None, :]
         v_c = tl.load(Kv_cache + offs_v_c, mask=mask_kvsplit[:, None], other=0.0)
         k_c = tl.trans(v_c)
@@ -197,24 +213,23 @@ def flash_mla(
 
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    # major, _ = get_device_capability()
-    # if major == 9:
-    #     BLOCK_H = 64
-    #     num_stages = 3
-    # elif major == 8:
-    #     BLOCK_H = 32
-    #     num_stages = 2
-    # elif major == 7 and vendor_name == "iluvatar":
-    #     BLOCK_H = 32
-    #     num_stages = 1
-    # elif major == 3 and vendor_name == "mthreads":
-    #     BLOCK_H = 32
-    #     num_stages = 1
-    # else:
-    #     error.backend_not_support(device)
-    BLOCK_H = 16
-    num_stages = 3
-    BLOCK_N = 32
+    # Fast path: BLOCK_N | PAGE_SIZE keeps every KV tile inside one page, so
+    # the page table lookup degrades to one scalar load per iteration and the
+    # KV loads stay affine (a data-dependent gather row base feeds tl.dot on
+    # a pathological slow path on GCU400). Non-divisible page sizes fall back
+    # to the original gather addressing with the original tile config.
+    if block_size % 64 == 0:
+        affine = True
+        BLOCK_N = 64
+        BLOCK_H = 64 if head_num % 64 == 0 else 32
+        num_warps = 4
+        num_stages = 2
+    else:
+        affine = False
+        BLOCK_H = 32
+        BLOCK_N = 32
+        num_warps = 4
+        num_stages = 3
     grid = (
         triton.cdiv(head_num, BLOCK_H),
         batch_size,
@@ -241,7 +256,8 @@ def flash_mla(
             PAGE_SIZE=block_size,
             HEAD_DIM_V=dv,
             HEAD_DIM=d,
-            num_warps=4,
+            AFFINE=affine,
+            num_warps=num_warps,
             num_stages=num_stages,
         )
 

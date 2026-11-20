@@ -141,7 +141,7 @@ jobs:
         env:
           CHANGED_FILES: ${{ join(needs.preprocess.outputs.changed_files, ' ') }}
         run: |
-          bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }}
+          bash tools/test-op.sh ${{ needs.preprocess.outputs.pr_id }} --kernel-check
 
   examples:
     needs: preprocess

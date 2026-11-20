@@ -145,7 +145,7 @@ from .full_like import full_like
 from .gcd_ import gcd_
 from .greater_equal import greater_equal_
 from .grid_sampler_3d import grid_sampler_3d
-from .grouped_mm_w8a8 import grouped_mm_w8a8
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .groupnorm import group_norm
 from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
@@ -208,7 +208,6 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
-from ._make_dep_token import _make_dep_token
 from .mode import mode
 from .mul import mul, mul_
 from .mv import mv
@@ -236,13 +235,16 @@ from .rnn_tanh import rnn_tanh
 from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
-from .scaled_dot_product_attention_math_for_mps import _scaled_dot_product_attention_math_for_mps
+from .scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
+)
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_bessel_y0 import special_bessel_y0
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
+from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
@@ -258,6 +260,7 @@ from .special_round_out import special_round_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .standard_gamma_grad import standard_gamma_grad
 from .tanh import tanh
 from .to_copy import to_copy
 from .topk_w8a16_fp8 import topk_w8a16_fp8
@@ -276,7 +279,6 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
     "_convolution_double_backward",
-    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_scaled_dot_product_attention_math_for_mps",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -433,7 +435,7 @@ __all__ = [
     "greater_equal_",
     "grid_sampler_3d",
     "group_norm",
-    "grouped_mm_w8a8",
+    "grouped_gemm_w8a8",
     "gru",
     "gru_data",
     "gt_scalar_",
@@ -543,6 +545,7 @@ __all__ = [
     "special_bessel_j0_out",
     "special_bessel_y0",
     "special_chebyshev_polynomial_u",
+    "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_gammainc",
@@ -554,6 +557,7 @@ __all__ = [
     "special_round",
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
+    "standard_gamma_grad",
     "tanh",
     "to_copy",
     "topk_w8a16_fp8",
