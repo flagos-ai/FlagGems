@@ -1036,7 +1036,12 @@ _FULL_CONFIG = (
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcdiv_", addcdiv_),
-    ("addcmul", addcmul),
+    (
+        "addcmul",
+        addcmul,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addcmul.out", addcmul_out),
     ("addcmul_", addcmul_),
     ("addmm", addmm),
