@@ -47,3 +47,56 @@ def test_eq_scalar(shape, dtype):
     res_out = flag_gems.eq_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.eq
+@pytest.mark.parametrize(
+    "dtype,base", [(torch.int32, 2**24), (torch.int64, 2**24), (torch.int64, 2**53)]
+)
+@pytest.mark.parametrize("strided", [False, True])
+def test_eq_integer_precision(dtype, base, strided):
+    # Adjacent integers collide at the exact-integer limits of FP32 and FP64.
+    inp1_cpu = torch.tensor([base, base + 1, base + 2], dtype=dtype)
+    inp2_cpu = torch.full_like(inp1_cpu, base + 1)
+    inp1 = inp1_cpu.to(flag_gems.device)
+    inp2 = inp2_cpu.to(flag_gems.device)
+    if strided:
+        storage = torch.empty(2 * inp1.numel(), dtype=dtype, device=flag_gems.device)
+        storage[::2].copy_(inp1)
+        inp1 = storage[::2]
+
+    ref_out = torch.eq(inp1_cpu, inp2_cpu)
+    res_out = flag_gems.eq(inp1, inp2).cpu()
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.eq_scalar
+@pytest.mark.parametrize(
+    "dtype,base", [(torch.int32, 2**24), (torch.int64, 2**24), (torch.int64, 2**53)]
+)
+@pytest.mark.parametrize("strided", [False, True])
+def test_eq_scalar_integer_precision(dtype, base, strided):
+    inp1_cpu = torch.tensor([base, base + 1, base + 2], dtype=dtype)
+    inp1 = inp1_cpu.to(flag_gems.device)
+    if strided:
+        storage = torch.empty(2 * inp1.numel(), dtype=dtype, device=flag_gems.device)
+        storage[::2].copy_(inp1)
+        inp1 = storage[::2]
+
+    ref_out = torch.eq(inp1_cpu, base + 1)
+    res_out = flag_gems.eq_scalar(inp1, base + 1).cpu()
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.eq_scalar
+def test_eq_scalar_float_scalar():
+    # A floating-point scalar must not be truncated to an integer.
+    inp1_cpu = torch.tensor([1, 2, 3], dtype=torch.int64)
+    inp1 = inp1_cpu.to(flag_gems.device)
+
+    ref_out = torch.eq(inp1_cpu, 2.5)
+    res_out = flag_gems.eq_scalar(inp1, 2.5).cpu()
+
+    utils.gems_assert_equal(res_out, ref_out)
