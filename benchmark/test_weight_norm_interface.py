@@ -337,7 +337,10 @@ class _AscendWeightBackwardStaticReference:
                         baseline="Literal native CUDA H800; no target NPU-native or CPU timing claim",
                         input_identity="Exact original recipe/configuration; independently random payload bytes differ",
                         saved_norms="Actual provided saved_norms is an input; no norm recomputation",
-                        timing="Raw H800/local candidate ratio; shared functional timing, no isolated performance claim",
+                        timing=(
+                            "Raw H800/local candidate ratio; shared functional "
+                            "timing, no isolated performance claim"
+                        ),
                     ),
                     (
                         "legacy:pytorch-h800-primary"
