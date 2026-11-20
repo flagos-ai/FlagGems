@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # (sparse shape, nnz) workload descriptors, mirroring the KernelGen acceptance
@@ -48,6 +50,10 @@ class CoalesceBenchmark(base.Benchmark):
 
     ``coalesce`` is a sparse op with no meaningful dense shapes, so the
     benchmark sweeps the KernelGen (sparse_shape, nnz) workload descriptors.
+    The candidate is passed through ``set_gems`` so the benchmark calls it
+    directly: under the full ``use_gems()`` dispatch the wrapper's closing
+    ``torch.sparse_coo_tensor`` is overridden as well and re-enters the
+    operator.
     """
 
     def set_shapes(self, shape_file_path=None):
@@ -67,6 +73,7 @@ def test_coalesce():
         torch_op=torch.ops.aten.coalesce,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.coalesce)
     bench.run()
 
 
@@ -77,6 +84,7 @@ def test__coalesce():
         torch_op=torch.ops.aten._coalesce,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems._coalesce)
     bench.run()
 
 
@@ -104,4 +112,5 @@ def test__coalesce_out():
         torch_op=torch.ops.aten._coalesce.out,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems._coalesce_out)
     bench.run()
