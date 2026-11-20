@@ -25,7 +25,11 @@ def _reference():
 
 
 def _inputs(shape, dtype, device):
-    x = torch.randn(shape, device=device, dtype=dtype)
+    if len(shape) == 3:
+        rows, columns, pitch = shape
+        x = torch.randn((rows, pitch), device=device, dtype=dtype)[:, pitch - columns :]
+    else:
+        x = torch.randn(shape, device=device, dtype=dtype)
     count = 1 if shape[-1] == 6144 else 1024
     idx = torch.randint(-shape[0], shape[0], (count,), device=device, dtype=torch.int64)
     return (x, [idx]), {}

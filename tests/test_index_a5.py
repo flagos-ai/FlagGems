@@ -32,16 +32,29 @@ def _reference():
 
 
 def _inputs(shape, dtype, device):
-    x = torch.randn(shape, device=device, dtype=dtype)
+    if len(shape) == 3:
+        rows, columns, pitch = shape
+        x = torch.randn((rows, pitch), device=device, dtype=dtype)[:, pitch - columns :]
+    else:
+        x = torch.randn(shape, device=device, dtype=dtype)
     count = 1 if shape[-1] == 6144 else 1024
     idx = torch.randint(-shape[0], shape[0], (count,), device=device, dtype=torch.int64)
     return (x, [idx]), {}
 
 
-@pytest.mark.parametrize("shape", [(8,), (1024, 6144), (1048576, 64)])
+@pytest.mark.parametrize("shape", [(8,), (1024, 6144), (1048576, 64, 128)])
 def test_index_native(shape):
     args, kwargs = _inputs(shape, torch.bfloat16, flag_gems.device)
     reference = _reference()
     expected = reference(*args, **kwargs)
     actual = flag_gems.index(*args, **kwargs)
     torch.testing.assert_close(actual, expected)
+
+
+def test_index_padded_rows_small_index_list():
+    x = torch.randn((13, 160), dtype=torch.bfloat16, device=flag_gems.device)[:, 3:132]
+    idx = torch.tensor([-1, 0, 7], dtype=torch.int32, device=x.device)
+    actual = flag_gems.index(x, [idx])
+    torch.testing.assert_close(
+        actual, torch.ops.aten.index.Tensor(x, [idx]), rtol=0, atol=0
+    )

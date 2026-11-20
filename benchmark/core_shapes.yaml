@@ -1632,5 +1632,5 @@ a5_index:
   shapes:
     - [8]
     - [1024, 6144]
-    - [1048576, 64]
-  shape_desc: "input shape"
+    - [1048576, 64, 128]
+  shape_desc: "input shape; optional third entry is the physical row stride"
