@@ -1476,6 +1476,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: amin_backward
+  description: Computes tie-aware input gradients for amin in one Triton launch.
+  for:
+  - amin
+  labels:
+  - aten
+  - KernelGen
+  - reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: aminmax
   description: 'Computes the minimum and maximum values of the `input` tensor.
 
