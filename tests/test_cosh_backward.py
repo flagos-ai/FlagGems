@@ -24,15 +24,52 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_cosh_backward(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    """Drive the gradient through the autograd of the forward ``cosh``."""
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device).requires_grad_()
     out_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp, True)
-    ref_grad = utils.to_reference(out_grad, True)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_grad = utils.to_reference(out_grad)
 
-    ref_out = torch.cosh(ref_inp)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-
-    res_in_grad = flag_gems.cosh_backward(out_grad, inp)
+    (res_in_grad,) = torch.autograd.grad(flag_gems.cosh(inp), inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(torch.cosh(ref_inp), ref_inp, ref_grad)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.cosh_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_cosh_backward_expanded_grad(dtype):
+    """An expanded upstream gradient is non-contiguous and must not be read linearly."""
+    x = torch.randn((7, 13), dtype=dtype, device=flag_gems.device).requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.randn((7, 1), dtype=dtype, device=x.device).expand_as(x)
+
+    (dx,) = torch.autograd.grad(flag_gems.cosh(x), x, grad)
+    (ref_dx,) = torch.autograd.grad(torch.cosh(ref_x), ref_x, utils.to_reference(grad))
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.cosh_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_cosh_backward_noncontiguous_input(dtype):
+    x = torch.randn((7, 13), dtype=dtype, device=flag_gems.device).t().requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.randn(x.shape, dtype=dtype, device=x.device)
+
+    (dx,) = torch.autograd.grad(flag_gems.cosh(x), x, grad)
+    (ref_dx,) = torch.autograd.grad(torch.cosh(ref_x), ref_x, utils.to_reference(grad))
+    utils.gems_assert_close(dx, ref_dx, dtype)
+
+
+@pytest.mark.cosh_backward
+@pytest.mark.parametrize("shape", [(0,), (4, 0), (2, 0, 3)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_cosh_backward_empty(shape, dtype):
+    x = torch.empty(shape, dtype=dtype, device=flag_gems.device).requires_grad_()
+    ref_x = utils.to_reference(x.detach()).requires_grad_()
+    grad = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+
+    (dx,) = torch.autograd.grad(flag_gems.cosh(x), x, grad)
+    (ref_dx,) = torch.autograd.grad(torch.cosh(ref_x), ref_x, utils.to_reference(grad))
+    utils.gems_assert_close(dx, ref_dx, dtype)

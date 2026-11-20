@@ -17,37 +17,20 @@ import torch
 
 import flag_gems
 
-from . import base, consts, utils
-
-
-def cosh_backward_case_fn(shape, dtype):
-    yield base.BenchmarkCasePlan(
-        shape={"input": list(shape)},
-        params={},
-        builder_args=(shape,),
-    )
-
-
-def cosh_backward_build_inputs_fn(plan, dtype, device):
-    (shape,) = plan.builder_args
-    grad_output = utils.generate_tensor_input(shape, dtype, device)
-    inp = utils.generate_tensor_input(shape, dtype, device).requires_grad_(True)
-    return grad_output, inp
-
-
-def cosh_backward_torch_op(grad_output, inp):
-    (ref_in_grad,) = torch.autograd.grad(torch.cosh(inp), inp, grad_output)
-    return ref_in_grad
+from . import base, consts
 
 
 @pytest.mark.cosh_backward
 def test_cosh_backward():
-    bench = base.GenericBenchmarkExcluse1D(
-        case_fn=cosh_backward_case_fn,
-        build_inputs_fn=cosh_backward_build_inputs_fn,
-        op_name="cosh_backward",
-        torch_op=cosh_backward_torch_op,
-        gems_op=flag_gems.cosh_backward,
+    # ``is_backward=True`` makes the harness time
+    # ``torch.autograd.grad(out, xs, dout)`` on the forward graph, so both the
+    # reference (torch.cosh's autograd) and the candidate (flag_gems.cosh's
+    # CoshFunction) exercise their own backward kernel.
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="cosh",
+        torch_op=torch.cosh,
         dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
+    bench.set_gems(flag_gems.cosh)
     bench.run()
