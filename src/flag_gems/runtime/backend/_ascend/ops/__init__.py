@@ -76,6 +76,7 @@ from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
 from .conv_tbc import conv_tbc, conv_tbc_out
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .copy import copy, copy_
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
@@ -114,6 +115,7 @@ from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .fill_diagonal_ import fill_diagonal_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
@@ -404,6 +406,8 @@ __all__ = [
     "concatenate",
     "conv_tbc",
     "conv_tbc_out",
+    "convolution_backward",
+    "convolution_backward_out",
     "copy",
     "copy_",
     "cosh_",
@@ -443,6 +447,7 @@ __all__ = [
     "fill_scalar_",
     "fill_tensor",
     "fill_tensor_",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",

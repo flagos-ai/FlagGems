@@ -11,7 +11,7 @@
 import torch
 import triton
 
-from flag_gems.fused.rotary_embedding import (
+from flag_gems.deprecated.rotary_embedding import (
     apply_rotary_pos_emb,
     apply_rotary_pos_emb_inplace_kernel,
 )
@@ -82,7 +82,7 @@ ROTARY_EMBEDDING_INPLACE_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::rotary_embedding_inplace",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.rotary_embedding."
+            "flag_gems.deprecated.rotary_embedding."
             "apply_rotary_pos_emb_inplace_kernel.jit_function"
         ),
         mutates_args=("query", "key"),

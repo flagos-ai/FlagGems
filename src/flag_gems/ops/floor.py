@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -28,8 +29,20 @@ def floor_func(x):
     return tl.floor(x.to(tl.float32)).to(x.dtype)
 
 
+class FloorFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        return floor_func(A)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.zeros_like(grad_output)
+
+
 def floor(A):
     logger.debug("GEMS FLOOR")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return FloorFunction.apply(A)
     return floor_func(A)
 
 
