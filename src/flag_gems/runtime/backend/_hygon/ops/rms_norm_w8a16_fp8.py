@@ -49,7 +49,18 @@ def rms_norm_fp8_rows_kernel(
     values = tl.load(activation + offsets, valid, other=0.0).to(tl.float32)
     inverse_rms = tl.rsqrt(tl.sum(values * values, axis=1) / N + eps)
     # Broadcast the live dequantized weight across the rows in this program.
-    weights = tl.load(weight + cols * WEIGHT_STRIDE, cols < N, other=0.0).to(tl.float32)
+    if WEIGHT_STRIDE == 1:
+        weights = tl.load(weight + cols, cols < N, other=0.0).to(tl.float32)
+    else:
+        # Decode bytes to avoid compiler-dependent FP8 conversion on strided loads.
+        bits = tl.load(weight + cols * WEIGHT_STRIDE, cols < N, other=0).to(tl.uint32)
+        exponent = (bits >> 3) & 15
+        mantissa = bits & 7
+        normal = ((exponent + 120) << 23) | (mantissa << 20)
+        subnormal = (mantissa.to(tl.float32) * 2.0**-9).to(tl.uint32, bitcast=True)
+        magnitude = tl.where(exponent == 0, subnormal, normal)
+        magnitude = tl.where((bits & 127) == 127, 0x7FC00000, magnitude)
+        weights = (magnitude | ((bits & 128) << 24)).to(tl.float32, bitcast=True)
     scales = tl.load(
         scale + (cols // GROUP_SIZE) * SCALE_STRIDE, cols < N, other=0.0
     ).to(tl.float32)
@@ -75,6 +86,8 @@ def rms_norm_w8a16_fp8(
     output = torch.empty(x.shape, dtype=x.dtype, device=x.device)
     if row_count == 0:
         return output
+    if weight_fp8.stride(-1) != 1:
+        weight_fp8 = weight_fp8.view(torch.uint8)
     if row_count < 128 and width > 256:
         rows, warps = 1, 4
     elif row_count < 128:
