@@ -26,7 +26,9 @@ SUPPORTED_DTYPES = (torch.float16, torch.bfloat16)
 
 def _get_aic_core_num(device_index):
     try:
-        cores = torch_device_fn.get_device_limit(device_index)["cube_core_num"]
+        cores = triton.runtime.driver.active.utils.get_device_properties(device_index)[
+            "num_aicore"
+        ]
         if isinstance(cores, int) and not isinstance(cores, bool) and cores > 0:
             return cores
     except (AttributeError, KeyError, TypeError, RuntimeError):

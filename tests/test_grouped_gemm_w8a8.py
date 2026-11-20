@@ -51,6 +51,29 @@ def deepgemm_grouped_gemm(A, As, B, Bs, C, m_indices, m_rows):
     )
 
 
+def npu_grouped_gemm(A, As, B, Bs, C, m_indices, m_rows):
+    import torch_npu
+
+    accumulator = torch_npu.npu_grouped_matmul(
+        [A],
+        [B.transpose(-1, -2)],
+        group_list=m_rows.to(torch.int64),
+        group_list_type=1,
+        split_item=3,
+        group_type=0,
+        output_dtype=torch.int32,
+    )[0]
+    C.copy_(accumulator.float() * As * Bs[m_indices.to(torch.int64), :, 0])
+
+
+def get_grouped_gemm_int8_reference():
+    if flag_gems.vendor_name == "ascend":
+        pytest.importorskip("torch_npu")
+        return npu_grouped_gemm
+    pytest.importorskip("deep_gemm")
+    return deepgemm_grouped_gemm
+
+
 def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
     A, As, B, Bs = (t.cpu() for t in (A, As, B, Bs))
     output = torch.empty((A.shape[0], B.shape[1]), dtype=torch.bfloat16)
@@ -64,9 +87,10 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "thead", reason="requires the thead backend"
+    flag_gems.vendor_name not in ("ascend", "thead"),
+    reason="requires the Ascend or PPU backend",
 )
-class TestPPUGroupedGEMM:
+class TestGroupedInt8GEMM:
     @pytest.mark.parametrize(
         "lengths,n,k",
         [
@@ -91,12 +115,11 @@ class TestPPUGroupedGEMM:
 
     @pytest.mark.parametrize("n,k", [(512, 6144), (6144, 256)])
     @pytest.mark.grouped_gemm_w8a8
-    def test_grouped_gemm_w8a8_deepgemm(self, n, k):
-        pytest.importorskip("deep_gemm")
+    def test_grouped_gemm_w8a8_native(self, n, k):
         lengths = [1] * 32 + [0] * 224 + [13]
         args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
         expected = torch.empty_like(args[4])
-        deepgemm_grouped_gemm(*args[:4], expected, *args[5:])
+        get_grouped_gemm_int8_reference()(*args[:4], expected, *args[5:])
         flag_gems.grouped_gemm_w8a8(*args)
         gems_assert_close(args[4], expected, torch.bfloat16, atol=1e-3)
 
@@ -158,6 +181,7 @@ class TestPPUGroupedGEMM:
     )
     @pytest.mark.parametrize("values", ["random", "extreme", "cancellation"])
     @pytest.mark.grouped_gemm_w8a8
+    @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="PPU kernel options")
     def test_grouped_gemm_w8a8_async(
         self, async_a, async_b, block_m, block_k, swap, stages, values
     ):
@@ -223,6 +247,7 @@ class TestPPUGroupedGEMM:
 
     @pytest.mark.parametrize("cache,evict", [(".cg", ""), (".ca", "evict_last")])
     @pytest.mark.grouped_gemm_w8a8
+    @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="PPU cache options")
     def test_grouped_gemm_w8a8_gemv_cache_tail(self, cache, evict):
         module = importlib.import_module(flag_gems.grouped_gemm_w8a8.__module__)
         lengths = [1, 0, 8, 3]

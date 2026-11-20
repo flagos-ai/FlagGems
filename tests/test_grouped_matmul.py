@@ -167,9 +167,11 @@ def test_grouped_matmul_large_weight_offset(
 @ascend_only
 @pytest.mark.parametrize("cores", (1, 24, 32))
 def test_grouped_matmul_core_api(grouped_matmul_module, monkeypatch, cores):
-    query = Mock(return_value={"cube_core_num": cores, "vector_core_num": cores * 2})
+    query = Mock(return_value={"num_aicore": cores, "num_vectorcore": cores * 2})
     monkeypatch.setattr(
-        grouped_matmul_module.torch_device_fn, "get_device_limit", query, raising=False
+        grouped_matmul_module.triton.runtime.driver.active.utils,
+        "get_device_properties",
+        query,
     )
     assert grouped_matmul_module._get_aic_core_num(3) == cores
     query.assert_called_once_with(3)
@@ -182,18 +184,17 @@ def test_grouped_matmul_core_api(grouped_matmul_module, monkeypatch, cores):
     (
         {},
         None,
-        {"cube_core_num": 0},
-        {"cube_core_num": -1},
-        {"cube_core_num": None},
-        {"cube_core_num": True},
+        {"num_aicore": 0},
+        {"num_aicore": -1},
+        {"num_aicore": None},
+        {"num_aicore": True},
     ),
 )
 def test_grouped_matmul_invalid_core_limit(grouped_matmul_module, monkeypatch, limits):
     monkeypatch.setattr(
-        grouped_matmul_module.torch_device_fn,
-        "get_device_limit",
+        grouped_matmul_module.triton.runtime.driver.active.utils,
+        "get_device_properties",
         Mock(return_value=limits),
-        raising=False,
     )
     assert grouped_matmul_module._get_aic_core_num(0) == 24
 
@@ -203,10 +204,9 @@ def test_grouped_matmul_invalid_core_limit(grouped_matmul_module, monkeypatch, l
 @pytest.mark.parametrize("error", (AttributeError, RuntimeError))
 def test_grouped_matmul_core_api_unavailable(grouped_matmul_module, monkeypatch, error):
     monkeypatch.setattr(
-        grouped_matmul_module.torch_device_fn,
-        "get_device_limit",
+        grouped_matmul_module.triton.runtime.driver.active.utils,
+        "get_device_properties",
         Mock(side_effect=error("unavailable")),
-        raising=False,
     )
     assert grouped_matmul_module._get_aic_core_num(0) == 24
 

@@ -44,7 +44,10 @@ import triton
 import triton.language as tl
 
 import flag_gems
-from tests.test_grouped_gemm_w8a8 import deepgemm_grouped_gemm, make_grouped_gemm_case
+from tests.test_grouped_gemm_w8a8 import (
+    get_grouped_gemm_int8_reference,
+    make_grouped_gemm_case,
+)
 
 from . import base, consts
 from .base import Benchmark
@@ -292,9 +295,9 @@ class GroupedGemmInt8Benchmark(Benchmark):
 
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("metax", "thead")
+    flag_gems.vendor_name not in ("ascend", "metax", "thead")
     or "grouped_gemm_w8a8" not in vars(flag_gems),
-    reason="requires a registered MetaX or PPU grouped GEMM implementation",
+    reason="requires a registered Ascend, MetaX, or PPU grouped GEMM implementation",
 )
 def test_grouped_gemm_w8a8():
     if flag_gems.vendor_name == "metax":
@@ -306,10 +309,9 @@ def test_grouped_gemm_w8a8():
         )
         bench.torch_op = bench.mctlass_reference
     else:
-        pytest.importorskip("deep_gemm")
         bench = GroupedGemmInt8Benchmark(
             op_name="grouped_gemm_w8a8",
-            torch_op=deepgemm_grouped_gemm,
+            torch_op=get_grouped_gemm_int8_reference(),
             gems_op=flag_gems.grouped_gemm_w8a8,
             dtypes=[torch.bfloat16],
         )
