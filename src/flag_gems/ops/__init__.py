@@ -320,6 +320,9 @@ from flag_gems.ops._nested_from_padded_and_nested_example import (
     _nested_from_padded_and_nested_example,
 )
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
+from flag_gems.ops._nested_from_padded_tensor import (
+    _nested_from_padded_tensor_backward as nested_from_padded_tensor_backward,
+)
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
 from flag_gems.ops._nested_tensor_from_mask import _nested_tensor_from_mask
@@ -3077,6 +3080,7 @@ __all__ = [
     "negative",
     "negative_",
     "nested_compute_contiguous_strides_offsets",
+    "nested_from_padded_tensor_backward",
     "nested_tensor_storage_offsets",
     "nested_to_padded_tensor",
     "new_full",
