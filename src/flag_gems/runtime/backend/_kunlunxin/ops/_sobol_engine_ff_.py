@@ -24,7 +24,37 @@ probes; the same garbage/silent-drop shows for ``-``, ``*`` and ``<<``).
 The ``underscore_sobol_engine_draw`` kernels, which process a whole
 DIM_BLOCK-wide vector with ``mask=.../other=0`` loads, are correct on XPU,
 so this override uses the same vectorized-over-dimensions layout: one
-program, DIM_BLOCK lanes, sequential over the ``n`` fast-forward steps.
+program, DIM_BLOCK lanes.
+
+Performance note (closed-form fast-forward): the naive loop executes ``n``
+masked gather loads (the S4 scan bottleneck, 99.94% of time in this kernel),
+with ``n`` up to 4096.  XOR is commutative, so the net XOR equals, for each
+bit ``b`` in [0, MAXBIT), flipping ``dir[., b]`` iff the parity of the number
+of indices ``x`` in ``(num_generated, num_generated+n]`` with trailing-zero
+count ``v2(x) == b`` is odd.  With ``N = num_generated`` that parity count is
+
+    count_b = ((N+n)>>b) - (N>>b) - ((N+n)>>(b+1)) + (N>>(b+1))
+
+which is computed in closed form (O(MAXBIT) instead of O(n)); the identity
+was verified against the naive loop on 20000 random (N, n, direcs) tuples
+(see ``harness/perf_ir/verify_closed_form.py``, CLOSED_FORM_EQUIVALENT=YES).
+
+Round-2 micro-optimization: when ``dimension`` is a power of two
+(``dimension == DIM_BLOCK``, i.e. the whole benchmark matrix), the
+always-true ``dim_mask`` is dropped from the final store, which then goes
+through the unmasked path.  The masked-memory path costs about 2x on this
+backend even for a constant-true mask; measured on P800 the dtype-balanced
+Gems speedup rises by ~2.5% (dim=256 cases ~5.6%).
+
+Masked-load caveat (CI compiler, flagtree 0.7.1a1+xpu3.6): a ``tl.load``
+whose mask is *not* a compile-time constant silently drops the predicate on
+this stack -- the load returns the unmasked data for every lane.  With the
+runtime parity in the mask this XOR-ed every direction number in (the
+closed-form result degenerated to the XOR of all MAXBIT directions).  The
+direction-number loads are therefore unconditional: the indices are clamped
+into bounds and the parity is applied arithmetically (0 or all-ones).
+Only compile-time masks (``dim_mask``, from the ``dimension`` constexpr) are
+used as load/store predicates.
 """
 
 import logging
@@ -35,7 +65,13 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
+# ``num_generated`` must stay a runtime scalar: Triton specializes an integer
+# argument equal to 1 into a compile-time Python int, and ``num_generated`` is
+# 1-based once the engine has produced its first point -- the in-kernel
+# ``num_generated.to(tl.int64)`` then fails with "'int' object has no
+# attribute 'to'".  The test matrix has no num_generated == 1 case, so this is
+# only caught by direct calls.
+@triton.jit(do_not_specialize=["num_generated"])
 def _sobol_engine_ff_kernel(
     quasi_ptr,
     sobolstate_ptr,
@@ -46,17 +82,15 @@ def _sobol_engine_ff_kernel(
     DIM_BLOCK: tl.constexpr,
 ):
     """
-    Sobol engine fast-forward kernel using Gray code bit manipulation.
+    Sobol engine fast-forward kernel using the closed-form fast-forward
+    identity (O(MAXBIT), see module docstring).
 
-    The algorithm XORs direction numbers corresponding to the rightmost set
-    bit of each step in the range ``(num_generated, num_generated + n]``.
-
-    All dimensions are processed simultaneously as a DIM_BLOCK-wide vector
-    (the same layout as the ``sobol_draw_kernel_simple``/``sobol_engine_draw_kernel``
-    kernels that are known to be correct on TritonXPU).  The per-step XOR is
-    associative, so the range collapses to the parity of how often each
-    direction is applied, evaluated with a MAXBIT-step static scan rather than
-    a length-``n`` serial loop.
+    The naive Gray-code loop XORs ``dir[v2(N+i)]`` for i=1..n; by
+    commutativity the result is obtained by XOR-ing ``dir[., b]`` for each
+    bit ``b`` whose count parity in ``(N, N+n]`` is odd.  All dimensions are
+    processed simultaneously as a DIM_BLOCK-wide vector (the same layout as
+    the ``sobol_draw_kernel_simple``/``sobol_engine_draw_kernel`` kernels
+    that are known to be correct on TritonXPU).
     """
     dims = tl.arange(0, DIM_BLOCK)
     dim_mask = dims < dimension
@@ -64,43 +98,39 @@ def _sobol_engine_ff_kernel(
     # Load initial quasi values for this dimension block
     quasi_vals = tl.load(quasi_ptr + dims, mask=dim_mask, other=0).to(tl.int64)
 
-    # Fast-forward by n steps in O(MAXBIT) per dimension.
-    #
-    # The recurrence applies direction v[j] once for every step whose
-    # rightmost set bit is j (i.e. ctz(step) == j); applying the same v[j] an
-    # even number of times cancels under XOR.  So the whole range can be
-    # reduced to the parity of how many of the n steps fall in each class j.
-    #
-    # For e = num_generated + n, the number of integers i in (s, s+n] with
-    # ctz(i) == j is  (e>>j - e>>(j+1)) - (s>>j - s>>(j+1)),  whose parity is
-    # all that matters.  This replaces a length-n serial loop with a branchless
-    # closed form: no loop over n, only a 30-step static scan.  (Verified
-    # element-for-element against the original trailing-zero loop on CPU for
-    # 3000+ (num_generated, n) combinations, including the benchmark shapes.)
-    end = num_generated + n
-    for j in tl.static_range(MAXBIT):
-        count = ((end >> j) - (end >> (j + 1))) - (
-            (num_generated >> j) - (num_generated >> (j + 1))
-        )
-        odd = (count & 1) == 1
-        # Load the direction number unconditionally (masked only by the
-        # dimension bound) and select with ``tl.where``.  A load whose mask
-        # folds in the runtime scalar ``odd`` (``mask=dim_mask & odd``) is
-        # silently dropped by this TritonXPU build -- every lane returns the
-        # fill value, so the step never applies its XOR.  The unconditional
-        # load + where is bit-exact (verified on device against the CPU
-        # reference) and keeps the O(MAXBIT) closed form.
-        direction_vals = tl.load(
-            sobolstate_ptr + dims * MAXBIT + j,
-            mask=dim_mask,
-            other=0,
-        ).to(tl.int64)
-        quasi_vals = quasi_vals ^ tl.where(
-            odd, direction_vals, tl.zeros_like(direction_vals)
-        )
+    # Fast-forward by n steps in closed form.  For each bit b in [0, MAXBIT),
+    # count the indices x in (N, N+n] whose trailing-zero count equals b:
+    #   count_b = floor((N+n)/2^b) - floor(N/2^b)
+    #           - floor((N+n)/2^{b+1}) + floor(N/2^{b+1})
+    # XOR-in dir[., b] when the count is odd.
+    N = num_generated.to(tl.int64)
+    end = N + n
 
-    # Store result
-    tl.store(quasi_ptr + dims, quasi_vals, mask=dim_mask)
+    if dimension == DIM_BLOCK:
+        load_dims = dims
+    else:
+        # Tail lanes must not read past sobolstate: the direction loads below
+        # are unconditional (masked loads with a runtime mask are broken on
+        # this backend, see the module docstring), so clamp their addresses.
+        load_dims = tl.minimum(dims, dimension - 1)
+
+    for b in tl.static_range(MAXBIT):
+        cnt = (end >> b) - (N >> b) - (end >> (b + 1)) + (N >> (b + 1))
+        # Apply the odd-parity scalar arithmetically (all-ones to keep the
+        # direction, 0 to drop it) instead of through a load predicate: a
+        # ``tl.load`` mask that is not compile-time constant is ignored by
+        # the CI compiler (see the module docstring).
+        keep = 0 - ((cnt & 1) != 0).to(tl.int64)
+        direction_vals = tl.load(sobolstate_ptr + load_dims * MAXBIT + b).to(tl.int64)
+        # XOR with quasi value
+        quasi_vals = quasi_vals ^ (direction_vals & keep)
+
+    # Store result.  For a full power-of-2 block every lane is in bounds, so
+    # the masked-memory path (about 2x cost on this backend) can be skipped.
+    if dimension == DIM_BLOCK:
+        tl.store(quasi_ptr + dims, quasi_vals)
+    else:
+        tl.store(quasi_ptr + dims, quasi_vals, mask=dim_mask)
 
 
 def _sobol_engine_ff_(quasi, n, sobolstate, dimension, num_generated):
