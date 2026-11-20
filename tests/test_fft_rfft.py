@@ -206,6 +206,10 @@ def test_fft_rfft_zero_dim_input():
 
 
 @pytest.mark.fft_rfft
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="complex tensors cannot be uploaded to this device",
+)
 def test_fft_rfft_rejects_complex():
     """``rfft`` is the real-input transform, so complex input is refused."""
     inp = _real((2, 16)).to(torch.complex64)

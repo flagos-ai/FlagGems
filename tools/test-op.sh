@@ -16,6 +16,29 @@
 # limitations under the License.
 
 PR_ID=$1
+RUN_KERNEL_CHECK=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --kernel-check) RUN_KERNEL_CHECK=1 ;;
+    *) PR_ID="$1" ;;
+  esac
+  shift
+done
+
+# Ensure console scripts installed by 'pip install .[test]' (coverage, pytest,
+# pytest-md-report, …) are on PATH. The native backend gets this automatically
+# from 'source .venv/bin/activate' in the workflow; containerized backends
+# (kunlunxin, metax, hygon, iluvatar, mthreads, thead, enflame) install into
+# the container's system Python without activating anything, so the scripts
+# directory (e.g. /flagos/bin) may be absent from PATH under bash --login.
+# sysconfig.get_path("scripts") returns the directory for whatever python3 is
+# currently in PATH, covering both venv and system installs correctly.
+_py_scripts=$(python3 -c 'import sysconfig; print(sysconfig.get_path("scripts"))')
+case ":${PATH}:" in
+  *":${_py_scripts}:"*) ;;  # already present, nothing to do
+  *) export PATH="${_py_scripts}:${PATH}" ;;
+esac
+unset _py_scripts
 
 # Leave this for debugging's purpose
 echo "PR_ID=${PR_ID}"
@@ -31,7 +54,7 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   EXTRA_OPTS+=" --md-report-verbose=1"
   # Reduce test quantity when QUICK_TESTS is set (e.g. daily workflow)
   if [[ -n "${QUICK_TESTS:-}" ]]; then
-    EXTRA_OPTS+=" --quick"
+    EXTRA_OPTS+=" --first-parameter-only"
   fi
   # --md-report-output is set per-batch (see run_batch); the final file is
   # assembled by concatenating all per-batch reports at the end.
@@ -309,6 +332,9 @@ done
 # This ensures that a PR adding/modifying an operator implementation or its
 # unit tests still gets a kernel-check even when the PR does not touch the
 # benchmark file itself.
+# kernel-check is opt-in: set RUN_KERNEL_CHECK=1 to enable (e.g. python-op /
+# NVIDIA CI). Backend jobs leave it unset and skip this block entirely.
+if [[ "$RUN_KERNEL_CHECK" == "1" ]]; then
 KERNEL_CHECK_EXTRAS=()
 _already_checked=" ${PERF_TEST_CASES[*]} "
 for item in "${TEST_CASES[@]}"; do
@@ -334,6 +360,7 @@ for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
     FAILURES+=("${item} (kernel-check)")
   fi
 done
+fi
 
 # Process coverage data only when full-range testing
 # Coverage data HTML dumped to `htmlcov/` by default

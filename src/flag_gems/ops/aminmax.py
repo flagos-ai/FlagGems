@@ -159,7 +159,7 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
                 "aminmax(): cannot compute aminmax over an empty dimension "
                 "as the operation has no identity."
             )
-        # Global kernels reduce a dense logical sequence, excluding storage holes.
+        # The whole-tensor kernels use flat offsets, so materialize strided views.
         inp = contiguous(inp)
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)

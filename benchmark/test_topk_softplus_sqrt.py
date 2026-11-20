@@ -16,7 +16,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
+from flag_gems import topk_softplus_sqrt
 
 from . import base
 

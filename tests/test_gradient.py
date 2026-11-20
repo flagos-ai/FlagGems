@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
@@ -119,7 +120,9 @@ def test_gradient_scalararray(shape, dtype):
 
 
 @pytest.mark.gradient
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_gradient_scalarrayint(dtype):
     # exercises aten::gradient.scalarrayint (Scalar[] spacing, dim=None)
     shape = (4, 8, 12)
@@ -134,7 +137,10 @@ def test_gradient_scalarrayint(dtype):
 
 
 @pytest.mark.gradient
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 def test_gradient_tensorarray(dtype):
     # exercises aten::gradient.tensorarray / tensorarrayint (1-D coordinate
     # spacing tensors, uniform and non-uniform, both edge orders)

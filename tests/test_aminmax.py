@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 if cfg.QUICK_MODE:
     DIMS_LIST = [1]
@@ -176,7 +177,10 @@ def test__aminmax_out(shape, dtype):
 
 
 @pytest.mark.underscore_aminmax
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16],
+)
 @pytest.mark.parametrize("nan_pos", ["first", "middle", "last"])
 def test_underscore_aminmax_nan(dtype, nan_pos):
     """A single NaN forces *both* outputs to NaN, as torch._aminmax does.
@@ -269,6 +273,76 @@ def test_underscore_aminmax_empty_matches_aten():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems._aminmax(inp)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("column", [0, 1])
+def test_aminmax_coordinate_view(dtype, column):
+    coords_cpu = torch.tensor([[0, 5], [2, 1], [3, 6]], dtype=dtype)
+    coords = coords_cpu.to(flag_gems.device)
+    inp = coords[:, column]
+    assert inp.stride() == (2,)
+    assert inp.storage_offset() == column
+
+    expected = torch.aminmax(coords_cpu[:, column])
+    actual = flag_gems.aminmax(inp)
+
+    for result, reference in zip(actual, expected):
+        torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+
+
+def _aminmax_strided_view(base, view):
+    return {
+        "column": lambda: base[:, 1],
+        "slice": lambda: base[:, 1::3],
+        "transpose": lambda: base.t(),
+        "narrow": lambda: base[2:6, 3:9],
+        "expand": lambda: base[:1, :1].expand(6, 9),
+        "broadcast": lambda: base[:1].expand(8, 12),
+    }[view]()
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize(
+    "view", ["column", "slice", "transpose", "narrow", "expand", "broadcast"]
+)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+        torch.int32,
+        torch.int64,
+    ],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+@pytest.mark.parametrize("with_out", [False, True])
+def test_aminmax_no_dim_strided(view, dtype, keepdim, with_out):
+    base_cpu = torch.arange(-50, 46, dtype=dtype).reshape(8, 12)
+    base = base_cpu.to(flag_gems.device)
+    inp = _aminmax_strided_view(base, view)
+    ref_inp = _aminmax_strided_view(base_cpu, view)
+    assert not inp.is_contiguous()
+    expected = torch.aminmax(ref_inp, keepdim=keepdim)
+    out = None
+    if with_out:
+        out = tuple(
+            torch.empty(ref.shape, dtype=dtype, device=flag_gems.device)
+            for ref in expected
+        )
+
+    actual = flag_gems.aminmax(inp, keepdim=keepdim, out=out)
+
+    for i, (result, reference) in enumerate(zip(actual, expected)):
+        assert result.dtype == dtype
+        assert result.device == inp.device
+        torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
+        if with_out:
+            assert result.data_ptr() == out[i].data_ptr()
+    torch.testing.assert_close(base.cpu(), base_cpu, rtol=0, atol=0)
 
 
 @pytest.mark.aminmax
