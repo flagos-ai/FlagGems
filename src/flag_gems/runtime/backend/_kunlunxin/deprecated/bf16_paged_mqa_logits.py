@@ -180,17 +180,17 @@ def bf16_paged_mqa_logits(
 
 
 def _install():
-    from flag_gems.deprecated.bf16_paged_mqa_logits import (
+    from flag_gems.fused.bf16_paged_mqa_logits import (
         bf16_paged_mqa_logits as _generic_bf16_paged_mqa_logits,
     )
 
-    fused_pkg = sys.modules.get("flag_gems.deprecated")
+    fused_pkg = sys.modules.get("flag_gems.fused")
     if fused_pkg is not None:
         cur = getattr(fused_pkg, "bf16_paged_mqa_logits", None)
         if cur is _generic_bf16_paged_mqa_logits:
             fused_pkg.bf16_paged_mqa_logits = bf16_paged_mqa_logits
 
-    sub = sys.modules.get("flag_gems.deprecated.bf16_paged_mqa_logits")
+    sub = sys.modules.get("flag_gems.fused.bf16_paged_mqa_logits")
     if sub is not None:
         cur = getattr(sub, "bf16_paged_mqa_logits", None)
         if cur is _generic_bf16_paged_mqa_logits:
