@@ -1,0 +1,2456 @@
+# Copyright 2026 FlagOS Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Independent BMM candidates. Each group expands separately;
+# bmm.py prunes by workload layout and actual device resources.
+
+bmm_gemm:
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+      - 128
+    bk:
+      - 16
+    group_m:
+      - 8
+    transpose:
+      - false
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+      - "reduceSmemUsage"
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 128
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - true
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - true
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - true
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 32
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - true
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "unprefetch"
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "unprefetch"
+    warps:
+      - 8
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "unprefetch"
+    warps:
+      - 8
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "unprefetch"
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "unprefetch"
+    warps:
+      - 8
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "unprefetch"
+    warps:
+      - 8
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "reduceSmemUsage"
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 256
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - "reduceSmemUsage"
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 256
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 8
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 8
+    stages:
+      - 2
+
+bmm_wide:
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "cpasync"
+    scenario:
+      - ""
+    warps:
+      - 2
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 32
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 128
+    bk:
+      - 32
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 3
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 128
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 128
+    bn:
+      - 32
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 2
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 16
+    bn:
+      - 64
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - false
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 4
+  - config:
+    param_map:
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        GROUP_M: group_m
+        TRANSPOSE: transpose
+        STATIC_K: static_k
+        pipeline: pipeline
+        scenario: scenario
+      num_warps: warps
+      num_stages: stages
+    bm:
+      - 64
+    bn:
+      - 16
+    bk:
+      - 64
+    group_m:
+      - 1
+    transpose:
+      - true
+    static_k:
+      - false
+    pipeline:
+      - "basic"
+    scenario:
+      - ""
+    warps:
+      - 4
+    stages:
+      - 4
+
+bmm_vector:
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 1
+    bk:
+      - 1024
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 4
+    bk:
+      - 256
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 4
+    bk:
+      - 512
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 16
+    bk:
+      - 128
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 32
+    bk:
+      - 256
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 64
+    bk:
+      - 64
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 128
+    bk:
+      - 32
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 128
+    bk:
+      - 64
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 128
+    bk:
+      - 128
+    warps:
+      - 8
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 256
+    bk:
+      - 32
+    warps:
+      - 4
+    stages:
+      - 1
+  - config:
+    param_map:
+      META:
+        BR: br
+        BK: bk
+      num_warps: warps
+      num_stages: stages
+    br:
+      - 256
+    bk:
+      - 64
+    warps:
+      - 8
+    stages:
+      - 1

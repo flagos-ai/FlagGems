@@ -71,7 +71,9 @@ def test_native_batch_norm(shape, dtype, affine, caplog):
         1e-5,
     )
 
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_batch_norm"):
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.native_batch_norm)
+    ):
         result = flag_gems.native_batch_norm(
             inp,
             weight,
@@ -150,6 +152,7 @@ def test_batch_norm(shape, dtype, affine):
 
 
 @pytest.mark.batch_norm_backward
+@pytest.mark.native_batch_norm_backward
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])

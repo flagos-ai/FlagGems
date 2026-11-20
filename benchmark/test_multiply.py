@@ -26,3 +26,13 @@ def test_multiply():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.multiply_scalar
+def test_multiply_scalar():
+    bench = base.ScalarBinaryPointwiseBenchmark(
+        op_name="multiply_scalar",
+        torch_op=lambda scalar, inp: torch.multiply(inp, scalar),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

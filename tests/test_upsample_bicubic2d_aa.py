@@ -85,10 +85,9 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     ref_out = torch._C._nn._upsample_bicubic2d_aa(
         ref_i, output_size=output_size, align_corners=align_corners
     )
-    with flag_gems.use_gems():
-        res_out = torch._C._nn._upsample_bicubic2d_aa(
-            input, output_size=output_size, align_corners=align_corners
-        )
+    res_out = flag_gems._upsample_bicubic2d_aa(
+        input, output_size=output_size, align_corners=align_corners
+    )
 
     def span(scale):
         support = 2 if (scale >= 1.0) else 2.0 / scale
@@ -102,7 +101,9 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
-def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
+def upsample_bicubic2d_aa_backward_call(
+    grad, input_size, align_corners, use_flag_gems=False
+):
     orig_shape = tuple(input_size)
     n = 1
     for s in orig_shape[:-2]:
@@ -127,14 +128,24 @@ def upsample_bicubic2d_aa_backward_call(grad, input_size, align_corners):
 
     grad_4d = grad.reshape(n, c, out_h, out_w)
 
-    out = torch.ops.aten._upsample_bicubic2d_aa_backward(
-        grad_4d,
-        [out_h, out_w],
-        list(shape_4d),
-        align_corners,
-        None,
-        None,
-    )
+    if use_flag_gems:
+        out = flag_gems._upsample_bicubic2d_aa_backward(
+            grad_4d,
+            [out_h, out_w],
+            list(shape_4d),
+            align_corners,
+            None,
+            None,
+        )
+    else:
+        out = torch.ops.aten._upsample_bicubic2d_aa_backward(
+            grad_4d,
+            [out_h, out_w],
+            list(shape_4d),
+            align_corners,
+            None,
+            None,
+        )
 
     return out.reshape(orig_shape)
 
@@ -166,12 +177,12 @@ def test_upsample_bicubic2d_aa_backward(
         align_corners,
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = upsample_bicubic2d_aa_backward_call(
-            res_grad.to(dtype),
-            shape,
-            align_corners,
-        )
+    res_out = upsample_bicubic2d_aa_backward_call(
+        res_grad.to(dtype),
+        shape,
+        align_corners,
+        use_flag_gems=True,
+    )
 
     assert res_out.shape == shape
 

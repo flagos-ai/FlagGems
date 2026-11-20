@@ -511,10 +511,16 @@ def _weight_norm_bwd_partial_dot_kernel(
     cols = chunk * BLOCK_N + tl.arange(0, BLOCK_N)
     offsets = row * N + cols
     if NEED_MASK:
-        mask = (row < M) & (cols < N)
+        # Tail chunk: the masked load ignores `other=0.0` on XPU and reads OOB
+        # past the tensor end, poisoning tl.sum. Clamp the address into the
+        # last valid column and zero out the out-of-range lanes arithmetically.
+        cols_c = tl.minimum(cols, N - 1)
+        offsets_c = row * N + cols_c
+        valid = (cols < N).to(tl.float32)
         dot = tl.sum(
-            tl.load(w + offsets, mask=mask).to(tl.float32)
-            * tl.load(v + offsets, mask=mask).to(tl.float32),
+            tl.load(w + offsets_c).to(tl.float32)
+            * tl.load(v + offsets_c).to(tl.float32)
+            * valid,
             axis=0,
         )
     else:

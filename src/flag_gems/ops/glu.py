@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import logging
 import math
 from functools import lru_cache
@@ -162,13 +163,13 @@ if HAS_TLE_EXTRACT_TILE:
         stride_xn,
         stride_outn,
         D_P2: tl.constexpr,
-        D2_P2: tl.constexpr,
         ROWS_PER_PROGRAM: tl.constexpr,
         LOOP_STAGES: tl.constexpr,
         LOOP_UNROLL: tl.constexpr,
     ):
         row_start = tl.program_id(0) * ROWS_PER_PROGRAM
-        offs = tl.arange(0, D2_P2)
+        # Both halves must fit even when autotuning adjusts block sizes.
+        offs = tl.arange(0, 2 * D_P2)
         offs_d = tl.arange(0, D_P2)
         # Pad A and B separately so extract_tile's second tile starts at B.
         # For power-of-two D this reduces to the original contiguous offsets.
@@ -260,7 +261,11 @@ if HAS_TLE_EXTRACT_SLICE:
         key=["N", "D", "NUM_CORES"],
         prune_configs_by={"early_config_prune": _prune_glu_ascend_configs},
         do_bench=_glu_ascend_do_bench,
-        cache_results=False,
+        **(
+            {"cache_results": False}
+            if "cache_results" in inspect.signature(triton.autotune).parameters
+            else {}
+        ),
     )
     @triton.jit
     def glu_kernel_ascend(
@@ -275,9 +280,13 @@ if HAS_TLE_EXTRACT_SLICE:
     ):
         col_tiles = tl.cdiv(D, BLOCK_N)
         total_tiles = tl.cdiv(N, BLOCK_M) * col_tiles
-        tiles_per_program = tl.cdiv(total_tiles, tl.num_programs(0))
-        tile_begin = tl.program_id(0) * tiles_per_program
-        tile_end = tl.minimum(tile_begin + tiles_per_program, total_tiles)
+        num_programs = tl.num_programs(0)
+        pid = tl.program_id(0)
+        tiles_per_program = total_tiles // num_programs
+        extra_tiles = total_tiles % num_programs
+        # Give the first extra_tiles programs one extra tile each.
+        tile_begin = pid * tiles_per_program + tl.minimum(pid, extra_tiles)
+        tile_end = (pid + 1) * tiles_per_program + tl.minimum(pid + 1, extra_tiles)
         row_offsets = tl.arange(0, BLOCK_M)
         packed_offsets = tl.arange(0, 2 * BLOCK_N)
         out_offsets = tl.arange(0, BLOCK_N)
@@ -367,7 +376,7 @@ def glu_backward_kernel(grad_output, a, b):
 
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logger.debug("GEMS GLU FORWARD")
+    logger.debug("GEMS GLU_FORWARD")
     if HAS_TLE_EXTRACT_SLICE:
         if (
             dim in (-1, self.ndim - 1)
@@ -389,7 +398,6 @@ def glu(self, dim=-1):
         x = self.reshape(N, D2)
         out = torch.empty((N, D), device=self.device, dtype=self.dtype)
         d_p2 = _next_pow2(D)
-        d2_p2 = _next_pow2(D2)
 
         if N == 0 or D == 0:
             return out.reshape(self.shape[:-1] + (D,))
@@ -404,7 +412,6 @@ def glu(self, dim=-1):
                 x.stride(0),
                 out.stride(0),
                 D_P2=d_p2,
-                D2_P2=d2_p2,
             )
         return out.reshape(self.shape[:-1] + (D,))
 
@@ -416,7 +423,7 @@ def glu(self, dim=-1):
 
 def glu_backward(grad_output, self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
-    logger.debug("GEMS GLU BACKWARD")
+    logger.debug("GEMS GLU_BACKWARD")
     a, b = torch.chunk(self, 2, dim=dim)
     grad_input = torch.empty_like(self, memory_format=torch.contiguous_format)
     grad_a, grad_b = torch.chunk(grad_input, 2, dim=dim)

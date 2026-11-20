@@ -15,7 +15,7 @@
 import pytest
 import torch
 
-from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
+from flag_gems import fused_q_kv_rmsnorm
 
 try:
     from vllm.v1.attention.ops.deepseek_v4_ops import (

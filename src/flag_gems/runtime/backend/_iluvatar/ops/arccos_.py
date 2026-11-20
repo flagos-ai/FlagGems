@@ -36,7 +36,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger(f'flag_gems.runtime._iluvatar.ops.{__name__.split(".")[-1]}')
+logger = logging.getLogger(__name__)
 
 
 @triton.jit

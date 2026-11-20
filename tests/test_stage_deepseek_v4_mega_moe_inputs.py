@@ -16,9 +16,7 @@ import pytest
 import torch
 
 import flag_gems.testing as fg_testing
-from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
-    stage_deepseek_v4_mega_moe_inputs,
-)
+from flag_gems import stage_deepseek_v4_mega_moe_inputs
 
 from . import accuracy_utils as utils
 
@@ -98,6 +96,7 @@ def _make_inputs(num_tokens, hidden_size, top_k):
     return hidden_states, topk_weights, topk_ids
 
 
+@pytest.mark.stage_deepseek_v4_mega_moe_inputs
 @pytest.mark.parametrize("num_tokens, hidden_size, top_k", [(1, 128, 1), (7, 256, 8)])
 @pytest.mark.skipif(
     not _supports_fp8e4nv(), reason="requires cuda with fp8e4nv support"

@@ -231,7 +231,7 @@ def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
 
 
 def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = None):
-    logger.debug("GEMS SPECIAL_GAMMAINC")
+    logger.debug("GEMS_THEAD SPECIAL_GAMMAINC")
     if a.device.type != flag_gems.device:
         raise ValueError(
             f"gammainc: first input tensor must be on {flag_gems.device} device"

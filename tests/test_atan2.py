@@ -22,10 +22,16 @@ from . import accuracy_utils as utils
 
 @pytest.mark.atan2
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.SMALL_INT_DTYPES)
 def test_atan2(shape, dtype):
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Integer inputs are promoted to float32 by atan2, matching ATen; they are
+    # built on CPU since GPU randn has no integer implementation.
+    if dtype in utils.SMALL_INT_DTYPES:
+        x = utils.randint_in_range(shape, dtype).to(flag_gems.device)
+        y = utils.randint_in_range(shape, dtype).to(flag_gems.device)
+    else:
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_x = utils.to_reference(x, True)
     ref_y = utils.to_reference(y, True)
@@ -33,7 +39,9 @@ def test_atan2(shape, dtype):
 
     res_out = flag_gems.atan2(x, y)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(
+        res_out, ref_out, utils.promoted_float_dtype(dtype, "atan2")
+    )
 
 
 @pytest.mark.atan2_out
@@ -52,3 +60,16 @@ def test_atan2_out(shape, dtype):
     res_out = flag_gems.atan2_out(x, y, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.atan2_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_atan2_out_integer_rejects(shape, dtype):
+    # ATen raises for an integer/bool out buffer; FlagGems mirrors that instead
+    # of silently truncating the float result.
+    x = utils.make_reduction_input(shape, dtype)
+    y = utils.make_reduction_input(shape, dtype)
+    out = utils.make_reduction_input(shape, dtype)
+    with pytest.raises(RuntimeError):
+        flag_gems.atan2_out(x, y, out=out)

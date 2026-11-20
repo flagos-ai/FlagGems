@@ -238,7 +238,7 @@ def ne_func_tensor_inplace(x, y):
 
 
 def ne_(A, B):
-    logger.debug("GEMS_KUNLUNXIN NE_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN NE__TENSOR")
     if A.device != B.device:
         B = B.to(A.device)
     numel = A.numel()
@@ -313,7 +313,7 @@ def ne_func_scalar_inplace(x, y):
 
 
 def ne_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN NE_ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN NE__SCALAR")
     numel = A.numel()
     dtype = A.dtype
     if (

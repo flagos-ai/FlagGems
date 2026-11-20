@@ -291,7 +291,7 @@ def gt_func_tensor_inplace(x, y):
 
 
 def gt_tensor_(A, B):
-    logger.debug("GEMS_KUNLUNXIN GT_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN GT__TENSOR")
     if A.device != B.device:
         B = B.to(A.device)
     gt_func_tensor_inplace(A, B, out0=A)
@@ -299,7 +299,7 @@ def gt_tensor_(A, B):
 
 
 def gt_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN GT_ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN GT__SCALAR")
     numel = A.numel()
     if (
         A.is_contiguous()

@@ -22,16 +22,26 @@ from . import accuracy_utils as utils
 
 @pytest.mark.acosh
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.SMALL_INT_DTYPES)
 def test_acosh(shape, dtype):
-    # acosh domain is [1, inf), so generate input in [1, 2]
-    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(1.0, 2.0)
+    # acosh domain is [1, inf), so generate input in [1, 2]. Integer inputs are
+    # built on CPU (GPU uniform_ has no integer implementation) and promoted by
+    # acosh to float32, matching ATen.
+    if dtype in utils.SMALL_INT_DTYPES:
+        inp = torch.randint(1, 3, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(
+            1.0, 2.0
+        )
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.acosh(ref_inp)
     res_out = flag_gems.acosh(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    # Integer inputs must promote to a float output dtype exactly as ATen does.
+    utils.gems_assert_close(
+        res_out, ref_out, utils.promoted_float_dtype(dtype, "acosh")
+    )
 
 
 @pytest.mark.acosh_
@@ -45,3 +55,17 @@ def test_acosh_(shape, dtype):
     res_out = flag_gems.acosh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.acosh_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_acosh__integer_rejects(shape, dtype):
+    # ATen raises for in-place acosh on integer/bool inputs; FlagGems mirrors
+    # that instead of silently truncating.
+    if dtype is torch.bool:
+        inp = torch.zeros(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        inp = torch.randint(0, 3, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.acosh_(inp)

@@ -410,18 +410,18 @@ def nanmedian(inp):
 
 
 def nanmedian_out(inp, *, out):
-    logger.debug("GEMS_HYGON NANMEDIAN OUT")
+    logger.debug("GEMS_HYGON NANMEDIAN_OUT")
     _check_supported_dtype(inp)
     return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS_HYGON NANMEDIAN DIM")
+    logger.debug("GEMS_HYGON NANMEDIAN_DIM")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim)
 
 
 def nanmedian_dim_values(inp, dim=-1, keepdim=False, *, values, indices):
-    logger.debug("GEMS_HYGON NANMEDIAN DIM VALUES")
+    logger.debug("GEMS_HYGON NANMEDIAN_DIM_VALUES")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim, out=(values, indices))

@@ -20,15 +20,121 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+# Host-side launch geometry.  num_warps=1 does not compile for these kernels on
+# the Enflame backend, so the levers here are the tile size and the program
+# count: each program costs ~0.5us of dispatch, which dominated every mid/large
+# case in the original one-tile-per-program grid.
+# Measured on gcu:0 (min of 3 do_bench medians), 536M fp32 elements:
+#   4096 71.4ms > 8192 36.2ms > 16384 23.9ms > 32768 17.6ms > 65536 15.9ms
+#   > 131072 15.3ms ~= 262144 15.2ms      (nw=8 is 2.2x worse than nw=4)
+# 16.7M: 4096 2.26ms -> 131072 0.53ms.  Floor-bound 4096-element case keeps the
+# small tile (4096/nw4 15.3us vs 18.2us at 32768).
+_BLOCK_BIG = 131072
+_BLOCK_SMALL = 4096
+_SMALL_N = 1 << 16
+_WARPS = 4
+_TARGET_ITERS = 16
+_MIN_PROGRAMS = 64
+_MAX_GRID = 65535
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+
+def _persist_grid(n, block):
+    """Program count for the grid-strided flat kernels (persistent grid)."""
+    tiles = triton.cdiv(n, block)
+    return (
+        min(tiles, max(_MIN_PROGRAMS, triton.cdiv(tiles, _TARGET_ITERS)), _MAX_GRID),
+    )
+
+
+def _pick(n):
+    if n <= _SMALL_N:
+        return _BLOCK_SMALL, _WARPS
+    return _BLOCK_BIG, _WARPS
+
+
 @triton.jit
-def special_bessel_j0_func(x):
-    return tl_extra_shim.j0(x.to(tl.float32))
+def _j0_rational(a):
+    """Cephes rational approximation, valid for |x| < 8."""
+    y = a * a
+    num = 57568490574.0 + y * (
+        -13362590354.0
+        + y
+        * (651619640.7 + y * (-11214424.18 + y * (77392.33017 + y * (-184.9052456))))
+    )
+    den = 57568490411.0 + y * (
+        1029532985.0 + y * (9494680.718 + y * (59272.64853 + y * (267.8532712 + y)))
+    )
+    return num / den
+
+
+@triton.jit
+def _j0_asymptotic(a):
+    """Cephes asymptotic expansion, used for |x| >= 8."""
+    z = 8.0 / a
+    y2 = z * z
+    t = a - 0.785398164
+    p = 1.0 + y2 * (
+        -0.1098628627e-2
+        + y2 * (0.2734510407e-4 + y2 * (-0.2073370639e-5 + y2 * 0.2093887211e-6))
+    )
+    q = -0.1562499995e-1 + y2 * (
+        0.1430488765e-3
+        + y2 * (-0.6911147651e-5 + y2 * (0.7621095161e-6 + y2 * (-0.934945152e-7)))
+    )
+    return tl.sqrt(0.636619772 / a) * (tl.cos(t) * p - z * tl.sin(t) * q)
+
+
+@triton.jit
+def _j0_cephes(a):
+    """Cephes/ATen approximation of J0 given a = |x|, in fp32."""
+    return tl.where(a < 8.0, _j0_rational(a), _j0_asymptotic(a))
+
+
+@triton.jit
+def _j0_flat_kernel(x_ptr, o_ptr, total, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    base = pid * BLOCK
+    iters = (total - base + step - 1) // step
+    for it in range(0, iters):
+        offs = base + it * step + tl.arange(0, BLOCK)
+        mask = offs < total
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+        a = tl.abs(x)
+        if tl.max(a) < 8.0:
+            v = _j0_rational(a)
+        else:
+            v = _j0_cephes(a)
+        tl.store(o_ptr + offs, v, mask=mask)
+
+
+@triton.jit
+def _j0_words_kernel(x_ptr, o_ptr, total, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    base = pid * BLOCK
+    iters = (total - base + step - 1) // step
+    for it in range(0, iters):
+        offs = base + it * step + tl.arange(0, BLOCK)
+        mask = offs < total
+        w = tl.load(x_ptr + offs, mask=mask, other=0)
+        a = tl.abs(w.to(tl.float32, bitcast=True))
+        if tl.max(a) < 8.0:
+            v = _j0_rational(a)
+        else:
+            v = _j0_cephes(a)
+        tl.store(o_ptr + offs, v.to(tl.int32, bitcast=True), mask=mask)
+
+
+def _words_view(t):
+    """Zero-copy 32-bit word view of a float64 tensor on this backend."""
+    if t.dim() == 0:
+        t = t.view(1)
+    return t.view(torch.int32)
 
 
 def special_bessel_j0(A):
@@ -37,4 +143,24 @@ def special_bessel_j0(A):
         raise TypeError(
             f"special_bessel_j0: unsupported dtype {A.dtype}, only float32 and float64 are supported"
         )
-    return special_bessel_j0_func(A)
+
+    # The backend supports only 32-bit element arithmetic inside Triton kernels,
+    # so float64 tensors are addressed through a zero-copy 32-bit word view.
+    x = A.contiguous()
+    out = torch.empty(x.shape, dtype=x.dtype, device=x.device)
+    n = x.numel()
+    if n == 0:
+        return out
+
+    block, warps = _pick(n)
+    grid = _persist_grid(n, block)
+    with torch_device_fn.device(x.device):
+        if x.dtype == torch.float64:
+            _j0_words_kernel[grid](
+                _words_view(x), _words_view(out), n, BLOCK=block, num_warps=warps
+            )
+        else:
+            _j0_flat_kernel[grid](
+                x.view(-1), out.view(-1), n, BLOCK=block, num_warps=warps
+            )
+    return out

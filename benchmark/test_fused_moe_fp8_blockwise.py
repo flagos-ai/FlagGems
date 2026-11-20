@@ -21,6 +21,11 @@ import flag_gems
 
 from . import base
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="quantized-weight fused_experts_impl is not executable on kunlunxin",
+)
+
 
 def is_cuda_available():
     if flag_gems.device != "cuda":

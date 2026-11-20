@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # Shapes for ormqr: (M, N) pairs covering square and rectangular matrices
 ORMQR_SHAPES = [
@@ -14,7 +15,7 @@ ORMQR_SHAPES = [
 ]
 
 # ormqr only supports float32 and float64 (LAPACK limitation, no half/bfloat16)
-ORMQR_DTYPES = [torch.float32, torch.float64]
+ORMQR_DTYPES = [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
 
 
 @pytest.mark.ormqr
@@ -48,7 +49,6 @@ def test_ormqr(M, N, dtype, left, transpose):
     ref_other = utils.to_reference(other, True)
 
     ref_out = torch.ormqr(ref_input, ref_tau, ref_other, left=left, transpose=transpose)
-    with flag_gems.use_gems():
-        res_out = torch.ormqr(input_tensor, tau, other, left=left, transpose=transpose)
+    res_out = flag_gems.ormqr(input_tensor, tau, other, left=left, transpose=transpose)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

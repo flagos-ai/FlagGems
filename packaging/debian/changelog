@@ -1,3 +1,9 @@
+flag-gems (5.4.0-1) unstable; urgency=medium
+
+  * Align the packaging baseline with the 5.4.0 release line.
+
+ -- FlagOS Contributors <contact@flagos.io>  Thu, 17 Sep 2026 17:27:48 +0900
+
 flag-gems (5.3.5-1) unstable; urgency=medium
 
   * New upstream release 5.3.5 (packaging now based on the exact v5.3.5 tag).

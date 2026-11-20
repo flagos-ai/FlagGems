@@ -25,8 +25,10 @@ from . import accuracy_utils as utils
 if utils.QUICK_MODE:
     HIST_DTYPES = [torch.float32]
 else:
-    # CPU ATen reference only supports float types; fp64 included where the device supports it.
-    HIST_DTYPES = [torch.float32, torch.float64]
+    # CPU ATen reference only supports float types; fp64 is included where the
+    # device supports it (Kunlunxin silently downcasts fp64 to fp32, so the
+    # result would come back as fp32 and fail the dtype check).
+    HIST_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 # (points, dims) configurations to exercise: 1D, 2D, 3D and >2 leading dims.
 HIST_SHAPES = [
@@ -514,7 +516,11 @@ def test_histogramdd_from_bin_cts_bin_boundary_precision(dtype):
     10 bins into bin 3 instead of bin 2.
     """
     nbins = 10
-    rng = [0.0, 1.0]
+    # Anchor the grid off zero: nextafter(0.0, -1.0) is a subnormal, and devices
+    # with denormals-are-zero compare it as 0.0, i.e. in range, so that probe
+    # would land in bin 0 on the device but not in the CPU reference. Inside
+    # [1, 2] every edge has normal ulp neighbours on both sides.
+    rng = [1.0, 2.0]
     edges = torch.linspace(rng[0], rng[1], nbins + 1, dtype=dtype)
 
     # Every edge, plus its two neighbours in the floating point ordering.
@@ -607,6 +613,10 @@ def test_histogramdd_from_bin_cts_out_resize(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="needs a real fp64 out tensor; fp64 is downcast to fp32 on this backend",
+)
 def test_histogramdd_from_bin_cts_out_dtype_mismatch():
     """A dtype mismatch raises rather than being silently cast or re-bound."""
     inp = _make_input((64, 2), torch.float32, flag_gems.device)

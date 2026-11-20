@@ -65,7 +65,7 @@ enable_precision_check()
 # 第二步：使用 PrecisionCheckRegister 注册所有算子
 flag_gems.enable(registrar=PrecisionCheckRegister)
 
-# 运行你的模型或算子
+# 运行您的模型或算子
 output = model(input)
 ```
 
@@ -94,7 +94,7 @@ flag_gems.only_enable(
 You can customize the precision checking behavior by passing parameters
 to `enable_precision_check()`.
 -->
-你可以通过向 `enable_precision_check()` 传递参数来自定义精度检查的行为。
+您可以通过向 `enable_precision_check()` 传递参数来自定义精度检查的行为。
 
 <!--
 | Parameter      | Type        | Default                        | Description                                         |

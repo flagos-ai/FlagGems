@@ -629,7 +629,26 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
         return NanMedian(values=values, indices=indices)
 
 
-def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
+def _launch_radix_select(inp, values, indices, M, N, *, use_histogram=False):
+    block_n = _radix_block_n(inp, N)
+    num_warps = 4 if block_n <= 512 else 8
+    with torch_device_fn.device(inp.device):
+        nanmedian_radix_select_kernel[(M,)](
+            inp,
+            values,
+            indices,
+            M,
+            N,
+            block_n,
+            _radix_bits(inp, N) if use_histogram else RADIX_BITS,
+            inp.is_cuda,
+            use_histogram,
+            num_warps=num_warps,
+            num_stages=1,
+        )
+
+
+def _nanmedian_dim_impl(inp, dim, keepdim, out=None, *, get_row_selector=None):
     dim = _normalize_dim(dim, inp.ndim)
 
     if inp.ndim == 0:
@@ -690,11 +709,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         and N > MAX_BLOCK_N
         and N == triton.next_power_of_2(N)
     )
+    use_small_select = N <= MAX_BLOCK_N and inp.dtype is not torch.float64
     use_radix_select = (
         is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range
     )
-    use_small_select = N <= MAX_BLOCK_N and inp.dtype is not torch.float64
-    if use_radix_select or use_small_select:
+    row_selector = get_row_selector(inp, M, N) if get_row_selector is not None else None
+    if row_selector is not None or use_radix_select or use_small_select:
         values_contiguous = values.is_contiguous()
         indices_contiguous = indices.is_contiguous()
         flat_values = values.reshape(M) if values_contiguous else values.new_empty((M,))
@@ -702,23 +722,12 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
             indices.reshape(M) if indices_contiguous else indices.new_empty((M,))
         )
 
-        if use_radix_select:
-            block_n = _radix_block_n(inp, N)
-            num_warps = 4 if block_n <= 512 else 8
-            with torch_device_fn.device(inp.device):
-                nanmedian_radix_select_kernel[(M,)](
-                    inp,
-                    flat_values,
-                    flat_indices,
-                    M,
-                    N,
-                    block_n,
-                    _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
-                    is_cuda,
-                    use_cuda_histogram,
-                    num_warps=num_warps,
-                    num_stages=1,
-                )
+        if row_selector is not None:
+            row_selector(inp, flat_values, flat_indices, M, N)
+        elif use_radix_select:
+            _launch_radix_select(
+                inp, flat_values, flat_indices, M, N, use_histogram=use_cuda_histogram
+            )
         else:
             block_n = triton.next_power_of_2(N)
             with torch_device_fn.device(inp.device):
@@ -829,7 +838,7 @@ def _nanmedian_cuda_flat_radix_select(inp, out=None):
     return out
 
 
-def _nanmedian_flat_impl(inp, out=None):
+def _nanmedian_flat_impl(inp, out=None, *, get_row_selector=None):
     n = inp.numel()
     if n == 0:
         result = _empty_flat_value(inp)
@@ -848,7 +857,9 @@ def _nanmedian_flat_impl(inp, out=None):
 
     flat = inp.reshape(-1)
     if out is None:
-        return _nanmedian_dim_impl(flat, 0, False).values
+        return _nanmedian_dim_impl(
+            flat, 0, False, get_row_selector=get_row_selector
+        ).values
 
     indices = torch.empty((), dtype=torch.long, device=inp.device)
     _nanmedian_dim_impl(
@@ -856,6 +867,7 @@ def _nanmedian_flat_impl(inp, out=None):
         0,
         False,
         out=(out, indices),
+        get_row_selector=get_row_selector,
     )
     return out
 
@@ -867,17 +879,17 @@ def nanmedian(inp):
 
 
 def nanmedian_out(inp, *, out):
-    logger.debug("GEMS NANMEDIAN OUT")
+    logger.debug("GEMS NANMEDIAN_OUT")
     _check_supported_dtype(inp)
     return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS NANMEDIAN DIM")
+    logger.debug("GEMS NANMEDIAN_DIM")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim)
 
 
 def nanmedian_dim_values(inp, dim=-1, keepdim=False, *, values, indices):
-    logger.debug("GEMS NANMEDIAN DIM VALUES")
+    logger.debug("GEMS NANMEDIAN_DIM_VALUES")
     return _nanmedian_dim_impl(inp, dim, keepdim, out=(values, indices))

@@ -30,6 +30,28 @@ else:
     KEEPDIM = [True, False]
 
 
+MTHREADS_NATIVE_MODE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason=(
+        "MThreads native torch.mode raises 'MUSA error: misaligned address' "
+        "during repeated benchmarking for FP16/BF16/INT16 at shapes "
+        "(64, 64), (256, 256), and (1024, 1024); skip these dtypes "
+        "pending a native backend fix."
+    ),
+)
+
+
+def _mode_dtype_params(dtypes):
+    return [
+        (
+            pytest.param(dtype, marks=MTHREADS_NATIVE_MODE_SKIP)
+            if dtype in (torch.float16, torch.bfloat16, torch.int16)
+            else dtype
+        )
+        for dtype in dtypes
+    ]
+
+
 def _assert_mode_matches(inp, dim, keepdim):
     normalized_dim = dim % inp.ndim
     ref_inp = inp.cpu()
@@ -60,7 +82,8 @@ def _assert_mode_matches(inp, dim, keepdim):
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize(
-    "dtype", FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]
+    "dtype",
+    _mode_dtype_params(FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.int8, torch.uint8]),
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -136,3 +159,131 @@ def test_mode_byte_boundaries(dtype, dim, keepdim, case, repeat_factor):
     if dim == 0:
         inp = inp.t()
     _assert_mode_matches(inp, dim, keepdim)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize(
+    "dtype",
+    _mode_dtype_params(
+        [
+            torch.float16,
+            torch.float32,
+            torch.bfloat16,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+        ]
+    ),
+)
+@pytest.mark.parametrize("width", [63, 129, 1025, 4097])
+@pytest.mark.parametrize("dim", [0, -1])
+def test_mode_run_boundaries(dtype, width, dim):
+    # Tied runs, extrema, padding and runs spanning the scan tile boundary.
+    if dtype.is_floating_point:
+        low, high = -float("inf"), float("inf")
+    else:
+        low, high = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+    data = torch.full((3, width), high, dtype=dtype)
+    data[0, : width // 2] = low
+    data[1, ::2] = low
+    data[2, :] = low
+    inp = data.to(flag_gems.device)
+    if dim == 0:
+        inp = inp.t()
+    _assert_mode_matches(inp, dim, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("dtype", [torch.int32, torch.float32])
+@pytest.mark.parametrize("width", [129, 513, 4097])
+def test_mode_adjacent_values(dtype, width):
+    generator = torch.Generator().manual_seed(42)
+    if dtype == torch.int32:
+        inp = torch.randint(
+            -(2**31), 2**31, (7, width), dtype=dtype, generator=generator
+        )
+        low, high = 2**24, 2**24 + 1
+    else:
+        inp = torch.randn((7, width), generator=generator)
+        low = 1.0
+        high = torch.nextafter(torch.tensor(low), torch.tensor(float("inf"))).item()
+    # Adjacent keys must remain distinct, including integers beyond FP32 precision.
+    inp[0, ::2] = low
+    inp[0, 1::2] = high
+    inp[1] = high
+    inp[2, ::2] = 0
+    inp[2, 1::2] = -0.0
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize(
+    "dtype",
+    _mode_dtype_params(
+        [torch.float16, torch.bfloat16, torch.int16, torch.int8, torch.uint8]
+    ),
+)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_mode_many_rows(dtype, dim):
+    # Independent rows must not exhaust the launch grid for short reductions.
+    data = torch.arange(4097, dtype=torch.int32).remainder(17).to(dtype)
+    inp = data[:, None].expand(-1, 65).contiguous()
+    inp[:, -1] = -1
+    if dim == 0:
+        inp = inp.t()
+    _assert_mode_matches(inp.to(flag_gems.device), dim, True)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("rows", [4095, 4096, 4097, 8195])
+@pytest.mark.parametrize("dim", [0, -1])
+def test_mode_histogram_launch_boundary(rows, dim):
+    # Cross the legacy 16-bucket grid bound and exercise the INT32 radix path.
+    inp = torch.tensor([3, 1, 3, 1, 2], dtype=torch.int32).repeat(rows, 13)
+    if dim == 0:
+        inp = inp.t()
+    _assert_mode_matches(inp.to(flag_gems.device), dim, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("rows", [255, 256, 257, 513, 65536])
+@pytest.mark.parametrize("dtype", [torch.int8, torch.uint8])
+def test_mode_byte_histogram_launch_boundary(rows, dtype):
+    inp = torch.tensor([3, 1, 3, 1, 2], dtype=dtype).repeat(rows, 1)
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("rows", [65534, 65535, 65536, 98307])
+def test_mode_small_rows_launch_boundary(rows):
+    inp = torch.tensor([3, 1, 3, 1, 2], dtype=torch.float32).repeat(rows, 1)
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend backend override")
+@pytest.mark.parametrize("rows", [255, 256, 257])
+def test_mode_histogram16_batch_boundary(rows):
+    # Cross the 256-row histogram workspace batch and check the partial tail.
+    row_values = torch.arange(rows, dtype=torch.int16).remainder(17)
+    inp = row_values[:, None].expand(-1, 257).contiguous()
+    inp[:, -1] = -1
+    _assert_mode_matches(inp.to(flag_gems.device), -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.parametrize("shape", [(4096, 4096), (1024, 65536)])
+def test_mode_large_radix_launch_boundary(shape):
+    # Keep large logical tile counts on the INT32 radix path on Ascend.
+    row = torch.arange(shape[1], dtype=torch.int32) % 17
+    inp = row.expand(shape).contiguous().to(flag_gems.device)
+    _assert_mode_matches(inp, -1, False)
+
+
+@pytest.mark.mode
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend backend override")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int8, torch.uint8])
+def test_mode_ascend_dispatch(dtype):
+    assert flag_gems.mode.__module__.endswith("_ascend.ops.mode")
+    inp = torch.tensor([[3, 1, 3, 1, 2]], dtype=dtype, device=flag_gems.device)
+    _assert_mode_matches(inp, -1, True)

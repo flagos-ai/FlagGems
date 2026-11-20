@@ -124,6 +124,7 @@ def arange_start(
 
 
 def arange(end, *, dtype=None, layout=None, device=None, pin_memory=None):
+    logger.debug("GEMS_ENFLAME_GCU400 ARANGE")
     return arange_start(
         0, end, 1, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
     )

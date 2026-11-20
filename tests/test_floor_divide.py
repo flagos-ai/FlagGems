@@ -157,8 +157,7 @@ def test_floor_divide_int(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1 // ref_inp2
-    with flag_gems.use_gems():
-        res_out = inp1 // inp2
+    res_out = flag_gems.floor_divide(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 

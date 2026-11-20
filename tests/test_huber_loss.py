@@ -39,6 +39,7 @@ def test_huber_loss(shape, dtype, reduction, delta):
 
 
 @pytest.mark.huber_loss
+@pytest.mark.huber_loss_out
 @pytest.mark.parametrize("shape", [(2, 3), (128, 256), (512, 512)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])

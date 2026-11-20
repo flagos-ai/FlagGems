@@ -4,7 +4,7 @@ import torch
 
 from .igammac import igammac
 
-logger = logging.getLogger("flag_gems.ops.special_gammaincc")
+logger = logging.getLogger(__name__)
 
 
 def special_gammaincc(self: torch.Tensor, other: torch.Tensor) -> torch.Tensor:

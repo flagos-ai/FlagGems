@@ -42,11 +42,7 @@ def logit_backward_kernel(
     self_vals = tl.load(self_ptr + offsets, mask=mask, other=0)
     self_f32 = self_vals.to(tl.float32)
 
-    # Clamp self to [lo, hi] for numerical stability, mirroring ATen's
-    # logit_backward (self.clamp(lo, hi) when eps is given).
     self_clamped = tl.minimum(tl.maximum(self_f32, lo), hi)
-    # For x in (0, 1) with lo=0.0/hi=1.0 (eps=None) this is all-true and the
-    # clamp is a no-op => grad / (x * (1 - x)) exactly like ATen.
     in_range = (self_f32 >= lo) & (self_f32 <= hi)
     grad_input = tl.where(
         in_range,
@@ -102,7 +98,7 @@ def _logit_backward_impl(grad_output: torch.Tensor, self: torch.Tensor, eps=None
     n_elements = grad_kernel.numel()
     # A fixed 1024-element tile matches the pointwise kernel's one-value-per-element work pattern.
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     triton_dtype = _to_triton_dtype(work_out.dtype)
     with torch_device_fn.device(self.device):

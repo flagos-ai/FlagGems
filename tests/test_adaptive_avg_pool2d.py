@@ -105,3 +105,98 @@ def test_accuracy_adaptive_avg_pool2d_boundary_layout(
     ref_out = torch.ops.aten._adaptive_avg_pool2d(ref_inp, output_size)
     actual = flag_gems.adaptive_avg_pool2d(inp, output_size)
     utils.gems_assert_close(actual, ref_out, dtype)
+
+
+@pytest.mark.adaptive_avg_pool2d_out
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVGPOOL2D_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_accuracy_adaptive_avg_pool2d_out(shape, output_size, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    if isinstance(output_size, int):
+        output_size = [output_size, output_size]
+
+    ref_out = torch.empty(
+        (*shape[:2], *output_size), dtype=ref_inp.dtype, device=ref_inp.device
+    )
+    torch.ops.aten._adaptive_avg_pool2d.out(ref_inp, output_size, out=ref_out)
+
+    res_out = torch.empty(
+        (*shape[:2], *output_size), dtype=dtype, device=flag_gems.device
+    )
+    returned = flag_gems.adaptive_avg_pool2d_out(inp, output_size, out=res_out)
+
+    # The out variant must fill and return the caller's buffer, not a new one.
+    assert returned is res_out
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.adaptive_avg_pool2d_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("out_layout", ["contiguous", "strided", "channels_last"])
+@pytest.mark.parametrize(
+    "shape, output_size",
+    [
+        ((1, 2, 130, 259), (1, 1)),
+        ((2, 3, 3, 5), (7, 9)),
+        ((1, 2, 65, 67), (2, 3)),
+        ((4, 3, 17, 17), (5, 5)),
+    ],
+)
+def test_accuracy_adaptive_avg_pool2d_out_layout(shape, output_size, out_layout, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    out_shape = (*shape[:2], *output_size)
+    # ATen accepts a non-contiguous out tensor, so the kernel must not assume a
+    # flat layout when scattering results back.
+    if out_layout == "strided":
+        storage_shape = (*out_shape[:-1], out_shape[-1] * 2)
+        res_out = torch.empty(storage_shape, dtype=dtype, device=flag_gems.device)[
+            ..., ::2
+        ]
+    elif out_layout == "channels_last":
+        res_out = torch.empty(
+            out_shape, dtype=dtype, device=flag_gems.device
+        ).contiguous(memory_format=torch.channels_last)
+    else:
+        res_out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.empty(out_shape, dtype=ref_inp.dtype, device=ref_inp.device)
+    torch.ops.aten._adaptive_avg_pool2d.out(ref_inp, output_size, out=ref_out)
+
+    returned = flag_gems.adaptive_avg_pool2d_out(inp, output_size, out=res_out)
+
+    assert returned is res_out
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.adaptive_avg_pool2d_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_adaptive_avg_pool2d_out_resizes(dtype):
+    shape, output_size = (2, 3, 16, 16), (4, 4)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.empty(
+        (*shape[:2], *output_size), dtype=ref_inp.dtype, device=ref_inp.device
+    )
+    torch.ops.aten._adaptive_avg_pool2d.out(ref_inp, output_size, out=ref_out)
+
+    # ATen resizes a mismatched out tensor rather than raising.
+    res_out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
+    returned = flag_gems.adaptive_avg_pool2d_out(inp, output_size, out=res_out)
+
+    assert returned is res_out
+    assert tuple(res_out.shape) == (*shape[:2], *output_size)
+    utils.gems_assert_close(res_out, ref_out, dtype)

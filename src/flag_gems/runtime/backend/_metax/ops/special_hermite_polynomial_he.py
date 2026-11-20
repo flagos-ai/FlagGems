@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.runtime import device as runtime_device
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim  # noqa: F401
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 
 @triton.jit

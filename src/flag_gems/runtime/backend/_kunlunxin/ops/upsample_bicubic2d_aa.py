@@ -54,15 +54,11 @@ def heur_n_block_size(args):
     return builtins.min(triton.next_power_of_2(args["OH"]), 8192)
 
 
-# XPU perf repair 2026-08-17: the upsample fast path (reciprocal scale < 1) was a
-# single 25-tap kernel issuing 25 masked gathers per output pixel (~400-510ms per
-# official-benchmark case). It is replaced by two separable passes: a horizontal
-# bicubic pass over every input row into an (N*C, IH, OW) intermediate, then a
-# vertical pass. Per-pixel gathers drop from 25 to 10 and all load masks are
-# removed via clamped indices (weights are already zero wherever the old mask
-# could clear a load). Fixed bounded dispatch, no @triton.autotune: measured on
-# the official 6-case matrix at ~6-44ms/case (see
-# harness/solution/performance/upsample_bicubic2d_aa_xpu5_20260817.md).
+def _bicubic2d_aa_general_grid(meta):
+    return (
+        triton.cdiv(meta["OW"], meta["BLOCK_X"]),
+        triton.cdiv(meta["OH"], meta["BLOCK_Y"]),
+    )
 
 
 @triton.jit
@@ -393,10 +389,7 @@ def _upsample_bicubic2d_aa(
         # loops N*C internally). The masked loads with other=0 require the
         # TRITONXPU_*_SIM env helpers on the XPU backend.
         kernel = general_interpolate_bicubic2d_aa_kernel
-        grid = lambda META: (
-            triton.cdiv(OW, META["BLOCK_X"]),
-            triton.cdiv(OH, META["BLOCK_Y"]),
-        )
+        grid = _bicubic2d_aa_general_grid
         import os
 
         os.environ["TRITONXPU_OTHER_SIM"] = "1"

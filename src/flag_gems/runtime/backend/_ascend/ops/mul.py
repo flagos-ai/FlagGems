@@ -14,6 +14,7 @@
 
 import logging
 import math
+from functools import lru_cache
 from numbers import Number
 
 import torch
@@ -34,6 +35,90 @@ _DEVICE_NAME = runtime_device.name
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
+
+
+@lru_cache(maxsize=None)
+def _mul_vector_cores(device_index):
+    properties = triton.runtime.driver.active.utils.get_device_properties(device_index)
+    return properties["num_vectorcore"]
+
+
+@libentry()
+@triton.jit
+def mul_persistent_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    scalar,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    SCALAR: tl.constexpr,
+    FULL_BLOCKS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    programs = tl.num_programs(0)
+    tiles = tl.cdiv(n_elements, BLOCK_SIZE)
+    base = tiles // programs
+    remainder = tiles % programs
+    start = pid * base + tl.minimum(pid, remainder)
+    stop = start + base + (pid < remainder).to(tl.int32)
+    for block in range(start, stop):
+        offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = True if FULL_BLOCKS else offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        if SCALAR:
+            y = scalar
+        else:
+            y = tl.load(y_ptr + offsets, mask=mask, other=0)
+        tl.store(output_ptr + offsets, x * y, mask=mask)
+
+
+def _launch_persistent_mul(tensor, other, output, *, scalar=False):
+    n = output.numel()
+    if n == 0:
+        return output
+    cores = _mul_vector_cores(output.device.index)
+    # Bound both the UB footprint and the number of scheduled programs.
+    # Balance adjacent blocks across programs to keep HBM accesses contiguous.
+    block = min(16384, max(128, triton.next_power_of_2(triton.cdiv(n, cores))))
+    tiles = triton.cdiv(n, block)
+    grid = min(tiles, cores)
+    with torch_device_fn.device(output.device):
+        mul_persistent_kernel[(grid,)](
+            tensor,
+            tensor if scalar else other,
+            output,
+            other if scalar else 0,
+            n,
+            BLOCK_SIZE=block,
+            SCALAR=scalar,
+            FULL_BLOCKS=n % block == 0,
+            num_warps=4,
+            num_stages=1,
+        )
+    return output
+
+
+@libentry()
+@triton.jit
+def mul_narrow_broadcast_kernel(
+    row_ptr,
+    col_ptr,
+    out_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    ROW_STRIDE: tl.constexpr,
+    COL_STRIDE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = tl.arange(0, BLOCK_N)
+    a = tl.load(row_ptr + rows * ROW_STRIDE, mask=rows < M, other=0)
+    b = tl.load(col_ptr + cols * COL_STRIDE, mask=cols < N, other=0)
+    values = a[:, None] * b[None, :]
+    offsets = rows[:, None] * N + cols[None, :]
+    tl.store(out_ptr + offsets, values, mask=(rows[:, None] < M) & (cols[None, :] < N))
 
 
 def _prune_mul_flat_configs(configs, named_args, **kwargs):
@@ -102,12 +187,15 @@ def mul_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out, mask=mask)
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -124,16 +212,51 @@ def mul_contiguous_full_kernel(
     x_ptr,
     y_ptr,
     output_ptr,
-    n_elements: tl.constexpr,
+    n_elements,
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    x = tl.load(x_ptr + offsets)
-    y = tl.load(y_ptr + offsets)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out)
+    # Ascend coreDim is limited to UINT16_MAX. Iterate over tiles when the
+    # launch grid is capped, keeping each tile small enough for the UB.
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
+
+
+@libentry()
+@triton.jit
+def mul_contiguous_chunked_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
+        block_id = pid * BLOCKS_PER_PROGRAM + block_offset
+        block_start = block_id * BLOCK_SIZE
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        if block_start + BLOCK_SIZE <= n_elements:
+            x = tl.load(x_ptr + offsets)
+            y = tl.load(y_ptr + offsets)
+            out = x & y if IS_BOOL else x * y
+            tl.store(output_ptr + offsets, out)
+        elif block_start < n_elements:
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask, other=0)
+            y = tl.load(y_ptr + offsets, mask=mask, other=0)
+            out = x & y if IS_BOOL else x * y
+            tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -160,11 +283,16 @@ def mul_scalar_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    out = x & scalar if IS_BOOL else x * scalar
-    tl.store(output_ptr + offsets, out, mask=mask)
+    # Ascend coreDim is limited to UINT16_MAX. Iterate over tiles when the
+    # launch grid is capped, keeping each tile small enough for the UB.
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        out = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -197,14 +325,17 @@ def mul_broadcast_2d_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    row = offsets // n_cols
-    col = offsets - row * n_cols
-    a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
-    b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        row = offsets // n_cols
+        col = offsets - row * n_cols
+        a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
+        b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
 
 
 @libentry()
@@ -232,24 +363,29 @@ def mul_generic_nd_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    # Ascend coreDim is limited to UINT16_MAX. Iterate over tiles when the
+    # launch grid is capped, keeping each tile small enough for the UB.
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        a_offsets += idx * A_STRIDE[dim]
-        b_offsets += idx * B_STRIDE[dim]
-        out_offsets += idx * OUT_STRIDE[dim]
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            idx = linear % SHAPE[dim]
+            linear = linear // SHAPE[dim]
+            a_offsets += idx * A_STRIDE[dim]
+            b_offsets += idx * B_STRIDE[dim]
+            out_offsets += idx * OUT_STRIDE[dim]
 
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+        a = tl.load(a_ptr + a_offsets, mask=mask, other=0)
+        b = tl.load(b_ptr + b_offsets, mask=mask, other=0)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + out_offsets, out, mask=mask)
 
 
 @libentry()
@@ -274,28 +410,31 @@ def mul_generic_nd_runtime_meta_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        a_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        a_offsets += idx * a_stride_dim
-        b_offsets += idx * b_stride_dim
-        out_offsets += idx * out_stride_dim
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            shape_dim = tl.load(meta_ptr + dim)
+            a_stride_dim = tl.load(meta_ptr + NDIM + dim)
+            b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+            out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+            idx = linear % shape_dim
+            linear = linear // shape_dim
+            a_offsets += idx * a_stride_dim
+            b_offsets += idx * b_stride_dim
+            out_offsets += idx * out_stride_dim
 
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+        a = tl.load(a_ptr + a_offsets, mask=mask)
+        b = tl.load(b_ptr + b_offsets, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + out_offsets, out, mask=mask)
 
 
 @libentry()
@@ -328,35 +467,40 @@ def mul_complex_generic_nd_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    # Ascend coreDim is limited to UINT16_MAX. Iterate over tiles when the
+    # launch grid is capped, keeping each tile small enough for the UB.
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        ar_offsets += idx * AR_STRIDE[dim]
-        ai_offsets += idx * AI_STRIDE[dim]
-        br_offsets += idx * BR_STRIDE[dim]
-        bi_offsets += idx * BI_STRIDE[dim]
-        out_r_offsets += idx * OUT_R_STRIDE[dim]
-        out_i_offsets += idx * OUT_I_STRIDE[dim]
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            idx = linear % SHAPE[dim]
+            linear = linear // SHAPE[dim]
+            ar_offsets += idx * AR_STRIDE[dim]
+            ai_offsets += idx * AI_STRIDE[dim]
+            br_offsets += idx * BR_STRIDE[dim]
+            bi_offsets += idx * BI_STRIDE[dim]
+            out_r_offsets += idx * OUT_R_STRIDE[dim]
+            out_i_offsets += idx * OUT_I_STRIDE[dim]
 
-    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
-    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
-    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
-    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+        ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+        ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+        br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+        bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-    out_r = ar * br - ai * bi
-    out_i = ar * bi + ai * br
-    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
-    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+        out_r = ar * br - ai * bi
+        out_i = ar * bi + ai * br
+        tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+        tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
 @libentry()
@@ -383,42 +527,45 @@ def mul_complex_generic_nd_runtime_meta_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
-        out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
-        out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        ar_offsets += idx * ar_stride_dim
-        ai_offsets += idx * ai_stride_dim
-        br_offsets += idx * br_stride_dim
-        bi_offsets += idx * bi_stride_dim
-        out_r_offsets += idx * out_r_stride_dim
-        out_i_offsets += idx * out_i_stride_dim
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            shape_dim = tl.load(meta_ptr + dim)
+            ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
+            ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+            br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+            bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
+            out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
+            out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
+            idx = linear % shape_dim
+            linear = linear // shape_dim
+            ar_offsets += idx * ar_stride_dim
+            ai_offsets += idx * ai_stride_dim
+            br_offsets += idx * br_stride_dim
+            bi_offsets += idx * bi_stride_dim
+            out_r_offsets += idx * out_r_stride_dim
+            out_i_offsets += idx * out_i_stride_dim
 
-    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
-    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
-    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
-    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+        ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+        ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+        br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+        bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-    out_r = ar * br - ai * bi
-    out_i = ar * bi + ai * br
-    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
-    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+        out_r = ar * br - ai * bi
+        out_i = ar * bi + ai * br
+        tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+        tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
 def _is_tensor_or_number(value) -> bool:
@@ -540,8 +687,45 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
+    # Persistent blocks help medium tensors; keep the original pipelined
+    # path for large FP32 working sets and the grid-safe streaming path.
+    persistent = n_elements >= 8192 and n_elements <= 65535 * 8192
+    if dtype == torch.float32 and n_elements * output.element_size() > 32 * 1024 * 1024:
+        persistent = False
+    if persistent and dtype in (torch.float16, torch.float32, torch.bfloat16):
+        return _launch_persistent_mul(a_t, b_t, output)
     if dtype in (torch.float16, torch.float32, torch.bfloat16) and n_elements % 64 == 0:
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        max_programs = 65535
+
+        chunk_block_size = 8192
+        chunk_blocks = triton.cdiv(n_elements, chunk_block_size)
+        if chunk_blocks > max_programs:
+            blocks_per_program = triton.cdiv(chunk_blocks, max_programs)
+            grid = (triton.cdiv(chunk_blocks, blocks_per_program),)
+            with torch_device_fn.device(output.device):
+                mul_contiguous_chunked_kernel[grid](
+                    a_t,
+                    b_t,
+                    output,
+                    n_elements,
+                    BLOCK_SIZE=chunk_block_size,
+                    BLOCKS_PER_PROGRAM=blocks_per_program,
+                    IS_BOOL=_is_bool_dtype(dtype),
+                )
+            return output
+
+        # Ascend NPU coreDim limit: <= 65535
+        # The kernel has a loop to handle cases where grid < total_blocks
+        MAX_CORE_DIM = 65535
+
+        def compute_grid(meta):
+            block_size = meta["BLOCK_SIZE"]
+            num_blocks = triton.cdiv(n_elements, block_size)
+            grid_size = min(num_blocks, MAX_CORE_DIM)
+            return (grid_size,)
+
+        grid = compute_grid
+
         with torch_device_fn.device(output.device):
             mul_contiguous_full_kernel[grid](
                 a_t,
@@ -552,7 +736,7 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
                 IS_BOOL=_is_bool_dtype(dtype),
             )
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     with torch_device_fn.device(output.device):
         mul_kernel[grid](
             a_t,
@@ -569,9 +753,24 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    if dtype in (torch.float16, torch.float32, torch.bfloat16):
+        return _launch_persistent_mul(tensor, scalar, output, scalar=True)
+
+    # Ascend NPU coreDim limit: <= 65535
+    # The kernel has a loop to handle cases where grid < total_blocks
+    # We just need to ensure grid calculation doesn't overflow
+    MAX_CORE_DIM = 65535
+
+    def compute_grid(meta):
+        block_size = meta["BLOCK_SIZE"]
+        # Calculate required blocks, ensuring intermediate value is safe
+        num_blocks = triton.cdiv(n_elements, block_size)
+        # Cap at hardware limit
+        grid_size = min(num_blocks, MAX_CORE_DIM)
+        return (grid_size,)
+
     with torch_device_fn.device(output.device):
-        mul_scalar_kernel[grid](
+        mul_scalar_kernel[compute_grid](
             tensor,
             output,
             scalar,
@@ -659,41 +858,48 @@ def mul_broadcast_tiled_kernel(
     BLOCK_N: tl.constexpr,
 ):
     col_tiles = tl.cdiv(N, BLOCK_N)
-    pid = tl.program_id(0)
-    rows = (pid // col_tiles) * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = (pid % col_tiles) * BLOCK_N + tl.arange(0, BLOCK_N)
-    valid = (rows[:, None] < M) & (cols[None, :] < N)
+    row_tiles = tl.cdiv(M, BLOCK_M)
+    total_tiles = row_tiles * col_tiles
 
-    if a_s0 == 0 and a_s1 == 0:
-        a_scalar = tl.load(a_ptr)
-        a_value = tl.broadcast_to(a_scalar, (BLOCK_M, BLOCK_N))
-    elif a_s1 == 0:
-        a_rows = tl.load(a_ptr + rows * a_s0, mask=rows < M, other=0)
-        a_value = tl.broadcast_to(a_rows[:, None], (BLOCK_M, BLOCK_N))
-    elif a_s0 == 0:
-        a_cols = tl.load(a_ptr + cols * a_s1, mask=cols < N, other=0)
-        a_value = tl.broadcast_to(a_cols[None, :], (BLOCK_M, BLOCK_N))
-    else:
-        a_value = tl.load(
-            a_ptr + rows[:, None] * a_s0 + cols[None, :] * a_s1, mask=valid, other=0
-        )
+    # Ascend coreDim is limited to UINT16_MAX. Iterate over tiles when the
+    # launch grid is capped, keeping each tile small enough for the UB.
+    for tile_id in range(tl.program_id(0), total_tiles, tl.num_programs(0)):
+        row_tile = tile_id // col_tiles
+        col_tile = tile_id % col_tiles
+        rows = row_tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        cols = col_tile * BLOCK_N + tl.arange(0, BLOCK_N)
+        valid = (rows[:, None] < M) & (cols[None, :] < N)
 
-    if b_s0 == 0 and b_s1 == 0:
-        b_scalar = tl.load(b_ptr)
-        b_value = tl.broadcast_to(b_scalar, (BLOCK_M, BLOCK_N))
-    elif b_s1 == 0:
-        b_rows = tl.load(b_ptr + rows * b_s0, mask=rows < M, other=0)
-        b_value = tl.broadcast_to(b_rows[:, None], (BLOCK_M, BLOCK_N))
-    elif b_s0 == 0:
-        b_cols = tl.load(b_ptr + cols * b_s1, mask=cols < N, other=0)
-        b_value = tl.broadcast_to(b_cols[None, :], (BLOCK_M, BLOCK_N))
-    else:
-        b_value = tl.load(
-            b_ptr + rows[:, None] * b_s0 + cols[None, :] * b_s1, mask=valid, other=0
-        )
+        if a_s0 == 0 and a_s1 == 0:
+            a_scalar = tl.load(a_ptr)
+            a_value = tl.broadcast_to(a_scalar, (BLOCK_M, BLOCK_N))
+        elif a_s1 == 0:
+            a_rows = tl.load(a_ptr + rows * a_s0, mask=rows < M, other=0)
+            a_value = tl.broadcast_to(a_rows[:, None], (BLOCK_M, BLOCK_N))
+        elif a_s0 == 0:
+            a_cols = tl.load(a_ptr + cols * a_s1, mask=cols < N, other=0)
+            a_value = tl.broadcast_to(a_cols[None, :], (BLOCK_M, BLOCK_N))
+        else:
+            a_value = tl.load(
+                a_ptr + rows[:, None] * a_s0 + cols[None, :] * a_s1, mask=valid, other=0
+            )
 
-    result = a_value * b_value
-    tl.store(out_ptr + rows[:, None] * N + cols[None, :], result, mask=valid)
+        if b_s0 == 0 and b_s1 == 0:
+            b_scalar = tl.load(b_ptr)
+            b_value = tl.broadcast_to(b_scalar, (BLOCK_M, BLOCK_N))
+        elif b_s1 == 0:
+            b_rows = tl.load(b_ptr + rows * b_s0, mask=rows < M, other=0)
+            b_value = tl.broadcast_to(b_rows[:, None], (BLOCK_M, BLOCK_N))
+        elif b_s0 == 0:
+            b_cols = tl.load(b_ptr + cols * b_s1, mask=cols < N, other=0)
+            b_value = tl.broadcast_to(b_cols[None, :], (BLOCK_M, BLOCK_N))
+        else:
+            b_value = tl.load(
+                b_ptr + rows[:, None] * b_s0 + cols[None, :] * b_s1, mask=valid, other=0
+            )
+
+        result = a_value * b_value
+        tl.store(out_ptr + rows[:, None] * N + cols[None, :], result, mask=valid)
 
 
 def _launch_2d_broadcast(
@@ -711,12 +917,49 @@ def _launch_2d_broadcast(
         and output.untyped_storage().data_ptr() != a_t.untyped_storage().data_ptr()
         and output.untyped_storage().data_ptr() != b_t.untyped_storage().data_ptr()
     ):
-        grid = lambda meta: (
-            triton.cdiv(out_shape[0], meta["BLOCK_M"])
-            * triton.cdiv(out_shape[1], meta["BLOCK_N"]),
+        MAX_CORE_DIM = 65535
+        outer = (a_stride[1] == 0 and b_stride[0] == 0) or (
+            b_stride[1] == 0 and a_stride[0] == 0
         )
+        block_m = min(256, triton.next_power_of_2(out_shape[0]))
+        # The narrow kernel has no grid-stride loop; use the tiled fallback
+        # when its row grid would exceed the Ascend coreDim limit.
+        if (
+            out_shape[1] < 32
+            and outer
+            and triton.cdiv(out_shape[0], block_m) <= MAX_CORE_DIM
+        ):
+            row, col = (a_t, b_t) if a_stride[1] == 0 else (b_t, a_t)
+            row_stride, col_stride = (
+                (a_stride[0], b_stride[1])
+                if a_stride[1] == 0
+                else (b_stride[0], a_stride[1])
+            )
+            with torch_device_fn.device(output.device):
+                mul_narrow_broadcast_kernel[(triton.cdiv(out_shape[0], block_m),)](
+                    row,
+                    col,
+                    output,
+                    out_shape[0],
+                    N=out_shape[1],
+                    ROW_STRIDE=row_stride,
+                    COL_STRIDE=col_stride,
+                    BLOCK_M=block_m,
+                    BLOCK_N=triton.next_power_of_2(out_shape[1]),
+                    num_warps=4,
+                    num_stages=1,
+                )
+            return output
+
+        # The tiled kernel loops over tiles when the launch grid is capped.
+        def compute_grid(meta):
+            row_tiles = triton.cdiv(out_shape[0], meta["BLOCK_M"])
+            col_tiles = triton.cdiv(out_shape[1], meta["BLOCK_N"])
+            total_tiles = row_tiles * col_tiles
+            return (min(total_tiles, MAX_CORE_DIM),)
+
         with torch_device_fn.device(output.device):
-            mul_broadcast_tiled_kernel[grid](
+            mul_broadcast_tiled_kernel[compute_grid](
                 a_t,
                 b_t,
                 output,
@@ -729,7 +972,10 @@ def _launch_2d_broadcast(
                 dtype=_dtype_name(dtype),
             )
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    MAX_CORE_DIM = 65535
+    grid = lambda meta: (
+        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), MAX_CORE_DIM),
+    )
     with torch_device_fn.device(output.device):
         mul_broadcast_2d_kernel[grid](
             a_t,
@@ -758,7 +1004,20 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     a_stride = a_stride or (0,)
     b_stride = b_stride or (0,)
     out_stride = out_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Ascend NPU coreDim limit: <= 65535
+    # The kernel has a loop to handle cases where grid < total_blocks
+    # We just need to ensure grid calculation doesn't overflow
+    MAX_CORE_DIM = 65535
+
+    def compute_grid(meta):
+        block_size = meta["BLOCK_SIZE"]
+        # Calculate required blocks, ensuring intermediate value is safe
+        num_blocks = triton.cdiv(n_elements, block_size)
+        # Cap at hardware limit
+        grid_size = min(num_blocks, MAX_CORE_DIM)
+        return (grid_size,)
+
+    grid = compute_grid
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape + a_stride + b_stride + out_stride,
@@ -893,7 +1152,10 @@ def _launch_complex_generic(
     strides = [stride or (0,) for stride in strides]
     out_r_stride = out_r_stride or (0,)
     out_i_stride = out_i_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    MAX_CORE_DIM = 65535
+    grid = lambda meta: (
+        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), MAX_CORE_DIM),
+    )
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape
@@ -969,7 +1231,7 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 
 def mul(A, B, *, out=None):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_ASCEND MUL")
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -983,7 +1245,7 @@ def mul(A, B, *, out=None):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_ASCEND MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)

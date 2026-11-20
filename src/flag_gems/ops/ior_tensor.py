@@ -27,5 +27,5 @@ def ior_tensor(self, other):
     ``__ior__.Tensor`` and ``bitwise_or_.Tensor`` are the same operation's two
     entry points in ATen (verified numerically and by schema).
     """
-    logger.debug("GEMS IOR TENSOR")
+    logger.debug("GEMS IOR_TENSOR")
     return bitwise_or_tensor_(self, other)

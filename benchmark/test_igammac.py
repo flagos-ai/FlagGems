@@ -146,6 +146,9 @@ def test_igammac():
         input_fn=_igammac_input,
         dtypes=_IGAMMAC_DTYPES,
     )
+    # When the number of logical cores exceeds the number of physical cores (65,535),
+    # the compiler automatically adjusts the logical core count to match the physical core count,
+    # thereby reducing scheduling overhead.
     bench.run()
 
 

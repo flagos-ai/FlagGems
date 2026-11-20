@@ -5,9 +5,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
+
+from .sort import sort_stable as _gems_sort_stable
 
 logger = logging.getLogger(__name__)
 
@@ -1582,30 +1585,33 @@ def _unique2(
 ):
     logger.debug("GEMS_KUNLUNXIN _UNIQUE2")
     _ = sorted
-    flat = in0.contiguous().view(-1)
+    if in0.is_contiguous():
+        flat = in0.view(-1)
+    elif in0.numel() == 0:
+        # No data movement needed for an empty input.
+        flat = in0.reshape(-1)
+    else:
+        # Materialize a contiguous 1-D copy with gems' own Triton copy kernel
+        # instead of routing through torch's contiguous().
+        flat_buf = torch.empty(in0.shape, dtype=in0.dtype, device=in0.device)
+        _gems_copy_(flat_buf, in0)
+        flat = flat_buf.view(-1)
     N = flat.numel()
 
     if N == 0:
-        data_out = flat.clone()
-        inverse_indices = (
-            torch.empty_like(flat, dtype=torch.int64) if return_inverse else None
-        )
-        counts = (
-            torch.empty(0, dtype=torch.int64, device=flat.device)
-            if return_counts
-            else None
-        )
-        return (
-            data_out,
-            (
-                inverse_indices
-                if inverse_indices is None
-                else inverse_indices.view_as(in0)
-            ),
-            counts,
-        )
+        data_out = torch.empty(0, dtype=in0.dtype, device=in0.device)
+        # aten::_unique2 always returns three tensors: unrequested
+        # inverse_indices/counts are empty (0,) int64 tensors, never None.
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=flat.device)
+        if return_inverse:
+            inverse_indices = inverse_indices.view_as(in0)
+        counts = torch.empty(0, dtype=torch.int64, device=flat.device)
+        return (data_out, inverse_indices, counts)
 
-    sorted_data, sorted_indices = torch.sort(flat)
+    # Use gems' own Triton radix sort by reference (never torch.sort): the
+    # native unstable sort path is miscompiled when the input contains NaN on
+    # this backend, and a direct torch call here would be a fallback.
+    sorted_data, sorted_indices = _gems_sort_stable(flat, stable=True)
     ne = torch.empty(N, dtype=torch.bool, device=flat.device)
     cum_input = torch.empty(N, dtype=torch.int64, device=flat.device)
     with torch_device_fn.device(flat.device):
@@ -1632,8 +1638,12 @@ def _unique2(
                 start, counts, N, n_unique, BLOCK=_SCAN_BLOCK
             )
 
-    return (
-        data_out,
-        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
-        counts,
-    )
+    # aten::_unique2 always returns three tensors: unrequested outputs are
+    # empty (0,) int64 tensors rather than None.
+    if return_inverse:
+        inverse_indices = inverse_indices.view_as(in0)
+    else:
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=flat.device)
+    if counts is None:
+        counts = torch.empty(0, dtype=torch.int64, device=flat.device)
+    return data_out, inverse_indices, counts

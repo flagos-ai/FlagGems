@@ -32,8 +32,7 @@ def test_accuracy_rwkv_kafusion(T, dtype):
     a = torch.rand(T, C, dtype=dtype, device=flag_gems.device)
     ka = torch.rand(C, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        o_k, o_kk, o_kka = flag_gems.rwkv_ka_fusion(k, kk, a, ka, H, N)
+    o_k, o_kk, o_kka = flag_gems.rwkv_ka_fusion(k, kk, a, ka, H, N)
 
     ref_k = utils.to_reference(k, True)
     ref_kk = utils.to_reference(kk, True)

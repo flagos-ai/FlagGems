@@ -29,25 +29,12 @@ Triton itself is a DSL implemented in Python. This means that both the operator 
 the runtime dispatchers are written in Python, which can introduce **non-trivial overhead**
 in latency-sensitive or high-throughput scenarios.
 -->
-# 使用 C++ 封装的算子获得更好的性能
+# 使用 C++ 封装算子获取极致吞吐
 
-使用 *FlagGems* 时的另一条高级的优化路径是针对所选的操作使用其中的**C++ 封装的算子**。
-尽管 Triton 内核通常能够给出相当不错的计算性能，Triton 本身是使用 Python 实现的 DSL。
-这意味着算子的定义以及算子的运行时派发机制都是用 Python 编写的，
-因此在延迟非常敏感或者对吞吐要求极为苛刻的场景下会存在**不可忽视的性能开销**。
+针对延迟极其敏感或吞吐要求极高的生产场景，*FlagGems* 提供了 **C++ 封装算子（C++ Wrapped Operators）** 这一深度优化路径。
+虽然 Triton 语言编写的 Kernel 具备非常优异的硬件计算效率，但 Triton 本质上是嵌入在 Python 环境中的 DSL：算子的外层包装逻辑、参数校验以及运行时分发均由 Python 解释器驱动。在密集小算子调用、短序列推理或极高 QPS 的服务场景中，Python 运行时的开销往往会成为不容忽视的瓶颈。
 
-<!--
-To address this, *FlagGems* provides a C++ runtime solution that encapsulates
-the operator's wrapper logic, registration mechanism, and runtime management in C++,
-while still reusing the underlying Triton kernels for the actual computation.
-This approach preseves the kernel-level efficiency from Triton
-while significantly reducing Python-related overhead, enabling tighter integration
-with low-level CUDA workflows and improving overall inference performance.
--->
-为了解决这一问题，*FlagGems* 提供了一套 C++ 运行时解决方案，用 C++
-语言来实现算子的封装逻辑、注册机制和运行时管理，与此同时仍然复用下层的 Triton 内核来完成实际计算。
-这种方法能够保留 Triton 中内核级别的效率，同时大幅降低 Python 语言相关的性能开销，
-使得用户能够与底层的 CUDA 工作流进行更为紧密的集成，提升整体的推理性能。
+为此，*FlagGems* 构建了专属的 C++ 运行时层，将算子的元数据处理、参数特化逻辑与分发调度完全下沉至 C++ 原生实现，同时计算核心依然无缝复用高性能的 Triton Kernel。这既保留了 Triton 在算法层的高效表达与快速迭代优势，又彻底消除了 Python 层的解释与调度损耗，实现了更极致的端到端吞吐表现。
 
 ## 1. 架构
 
@@ -105,14 +92,14 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
    `setup.sh` 从 `backends.yaml` 读取后端配置，设置对应的 CMake 参数，
    向 `cpp/pyproject.toml` 注入 vendor 标识，并从 `cpp/` 子目录构建 C++ 扩展。
 
-   **备选方式 — 安装预构建 wheel（如果你的硬件平台支持）：**
+   **备选方式 — 安装预构建 wheel（如果您的硬件平台支持）：**
 
    ```shell
    pip install "flag-gems[cpp-cuda]"
    ```
 
    该命令从 flagOS PyPI 仓库拉取预构建的 `flag-gems-cpp-cuda` wheel。
-   请将 `cpp-cuda` 替换为你的硬件对应的扩展：
+   请将 `cpp-cuda` 替换为您的硬件对应的扩展：
    `cpp-musa`、`cpp-npu`、`cpp-gcu` 或 `cpp-ix`。
 
    **手动构建 — 从 `cpp/` 子目录：**
@@ -144,7 +131,7 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
      使用外部预装的 `libtriton_jit`。
 
    完整的各后端示例与 `libtriton_jit` 细节，参见
-   [安装指南](../../getting-started/install/#install-from-source)。
+   [安装指南](../getting-started/install.md#install-from-source)。
 
 1. **运行时：`export USE_C_EXTENSION=1`**
 
@@ -222,7 +209,7 @@ C++ 扩展构建完成之后，同一份底层 C++ 封装算子实际上可以�
 
 所有 C++ 封装算子都会在 `src/flag_gems/csrc/cstub.cpp` 中通过
 `TORCH_LIBRARY(flag_gems, m)` 注册为 PyTorch 的**自定义算子（custom op）**，
-归入 `flag_gems` 名字空间。你可以在 Python 中显式地调用它们，
+归入 `flag_gems` 名字空间。您可以在 Python 中显式地调用它们，
 从而绕过所有 patch 逻辑与 Python 侧的回退路径：
 
 ```python
@@ -280,7 +267,7 @@ at::Tensor y = flag_gems::rms_norm(x, weight, eps);
 ```
 
 仓库中 `cpp/ctests/` 下的 GTest 用例（例如 `cpp/ctests/test_triton_mm.cpp`）正是以这种方式调用 FlagGems 的算子的。
-当你希望把 FlagGems 嵌入到一个非 Python 的 C++ 应用中，或者需要写 C++ 单元测试时，这就是合适的路径。
+当您希望把 FlagGems 嵌入到一个非 Python 的 C++ 应用中，或者需要写 C++ 单元测试时，这就是合适的路径。
 
 ### 小结
 
@@ -328,7 +315,7 @@ at::Tensor y = flag_gems::rms_norm(x, weight, eps);
 > [!NOTE]
 > 标注为 *pointwise dynamic C++* 的算子仅在启用 CMake 选项
 > `-DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON` 时才会被编译；
-> 详情参阅[安装指南](../../getting-started/install/#install-from-source)。
+> 详情参阅[安装指南](../getting-started/install.md#install-from-source)。
 
 <!--
 We are actively expanding this list as part of our ongoing performance optimization work.

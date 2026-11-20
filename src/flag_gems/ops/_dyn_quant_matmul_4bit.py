@@ -8,7 +8,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ def _w4a8_matmul(
     BM: tl.constexpr,  # Output rows per matrix tile.
     BN: tl.constexpr,  # Output columns per matrix tile.
     BK: tl.constexpr,  # Reduction features per dot tile.
+    USE_INT8_DOT: tl.constexpr,
 ):
     tiles_n = tl.cdiv(N, BN)
     groups: tl.constexpr = K // GROUP
@@ -118,7 +119,6 @@ def _w4a8_matmul(
                     (rows[:, None] < M) & valid_k[None, :],
                     0,
                 ).to(tl.int32)
-                centered = tl.where(valid_k[None, :], q + offset[:, None], 0)
                 packed = tl.load(
                     Packed + ns[None, :] * (K // 2) + (k[:, None] // 2),
                     (ns[None, :] < N) & valid_k[:, None],
@@ -126,10 +126,17 @@ def _w4a8_matmul(
                 ).to(tl.int32)
                 w = ((packed >> ((k[:, None] % 2) * 4)) & 15) - 8
                 w = tl.where(valid_k[:, None], w, 0)
-                # These integers are exactly representable in BF16. Each short dot
-                # is exact in FP32; accumulate chunks in INT32, including long K.
-                partial = tl.dot(centered.to(tl.bfloat16), w.to(tl.bfloat16))
-                acc += partial.to(tl.int32)
+                if USE_INT8_DOT:
+                    # MetaX floating-point MMA can lose integer units. Dot the
+                    # signed int8 values and apply the row offset in int32.
+                    partial = tl.dot(q.to(tl.int8), w.to(tl.int8), out_dtype=tl.int32)
+                    acc += partial + offset[:, None] * tl.sum(w, 0)[None, :]
+                else:
+                    centered = tl.where(valid_k[None, :], q + offset[:, None], 0)
+                    # The operands fit exactly in BF16. Accumulate the short
+                    # FP32 dots in INT32, including for long K.
+                    partial = tl.dot(centered.to(tl.bfloat16), w.to(tl.bfloat16))
+                    acc += partial.to(tl.int32)
             ws = tl.load(Packed + weight_count + ns * groups + group, ns < N, 0)
             total += acc.to(tl.float32) * ws[None, :]
         scale = tl.load(Scale + rows, rows < M, 0)
@@ -230,6 +237,7 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
             bm,
             bn,
             bk,
+            USE_INT8_DOT=device.vendor_name == "metax",
             enable_fp_fusion=False,
         )
     return output
