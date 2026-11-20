@@ -139,6 +139,8 @@ def test_native_batch_norm_legit_no_stats(shape, dtype, affine):
     utils.gems_assert_equal(inp, original)
 
 
+@pytest.mark.native_batch_norm_legit_out
+@pytest.mark.native_batch_norm_legit_no_stats_out
 @pytest.mark.parametrize(
     "overload",
     [
