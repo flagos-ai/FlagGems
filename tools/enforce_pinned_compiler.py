@@ -61,6 +61,7 @@ import shutil
 import sys
 import sysconfig
 from importlib import metadata
+from importlib.util import find_spec
 from pathlib import Path
 
 # Reuse the exact config-loading + version-compare logic reconcile uses, so the
@@ -261,6 +262,8 @@ def main() -> None:
         log("no enforceable compiler pin for this backend; nothing to do")
         return
     dist_name, want = pin
+    # Hygon FlagTree owns triton; Ascend can provide it separately.
+    hygon_flagtree = dist_name == "flagtree" and rc.vendor_of(backend) == "hygon"
     log(f"enforcing compiler pin {dist_name}=={want}")
 
     venv = _venv_prefix()
@@ -303,9 +306,9 @@ def main() -> None:
         remove_dist(dist)
 
     # When the pin is flagtree, also evict any triton package baked outside the
-    # venv. flagtree installs into the 'triton' import namespace, so any copy of
-    # triton ahead of the venv on sys.path shadows flagtree regardless of whether
-    # flagtree is correctly pinned. setup.sh guards this with an explicit
+    # venv, except for the pinned Hygon FlagTree's own namespace. A separate
+    # triton ahead of FlagTree on sys.path can shadow it even when the metadata
+    # version is correct. setup.sh guards this with an explicit
     # 'uv pip uninstall triton'; the reconcile path has no such step.
     #
     # Two forms of shadow must be handled:
@@ -324,9 +327,19 @@ def main() -> None:
     # outside the venv — triton inside the venv and backends that use triton
     # directly are never touched.
     if dist_name == "flagtree":
+        # A baked, correctly pinned FlagTree can own triton/ even when it
+        # lives outside the venv and has no separate triton dist-info.
+        pinned_roots = {
+            _dist_root(dist).resolve()
+            for dist in installs
+            if hygon_flagtree and rc.versions_match(want, _dist_version(dist))
+        }
         # Form 1: pip-installed triton with dist-info outside the venv.
         triton_dist_shadows = [
-            d for d in collected["triton"] if not _under(_dist_root(d), venv)
+            d
+            for d in collected["triton"]
+            if not _under(_dist_root(d), venv)
+            and _dist_root(d).resolve() not in pinned_roots
         ]
         if triton_dist_shadows:
             log(
@@ -346,7 +359,7 @@ def main() -> None:
             if not entry:
                 continue
             p = Path(entry).resolve()
-            if _under(p, venv):
+            if _under(p, venv) or p in pinned_roots:
                 continue
             triton_pkg = p / "triton"
             if (triton_pkg / "__init__.py").exists():
@@ -386,6 +399,13 @@ def main() -> None:
             f"{want}; backends.yaml is the source of truth"
         )
         sys.exit(1)
+    if hygon_flagtree:
+        spec = find_spec("triton")
+        origin = Path(spec.origin).resolve() if spec and spec.origin else None
+        expected = (root / "triton" / "__init__.py").resolve()
+        if origin != expected:
+            log(f"::error::triton resolves to {origin}, expected {expected}")
+            sys.exit(1)
     log(f"OK: {dist_name} resolves to {have} from {root}")
 
 
