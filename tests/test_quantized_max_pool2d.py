@@ -461,7 +461,7 @@ def test_quantized_max_pool2d_runs_triton_kernel(monkeypatch):
     """
     # ``flag_gems.ops.quantized_max_pool2d`` is re-exported as the function, so
     # reach the module itself to observe the Triton launch.
-    gems_impl = importlib.import_module("flag_gems.ops.quantized_max_pool2d")
+    gems_impl = importlib.import_module(flag_gems.quantized_max_pool2d.__module__)
 
     calls = []
     original = gems_impl.quantized_max_pool2d_kernel
