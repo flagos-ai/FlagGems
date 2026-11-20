@@ -16,7 +16,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.logaddexp2 import logaddexp2_backward
 
 from . import accuracy_utils as utils
 
@@ -285,7 +284,7 @@ def test_logaddexp2_backward_functional(dtype):
     )
 
     ref_grad_x, ref_grad_y = _native_grads(x, y, out_grad)
-    res_grad_x, res_grad_y = logaddexp2_backward(out_grad, x, y)
+    res_grad_x, res_grad_y = flag_gems.logaddexp2_backward(out_grad, x, y)
 
     assert res_grad_x.shape == x_shape and res_grad_y.shape == y_shape
     utils.gems_assert_close(res_grad_x, ref_grad_x, dtype)
@@ -307,7 +306,7 @@ def test_logaddexp2_backward_empty_and_scalar(dtype):
     empty_x = torch.empty(0, dtype=dtype, device=flag_gems.device)
     empty_y = torch.empty(0, dtype=dtype, device=flag_gems.device)
     empty_grad = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    res = logaddexp2_backward(empty_grad, empty_x, empty_y)
+    res = flag_gems.logaddexp2_backward(empty_grad, empty_x, empty_y)
     assert res[0].numel() == 0 and res[1].numel() == 0
 
 
@@ -343,3 +342,17 @@ def test_logaddexp2_backward_accuracy_matches_native(dtype):
             f"{name}: FlagGems error {gems_err:.3e} exceeds native error "
             f"{native_err:.3e} for {dtype}"
         )
+
+
+@pytest.mark.logaddexp2_backward
+def test_logaddexp2_backward_rejects_complex():
+    x = torch.ones(
+        (4,), dtype=torch.complex64, device=flag_gems.device, requires_grad=True
+    )
+    y = torch.ones(
+        (4,), dtype=torch.float32, device=flag_gems.device, requires_grad=True
+    )
+    with pytest.raises(NotImplementedError, match="complex"):
+        flag_gems.logaddexp2(y, x)
+    with pytest.raises(NotImplementedError, match="complex"):
+        flag_gems.logaddexp2_backward(y, x, y)

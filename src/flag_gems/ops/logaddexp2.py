@@ -94,6 +94,8 @@ class Logaddexp2Function(torch.autograd.Function):
 
 def logaddexp2(self, other):
     logger.debug("GEMS LOGADDEXP2")
+    if self.is_complex() or other.is_complex():
+        raise NotImplementedError("FlagGems logaddexp2 does not support complex inputs")
     if torch.is_grad_enabled() and (self.requires_grad or other.requires_grad):
         return Logaddexp2Function.apply(self, other)
     return logaddexp2_func(self, other)
@@ -267,6 +269,10 @@ def logaddexp2_backward(grad_output, self, other):
     Mirrors the ATen autograd pair, including broadcasting of the inputs to the
     forward output shape followed by a reduction back to each input shape.
     """
+    if grad_output.is_complex() or self.is_complex() or other.is_complex():
+        raise NotImplementedError(
+            "FlagGems logaddexp2 backward does not support complex tensors"
+        )
     logger.debug("GEMS LOGADDEXP2_BACKWARD")
     if _can_use_backward_fast_path(grad_output, self, other):
         return _launch_backward_fast_path(grad_output, self, other, True, True)
