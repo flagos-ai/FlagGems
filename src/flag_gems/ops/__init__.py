@@ -409,6 +409,9 @@ from flag_gems.ops._sparse_mask_projection import (
 )
 from flag_gems.ops._sparse_mm import _sparse_mm
 from flag_gems.ops._sparse_mm_reduce_impl import _sparse_mm_reduce_impl
+from flag_gems.ops._sparse_mm_reduce_impl_backward import (
+    _sparse_mm_reduce_impl_backward,
+)
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
 from flag_gems.ops._sparse_semi_structured_apply_dense import (
@@ -657,6 +660,7 @@ from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
 from flag_gems.ops.cast_Double import cast_Double
 from flag_gems.ops.cast_Float import cast_Float
+from flag_gems.ops.cast_Half import cast_Half
 from flag_gems.ops.cast_Long import cast_Long
 from flag_gems.ops.cast_Short import cast_Short
 from flag_gems.ops.cat import cat, cat_out
@@ -960,6 +964,8 @@ from flag_gems.ops.greater_equal import (
     greater_equal,
     greater_equal_,
     greater_equal_scalar,
+    greater_equal_scalar_,
+    greater_equal_tensor_,
 )
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler import grid_sampler
@@ -1015,7 +1021,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.hypot_ import hypot_
-from flag_gems.ops.i0 import i0, i0_out
+from flag_gems.ops.i0 import i0, i0_backward, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.igamma import igamma
 from flag_gems.ops.igamma_ import igamma_
@@ -1200,6 +1206,7 @@ from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matmul_backward import matmul_backward
 from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
+from flag_gems.ops.matrix_H import matrix_H
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
@@ -1547,6 +1554,7 @@ from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_csr_prod import sparse_csr_prod, sparse_csr_prod_out
 from flag_gems.ops.sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
+from flag_gems.ops.sparse_csr_tensor_unsafe import sparse_csr_tensor_unsafe
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_mask import sparse_mask, sparse_mask_out
 from flag_gems.ops.sparse_resize_ import sparse_resize_
@@ -2167,6 +2175,7 @@ __all__ = [
     "_sparse_mask_projection_out",
     "_sparse_mm",
     "_sparse_mm_reduce_impl",
+    "_sparse_mm_reduce_impl_backward",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
     "_sparse_semi_structured_apply_dense",
@@ -2393,6 +2402,7 @@ __all__ = [
     "cast_Char",
     "cast_Double",
     "cast_Float",
+    "cast_Half",
     "cast_Long",
     "cast_Short",
     "cat",
@@ -2683,6 +2693,8 @@ __all__ = [
     "greater_equal",
     "greater_equal_",
     "greater_equal_scalar",
+    "greater_equal_scalar_",
+    "greater_equal_tensor_",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -2746,6 +2758,7 @@ __all__ = [
     "hypot_out",
     "i0",
     "i0_",
+    "i0_backward",
     "i0_out",
     "igamma",
     "igamma_",
@@ -2957,6 +2970,7 @@ __all__ = [
     "matmul_backward",
     "matrix_exp",
     "matrix_exp_backward",
+    "matrix_H",
     "matrix_power",
     "matrix_power_out",
     "max",
@@ -3323,6 +3337,7 @@ __all__ = [
     "sparse_csr_sum",
     "sparse_csr_sum_out",
     "sparse_csr_tensor",
+    "sparse_csr_tensor_unsafe",
     "sparse_dim",
     "sparse_mask",
     "sparse_mask_out",
