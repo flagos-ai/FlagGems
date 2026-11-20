@@ -29,7 +29,16 @@ device = device.name
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    # Compare in a dtype that does not discard information: FP32 represents
+    # fp16/bf16 exactly, but it rounds integers above 2**24 (so distinct ids
+    # can compare equal) and truncates fp64 values.  Integer operands must
+    # therefore stay in an integer type, and fp64 must stay in fp64.
+    if x.dtype.is_fp64() or y.dtype.is_fp64():
+        return x.to(tl.float64) == y.to(tl.float64)
+    elif x.dtype.is_floating() or y.dtype.is_floating():
+        return x.to(tl.float32) == y.to(tl.float32)
+    else:
+        return x.to(tl.int64) == y.to(tl.int64)
 
 
 def eq(A, B):
@@ -45,7 +54,14 @@ def eq(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func_scalar(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    # A floating-point scalar promotes the comparison to floating point (it
+    # must not be truncated to an integer), while an integer scalar keeps
+    # integer semantics so that large integer values stay exact.
+    if y.dtype.is_floating() or x.dtype.is_floating():
+        if x.dtype.is_fp64() or y.dtype.is_fp64():
+            return x.to(tl.float64) == y.to(tl.float64)
+        return x.to(tl.float32) == y.to(tl.float32)
+    return x.to(tl.int64) == y.to(tl.int64)
 
 
 def eq_scalar(A, B):

@@ -86,7 +86,9 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          sparse-checkout: .github/backends.json
+          sparse-checkout: |
+            .github/backends.json
+            src/flag_gems/backends.yaml
           sparse-checkout-cone-mode: false
 
       - id: build-backend-matrix
