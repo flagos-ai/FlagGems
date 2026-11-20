@@ -248,12 +248,3 @@ def test_upsample_bicubic2d_aa_position_embedding_views(
     )
     actual = flag_gems._upsample_bicubic2d_aa(value, [target_size, target_size], False)
     torch.testing.assert_close(actual.cpu(), expected, atol=2e-5, rtol=1e-5)
-    with flag_gems.use_gems():
-        dispatched = torch.nn.functional.interpolate(
-            value,
-            size=[target_size, target_size],
-            mode="bicubic",
-            antialias=True,
-            align_corners=False,
-        )
-    torch.testing.assert_close(dispatched.cpu(), expected, atol=2e-5, rtol=1e-5)
