@@ -2261,6 +2261,18 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: baddbmm_backward
+  description: First-order autograd rule for baddbmm implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - baddbmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: baddbmm_out
   description: This is a variant of `baddbmm()`.
   for:
