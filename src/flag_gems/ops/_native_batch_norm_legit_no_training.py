@@ -295,3 +295,28 @@ def _native_batch_norm_legit_no_training(
         save_var = save_var.to(save_dtype)
 
     return output.view_as(input), save_mean, save_var
+
+
+def native_batch_norm_legit_no_training_backward(
+    grad_output,
+    input,
+    weight,
+    running_mean,
+    running_var,
+    eps,
+    output_mask=(True, True, True),
+):
+    """Return selected input, weight and bias gradients using running statistics."""
+    from flag_gems.ops.batch_norm import _batch_norm_backward_eval
+
+    return _batch_norm_backward_eval(
+        input,
+        input if input.dim() == 3 else make_3d_for_bn(input),
+        make_3d_for_bn(grad_output),
+        weight,
+        running_mean,
+        running_var,
+        False,
+        output_mask,
+        eps,
+    )

@@ -312,6 +312,7 @@ from flag_gems.ops._native_batch_norm_legit_functional import (
 )
 from flag_gems.ops._native_batch_norm_legit_no_training import (
     _native_batch_norm_legit_no_training,
+    native_batch_norm_legit_no_training_backward,
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
@@ -3046,6 +3047,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_no_training_backward",
     "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
