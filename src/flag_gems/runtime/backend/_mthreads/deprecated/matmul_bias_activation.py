@@ -19,7 +19,7 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems.deprecated.matmul_bias_activation import (
+from flag_gems.fused.matmul_bias_activation import (
     matmul_bias_activation as generic_matmul_bias_activation,
 )
 from flag_gems.runtime import torch_device_fn
