@@ -132,6 +132,7 @@ from .foreach_copy_ import foreach_copy_
 from .foreach_cos_ import foreach_cos_
 from .foreach_cosh_ import foreach_cosh_
 from .foreach_div_scalar import foreach_div_scalar
+from .foreach_div_scalar_ import foreach_div_scalar_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -480,6 +481,7 @@ __all__ = [
     "foreach_cos_",
     "foreach_cosh_",
     "foreach_div_scalar",
+    "foreach_div_scalar_",
     "frac",
     "frac_",
     "full",
