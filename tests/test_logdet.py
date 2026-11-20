@@ -196,12 +196,13 @@ def test_logdet_empty(dtype):
 @pytest.mark.logdet
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_logdet_rejects_complex(dtype):
+    input_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
     real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
-    real = torch.randn((2, 4, 4), dtype=real_dtype, device=flag_gems.device)
+    real = torch.randn((2, 4, 4), dtype=real_dtype, device=input_device)
     imag = torch.randn_like(real)
-    inp = torch.complex(real, imag) + 4 * torch.eye(
-        4, dtype=dtype, device=flag_gems.device
-    )
+    inp = torch.complex(real, imag) + 4 * torch.eye(4, dtype=dtype, device=input_device)
+    if flag_gems.vendor_name == "ascend":
+        inp = inp.to(flag_gems.device)
     with pytest.raises(RuntimeError, match="complex inputs are not supported"):
         flag_gems.logdet(inp)
 

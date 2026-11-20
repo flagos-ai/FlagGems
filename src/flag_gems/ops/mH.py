@@ -32,7 +32,10 @@ Contract points that drive the implementation:
   (``Tensor.conj``) and the stride-exchange view (``Tensor.transpose``) are
   used -- the same primitives aten composes, and the composition reproduces
   aten's alias chain exactly (``out._base is self``) for real, complex,
-  transposed, strided, offset and batched inputs.
+  transposed, strided, offset and batched inputs.  The shared
+  ``_conjugate_transpose_view`` helper excludes the FlagGems backend key while
+  toggling the bit, preventing the registered ``aten::_conj`` kernel from
+  materializing a physical copy.
 * **Conjugation is dtype-dependent.** The lazy conjugate bit only exists for
   complex dtypes; for a real tensor ``conj()`` is a no-op that hands back the
   very same object, so the rank >= 2 result is exactly ``transpose(-2, -1)``.
@@ -64,6 +67,8 @@ import warnings
 
 import torch
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["mH"]
@@ -83,24 +88,65 @@ _CONJ = torch.Tensor.conj
 _TRANSPOSE = torch.Tensor.transpose
 _IS_COMPLEX = torch.Tensor.is_complex
 
+# Parsing also resolves renamed PrivateUse1 keys such as MUSA.  Both ``mH``
+# and ``matrix_H`` use this keyset through ``_lazy_conj`` so their view
+# semantics stay identical under ``use_gems()``.
+_BACKEND_KEYSET = torch._C.DispatchKeySet(
+    torch._C._parse_dispatch_key(runtime.device.dispatch_key)
+)
+_EXCLUDE_BACKEND = torch._C._ExcludeDispatchKeyGuard
+
+
+def _lazy_conj(self):
+    """Toggle the lazy conjugate bit without entering FlagGems' ``_conj``.
+
+    FlagGems' device ``aten::_conj`` kernel materializes the conjugation.  A
+    conjugate-transpose view must instead preserve shared storage and the lazy
+    bit, so redispatch the ``conj`` primitive with the backend key excluded.
+    ``transpose`` remains outside this guard because its ``as_strided`` path
+    needs the backend key.
+    """
+    with _EXCLUDE_BACKEND(_BACKEND_KEYSET):
+        return _CONJ(self)
+
+
+def _conjugate_transpose_view(
+    self,
+    one_dim_message,
+    zero_dim_message,
+    warn_state,
+    *,
+    matrix_only=False,
+):
+    """Implement the shared rank and lazy-view contract for ``mH`` and ``H``."""
+    ndim = self.dim()
+    if ndim == 1:
+        raise RuntimeError(one_dim_message)
+    if ndim == 0:
+        # 0-D: deprecated aten path, warn once and degrade to conj().
+        if not warn_state["warned"]:
+            warn_state["warned"] = True
+            warnings.warn(zero_dim_message, UserWarning, stacklevel=3)
+        return _lazy_conj(self)
+    if matrix_only and ndim > 2:
+        # Batches of matrices are aten::mH's domain, not aten::matrix_H's.
+        raise RuntimeError(
+            f"tensor.H is only supported on matrices (2-D tensors). Got {ndim}-D "
+            "tensor. For batches of matrices, consider using tensor.mH"
+        )
+    if _IS_COMPLEX(self):
+        # Complex input: the lazy conjugate bit must be toggled as well.
+        return _TRANSPOSE(_lazy_conj(self), -2, -1)
+    # Real input: conj() is a no-op identity, so only exchange the strides.
+    return _TRANSPOSE(self, -2, -1)
+
 
 def mH(self):
     """Return the zero-copy conjugate-transpose view of ``self``."""
     logger.debug("GEMS MH")
-
-    ndim = self.dim()
-    if ndim < 2:
-        if ndim == 1:
-            raise RuntimeError(_MH_1D_MESSAGE)
-        # 0-D: deprecated aten path, warn once and degrade to conj().
-        if not _MH_WARN_STATE["warned"]:
-            _MH_WARN_STATE["warned"] = True
-            warnings.warn(_MH_0D_MESSAGE, UserWarning, stacklevel=2)
-        out = _CONJ(self)
-    elif _IS_COMPLEX(self):
-        # Complex input: the lazy conjugate bit must be toggled as well.
-        out = _TRANSPOSE(_CONJ(self), -2, -1)
-    else:
-        # Real input: conj() is a no-op identity, so mH is the stride exchange.
-        out = _TRANSPOSE(self, -2, -1)
-    return out
+    return _conjugate_transpose_view(
+        self,
+        _MH_1D_MESSAGE,
+        _MH_0D_MESSAGE,
+        _MH_WARN_STATE,
+    )

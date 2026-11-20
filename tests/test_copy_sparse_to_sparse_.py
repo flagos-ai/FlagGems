@@ -24,6 +24,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse layout not supported on this device",
+)
 @pytest.mark.copy_sparse_to_sparse_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("resize", [False, True])
@@ -68,6 +72,10 @@ def test_copy_sparse_to_sparse_self_alias():
     assert flag_gems.copy_sparse_to_sparse_(src, src) is src
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse layout not supported on this device",
+)
 @pytest.mark.copy_sparse_to_sparse_
 def test_copy_sparse_to_sparse_dtype_conversion():
     # Copy converts values to the destination dtype without replacing it.
@@ -83,4 +91,52 @@ def test_copy_sparse_to_sparse_dtype_conversion():
     )
     res = flag_gems.copy_sparse_to_sparse_(dst, src)
     assert res.dtype == dst.dtype
+    utils.gems_assert_equal(res._values(), ref._values())
+
+
+@pytest.mark.copy_sparse_to_sparse_
+def test_copy_sparse_to_sparse_nonempty_shrink_raises():
+    idx = torch.tensor([[0, 1], [1, 0]], device=flag_gems.device)
+    dst = torch.sparse_coo_tensor(
+        idx, torch.tensor([1.0, 2.0], device=flag_gems.device), (4, 4)
+    )
+    src_idx = torch.tensor([[0], [0]], device=flag_gems.device)
+    src = torch.sparse_coo_tensor(
+        src_idx, torch.tensor([9.0], device=flag_gems.device), (2, 2)
+    )
+    old_idx = utils.to_reference(dst._indices().clone())
+    old_val = utils.to_reference(dst._values().clone())
+
+    with pytest.raises(RuntimeError, match="shrinking the size of sparse dimensions"):
+        torch.ops.aten.copy_sparse_to_sparse_.default(
+            utils.to_reference(dst.clone()), utils.to_reference(src)
+        )
+    with pytest.raises(RuntimeError, match="shrinking the size of sparse dimensions"):
+        flag_gems.copy_sparse_to_sparse_(dst, src)
+
+    assert tuple(dst.shape) == (4, 4)
+    assert dst._nnz() == 2
+    utils.gems_assert_equal(dst._indices(), old_idx)
+    utils.gems_assert_equal(dst._values(), old_val)
+
+
+@pytest.mark.copy_sparse_to_sparse_
+def test_copy_sparse_to_sparse_nonempty_grow():
+    idx = torch.tensor([[0, 1], [1, 0]], device=flag_gems.device)
+    dst = torch.sparse_coo_tensor(
+        idx, torch.tensor([1.0, 2.0], device=flag_gems.device), (2, 2)
+    )
+    src_idx = torch.tensor([[0, 1, 2], [1, 0, 2]], device=flag_gems.device)
+    src = torch.sparse_coo_tensor(
+        src_idx, torch.tensor([9.0, 8.0, 7.0], device=flag_gems.device), (4, 4)
+    )
+    ref = torch.ops.aten.copy_sparse_to_sparse_.default(
+        utils.to_reference(dst.clone()), utils.to_reference(src)
+    )
+
+    res = flag_gems.copy_sparse_to_sparse_(dst, src)
+
+    assert res is dst
+    assert res.shape == ref.shape
+    utils.gems_assert_equal(res._indices(), ref._indices())
     utils.gems_assert_equal(res._values(), ref._values())

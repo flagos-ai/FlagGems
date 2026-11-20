@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 DTYPES = utils.ALL_FLOAT_DTYPES
 SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129), (513, 129)]
@@ -30,7 +31,13 @@ GRAD_MODES = [(True, True), (True, False), (False, True), (False, False)]
 
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize(
-    "dtype", [torch.int32, torch.int64, torch.complex64, torch.complex128]
+    "dtype",
+    [
+        torch.int32,
+        torch.int64,
+        torch.complex64,
+        pytest.param(torch.complex128, marks=_SKIP_FP64),
+    ],
 )
 def test_thnn_fused_lstm_cell_backward_rejects_unsupported_dtype(dtype):
     state = torch.zeros((2, 3), dtype=dtype, device=flag_gems.device)

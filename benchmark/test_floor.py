@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -22,6 +24,18 @@ from . import base, consts
 def test_floor():
     bench = base.UnaryPointwiseBenchmark(
         op_name="floor", torch_op=torch.floor, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
+
+
+@pytest.mark.floor_backward
+def test_floor_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="floor_backward",
+        torch_op=torch.floor,
+        gems_op=flag_gems.floor,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
 
