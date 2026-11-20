@@ -14,9 +14,10 @@
 
 from collections.abc import Callable
 
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 from flag_gems import ops
 
 from . import accuracy_utils as utils
