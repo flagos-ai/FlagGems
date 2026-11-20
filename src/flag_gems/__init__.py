@@ -1338,6 +1338,7 @@ _FULL_CONFIG = (
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
+    ("elu_backward.grad_input", elu_backward_out),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
     ("embedding_bag", embedding_bag),

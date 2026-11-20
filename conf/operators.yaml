@@ -5756,6 +5756,18 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: elu_backward_out
+  description: A variant of `elu_backward` that assigns the output to the `grad_input`
+    tensor.
+  for:
+  - elu_backward.grad_input
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '4.0'
 - id: embedding
   description: 'Generate a simple lookup table that looks up embeddings in a fixed
     dictionary and size.
