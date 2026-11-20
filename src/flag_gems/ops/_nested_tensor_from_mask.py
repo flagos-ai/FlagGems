@@ -225,23 +225,9 @@ class NestedTensorFromMaskFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_values):
         lengths, storage_offsets = ctx.saved_tensors
-        grid, block, masked, empty = ctx.launch
-        N, L, D = ctx.dense_shape
-        grad_t = torch.empty(
-            (N, L, D), dtype=grad_values.dtype, device=grad_values.device
+        grad_t = _nested_tensor_from_mask_dense_grad(
+            grad_values, lengths, storage_offsets, ctx.dense_shape, ctx.launch
         )
-        if not empty:
-            with torch_device_fn.device(grad_t.device):
-                _nested_tensor_from_mask_unpack_kernel[grid](
-                    grad_values,
-                    lengths,
-                    storage_offsets,
-                    grad_t,
-                    L,
-                    D,
-                    block,
-                    masked,
-                )
         return grad_t, None, None, None
 
 
@@ -334,4 +320,61 @@ def _nested_tensor_from_mask(t, mask, mask_check=True):
 
     return torch.ops.aten._nested_view_from_buffer.default(
         values, nested_size, nested_strides, storage_offsets
+    )
+
+
+def _nested_tensor_from_mask_dense_grad(
+    grad_values, lengths, storage_offsets, shape, launch=None
+):
+    N, L, D = shape
+    if launch is None:
+        span = L * D
+        block = min(1024, triton.next_power_of_2(max(span, 1)))
+        launch = (
+            (N, triton.cdiv(span, block)),
+            block,
+            span % block != 0,
+            N * span == 0,
+        )
+    grid, block, masked, empty = launch
+    grad_t = torch.empty((N, L, D), dtype=grad_values.dtype, device=grad_values.device)
+    if not empty:
+        with torch_device_fn.device(grad_t.device):
+            _nested_tensor_from_mask_unpack_kernel[grid](
+                grad_values,
+                lengths,
+                storage_offsets,
+                grad_t,
+                L,
+                D,
+                block,
+                masked,
+            )
+    return grad_t
+
+
+def nested_tensor_from_mask_backward(grad_output, output_size):
+    """Return the padded dense gradient from a legacy nested output gradient."""
+    if not grad_output.is_nested or grad_output.layout != torch.strided:
+        raise ValueError("grad_output must be a legacy strided nested tensor")
+    shape = tuple(output_size)
+    if len(shape) != 3:
+        raise ValueError(
+            "output_size must be the original three-dimensional input shape"
+        )
+    sizes = grad_output._nested_tensor_size()
+    lengths = sizes[:, 0]
+    if (
+        sizes.shape[0] != shape[0]
+        or bool((lengths > shape[1]).any())
+        or bool((sizes[:, 1] != shape[2]).any())
+    ):
+        raise ValueError("nested gradient components must fit the original input shape")
+    grad_values = grad_output.values()
+    storage_offsets = grad_output._nested_tensor_storage_offsets()
+    return _nested_tensor_from_mask_dense_grad(
+        grad_values,
+        lengths.to(grad_values.device),
+        storage_offsets.to(grad_values.device),
+        shape,
     )
