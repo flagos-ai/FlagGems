@@ -65,6 +65,7 @@ from flag_gems.deprecated.indexer_k_quant_and_cache import indexer_k_quant_and_c
 from flag_gems.deprecated.mhc import (
     hc_head_fused_kernel,
     hc_head_fused_kernel_ref,
+    hc_split_sinkhorn,
     mhc_bwd,
     mhc_bwd_ref,
     mhc_post,
@@ -121,6 +122,7 @@ __all__ = [
     "grouped_topk",
     "hc_head_fused_kernel",
     "hc_head_fused_kernel_ref",
+    "hc_split_sinkhorn",
     "indexer_k_quant_and_cache",
     "inplace_fused_experts",
     "invoke_fused_moe_triton_kernel",
