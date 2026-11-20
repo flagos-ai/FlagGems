@@ -222,7 +222,7 @@ matching label:
 
 `python-op` 是验证公版算子正确性与兼容性的核心门禁作业：
 - **硬件基础设施**：该作业部署并运行在标签为 `jiuding` 的专用自托管 Runner 上，底层硬件为配备 **NVIDIA A100-40G** GPU 的高性能服务器；
-- **编译器选型**：在 `python-op` 测试环境中，**默认安装并使用的是官方上游原生 Triton 编译器，而非 FlagTree 编译器**。这一策略用于严格检验所有公版算子实现（位于 `src/flag_gems/ops`、`src/flag_gems/fused` 以及 `src/flag_gems/experimental_ops`）与官方社区 Triton 语义及 NVIDIA Ampere 架构的基线兼容性，防止依赖特定编译器衍生分支的代码合入公版目录。
+- **编译器选型**：在 `python-op` 测试环境中，**默认安装并使用的是官方上游原生 Triton 编译器，而非 FlagTree 编译器**。这一策略用于严格检验所有公版算子实现（位于 `src/flag_gems/ops`、`src/flag_gems/deprecated` 以及 `src/flag_gems/experimental_ops`）与官方社区 Triton 语义及 NVIDIA Ampere 架构的基线兼容性，防止依赖特定编译器衍生分支的代码合入公版目录。
 
 <!--
 `backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR

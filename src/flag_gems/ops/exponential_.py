@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.flip import copy_func
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.random_utils import (
@@ -321,7 +322,26 @@ def fused_exponential_kernel_f64(
     tl.store(out_ptr + off3, y1_1, mask=off3 < N)
 
 
+class _ExponentialInplace(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, lambd, generator):
+        ctx.mark_dirty(x)
+        return _exponential_impl(x, lambd, generator=generator)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.zeros_like(grad_output), None, None
+
+
 def exponential_(x, lambd: float = 1.0, *, generator=None):
+    if torch.is_grad_enabled() and x.requires_grad:
+        return _ExponentialInplace.apply(x, lambd, generator)
+    result = _exponential_impl(x, lambd, generator=generator)
+    torch.autograd.graph.increment_version(x)
+    return result
+
+
+def _exponential_impl(x, lambd: float = 1.0, *, generator=None):
     logger.debug("GEMS EXPONENTIAL_")
 
     dtype = x.dtype
@@ -376,5 +396,5 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
             )
 
     if not inplace:
-        x.copy_(out)
+        copy_func(out, out0=x)
     return x

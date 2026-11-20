@@ -125,12 +125,12 @@ b = torch.randn(1024, 1024, device=flag_gems.device, dtype=torch.float16)
 c = ops.mm(a, b)
 ```
 
-对于融合算子，您可以直接从 `flag_gems.fused` 包中导入并使用：
+对于融合算子，您可以直接从 `flag_gems.deprecated` 包中导入并使用：
 
 ```python
 import torch
 import flag_gems
-from flag_gems.fused.moe_align_block_size import moe_align_block_size
+from flag_gems.deprecated.moe_align_block_size import moe_align_block_size
 
 # moe_align_block_size 的使用示例
 num_tokens = 4096

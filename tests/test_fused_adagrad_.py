@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 # The two registered ATen variants are ``aten::_fused_adagrad`` (out-of-place)
 # and ``aten::_fused_adagrad_`` (in-place).  pytest forbids marker names that
@@ -47,7 +48,12 @@ TOLS = {
 }
 
 # dtypes accepted by aten::_fused_adagrad_.
-ADAGRAD_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.float64]
+ADAGRAD_DTYPES = [
+    torch.float32,
+    torch.float16,
+    torch.bfloat16,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -149,7 +155,9 @@ def test_fused_adagrad__basic(shape, dtype):
 
 @pytest.mark.fused_adagrad_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 @pytest.mark.parametrize(
     "lr_decay,weight_decay,maximize",
     [
@@ -261,7 +269,9 @@ def test_fused_adagrad__found_inf(dtype, found_inf_val):
 
 
 @pytest.mark.fused_adagrad_
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_fused_adagrad__empty(dtype):
     """Empty parameters are a no-op and must not raise or launch a null grid."""
     params = [torch.empty(0, dtype=dtype, device=flag_gems.device)]
@@ -551,7 +561,9 @@ def test_fused_adagrad__later_entry_bad_state_step(bad_kind, match):
 
 @pytest.mark.fused_adagrad_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_fused_adagrad__multi_tensor(shape, dtype):
     """Adagrad over a list of multiple parameter tensors (foreach semantics)."""
     torch.manual_seed(42)
@@ -589,7 +601,9 @@ def test_fused_adagrad__multi_tensor(shape, dtype):
 
 
 @pytest.mark.fused_adagrad_
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_fused_adagrad__transposed_parity(dtype):
     # ATen accepts strided tensors that are non-overlapping and dense, so a
     # matching transposed layout must be supported (the kernel walks the
