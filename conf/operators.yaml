@@ -3068,6 +3068,17 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: cast_Half
+  description: Casts a tensor to float16, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Half
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cast_Long
   description: Casts a tensor to int64, returning the input unchanged when its dtype
     already matches.
@@ -6208,6 +6219,19 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: expm1_backward
+  description: The backward computation of `expm1()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - expm1
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: expm1_out
   description: A variant of `expm1` that saves the output to the specified `out`.
   for:
@@ -6243,6 +6267,17 @@ ops:
   stages:
   - stable: '2.1'
   cpp: '4.0'
+- id: exponential_backward_
+  description: Backward of in-place exponential sampling through autograd.
+  for:
+  - exponential_
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.4'
 - id: eye
   description: Returns a 2-D tensor with ones on the diagonal and zeros elsewhere.
   for:
@@ -6547,6 +6582,18 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: fill_backward
+  description: Backward of fill for scalar and tensor values through autograd.
+  for:
+  - fill.Scalar
+  - fill.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -6779,6 +6826,17 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: flip_backward
+  description: Backward of flip through autograd using the same reversed dimensions.
+  for:
+  - flip
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fliplr
   description: 'Flips a tensor in the left-to-right direction by reversing dimension
     1.
@@ -6924,6 +6982,17 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: floor_backward
+  description: Backward of floor through autograd; input gradients are zero.
+  for:
+  - floor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: floor_divide_scalar
   description: Computes `input` divided by `other`, elementwise, and floors the result.
   for:
@@ -19933,6 +20002,22 @@ ops:
   for:
   - sparse_csr_tensor.crow_col_value
   - sparse_csr_tensor.crow_col_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_csr_tensor_unsafe
+  description: 'Assembles a torch.sparse_csr layout tensor from already-materialised
+    crow/col indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_csr_tensor_unsafe
   labels:
   - aten
   - KernelGen
