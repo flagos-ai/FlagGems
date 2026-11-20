@@ -136,6 +136,7 @@ from .foreach_div_scalar_ import foreach_div_scalar_
 from .foreach_div_scalar_list import foreach_div_scalar_list
 from .foreach_div_scalar_list_ import foreach_div_scalar_list_
 from .foreach_div_tensor_ import foreach_div_tensor_
+from .foreach_erf_ import foreach_erf_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -488,6 +489,7 @@ __all__ = [
     "foreach_div_scalar_list",
     "foreach_div_scalar_list_",
     "foreach_div_tensor_",
+    "foreach_erf_",
     "frac",
     "frac_",
     "full",
