@@ -94,9 +94,11 @@ def _run_sparse_backward(
             num_weights,
             False,
             mode,
-            None
-            if per_sample_weights is None
-            else utils.to_reference(per_sample_weights, True),
+            (
+                None
+                if per_sample_weights is None
+                else utils.to_reference(per_sample_weights, True)
+            ),
             padding_idx,
         )
     else:
