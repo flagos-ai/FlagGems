@@ -59,6 +59,10 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 
 @pytest.mark.upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
+    if flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        pytest.skip(
+            "Native nearest-exact3d backward does not support uint8 on this backend"
+        )
     input_size = (1, 2, 3, 4, 5)
     output_size = (7, 6, 9)
     grad_output = torch.randint(

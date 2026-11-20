@@ -70,20 +70,50 @@ def _run_sparse_backward(
     per_sample_weights,
     padding_idx,
 ):
-    ref_out = utils.to_reference(
-        torch.ops.aten._embedding_bag_sparse_backward(
-            grad,
-            indices,
-            offsets,
-            offset2bag,
-            bag_size,
+    if flag_gems.vendor_name == "kunlunxin" and offset2bag.numel() == 0:
+        # Kunlunxin's native sparse forward leaves the bag map empty and zeroes
+        # the bag sizes, which makes the backward read out of bounds. Rebuild
+        # both from the offsets so the case still exercises the real kernel.
+        cpu_offsets = offsets.cpu()
+        ends = torch.cat((cpu_offsets[1:], cpu_offsets.new_tensor([indices.numel()])))
+        counts = ends - cpu_offsets
+        offset2bag = torch.repeat_interleave(
+            torch.arange(cpu_offsets.numel()), counts
+        ).to(offsets.device)
+        bag_size = counts.to(offsets.device)
+
+    if flag_gems.vendor_name == "kunlunxin":
+        # The device native implementation faults and disagrees with the CPU
+        # oracle; build the reference from CPU copies instead.
+        ref_out = torch.ops.aten._embedding_bag_sparse_backward(
+            utils.to_reference(grad, True),
+            utils.to_reference(indices, False),
+            utils.to_reference(offsets, False),
+            utils.to_reference(offset2bag, False),
+            utils.to_reference(bag_size, False),
             num_weights,
             False,
             mode,
-            per_sample_weights,
+            None
+            if per_sample_weights is None
+            else utils.to_reference(per_sample_weights, True),
             padding_idx,
         )
-    )
+    else:
+        ref_out = utils.to_reference(
+            torch.ops.aten._embedding_bag_sparse_backward(
+                grad,
+                indices,
+                offsets,
+                offset2bag,
+                bag_size,
+                num_weights,
+                False,
+                mode,
+                per_sample_weights,
+                padding_idx,
+            )
+        )
     res_out = flag_gems._embedding_bag_sparse_backward(
         grad,
         indices,
