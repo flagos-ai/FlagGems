@@ -31,7 +31,6 @@ CONTRACT_SHAPES = [
     (1, 321, 1024, 4096),
     (1, 512, 1024, 4096),
     (1, 513, 1024, 4096),
-    (1, 16384, 1024, 4096),
 ]
 BMM_CASES = list(
     product(
@@ -41,6 +40,10 @@ BMM_CASES = list(
         (False, True),
     )
 )
+
+# Keep large-tile coverage without repeating its expensive CPU reference.
+# Smaller cases cover the dtype, scale-rank and output-allocation product.
+BMM_CASES.append(((1, 16384, 1024, 4096), torch.bfloat16, 2, False))
 
 
 requires_channel_int8_bmm = pytest.mark.skipif(

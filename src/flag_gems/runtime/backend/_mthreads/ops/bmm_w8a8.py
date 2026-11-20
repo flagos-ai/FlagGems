@@ -13,10 +13,14 @@ from flag_gems.ops.bmm_w8a8 import validate_inputs
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+from .mm_w8a8_fp8 import _HAS_WS
+
 try:
     from triton._C.libtriton.mthreads import SUPPORTS_TLE_WGMMA_INT8
 except ImportError:
     SUPPORTS_TLE_WGMMA_INT8 = False
+
+HAS_TLE_INT8 = SUPPORTS_TLE_WGMMA_INT8 and _HAS_WS
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +131,7 @@ def channel_host_tme_kernel(
     tl.store(output + offsets, scaled, (rows[:, None] < M) & (columns[None, :] < N))
 
 
-if SUPPORTS_TLE_WGMMA_INT8 is True:
+if HAS_TLE_INT8:
     from triton.experimental.tle import language as tle
 
     from .mm_w8a8_fp8 import _produce as produce_tiles
@@ -326,7 +330,7 @@ def bmm_w8a8(
         and B.data_ptr() % 16 == 0
     ):
         launch_warps = 4
-        if SUPPORTS_TLE_WGMMA_INT8 is True:
+        if HAS_TLE_INT8:
             if M <= TLE_SMALL_MAX_ROWS:
                 bm, bn, bk, pipeline_stages = TLE_SMALL_TILE_CONFIG
             elif M <= TLE_MEDIUM_MAX_ROWS:
