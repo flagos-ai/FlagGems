@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.neg import neg as _generic_neg
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
@@ -26,7 +27,13 @@ logger = logging.getLogger(__name__)
 
 _BLOCK_SIZE = 1024
 _INT32_MAX = 2**31 - 1
-_DEVICE_TYPES = ("cuda", torch._C._get_privateuse1_backend_name())
+
+
+def _is_hygon_device(device):
+    # CUDA is also the device type on non-Hygon builds; it is not a vendor ID.
+    return runtime_device.vendor_name == "hygon" and (
+        device.type == "cuda" or device.type == torch._C._get_privateuse1_backend_name()
+    )
 
 
 @triton.jit
@@ -52,7 +59,7 @@ def _can_use_strided_fp32_path(A):
     return (
         type(A) is torch.Tensor
         and A.layout == torch.strided
-        and A.device.type in _DEVICE_TYPES
+        and _is_hygon_device(A.device)
         and A.dtype == torch.float32
         and not A.requires_grad
         and not A.is_conj()
@@ -71,7 +78,7 @@ def _can_use_fast_path(A):
     return (
         type(A) is torch.Tensor
         and A.layout == torch.strided
-        and A.device.type in _DEVICE_TYPES
+        and _is_hygon_device(A.device)
         and A.dtype == torch.float32
         and not A.requires_grad
         and not A.is_conj()

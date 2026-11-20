@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import importlib
+import importlib.util
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -46,6 +49,40 @@ def test_neg_(shape, dtype):
     res_out = flag_gems.neg_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.neg
+def test_neg_hygon_import_does_not_enable_foreign_devices(monkeypatch):
+    # Load this module alone: importing the entire Hygon ops package may load
+    # unrelated kernels that require Hygon-specific compiler extensions.
+    path = (
+        Path(flag_gems.__file__).parent
+        / "runtime"
+        / "backend"
+        / "_hygon"
+        / "ops"
+        / "neg.py"
+    )
+    spec = importlib.util.spec_from_file_location("_neg_hygon_import_test", path)
+    provider = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(provider)
+    cuda = torch.device("cuda")
+
+    monkeypatch.setattr(
+        provider, "runtime_device", SimpleNamespace(vendor_name="nvidia")
+    )
+    assert not provider._is_hygon_device(cuda)
+    assert not provider._is_hygon_device(torch.device("cpu"))
+
+    monkeypatch.setattr(
+        provider, "runtime_device", SimpleNamespace(vendor_name="hygon")
+    )
+    monkeypatch.setattr(torch._C, "_get_privateuse1_backend_name", lambda: "flagos")
+    assert provider._is_hygon_device(cuda)
+    assert provider._is_hygon_device(SimpleNamespace(type="flagos"))
+    monkeypatch.setattr(torch._C, "_get_privateuse1_backend_name", lambda: "renamed")
+    assert not provider._is_hygon_device(SimpleNamespace(type="flagos"))
+    assert provider._is_hygon_device(SimpleNamespace(type="renamed"))
 
 
 @pytest.fixture
