@@ -1682,3 +1682,12 @@ binary_cross_entropy_with_logits_backward:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+asin_backward:
+  shapes:
+  - - 257
+  - - 4096
+  - - 65536
+  - - 1048576
+  - - 16777216
+  shape_desc: backward input shape
