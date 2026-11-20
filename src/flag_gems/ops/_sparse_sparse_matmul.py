@@ -379,14 +379,21 @@ class _SparseSparseMatmulFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         self, other = ctx.saved_tensors
-        needs_self, needs_other = ctx.needs_input_grad
-        grad_self = grad_other = None
-        if needs_self:
-            grad_self = _mask_like_grad(
-                self, _sparse_sparse_matmul(grad_output, other.t())
-            )
-        if needs_other:
-            grad_other = _mask_like_grad(
-                other, _sparse_sparse_matmul(self.t(), grad_output)
-            )
-        return grad_self, grad_other
+        return sparse_sparse_matmul_backward(
+            grad_output, self, other, ctx.needs_input_grad
+        )
+
+
+def sparse_sparse_matmul_backward(
+    grad_output, self, other, needs_input_grad=(True, True)
+):
+    """Return first-order sparse gradients on the two input supports."""
+    needs_self, needs_other = needs_input_grad
+    grad_self = grad_other = None
+    if needs_self:
+        grad_self = _mask_like_grad(self, _sparse_sparse_matmul(grad_output, other.t()))
+    if needs_other:
+        grad_other = _mask_like_grad(
+            other, _sparse_sparse_matmul(self.t(), grad_output)
+        )
+    return grad_self, grad_other

@@ -432,6 +432,7 @@ from flag_gems.ops._sparse_softmax_backward_data import (
 from flag_gems.ops._sparse_sparse_matmul import (
     _sparse_sparse_matmul,
     _sparse_sparse_matmul_out,
+    sparse_sparse_matmul_backward,
 )
 from flag_gems.ops._sparse_sum_backward import (
     _sparse_sum_backward,
@@ -3345,6 +3346,7 @@ __all__ = [
     "sparse_resize_and_clear_",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "sparse_sparse_matmul_backward",
     "spdiags",
     "special_airy_ai",
     "special_airy_ai_out",
