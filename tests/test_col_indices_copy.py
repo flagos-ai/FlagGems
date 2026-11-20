@@ -414,12 +414,16 @@ def test_col_indices_copy_out_spec_shapes(case, dtype):
 _VALUE_DTYPE_RANGE_CASES = [
     (
         dtype,
-        ["0", "max"]
-        if dtype == torch.uint8 and ["0", "max"] in _VALUE_RANGES
-        else _VALUE_RANGES[0],
+        (
+            ["0", "max"]
+            if dtype == torch.uint8 and ["0", "max"] in _VALUE_RANGES
+            else _VALUE_RANGES[0]
+        ),
     )
     for dtype in _VALUE_RANGE_DTYPES
 ]
+
+
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("case", _COLS_RANGE_CASES)
 @pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)

@@ -17,7 +17,6 @@ import torch
 
 from . import base, consts
 
-
 # Select every overload and contract case with the operator marker.
 pytestmark = pytest.mark.atleast_3d
 

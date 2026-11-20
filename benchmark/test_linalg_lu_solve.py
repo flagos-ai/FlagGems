@@ -58,7 +58,6 @@ def _make_lu_inputs(n, k, dtype, device):
     return tuple(value.to(device) for value in (LU, pivots, B))
 
 
-
 class LinalgLuSolveBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = LU_SOLVE_SHAPES
