@@ -196,19 +196,7 @@ class MaximumFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         X, Y = ctx.saved_tensors
-        needs_X, needs_Y = ctx.needs_input_grad
-        if not needs_X and not needs_Y:
-            return None, None
-        grad_X = grad_Y = None
-        if _flat_maximum_grad_applicable(grad_output, X, Y):
-            grad_X, grad_Y = _flat_maximum_grad(grad_output, X, Y, needs_X, needs_Y)
-        elif needs_X and needs_Y:
-            grad_X, grad_Y = maximum_backward_kernel(X, Y, grad_output)
-        elif needs_X:
-            grad_X = maximum_backward_self_kernel(X, Y, grad_output)
-        else:
-            grad_Y = maximum_backward_other_kernel(X, Y, grad_output)
-        return _match_operand(grad_X, X), _match_operand(grad_Y, Y)
+        return maximum_backward(grad_output, X, Y, ctx.needs_input_grad)
 
 
 def _check_backend(tensor):
@@ -274,3 +262,20 @@ def maximum(X, Y):
         "Expected all tensors to be on the same device, but found at least "
         f"two devices, {X.device} and {Y.device}!"
     )
+
+
+def maximum_backward(grad_output, X, Y, needs_input_grad=(True, True)):
+    """Return first-order gradients for the requested maximum operands."""
+    needs_X, needs_Y = needs_input_grad
+    if not needs_X and not needs_Y:
+        return None, None
+    grad_X = grad_Y = None
+    if _flat_maximum_grad_applicable(grad_output, X, Y):
+        grad_X, grad_Y = _flat_maximum_grad(grad_output, X, Y, needs_X, needs_Y)
+    elif needs_X and needs_Y:
+        grad_X, grad_Y = maximum_backward_kernel(X, Y, grad_output)
+    elif needs_X:
+        grad_X = maximum_backward_self_kernel(X, Y, grad_output)
+    else:
+        grad_Y = maximum_backward_other_kernel(X, Y, grad_output)
+    return _match_operand(grad_X, X), _match_operand(grad_Y, Y)
