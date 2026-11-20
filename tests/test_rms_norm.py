@@ -285,3 +285,82 @@ def test_rms_norm_ascend_review_weight_gradient(dtype, shape, normalized_shape):
     torch.testing.assert_close(
         x.grad.cpu().float(), x_cpu.grad.float(), rtol=1e-2, atol=3e-5
     )
+
+
+@pytest.mark.rms_norm
+@pytest.mark.parametrize("hidden", [2048, 3584, 4096])
+def test_rms_norm_compensated_rrms(hidden):
+    """The compensated reciprocal RMS stays within one ULP of a reference.
+
+    Only the ``square_sum -> 1/sqrt(square_sum/N + eps)`` step is exercised, so
+    the bound is not diluted by the error of the sum itself. The naive formula
+    is evaluated from the same inputs: the compensated form must never be the
+    worse of the two, which also keeps the test meaningful on a backend whose
+    ``tl.fma`` is not a real fused multiply-add (there the two agree exactly).
+    """
+    import triton
+    import triton.language as tl
+
+    from flag_gems.ops.rms_norm import compensated_rrms, split_fp32
+
+    @triton.jit
+    def probe_kernel(
+        SS,
+        NAIVE,
+        FIXED,
+        inv_n,
+        inv_n_hi,
+        inv_n_lo,
+        eps,
+        eps_lo,
+        M,
+        BLOCK: tl.constexpr,
+    ):
+        offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < M
+        square_sum = tl.load(SS + offsets, mask=mask, other=1.0)
+        tl.store(NAIVE + offsets, 1 / tl.sqrt(square_sum * inv_n + eps), mask=mask)
+        tl.store(
+            FIXED + offsets,
+            compensated_rrms(square_sum, inv_n_hi, inv_n_lo, eps, eps_lo),
+            mask=mask,
+        )
+
+    eps = 1e-6
+    rows = 1 << 14
+    generator = torch.Generator().manual_seed(0)
+    scale = torch.exp(torch.empty(rows).uniform_(-6, 6, generator=generator))
+    square_sum = (
+        (torch.rand(rows, generator=generator) + 0.5) * hidden * scale
+    ).float()
+    reference = 1.0 / np.sqrt(square_sum.numpy().astype(np.float64) / hidden + eps)
+
+    device_sum = square_sum.to(flag_gems.device)
+    naive = torch.empty_like(device_sum)
+    fixed = torch.empty_like(device_sum)
+    inv_n_hi, inv_n_lo = split_fp32(1.0 / hidden)
+    _, eps_lo = split_fp32(eps)
+    block = 1024
+    probe_kernel[(triton.cdiv(rows, block),)](
+        device_sum,
+        naive,
+        fixed,
+        1.0 / hidden,
+        inv_n_hi,
+        inv_n_lo,
+        eps,
+        eps_lo,
+        rows,
+        block,
+    )
+
+    def ulp_distance(got):
+        expected = reference.astype(np.float32)
+        return np.abs(
+            got.cpu().numpy().view(np.int32).astype(np.int64)
+            - expected.view(np.int32).astype(np.int64)
+        )
+
+    naive_ulp, fixed_ulp = ulp_distance(naive), ulp_distance(fixed)
+    assert fixed_ulp.max() <= 2, f"compensated rrms is {fixed_ulp.max()} ULP off"
+    assert fixed_ulp.mean() <= naive_ulp.mean()
