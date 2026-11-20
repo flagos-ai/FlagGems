@@ -139,9 +139,9 @@ from .foreach_div_tensor_ import foreach_div_tensor_
 from .foreach_erf_ import foreach_erf_
 from .foreach_exp_ import foreach_exp_
 from .foreach_expm1_ import foreach_expm1_
-from .foreach_log10_ import foreach_log10_
 from .foreach_log1p_ import foreach_log1p_
 from .foreach_log2_ import foreach_log2_
+from .foreach_log10_ import foreach_log10_
 from .foreach_maximum_scalar_list_ import foreach_maximum_scalar_list_
 from .foreach_minimum_list_ import foreach_minimum_list_
 from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
