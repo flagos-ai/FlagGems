@@ -20279,6 +20279,22 @@ ops:
   - BLAS
   stages:
   - alpha: 5.5.0
+- id: sparse_sparse_matmul_backward
+  description: The backward computation of `_sparse_sparse_matmul()`, exercised
+    through the autograd of the forward operator. One SpGEMM against the
+    transposed other operand is projected onto the saved operand's stored COO
+    support for each requested gradient, matching the ATen composite in
+    `FunctionsManual.cpp`.
+  for:
+  - _sparse_sparse_matmul
+  labels:
+  - aten
+  - BLAS
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: sparse_sum_backward
   description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
     back onto the sorted-unique coordinate support of the input sparse tensor, keeping
