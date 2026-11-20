@@ -20,6 +20,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_no_update import _batch_norm_no_update
+from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
 from ._ctc_loss import _ctc_loss, _ctc_loss_out
@@ -1076,6 +1077,7 @@ __all__ = [
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cholesky_solve_helper",
     "_chunk_cat",

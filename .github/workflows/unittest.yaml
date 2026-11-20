@@ -86,7 +86,9 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          sparse-checkout: .github/backends.json
+          sparse-checkout: |
+            .github/backends.json
+            src/flag_gems/backends.yaml
           sparse-checkout-cone-mode: false
 
       - id: build-backend-matrix
@@ -95,19 +97,39 @@ jobs:
           script: |
             const fs = require('fs');
             const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
+            const backendsYaml = fs.readFileSync('src/flag_gems/backends.yaml', 'utf8');
             const labels = JSON.parse(${{ steps.get-labels.outputs.result }} || '[]');
             const filtered = backends.filter(b => b.enabled && labels.includes(b.label));
+
+            // Look up flagtree version from src/flag_gems/backends.yaml for
+            // containerized backends so the version is not duplicated in backends.json.
+            function flagtreeVersion(backendKey) {
+              const re = new RegExp(
+                '(?:^|\\n)  ' + backendKey.replace(/[-+]/g, '\\$&') +
+                ':.*?(?=\\n  [a-z]|$)', 's'
+              );
+              const block = backendsYaml.match(re)?.[0] || '';
+              return block.match(/flagtree:\s*flagtree==(\S+)/)?.[1] || '';
+            }
+
             const matrix = {
               backend: filtered.map(b => b.backend),
-              include: filtered.map(b => ({
-                backend: b.backend,
-                runner_label: b.runner_label,
-                gpu_check: b.gpu_check,
-                container_image: b.container?.image || '',
-                container_options: b.container?.options || '',
-                runs_on_default: b.container?.runs_on_default || '',
-                runs_on_vllm: b.container?.runs_on_vllm || ''
-              }))
+              include: filtered.map(b => {
+                let containerOptions = b.container?.options || '';
+                if (b.containerized) {
+                  const ft = flagtreeVersion(b.backend);
+                  if (ft) containerOptions += ` -e FLAGTREE_VERSION=${ft}`;
+                }
+                return {
+                  backend: b.backend,
+                  runner_label: b.runner_label,
+                  gpu_check: b.gpu_check,
+                  container_image: b.container?.image || '',
+                  container_options: containerOptions,
+                  runs_on_default: b.container?.runs_on_default || '',
+                  runs_on_vllm: b.container?.runs_on_vllm || ''
+                };
+              })
             };
             core.setOutput('matrix', JSON.stringify(matrix));
 

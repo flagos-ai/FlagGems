@@ -40,3 +40,16 @@ def test_flip():
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.flip_backward
+def test_flip_backward():
+    bench = base.GenericBenchmark(
+        op_name="flip_backward",
+        input_fn=_input_fn,
+        torch_op=torch.flip,
+        gems_op=flag_gems.flip,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

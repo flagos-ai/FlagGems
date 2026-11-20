@@ -22,6 +22,35 @@ from . import accuracy_utils as utils
 FLIP_DIMS = [(0,), (-2,), (2,), (0, 2), (2, 1), (0, -1, 1)]
 
 
+@pytest.mark.flip_backward
+@pytest.mark.parametrize("dims", [(), (0,), (-1,), (0, 2)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["contiguous", "transpose", "sliced"])
+def test_flip_backward(dims, dtype, layout):
+    inp = torch.randn((4, 5, 6), dtype=dtype, device=flag_gems.device)
+    if layout == "transpose":
+        inp = inp.transpose(0, 2)
+    elif layout == "sliced":
+        inp = inp[::2]
+    grad = torch.randn_like(inp)
+    ref = utils.to_reference(inp.detach(), False).requires_grad_()
+    actual = inp.detach().requires_grad_()
+    expected = torch.autograd.grad(
+        torch.flip(ref, dims), ref, utils.to_reference(grad, False)
+    )[0]
+    result = torch.autograd.grad(flag_gems.flip(actual, dims), actual, grad)[0]
+    utils.gems_assert_equal(result, expected)
+
+
+@pytest.mark.flip_backward
+@pytest.mark.parametrize("shape", [(0, 3), (1, 3)])
+def test_flip_backward_empty_or_singleton(shape):
+    inp = torch.empty(shape, device=flag_gems.device, requires_grad=True)
+    grad = torch.randn_like(inp)
+    result = torch.autograd.grad(flag_gems.flip(inp, (0,)), inp, grad)[0]
+    utils.gems_assert_equal(result, utils.to_reference(grad, False))
+
+
 def get_max_ndim(shape, dims):
     max_ndim = max(len(shape), len(dims))
     for dim in dims:
