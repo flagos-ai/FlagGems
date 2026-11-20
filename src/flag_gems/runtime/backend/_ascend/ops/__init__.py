@@ -158,6 +158,7 @@ from .foreach_sin_ import foreach_sin_
 from .foreach_sinh_ import foreach_sinh_
 from .foreach_sqrt_ import foreach_sqrt_
 from .foreach_sub_scalar import foreach_sub_scalar
+from .foreach_sub_scalar_ import foreach_sub_scalar_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -532,6 +533,7 @@ __all__ = [
     "foreach_sinh_",
     "foreach_sqrt_",
     "foreach_sub_scalar",
+    "foreach_sub_scalar_",
     "frac",
     "frac_",
     "full",
