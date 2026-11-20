@@ -124,6 +124,7 @@ from .foreach_acos_ import foreach_acos_
 from .foreach_add_scalar_list_ import foreach_add_scalar_list_
 from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
 from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
+from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -464,6 +465,7 @@ __all__ = [
     "foreach_add_scalar_list_",
     "foreach_addcdiv_scalar_",
     "foreach_addcdiv_scalar_list_",
+    "foreach_addcmul_scalar_",
     "frac",
     "frac_",
     "full",
