@@ -21,6 +21,12 @@ single_dim_shapes: &single_dim_shapes
     - [65536]
   shape_desc: "M"
 
+add_rms_norm_bias:
+  shapes:
+    - [1, 6144]
+    - [1024, 6144]
+  shape_desc: "rows, hidden_size"
+
 vdot:
   <<: *single_dim_shapes
 

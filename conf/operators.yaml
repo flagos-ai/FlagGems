@@ -950,6 +950,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: add_rms_norm_bias
+  description: Fused residual addition, RMS normalization and optional affine bias on Atlas A5.
+  for:
+  - add_rms_norm_bias
+  labels:
+  - non-aten
+  - NoCPU
+  - Normalization
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: addbmm
   description: 'Performs a batch matrix-matrix product of matrices in `batch1` and
     `batch2`,
