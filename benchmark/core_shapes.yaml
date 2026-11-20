@@ -1456,6 +1456,15 @@ addmm:
   shape_desc: B, M, N, K
   accuracy_shapes: *id002
   quick_shapes: *id003
+angle_backward:
+  # Scalar, tail, square and large pointwise tiles cover launch boundaries.
+  shapes:
+  - [1]
+  - [257]
+  - [64, 64]
+  - [256, 512]
+  - [1024, 1024]
+  shape_desc: M, N
 mv:
   shapes: &id004
   - [1, 2048]
