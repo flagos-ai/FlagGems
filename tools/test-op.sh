@@ -54,7 +54,7 @@ if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   EXTRA_OPTS+=" --md-report-verbose=1"
   # Reduce test quantity when QUICK_TESTS is set (e.g. daily workflow)
   if [[ -n "${QUICK_TESTS:-}" ]]; then
-    EXTRA_OPTS+=" --quick"
+    EXTRA_OPTS+=" --first-parameter-only"
   fi
   # --md-report-output is set per-batch (see run_batch); the final file is
   # assembled by concatenating all per-batch reports at the end.
