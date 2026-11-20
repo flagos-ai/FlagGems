@@ -46,9 +46,12 @@ class _Clone(torch.autograd.Function):
         else:
             out = torch.empty_like(inp, memory_format=memory_format)
         if inp.numel() and not (inp.is_meta or hasattr(inp, "fake_mode")):
+            # This ATen predicate only inspects sizes and strides.
             flat = tuple(inp.stride()) == tuple(
                 out.stride()
-            ) and torch.ops.aten.is_non_overlapping_and_dense(inp)
+            ) and torch.ops.aten.is_non_overlapping_and_dense(
+                inp
+            )  # allow-torch-compute
             small_transpose = (
                 inp.ndim >= 2
                 and inp.shape[-2] * inp.shape[-1] <= 32
