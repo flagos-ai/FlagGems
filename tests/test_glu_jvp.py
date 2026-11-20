@@ -39,8 +39,8 @@ import flag_gems
 from . import accuracy_utils as utils
 
 _LOW_PRECISION_REFERENCE_SKIP = pytest.mark.skipif(
-    utils.TO_CPU or flag_gems.vendor_name == "ascend",
-    reason="glu_jvp reference does not support FP16/BF16",
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
+    reason="Ascend glu_jvp reference does not support FP16/BF16",
 )
 
 # Shapes mirror utils.GLU_SHAPES: even extents on the narrowed dim for every
