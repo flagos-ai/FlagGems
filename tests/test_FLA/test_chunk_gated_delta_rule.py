@@ -809,7 +809,7 @@ def test_chunk_gated_delta_rule_does_not_broadly_reject_iluvatar_chunk_path(
     import importlib
 
     chunk_gated_delta_rule_module = importlib.import_module(
-        "flag_gems.deprecated.chunk_gated_delta_rule"
+        flag_gems.chunk_gated_delta_rule.__module__
     )
     dtype = torch.float32
     torch.manual_seed(7000)
