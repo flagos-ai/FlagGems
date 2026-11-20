@@ -796,3 +796,10 @@ def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
             )
         return _MeanDimFunction.apply(inp, dim, keepdim, dtype)
     return mean_dim_comm(inp, dim, keepdim, dtype=dtype)
+
+
+def mean_backward(grad_output, input_shape, input_dtype, dim=None):
+    """Return the input gradient of mean, using the input shape and reduced axes."""
+    input_shape = tuple(input_shape)
+    dims = _normalize_mean_dims(dim, len(input_shape))
+    return _mean_backward(grad_output, input_shape, input_dtype, dims)
