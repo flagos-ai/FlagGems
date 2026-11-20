@@ -548,7 +548,13 @@ from flag_gems.ops.add import add, add_
 from flag_gems.ops.addbmm import addbmm, addbmm_, addbmm_backward
 from flag_gems.ops.addcdiv import addcdiv, addcdiv_, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
-from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
+from flag_gems.ops.addmm import (
+    addmm,
+    addmm_backward,
+    addmm_dtype,
+    addmm_dtype_out,
+    addmm_out,
+)
 from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addmv_ import addmv_
@@ -2294,6 +2300,7 @@ __all__ = [
     "addcmul_out",
     "addmm",
     "addmm_",
+    "addmm_backward",
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",

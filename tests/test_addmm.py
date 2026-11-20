@@ -828,3 +828,206 @@ def test_addmm_ascend_review_out_validation(invalid):
     with pytest.raises(RuntimeError, match=invalid):
         flag_gems.addmm_out(bias, a, b, out=out)
     assert out.shape == (0,)
+
+
+# These compact aligned, rectangular and tail cases target all three fused regions.
+ADDMM_BACKWARD_SHAPES = [(17, 29, 31), (64, 64, 64), (33, 65, 129)]
+
+
+def _addmm_backward_reference(tensor):
+    # The fused kernel computes IEEE FP32 even when cuBLAS enables TF32.
+    # Use the GEMM suite's high-precision reference for float32 inputs.
+    return utils.to_reference(tensor, upcast=tensor.dtype == torch.float32)
+
+
+@pytest.mark.addmm_backward
+@pytest.mark.parametrize("M, N, K", ADDMM_BACKWARD_SHAPES)
+@pytest.mark.parametrize("alpha, beta", [(1.0, 1.0), (0.75, -0.5)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addmm_backward(M, N, K, alpha, beta, dtype):
+    bias = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    grad = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    ref_inputs = [
+        _addmm_backward_reference(value.detach()).requires_grad_()
+        for value in (bias, mat1, mat2)
+    ]
+    res_inputs = [value.detach().requires_grad_() for value in (bias, mat1, mat2)]
+
+    ref_grads = torch.autograd.grad(
+        torch.addmm(*ref_inputs, alpha=alpha, beta=beta),
+        ref_inputs,
+        _addmm_backward_reference(grad),
+    )
+    res_grads = torch.autograd.grad(
+        flag_gems.addmm(*res_inputs, alpha=alpha, beta=beta), res_inputs, grad
+    )
+    direct_grads = flag_gems.addmm_backward(grad, mat1, mat2, alpha=alpha, beta=beta)
+
+    reduction_dims = (1, N, M)
+    for result, reference, reduce_dim in zip(res_grads, ref_grads, reduction_dims):
+        utils.gems_assert_close(
+            result, reference, dtype, reduce_dim=reduce_dim, atol=3e-4
+        )
+    for result, reference, reduce_dim in zip(direct_grads, ref_grads, reduction_dims):
+        utils.gems_assert_close(
+            result, reference, dtype, reduce_dim=reduce_dim, atol=3e-4
+        )
+
+
+@pytest.mark.addmm_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addmm_backward_registered_dispatch(dtype):
+    M, N, K = 33, 47, 65
+    inputs = [
+        torch.randn((M, N), dtype=dtype, device=flag_gems.device, requires_grad=True),
+        torch.randn((M, K), dtype=dtype, device=flag_gems.device, requires_grad=True),
+        torch.randn((K, N), dtype=dtype, device=flag_gems.device, requires_grad=True),
+    ]
+    grad = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    ref_inputs = [
+        _addmm_backward_reference(value.detach()).requires_grad_() for value in inputs
+    ]
+    ref_grads = torch.autograd.grad(
+        torch.addmm(*ref_inputs, alpha=0.75, beta=-0.5),
+        ref_inputs,
+        _addmm_backward_reference(grad),
+    )
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["addmm"])
+        res_out = torch.addmm(*inputs, alpha=0.75, beta=-0.5)
+        assert "AddmmFunction" in type(res_out.grad_fn).__name__
+        res_grads = torch.autograd.grad(res_out, inputs, grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    for result, reference, reduce_dim in zip(res_grads, ref_grads, (1, N, M)):
+        utils.gems_assert_close(
+            result, reference, dtype, reduce_dim=reduce_dim, atol=3e-4
+        )
+
+
+@pytest.mark.addmm_backward
+@pytest.mark.parametrize("bias_kind", ["vector", "scalar"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addmm_backward_broadcast_bias(bias_kind, dtype):
+    M, N, K = 17, 29, 31
+    bias_shape = (N,) if bias_kind == "vector" else (1, 1)
+    bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    grad = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    ref_inputs = [
+        _addmm_backward_reference(value.detach()).requires_grad_()
+        for value in (bias, mat1, mat2)
+    ]
+    res_inputs = [value.detach().requires_grad_() for value in (bias, mat1, mat2)]
+
+    ref_grads = torch.autograd.grad(
+        torch.addmm(*ref_inputs, alpha=0.75, beta=-0.5),
+        ref_inputs,
+        _addmm_backward_reference(grad),
+    )
+    res_grads = torch.autograd.grad(
+        flag_gems.addmm(*res_inputs, alpha=0.75, beta=-0.5), res_inputs, grad
+    )
+
+    bias_reduce_dim = M if bias_kind == "vector" else M * N
+    for result, reference, reduce_dim in zip(
+        res_grads, ref_grads, (bias_reduce_dim, N, M)
+    ):
+        utils.gems_assert_close(
+            result, reference, dtype, reduce_dim=reduce_dim, atol=3e-4
+        )
+
+
+@pytest.mark.addmm_backward
+@pytest.mark.parametrize("required_input", [0, 1, 2])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addmm_backward_single_input(required_input, dtype):
+    M, N, K = 17, 19, 23
+    inputs = [
+        torch.randn((M, N), dtype=dtype, device=flag_gems.device),
+        torch.randn((M, K), dtype=dtype, device=flag_gems.device),
+        torch.randn((K, N), dtype=dtype, device=flag_gems.device),
+    ]
+    inputs[required_input].requires_grad_()
+    grad = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    ref_inputs = [_addmm_backward_reference(value.detach()) for value in inputs]
+    ref_inputs[required_input].requires_grad_()
+
+    ref_grad = torch.autograd.grad(
+        torch.addmm(*ref_inputs, alpha=0.75, beta=-0.5),
+        ref_inputs[required_input],
+        _addmm_backward_reference(grad),
+    )[0]
+    res_grad = torch.autograd.grad(
+        flag_gems.addmm(*inputs, alpha=0.75, beta=-0.5),
+        inputs[required_input],
+        grad,
+    )[0]
+
+    reduce_dim = (1, N, M)[required_input]
+    utils.gems_assert_close(res_grad, ref_grad, dtype, reduce_dim=reduce_dim, atol=3e-4)
+
+
+@pytest.mark.addmm_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addmm_backward_noncontiguous(dtype):
+    M, N, K = 33, 47, 65
+    bias = torch.randn((N, M), dtype=dtype, device=flag_gems.device).t()
+    mat1 = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    grad = torch.randn((N, M), dtype=dtype, device=flag_gems.device).t()
+    inputs = [value.requires_grad_() for value in (bias, mat1, mat2)]
+    ref_inputs = [
+        _addmm_backward_reference(value.detach()).requires_grad_() for value in inputs
+    ]
+
+    ref_grads = torch.autograd.grad(
+        torch.addmm(*ref_inputs, alpha=0.75, beta=-0.5),
+        ref_inputs,
+        _addmm_backward_reference(grad),
+    )
+    res_grads = torch.autograd.grad(
+        flag_gems.addmm(*inputs, alpha=0.75, beta=-0.5), inputs, grad
+    )
+
+    for result, reference, reduce_dim in zip(res_grads, ref_grads, (1, N, M)):
+        utils.gems_assert_close(
+            result, reference, dtype, reduce_dim=reduce_dim, atol=3e-4
+        )
+
+
+@pytest.mark.addmm_backward
+def test_addmm_backward_fused_kernel_count():
+    """Bias and both matrix gradients are emitted by one Triton launch."""
+    from torch.profiler import ProfilerActivity, profile
+
+    M = N = K = 64
+    dtype = torch.float16
+    inputs = [
+        torch.randn((M, N), dtype=dtype, device=flag_gems.device, requires_grad=True),
+        torch.randn((M, K), dtype=dtype, device=flag_gems.device, requires_grad=True),
+        torch.randn((K, N), dtype=dtype, device=flag_gems.device, requires_grad=True),
+    ]
+    grad = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    out = flag_gems.addmm(*inputs, alpha=0.75, beta=-0.5)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(out, inputs, grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "addmm" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
