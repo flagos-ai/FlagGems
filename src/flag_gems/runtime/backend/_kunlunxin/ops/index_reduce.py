@@ -91,9 +91,9 @@ def _index_reduce_scatter_kernel(
     USE_TOUCHED: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    # Scatter each source element to its destination slot with an atomic. This
-    # is only used for unique indices, so the destinations within a program are
-    # distinct and the (software-simulated) atomics are correct.
+    # This path is used only for unique indices, so each source element owns
+    # its destination. Min/max can use a plain load/combine/store and avoid
+    # the backend's floating-point atomic min/max lowering.
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     total = outer * S * inner
@@ -111,9 +111,11 @@ def _index_reduce_scatter_kernel(
         ones = tl.full((BLOCK,), 1, dtype=tl.int32)
         tl.atomic_add(count + dst, ones, mask=mask, sem="relaxed")
     elif REDUCE == 2:
-        tl.atomic_max(out + dst, v, mask=mask, sem="relaxed")
+        previous = tl.load(out + dst, mask=mask, other=0.0)
+        tl.store(out + dst, tl.maximum(previous, v), mask=mask)
     elif REDUCE == 3:
-        tl.atomic_min(out + dst, v, mask=mask, sem="relaxed")
+        previous = tl.load(out + dst, mask=mask, other=0.0)
+        tl.store(out + dst, tl.minimum(previous, v), mask=mask)
 
     if USE_TOUCHED:
         ones = tl.full((BLOCK,), 1, dtype=tl.int32)
