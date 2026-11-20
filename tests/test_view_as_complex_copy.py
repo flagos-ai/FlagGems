@@ -24,9 +24,7 @@ IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
 def _assert_equal(actual, expected):
-    if IS_KUNLUNXIN or (
-        flag_gems.vendor_name == "ascend" and actual.dtype.is_complex
-    ):
+    if IS_KUNLUNXIN or (flag_gems.vendor_name == "ascend" and actual.dtype.is_complex):
         actual, expected = actual.cpu(), expected.cpu()
     utils.gems_assert_equal(actual, expected)
 
