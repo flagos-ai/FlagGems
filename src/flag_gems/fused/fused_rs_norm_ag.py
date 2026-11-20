@@ -38,7 +38,6 @@ the scattered qkv_a output and runs only the AG half of the ring (W - 1 signals)
 import ctypes
 import hashlib
 import logging
-import math
 import os
 import re
 import shutil
@@ -608,17 +607,6 @@ def row_range(num_tokens: int, world_size: int, rank: int) -> Tuple[int, int]:
     return min(num_tokens, rank * chunk), min(num_tokens, (rank + 1) * chunk)
 
 
-
-
-def rs_norm_ag_buffer_bytes(
-    world_size: int, max_tokens: int, hidden_size: int, dtype: torch.dtype
-) -> int:
-    """Data buffer size of one rank: 2 parities x (2W - 2) slots of ceil(T / W) rows."""
-    elt = torch.empty((), dtype=dtype).element_size()
-    W = world_size
-    return 2 * (2 * W - 2) * math.ceil(max_tokens / W) * hidden_size * elt
-
-
 def _wrap_i32(v: int) -> int:
     return (v + 2**31) % 2**32 - 2**31
 
@@ -764,8 +752,8 @@ class fused_rs_add_rms_norm_ag(_RingComm):
     gather=True (default): RS + add + RMSNorm + AG, replaces all_reduce + add norm.
     gather=False: RS + add + RMSNorm only, every rank keeps its normed rows (e.g. the
     next layer's input norm when the attention input stays scattered).
-    max_tokens: largest T of a call, see ``rs_norm_ag_buffer_bytes``. Ring arguments: see
-    ``_RingComm``.
+    max_tokens: largest T of a call, sizes the data buffer: 2 parities x (2W - 2) slots
+    of ceil(max_tokens / W) rows. Ring arguments: see ``_RingComm``.
     """
 
     def __init__(
