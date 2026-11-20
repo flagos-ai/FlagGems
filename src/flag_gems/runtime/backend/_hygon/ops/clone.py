@@ -6,6 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.clone import _allocate_preserve_format
 from flag_gems.ops.clone import clone as _generic_clone
 from flag_gems.runtime import torch_device_fn
 
@@ -40,8 +41,11 @@ def _copy(
 class _Clone(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, memory_format):
-        out = torch.empty_like(inp, memory_format=memory_format)
-        if inp.numel():
+        if memory_format == torch.preserve_format:
+            out = _allocate_preserve_format(inp)
+        else:
+            out = torch.empty_like(inp, memory_format=memory_format)
+        if inp.numel() and not (inp.is_meta or hasattr(inp, "fake_mode")):
             flat = tuple(inp.stride()) == tuple(
                 out.stride()
             ) and torch.ops.aten.is_non_overlapping_and_dense(inp)
