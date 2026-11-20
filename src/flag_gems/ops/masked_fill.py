@@ -21,13 +21,6 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, pointwise_dynamic
 
-try:  # low-overhead launch path (see _launcher below)
-    import triton.knobs as _trt_knobs
-    from triton.runtime import driver as _trt_driver
-except Exception:  # pragma: no cover
-    _trt_knobs = None
-    _trt_driver = None
-
 logger = logging.getLogger(__name__)
 
 # One 128-bit transaction per thread: 4 warps over 1024 elements is 8 elements
@@ -47,6 +40,12 @@ _INT32_MAX = 1 << 31
 def masked_fill_kernel(inp, expand_mask, value):
     inp = tl.where(expand_mask == 1, value, inp)
     return inp
+
+
+@pointwise_dynamic(is_tensor=[True, True, True], promotion_methods=[(0, "NO_OPMATH")])
+@triton.jit
+def _masked_fill_tensor_value_kernel(inp, mask, value):
+    return tl.where(mask == 1, value.to(inp.dtype), inp)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, "NO_OPMATH")])
@@ -177,107 +176,6 @@ def masked_fill_backward_sum_wrap_kernel(
     tl.store(part_ptr + tl.program_id(0), tl.sum(values))
 
 
-# ---------------------------------------------------------------------------
-# low-overhead launch path
-# ---------------------------------------------------------------------------
-# ``kernel[grid](...)`` re-binds and re-specializes every argument on every
-# call, which costs ~18 us of host time on this backend. A masked_fill
-# backward is a pure streaming select, so for the launch-bound shapes
-# (64x64 = 4096 elements, 4096x4096 = 16.7 M) that host time is the whole
-# measured latency. The first launch of a plan goes through the normal JIT
-# path; its CompiledKernel is then reused through the pre-bound launcher with
-# the stream cached per device. The same approach is used by
-# ``ops/greater_.py``; measurements there are 16.3 us (JITFunction) versus
-# 4.8 us (pre-bound) per call.
-#
-# The cached plan holds only compile-time constants and a launcher closure; no
-# tensor, no pointer and no input-derived value is retained.
-_LAUNCH_PLANS = {}
-_MAX_LAUNCH_PLANS = 64
-
-
-def _bind_runner(compiled, grid_x, device, consts):
-    """Pre-bind a compiled kernel; returns ``None`` if unavailable."""
-    if _trt_driver is None:
-        return None
-    try:
-        stream = _trt_driver.active.get_current_stream(device)
-        run = compiled.run
-        function = compiled.function
-        metadata = compiled.packed_metadata
-        enter = _trt_knobs.runtime.launch_enter_hook
-        leave = _trt_knobs.runtime.launch_exit_hook
-    except Exception:  # pragma: no cover - depends on the Triton version
-        return None
-
-    def _runner(*args):
-        run(
-            grid_x,
-            1,
-            1,
-            stream,
-            function,
-            metadata,
-            None,
-            enter,
-            leave,
-            *args,
-            *consts,
-        )
-
-    return _runner
-
-
-def _specialization_key(args):
-    """Mirror Triton's launch specialization: dtype, pointer and int hints.
-
-    The compiled binary depends on the argument dtypes, on whether each
-    pointer is 16-byte aligned and on whether an integer is 1 or divisible by
-    16, so the plan cache must key on exactly those properties.
-    """
-    key = []
-    for arg in args:
-        if isinstance(arg, torch.Tensor):
-            key.append((arg.dtype, arg.data_ptr() % 16 == 0))
-        else:
-            key.append((arg == 1, arg % 16 == 0))
-    return tuple(key)
-
-
-def _launcher(kernel, program_count, consts, num_warps):
-    """Return ``launch(*runtime_args)`` for one fixed launch plan."""
-    base_key = (id(kernel), program_count, num_warps, consts)
-
-    def jit_launch(*args):
-        return kernel[(program_count,)](*args, *consts, num_warps=num_warps)
-
-    def launch(*args):
-        device = torch_device_fn.current_device()
-        stream = _current_stream(device)
-        key = (base_key, _specialization_key(args))
-        plan = _LAUNCH_PLANS.get(key)
-        if plan is not None and plan[0] == device and plan[2] == stream:
-            plan[1](*args)
-            return
-        compiled = jit_launch(*args)
-        runner = _bind_runner(compiled, program_count, device, consts) or jit_launch
-        if len(_LAUNCH_PLANS) >= _MAX_LAUNCH_PLANS:
-            _LAUNCH_PLANS.clear()
-        _LAUNCH_PLANS[key] = (device, runner, stream)
-
-    return launch
-
-
-def _current_stream(device):
-    """Current stream, used to keep the pre-bound launcher on the right queue."""
-    if _trt_driver is None:  # pragma: no cover
-        return None
-    try:
-        return _trt_driver.active.get_current_stream(device)
-    except Exception:  # pragma: no cover - depends on the Triton version
-        return None
-
-
 def masked_fill(inp, mask, value):
     logger.debug("GEMS MASKED_FILL")
     if torch.is_grad_enabled() and (
@@ -285,6 +183,9 @@ def masked_fill(inp, mask, value):
     ):
         _validate_masked_fill_args(inp, mask, value, "masked_fill")
         return MaskedFillFunction.apply(inp, mask, value)
+    if torch.is_tensor(value) and value.ndim == 0 and value.device == inp.device:
+        _validate_masked_fill_args(inp, mask, value, "masked_fill")
+        return _masked_fill_tensor_value_kernel(inp, mask.expand(inp.shape), value)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -321,20 +222,16 @@ def _validate_masked_fill_args(inp, mask, value, name):
 
 
 def _masked_fill_forward(inp, mask, value):
-    """Launch the forward ``masked_fill`` kernel without autograd bookkeeping."""
-    if torch.is_tensor(value):
-        # Value can be a tensor or a scalar
-        value = value.item()
-
-    if inp.ndim == 0:
-        # inp is a single-value
-        return (
-            torch.tensor(value, dtype=inp.dtype, device=inp.device)
-            if mask.item()
-            else inp.clone()
-        )
-
+    """Keep the tensor value on the device inside the autograd forward."""
     expand_mask = mask.expand(inp.shape)
+    if torch.is_tensor(value):
+        if value.device == inp.device:
+            return _masked_fill_tensor_value_kernel(inp, expand_mask, value)
+        if value.device.type != "cpu":
+            raise RuntimeError(
+                "masked_fill(): value must be on the input device or CPU"
+            )
+        value = value.item()  # Only a host-resident scalar reaches this branch.
     return masked_fill_kernel(inp, expand_mask, value)
 
 
@@ -378,7 +275,7 @@ def _masked_fill_input_grad(grad_output, mask):
     if grad_output.ndim == 0:
         # A 0-dim input has a single element: the mask either zeroes it or
         # propagates it unchanged.
-        return torch.zeros_like(grad_output) if mask.item() else grad_output.clone()
+        return masked_fill_backward_kernel(grad_output, mask, 0)
     if numel == 0:
         return torch.empty_like(grad_output)
 
@@ -405,9 +302,10 @@ def _masked_fill_input_grad(grad_output, mask):
             # ``(MASK_N, BLOCK, EVEN, INT64)`` for the wrapped variant and
             # ``(BLOCK, EVEN, INT64)`` otherwise.
             consts = (wrap, block, even, int64) if wrap else (block, even, int64)
-            _launcher(kernel, triton.cdiv(numel, block), consts, warps)(
-                grad_output, mask, out, numel
-            )
+            with torch_device_fn.device(grad_output.device):
+                kernel[(triton.cdiv(numel, block),)](
+                    grad_output, mask, out, numel, *consts, num_warps=warps
+                )
             return out
 
     expand_mask = mask.expand(grad_output.shape)
@@ -426,7 +324,7 @@ def _masked_fill_value_grad(grad_output, mask):
     if grad_output.ndim == 0:
         # The single element is either fully replaced by ``value`` or not
         # reached by the broadcast at all.
-        return grad_output.clone() if mask.item() else torch.zeros_like(grad_output)
+        return masked_fill_value_grad_kernel(grad_output, mask, 0)
 
     from flag_gems.ops.sum import sum as _sum
 
@@ -452,7 +350,10 @@ def _masked_fill_value_grad(grad_output, mask):
         else:
             kernel = masked_fill_backward_sum_wrap_kernel
             consts = (wrap, block, int64)
-        _launcher(kernel, num_parts, consts, warps)(grad_output, mask, parts, numel)
+        with torch_device_fn.device(grad_output.device):
+            kernel[(num_parts,)](
+                grad_output, mask, parts, numel, *consts, num_warps=warps
+            )
         # ATen accumulates the selected elements in float32; the partial sums
         # above are already float32, so the final reduction keeps that dtype.
         return _sum(parts)

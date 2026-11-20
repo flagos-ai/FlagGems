@@ -287,3 +287,20 @@ def test_masked_fill_backward_non_contiguous(dtype):
     (ref_grad,) = torch.autograd.grad(ref_out, (ref_inp,), ref_out_grad)
 
     utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.masked_fill_backward
+@pytest.mark.parametrize("selected", [False, True])
+def test_masked_fill_backward_device_scalar(selected):
+    inp = torch.tensor(2.0, device=flag_gems.device, requires_grad=True)
+    value = torch.tensor(3.0, device=flag_gems.device, requires_grad=True)
+    mask = torch.tensor(selected, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_(True)
+    ref_value = utils.to_reference(value.detach()).requires_grad_(True)
+    ref = torch.masked_fill(ref_inp, utils.to_reference(mask), ref_value)
+    actual = flag_gems.masked_fill(inp, mask, value)
+    utils.gems_assert_equal(actual, ref)
+    expected = torch.autograd.grad(ref, (ref_inp, ref_value))
+    result = torch.autograd.grad(actual, (inp, value))
+    for grad, ref_grad in zip(result, expected):
+        utils.gems_assert_equal(grad, ref_grad)
