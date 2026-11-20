@@ -1095,3 +1095,27 @@ class _LinalgSolveExFunction(torch.autograd.Function):
             ctx.vector_case,
         )
         return grad_A, grad_B, None, None
+
+
+def linalg_solve_ex_backward(
+    grad_result, result, A, B, LU, pivots, *, left=True, needs_input_grad=(True, True)
+):
+    """Return gradients matching A and B, using result, LU and pivots from FlagGems _linalg_solve_ex."""
+    if A.dtype not in _TRITON_DTYPES:
+        raise TypeError("linalg_solve_ex_backward only supports float32 and float64")
+    needs_A, needs_B = needs_input_grad
+    if grad_result is None or not result.numel():
+        return torch.zeros_like(A) if needs_A else None, (
+            torch.zeros_like(B) if needs_B else None
+        )
+
+    from flag_gems.ops.sum_to_size import sum_to_size
+
+    grad_A, grad_B = _linalg_solve_ex_backward(
+        grad_result, result, A, LU, pivots, left, needs_A, needs_B, _is_vector_rhs(A, B)
+    )
+    if grad_A is not None and grad_A.shape != A.shape:
+        grad_A = sum_to_size(grad_A, A.shape)
+    if grad_B is not None and grad_B.shape != B.shape:
+        grad_B = sum_to_size(grad_B, B.shape)
+    return grad_A, grad_B
