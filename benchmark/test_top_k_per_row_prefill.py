@@ -33,7 +33,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import top_k_per_row_prefill
+from flag_gems import top_k_per_row_prefill
 
 from . import base
 
@@ -61,7 +61,9 @@ except (ImportError, AttributeError):
     _vllm_top_k_per_row_prefill = None
 
 
-_top_k_per_row_prefill_module = import_module("flag_gems.fused.top_k_per_row_prefill")
+_top_k_per_row_prefill_module = import_module(
+    flag_gems.top_k_per_row_prefill.__module__
+)
 
 
 def _non_tle_top_k_per_row_prefill(
