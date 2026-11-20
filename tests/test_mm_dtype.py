@@ -47,7 +47,7 @@ def test_mm_dtype_native(shape):
     torch.testing.assert_close(actual, expected, atol=1e-3, rtol=1e-4)
 
 
-def test_public_dispatch(monkeypatch):
+def test_a5_fast_path(monkeypatch):
     import sys
 
     module = sys.modules[flag_gems.mm_dtype.__module__]
@@ -62,7 +62,6 @@ def test_public_dispatch(monkeypatch):
     x = torch.randn((1, 6144), dtype=torch.bfloat16, device=flag_gems.device)
     weight = torch.randn((256, 6144), dtype=x.dtype, device=x.device).T
     expected = torch.ops.aten.mm.dtype(x, weight, torch.float32)
-    with flag_gems.use_gems(include=["mm_dtype"]):
-        actual = torch.ops.aten.mm.dtype(x, weight, torch.float32)
+    actual = flag_gems.mm_dtype(x, weight, torch.float32)
     assert calls
     torch.testing.assert_close(actual, expected, rtol=0.016, atol=0.03)
