@@ -54,7 +54,9 @@ def isreal_true_kernel(out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 @libentry()
 @triton.jit
-def isreal_complex_kernel(in_real_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def isreal_complex_kernel(
+    in_real_ptr, out_ptr, n_elements, IS_FP64: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     """Test the imaginary component of each complex element for an exact zero.
 
     Complex storage interleaves ``(real, imag)`` pairs of the underlying
@@ -66,11 +68,22 @@ def isreal_complex_kernel(in_real_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.const
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    flat = pid * BLOCK_SIZE * 2 + tl.arange(0, 2 * BLOCK_SIZE)
-    flat_mask = flat < 2 * n_elements
-    pairs = tl.load(in_real_ptr + flat, mask=flat_mask, other=0.0)
-    _, imag = tl.split(tl.reshape(pairs, [BLOCK_SIZE, 2]))
-    tl.store(out_ptr + offsets, imag == 0.0, mask=mask)
+    # Read the imaginary component directly with a stride-2 load instead of
+    # loading the interleaved pairs and splitting them with tl.reshape+tl.split.
+    # The reshape/split form (a re-layout of a 2*BLOCK_SIZE vector into a
+    # BLOCK_SIZE x 2 tile) is not lowerable on every backend; this form only
+    # issues one strided load and one compare, and the stride-2 access pattern
+    # still coalesces into the same transactions as the interleaved pair load.
+    imag = tl.load(in_real_ptr + offsets * 2 + 1, mask=mask, other=0.0)
+    # ``imag == 0.0`` is False for a negative zero on this target, and so is
+    # ``tl.abs(imag) == 0.0`` (the compiler folds fabs(x)==0 back to x==0 before
+    # the broken compare). Test the bit pattern instead: clearing the sign bit
+    # makes both signed zeros compare equal to zero, exactly as IEEE requires.
+    if IS_FP64:
+        bits = imag.to(tl.int64, bitcast=True) & 0x7FFFFFFFFFFFFFFF
+    else:
+        bits = imag.to(tl.int32, bitcast=True) & 0x7FFFFFFF
+    tl.store(out_ptr + offsets, bits == 0, mask=mask)
 
 
 def isreal(input: torch.Tensor) -> torch.Tensor:
@@ -109,7 +122,11 @@ def isreal(input: torch.Tensor) -> torch.Tensor:
         BLOCK_SIZE = 1024
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
         isreal_complex_kernel[grid](
-            torch.view_as_real(input), out, n_elements, BLOCK_SIZE=BLOCK_SIZE
+            torch.view_as_real(input),
+            out,
+            n_elements,
+            IS_FP64=input.dtype == torch.complex128,
+            BLOCK_SIZE=BLOCK_SIZE,
         )
     else:
         # The real path never reads the input, so the only cost is the bool

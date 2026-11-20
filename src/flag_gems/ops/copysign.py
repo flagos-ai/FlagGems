@@ -65,15 +65,45 @@ def copysign_func_scalar(input, other):
     return tl.where((other_u & sign_bit_mask) != 0, -abs_val, abs_val)
 
 
+def _copysign_common_dtype(input, other):
+    # torch resolves copysign to the common type of its operands and, when that
+    # is integral, promotes it to float32. Promoting here keeps the kernel's
+    # sign-bit logic valid: an integral magnitude has no sign bit, so uint8
+    # values >= 128 would otherwise be flipped, and abs(int8 min) would wrap.
+    if isinstance(other, torch.Tensor):
+        common = torch.promote_types(input.dtype, other.dtype)
+    else:
+        common = input.dtype
+    if not common.is_floating_point:
+        common = torch.float32
+    return common
+
+
+def _prepare_copysign_args(input, other):
+    common = _copysign_common_dtype(input, other)
+    input = input if input.dtype == common else input.to(common)
+    if isinstance(other, torch.Tensor):
+        other = other if other.dtype == common else other.to(common)
+    return input, other
+
+
 def copysign(input, other, *, out=None):
     logger.debug("GEMS COPYSIGN")
-    func = copysign_func if isinstance(other, torch.Tensor) else copysign_func_scalar
+    if isinstance(other, torch.Tensor):
+        func = copysign_func
+    else:
+        func = copysign_func_scalar
+    input, other = _prepare_copysign_args(input, other)
     return func(input, other)
 
 
 def copysign_out(input, other, *, out=None):
     logger.debug("GEMS COPYSIGN_OUT")
-    func = copysign_func if isinstance(other, torch.Tensor) else copysign_func_scalar
+    if isinstance(other, torch.Tensor):
+        func = copysign_func
+    else:
+        func = copysign_func_scalar
+    input, other = _prepare_copysign_args(input, other)
     if out is None:
         return func(input, other)
     func(input, other, out0=out)

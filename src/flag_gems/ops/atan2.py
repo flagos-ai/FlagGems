@@ -24,7 +24,7 @@ _atan2 = tl_extra_shim.atan2
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def atan2_kernel(x, y):
     return _atan2(x.to(tl.float32), y.to(tl.float32))
@@ -37,4 +37,10 @@ def atan2(input, other):
 
 def atan2_out(input, other, out):
     logger.debug("GEMS ATAN2_OUT")
+    # ATen rejects an integer or bool out buffer (the float result cannot be
+    # cast into it); mirror that instead of silently truncating.
+    if not out.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{out.dtype}"
+        )
     return atan2_kernel(input, other, out0=out)

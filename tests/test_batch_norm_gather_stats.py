@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # Shapes representative of common batch-norm workloads.
 # The feature dimension is always shape[1].
 SHAPES = [
@@ -30,6 +32,13 @@ SHAPES = [
     (64, 128, 28, 28),
     (16, 256, 14, 14),
 ]
+
+
+def _combined_stats(mean, invstd, eps):
+    var = 1.0 / (invstd * invstd) - eps
+    combined_mean = mean.mean(dim=0)
+    combined_var = var.mean(dim=0) + ((mean - combined_mean) ** 2).mean(dim=0)
+    return combined_mean, 1.0 / torch.sqrt(combined_var + eps)
 
 
 @pytest.mark.batch_norm_gather_stats
@@ -56,27 +65,40 @@ def test_batch_norm_gather_stats(shape, dtype, num_segments):
     running_mean = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
     running_var = torch.rand(C, dtype=torch.float32, device=flag_gems.device) + 0.1
 
-    ref_out = torch.batch_norm_gather_stats(
-        input_t,
-        mean,
-        invstd,
-        running_mean.clone(),
-        running_var.clone(),
-        0.1,
-        1e-5,
-        count,
-    )
+    if IS_KUNLUNXIN:
+        ref_out = _combined_stats(mean, invstd, 1e-5)
+        res_out = flag_gems.batch_norm_gather_stats(
+            input_t,
+            mean,
+            invstd,
+            running_mean.clone(),
+            running_var.clone(),
+            0.1,
+            1e-5,
+            count,
+        )
+    else:
+        ref_out = torch.batch_norm_gather_stats(
+            input_t,
+            mean,
+            invstd,
+            running_mean.clone(),
+            running_var.clone(),
+            0.1,
+            1e-5,
+            count,
+        )
 
-    res_out = torch.batch_norm_gather_stats(
-        input_t,
-        mean,
-        invstd,
-        running_mean.clone(),
-        running_var.clone(),
-        0.1,
-        1e-5,
-        count,
-    )
+        res_out = torch.batch_norm_gather_stats(
+            input_t,
+            mean,
+            invstd,
+            running_mean.clone(),
+            running_var.clone(),
+            0.1,
+            1e-5,
+            count,
+        )
 
     for ref_val, res_val in zip(ref_out, res_out):
         # Output is always float32 regardless of input dtype

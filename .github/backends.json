@@ -27,7 +27,7 @@
     "enabled": true,
     "containerized": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.3.0",
       "options": "--privileged -v /dev:/dev --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "enflame-s60-tmp1",
@@ -44,7 +44,7 @@
     "enabled": true,
     "containerized": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-hygon-dtk26.04:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-hygon-dtk26.04:2.3.0",
       "options": "--device /dev/kfd --device /dev/mkfd --device /dev/dri --group-add video --security-opt seccomp=unconfined --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "hygon-bw1000-0",
@@ -61,7 +61,7 @@
     "enabled": true,
     "containerized": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-iluvatar-corex4.5.0:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-iluvatar-corex4.5.0:2.3.0",
       "options": "--device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "iluvatar-bi-v150-0",
@@ -78,7 +78,7 @@
     "enabled": true,
     "containerized": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.3.0",
       "options": "--device /dev/xpu0 --device /dev/xpuctrl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": [],
       "runs_on_default": "klx-p800",
@@ -95,7 +95,7 @@
     "enabled": true,
     "containerized": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-metax-maca3.8.1.3:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-metax-maca3.8.1.3:2.3.0",
       "options": "--device /dev/mxcd --device /dev/dri --group-add video",
       "volumes": [],
       "runs_on_default": "metax-mxc550-0",
@@ -112,7 +112,7 @@
     "enabled": true,
     "containerized": true,
     "container": {
-      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-mthreads-musa5.2.0:2.2.0",
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-mthreads-musa5.2.0:2.3.0",
       "options": "--device /dev/mtgpu.0 --device /dev/mtgpu.1 --device /dev/mtgpu.2 --device /dev/mtgpu.3 --device /dev/mtgpu.4 --device /dev/mtgpu.5 --device /dev/mtgpu.6 --device /dev/mtgpu.7 --device /dev/dri --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864",
       "volumes": ["/usr/bin/mthreads-gmi:/usr/bin/mthreads-gmi:ro"],
       "runs_on_default": "mthreads-s5000-0",

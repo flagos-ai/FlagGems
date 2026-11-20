@@ -52,18 +52,23 @@ _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 
 @triton.jit
 def _lincomb_dot_kernel(
-    X,              # input, row j at X + j * s0 + rest_offset
-    C,              # coefficients, (M, K)
-    Out,            # output, (M, N) contiguous
-    K,              # contraction length == coefficients.size(1)
-    N,              # product of the trailing input dims
-    M,              # coefficients.size(0)
-    s0,             # input.stride(0)
-    D1, S1,         # collapsed trailing dims/strides, padded with (1, 0)
-    D2, S2,
-    D3, S3,
-    D4, S4,
-    sc0, sc1,       # coefficients strides
+    X,  # input, row j at X + j * s0 + rest_offset
+    C,  # coefficients, (M, K)
+    Out,  # output, (M, N) contiguous
+    K,  # contraction length == coefficients.size(1)
+    N,  # product of the trailing input dims
+    M,  # coefficients.size(0)
+    s0,  # input.stride(0)
+    D1,
+    S1,  # collapsed trailing dims/strides, padded with (1, 0)
+    D2,
+    S2,
+    D3,
+    S3,
+    D4,
+    S4,
+    sc0,
+    sc1,  # coefficients strides
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -130,7 +135,9 @@ def _lincomb_dot_kernel(
     if EVEN_ST:
         tl.store(out_ptr, acc.to(Out.dtype.element_ty))
     else:
-        tl.store(out_ptr, acc.to(Out.dtype.element_ty), mask=rmask[:, None] & cmask[None, :])
+        tl.store(
+            out_ptr, acc.to(Out.dtype.element_ty), mask=rmask[:, None] & cmask[None, :]
+        )
 
 
 def _collapse(shape, strides):
@@ -257,26 +264,34 @@ def _compute_linear_combination(input, coefficients, *, out=None):
         gn = (N + block_n - 1) // block_n
         with torch_device_fn.device(input.device):
             _lincomb_dot_kernel[(gm, gn)](
-            input,
-            coefficients,
-            out,
-            K,
-            N,
-            M,
-            istr[0],
-            D1, S1, D2, S2, D3, S3, D4, S4,
-            cstr[0], cstr[1],
-            block_m,
-            block_n,
-            block_k,
-            (K % block_k == 0) and (N % block_n == 0),
-            (K % block_k == 0),
-            (M % block_m != 0),
-            (M % block_m == 0) and (N % block_n == 0),
-            (dt is not torch.float32),
-            "tf32x3" if dt is torch.float32 else "tf32",
-            num_warps=4,
-        )
+                input,
+                coefficients,
+                out,
+                K,
+                N,
+                M,
+                istr[0],
+                D1,
+                S1,
+                D2,
+                S2,
+                D3,
+                S3,
+                D4,
+                S4,
+                cstr[0],
+                cstr[1],
+                block_m,
+                block_n,
+                block_k,
+                (K % block_k == 0) and (N % block_n == 0),
+                (K % block_k == 0),
+                (M % block_m != 0),
+                (M % block_m == 0) and (N % block_n == 0),
+                (dt is not torch.float32),
+                "tf32x3" if dt is torch.float32 else "tf32",
+                num_warps=4,
+            )
         return out
 
     # Non-specialized dtype (e.g. float64): defer to the generic implementation.

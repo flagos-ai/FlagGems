@@ -38,10 +38,14 @@ from typing import Callable, Iterable
 import torch
 import triton
 
-from flag_gems.fused.gelu_and_mul import gelu_none_and_mul_kernel as _gelu_none_source
-from flag_gems.fused.gelu_and_mul import gelu_tanh_and_mul_kernel as _gelu_tanh_source
-from flag_gems.fused.silu_and_mul import silu_and_mul_kernel as _silu_source
-from flag_gems.fused.silu_and_mul_with_clamp import (
+from flag_gems.deprecated.gelu_and_mul import (
+    gelu_none_and_mul_kernel as _gelu_none_source,
+)
+from flag_gems.deprecated.gelu_and_mul import (
+    gelu_tanh_and_mul_kernel as _gelu_tanh_source,
+)
+from flag_gems.deprecated.silu_and_mul import silu_and_mul_kernel as _silu_source
+from flag_gems.deprecated.silu_and_mul_with_clamp import (
     silu_and_mul_with_clamp_kernel as _silu_clamp_source,
 )
 from flag_gems.pt2.manifest import CompileKind, CompileOpSpec, register_compile_spec
@@ -514,7 +518,7 @@ SILU_AND_MUL_POINTWISE_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::silu_and_mul_pointwise",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.silu_and_mul.silu_and_mul_kernel"
+            "flag_gems.deprecated.silu_and_mul.silu_and_mul_kernel"
             ".materialize(ndim).jit_function"
         ),
         dynamic_dims=("n_tokens",),
@@ -527,7 +531,7 @@ GELU_AND_MUL_POINTWISE_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::gelu_and_mul_pointwise",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "guarded approximate selects flag_gems.fused.gelu_and_mul."
+            "guarded approximate selects flag_gems.deprecated.gelu_and_mul."
             "gelu_{none,tanh}_and_mul_kernel.materialize(ndim).jit_function"
         ),
         dynamic_dims=("n_tokens",),
@@ -540,7 +544,7 @@ SILU_AND_MUL_WITH_CLAMP_POINTWISE_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::silu_and_mul_with_clamp_pointwise",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.fused.silu_and_mul_with_clamp."
+            "flag_gems.deprecated.silu_and_mul_with_clamp."
             "silu_and_mul_with_clamp_kernel.materialize(ndim).jit_function"
         ),
         dynamic_dims=("n_tokens",),

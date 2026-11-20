@@ -24,12 +24,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.triton_version_utils import HAS_TLE
-
-if HAS_TLE:
-    from triton.experimental.tle.language import gpu as tle_gpu
-else:
-    tle_gpu = None
 
 logger = logging.getLogger(__name__)
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -224,7 +218,7 @@ def _select_gpu_tiling(
             # sequence lengths; not tied to one shape.
             return 64, 32, 4, pipeline_ns
         if query_len >= 1024:
-            # Long-Skv + tiny-D + no-mask: TLE software pipelining with
+            # Long-Skv + tiny-D + no-mask: software pipelining with
             # num_stages=3 hides global-memory latency for the K/V loads and
             # the per-iter online softmax.  A tile-shape sweep on H800
             # (FP16) revealed three regimes that beat the legacy 128/128/4:
@@ -350,10 +344,8 @@ def cross_attention_fwd_kernel(
     row_max = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
     row_sum = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
-    # TLE software pipelining for the K/V loop. `tle_gpu.pipeline` extends
-    # `tl.range`, so the loop lowers exactly like the legacy `tl.range` form
-    # and any stage count the tiling picks is valid; PIPELINE_NS carries it.
-    for key_start in tle_gpu.pipeline(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
+    # Pipeline the K/V loop using the stage count selected by the tiling.
+    for key_start in tl.range(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
         logical_keys = key_start + key_offsets
         valid_keys = logical_keys < KEY_LEN
         key = tl.load(
@@ -441,10 +433,6 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
     logger.debug("GEMS CROSS_ATTENTION")
-    if not HAS_TLE:
-        raise RuntimeError(
-            "cross_attention is unavailable: requires triton.experimental.tle."
-        )
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]

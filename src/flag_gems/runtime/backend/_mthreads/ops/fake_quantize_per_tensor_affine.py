@@ -193,7 +193,9 @@ def fake_quantize_per_tensor_affine(input, scale, zero_point, quant_min, quant_m
     return out
 
 
-def _fq_dispatch_contiguous(input, out, n_elements, scale, zero_point, quant_min, quant_max):
+def _fq_dispatch_contiguous(
+    input, out, n_elements, scale, zero_point, quant_min, quant_max
+):
     # Sub-1M workloads are latency/parallelism bound rather than bandwidth
     # bound: a 512-element tile (4 elements per thread, 2x the CTAs of the
     # 1024 tile) measured 2.56-3.96us against 3.12-4.56us, while the 1M
@@ -224,7 +226,9 @@ def _fq_dispatch_contiguous(input, out, n_elements, scale, zero_point, quant_min
         )
 
 
-def _fq_dispatch_strided(input, out, n_elements, scale, zero_point, quant_min, quant_max):
+def _fq_dispatch_strided(
+    input, out, n_elements, scale, zero_point, quant_min, quant_max
+):
     # Generic non-contiguous path: decompose a flat logical index over rank<=4.
     shape = list(input.shape) + [1, 1, 1]
     stride = list(input.stride()) + [1, 1, 1]

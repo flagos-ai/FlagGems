@@ -93,7 +93,7 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     if N >= 67108864:
         BLOCK = 32768
     elif N >= 65536:
-        BLOCK = 16384
+        BLOCK = 8192
     else:
         BLOCK = min(triton.next_power_of_2(N), 1024)
     increment = triton.cdiv(N, UNROLL)
