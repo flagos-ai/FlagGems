@@ -950,8 +950,12 @@ def test_libentry_run_separates_compile_options(monkeypatch, cache_binding):
     assert launched_with == [2, 5]
     assert len(entry._cpu_cache) == 2
     # The cached binder keys entries exactly as the generic path stores them, or
-    # it would miss every launch that carries an option and never engage.
-    assert cached_launches == ([False, False, True, True] if cache_binding else [])
+    # it would miss every launch that carries an option and never engage. Whether
+    # it engages is `entry._cache_binding`, not the `cache_binding` that was
+    # asked for: the binder only exists on the Triton versions whose launch
+    # convention it follows, and `_run_cached` is never called on the others.
+    expected = [False, False, True, True] if entry._cache_binding else []
+    assert cached_launches == expected
 
 
 def test_hash_generation():
