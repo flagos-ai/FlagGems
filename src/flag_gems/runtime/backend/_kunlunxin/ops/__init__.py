@@ -20,6 +20,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_no_update import _batch_norm_no_update
+from ._batch_norm_with_update_functional import _batch_norm_with_update_functional
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
 from ._ctc_loss import _ctc_loss, _ctc_loss_out
@@ -172,7 +173,7 @@ from ._functional_sym_constrain_range_for_size import (
 )
 from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
-from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
+from ._fused_rms_norm import _fused_rms_norm, _fused_rms_norm_backward  # noqa: F401
 from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
@@ -187,11 +188,17 @@ from ._native_batch_norm_legit import (
     _native_batch_norm_legit_out,
 )
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
+from ._nested_tensor_from_mask_left_aligned import (  # noqa: F401
+    _nested_tensor_from_mask_left_aligned,
+)
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
+from ._padded_dense_to_jagged_forward import (  # noqa: F401
+    _padded_dense_to_jagged_forward,
+)
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
@@ -249,6 +256,8 @@ from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
 from .addmm_ import addmm_
+from .addmm_activation import _addmm_activation
+from .addmm_activation_out import _addmm_activation_out
 from .addmv import addmv, addmv_, addmv_out  # noqa: F401
 from .addr import addr
 from .addr_ import addr_
@@ -260,6 +269,7 @@ from .alpha_dropout_ import alpha_dropout_  # noqa: F401
 from .amax import amax
 from .amin import amin, amin_
 from .aminmax import aminmax
+from .aminmax_reduce_all import _aminmax
 from .and_scalar import and_scalar
 from .and_tensor import and_tensor
 from .angle import angle
@@ -368,6 +378,7 @@ from .clamp import (
 from .clip import clip, clip_
 from .clone import clone  # noqa: F401
 from .col2im import col2im
+from .col_indices_copy import col_indices_copy
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
 from .conj_physical import conj_physical
@@ -445,6 +456,9 @@ from .exponential import exponential  # noqa: F401
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_learnable_per_channel_affine import (
+    _fake_quantize_learnable_per_channel_affine,
+)
 from .fake_quantize_per_channel_affine import (  # noqa: F401
     fake_quantize_per_channel_affine,
 )
@@ -482,10 +496,10 @@ from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_tensor_scalar,
     float_power_tensor_scalar_,
     float_power_tensor_scalar_out,
-    float_power_tensor_tensor,
     float_power_tensor_tensor_,
     float_power_tensor_tensor_out,
 )
+from .float_power_tensor_tensor import float_power_tensor_tensor
 from .floor import floor, floor_, floor_out
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
@@ -513,7 +527,8 @@ from .fused_moving_avg_obs_fake_quant import (  # noqa: F401
     fused_moving_avg_obs_fake_quant,
 )
 from .gather import gather, gather_backward
-from .gcd import gcd, gcd_, gcd_out
+from .gcd import gcd, gcd_out
+from .gcd_inplace import gcd_
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_  # noqa: F401
@@ -521,6 +536,7 @@ from .geqrf import geqrf
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
+from .gradient import gradient
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
 from .grid_sampler import grid_sampler
@@ -547,6 +563,10 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
 from .histogramdd import histogramdd
+from .histogramdd_from_bin_cts import (
+    _histogramdd_from_bin_cts,
+    _histogramdd_from_bin_cts_out,
+)
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -565,7 +585,7 @@ from .index_copy_ import (  # noqa: F401  (registered via _FULL_CONFIG)
 from .index_fill import index_fill, index_fill_  # noqa: F401
 from .index_put import index_put, index_put_
 from .index_put_impl import _index_put_impl_
-from .index_reduce import index_reduce_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inverse import inverse
@@ -578,14 +598,18 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .isreal import isreal  # noqa: F401
 from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kaiser_window import kaiser_window, kaiser_window_beta, kaiser_window_periodic
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
+from .l1_loss import l1_loss  # noqa: F401
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
+from .ldexp import ldexp, ldexp_, ldexp_out  # noqa: F401
 from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -599,6 +623,8 @@ from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_householder_product import linalg_householder_product
+from .linalg_inv import linalg_inv
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
@@ -606,8 +632,10 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_lu_solve import linalg_lu_solve
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
-from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
+from .linalg_multi_dot import linalg_multi_dot_out
+from .linalg_multi_dot_kernel import linalg_multi_dot
 from .linalg_polar import linalg_polar, linalg_polar_out
 from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
@@ -657,6 +685,7 @@ from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
@@ -712,6 +741,7 @@ from .ne import ne, ne_, ne_scalar, ne_scalar_
 from .neg import neg, neg_
 from .negative import negative
 from .negative_ import negative_
+from .nested_tensor_from_mask import _nested_tensor_from_mask
 from .new_full import new_full
 from .new_ones import new_ones
 from .nextafter import nextafter, nextafter_
@@ -773,6 +803,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .range import range  # noqa: F401
+from .ravel import ravel
 from .reciprocal import reciprocal, reciprocal_
 from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from .reflection_pad1d_backward import reflection_pad1d_backward
@@ -807,12 +838,14 @@ from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
+from .row_stack import row_stack  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
 from .scaled_grouped_mm import scaled_grouped_mm
+from .scaled_modified_bessel_k0 import special_scaled_modified_bessel_k0
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
@@ -910,7 +943,6 @@ from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
 from .special_scaled_modified_bessel_k0 import (  # noqa: F401
-    special_scaled_modified_bessel_k0,
     special_scaled_modified_bessel_k0_out,
 )
 from .special_scaled_modified_bessel_k1 import (  # noqa: F401
@@ -941,6 +973,7 @@ from .special_zeta import (
     special_zeta_tensor_scalar,
     special_zeta_tensor_scalar_out,
 )
+from .split_copy import split_copy
 from .split_with_sizes_copy import split_with_sizes_copy  # noqa: F401
 from .sqrt import sqrt, sqrt_
 from .square import square, square_out
@@ -948,6 +981,7 @@ from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
 from .stack import stack
 from .std import std
+from .std_mean import std_mean_correction  # noqa: F401
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
@@ -956,6 +990,9 @@ from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
+from .thnn_differentiable_lstm_cell_backward import (  # noqa: F401
+    _thnn_differentiable_lstm_cell_backward,
+)
 from .threshold import threshold, threshold_, threshold_backward
 from .tile import tile
 from .to import to_copy
@@ -974,6 +1011,7 @@ from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
+from .unique_dim_consecutive import unique_dim_consecutive
 from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -993,6 +1031,9 @@ from .upsample_nearest_exact2d import (
     _upsample_nearest_exact2d_out,
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
+from .upsample_nearest_exact3d_backward_grad_input import (
+    _upsample_nearest_exact3d_backward_grad_input,
+)
 from .upsample_trilinear3d import upsample_trilinear3d
 from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
@@ -1000,8 +1041,10 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
+from .view_as_real_copy import view_as_real_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
+from .weight_int8pack_mm import weight_int8pack_mm
 from .weight_norm import _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
@@ -1027,10 +1070,14 @@ __all__ = [
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
     "_adaptive_avg_pool3d_backward",
+    "_addmm_activation",
+    "_addmm_activation_out",
+    "_aminmax",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cholesky_solve_helper",
     "_chunk_cat",
@@ -1043,6 +1090,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
+    "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_abs_",
@@ -1153,6 +1201,8 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_histogramdd_from_bin_cts",
+    "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
     "_is_all_true",
     "_logcumsumexp",
@@ -1164,11 +1214,14 @@ __all__ = [
     "_native_batch_norm_legit_no_stats_out",
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
+    "_nested_tensor_from_mask",
+    "_nested_tensor_from_mask_left_aligned",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
+    "_padded_dense_to_jagged_forward",
     "_pdist_backward",
     "_pdist_forward",
     "_resize_output",
@@ -1191,6 +1244,7 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
+    "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
     "abs",
     "abs_",
@@ -1337,6 +1391,7 @@ __all__ = [
     "clip_",
     "clone",
     "col2im",
+    "col_indices_copy",
     "column_stack",
     "column_stack_out",
     "concatenate",
@@ -1442,6 +1497,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "fliplr",
+    "float_power_tensor_tensor",
     "floor",
     "floor_",
     "floor_divide",
@@ -1479,6 +1535,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "gradient",
     "greater",
     "greater_equal_",
     "greater_out",
@@ -1528,7 +1585,9 @@ __all__ = [
     "index_copy_",
     "index_put",
     "index_put_",
+    "index_reduce",
     "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
@@ -1543,12 +1602,17 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "isreal",
     "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kaiser_window",
+    "kaiser_window_beta",
+    "kaiser_window_periodic",
     "kl_div",
     "kron",
     "kthvalue",
+    "l1_loss",
     "layer_norm",
     "layer_norm_backward",
     "lcm",
@@ -1582,6 +1646,8 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_householder_product",
+    "linalg_inv",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu",
@@ -1590,6 +1656,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_lu_solve",
     "linalg_matrix_norm",
     "linalg_matrix_norm_out",
     "linalg_multi_dot",
@@ -1654,6 +1721,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "masked_select_backward",
     "matmul_bf16",
     "matmul_int8",
     "matmuladd",
@@ -1789,6 +1857,7 @@ __all__ = [
     "randn",
     "randn_like",
     "randperm",
+    "ravel",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
@@ -1831,6 +1900,7 @@ __all__ = [
     "round_out",
     "row_indices_copy",
     "row_indices_copy_out",
+    "row_stack",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
@@ -1950,6 +2020,7 @@ __all__ = [
     "special_ndtri",
     "special_round",
     "special_round_out",
+    "special_scaled_modified_bessel_k0",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_t",
@@ -1966,6 +2037,7 @@ __all__ = [
     "special_zeta_scalar_tensor_out",
     "special_zeta_tensor_scalar",
     "special_zeta_tensor_scalar_out",
+    "split_copy",
     "sqrt",
     "sqrt_",
     "square",
@@ -1974,6 +2046,7 @@ __all__ = [
     "squeeze_copy",
     "stack",
     "std",
+    "std_mean_correction",
     "sub",
     "sub_",
     "subtract",
@@ -2022,6 +2095,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unique_dim_consecutive",
     "upsample_bilinear2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
@@ -2041,6 +2115,7 @@ __all__ = [
     "vector_norm",
     "view_copy",
     "vstack",
+    "weight_int8pack_mm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",

@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
@@ -26,6 +27,23 @@ DEVICE = flag_gems.device
 _TEST_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 if flag_gems.runtime.device.support_fp64:
     _TEST_DTYPES.append(torch.float64)
+
+
+@pytest.fixture(autouse=True)
+def _skip_unsupported_fp64(request):
+    """Skip float64 cases on backends that do not support FP64.
+
+    Some XPU backends (e.g. Kunlunxin) silently materialise a float64 request as
+    float32, so no tensor can ever satisfy the float64 dtype assertion here.
+    """
+    dtype = getattr(getattr(request.node, "callspec", None), "params", {}).get("dtype")
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not flag_gems.runtime.device.support_fp64
+    ):
+        pytest.skip("backend does not support float64")
+
 
 # every grad dim needs at least edge_order + 1 points
 GRADIENT_SHAPES = [
@@ -102,7 +120,9 @@ def test_gradient_scalararray(shape, dtype):
 
 
 @pytest.mark.gradient
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_gradient_scalarrayint(dtype):
     # exercises aten::gradient.scalarrayint (Scalar[] spacing, dim=None)
     shape = (4, 8, 12)
@@ -117,7 +137,10 @@ def test_gradient_scalarrayint(dtype):
 
 
 @pytest.mark.gradient
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 def test_gradient_tensorarray(dtype):
     # exercises aten::gradient.tensorarray / tensorarrayint (1-D coordinate
     # spacing tensors, uniform and non-uniform, both edge orders)
@@ -199,6 +222,10 @@ def test_gradient_int_promotion():
 
 
 @pytest.mark.gradient
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
+    reason="backend does not support float64",
+)
 def test_gradient_quadratic_exactness():
     # edge_order=2 is exact on quadratics: y = t**2 with unit spacing
     t = torch.arange(64, dtype=torch.float64, device=DEVICE)

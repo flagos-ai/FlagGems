@@ -95,8 +95,8 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     if N_total == 0:
         return out_in
 
-    BLOCK = 8192
-    grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
+    BLOCK = 4096
+    grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 4)
     with torch_device_fn.device(x_contig.device):
         i0_kernel[(grid_size,)](x_contig, out_contig, N_total, BLOCK=BLOCK, num_warps=4)
 
@@ -200,7 +200,7 @@ def i0_(*args, **kwargs):
     if N_total == 0:
         return x
 
-    BLOCK = 8192
+    BLOCK = 4096
     grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
     with torch_device_fn.device(x.device):
         i0_kernel_[(grid_size,)](x, N_total, BLOCK=BLOCK, num_warps=4)

@@ -21,6 +21,8 @@ import triton
 import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,7 @@ def _fused_kernel(
     FQ: tl.constexpr,
     SYM: tl.constexpr,
     FLOOR: tl.constexpr,
+    IEEE_DIV: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # One program per quantization group.  Per-tensor mode launches a single
@@ -103,11 +106,20 @@ def _fused_kernel(
         # asymmetric branch. The divisions must be IEEE round-to-nearest:
         # zero_point can land exactly on a .5 tie (running_min/max = -0.5/0.5
         # with qmin/qmax = 0/255 gives 127.5), and plain '/' lowers to the
-        # approximate div.full.f32 on NVIDIA.
-        sc_a = tl.math.div_rn(mx - mn, qmxv - qmnv)
+        # approximate div.full.f32 on NVIDIA. libdevice.div_rn is reported
+        # miscompiled on the Enflame GCU backend, so that backend keeps the
+        # exact previous expression; the gate preserves its path by
+        # construction and has not been runtime-retested on Enflame here.
+        if IEEE_DIV:
+            sc_a = libdevice.div_rn(mx - mn, qmxv - qmnv)
+        else:
+            sc_a = (mx - mn) / (qmxv - qmnv)
         deg = sc_a == 0.0
         sc_a = tl.where(deg, 0.1 + zf, sc_a)
-        z_a = _rint(qmnv - tl.math.div_rn(mn, sc_a))
+        if IEEE_DIV:
+            z_a = _rint(qmnv - libdevice.div_rn(mn, sc_a))
+        else:
+            z_a = _rint(qmnv - (mn / sc_a))
         z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
         z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
         sc_v = sc_a
@@ -205,6 +217,7 @@ def _finalize_pt(
     FQ: tl.constexpr,
     SYM: tl.constexpr,
     FLOOR: tl.constexpr,
+    IEEE_DIV: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # Single-program finalize: combine partials, update running stats in place
@@ -238,12 +251,19 @@ def _finalize_pt(
         qmxv = qmxf + zf
         mn = tl.minimum(rmin, zf)
         mx = tl.maximum(rmax, zf)
-        # IEEE round-to-nearest division (see _fused_kernel: zero_point can
-        # hit an exact .5 tie that plain '/' rounds the wrong way on NVIDIA).
-        sc_a = tl.math.div_rn(mx - mn, qmxv - qmnv)
+        # IEEE round-to-nearest division where supported (see _fused_kernel:
+        # zero_point can hit an exact .5 tie that plain '/' rounds the wrong
+        # way on NVIDIA; Enflame keeps the original expression).
+        if IEEE_DIV:
+            sc_a = libdevice.div_rn(mx - mn, qmxv - qmnv)
+        else:
+            sc_a = (mx - mn) / (qmxv - qmnv)
         deg = sc_a == 0.0
         sc_a = tl.where(deg, 0.1 + zf, sc_a)
-        z_a = _rint(qmnv - tl.math.div_rn(mn, sc_a))
+        if IEEE_DIV:
+            z_a = _rint(qmnv - libdevice.div_rn(mn, sc_a))
+        else:
+            z_a = _rint(qmnv - (mn / sc_a))
         z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
         z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
         sc_v = sc_a
@@ -397,6 +417,9 @@ def _fused_moving_avg_obs_fq_helper(
     dneg_h = float((qmax - qmin + 1) // 2)
     dpos_h = float((qmax - qmin) // 2)
     zsym_h = float(round((qmin + qmax) * 0.5))
+    # Enflame reports libdevice.div_rn miscompilation; keep its original '/'
+    # while NVIDIA uses the correctly-rounded intrinsic.
+    ieee_div = flag_gems.vendor_name != "enflame"
     if (not per_channel) and N > _SINGLE_MAX:
         # Large per-tensor: parallel multi-block reduction + elementwise pass
         # so the work is spread over the whole device instead of one program.
@@ -436,6 +459,7 @@ def _fused_moving_avg_obs_fq_helper(
                 FQ=fq,
                 SYM=sym,
                 FLOOR=_SCALE_FLOOR,
+                IEEE_DIV=ieee_div,
                 BLOCK=_BLOCK,
                 num_warps=4,
             )
@@ -487,6 +511,7 @@ def _fused_moving_avg_obs_fq_helper(
         FQ=fq,
         SYM=sym,
         FLOOR=_SCALE_FLOOR,
+        IEEE_DIV=ieee_div,
         BLOCK=_BLOCK,
         num_warps=1,
     )

@@ -107,9 +107,10 @@ std::vector<at::Tensor> act_quant_triton(const at::Tensor& x,
   // }
   //   return {y.to(torch::kFloat8_e4m3fn), s};
 
+  // The kernel uses a 1D grid and splits program_id(0) into (pid_m, pid_n) with n_blocks.
   kernel(/* CUstream = */ raw_stream,
-         /* grid_x = */ m_blocks,
-         /* grid_y = */ n_blocks,
+         /* grid_x = */ m_blocks * n_blocks,
+         /* grid_y = */ 1,
          /* grid_z = */ 1,
          /* num_warps = */ 4,
          /* num_stages = */ 3,
@@ -121,6 +122,7 @@ std::vector<at::Tensor> act_quant_triton(const at::Tensor& x,
          (int)x_2d.stride(0),
          (int)y_view.stride(0),
          (int)s_view.stride(0),
+         n_blocks,
          BLOCK_M,
          BLOCK_N,
          scale_fmt.has_value());

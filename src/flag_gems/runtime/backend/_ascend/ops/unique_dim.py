@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.unique_dim import (
+    _UNIQUE_DIM_GATHER_BLOCK_SIZE,
     _UNIQUE_DIM_GROUP_SCAN_BLOCK_SIZE,
     _argsort_keys,
     _build_composite_key,
@@ -34,7 +35,9 @@ from flag_gems.ops.unique_dim import (
     _triton_num_warps,
     _unique_dim_counts,
     _unique_dim_first_mask,
-    _unique_dim_gather_output,
+)
+from flag_gems.ops.unique_dim import _unique_dim_gather_output as _generic_gather_output
+from flag_gems.ops.unique_dim import (
     _unique_dim_inverse_from_permutation,
     _unique_dim_unique_indices,
     _unique_dim_unique_indices_and_inverse,
@@ -43,6 +46,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
+
+_ASCEND_MAX_CORE_DIM = 65535
 
 
 @libentry()
@@ -64,6 +69,58 @@ def _unique_dim_group_id_kernel(
     tl.store(group_id_ptr + offsets, group_id, mask=mask)
     last_group_id = tl.sum(group_id * (offsets == num_rows - 1).to(tl.int32))
     tl.store(last_group_id_ptr, last_group_id)
+
+
+@libentry()
+@triton.jit
+def _unique_dim_gather_large_kernel(
+    moved_ptr,
+    index_ptr,
+    output_ptr,
+    row_len,
+    num_chunks,
+    num_tiles,
+    BLOCK_SIZE: tl.constexpr,
+):
+    lanes = tl.arange(0, BLOCK_SIZE)
+    for tile in range(tl.program_id(0), num_tiles, tl.num_programs(0)):
+        row = (tile // num_chunks).to(tl.int64)
+        chunk = (tile % num_chunks).to(tl.int64)
+        cols = chunk * BLOCK_SIZE + lanes
+        source_row = tl.load(index_ptr + row)
+        values = tl.load(moved_ptr + source_row * row_len + cols, cols < row_len)
+        tl.store(output_ptr + row * row_len + cols, values, cols < row_len)
+
+
+def _unique_dim_gather_output(moved, unique_indices, dim, input_shape):
+    num_unique = unique_indices.numel()
+    if num_unique == 0:
+        return _generic_gather_output(moved, unique_indices, dim, input_shape)
+
+    row_len = moved.numel() // moved.shape[0]
+    block_size = _UNIQUE_DIM_GATHER_BLOCK_SIZE
+    num_chunks = triton.cdiv(row_len, block_size)
+    num_tiles = num_unique * num_chunks
+    if num_tiles <= _ASCEND_MAX_CORE_DIM:
+        return _generic_gather_output(moved, unique_indices, dim, input_shape)
+
+    # CANN passes the product of the launch dimensions as coreDim.
+    # Keep the grid within its limit and cover the remaining tiles in-kernel.
+    output = torch.empty(
+        (num_unique, *moved.shape[1:]), dtype=moved.dtype, device=moved.device
+    )
+    with torch_device_fn.device(moved.device.index):
+        _unique_dim_gather_large_kernel[(_ASCEND_MAX_CORE_DIM,)](
+            moved,
+            unique_indices,
+            output,
+            row_len,
+            num_chunks,
+            num_tiles,
+            BLOCK_SIZE=block_size,
+            num_warps=4,
+        )
+    return output.movedim(0, dim)
 
 
 def _empty_int64(device: torch.device) -> torch.Tensor:

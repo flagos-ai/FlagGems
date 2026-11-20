@@ -1,45 +1,4 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Deprecated fused operators. Use the implementations in
-# https://github.com/flagos-ai/FlagGems-vllm instead.
-
 ops:
-- id: act_quant_triton
-  description: This is a fused operator.
-  for:
-  - None
-  labels:
-  - fused
-  kind:
-  - Quantization
-  stages:
-  - beta: '5.3'
-- id: add_rms_norm
-  description: 'Add two inputs element-wise and apply Root Mean Square Layer Normalization.
-
-    '
-  for:
-  - add_rms_norm
-  labels:
-  - aten
-  - KernelGen
-  - Normalization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
 - id: apply_repetition_penalties
   description: 'Modifies logit tensors in place to penalize tokens that have already
     appeared in the generated sequence.
@@ -72,58 +31,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.0'
-- id: beam_search_score
-  description: Computes beam search scores by adding cumulative log probabilities
-    with new token scores.
-  for:
-  - beam_search_score
-  labels:
-  - KernelGen
-  - fused
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: beam_search_score_
-  description: In-place version of beam search score computation.
-  for:
-  - beam_search_score_
-  labels:
-  - KernelGen
-  - fused
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: bf16_paged_mqa_logits
-  description: 'Compute multi-head weighted ReLU attention logits on paged BF16
-
-    KV cache. Uses shape-specialized Triton kernels for H=32 and H=64
-
-    with zero-constexpr dispatch for decode-phase inference.
-
-    '
-  for:
-  - bf16_paged_mqa_logits
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: bincount
-  description: Count the frequency of each value in an array of non-negative integers.
-  for:
-  - bincount
-  labels:
-  - aten
-  - pointwise
-  - KernelGen
-  kind:
-  - Reduction
-  stages:
-  - stable: '5.0'
 - id: bucket_sort_topk
   description: A wrapper of the TLE version and the Triton version bucket-sort topk
     operation.
@@ -187,20 +94,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: concat_and_cache_mla
-  description: 'Writes the latent and RoPE value into KV cache for Multi-head Latent
-    Attention forward case.
-
-    '
-  for:
-  - _C_cache_ops.concat_and_cache_mla
-  labels:
-  - fused
-  - MLA
-  kind:
-  - Attention
-  stages:
-  - beta: '3.0'
 - id: cp_gather_indexer_k_quant_cache
   description: This is a fused operator that gathers FP8 K cache values and scales.
   for:
@@ -212,18 +105,6 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
-- id: cross_entropy_loss
-  description: Computes the cross entropy loss between input logits and target.
-  for:
-  - CrossEntropyLoss
-  labels:
-  - fused
-  - Reduction
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
-  - removed: '3.0'
 - id: cutlass_scaled_mm
   description: Multiplies quantized matrices with input scaling and optional bias,
     writing the result into the provided output tensor.
@@ -252,24 +133,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: dgeglu
-  description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
-    function.
-
-    This is for the backward case.
-
-    '
-  for:
-  - dgeglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.0'
-  - stable: '5.0'
 - id: dispatch_fused_moe_kernel
   description: 'Accelerates neural network training by combining token routing (dispatch/all-to-all
     communication),
@@ -288,40 +151,6 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
-- id: dreglu
-  description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
-    of
-
-    the sigmoid function for gating. This is the backward case.
-
-    '
-  for:
-  - dreglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.3'
-- id: dswiglu
-  description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
-    function.
-
-    This is for the backward case.
-
-    '
-  for:
-  - dswiglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.0'
-  - beta: '5.3'
 - id: flash_mla
   description: A variant of Multi-head Latent Attention (MLA).
   for:
@@ -403,36 +232,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: fused_add_rms_norm
-  description: Adds the input to the residual in place and applies weighted RMS
-    normalization, storing the sum in the residual and the normalized result in the input.
-  for:
-  - add_rms_norm
-  labels:
-  - fused
-  - Normalization
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
-  cpp: '4.0'
-- id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
-  description: 'Horizontally-fused DeepseekV4-MLA BF16 variant.
-
-    per-head RMSNorm + GPT-J RoPE for Q, and GPT-J RoPE + bf16 paged
-
-    cache insert for KV, all in one kernel launch. No FP8 quantization.
-
-    '
-  for:
-  - fused_deepseek_v4_qnorm_rope_kv_rope_insert
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
 - id: fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
   description: 'Horizontally-fused DeepseekV4-MLA.
 
@@ -505,8 +304,8 @@ ops:
   - beta: '5.5'
 - id: fused_marlin_moe_w4a16_int4
   description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
-    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
-    vLLM's fused_marlin_moe call signature.
+    layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with vLLM's
+    fused_marlin_moe call signature.
   for:
   - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
   labels:
@@ -519,8 +318,8 @@ ops:
   - beta: '5.4'
 - id: fused_marlin_moe_w4a16_mxfp4
   description: Fused MoE with MXFP4 (E2M1) W4A16 weights packed two codes per byte
-    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation,
-    aligned with vLLM's fused_marlin_moe call signature.
+    and E8M0 scales; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned
+    with vLLM's fused_marlin_moe call signature.
   for:
   - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
   labels:
@@ -532,9 +331,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: fused_marlin_moe_w8a16_int8
-  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16
-    fused-dequant GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe
-    call signature.
+  description: Fused MoE with GPTQ INT8 (uint8b128) W8A16 weights; Triton wna16 fused-dequant
+    GEMM with SwiGLU activation, aligned with vLLM's fused_marlin_moe call signature.
   for:
   - flag_gems.fused.fused_marlin_moe.fused_marlin_moe
   labels:
@@ -576,32 +374,6 @@ ops:
   stages:
   - alpha: '5.0'
   - beta: '5.3'
-- id: geglu
-  description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
-    function.
-  for:
-  - geglu
-  labels:
-  - fused
-  - Activation
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.3'
-- id: gelu_and_mul
-  description: An activation function for GeGLU.
-  for:
-  - GeluAndMul
-  labels:
-  - fused
-  - pointwise
-  - Activation
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.0'
 - id: grouped_topk
   description: 'A specialized routing mechanism used in Mixture-of-Experts (MoE) models
     (like DeepSeek-V3/R1)
@@ -678,42 +450,6 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
-- id: instance_norm
-  description: 'Apply Instance Normalization independently for each channel in every
-    data sample within a batch.
-
-    '
-  for:
-  - instance_norm
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '2.2'
-  - removed: '3.0'
-  - beta: '5.3'
-- id: matmul_bias_activation
-  description: Fused matrix multiplication with bias addition and ReLU activation.
-  for:
-  - matmul_bias_activation
-  labels:
-  - KernelGen
-  kind:
-  - BLAS
-  stages:
-  - alpha: '5.4'
-- id: matmuladd
-  description: Computes matrix multiplication followed by bias addition.
-  for:
-  - matmuladd
-  labels:
-  - fused
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: mhc_bwd
   description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
 
@@ -775,23 +511,6 @@ ops:
   stages:
   - beta: '4.0'
   - stable: '4.2'
-- id: moe_load_balance_loss
-  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss
-    L_ib = N_e * sum_i f_i P_i, where f_i is expert i''s Top-K assignment
-    frequency and P_i its mean routing probability. Both statistics are computed
-    in fp32 from the router logits; an optional attention_mask excludes zero
-    entries from both statistics and the denominator. Returns a float32 scalar.
-    '
-  for:
-  - None
-  labels:
-  - fused
-  - Reduction
-  - MoE
-  kind:
-  - MoE
-  stages:
-  - beta: '5.5'
 - id: moe_sum
   description: 'An implementation of Mixture of Experts (MoE) with sum-based aggregation
 
@@ -808,23 +527,6 @@ ops:
   - MoE
   stages:
   - stable: '4.2'
-- id: outer
-  description: 'Computes outer product of self and the input vector.
-
-    If the self tensor is a vector of size `n` and the input tensor is a vector of
-    size `m`,
-
-    the `out` tensor (if specified) must be a matrix of size `n * m`.
-
-    '
-  for:
-  - outer.Tensor
-  labels:
-  - fused
-  kind:
-  - BLAS
-  stages:
-  - stable: '2.0'
 - id: outplace_fused_experts
   description: This operator allocates and returns a new output tensor.
   for:
@@ -850,31 +552,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: post_layer_norm_residual
-  description: Fuses LayerNorm followed by a residual addition.
-  for:
-  - None
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.4'
-- id: reglu
-  description: 'Rectified Gated Linear Unit is a variant of GLU that uses ReLU instead
-    of the sigmoid function for gating.
-
-    '
-  for:
-  - reglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '4.2'
-  - beta: '5.3'
 - id: reshape_and_cache
   description: Store the key/value token states into the pre-allcated kv_cache buffers
     of paged attention.
@@ -887,45 +564,6 @@ ops:
   - Attention
   stages:
   - stable: '3.0'
-- id: reshape_and_cache_flash
-  description: Store the key/value token states into the pre-allcated kv_cache buffers
-    of paged attention.
-  for:
-  - reshape_and_cache_flash
-  labels:
-  - fused
-  kind:
-  - Attention
-  stages:
-  - stable: '3.0'
-  cpp: '4.0'
-- id: rwkv_ka_fusion
-  description: 'Merges, aligns, and enhances features from different data sources
-    or spatial directions
-
-    using the efficient, linear-time RWKV framework.
-
-    '
-  for:
-  - rwkv_ka_fusion
-  labels:
-  - fused
-  kind:
-  - RWKV
-  stages:
-  - stable: '4.1'
-  cpp: '4.0'
-- id: rwkv_mm_sparsity
-  description: Optimized, lossless sparse matrix multiplication in RWKV-7 models.
-  for:
-  - rwkv_mm_sparsity
-  labels:
-  - fused
-  kind:
-  - RWKV
-  stages:
-  - stable: '4.1'
-  cpp: '4.0'
 - id: silu_and_mul
   description: A custom operator in vLLM as activation function for SwiGLU.
   for:
@@ -1018,34 +656,6 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
-- id: stage_deepseek_v4_mega_moe_inputs
-  description: 'Stages DeepSeekV4 Mega-MoE inputs by quantizing hidden states to FP8
-
-    with UE8M0 scales and copying top-k indices and weights to output buffers.
-
-    '
-  for:
-  - stage_deepseek_v4_mega_moe_inputs
-  labels:
-  - fused
-  - DeepSeekV4
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: swiglu
-  description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
-    function.
-  for:
-  - swiglu
-  labels:
-  - fused
-  - Transformer
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '5.0'
 - id: top_k_per_row_decode
   description: 'Triton top-K per row for DeepSeek V4 decode-phase token selection.
 
@@ -1136,20 +746,3 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: weight_norm
-  description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
-    (g)
-
-    from its direction (v). It is a hook that compute the actual weight before
-
-    each forward pass.
-
-    '
-  for:
-  - weight_norm
-  labels:
-  - fused
-  kind:
-  - NeuralNetwork
-  stages:
-  - stable: '3.0'
