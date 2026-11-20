@@ -118,3 +118,74 @@ def test_sum_out(shape, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=inp.numel())
+
+
+@pytest.mark.sum_dim
+@pytest.mark.sum_dim_out
+@pytest.mark.parametrize("rows", [65535, 65536, 65537, 256 * 16 * 5488])
+@pytest.mark.parametrize(
+    "dtype",
+    [dtype for dtype in utils.ALL_FLOAT_DTYPES if dtype in (torch.float32, torch.float64)],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("use_out", [True, False])
+def test_sum_dim_large_inner_grid(rows, dtype, keepdim, use_out):
+    # Cross the X/Y split with a partial final row tile, and cover the original
+    # HIP launch failure (22,478,848 rows, four warps per program).
+    inp_cpu = torch.randn((rows, 3), dtype=dtype)
+    ref_out = torch.sum(inp_cpu, dim=-1, keepdim=keepdim)
+    inp = inp_cpu.to(device=flag_gems.device)
+
+    if use_out:
+        out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
+        res_out = flag_gems.sum_dim_out(inp, dim=[-1], keepdim=keepdim, out=out)
+        assert res_out is out
+    else:
+        res_out = flag_gems.sum_dim(inp, dim=[-1], keepdim=keepdim)
+
+    assert res_out.shape == ref_out.shape
+    assert res_out.dtype == dtype
+    torch.testing.assert_close(res_out.cpu(), ref_out)
+
+
+@pytest.mark.sum_dim
+@pytest.mark.sum_dim_out
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((), [0]),
+        ((), [-1]),
+        ((), None),
+        ((), []),
+        ((0,), [0]),
+        ((0, 3), [0]),
+        ((0, 3), [1]),
+        ((3, 0), [0]),
+        ((3, 0), [1]),
+        ((2, 0, 3), [1]),
+        ((2, 0, 3), [0, 2]),
+        ((2, 0, 3), None),
+        ((2, 0, 3), []),
+        ((0, 0, 3), [-1]),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bool, torch.int64] + FLOAT_DTYPES)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("use_out", [True, False])
+def test_sum_dim_scalar_and_empty(shape, dim, dtype, keepdim, use_out):
+    inp_cpu = torch.ones(shape, dtype=dtype)
+    ref_out = torch.sum(inp_cpu, dim=dim, keepdim=keepdim)
+    inp = inp_cpu.to(device=flag_gems.device)
+    if use_out:
+        out = torch.empty((7,), dtype=ref_out.dtype, device=flag_gems.device)
+        res_out = flag_gems.sum_dim_out(inp, dim=dim, keepdim=keepdim, out=out)
+        assert res_out is out
+    else:
+        res_out = flag_gems.sum_dim(inp, dim=dim, keepdim=keepdim)
+
+    # A zero-size CPU copy can skip synchronization; explicitly wait so an
+    # accidentally launched kernel on empty storage cannot be marked PASS.
+    flag_gems.runtime.torch_device_fn.synchronize()
+    assert res_out.shape == ref_out.shape
+    assert res_out.dtype == ref_out.dtype
+    torch.testing.assert_close(res_out.cpu(), ref_out, rtol=0, atol=0)

@@ -29,6 +29,14 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def _sum_acc_dtype(dtype):
+    """Sum output / Accumulation dtype: Consistent with native PyTorch, bool and integer types with width less than 64 
+    are promoted to int64 (int64/uint64 remain unchanged), floating-point types remain unchanged."""
+    if dtype in (torch.bool, torch.int8, torch.uint8, torch.int16, torch.uint16, torch.int32, torch.uint32):
+        return torch.int64
+    return dtype
+
+
 @libentry()
 @triton.jit
 def sum_kernel_1(
@@ -85,10 +93,10 @@ def sum(inp, *, dtype=None):
         return out
 
     if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
+        dtype = _sum_acc_dtype(inp.dtype)
+        if dtype != inp.dtype:
+            # Integer Promotion: Elevate the input to the accumulation precision, so that the kernel accumulates in int64, which is consistent with the native semantics
+            inp = inp.to(dtype)
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -106,10 +114,9 @@ def sum_out(inp, *, dtype=None, out):
     logger.debug("GEMS SUM_OUT")
     M = inp.numel()
     if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
+        dtype = _sum_acc_dtype(inp.dtype)
+        if dtype != inp.dtype:
+            inp = inp.to(dtype)
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -141,21 +148,22 @@ def sum_dim_kernel_non_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
+    pid_m = ext.program_id(0) + ext.program_id(1) * ext.num_programs(0)
+    pid_k = ext.program_id(2)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+    row_mask = pid_m < M
 
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)[:, None]
         inp_offset = pid_m * N * K + n_offsets * K + k_offsets
-        mask = (n_offsets < N) & (k_offsets < K)
+        mask = row_mask & (n_offsets < N) & (k_offsets < K)
         input_ptrs = input_ptr + inp_offset
         inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
         out = tl.sum(inp, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out, mask=k_offsets < K)
+        tl.store(output_ptrs, out, mask=row_mask & (k_offsets < K))
     else:
         sum = tl.zeros([TILE_N, TILE_K], dtype=cdtype)
 
@@ -163,13 +171,13 @@ def sum_dim_kernel_non_inner(
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
             inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
-            mask = (n_offsets < N) & (k_offsets < K)
+            mask = row_mask & (n_offsets < N) & (k_offsets < K)
             inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
             sum += inp
         out = tl.sum(sum, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out, mask=k_offsets < K)
+        tl.store(output_ptrs, out, mask=row_mask & (k_offsets < K))
 
 
 @libentry()
@@ -190,17 +198,17 @@ def sum_dim_kernel_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = ext.program_id(0)
+    pid_m = ext.program_id(0) + ext.program_id(1) * ext.num_programs(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         inp_offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + inp_offset
-        mask = n_offsets < N
+        mask = (pid_m < M) & (n_offsets < N)
         inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
         out = tl.sum(inp, axis=0)
         out_offset = pid_m
         output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out)
+        tl.store(output_ptrs, out, mask=pid_m < M)
     else:
         sum = tl.zeros(
             [
@@ -211,13 +219,13 @@ def sum_dim_kernel_inner(
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
             inp_offsets = pid_m * N + n_offsets
-            mask = n_offsets < N
+            mask = (pid_m < M) & (n_offsets < N)
             inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
             sum += inp
         out = tl.sum(sum, axis=0)
         out_offset = pid_m
         output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out)
+        tl.store(output_ptrs, out, mask=pid_m < M)
 
 
 @libentry()
@@ -261,9 +269,52 @@ def sum_dim_kernel(
 
 def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
+        dtype = _sum_acc_dtype(inp.dtype)
+        if dtype != inp.dtype:
+            # Integer Promotion: Elevate the input to the accumulation precision, so the kernel accumulates in int64, which is consistent with the native semantics
+            inp = inp.to(dtype)
+
+    # A scalar accepts axes 0/-1, but has no physical dimension to index.
+    # Normalize and validate axes before using them in shape arithmetic.
+    if dim is not None:
+        dim = [dim] if isinstance(dim, int) else list(dim)
+        rank = max(inp.ndim, 1)
+        normalized_dim = []
+        for d in dim:
+            if d < -rank or d >= rank:
+                raise IndexError(
+                    f"Dimension out of range (expected to be in range of "
+                    f"[{-rank}, {rank - 1}], but got {d})"
+                )
+            axis = d % rank
+            if axis in normalized_dim:
+                raise RuntimeError(
+                    f"dim {axis} appears multiple times in the list of dims"
+                )
+            normalized_dim.append(axis)
+        dim = normalized_dim
+
+    # Handle both public overloads here. In particular, out= must never launch
+    # a reduction on empty storage (K may be zero even when M and N are not).
+    if inp.ndim == 0 or inp.numel() == 0:
+        dims = list(range(inp.ndim)) if not dim else dim
+        if keepdim:
+            out_shape = [1 if d in dims else size for d, size in enumerate(inp.shape)]
+        else:
+            out_shape = [size for d, size in enumerate(inp.shape) if d not in dims]
+        if out is None:
+            out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        else:
+            out.resize_(out_shape)
+        if out.numel() == 0:
+            return out
+        if inp.numel() == 0:
+            return zero_(out)
+        # A nonempty rank-zero tensor contains exactly one value. Keep its
+        # output rank zero for both keepdim settings and apply dtype on store.
+        with torch_device_fn.device(inp.device):
+            sum_dim_kernel_inner[(1, 1, 1)](out, inp, 1, 1)
+        return out
 
     if dim is None:
         result = torch.sum(inp, dtype=dtype)
@@ -279,7 +330,6 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
 
     shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
 
     if len(dim) == 1:
         dim = dim[0]
@@ -302,7 +352,15 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
         with torch_device_fn.device(inp.device):
             if K > 1:
-                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                # HIP limits gridDim * blockDim to less than 2**32 per axis.
+                # Split large row counts over X/Y (K tiles move to Z) rather
+                # than overflowing X — same treatment as sum_dim_kernel_inner.
+                grid_x = min(M, 65535)
+                grid = lambda meta: (
+                    grid_x,
+                    triton.cdiv(M, grid_x),
+                    triton.cdiv(K, meta["TILE_K"]),
+                )
                 sum_dim_kernel_non_inner[grid](
                     out,
                     inp,
@@ -311,7 +369,10 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     K,
                 )
             else:
-                grid = (M, 1, 1)
+                # HIP limits gridDim * blockDim to less than 2**32 per axis.
+                # Split large row counts over X/Y rather than overflowing X.
+                grid_x = min(M, 65535)
+                grid = (grid_x, triton.cdiv(M, grid_x), 1)
                 sum_dim_kernel_inner[grid](
                     out,
                     inp,
@@ -349,39 +410,6 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS SUM_DIM")
-    # support dim = 0, which are consistent with PyTorch
-    if inp.numel() == 0:
-        if dtype is None:
-            dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
-
-        out_shape = list(inp.shape)
-        if dim is None:
-            if keepdim:
-                out_shape = [1] * len(out_shape)
-            else:
-                out_shape = []
-        elif isinstance(dim, (list, tuple)) and len(dim) == 0:
-            if keepdim:
-                out_shape = [1] * len(out_shape)
-            else:
-                out_shape = []
-        else:
-            dims_to_reduce = dim if isinstance(dim, (list, tuple)) else [dim]
-            if keepdim:
-                for d in dims_to_reduce:
-                    out_shape[d % inp.ndim] = 1
-            else:
-                sorted_dims_to_remove = sorted(
-                    dims_to_reduce, key=lambda x: x % inp.ndim, reverse=True
-                )
-                for d in sorted_dims_to_remove:
-                    index_to_remove = d % inp.ndim
-                    out_shape.pop(index_to_remove)
-        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
-        zero_(out)
-        return out
     return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
 
 
