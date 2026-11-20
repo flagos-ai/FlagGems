@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+matmul:
+  shapes:
+    - [1024, 128, 128]
+    - [1, 16384, 4]
+  shape_desc: "Batch, K, N (one query row)"

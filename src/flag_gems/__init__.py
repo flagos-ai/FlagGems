@@ -1804,6 +1804,7 @@ _FULL_CONFIG = (
     ("masked_scatter_backward", masked_scatter_backward),
     ("masked_select", masked_select),
     ("masked_select_backward", masked_select_backward),
+    *((("matmul", globals()["matmul"]),) if "matmul" in globals() else ()),
     ("matmul_backward", matmul_backward),
     ("matrix_exp", matrix_exp),
     ("matrix_exp_backward", matrix_exp_backward),
