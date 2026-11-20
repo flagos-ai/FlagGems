@@ -1033,7 +1033,12 @@ _FULL_CONFIG = (
     ("add_.Tensor", add_),
     ("addbmm", addbmm),
     ("addbmm_", addbmm_),
-    ("addcdiv", addcdiv),
+    (
+        "addcdiv",
+        addcdiv,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addcdiv.out", addcdiv_out),
     ("addcdiv_", addcdiv_),
     ("addcmul", addcmul),

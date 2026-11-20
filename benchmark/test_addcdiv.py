@@ -63,3 +63,24 @@ def test_addcdiv_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def _backward_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    tensor1 = utils.generate_tensor_input(shape, dtype, device)
+    # Keep the divisor away from zero so timing is not dominated by exceptional
+    # values and both implementations evaluate the same finite-gradient path.
+    tensor2 = torch.rand(shape, dtype=dtype, device=device) + 0.5
+    yield inp, tensor1, tensor2, {"value": -0.75}
+
+
+@pytest.mark.addcdiv_backward
+def test_addcdiv_backward():
+    bench = base.GenericBenchmark(
+        op_name="addcdiv",
+        input_fn=_backward_input_fn,
+        torch_op=torch.addcdiv,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
