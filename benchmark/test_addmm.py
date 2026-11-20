@@ -218,3 +218,25 @@ def test_addmm_out_vector_bias(monkeypatch):
     )
 
     bench.run()
+
+
+def _backward_input_fn(b, m, n, k, dtype, device, b_column_major):
+    bias = torch.randn((m, n), dtype=dtype, device=device)
+    mat1 = torch.randn((m, k), dtype=dtype, device=device)
+    if b_column_major:
+        mat2 = torch.randn((n, k), dtype=dtype, device=device).t()
+    else:
+        mat2 = torch.randn((k, n), dtype=dtype, device=device)
+    yield bias, mat1, mat2, {"alpha": 0.75, "beta": -0.5}
+
+
+@pytest.mark.addmm_backward
+def test_addmm_backward(monkeypatch):
+    bench = base.BlasBenchmark(
+        op_name="addmm_backward",
+        input_fn=_backward_input_fn,
+        torch_op=torch.addmm,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
