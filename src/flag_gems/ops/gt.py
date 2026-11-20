@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -44,11 +45,19 @@ def gt_scalar(A, B):
     return gt_func_scalar(A, B)
 
 
+def _is_fp8(t):
+    return t.dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
 def gt_tensor_(A, B):
     logger.debug("GEMS GT__TENSOR")
+    if _is_fp8(A):
+        raise NotImplementedError("gt_ is not implemented for fp8 inputs")
     return gt_func(A, B, out0=A)
 
 
 def gt_scalar_(A, B):
     logger.debug("GEMS GT__SCALAR")
+    if _is_fp8(A):
+        raise NotImplementedError("gt_ is not implemented for fp8 inputs")
     return gt_func_scalar(A, B, out0=A)

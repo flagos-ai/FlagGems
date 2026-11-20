@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -23,6 +25,18 @@ def test_expm1():
     bench = base.UnaryPointwiseBenchmark(
         op_name="expm1", torch_op=torch.expm1, dtypes=consts.FLOAT_DTYPES
     )
+    bench.run()
+
+
+@pytest.mark.expm1_backward
+def test_expm1_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="expm1",
+        torch_op=torch.expm1,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.expm1)
     bench.run()
 
 
