@@ -47,6 +47,3 @@ docs/benchmark/
 # Packaging build outputs (packaging/{debian,rpm} helpers)
 debian-packages/
 rpm-packages/
-
-# KernelGen local run state (per-workspace lifecycle/evaluation records)
-/.kernelgen/

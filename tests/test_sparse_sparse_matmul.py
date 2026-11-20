@@ -327,7 +327,9 @@ def _reference_grads(grad, ref_a, ref_b):
     gb_dense = a_dense.t() @ g_dense
 
     def _build(product_dense, operand):
-        keep_where = "product" if operand._nnz() >= (product_dense != 0).sum() else "operand"
+        keep_where = (
+            "product" if operand._nnz() >= (product_dense != 0).sum() else "operand"
+        )
         prod_nz = (product_dense != 0).nonzero(as_tuple=False)
         prod_set = set(map(tuple, prod_nz.tolist()))
         op_idx = operand.detach().coalesce()._indices()
@@ -429,7 +431,7 @@ def test_sparse_sparse_matmul_backward_partial_requires_grad(dtype):
     out = flag_gems._sparse_sparse_matmul(a_only, b_frozen)
     (grad_a,) = torch.autograd.grad(out, (a_only,), grad.detach().coalesce())
 
-    (ref_grad_a, _) = _reference_grads(grad, a, b)
+    ref_grad_a, _ = _reference_grads(grad, a, b)
     atol = 1e-2 if dtype is torch.float32 else 2e-2
     _compare_sparse_grads(grad_a, ref_grad_a, dtype, atol)
 

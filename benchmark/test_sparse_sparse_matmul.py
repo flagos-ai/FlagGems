@@ -132,9 +132,7 @@ class SparseSparseMatmulBackwardBenchmark(SparseSparseMatmulBenchmark):
             next(input_iter)
         except StopIteration:
             return inputs
-        raise ValueError(
-            f"Case '{case.case_id}' produced more than one input tuple."
-        )
+        raise ValueError(f"Case '{case.case_id}' produced more than one input tuple.")
 
 
 @pytest.mark.sparse_sparse_matmul_backward
