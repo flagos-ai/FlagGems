@@ -40,6 +40,7 @@ _ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
 def _input_marks(dtype):
     return (_ASCEND_COMPLEX_SKIP,) if dtype.is_complex else ()
 
+
 # Sparse index metadata is built in the widest index dtype this backend
 # declares support for, so no implicit int64 tensor is created on
 # int32-only devices.
