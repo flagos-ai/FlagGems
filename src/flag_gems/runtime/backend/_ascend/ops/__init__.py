@@ -129,6 +129,7 @@ from .foreach_atan_ import foreach_atan_
 from .foreach_ceil import foreach_ceil
 from .foreach_copy import foreach_copy
 from .foreach_copy_ import foreach_copy_
+from .foreach_cos_ import foreach_cos_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -474,6 +475,7 @@ __all__ = [
     "foreach_ceil",
     "foreach_copy",
     "foreach_copy_",
+    "foreach_cos_",
     "frac",
     "frac_",
     "full",
