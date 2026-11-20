@@ -279,7 +279,7 @@ def test_min_backward_dim_non_contiguous(dtype):
 def test_min_backward_grid_stride_and_large_grid_limit(monkeypatch):
     import importlib
 
-    module = importlib.import_module("flag_gems.ops.min")
+    module = importlib.import_module(flag_gems.min.__module__)
     assert module._global_plan(65536 * 4096)[2] == 65535
     original_plan = module._global_plan
 
