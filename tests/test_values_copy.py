@@ -668,3 +668,175 @@ def test_values_copy_out_rejects_mismatched_dtype(mismatched):
 
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
         flag_gems.values_copy(inp, out=out)
+
+
+# Sparse COO shapes for the values copy: (n_sparse_dims, nnz, dense_tail).
+# The op copies the (nnz,) + dense_tail values tensor; nnz drives the workload
+# and a non-empty dense tail exercises the nd kernel.
+SPARSE_VALUES_SHAPES = (
+    [
+        (1, 8, (16,), ()),
+        (2, 4, (2, 2), ()),
+        (2, 8, (4, 4, 2), (2,)),
+        (2, 16, (8, 8), ()),
+        (3, 32, (5, 7, 9, 3), (3,)),
+    ]
+    if utils.QUICK_MODE
+    else [
+        (1, 8, (16,), ()),
+        (1, 64, (64, 2), (2,)),
+        (2, 4, (2, 2), ()),
+        (2, 8, (4, 4, 2), (2,)),
+        (2, 64, (16, 16), ()),
+        (2, 1024, (32, 32, 2, 2), (2, 2)),
+        (3, 32, (5, 7, 9, 3), (3,)),
+        (3, 128, (16, 16, 16), ()),
+        (4, 64, (8, 8, 8, 8, 2), (2,)),
+    ]
+)
+
+
+def _make_coo(nnd, nnz, size, dense_tail, dtype, device, seed=0):
+    """Build a sparse COO tensor with distinct, sorted coordinates."""
+    gen = torch.Generator(device="cpu").manual_seed(seed)
+    numel = 1
+    for s in size[:nnd]:
+        numel *= s
+    flat = torch.randperm(numel, generator=gen)[:nnz]
+    indices = torch.empty((nnd, nnz), dtype=torch.int64)
+    work = flat.clone()
+    for d in reversed(range(nnd)):
+        indices[d] = work % size[d]
+        work = work // size[d]
+    perm = torch.arange(nnz)
+    for d in reversed(range(nnd)):
+        perm = perm[torch.argsort(indices[d][perm], stable=True)]
+    indices = indices[:, perm].contiguous()
+    values = torch.randn((nnz,) + tuple(dense_tail), dtype=dtype, generator=gen)
+    return torch.sparse_coo_tensor(indices.to(device), values.to(device), size)
+
+
+@pytest.mark.underscore_values_copy
+@pytest.mark.parametrize("nnd, nnz, size, dense_tail", SPARSE_VALUES_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__values_copy(nnd, nnz, size, dense_tail, dtype):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    # The native CUDA op has no sparse-COO kernel, so the reference is the
+    # plain values accessor cloned on device.
+    res_inp = _make_coo(nnd, nnz, size, dense_tail, dtype, flag_gems.device, seed=3)
+    ref_values = torch.clone(res_inp._values())
+
+    res_out = flag_gems._values_copy(res_inp)
+
+    assert res_out.shape == (nnz,) + tuple(dense_tail)
+    # The copy must not alias the input storage.
+    assert res_out.data_ptr() != res_inp._values().data_ptr()
+    utils.gems_assert_close(res_out, ref_values, dtype)
+
+
+@pytest.mark.underscore_values_copy
+def test__values_copy_empty():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    res_inp = torch.sparse_coo_tensor(
+        torch.zeros((2, 0), dtype=torch.int64, device=flag_gems.device),
+        torch.zeros((0,), device=flag_gems.device),
+        (4, 4),
+    )
+    res_out = flag_gems._values_copy(res_inp)
+
+    assert res_out.shape == (0,)
+
+
+@pytest.mark.underscore_values_copy_out
+def test__values_copy_out():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    res_inp = _make_coo(2, 16, (8, 8, 2), (2,), torch.float32, flag_gems.device, seed=5)
+    vals = res_inp._values()
+    res_out = torch.empty_like(vals)
+
+    res_ret = flag_gems._values_copy_out(res_inp, out=res_out)
+
+    assert res_ret is res_out
+    utils.gems_assert_close(res_out, vals, torch.float32)
+
+
+# ---------------------------------------------------------------------------
+# Non-contiguous stored values
+# ---------------------------------------------------------------------------
+# A COO tensor's stored values are whatever buffer the constructor is handed, so
+# they can be any strided view: dense but permuted (transpose), sliced with gaps
+# (``base[:, ::4]``), or expanded (stride-0). The ND kernel addresses BOTH the
+# source and the destination at the physical offset implied by the source's
+# shape/stride table, which is sound only for the dense case. For a gapped or
+# expanded source that offset passes the end of the source buffer, and because
+# ``torch.empty_like`` hands back a compact destination for those layouts, the
+# store also lands outside the output. ``test_values_copy_values_view`` above
+# covers a strided view through the CSR constructor, whose values are
+# normalized, so none of these reached the ND kernel before.
+_NONCONTIG_VALUE_CASES = ["transposed", "gapped", "expanded"]
+
+
+def _noncontig_values(case, nnz, dtype):
+    pool = torch.arange(nnz * 24, device=flag_gems.device).to(dtype)
+    if case == "transposed":
+        return pool[: nnz * 6].reshape(nnz, 2, 3).transpose(1, 2)
+    if case == "gapped":
+        return pool[: nnz * 8].reshape(nnz, 8)[:, ::4]
+    return pool[:nnz].reshape(nnz, 1).expand(nnz, 3)
+
+
+def _make_coo_with_values(values, nnz):
+    indices = torch.arange(nnz, device=values.device)[None, :]
+    size = (nnz * 8,) + tuple(values.shape[1:])
+    return torch.sparse_coo_tensor(indices, values, size=size, device=values.device)
+
+
+@pytest.mark.values_copy
+@pytest.mark.parametrize("case", _NONCONTIG_VALUE_CASES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_values_copy_noncontiguous_stored_values(case, dtype):
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    nnz = 6
+    inp = _make_coo_with_values(_noncontig_values(case, nnz, dtype), nnz)
+    stored = inp._values()
+    assert not stored.is_contiguous(), "case must exercise the strided path"
+    ref = stored.clone()
+
+    res = flag_gems._values_copy(inp)
+
+    assert res.shape == ref.shape
+    assert res.untyped_storage().data_ptr() != stored.untyped_storage().data_ptr()
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.values_copy
+@pytest.mark.parametrize("case", _NONCONTIG_VALUE_CASES)
+def test_values_copy_out_noncontiguous_stored_values(case):
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    nnz = 6
+    inp = _make_coo_with_values(_noncontig_values(case, nnz, torch.float32), nnz)
+    stored = inp._values()
+    ref = stored.clone()
+    # A matching-stride buffer takes the ND path; a compact one takes the staged
+    # path. Both must leave ``out`` holding exactly the stored values.
+    for out in (
+        torch.empty_like(stored),
+        torch.empty(stored.shape, dtype=stored.dtype, device=stored.device),
+    ):
+        out.fill_(-1)
+
+        res = flag_gems._values_copy_out(inp, out=out)
+
+        assert res is out
+        utils.gems_assert_equal(out, ref)

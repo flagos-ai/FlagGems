@@ -192,6 +192,30 @@ def test_grid_sampler_dim_one_reflection(dtype, align_corners):
 INTERPOLATION_MODES_5D = ["bilinear", "nearest"]
 
 
+def _ref_grid_sampler_3d(input_t, grid, ref_code, pad_code, align_corners):
+    # aten::grid_sampler for 5D input (grid_sampler_3d) is not implemented on
+    # Kunlunxin/XPU eager, so the reference is computed on CPU and moved back to
+    # the input device; other backends keep the on-device reference.
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.ops.aten.grid_sampler(
+            utils.to_reference(input_t).to(torch.float32),
+            utils.to_reference(grid).to(torch.float32),
+            ref_code,
+            pad_code,
+            align_corners,
+        )
+    ref = torch.ops.aten.grid_sampler(
+        utils.to_reference(input_t).to(torch.float32).cpu(),
+        utils.to_reference(grid).to(torch.float32).cpu(),
+        ref_code,
+        pad_code,
+        align_corners,
+    )
+    if not utils.TO_CPU:
+        ref = ref.to(input_t.device)
+    return ref
+
+
 @pytest.mark.grid_sampler
 @pytest.mark.parametrize("interpolation_mode", INTERPOLATION_MODES_5D)
 @pytest.mark.parametrize("padding_mode", PADDING_MODES)
@@ -207,13 +231,9 @@ def test_grid_sampler_5d(dtype, shape, align_corners, padding_mode, interpolatio
         - 1.2
     )
 
-    ref_in = utils.to_reference(input_t).to(torch.float32)
-    ref_grid = utils.to_reference(grid).to(torch.float32)
     ref_code = _INTERP_CODE[interpolation_mode]
     pad_code = _PAD_CODE[padding_mode]
-    ref_out = torch.ops.aten.grid_sampler(
-        ref_in, ref_grid, ref_code, pad_code, align_corners
-    )
+    ref_out = _ref_grid_sampler_3d(input_t, grid, ref_code, pad_code, align_corners)
 
     res_out = flag_gems.grid_sampler(input_t, grid, ref_code, pad_code, align_corners)
 
@@ -246,13 +266,9 @@ def test_grid_sampler_5d_varied_output(
         - 1.2
     )
 
-    ref_in = utils.to_reference(input_t).to(torch.float32)
-    ref_grid = utils.to_reference(grid).to(torch.float32)
     ref_code = _INTERP_CODE[interpolation_mode]
     pad_code = _PAD_CODE[padding_mode]
-    ref_out = torch.ops.aten.grid_sampler(
-        ref_in, ref_grid, ref_code, pad_code, align_corners
-    )
+    ref_out = _ref_grid_sampler_3d(input_t, grid, ref_code, pad_code, align_corners)
 
     res_out = flag_gems.grid_sampler(input_t, grid, ref_code, pad_code, align_corners)
 
@@ -298,13 +314,20 @@ def test_grid_sampler_out_of_range_grid():
     ref_gnan = utils.to_reference(gnan).to(torch.float32)
     # torch's zeros-padding NaN behavior is backend-dependent (CUDA yields 0,
     # CPU propagates NaN), so the NaN-vs-zeros combination is compared against
-    # the CUDA reference only.
+    # the CUDA reference only. Kunlunxin has no matching NaN-grid reference at
+    # all: native XDNN propagates NaN for every padding mode while CPU yields a
+    # finite clamped value under border/reflection, neither matching the
+    # kernel's intentional NaN -> 0 semantics, so the NaN comparison is skipped
+    # there.
     is_cuda_ref = ref_in.device.type == "cuda"
     for pad in (0, 1, 2):
         ref_ex = torch.ops.aten.grid_sampler(ref_in, ref_gex, 0, pad, False)
         res_ex = flag_gems.grid_sampler(input_t, gex, 0, pad, False)
         utils.gems_assert_close(res_ex, ref_ex, torch.float32)
 
+        if flag_gems.vendor_name == "kunlunxin":
+            # No NaN-grid reference matches the kernel's NaN -> 0 semantics.
+            continue
         if not is_cuda_ref and pad == 0:
             # CPU reference disagrees with CUDA on zeros+NaN; skip that combo.
             continue

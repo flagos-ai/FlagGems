@@ -18,14 +18,21 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 @pytest.mark.linalg_ldl_factor
 @pytest.mark.parametrize("shape", [(4, 4), (8, 8), (16, 16), (32, 32)])
 # torch.linalg.ldl_factor on CUDA supports float32/float64 for this path.
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 @pytest.mark.parametrize("hermitian", [False, True])
 def test_linalg_ldl_factor(shape, dtype, hermitian):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     # Create a symmetric positive definite matrix
     # A = A @ A.T + I ensures positive definiteness
     n = shape[-1]

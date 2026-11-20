@@ -56,11 +56,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test (tests/test_foreach_unary.py) captures the
-# record under the *generic* logger name, so it must be emitted from this
-# logger rather than the module-local one.  The message carries the vendor
-# prefix "GEMS_KUNLUNXIN", per the operator-log convention.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # sigmoid rejects complex32 but accepts complex64/complex128, all ints and bool
 # (matching the generic ``UNARY_OPS["sigmoid"].allowed``).

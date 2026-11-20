@@ -217,6 +217,18 @@ def _fused_linear(input_flat, weight, bias):
     M, K = input_flat.shape
     N = weight.shape[0]
     BM, BN, BK = _fused_blocks(M, N, K)
+    # XPU miscompiles the fused bias epilogue for fp32 when the dot's rhs tile is
+    # (BK=256, BN=256): the bias broadcast add is dropped entirely (the output is
+    # bit-for-bit the pure matmul, regardless of the bias values).  Verified
+    # deterministically on device; fp16/bf16 at the same tile are exact, and
+    # fp32 without bias is exact.  Cap BK for that one combination only.
+    if (
+        input_flat.dtype == torch.float32
+        and bias is not None
+        and BN >= 256
+        and BK >= 256
+    ):
+        BK = 128
     nk_divisible = (N % BN == 0) and (K % BK == 0)
     b_arg = bias if bias is not None else input_flat
     has_bias = bias is not None

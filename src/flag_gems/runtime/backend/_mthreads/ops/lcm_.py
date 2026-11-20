@@ -19,9 +19,7 @@ import triton.language as tl
 
 from flag_gems.ops.lcm import lcm_ as default_lcm_
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.int16, torch.int32}
 

@@ -165,19 +165,16 @@ def dropout_heur_num_warps(args):
 
 
 def exponential_heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+    # tle.dsa.tsingmicro.rand requires BLOCK % 32 == 0.
+    n = int(args["N"])
+    bs = triton.next_power_of_2(min(max(n, 32), 4096))
+    if bs < 32:
+        bs = 32
+    return bs
 
 
 def exponential_heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
+    return 1
 
 
 def gather_heur_block_m(args):
@@ -218,11 +215,11 @@ def rand_heur_num_warps(args):
 
 
 def randn_heur_block(args):
-    bs = triton.next_power_of_2(args["N"] // (16 * 4))
-    if bs > 32768:
-        bs = 32768
-    elif bs < 512:
-        bs = 512
+    # tle.dsa.tsingmicro.randn requires BLOCK % 32 == 0; cap for TILE SPM (Box-Muller temps).
+    n = int(args["N"])
+    bs = triton.next_power_of_2(min(max(n, 32), 4096))
+    if bs < 32:
+        bs = 32
     return bs
 
 
@@ -256,13 +253,8 @@ def softmax_heur_one_tile_per_cta(args):
 
 
 def softmax_heur_num_warps_non_inner(args):
-    tile_size = args["TILE_N"] * args["TILE_K"]
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
+    # TX81: num_warps 必须恒为 1 (DSA, 非 warp 架构)
+    return 1
 
 
 def softmax_heur_tile_n_inner(args):
@@ -273,13 +265,34 @@ def softmax_heur_tile_n_inner(args):
 
 
 def softmax_heur_num_warps_inner(args):
-    tile_size = args["TILE_N"]
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
+    # TX81: num_warps 必须恒为 1 (DSA, 非 warp 架构)
+    return 1
+
+
+def softmax_heur_tile_m_inner(args):
+    # TX81 每 CTA 有 ~0.5us 固定开销, 把 TILE_M 行合并到同一个 CTA (2D tile,
+    # 沿 axis=1 归约) 来摊薄该开销. 扫描验证的最佳 tile 约 64K 元素/CTA;
+    # TILE_M 上限 256 (N=128 时 512 已出现回退), 下限 1 行.
+    tile_m = min(256, (64 * 1024) // args["TILE_N"])
+    if args["TILE_N"] >= (32 * 1024):
+        # 超宽行 (TILE_N==32768, N in (16384, 32768]): 64K 元素预算偏低,
+        # 实测 TILE_M=4 (128K 预算, 恰在 SPM 边界内) 比 TILE_M=2 快 1.07~1.17x
+        # (fp16/bf16/fp32, M=2k~8k 全验证), 且 TILE_M=8 即 OOR, 故放宽到 128K.
+        tile_m = max(tile_m, (128 * 1024) // args["TILE_N"])
+    # 小张量时收缩 TILE_M, 理由有二 (TX81 无 SM/warp, 只有 16 个独立 tile 执行
+    # 单元, 一个 CTA 只上 1 个 tile):
+    #  1) TILE_M 不能远超实际行数 M: 掩码行仍会执行 exp/reduce 空算, 实测
+    #     (16,64) 用 TILE_M=256 -> 0.39ms, 而 TILE_M=16 (1 CTA, 0 浪费) -> 0.14ms;
+    #  2) grid 尽量铺满 16 个 tile 单元: 行数较多时全串在 1 个 tile 上损失
+    #     ~1.8x (M=128: grid=1 0.255ms vs grid=16 0.141ms).
+    # 故取 TILE_M <= floor2(M/16), 保证 grid >= 16.
+    # tl.arange(0, TILE_M) 要求 TILE_M 是 2 的幂, 故对 M/16 向下取 2 的幂.
+    num_tiles = torch.txda.get_device_properties(
+        torch.txda.current_device()
+    ).multi_processor_count  # TX81: 16 个 tile 执行单元
+    tile_cap = 1 << (max(1, args["M"] // num_tiles).bit_length() - 1)
+    tile_m = min(tile_m, tile_cap)
+    return max(1, tile_m)
 
 
 def softmax_heur_tile_n_bwd_non_inner(args):
@@ -501,6 +514,14 @@ HEURISTICS_CONFIGS = {
     },
     "softmax_inner": {
         "TILE_N": softmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+        "num_warps": softmax_heur_num_warps_inner,
+    },
+    # tsingmicro 专用: 行分组 (TILE_M 行/CTA) 摊薄 TX81 固定 per-CTA 开销.
+    # 注意不能复用 "softmax_inner" 键: 它被 mean/sum 的 inner kernel 共享.
+    "softmax_inner_tsm": {
+        "TILE_N": softmax_heur_tile_n_inner,
+        "TILE_M": softmax_heur_tile_m_inner,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
         "num_warps": softmax_heur_num_warps_inner,
     },

@@ -13,12 +13,19 @@
 # limitations under the License.
 """Native layer norm: strided-row Hygon launch path with generic fallback."""
 
+import math
+
 import torch
 import triton
 import triton.language as tl
 from triton.runtime import driver
 
 from flag_gems import runtime
+from flag_gems.ops.layernorm import (
+    layer_norm_loop_kernel,
+    layer_norm_persistent_kernel,
+    layer_norm_persistent_kernel_multiline,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -203,12 +210,34 @@ def _submit(plan, args, index):
     runner(*args, stream=driver.active.get_current_stream(index))
 
 
-def _generic_native(input, normalized_shape, weight, bias, eps):
-    from flag_gems.ops.layernorm import _layer_norm_generic
-
-    out, mean, rstd = _layer_norm_generic(input, normalized_shape, weight, bias, eps)
-    stats_shape = input.shape[: -len(normalized_shape)] + (1,) * len(normalized_shape)
-    return out, mean.view(stats_shape), rstd.view(stats_shape)
-
-
 layer_norm = native_layer_norm
+
+
+def _generic_native(input, normalized_shape, weight, bias, eps):
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
+    input = input.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
+    output = torch.empty_like(input)
+    # Native ATen keeps the reduction statistics in FP32 for FP16/BF16 inputs.
+    mean = torch.empty(M, dtype=torch.float32, device=input.device)
+    rstd = torch.empty_like(mean)
+    tile_n = triton.next_power_of_2(N)
+
+    with torch_device_fn.device(input.device):
+        if N <= 128:
+            tile_m = triton.cdiv(1024, tile_n)
+            layer_norm_persistent_kernel_multiline[(triton.cdiv(M, tile_m),)](
+                input, output, weight, bias, mean, rstd, M, N, eps, tile_m, tile_n
+            )
+        elif N <= 8192:
+            layer_norm_persistent_kernel[(M,)](
+                input, output, weight, bias, mean, rstd, M, N, eps, tile_n
+            )
+        else:
+            layer_norm_loop_kernel[(M,)](
+                input, output, weight, bias, mean, rstd, M, N, eps
+            )
+    stats_shape = input.shape[: -len(normalized_shape)] + (1,) * len(normalized_shape)
+    return output, mean.view(stats_shape), rstd.view(stats_shape)

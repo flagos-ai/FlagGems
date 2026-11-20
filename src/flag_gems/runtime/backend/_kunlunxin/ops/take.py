@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from ..utils.tle_copy import tle_copy
 from .copy import copy_ as gems_copy_
 
-logger = logging.getLogger("flag_gems.ops.take")
+logger = logging.getLogger(__name__)
 
 
 def _launch_take(input, index, out_flat):

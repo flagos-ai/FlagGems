@@ -306,6 +306,10 @@ def test_div_scalar_scalar(dtype):
 # Complex
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
@@ -339,6 +343,10 @@ def test_div_complex_complex(shape, complex_dtype):
 # div.Tensor
 # Complex
 @pytest.mark.div_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -386,6 +394,10 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 # Complex
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
@@ -395,6 +407,10 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
 def test_div_tensor_int(shape, complex_dtype):
     if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
         pytest.skip("mthreads does not support complex32 dtype")
@@ -430,6 +446,10 @@ def test_div_tensor_int(shape, complex_dtype):
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame cannot upload complex tensors",
+)
 def test_div_complex_int_scalar(shape, complex_dtype):
     if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
         pytest.skip("mthreads does not support complex32 dtype")
@@ -535,13 +555,9 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
-    # Route through torch.div + use_gems() so the backend specialization (with
-    # the correct half-precision floor algorithm) is used instead of the common op.
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
-    else:
-        res_out = flag_gems.ops.div_mode(inp1, inp2, rounding_mode=rounding_mode)
+    # The top-level div_mode resolves to the backend specialization (with the
+    # correct half-precision floor algorithm) via SpecOpRegistrar.
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -583,11 +599,7 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     else:
         ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
 
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = torch.div(inp, scalar, rounding_mode=rounding_mode)
-    else:
-        res_out = flag_gems.ops.div_mode(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -636,8 +648,7 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
+        res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
     else:
         res_out = flag_gems.ops.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
@@ -677,11 +688,7 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
         ref_out = utils.ref_div_rounding(ref_inp, scalar_tensor, rounding_mode)
     else:
         ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
-        with flag_gems.use_gems():
-            res_out = inp.div_(scalar, rounding_mode=rounding_mode)
-    else:
-        res_out = flag_gems.ops.div_mode_(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.

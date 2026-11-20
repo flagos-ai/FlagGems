@@ -168,16 +168,24 @@ def _gru_cell_backward_kernel(
         reset_gate = reset_gate.to(tl.bfloat16)
         input_gate = input_gate.to(tl.bfloat16)
 
+    # ATen materializes rg*hn as an input-dtype tensor before adding `in`.
+    # hn was upcast to fp32 above, so round the product back to the input
+    # dtype here to preserve that rounding boundary.
     reset_hidden_new = reset_gate * hn
     if IS_FP16:
         reset_hidden_new = reset_hidden_new.to(tl.float16)
     if IS_BF16:
         reset_hidden_new = reset_hidden_new.to(tl.bfloat16)
     new_gate_arg = new_input + reset_hidden_new
-    if IS_FP16:
-        new_gate_arg = new_gate_arg.to(tl.float16)
-    if IS_BF16:
-        new_gate_arg = new_gate_arg.to(tl.bfloat16)
+    if not IS_FP64:
+        # An fp32 identity barrier keeps the compiler from contracting this
+        # downcast with the addition above, which breaks round-half-to-even on
+        # ties and shifts the result by one ULP in the low-precision dtypes.
+        nga32 = new_gate_arg.to(tl.float32) + tl.zeros_like(new_gate_arg.to(tl.float32))
+        if IS_FP16:
+            new_gate_arg = nga32.to(tl.float16)
+        if IS_BF16:
+            new_gate_arg = nga32.to(tl.bfloat16)
     if IS_FP64:
         new_gate = libdevice.tanh(new_gate_arg)
     else:
@@ -212,14 +220,30 @@ def _gru_cell_backward_kernel(
         grad_input_gate = grad_input_gate_seed * input_gate * (1.0 - input_gate)
         grad_new_input = grad_new_seed * (1.0 - new_gate * new_gate)
     else:
-        grad_input_gate = (
-            grad_input_gate_seed.to(tl.float32)
-            * input_gate.to(tl.float32)
-            * (1.0 - input_gate.to(tl.float32))
+        # ATen evaluates the *_backward formulas as input-dtype tensor ops, so
+        # both the product n*n and the subtraction 1 - n*n round to the input
+        # dtype: tanh_backward(g, n) = g * R(1 - R(n*n)).
+        #
+        # Written as (-x + 1.0) rather than (1.0 - x): the latter is compiled to
+        # an fma whose unrounded product makes the subtraction differ by one
+        # ULP exactly on the bf16 ties that matter here.
+        tanh_grad = -((new_gate * new_gate).to(tl.float32)) + 1.0
+        one_minus_input_gate = -(input_gate.to(tl.float32)) + 1.0
+        if IS_FP16:
+            tanh_grad = tanh_grad.to(tl.float16)
+            one_minus_input_gate = one_minus_input_gate.to(tl.float16)
+        if IS_BF16:
+            tanh_grad = tanh_grad.to(tl.bfloat16)
+            one_minus_input_gate = one_minus_input_gate.to(tl.bfloat16)
+        grad_new_input = grad_new_seed.to(tl.float32) * tanh_grad.to(tl.float32)
+        grad_input_gate = grad_input_gate_seed.to(tl.float32) * one_minus_input_gate.to(
+            tl.float32
         )
-        grad_new_input = grad_new_seed.to(tl.float32) * (
-            1.0 - new_gate.to(tl.float32) * new_gate.to(tl.float32)
-        )
+        if IS_FP16:
+            grad_input_gate = grad_input_gate.to(tl.float16)
+        if IS_BF16:
+            grad_input_gate = grad_input_gate.to(tl.bfloat16)
+        grad_input_gate = grad_input_gate.to(tl.float32) * input_gate.to(tl.float32)
     if IS_FP16:
         grad_input_gate = grad_input_gate.to(tl.float16)
         grad_new_input = grad_new_input.to(tl.float16)
@@ -238,11 +262,19 @@ def _gru_cell_backward_kernel(
     if IS_FP64:
         grad_reset = grad_reset_seed * reset_gate * (1.0 - reset_gate)
     else:
-        grad_reset = (
-            grad_reset_seed.to(tl.float32)
-            * reset_gate.to(tl.float32)
-            * (1.0 - reset_gate.to(tl.float32))
+        one_minus_reset_gate = -(reset_gate.to(tl.float32)) + 1.0
+        if IS_FP16:
+            one_minus_reset_gate = one_minus_reset_gate.to(tl.float16)
+        if IS_BF16:
+            one_minus_reset_gate = one_minus_reset_gate.to(tl.bfloat16)
+        grad_reset = grad_reset_seed.to(tl.float32) * one_minus_reset_gate.to(
+            tl.float32
         )
+        if IS_FP16:
+            grad_reset = grad_reset.to(tl.float16)
+        if IS_BF16:
+            grad_reset = grad_reset.to(tl.bfloat16)
+        grad_reset = grad_reset.to(tl.float32) * reset_gate.to(tl.float32)
 
     output_offsets = rows * (3 * hidden_size) + cols
     tl.store(grad_input_gates + output_offsets, grad_reset, mask=mask)

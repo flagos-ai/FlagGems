@@ -18,6 +18,10 @@ on:
       - '.github/workflows/build-rpm.yml'
   workflow_dispatch:
 
+concurrency:
+  group: build-rpm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-rpm:
     runs-on: ubuntu-latest

@@ -73,3 +73,25 @@ def test_last_axis_stride_generic_path():
     )
     for actual, expected in zip(result, reference):
         torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("entrypoint", ["layer_norm", "native_layer_norm"])
+@pytest.mark.parametrize(
+    "shape,normalized_shape", [((2, 8193), (8193,)), ((2, 3, 20), (3, 20))]
+)
+def test_fallback_preserves_fp32_statistics(dtype, entrypoint, shape, normalized_shape):
+    x = torch.randn(shape, dtype=dtype, device=device())
+    result = getattr(flag_gems, entrypoint)(x, normalized_shape)
+    reference = torch.ops.aten.native_layer_norm.default(
+        x.cpu().float(), normalized_shape, None, None, 1e-5
+    )
+    tolerance = (
+        1e-4 if dtype == torch.float32 else (3e-3 if dtype == torch.float16 else 3e-2)
+    )
+    for index, (actual, expected) in enumerate(zip(result, reference)):
+        output_dtype = torch.float32 if index else dtype
+        assert actual.dtype == output_dtype and actual.shape == expected.shape
+        torch.testing.assert_close(
+            actual.cpu(), expected.to(output_dtype), rtol=tolerance, atol=tolerance
+        )

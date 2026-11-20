@@ -20,7 +20,12 @@ from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
+from .accuracy_utils import (
+    _SKIP_FP64,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 
 # ``underscore_linalg_det`` contains the leading-underscore aten name; register
 # it on the MarkGenerator so ``@pytest.mark.underscore_linalg_det`` works. The
@@ -63,7 +68,9 @@ def _compute_det_from_lu(lu_matrix, pivot_vec):
         (128, 128),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_accuracy_linalg_det(shape, dtype):
     # Scale the input by 1/sqrt(n) (same as the det-only test suite upstream):
     # this keeps the determinant of the larger matrices in a range where the

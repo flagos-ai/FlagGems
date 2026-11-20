@@ -90,11 +90,14 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
 
 @pytest.mark.mm_w8a8
 def test_mm_w8a8_fp8(monkeypatch):
-    if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
+    if not {"mm_w8a8_fp8", "mm_w8a8_fp8_out"} <= vars(flag_gems).keys():
         pytest.skip("mm_w8a8_fp8 benchmark requires a supported FP8 backend")
 
     # Scope expanded tuning to this benchmark; preserve explicit user settings.
-    if flag_gems.vendor_name == "nvidia" and "USE_FLAGTUNE" not in os.environ:
+    if (
+        flag_gems.vendor_name in ("nvidia", "mthreads")
+        and "USE_FLAGTUNE" not in os.environ
+    ):
         monkeypatch.setenv("USE_FLAGTUNE", "1")
 
     def torch_fp8_mm(a, b, scale_a, scale_b):

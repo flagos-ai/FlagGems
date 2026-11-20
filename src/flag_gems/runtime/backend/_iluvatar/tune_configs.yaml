@@ -1432,6 +1432,18 @@ conv3d_forward:
       BLOCK_CI: 16
     num_warps: 2
     num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 2
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
 kron:
 - gen: true
   param_map:

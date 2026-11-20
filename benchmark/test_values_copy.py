@@ -153,3 +153,94 @@ def test_values_copy_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+# Sparse COO shapes for the _values_copy benchmark: (nnz, size, dense_tail).
+# The op copies the (nnz,) + dense_tail values tensor; nnz drives the workload
+# and sparse_dim stays 2.
+SPARSE_VALUES_BENCH_SHAPES = [
+    (8, (4, 4), ()),
+    (1024, (32, 32), ()),
+    (4096, (64, 64, 2), (2,)),
+    (16384, (128, 128), ()),
+    (65536, (256, 256, 2), (2,)),
+]
+
+
+def _make_coo(nnz, size, dense_tail, dtype, device):
+    numel = 1
+    for s in size:
+        numel *= s
+    dense_tail = tuple(dense_tail)
+    nnd = len(size) - len(dense_tail)
+    flat = torch.randperm(numel)[:nnz]
+    indices = torch.empty((nnd, nnz), dtype=torch.int64)
+    work = flat.clone()
+    for d in reversed(range(nnd)):
+        indices[d] = work % size[d]
+        work = work // size[d]
+    perm = torch.arange(nnz)
+    for d in reversed(range(nnd)):
+        perm = perm[torch.argsort(indices[d][perm], stable=True)]
+    indices = indices[:, perm].contiguous().to(device)
+    values = torch.randn((nnz,) + tuple(dense_tail), dtype=dtype, device=device)
+    return torch.sparse_coo_tensor(indices, values, size)
+
+
+class UnderscoreValuesCopyBenchmark(base.Benchmark):
+    """``aten::_values_copy`` over sparse COO values tensors.
+
+    The op copies the (nnz,) + dense_tail values tensor, so nnz drives the
+    workload.
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SPARSE_VALUES_BENCH_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for nnz, size, dense_tail in self.shapes:
+            inp = _make_coo(nnz, size, dense_tail, cur_dtype, self.device)
+            yield inp, {}
+
+
+def _values_copy_ref(self):
+    # The native op has no CUDA sparse-COO kernel; the equivalent baseline is
+    # the plain values accessor materialized with clone.
+    return self._values().clone()
+
+
+def _values_copy_out_ref(self, out):
+    # Same rationale as _values_copy_ref: materialize the stored values into the
+    # provided out buffer.
+    out.copy_(self._values())
+    return out
+
+
+@pytest.mark.underscore_values_copy
+def test__values_copy():
+    bench = UnderscoreValuesCopyBenchmark(
+        op_name="_values_copy",
+        torch_op=_values_copy_ref,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class UnderscoreValuesCopyOutBenchmark(UnderscoreValuesCopyBenchmark):
+    """``.out`` variant: yields the sparse input plus an out buffer."""
+
+    def get_input_iter(self, cur_dtype):
+        for nnz, size, dense_tail in self.shapes:
+            inp = _make_coo(nnz, size, dense_tail, cur_dtype, self.device)
+            out = torch.empty_like(inp._values())
+            yield inp, {"out": out}
+
+
+@pytest.mark.underscore_values_copy_out
+def test__values_copy_out():
+    bench = UnderscoreValuesCopyOutBenchmark(
+        op_name="_values_copy_out",
+        torch_op=_values_copy_out_ref,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

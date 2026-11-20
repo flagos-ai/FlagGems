@@ -27,7 +27,7 @@ when compared to operators from the native PyTorch library.
 We use the `triton.testing.do_bench` from the Triton project for benchmarking.
 The kernel data obtained are shown in the following graph.
 
-![Operator Speedup](/FlagGems/images/speedup-20251225.png)
+![Operator Speedup](../../../assets/speedup-20251225.png)
 
 The chart above shows the speedup of FlagGems compared with the PyTorch ATen library
 in eager mode. The speedup is calculated by averaging the speedup on each shape,
@@ -38,5 +38,5 @@ we require all contributions to the operators' inventory provide performance dat
 You can benchmark your new operators (and the existing ones) using the *benchmark*
 framework in *FlagGems*.
 
-Check [operator benchmark](/FlagGems/performance/benchmark/) for instructions
+Check [operator benchmark](benchmark.md) for instructions
 on benchmark testing your operators.

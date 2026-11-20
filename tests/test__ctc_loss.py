@@ -22,7 +22,9 @@ from .accuracy_utils import gems_assert_close
 from .conftest import QUICK_MODE
 
 # CPU has no Half kernel for CTC loss, so comparisons stay on the float types.
-CTC_DTYPES = [torch.float32, torch.float64]
+# float64 is only exercised when the device supports it (Kunlunxin XPU
+# downgrades fp64 to fp32).
+CTC_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 
 def _make_inputs(T, N, S, C, dtype):
@@ -131,7 +133,7 @@ def test__ctc_loss_out(dtype):
 
     res_out0 = torch.empty_like(ref_nll, device=flag_gems.device)
     res_out1 = torch.empty_like(ref_log_alpha, device=flag_gems.device)
-    got0, got1 = flag_gems.ops._ctc_loss_out(
+    got0, got1 = (flag_gems._ctc_loss_out)(
         *gems_args, 0, False, out0=res_out0, out1=res_out1
     )
 
@@ -153,7 +155,7 @@ def test__ctc_loss_out_resize(dtype):
 
     res_out0 = torch.empty(0, dtype=dtype, device=flag_gems.device)
     res_out1 = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    flag_gems.ops._ctc_loss_out(*gems_args, 0, False, out0=res_out0, out1=res_out1)
+    (flag_gems._ctc_loss_out)(*gems_args, 0, False, out0=res_out0, out1=res_out1)
 
     assert res_out0.shape == ref_nll.shape
     assert res_out1.shape == ref_log_alpha.shape

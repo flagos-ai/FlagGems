@@ -5,7 +5,7 @@ import triton
 
 from .fix import _fix_trunc_kernel, _pick_block
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # Same fast-path tiling as the vendored ``fix`` operator: fix_ and fix are both
 # truncation toward zero, so the validated fix kernel (pure-FP helper, exact

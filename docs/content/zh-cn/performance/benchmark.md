@@ -19,103 +19,120 @@ weight: 20
  limitations under the License.
  -->
 
-<!--
-# Performance Benchmarking in FlagGems
+# 算子性能基准测试开发指南
 
-It is recommended to follow the steps below to add test cases for a new operator.
-These steps apply to Python-based operators as well as C++-wrapped operators.
--->
-# FlagGems 中的性能基准测试
+在为 *FlagGems* 贡献新算子或优化现有实现时，建议遵循以下标准步骤为其编写性能评测用例。本规范同时适用于 Python 算子与 C++ 封装算子。
 
-我们建议开发者基于下面的过程来为新的算子添加测试用例。
-这些步骤既适用于 Python 实现的算子，也适用于 C++ 封装的算子。
-
-<!--
-1. **Select the appropriate test file**
-1. **Check existing benchmark classes**
-1. **Add test cases**
--->
 {{% steps %}}
 
-1. **选择合适的测试用例文件**
-   <!--
-   Based on the type of operator, choose the corresponding file in the `benchmark`
-   directory:
+1. **定位并选择对应的评测脚本**
 
-   - For reduction operators, add the test case to `test_reduction_perf.py`.
-   - For tensor constructor operators, add the test case to `test_tensor_constructor_perf.py`.
-   - If the operator doesn't fit into an existing category, you can add it to `test_special_perf.py`
-     or create a new file for the new operator category.
-   -->
-   基于要测试的算子类型，在 `benchmark/` 目录下选择对应的文件：
+   根据待测算子的数学运算特征，在仓库的 `benchmark/` 目录下匹配对应的测试文件：
+   - 规约类算子（Reduction）：添加到 `test_reduction_perf.py`；
+   - 张量构造类算子（Tensor Constructor）：添加到 `test_tensor_constructor_perf.py`；
+   - 逐元素一元/二元算子：分别添加到 `test_unary_pointwise_perf.py` 或 `test_binary_pointwise_perf.py`；
+   - 其他特种或复合算子：可添加到 `test_special_perf.py`，或按功能新建独立的评测脚本。
 
-   - 对于 *reduction（规约）* 算子，可以将测试用例添加到 `test_reduction_perf.py`。
-   - 对于 Tensor（张量）构造算子，可以将测试用例添加到 `test_tensor_constructor_perf.py` 文件中。
-   - 如果算子无法归类到以上类别，可以将测试用例添加到 `test_special_perf.py` 中，
-     或者为新的算子类型添加一个新文件。
+2. **评估复用现有的 Benchmark 基类**
 
-2. **查阅现有的基准测试类**
+   选定文件后，查阅该文件中继承自 `Benchmark` 的现有评测类，评估是否可直接复用：
+   - **指标采集维度（Metric Collection）**：耗时（Latency/ms）、显存吞吐量（GB/s）或算力利用率（TFLOPS）是否契合；
+   - **输入生成逻辑（Input Generator）**：现有的 `input_generator` 或 `input_fn` 是否支持生成目标算子所需的输入参数与跨步（Stride）。
 
-   <!--
-   Once you've identified the correct file, review the existing classes that inherit
-   from the `Benchmark` structure to see if any fit the test scenario for your operator,
-   specifically considering:
+3. **添加算子评测用例**
 
-   - Whether the **metric collection** is suitable.
-   - Whether the **input generation function** (`input_generator` or `input_fn`) is appropriate.
-   -->
+   根据实际需求，采用以下三种适配路径之一：
 
-   一旦你确定了合适的测试文件，可以先查阅现有的、从 `Benchmark` 结构派生而来的测试类，
-   了解现有的测试类是否能够满足你的算子的测试需要。主要考察点包括：
+   - **路径 A：直接复用已有指标与输入生成器**
+     若现有测试类的指标与输入生成规则完全满足需求，只需在算子列表字典或 `pytest.mark.parametrize` 参数列表中追加待测算子配置即可。
 
-   - 是否其中实现的指标搜集（metric collection）动作符合需要；
-   - 是否其中的输入生成函数（`input_generator` 或 `input_fn`）的实现满足需要。
+   - **路径 B：自定义输入生成函数（Custom Input Generator）**
+     当指标统计通用但需要特定的数据分布或非常规参数时，可在类中传入自定义的 `input_fn`。例如 `test_special_perf.py` 中为 `topk` 算子定制的 `topk_input_fn`。
 
-3. **添加测试用例**
+   - **路径 C：继承扩展专属 Benchmark 类**
+     对于复杂算子（如 FlashAttention、MoE 分发对齐等），建议派生独立的 `Benchmark` 子类，定义专用的吞吐计算公式与复杂的参数生成逻辑。可参考 `benchmark/` 下各专用算子的子类实现。
 
-   <!--
-   Depending on the test scenario, follow one of the approaches below to add the test case:
-
-   - **Using existing metric and input generator**
-
-      If the existing metric collection and input generation function meet the requirements of your operator,
-      you can add a line of `pytest.mark.parametrize` directly, following the code organization in the file.
-      For example, see the operators in `test_binary_pointwise_perf.py`.
-   -->
-   取决于具体的测试场景，按以下方法之一来添加测试用例：
-
-   - **使用现有的指标和输入生成逻辑**
-
-     如果现有的指标采集和输入生成函数满足你的算子的需求，你可以直接添加一行
-     `pytest.mark.parametrize`，保持文件中的代码组织不变。
-     你可以在 `test_binary_pointwise_perf.py` 文件中查阅此类实现的例子。
-
-   <!--
-   - **Custom input generator**
-
-     If the metric collection is suitable but the input generation function does not meet the operator's requirements,
-     you can implement a custom `input_generator`.
-     Refer to the `topk_input_fn` function in `test_special_perf.py` as an example of a custom input function
-     for the `topk` operator.
-   -->
-   - **定制输入生成机制**
-
-     如果指标采集逻辑合适，但输入生成函数不满足算子的需求，你可以实现一个定制的 `input_generator`。
-     你可以参照 `test_special_perf.py` 文件中的 `topk_input_fn` 实现，
-     了解如何为 `topk` 算子添加一个自定义的输入参数生成函数。
-
-   <!--
-   - **Custom metric and input generator**
-
-     If neither the existing metric collection nor the input generation function meets the operator's needs,
-     you can create a new class. The new class should define operator-specific metric collection logic
-     and a custom input generator. You can refer to various `Benchmark` subclasses across the `benchmark` directory
-     for examples.
-   -->
-   - **自定义指标采集和输入生成函数**
-
-     如果现有的指标采集机制和输入生成函数都无法满足算子的需求，
-     你可以创建一个新的测试类。新的测试类要为算子定义特定的指标采集逻辑，
-     以及一个自定义的输入参数生成函数。
-     你可以参照 `benchmark/` 目录下不同的 `Benchmark` 子类，了解这类定制的机制。
 {{% /steps %}}
+
+## 使用模型 Profiling Shape 进行基准测试
+
+FlagGems 在 `benchmark/models_shapes/` 下提供了按模型分类的 Profiling Shape 文件。
+这些 YAML 文件记录了真实推理过程中采集到的张量 shape，以及每个算子在各推理阶段占总
+GPU 时间的比例（`pct`）和调用次数（`calls`）。通过 `--model-profile` 参数可以直接
+使用这些 shape 进行测试，并在输出表格中新增 **Time Share** 列，从而直观地确定优化优先级。
+
+### 已收录的 Shape 文件
+
+| 文件 | 模型 | 硬件 | 采集日期 |
+|------|------|------|----------|
+| `benchmark/models_shapes/285B.yaml` | 285B MoE（DeepSeek-V3.2 架构） | 8×H100 80GB，TP=8 | 2026-11-16 |
+
+### 使用方式
+
+```bash
+# 使用 285B Profile 运行相关算子基准测试：
+pytest benchmark/test_mm.py benchmark/test_bmm.py \
+       benchmark/test_rms_norm.py benchmark/test_add.py \
+       benchmark/test_mul.py benchmark/test_copy.py \
+       benchmark/test_fill.py benchmark/test_zeros.py \
+       benchmark/test_silu.py benchmark/test_silu_and_mul.py \
+       benchmark/test_softmax.py \
+       --model-profile benchmark/models_shapes/285B.yaml --level core -s
+
+# 或使用辅助脚本自动从 YAML 推导所需的测试 marker：
+python benchmark/benchmark_for_models.py \
+       --shape-file benchmark/models_shapes/285B.yaml
+```
+
+`--model-profile` 标志有两个作用：
+
+1. **覆盖 `--shape_file`**：将 shape 来源切换为指定 YAML 文件，每个基准测试只运行
+   YAML 中定义的 shape。YAML 中未列出的算子会被静默跳过，不影响其原有的 shape 行为。
+2. **附加 Profiling 元数据**：终端输出新增 `Time Share (prefill/decode)` 列，格式如下：
+
+   ```
+   pf 10.99%/35520x | dc 23.86%/84760x
+   ```
+
+   其中 `pf` 表示 prefill 阶段，`dc` 表示 decode 阶段；`%` 为占当前阶段总 GPU
+   时间的比例，`x` 为该 profiling 窗口内的调用次数。
+
+### YAML 文件格式
+
+每个 YAML 条目包含三个字段：
+
+```yaml
+mm:
+  profiling:
+    prefill:
+      pct: 10.99    # 占 prefill 阶段总 GPU 时间的百分比
+      calls: 35520  # profiling 窗口内的 kernel 调用次数
+    decode:
+      pct: 23.86
+      calls: 84760
+  shapes:
+    - [1, 8192, 3072, 1536]   # [b, M, N, K]，BlasBenchmark (mm/bmm) 格式
+    - [1, 8192, 4096, 2048]
+  shape_desc: "b, M, N, K"
+```
+
+条目的键名（如 `mm`）须与对应 `Benchmark` 子类传入的 `op_name` 完全一致，
+flag 才能生效。各 Benchmark 子类对应的 shape 格式如下：
+
+| 子类 | Shape 格式 |
+|------|-----------|
+| `BlasBenchmark`（`mm`、`bmm`） | `[b, M, N, K]` |
+| `GenericBenchmark2DOnly`（`rms_norm`） | `[M, N]` |
+| `BinaryPointwiseBenchmark` / `GenericBenchmark`（`add`、`mul`、`copy_`、`silu_and_mul`） | `[M, N]` |
+| `UnaryPointwiseBenchmark`（`silu`、`zeros`） | `[M, N]` |
+| `GenericBenchmark` 标量版本（`fill_scalar`） | `[N]` |
+| `UnaryReductionBenchmark`（`softmax`） | `[M, N]` |
+
+### 添加新模型的 Shape 文件
+
+1. 在 `benchmark/models_shapes/<ModelName>.yaml` 下参照上述格式新建文件。
+2. 通过真实推理运行采集 Profiling 数据（例如使用开启 `record_shapes=True` 的
+   `torch.profiler`）。
+3. 对于 FlagGems 中已注册的算子（见 `src/flag_gems/__init__.py`），为其添加实测
+   shape 和 GPU 时间占比条目。
+4. 在上方**已收录的 Shape 文件**表格中补充新文件的说明行。

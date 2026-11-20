@@ -54,5 +54,8 @@ FLAGGEMS_BUILD_C_EXTENSIONS = "ON"
 [tool.setuptools_scm]
 # Version is derived from the parent repository so the native package stays in
 # lockstep with the main flag-gems package (same commit, same version).
+# only-version mirrors the root pyproject.toml: return the exact tag string
+# without appending a dev-distance suffix.  no-guess-dev would attempt to bump
+# a .devN tag (N≠0) and fail with a ValueError when commits follow the tag.
 root = ".."
-version_scheme = "no-guess-dev"
+version_scheme = "only-version"
