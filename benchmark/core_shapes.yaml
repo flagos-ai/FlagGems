@@ -1595,3 +1595,15 @@ LayernormBenchmark:
     - [[200, 40999], [40999], 1e-05]
     - [[2, 32], [32], 1e-05]
     - [[65536, 1, 1152], [1152], 1e-06]
+
+cholesky_inverse_backward:
+  shapes:
+  - - 1
+    - 4
+  - - 2
+    - 16
+  - - 4
+    - 32
+  - - 2
+    - 64
+  shape_desc: backward input shape
