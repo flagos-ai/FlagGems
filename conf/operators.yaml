@@ -6826,6 +6826,17 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
+- id: flip_backward
+  description: Backward of flip through autograd using the same reversed dimensions.
+  for:
+  - flip
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: fliplr
   description: 'Flips a tensor in the left-to-right direction by reversing dimension
     1.
