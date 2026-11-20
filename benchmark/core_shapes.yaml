@@ -1633,4 +1633,6 @@ a5_cat:
     - [1, 1]
     - [1024, 1024, 2048]
     - [1048576, 1048576, 2097152]
-  shape_desc: "length of each input vector"
+    - [1, 64, 512, 64]
+    - [2, 3, 17, 9]
+  shape_desc: "vector lengths or (batch, rows, left width, right width)"

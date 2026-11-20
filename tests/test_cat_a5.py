@@ -32,11 +32,27 @@ def _reference():
 
 
 def _inputs(shape, dtype, device):
+    if len(shape) == 4:
+        batch, rows, left, right = shape
+        return (
+            [
+                torch.randn((batch, rows, width), dtype=dtype, device=device)
+                for width in (left, right)
+            ],
+        ), {"dim": -1}
+
     return ([torch.randn(n, device=device, dtype=dtype) for n in shape],), {}
 
 
 @pytest.mark.parametrize(
-    "shape", [(1, 1), (1024, 1024, 2048), (1048576, 1048576, 2097152)]
+    "shape",
+    [
+        (1, 1),
+        (1024, 1024, 2048),
+        (1048576, 1048576, 2097152),
+        (1, 64, 512, 64),
+        (2, 3, 17, 9),
+    ],
 )
 def test_cat_native(shape):
     args, kwargs = _inputs(shape, torch.bfloat16, flag_gems.device)

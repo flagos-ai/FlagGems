@@ -54,7 +54,72 @@ def _cat_flat3(
                 tl.store(dst_ptr + OFFS[j] + rpos, v.to(dst_ptr.dtype.element_ty))
 
 
+@triton.jit
+def _cat_two_rows(
+    A,
+    B,
+    OUT,
+    ROWS: tl.constexpr,
+    LEFT: tl.constexpr,
+    RIGHT: tl.constexpr,
+    BR: tl.constexpr,
+    BL: tl.constexpr,
+    BK: tl.constexpr,
+):
+    row = tl.program_id(0) * BR + tl.arange(0, BR)
+    left = tl.arange(0, BL)
+    right = tl.arange(0, BK)
+    live = row[:, None] < ROWS
+    lmask = live & (left[None, :] < LEFT)
+    rmask = live & (right[None, :] < RIGHT)
+    lhs = tl.load(A + row[:, None] * LEFT + left[None, :], mask=lmask, other=0)
+    rhs = tl.load(B + row[:, None] * RIGHT + right[None, :], mask=rmask, other=0)
+    dst = OUT + row[:, None] * (LEFT + RIGHT)
+    tl.store(dst + left[None, :], lhs, mask=lmask)
+    tl.store(dst + LEFT + right[None, :], rhs, mask=rmask)
+
+
 def cat(A, dim=0):
+    if isinstance(A, (list, tuple)) and len(A) == 2:
+        left, right = A
+        if (
+            left.device.type == "npu"
+            and left.device == right.device
+            and left.ndim in (2, 3)
+            and right.ndim == left.ndim
+            and dim in (-1, left.ndim - 1)
+            and left.shape[:-1] == right.shape[:-1]
+            and 0 < left.shape[-1] <= 2048
+            and 0 < right.shape[-1] <= 2048
+            and left.is_contiguous()
+            and right.is_contiguous()
+            and left.dtype == right.dtype
+            and left.dtype in (torch.float32, torch.bfloat16, torch.int32)
+            and not left.is_neg()
+            and not right.is_neg()
+            and left.numel() + right.numel() < 2**31
+        ):
+            a, b = left.shape[-1], right.shape[-1]
+            rows = left.numel() // a
+            out = torch.empty(
+                (*left.shape[:-1], a + b), device=left.device, dtype=left.dtype
+            )
+            if rows:
+                br = min(8, triton.next_power_of_2(rows))
+                with torch_device_fn.device(left.device):
+                    _cat_two_rows[(triton.cdiv(rows, br),)](
+                        left,
+                        right,
+                        out,
+                        rows,
+                        a,
+                        b,
+                        br,
+                        triton.next_power_of_2(a),
+                        triton.next_power_of_2(b),
+                    )
+            return out
+
     if (
         not isinstance(A, (list, tuple))
         or len(A) not in (2, 3)

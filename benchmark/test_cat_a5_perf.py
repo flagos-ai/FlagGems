@@ -25,6 +25,15 @@ def _reference():
 
 
 def _inputs(shape, dtype, device):
+    if len(shape) == 4:
+        batch, rows, left, right = shape
+        return (
+            [
+                torch.randn((batch, rows, width), dtype=dtype, device=device)
+                for width in (left, right)
+            ],
+        ), {"dim": -1}
+
     return ([torch.randn(n, device=device, dtype=dtype) for n in shape],), {}
 
 
