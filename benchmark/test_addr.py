@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -43,6 +45,33 @@ def test_addr():
         op_name="addr",
         input_fn=_input_fn,
         torch_op=torch.Tensor.addr,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def _torch_addr_backward(grad_output, vec1, vec2, beta=1.0, alpha=1.0):
+    return (
+        grad_output * beta,
+        torch.mv(grad_output, vec2) * alpha,
+        torch.mv(grad_output.t(), vec1) * alpha,
+    )
+
+
+def _backward_input_fn(m, n, cur_dtype, device):
+    grad_output = torch.randn([m, n], dtype=cur_dtype, device=device)
+    vec1 = torch.randn([m], dtype=cur_dtype, device=device)
+    vec2 = torch.randn([n], dtype=cur_dtype, device=device)
+    yield grad_output, vec1, vec2, {"alpha": 0.75, "beta": -0.5}
+
+
+@pytest.mark.addr_backward
+def test_addr_backward():
+    bench = AddrBenchmark(
+        op_name="addr_backward",
+        input_fn=_backward_input_fn,
+        torch_op=_torch_addr_backward,
+        gems_op=flag_gems.addr_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
