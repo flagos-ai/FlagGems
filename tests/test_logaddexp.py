@@ -255,3 +255,32 @@ def test_logaddexp_backward_mixed_dtype():
     assert grad_x.dtype == torch.float16 and grad_y.dtype == torch.float32
     utils.gems_assert_close(grad_x, utils.to_reference(native_grad_x), torch.float16)
     utils.gems_assert_close(grad_y, utils.to_reference(native_grad_y), torch.float32)
+
+
+@pytest.mark.logaddexp_backward
+def test_logaddexp_backward_public_broadcast():
+    x = torch.randn((4, 1), device=flag_gems.device, requires_grad=True)
+    y = torch.randn((1, 8), device=flag_gems.device, requires_grad=True)
+    grad = torch.randn((4, 8), device=flag_gems.device)
+    ref_x = utils.to_reference(x.detach()).requires_grad_(True)
+    ref_y = utils.to_reference(y.detach()).requires_grad_(True)
+    ref = torch.autograd.grad(
+        torch.logaddexp(ref_x, ref_y), (ref_x, ref_y), utils.to_reference(grad)
+    )
+    result = flag_gems.logaddexp_backward(grad, x, y)
+    for actual, expected in zip(result, ref):
+        utils.gems_assert_close(actual, expected, expected.dtype)
+
+
+@pytest.mark.logaddexp_backward
+def test_logaddexp_backward_rejects_complex():
+    x = torch.ones(
+        (4,), dtype=torch.complex64, device=flag_gems.device, requires_grad=True
+    )
+    y = torch.ones(
+        (4,), dtype=torch.float32, device=flag_gems.device, requires_grad=True
+    )
+    with pytest.raises(NotImplementedError, match="complex"):
+        flag_gems.logaddexp(y, x)
+    with pytest.raises(NotImplementedError, match="complex"):
+        flag_gems.logaddexp_backward(y, x, y)

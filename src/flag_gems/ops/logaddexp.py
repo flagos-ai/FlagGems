@@ -30,14 +30,6 @@ logger = logging.getLogger(__name__)
 _BACKWARD_BLOCK_SIZE = 1024
 _BACKWARD_NUM_WARPS = 4
 
-# Every stream of this kernel is read or written exactly once per launch, so the
-# L2 eviction hint is the only cache lever. Measured on H800, the "evict_last"
-# policy written inline in the kernels below keeps cross-CTA line
-# merging/write-combining available and is ~0.6% faster on the DRAM-bound shapes
-# than the default policy, while "evict_first" cost ~2.5%; stacking the ".cg" L1
-# hint on top is rejected by ptxas. Triton only accepts constexpr globals inside
-# @jit functions, so the policy literal is repeated at each access.
-
 
 @triton.jit
 def _logaddexp_grads(grad, x, y):
@@ -70,21 +62,19 @@ def _logaddexp_backward_flat_kernel(
     """
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 
-    grad = tl.load(grad_ptr + offsets, eviction_policy="evict_last").to(tl.float32)
-    x = tl.load(x_ptr + offsets, eviction_policy="evict_last").to(tl.float32)
-    y = tl.load(y_ptr + offsets, eviction_policy="evict_last").to(tl.float32)
+    grad = tl.load(grad_ptr + offsets).to(tl.float32)
+    x = tl.load(x_ptr + offsets).to(tl.float32)
+    y = tl.load(y_ptr + offsets).to(tl.float32)
 
     grad_x, grad_y = _logaddexp_grads(grad, x, y)
 
     tl.store(
         grad_x_ptr + offsets,
         grad_x.to(grad_x_ptr.dtype.element_ty),
-        eviction_policy="evict_last",
     )
     tl.store(
         grad_y_ptr + offsets,
         grad_y.to(grad_y_ptr.dtype.element_ty),
-        eviction_policy="evict_last",
     )
 
 
@@ -102,15 +92,9 @@ def _logaddexp_backward_tail_kernel(
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    grad = tl.load(
-        grad_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_last"
-    ).to(tl.float32)
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_last").to(
-        tl.float32
-    )
-    y = tl.load(y_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_last").to(
-        tl.float32
-    )
+    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
     grad_x, grad_y = _logaddexp_grads(grad, x, y)
 
@@ -118,13 +102,11 @@ def _logaddexp_backward_tail_kernel(
         grad_x_ptr + offsets,
         grad_x.to(grad_x_ptr.dtype.element_ty),
         mask=mask,
-        eviction_policy="evict_last",
     )
     tl.store(
         grad_y_ptr + offsets,
         grad_y.to(grad_y_ptr.dtype.element_ty),
         mask=mask,
-        eviction_policy="evict_last",
     )
 
 
@@ -221,12 +203,24 @@ def _launch_flat_backward(grad_output, x, y):
     return grad_x, grad_y
 
 
-def logaddexp_backward(grad_output, x, y):
-    """First-order gradients of ``logaddexp`` with respect to both inputs."""
+def _logaddexp_backward_values(grad_output, x, y):
+    """Return both gradients in the broadcast output shape."""
     logger.debug("GEMS LOGADDEXP_BACKWARD")
     if _flat_backward_supported(grad_output, x, y):
         return _launch_flat_backward(grad_output, x, y)
     return logaddexp_backward_func(grad_output, x, y)
+
+
+def logaddexp_backward(grad_output, x, y):
+    """Return first-order real gradients reduced to the original operand shapes."""
+    if grad_output.is_complex() or x.is_complex() or y.is_complex():
+        raise NotImplementedError(
+            "FlagGems logaddexp backward does not support complex tensors"
+        )
+    grad_x, grad_y = _logaddexp_backward_values(grad_output, x, y)
+    return _reduce_to_shape(grad_x, x.shape).to(x.dtype), _reduce_to_shape(
+        grad_y, y.shape
+    ).to(y.dtype)
 
 
 class LogaddexpFunction(torch.autograd.Function):
@@ -250,7 +244,7 @@ class LogaddexpFunction(torch.autograd.Function):
         if not (need_x or need_y):
             return None, None
 
-        grad_x_b, grad_y_b = logaddexp_backward(grad_output, x, y)
+        grad_x_b, grad_y_b = _logaddexp_backward_values(grad_output, x, y)
 
         grad_x = None
         if need_x:
@@ -269,6 +263,8 @@ class LogaddexpFunction(torch.autograd.Function):
 
 def logaddexp(self, other):
     logger.debug("GEMS LOGADDEXP")
+    if self.is_complex() or other.is_complex():
+        raise NotImplementedError("FlagGems logaddexp does not support complex inputs")
     # Keep the plain pointwise kernel on the inference path so no autograd
     # bookkeeping is paid when no input can receive a gradient. This mirrors
     # ATen, which only builds a graph for differentiable inputs.

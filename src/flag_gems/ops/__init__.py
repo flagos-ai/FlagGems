@@ -1168,7 +1168,7 @@ from flag_gems.ops.log_softmax import (
     log_softmax_backward_out,
     log_softmax_out,
 )
-from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
+from flag_gems.ops.logaddexp import logaddexp, logaddexp_backward, logaddexp_out
 from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
 from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
 from flag_gems.ops.logdet import logdet
@@ -2927,6 +2927,7 @@ __all__ = [
     "logaddexp",
     "logaddexp2",
     "logaddexp2_out",
+    "logaddexp_backward",
     "logaddexp_out",
     "logcumsumexp",
     "logcumsumexp_out",
