@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+a5_cat:
+  shapes:
+    - [1, 1]
+    - [1024, 1024, 2048]
+    - [1048576, 1048576, 2097152]
+  shape_desc: "length of each input vector"
