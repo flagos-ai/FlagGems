@@ -38,6 +38,7 @@ from . import consts
 from .baseline import describe_call
 from .conftest import Config, emit_record_logger, update_case_list, update_result
 from .consts import (
+    MAX_BACKWARD_ELEMENTS,
     BenchmarkCaseList,
     BenchmarkCasePlan,
     BenchmarkCaseSpec,
@@ -93,11 +94,13 @@ def get_iter_count(fn):
 
 class Benchmark:
     device: str = device
+    aggregate_results_by_dtype = False
     DEFAULT_METRICS = consts.DEFAULT_METRICS
     DEFAULT_DTYPES = consts.FLOAT_DTYPES
     DEFAULT_SHAPES = consts.DEFAULT_SHAPES
     DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
+    MAX_BACKWARD_ELEMENTS = MAX_BACKWARD_ELEMENTS
     EPS = 1e-7
     """
     the base class for the operations benchmark
@@ -279,6 +282,17 @@ class Benchmark:
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
             )
 
+        # P2: For backward benchmarks, filter out shapes that exceed the
+        # VRAM budget.  Backward passes retain the computation graph and
+        # allocate gradient tensors, so peak memory is much higher than
+        # forward.  Keep at least the shapes that fit within the limit.
+        if self.is_backward and self.MAX_BACKWARD_ELEMENTS is not None:
+            filtered = [
+                s for s in self.shapes if math.prod(s) <= self.MAX_BACKWARD_ELEMENTS
+            ]
+            if filtered:
+                self.shapes = filtered
+
     def set_more_shapes(self) -> Optional[list[list[Any] | tuple[Any]]]:
         """Base method (optional to override in subclasses).
         Returns additional shapes if applicable."""
@@ -327,7 +341,11 @@ class Benchmark:
 
     def get_latency(self, op, *args, **kwargs):
         fn, xs = self._benchmark_callable(op, *args, **kwargs)
-        return self._time_callable(fn, xs)
+        try:
+            return self._time_callable(fn, xs)
+        finally:
+            del fn, xs
+            gc.collect()
 
     def _benchmark_callable(self, op, *args, **kwargs):
         fn = lambda: op(*args, **kwargs)
@@ -441,9 +459,18 @@ class Benchmark:
             elif isinstance(item, dict):
                 kwargs.update(item)
         if self.is_backward:
+            # NOTE: We set requires_grad in-place instead of cloning first to avoid
+            # doubling VRAM usage (backward already needs 3-4x the forward memory).
+            # Safety constraint: all backward benchmarks MUST use pure-function
+            # operators that do NOT modify input data in-place, because the same
+            # args are reused for both baseline and candidate in _measure_input().
+            # Currently all backward benchmarks satisfy this (is_backward=True and
+            # is_inplace=True are mutually exclusive, and torch.autograd.grad()
+            # itself never mutates input tensors).
+            # If you add a new backward benchmark, ensure its operator is pure.
             args = [
                 (
-                    a.clone().requires_grad_()
+                    a.requires_grad_(True)
                     if torch.is_tensor(a) and torch.is_floating_point(a)
                     else a
                 )
@@ -527,7 +554,11 @@ class Benchmark:
             result_dict["native_baseline_skip_reason"] = (
                 Config.native_baseline_skip_reason
             )
-        update_result(self.op_name, result_dict)
+        update_result(
+            self.op_name,
+            result_dict,
+            aggregate_by_dtype=self.aggregate_results_by_dtype,
+        )
         emit_record_logger(result.to_json())
         return result
 

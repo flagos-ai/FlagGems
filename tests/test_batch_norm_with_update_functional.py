@@ -20,6 +20,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 @pytest.mark.batch_norm_with_update_functional
 @pytest.mark.parametrize(
@@ -93,5 +95,82 @@ def test_batch_norm_with_update_functional(shape, dtype, affine):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_save_mean, ref_save_mean, dtype)
     utils.gems_assert_close(res_save_invstd, ref_save_invstd, dtype)
+    utils.gems_assert_close(res_running_mean_out, ref_running_mean_out, dtype)
+    utils.gems_assert_close(res_running_var_out, ref_running_var_out, dtype)
+
+
+@pytest.mark.batch_norm_with_update_functional
+@pytest.mark.skipif(
+    not IS_KUNLUNXIN,
+    reason="the None running-stats branch is specific to the Kunlunxin override",
+)
+@pytest.mark.parametrize("shape", [(8, 32, 4, 5)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_batch_norm_with_update_functional_no_running_stats(shape, dtype, affine):
+    """aten declares running_mean_out/running_var_out as non-optional tensors.
+
+    The Kunlunxin override accepts ``None`` running statistics and must still
+    return real tensors, starting from the zero-mean / unit-variance
+    initialisation, so the result has to match the 0/1-initialised reference.
+    """
+    C = shape[1]
+
+    inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    weight = (
+        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
+    )
+    bias = (
+        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
+    )
+    running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+    running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+
+    eps = 1e-5
+    momentum = 0.1
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+    ref_running_mean = utils.to_reference(running_mean, True)
+    ref_running_var = utils.to_reference(running_var, True)
+
+    (
+        ref_out,
+        _,
+        _,
+        _,
+        ref_running_mean_out,
+        ref_running_var_out,
+    ) = torch.ops.aten._batch_norm_with_update_functional(
+        ref_inp,
+        ref_weight,
+        ref_bias,
+        ref_running_mean,
+        ref_running_var,
+        momentum,
+        eps,
+    )
+
+    (
+        res_out,
+        _,
+        _,
+        _,
+        res_running_mean_out,
+        res_running_var_out,
+    ) = flag_gems._batch_norm_with_update_functional(
+        inp,
+        weight,
+        bias,
+        None,
+        None,
+        momentum,
+        eps,
+    )
+
+    assert isinstance(res_running_mean_out, torch.Tensor)
+    assert isinstance(res_running_var_out, torch.Tensor)
+    utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_running_mean_out, ref_running_mean_out, dtype)
     utils.gems_assert_close(res_running_var_out, ref_running_var_out, dtype)

@@ -88,7 +88,7 @@ class TritonVersionEvent(BackendEventBase):
         dir_name = f"triton_{self.version}"
         backend_path = Path(path or _state.vendor_module.__path__[0])
         backend_path = backend_path.parent if backend_path.is_file() else backend_path
-        excluded = ("ops", "fused")
+        excluded = ("ops", "deprecated")
         return {
             p.name: str(p)
             for p in backend_path.iterdir()
@@ -214,7 +214,7 @@ class BackendArchEvent(BackendEventBase):
     def _get_supported_archs(self, path=None):
         path = Path(path or _state.vendor_module.__path__[0])
         path = path.parent if path.is_file() else path
-        excluded = ("ops", "fused")
+        excluded = ("ops", "deprecated")
         return {
             p.name: str(p)
             for p in path.iterdir()
@@ -296,7 +296,7 @@ def import_vendor_extra_lib(vendor_name=None):
         f"_{vendor_name}.ops", vendor_name, "common"
     )
     _state.fused_module = _import_module_safe(
-        f"_{vendor_name}.fused", vendor_name, "fused"
+        f"_{vendor_name}.deprecated", vendor_name, "deprecated"
     )
     _state.vendor_extra_lib_imported = True
 
