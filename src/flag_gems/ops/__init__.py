@@ -519,7 +519,7 @@ from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.acos_ import acos_
-from flag_gems.ops.acosh import acosh, acosh_
+from flag_gems.ops.acosh import acosh, acosh_, acosh_backward
 from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
 from flag_gems.ops.adaptive_avg_pool2d import (
     _adaptive_avg_pool2d_out as adaptive_avg_pool2d_out,
@@ -2245,6 +2245,7 @@ __all__ = [
     "acos_",
     "acosh",
     "acosh_",
+    "acosh_backward",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
     "adaptive_avg_pool2d_out",
