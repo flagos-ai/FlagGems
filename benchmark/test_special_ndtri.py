@@ -15,7 +15,11 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+
+fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
 @pytest.mark.special_ndtri
@@ -32,6 +36,7 @@ def test_special_ndtri():
         torch_op=torch.ops.aten.special_ndtri,
         # ndtri is implemented for single and double precision only, so the
         # half precision dtypes benchmarked for most pointwise ops are excluded.
-        dtypes=[torch.float32, torch.float64],
+        # float64 is skipped on devices that do not declare fp64 support.
+        dtypes=[torch.float32] + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()
