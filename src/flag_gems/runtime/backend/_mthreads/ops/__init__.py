@@ -63,7 +63,15 @@ from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_exp_ import _foreach_exp_
 from ._foreach_frac import _foreach_frac
 from ._foreach_frac_ import _foreach_frac_
+from ._foreach_log1p_ import _foreach_log1p_
+from ._foreach_log2 import _foreach_log2
+from ._foreach_log2_ import _foreach_log2_
 from ._foreach_log10_ import _foreach_log10_
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
+from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -227,6 +235,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
 from .special_multigammaln import special_multigammaln
+from .special_ndtri import special_ndtri
 from .special_round import special_round
 from .special_round_out import special_round_out
 from .square_ import square_
@@ -301,6 +310,14 @@ __all__ = [
     "_foreach_frac",
     "_foreach_frac_",
     "_foreach_log10_",
+    "_foreach_log1p_",
+    "_foreach_log2",
+    "_foreach_log2_",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum_Scalar",
+    "_foreach_minimum__Scalar",
+    "_foreach_minimum_Scalar",
+    "_foreach_minimum_ScalarList",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
@@ -493,6 +510,7 @@ __all__ = [
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
+    "special_ndtri",
     "special_round",
     "special_round_out",
     "square_",
