@@ -33,19 +33,14 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import LibTuner, LibTunerRunMode, _TritonOutOfResources
 
-from . import regular, ring
+from . import regular
 from .splitk import launch_small_splitk, launch_splitk
 
 logger = logging.getLogger(__name__)
 
 
 def select_kernel(dtype, batch, m, n, k):
-    """Return (family, tile config) from dimensions, dtype and parallelism.
-
-    Assembly kernels require complete reduction tiles and 16-byte row loads.
-    M/N tile tails are handled by resource bounds and masked output stores.
-    The generic family supports arbitrary strides and reduction tails.
-    """
+    """Choose a Triton GEMM or Split-K from dtype and available tiles."""
     if min(batch, m, n, k) <= 0:
         return "generic", None
     if dtype not in (torch.float16, torch.bfloat16, torch.float32):
@@ -57,7 +52,6 @@ def select_kernel(dtype, batch, m, n, k):
         return "generic", None
     tiles64 = batch * ((m + 63) // 64) * ((n + 63) // 64)
     tiles128 = batch * ((m + 127) // 128) * ((n + 127) // 128)
-    tiles256 = batch * ((m + 255) // 256) * ((n + 255) // 256)
     # Parallelize long reductions when output tiling cannot fill the device.
     # This family uses masked tl.load and also supports arbitrary strides.
     if min(m, n) >= 32 and k >= 1024 and tiles64 < 128:
@@ -76,20 +70,6 @@ def select_kernel(dtype, batch, m, n, k):
         tile = 64 if tiles128 < 64 else 128
         return "regular", (2, tile, tile, 16, 2, 2)
 
-    padded_area = ((m + 255) // 256) * ((n + 255) // 256) * 256**2
-    # A large ring tile amortizes DMA/synchronization when reduction/output
-    # work is substantial. Reject tiles wasting more than half their lanes.
-    if (
-        not small
-        and min(m, n) >= 256
-        and k >= 256
-        and k % 64 == 0
-        and n % 8 == 0
-        and tiles256 >= 24
-        and 2 * m * n >= padded_area
-        and ((m + 255) // 256) * 256 * n * es < 2**31
-    ):
-        return "ring", None
     if small and min(m, n) >= 32 and k % 128 == 0 and n % 8 == 0:
         if dtype == torch.float16:
             return "regular", (0, 64, 64, 128, 2, 2)
@@ -103,23 +83,13 @@ def select_kernel(dtype, batch, m, n, k):
 
 
 @lru_cache(maxsize=16)
-def _supports_ring_device(device):
+def _supports_native_packing_device(device):
     props = torch.cuda.get_device_properties(device)
     return getattr(props, "gcnArchName", "").split(":", 1)[0] == "gfx936"
 
 
 def supports_isa(a):
-    return _supports_ring_device(a.device)
-
-
-def supports_vector_layout(a, b, out):
-    """Check physical layout requirements independently of shape selection."""
-    if not supports_isa(a):
-        return False
-    if not (a.is_contiguous() and b.is_contiguous() and out.is_contiguous()):
-        return False
-    # Contiguous views may start at an unaligned storage offset.
-    return all(t.data_ptr() % 16 == 0 for t in (a, b, out))
+    return _supports_native_packing_device(a.device)
 
 
 def supports_native_layout(a, b, out):
@@ -414,13 +384,10 @@ def launch_packed_if_supported(a, b, out):
     if m < 256:
         return False
     family, config = select_kernel(a.dtype, batch, m, n, k)
-    if family not in ("ring", "regular"):
+    if family != "regular":
         return False
     p = pack_b(b)
-    if family == "ring":
-        ring.launch_ring(a, p, out)
-    else:
-        regular.launch_regular(a, p, out, config)
+    regular.launch_regular(a, p, out, config)
     return True
 
 
@@ -434,29 +401,13 @@ def launch_splitk_if_supported(a, b, out):
     return True
 
 
-def _supports_regular_layout(a, b, out, config):
-    if config in regular.NATIVE_REGULAR_KEYS:
-        return supports_native_layout(a, b, out)
-    return supports_vector_layout(a, b, out)
-
-
 def _launch_tle_regular(a, b, out):
     batch, m, k = a.shape
     n = b.shape[2]
     family, config = select_kernel(a.dtype, batch, m, n, k)
-    if family != "regular" or not _supports_regular_layout(a, b, out, config):
+    if family != "regular" or not supports_native_layout(a, b, out):
         return False
     regular.launch_regular(a, b, out, config)
-    return True
-
-
-def _launch_tle_ring(a, b, out):
-    batch, m, k = a.shape
-    n = b.shape[2]
-    family, config = select_kernel(a.dtype, batch, m, n, k)
-    if family != "ring" or not supports_vector_layout(a, b, out):
-        return False
-    ring.launch_ring(a, b, out)
     return True
 
 
@@ -474,7 +425,6 @@ _KEYS = [
     "OB",
     "OM",
     "ON",
-    "VECTOR",
     "PACKED",
     "DEVICE",
 ]
@@ -539,7 +489,6 @@ def _bmm_pipeline(
     OB,
     OM,
     ON,
-    VECTOR,
     PACKED,
     DEVICE,
     FAMILY,
@@ -554,9 +503,9 @@ def _bmm_pipeline(
     **unused,
 ):
     prepare = _short_wide_bmm(BATCH, M, N, K, A.dtype)
-    if FAMILY in (4, 5):
+    if FAMILY == 4:
         B = pack_b(B, PACK)
-        FAMILY = 1 if FAMILY == 4 else 2
+        FAMILY = 1
     if FAMILY == 1:
         dt = {torch.float16: 0, torch.bfloat16: 1, torch.float32: 2}[A.dtype]
         kernel = regular.REGULAR_KERNELS[(dt, TM, TN, TK, 2, 2)]
@@ -576,11 +525,6 @@ def _bmm_pipeline(
             num_stages=1,
             allow_flush_denorm=True,
             enable_fp_fusion=True,
-        )
-    elif FAMILY == 2:
-        grid, args = ring.ring_launch_args(A, B, O, GROUP)
-        _launch_pipeline_kernel(
-            ring.ring_kernel, grid, prepare, *args, **ring._RING_LAUNCH_OPTIONS
         )
     elif FAMILY == 3:
         # Both launches and workspace allocation are in the measured callable.
@@ -640,7 +584,6 @@ def _prune(configs, named_args, **kwargs):
     dtype = a["A"].dtype
     es = a["A"].element_size()
     bounded = max(batch * m * k, batch * k * n, batch * m * n) * es < 2**31
-    vector = a["VECTOR"] and bounded
     native = supports_native_layout(a["A"], a["B"], a["O"])
     packed = supports_packing(a["A"], a["B"], a["O"]) and bounded
     dt = {torch.float16: 0, torch.bfloat16: 1, torch.float32: 2}.get(dtype)
@@ -663,7 +606,7 @@ def _prune(configs, named_args, **kwargs):
         family, tm, tn, tk = (p[x] for x in ("FAMILY", "TM", "TN", "TK"))
         # Packing adds another launch and reads the whole B matrix for a short
         # reduction. Keep the direct strided candidates in this domain.
-        if short_wide and family in (4, 5):
+        if short_wide and family == 4:
             continue
         if family == 0:
             # Bounded nearby candidates; includes the previous generic default.
@@ -683,29 +626,7 @@ def _prune(configs, named_args, **kwargs):
             key = (dt, tm, tn, tk, 2, 2)
             if key not in regular.REGULAR_KERNELS:
                 continue
-            if key in regular.NATIVE_REGULAR_KEYS:
-                if not (native if family == 1 else packed):
-                    continue
-            elif (
-                not (vector if family == 1 else packed)
-                or min(m, n) < 32
-                or n % (16 // es)
-                or k % tk
-                or ((m + tm - 1) // tm) * tm * n * es >= 2**31
-            ):
-                continue
-        elif family in (2, 5):
-            if dt not in (0, 1) or min(m, n) < 256 or k < 256:
-                continue
-            if (
-                not (vector if family == 2 else packed)
-                or n % 8
-                or k % 64
-                or ((m + 255) // 256) * 256 * n * es >= 2**31
-            ):
-                continue
-            padded = triton.cdiv(m, 256) * triton.cdiv(n, 256) * 256**2
-            if 2 * m * n < padded:
+            if not (native if family == 1 else packed):
                 continue
         elif family == 3:
             tiles = batch * triton.cdiv(m, tm) * triton.cdiv(n, tn)
@@ -734,9 +655,7 @@ class _PipelineTuner(LibTuner.get("flagtune")):
         files = (
             "bmm.py",
             "splitk.py",
-            "ring.py",
             "regular.py",
-            "ring_core.py",
             "../../bmm_hygon_expand.yaml",
             "../../tune_configs.yaml",
         )
@@ -818,7 +737,6 @@ def _launch_autotuned(a, b, out):
         *a.stride(),
         *b.stride(),
         *out.stride(),
-        supports_vector_layout(a, b, out),
         supports_packing(a, b, out),
         _device_key(a.device),
     )
@@ -916,8 +834,6 @@ def _dispatch_bmm(A, B, out):
         if launch_small_splitk(A, B, out):
             return out
         if _launch_autotuned(A, B, out):
-            return out
-        if _launch_tle_ring(A, B, out):
             return out
         if _launch_tle_regular(A, B, out):
             return out

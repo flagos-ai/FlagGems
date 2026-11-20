@@ -23,7 +23,6 @@ from torch.autograd.function import once_differentiable
 
 from flag_gems.ops.sum import sum_dim
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.triton_version_utils import HAS_TLE
 
 from ..bmm.bmm import check_out_autograd, copy_tensor
 from ..bmm.splitk import launch_small_splitk, small_splitk_count
@@ -32,30 +31,14 @@ from .kernels import _TUNERS, _bias_kernel, _pack_b, _small_contiguous_baddbmm
 logger = logging.getLogger(__name__)
 
 
-def _algorithm(batch, m, n, k, device=None, dtype=None, *, allow_ring=True):
-    if dtype not in (torch.float16, torch.bfloat16):
-        return "matmul"
-    packed = batch == 1 and m >= 4096 and n >= 1024 and k >= 1024
-    gm, gn = (m + 255) // 256, (n + 255) // 256
-    # Long reductions can use the ring with one batch and avoid packing B.
-    if (
-        allow_ring
-        and HAS_TLE
-        and (batch > 1 or (packed and k >= n))
-        and min(m, n) >= 1024
-        and k >= 512
-        and k % 64 == 0
-        and n % 8 == 0
-        and batch * gm * gn >= 24
-        and 2 * m * n >= gm * gn * 256**2
-        and max(batch * m * k, batch * k * n, batch * m * n) * 2 < 2**31
-        and gm * 256 * n * 2 < 2**31
-        and getattr(torch.cuda.get_device_properties(device), "gcnArchName", "").split(
-            ":", 1
-        )[0]
-        == "gfx936"
-    ):
-        return "ring"
+def _algorithm(batch, m, n, k, dtype):
+    packed = (
+        dtype in (torch.float16, torch.bfloat16)
+        and batch == 1
+        and m >= 4096
+        and n >= 1024
+        and k >= 1024
+    )
     return "packed" if packed else "matmul"
 
 
@@ -115,14 +98,7 @@ def _launch(bias, a, b, beta, alpha, out, bias_strides):
                 a, b, out, bias, alpha, beta, splits=splits, bias_strides=bias_strides
             )
             return out
-        algorithm = _algorithm(batch, m, n, k, a.device, a.dtype)
-        if algorithm == "ring":
-            if all(t.is_contiguous() and t.data_ptr() % 16 == 0 for t in (a, b, out)):
-                _TUNERS["ring"][(triton.cdiv(m, 256) * triton.cdiv(n, 256), batch)](
-                    a, b, bias, out, m, n, k, *bias_strides, alpha, beta, BATCH=batch
-                )
-                return out
-            algorithm = _algorithm(batch, m, n, k, device, a.dtype, allow_ring=False)
+        algorithm = _algorithm(batch, m, n, k, a.dtype)
         if algorithm == "packed":
             packed = torch.empty((batch, n, k), device=b.device, dtype=b.dtype)
             _pack_b[(triton.cdiv(k, 64), triton.cdiv(n, 64), batch)](

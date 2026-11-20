@@ -44,7 +44,7 @@ class vendors(Enum):
 
 DEFAULT_STRATEGIES = {
     "addmm_hygon": ["default"] * 3,
-    "bmm_hygon": ["default"] * 16,
+    "bmm_hygon": ["default"] * 15,
     "baddbmm_hygon": ["default"] * 18,
     "baddbmm_packed": ["default"] * 18,
     "addmm_gemm": ["default"] * 19,
@@ -220,7 +220,6 @@ OP_KEY_ORDERS = {
         "OB",
         "OM",
         "ON",
-        "VECTOR",
         "PACKED",
         "DEVICE",
     ],

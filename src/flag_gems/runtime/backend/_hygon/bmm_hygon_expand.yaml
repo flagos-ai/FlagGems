@@ -253,38 +253,6 @@ bmm:
     num_warps: warps
     num_stages: stages
   family:
-  - 2
-  m:
-  - 256
-  n:
-  - 256
-  k:
-  - 16
-  group:
-  - 1
-  - 4
-  - 8
-  splits:
-  - 1
-  warps:
-  - 8
-  stages:
-  - 1
-  pack:
-  - 64
-- gen: true
-  param_map:
-    META:
-      FAMILY: family
-      TM: m
-      TN: n
-      TK: k
-      GROUP: group
-      SPLITS: splits
-      PACK: pack
-    num_warps: warps
-    num_stages: stages
-  family:
   - 3
   m:
   - 64
@@ -492,39 +460,6 @@ bmm:
   - 1
   warps:
   - 4
-  stages:
-  - 1
-  pack:
-  - 32
-  - 64
-- gen: true
-  param_map:
-    META:
-      FAMILY: family
-      TM: m
-      TN: n
-      TK: k
-      GROUP: group
-      SPLITS: splits
-      PACK: pack
-    num_warps: warps
-    num_stages: stages
-  family:
-  - 5
-  m:
-  - 256
-  n:
-  - 256
-  k:
-  - 16
-  group:
-  - 1
-  - 4
-  - 8
-  splits:
-  - 1
-  warps:
-  - 8
   stages:
   - 1
   pack:

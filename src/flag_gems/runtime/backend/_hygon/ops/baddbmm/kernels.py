@@ -12,20 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generic GEMM, packed GEMM and BF16 ring tuning families."""
+"""Generic and packed GEMM tuning families."""
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
 if HAS_TLE:
     import triton.experimental.tle.language as tle
-
-    from .ring import baddbmm_ring_kernel
 
 
 @triton.jit
@@ -399,32 +396,10 @@ def _prune_packed(configs, named_args, **kwargs):
     ]
 
 
-@triton.jit
-def _ring_kernel(
-    A,
-    B,
-    Bias,
-    Out,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    CB: tl.constexpr,
-    CM: tl.constexpr,
-    CN: tl.constexpr,
-    ALPHA: tl.constexpr,
-    BETA: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    BATCH: tl.constexpr = 1,
-):
-    baddbmm_ring_kernel(A, B, Out, Bias, CB, CM, CN, ALPHA, BETA, M, N, K, GROUP_M)
-
-
 def _make_tuner(kernel, contract, prune=None, key=None):
     # LibTuner requires one legal fallback when expanded search is disabled.
     # This is not a second search space; all large candidates live in expand.
-    if contract == "baddbmm_ring":
-        configs = runtime.get_tuned_config(contract)
-    elif contract == "baddbmm":
+    if contract == "baddbmm":
         configs = [
             triton.Config(
                 {
@@ -482,16 +457,14 @@ def _make_tuner(kernel, contract, prune=None, key=None):
             key=key,
             strategy="default",
             prune_configs_by={"early_config_prune": prune} if prune else None,
-            policy="default" if contract == "baddbmm_ring" else "flagtune",
+            policy="flagtune",
             flagtune_expand_op_name=(
-                None
-                if contract == "baddbmm_ring"
-                else "baddbmm_hygon" if contract == "baddbmm" else contract
+                "baddbmm_hygon" if contract == "baddbmm" else contract
             ),
             use_cuda_graph=True,
             warmup=8,
             rep=30,
-            flagtune_op_name=None if contract == "baddbmm_ring" else "baddbmm",
+            flagtune_op_name="baddbmm",
         )(kernel)
     )
 
@@ -500,12 +473,6 @@ _TUNERS = {
     "matmul": _make_tuner(baddbmm_kernel, "baddbmm", _prune_configs),
     "packed": _make_tuner(_packed_kernel, "baddbmm_packed", _prune_packed),
 }
-if HAS_TLE:
-    _TUNERS["ring"] = _make_tuner(
-        _ring_kernel,
-        "baddbmm_ring",
-        key=["BATCH", "M", "N", "K", "CB", "CM", "CN", "ALPHA", "BETA"],
-    )
 
 
 @libentry(cache_binding=True)
