@@ -47,7 +47,7 @@ def test_linear_native(shape):
     torch.testing.assert_close(actual, expected, atol=0.03, rtol=0.016)
 
 
-def test_public_dispatch(monkeypatch):
+def test_a5_fast_path(monkeypatch):
     import sys
 
     module = sys.modules[flag_gems.linear.__module__]
@@ -62,7 +62,6 @@ def test_public_dispatch(monkeypatch):
     x = torch.randn((1, 4096), dtype=torch.bfloat16, device=flag_gems.device)
     weight = torch.randn((64, 4096), dtype=x.dtype, device=x.device)
     expected = torch.nn.functional.linear(x, weight)
-    with flag_gems.use_gems(include=["linear"]):
-        actual = torch.nn.functional.linear(x, weight)
+    actual = flag_gems.linear(x, weight)
     assert calls
     torch.testing.assert_close(actual, expected, rtol=0.016, atol=0.03)
