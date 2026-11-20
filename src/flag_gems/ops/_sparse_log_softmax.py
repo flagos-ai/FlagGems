@@ -1455,3 +1455,70 @@ def _bwd_fast_backward(
             CHUNK=chunk,
         )
     return o_vals
+
+
+def sparse_log_softmax_backward(grad_output, output, dim, input_dtype=None):
+    """Return a sparse COO gradient on the coalesced log-softmax output support."""
+    if grad_output.layout != torch.sparse_coo or output.layout != torch.sparse_coo:
+        raise ValueError("sparse_log_softmax_backward requires sparse COO tensors")
+    if (
+        grad_output.shape != output.shape
+        or grad_output.sparse_dim() != output.sparse_dim()
+    ):
+        raise ValueError(
+            "grad_output must match the output shape and sparse dimensions"
+        )
+    if not -output.dim() <= dim < output.dim():
+        raise IndexError(f"Dimension out of range: {dim}")
+    if input_dtype is None:
+        input_dtype = output.dtype
+    real_dtypes = (torch.float32, torch.float64)
+    if any(
+        t not in real_dtypes for t in (input_dtype, output.dtype, grad_output.dtype)
+    ):
+        raise NotImplementedError(
+            "sparse_log_softmax_backward requires float32 or float64"
+        )
+    size, sparse_dim, dense_shape, dnumel = _sparse_meta(output)
+    if sparse_dim > 8:
+        raise NotImplementedError(
+            "sparse_log_softmax_backward supports up to eight sparse dimensions"
+        )
+    if not output.is_coalesced():
+        raise ValueError("output must be the coalesced result of sparse log-softmax")
+    dim %= output.dim()
+    indices = output._indices()
+    nnz = output._nnz()
+    values = output._values()
+    if nnz and dnumel:
+        ginfo = None
+        if dim < sparse_dim:
+            keys = _pool_key(output, dim, indices)
+            sorted_keys, order = sort(keys)
+            _, starts, _ = _seg_boundaries(sorted_keys)
+            ginfo = (starts, order)
+        if grad_output.is_coalesced():
+            grad_indices = grad_output._indices().contiguous()
+            grad_values = grad_output._values()
+            grad_nnz = grad_output._nnz()
+        else:
+            grad_indices, grad_values, grad_nnz = triton_coalesce(grad_output)
+        values = _bwd_fast_backward(
+            dim,
+            sparse_dim,
+            size,
+            dense_shape,
+            values.reshape(nnz, dnumel),
+            indices,
+            grad_indices,
+            grad_values.reshape(grad_nnz, dnumel),
+            ginfo,
+        )
+    return torch.sparse_coo_tensor(  # allow-torch-compute: package gradient values
+        indices,
+        values,
+        size,
+        dtype=input_dtype,
+        device=output.device,
+        is_coalesced=True,
+    )

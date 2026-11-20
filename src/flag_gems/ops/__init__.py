@@ -398,6 +398,7 @@ from flag_gems.ops._sparse_log_softmax import (
     _sparse_log_softmax,
     _sparse_log_softmax_int,
     _sparse_log_softmax_out,
+    sparse_log_softmax_backward,
 )
 from flag_gems.ops._sparse_log_softmax_backward_data import (
     _sparse_log_softmax_backward_data,
@@ -3339,6 +3340,7 @@ __all__ = [
     "sparse_csr_tensor",
     "sparse_csr_tensor_unsafe",
     "sparse_dim",
+    "sparse_log_softmax_backward",
     "sparse_mask",
     "sparse_mask_out",
     "sparse_resize_",
