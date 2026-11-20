@@ -398,7 +398,9 @@ def _bn_bwd_contig_kernel(
                         mask=m,
                     )
                 else:
-                    tl.store(ip + t * BLOCK + offs, (g * scale).to(gi_ptr.dtype.element_ty))
+                    tl.store(
+                        ip + t * BLOCK + offs, (g * scale).to(gi_ptr.dtype.element_ty)
+                    )
             if NEED_GBIAS:
                 if ACC64:
                     acc_b += g.to(tl.float64)
@@ -510,7 +512,9 @@ def _bn_bwd_strided_kernel(
                 g = tl.load(gb + pos * go_s).to(tl.float32)
             if NEED_GINPUT:
                 if MASKED:
-                    tl.store(ib + pos * gi_s, (g * scale).to(gi_ptr.dtype.element_ty), mask=m)
+                    tl.store(
+                        ib + pos * gi_s, (g * scale).to(gi_ptr.dtype.element_ty), mask=m
+                    )
                 else:
                     tl.store(ib + pos * gi_s, (g * scale).to(gi_ptr.dtype.element_ty))
             if NEED_GBIAS:
@@ -724,7 +728,9 @@ def _batch_norm_backward_eval(
     dt = input.dtype
     device = input.device
 
-    grad_input = torch.empty(input_3d.shape, dtype=dt, device=device) if need_gi else None
+    grad_input = (
+        torch.empty(input_3d.shape, dtype=dt, device=device) if need_gi else None
+    )
     if n_batch == 0 or spatial == 0:
         return (
             None if grad_input is None else grad_input.view_as(input),
@@ -741,9 +747,7 @@ def _batch_norm_backward_eval(
     )
 
     large = (
-        input_3d.numel() >= _LARGE_NUMEL
-        and spatial >= _LARGE_BLOCK
-        and n_chan <= 65535
+        input_3d.numel() >= _LARGE_NUMEL and spatial >= _LARGE_BLOCK and n_chan <= 65535
     )
     if large:
         acc64 = dt == torch.float32 and n_batch * spatial >= _ACC64_TERMS
@@ -785,11 +789,7 @@ def _batch_norm_backward_eval(
     # the single dtype cast). The contiguous kernels can write the channel
     # gradients directly when the reduction is complete in one program.
     tile_path = contig and not large
-    direct_write = (
-        needs_reduce
-        and partial_dim == 1
-        and (tile_path or contig)
-    )
+    direct_write = needs_reduce and partial_dim == 1 and (tile_path or contig)
     finalize = (not needs_reduce) or direct_write
 
     fallback = grad_input if need_gi else grad_out

@@ -87,9 +87,7 @@ def test_native_batch_norm_legit_no_training(shape, dtype, affine):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-def _reference_backward(
-    shape, dtype, affine, seed=0, eps=1e-5
-):
+def _reference_backward(shape, dtype, affine, seed=0, eps=1e-5):
     """Native tensors plus the float64 CPU ATen backward of the same inputs."""
     generator = torch.Generator(device="cpu").manual_seed(seed)
     channel_count = shape[1]
@@ -264,7 +262,7 @@ def test_native_batch_norm_legit_no_training_backward_input_only(dtype):
     (res_grad,) = torch.autograd.grad(
         (res_out,), (res_inp,), (grad_out.to(device),), retain_graph=True
     )
-    (ref_grad, _, _) = torch.ops.aten.native_batch_norm_backward.default(
+    ref_grad, _, _ = torch.ops.aten.native_batch_norm_backward.default(
         _upcast(grad_out),
         _upcast(inp),
         None,
@@ -299,9 +297,11 @@ def test_native_batch_norm_legit_no_training_backward_saved_stats_dtype(dtype):
     _, save_mean, save_var = flag_gems._native_batch_norm_legit_no_training(
         inp, weight, bias, running_mean, running_var, 0.1, 1e-5
     )
-    ref_save_mean, ref_save_var = torch.ops.aten._native_batch_norm_legit_no_training.default(
-        inp, weight, bias, running_mean, running_var, 0.1, 1e-5
-    )[1:]
+    ref_save_mean, ref_save_var = (
+        torch.ops.aten._native_batch_norm_legit_no_training.default(
+            inp, weight, bias, running_mean, running_var, 0.1, 1e-5
+        )[1:]
+    )
     assert save_mean.dtype == ref_save_mean.dtype
     assert save_var.dtype == ref_save_var.dtype
 

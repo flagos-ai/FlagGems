@@ -288,9 +288,7 @@ def _native_batch_norm_legit_no_training(
     # leaving the input dtype here failed the fp16/bf16 backward with
     # "Expected save_mean to have type Float but got Half".
     save_dtype = (
-        input.dtype
-        if input.dtype in (torch.float32, torch.float64)
-        else torch.float32
+        input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
     )
     if save_dtype != input.dtype:
         save_mean = save_mean.to(save_dtype)
