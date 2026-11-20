@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_grouped_matmul_swiglu_quant_v2:
+  shapes:
+    - [16, 2048, 1024, 128, 8]
+    - [64, 6144, 4096, 32, 4]
+  shape_desc: "M, K, gate plus up width, experts, MX bits"

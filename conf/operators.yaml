@@ -16102,6 +16102,17 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: npu_grouped_matmul_swiglu_quant_v2
+  description: Grouped MX matrix multiplication with a SwiGLU epilogue and per-block output quantization.
+  for:
+  - npu_grouped_matmul_swiglu_quant_v2
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: nuclear_norm
   description: 'Computes the nuclear norm (sum of singular values) of a matrix.
 
