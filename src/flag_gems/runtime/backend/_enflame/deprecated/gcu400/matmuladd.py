@@ -16,7 +16,7 @@
 
 """gcu400 matmuladd: the common matmul + bias kernel with broadcast-safe bias loads.
 
-The common ``flag_gems.deprecated.matmuladd`` loads the bias through a 2-D tile whose
+The common ``flag_gems.fused.matmuladd`` loads the bias through a 2-D tile whose
 pointer is ``bias.broadcast_to(out.shape)``.  When the bias is 1-D (shape ``(N,)``)
 that view has stride 0 along M, and a masked 2-D ``tl.load`` from a stride-0
 source with more than one valid row aborts the device on gcu400 (the DMA
