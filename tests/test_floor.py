@@ -181,20 +181,41 @@ def test_floor_hygon_contiguous_storage_offset():
 
 @pytest.mark.floor
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon registration")
-def test_floor_hygon_aten_registration(monkeypatch):
+@pytest.mark.parametrize(
+    "numel, expected_route",
+    [
+        (2**20 - 1, "masked"),
+        (2**20, "full"),
+        (2**20 + 1, "generic"),
+    ],
+)
+def test_floor_hygon_aten_registration(numel, expected_route, monkeypatch):
     provider = inspect.getmodule(flag_gems.floor)
+    assert provider.__name__ == "flag_gems.runtime.backend._hygon.ops.floor"
     calls = []
-    original = provider.floor
+    kernel = provider._floor_contiguous_kernel
+    generic = provider._generic_floor
 
-    def routed(A):
-        calls.append(A)
-        return original(A)
+    class ObserveLaunch:
+        def __getitem__(self, grid):
+            launch = kernel[grid]
 
-    # GeneralOpRegistrar resolves live overrides from the public export, not
-    # from the provider module whose function was captured at import time.
-    monkeypatch.setattr(flag_gems, "floor", routed)
-    inp = torch.tensor([[-1.25, 0.5]], dtype=torch.float32, device=flag_gems.device)
-    reference = torch.floor(inp.cpu())
+            def run(*args, **kwargs):
+                calls.append("full" if kwargs["FULL"] else "masked")
+                return launch(*args, **kwargs)
+
+            return run
+
+    def observe_generic(inp):
+        calls.append("generic")
+        return generic(inp)
+
+    # Observe launches without replacing the public export that ATen registers.
+    monkeypatch.setattr(provider, "_floor_contiguous_kernel", ObserveLaunch())
+    monkeypatch.setattr(provider, "_generic_floor", observe_generic)
+    cpu_inp = torch.linspace(-3.75, 3.75, numel, dtype=torch.float32)
+    inp = cpu_inp.to(device=flag_gems.device)
+    reference = torch.floor(cpu_inp)
     with monkeypatch.context() as registration:
         registration.setattr(flag_gems, "current_work_registrar", None)
         library = torch.library.Library("aten", "IMPL")
@@ -204,7 +225,7 @@ def test_floor_hygon_aten_registration(monkeypatch):
         finally:
             library._destroy()
     torch.testing.assert_close(result.cpu(), reference, rtol=0, atol=0)
-    assert len(calls) == 1 and calls[0] is inp
+    assert calls == [expected_route]
 
 
 @pytest.mark.floor

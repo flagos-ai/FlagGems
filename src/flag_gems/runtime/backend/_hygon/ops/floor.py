@@ -26,6 +26,7 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 _BLOCK_SIZE = 1024
+# Keep the large-tail case (2**20 + 1) on the generic pointwise path.
 _MAX_ELEMENTS = 1 << 20
 
 
