@@ -155,6 +155,11 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Float", "default"),
     ),
     (
+        "_cast_Half",
+        cast_Half,
+        lambda: torch_has_aten_overload("_cast_Half", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
@@ -727,6 +732,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),
+    ("_sparse_csr_tensor_unsafe", sparse_csr_tensor_unsafe),
     (
         "_sparse_log_softmax",
         _sparse_log_softmax,
