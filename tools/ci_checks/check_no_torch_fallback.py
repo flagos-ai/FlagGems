@@ -127,6 +127,10 @@ def classify(name: str, aliases: set[str]) -> bool:
         return True
     if name.startswith("torch.ops.aten."):
         return True
+    # Bumps the autograd version counter after a direct device-kernel mutation;
+    # it does not perform tensor computation.
+    if name == "torch.autograd.graph.increment_version":
+        return False
     if parts[1] in ALLOWED_TORCH_NAMESPACES or parts[1] in ALLOWED_TORCH_CALLS:
         return False
     # torch.ops.<custom> and torch.nn.* modules are not compute calls we can judge.
