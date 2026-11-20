@@ -30,10 +30,12 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.fused.moe_sum import moe_sum as _eager_moe_sum
-from flag_gems.fused.moe_sum import moe_sum_kernel as MOE_SUM_AUTOTUNER
-from flag_gems.fused.topk_softmax import topk_gating_softmax_kernel as TOPK_SOFTMAX_JIT
-from flag_gems.fused.topk_softmax import topk_softmax as _eager_topk_softmax
+from flag_gems.deprecated.moe_sum import moe_sum as _eager_moe_sum
+from flag_gems.deprecated.moe_sum import moe_sum_kernel as MOE_SUM_AUTOTUNER
+from flag_gems.deprecated.topk_softmax import (
+    topk_gating_softmax_kernel as TOPK_SOFTMAX_JIT,
+)
+from flag_gems.deprecated.topk_softmax import topk_softmax as _eager_topk_softmax
 from flag_gems.pt2.manifest import CompileKind, CompileOpSpec, register_compile_spec
 
 _HAS_TRITON_OP = hasattr(torch.library, "triton_op") and hasattr(
@@ -224,7 +226,7 @@ TOPK_SOFTMAX_SPEC = register_compile_spec(
     CompileOpSpec(
         op_name="flag_gems_pt2::topk_softmax",
         kind=CompileKind.TRITON_TRACEABLE,
-        source_kernel=("flag_gems.fused.topk_softmax.topk_gating_softmax_kernel"),
+        source_kernel=("flag_gems.deprecated.topk_softmax.topk_gating_softmax_kernel"),
         mutates_args=(
             "topk_weights",
             "topk_indices",
@@ -239,7 +241,7 @@ MOE_SUM_SPEC = register_compile_spec(
     CompileOpSpec(
         op_name="flag_gems_pt2::moe_sum",
         kind=CompileKind.TRITON_TRACEABLE,
-        source_kernel="flag_gems.fused.moe_sum.moe_sum_kernel (Autotuner)",
+        source_kernel="flag_gems.deprecated.moe_sum.moe_sum_kernel (Autotuner)",
         mutates_args=("output",),
         dynamic_dims=("num_tokens",),
         requires=_TRANSPARENT_REQUIRES,

@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -91,6 +93,24 @@ def test_fill_scalar_inplace():
         input_fn=fill_inplace_input_fn,
         torch_op=torch.ops.aten.fill_.Scalar,
         is_inplace=True,
+    )
+    bench.run()
+
+
+def fill_backward_input_fn(shape, dtype, device):
+    yield torch.empty(shape, dtype=dtype, device=device), torch.tensor(
+        3.14159, dtype=dtype, device=device
+    )
+
+
+@pytest.mark.fill_backward
+def test_fill_backward():
+    bench = base.GenericBenchmark(
+        op_name="fill_backward",
+        input_fn=fill_backward_input_fn,
+        torch_op=torch.fill,
+        gems_op=flag_gems.fill_tensor,
+        is_backward=True,
     )
     bench.run()
 

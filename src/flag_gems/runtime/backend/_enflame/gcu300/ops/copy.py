@@ -16,6 +16,8 @@ import logging
 
 import triton
 
+from flag_gems.ops.copy import copy_ as _generic_copy_
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -27,15 +29,10 @@ def copy(src):
     return src
 
 
-@pointwise_dynamic(is_tensor=(True,), promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def copy_(src):
-    return src
-
-
-_copy_pointwise_ = copy_
-
-
 def copy_(*args, **kwargs):
+    # aten's `copy_` takes `(dst, src)`, so the single-argument pointwise kernel
+    # that used to sit here raised "The lists of inputs and is_tensor must have
+    # the same length" on every call. The generic implementation already handles
+    # broadcasting, dtype conversion and aliasing, so defer to it.
     logger.debug("GEMS_ENFLAME COPY_")
-    return _copy_pointwise_(*args, **kwargs)
+    return _generic_copy_(*args, **kwargs)

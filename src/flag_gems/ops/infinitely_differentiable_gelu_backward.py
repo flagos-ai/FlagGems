@@ -19,11 +19,7 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
-
-erf = tl_extra_shim.erf
-exp = tl_extra_shim.exp
-pow = tl_extra_shim.pow
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +41,8 @@ def infinitely_differentiable_gelu_backward_kernel(grad, self_input):
     scale2: tl.constexpr = 0.3989422803  # 1 / sqrt(2 * pi)
     x_fp32 = self_input.to(tl.float32)
     dydx = (
-        scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2))
-        + 0.5 * erf(scale1 * x_fp32)
+        scale2 * x_fp32 * tl.exp(-(scale1 * x_fp32) * (scale1 * x_fp32))
+        + 0.5 * tl.math.erf(scale1 * x_fp32)
         + 0.5
     )
     dx = dydx * grad

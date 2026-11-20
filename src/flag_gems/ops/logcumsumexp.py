@@ -59,7 +59,24 @@ def logcumsumexp_kernel(inp, out, M, N, BLOCK_SIZE: tl.constexpr):
 
 
 def logcumsumexp_wrapper(inp, dim=1, dtype=None, out=None):
+    if inp.ndim == 0:
+        # A 0-D scan has exactly one element, so ``out == inp``. Reuse the 1-D
+        # path through a view instead of copying: ``out`` keeps the caller's
+        # buffer and the result keeps its 0-D shape.
+        if dim not in (0, -1):
+            raise IndexError(
+                "Dimension out of range (expected to be in range of [-1, 0])"
+            )
+        out_view = None if out is None else out.reshape(1)
+        result = logcumsumexp_wrapper(inp.reshape(1), 0, dtype, out_view)
+        return out if out is not None else result.reshape(())
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if inp.numel() == 0:
+        out_dtype = dtype if dtype is not None else inp.dtype
+        if out is None:
+            return torch.empty_like(inp, dtype=out_dtype)
+        out.resize_(inp.shape)
+        return out
     shape = inp.shape
     dim = dim % inp.ndim
     M = 1
@@ -137,8 +154,272 @@ def logcumsumexp_kernel_3d(inp, out, M, N, K, BLOCK_SIZE: tl.constexpr):
     tl.store(out + row_offset + offsets, result, mask=mask)
 
 
+# Backward scan tiling. ``BLOCK`` is the number of row elements one program
+# handles per iteration; it trades the length of the serial chunk chain (fewer,
+# larger iterations) against register pressure and the cost of the in-block
+# ``tl.associative_scan``. The values below come from sweeping BLOCK in
+# {64 .. 8192} and num_warps in {1 .. 32} over the operator's benchmark shapes:
+# the optimum tracks the tile width, and 32-bit accumulation prefers fewer warps
+# per tile above 1024 elements. A static choice keeps the launch path free of
+# per-call autotune bookkeeping, which is measurable at the smallest shapes.
+def _backward_launch_config(n, itemsize):
+    """Pick ``(BLOCK, num_warps)`` for a row of ``n`` elements."""
+    if n <= 64:
+        return 256, 2
+    if n <= 256:
+        return 512, 4
+    if n <= 1024:
+        # 32-bit rows have twice the register footprint per element, so they
+        # need the wider block split across more warps.
+        return 1024, 8 if itemsize >= 4 else 4
+    return 2048, 4 if itemsize >= 4 else 8
+
+
+@triton.jit
+def logcumsumexp_backward_combine(a1, b1, a2, b2):
+    """Compose two reverse-scan affine maps ``r -> a * r + b``.
+
+    ``tl.associative_scan`` hands the combine function the *accumulated* value
+    first and the *current* element second, so ``(a1, b1)`` is the suffix
+    ``R_{i+1}`` and ``(a2, b2)`` is the element ``i`` that is applied on top of
+    it:
+
+        a2 * (a1 * r + b1) + b2 == (a2 * a1) * r + (b2 + a2 * b1)
+
+    The compose operation is associative, so it can drive the scan. Keeping the
+    recurrence in this factored form is what makes it numerically stable: every
+    carried multiplier is ``exp(y_i - y_{i+1}) <= 1`` and every output factor is
+    ``exp(x_i - y_i) <= 1``, independently of the spread of the row.
+    """
+
+    return a2 * a1, b2 + a2 * b1
+
+
+@libentry()
+@triton.jit
+def logcumsumexp_backward_kernel(
+    grad_out,
+    inp,
+    out,
+    grad_in,
+    N,
+    K,
+    BLOCK: tl.constexpr,
+    IS_FP64: tl.constexpr,
+    ALIGNED: tl.constexpr,
+    VEC: tl.constexpr,
+):
+    """Backward of ``logcumsumexp`` along the middle axis of an (M, N, K) view.
+
+    With ``y = logcumsumexp(x, dim)`` the gradient is
+
+        gx_i = exp(x_i - y_i) * R_i
+        R_i = g_i + exp(y_i - y_{i+1}) * R_{i+1},  R_N = 0
+
+    which is the exact reverse-mode derivative: expanding the recurrence gives
+    ``gx_i = sum_{j >= i} g_j * exp(x_i - y_j)``. The recurrence is a
+    composition of affine maps, evaluated by
+    :func:`logcumsumexp_backward_combine` through ``tl.associative_scan`` with
+    ``reverse=True``.
+
+    The row is traversed in ascending memory order, so lanes map to consecutive
+    addresses (vectorized loads/stores) while the reverse scan still consumes
+    the recurrence from the highest index down. A row is split into
+    ``N // BLOCK`` unmasked chunks plus at most one masked chunk holding the
+    lowest ``N % BLOCK`` indices, which keeps lane predicates out of the hot
+    loop.
+    """
+    pid_r = tle.program_id(0)
+    if ALIGNED:
+        # K == 1 and N * itemsize is a multiple of 16 bytes (host-verified), so
+        # every row start is 16-byte aligned; tell the compiler N is a multiple
+        # of VEC so it can vectorize the lane accesses.
+        base = pid_r * tl.multiple_of(N, VEC)
+    else:
+        # Row ``r = m * K + k`` starts at ``m * N * K + k`` and advances by ``K``.
+        base = (pid_r // K) * N * K + (pid_r % K)
+
+    acc_ty = tl.float64 if IS_FP64 else tl.float32
+    lane = tl.arange(0, BLOCK)
+    num_full = N // BLOCK
+    tail = N - num_full * BLOCK
+    top_lane = lane == (BLOCK - 1)
+
+    carry = tl.zeros((), dtype=acc_ty)
+
+    if num_full > 0:
+        # The chunk holding the highest row index has no successor there.
+        offset = tail + (num_full - 1) * BLOCK + lane
+        ptr = base + offset * K
+
+        x = tl.load(inp + ptr).to(acc_ty)
+        y = tl.load(out + ptr).to(acc_ty)
+        g = tl.load(grad_out + ptr).to(acc_ty)
+
+        successor = tl.load(
+            out + base + (offset + 1) * K, mask=~top_lane, other=0.0
+        ).to(acc_ty)
+        # The highest element of the row terminates the recurrence: weight 0.
+        weight = tl.where(
+            top_lane, 0.0, tl.math.exp2((y - successor) * 1.4426950408889634)
+        )
+
+        a, b = tl.associative_scan(
+            (weight, g), 0, logcumsumexp_backward_combine, reverse=True
+        )
+        r = b
+        grad = tl.math.exp2((x - y) * 1.4426950408889634) * r
+        tl.store(grad_in + ptr, grad.to(grad_in.dtype.element_ty))
+
+        # The chunk's lowest index carries the suffix into the chunk below.
+        carry = tl.sum(tl.where(lane == 0, r, 0.0), axis=0)
+
+        # Remaining full chunks: a chunk's highest lane is followed by the row
+        # element at ``offset + 1``, so these iterations need no lane mask and
+        # no boundary select.
+        for step in range(1, num_full):
+            chunk = num_full - 1 - step
+            offset = tail + chunk * BLOCK + lane
+            ptr = base + offset * K
+
+            x = tl.load(inp + ptr).to(acc_ty)
+            y = tl.load(out + ptr).to(acc_ty)
+            g = tl.load(grad_out + ptr).to(acc_ty)
+            successor = tl.load(out + base + (offset + 1) * K).to(acc_ty)
+            weight = tl.math.exp2((y - successor) * 1.4426950408889634)
+
+            a, b = tl.associative_scan(
+                (weight, g), 0, logcumsumexp_backward_combine, reverse=True
+            )
+            r = a * carry + b
+            grad = tl.math.exp2((x - y) * 1.4426950408889634) * r
+            tl.store(grad_in + ptr, grad.to(grad_in.dtype.element_ty))
+
+            carry = tl.sum(tl.where(lane == 0, r, 0.0), axis=0)
+
+    if tail > 0:
+        # The lowest ``tail`` indices of the row, masked with the identity map.
+        mask = lane < tail
+        ptr = base + lane * K
+        x = tl.load(inp + ptr, mask=mask, other=0.0).to(acc_ty)
+        y = tl.load(out + ptr, mask=mask, other=0.0).to(acc_ty)
+        g = tl.load(grad_out + ptr, mask=mask, other=0.0).to(acc_ty)
+
+        has_successor = lane < tail - 1
+        successor = tl.load(
+            out + base + (lane + 1) * K, mask=has_successor, other=0.0
+        ).to(acc_ty)
+        if num_full > 0:
+            # The successor of this chunk's highest lane is the first element of
+            # the chunk above.
+            above = tl.load(out + base + tail * K).to(acc_ty)
+            delta = tl.where(has_successor, y - successor, y - above)
+            weight = tl.math.exp2(delta * 1.4426950408889634)
+        else:
+            # The row starts inside this chunk, so its highest lane ends it.
+            weight = tl.where(
+                has_successor,
+                tl.math.exp2((y - successor) * 1.4426950408889634),
+                0.0,
+            )
+        # Padding lanes are the identity of the affine composition.
+        weight = tl.where(mask, weight, 1.0)
+
+        a, b = tl.associative_scan(
+            (weight, g), 0, logcumsumexp_backward_combine, reverse=True
+        )
+        r = a * carry + b
+        grad = tl.math.exp2((x - y) * 1.4426950408889634) * r
+        tl.store(grad_in + ptr, grad.to(grad_in.dtype.element_ty), mask=mask)
+
+
+def logcumsumexp_backward(grad_output, inp, out, dim):
+    """Launch the reverse scan for ``dim`` of a contiguous (M, N, K) view."""
+    if inp.numel() == 0 or inp.ndim == 0:
+        return grad_output.contiguous().clone()
+
+    dim = dim % inp.ndim
+    shape = inp.shape
+    M = 1
+    for i in range(dim):
+        M *= shape[i]
+    N = shape[dim]
+    K = 1
+    for i in range(dim + 1, inp.ndim):
+        K *= shape[i]
+
+    # Non-contiguous inputs cannot be addressed with the linear (M, N, K) map.
+    grad_output = grad_output.contiguous()
+    inp = inp.contiguous()
+    out = out.contiguous()
+    grad_in = torch.empty_like(inp)
+
+    itemsize = inp.element_size()
+    vec = max(1, 16 // itemsize)
+    aligned = (
+        K == 1
+        and (N * itemsize) % 16 == 0
+        and inp.data_ptr() % 16 == 0
+        and out.data_ptr() % 16 == 0
+        and grad_output.data_ptr() % 16 == 0
+        and grad_in.data_ptr() % 16 == 0
+    )
+
+    block, num_warps = _backward_launch_config(N, itemsize)
+    with torch_device_fn.device(inp.device):
+        logcumsumexp_backward_kernel[(M * K,)](
+            grad_output,
+            inp,
+            out,
+            grad_in,
+            N,
+            K,
+            BLOCK=block,
+            IS_FP64=inp.dtype == torch.float64 or out.dtype == torch.float64,
+            ALIGNED=aligned,
+            VEC=vec if aligned else 1,
+            num_warps=num_warps,
+        )
+    return grad_in
+
+
+class LogcumsumexpFunction(torch.autograd.Function):
+    """Autograd entry for the first-order gradient of ``logcumsumexp``."""
+
+    @staticmethod
+    def forward(ctx, inp, dim=1, dtype=None):
+        if inp.ndim == 0:
+            if dim not in (0, -1):
+                raise IndexError(
+                    "Dimension out of range (expected to be in range of [-1, 0])"
+                )
+            dim = 0
+        else:
+            if dim < -inp.ndim or dim >= inp.ndim:
+                raise IndexError(
+                    "Dimension out of range (expected to be in range of "
+                    f"[-{inp.ndim}, {inp.ndim - 1}])"
+                )
+            dim = dim % inp.ndim
+        out = logcumsumexp_wrapper(inp, dim, dtype)
+        if ctx.needs_input_grad[0]:
+            ctx.save_for_backward(inp.contiguous(), out)
+            ctx.dim = dim
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[0]:
+            return None, None, None
+        inp, out = ctx.saved_tensors
+        grad_in = logcumsumexp_backward(grad_output, inp, out, ctx.dim)
+        return grad_in, None, None
+
+
 def logcumsumexp(inp, dim=1, *, dtype=None):
     logger.debug("GEMS LOGCUMSUMEXP")
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return LogcumsumexpFunction.apply(inp, dim, dtype)
     return logcumsumexp_wrapper(inp, dim, dtype)
 
 

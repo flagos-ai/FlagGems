@@ -20,6 +20,8 @@ import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +116,113 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     return out_in
 
 
-def i0(x: torch.Tensor):
-    logger.debug("GEMS I0")
+@triton.jit
+def _i1_approx(x):
+    """Modified Bessel function of the first kind, order one, I1(x).
+
+    Uses the Abramowitz & Stegun / Cephes piecewise expansion shared with
+    ``special_i1``. The caller upcasts ``x`` to fp32, or to fp64 for fp64
+    inputs, so the expansion runs at the input precision.
+    """
+    ax = tl.abs(x)
+
+    # Small region: |x| <= 3.75
+    y = x / 3.75
+    y2 = y * y
+    p = 0.00032411
+    p = 0.00301532 + y2 * p
+    p = 0.02658733 + y2 * p
+    p = 0.15084934 + y2 * p
+    p = 0.51498869 + y2 * p
+    p = 0.87890594 + y2 * p
+    p = 0.5 + y2 * p
+    ans_small = x * p
+
+    # Large region: |x| > 3.75
+    t = 3.75 / tl.maximum(ax, 1e-20)
+    q = -0.00420059
+    q = 0.01787654 + t * q
+    q = -0.02895312 + t * q
+    q = 0.02282967 + t * q
+    q = -0.01031555 + t * q
+    q = 0.00163801 + t * q
+    q = -0.00362018 + t * q
+    q = -0.03988024 + t * q
+    q = 0.39894228 + t * q
+    pref = tl.exp(ax) / tl.sqrt(tl.maximum(ax, 1e-20))
+    ans_large = pref * q
+    # I1 is an odd function.
+    ans_large = tl.where(x < 0, -ans_large, ans_large)
+
+    return tl.where(ax <= 3.75, ans_small, ans_large)
+
+
+@libentry()
+@triton.jit
+def _i0_backward_kernel(
+    grad_ptr,
+    x_ptr,
+    out_ptr,
+    n_elements,
+    IS_FP64: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+
+    # Keep fp64 inputs at fp64; everything else computes in fp32.
+    if IS_FP64:
+        x_c = x.to(tl.float64)
+        grad_c = grad.to(tl.float64)
+    else:
+        x_c = x.to(tl.float32)
+        grad_c = grad.to(tl.float32)
+
+    # d/dx I0(x) = I1(x)
+    dx = _i1_approx(x_c) * grad_c
+    tl.store(out_ptr + offsets, dx, mask=mask)
+
+
+def i0_backward(grad_out: torch.Tensor, x: torch.Tensor):
+    """Backward of ``i0``: ``grad_input = grad_out * I1(x)``.
+
+    ``aten`` has no registered ``i0_backward``; this is the public backward
+    primitive used by the autograd wrapper, tests and benchmarks.
+    """
+    logger.debug("GEMS I0_BACKWARD")
+    if x.device.type != flag_gems.device:
+        raise ValueError(f"i0_backward: x must be on {flag_gems.device} device")
+    if grad_out.device.type != flag_gems.device:
+        raise ValueError(f"i0_backward: grad_out must be on {flag_gems.device} device")
+    if x.numel() != grad_out.numel():
+        raise ValueError("i0_backward: x and grad_out must have the same numel")
+
+    x_c = x.contiguous()
+    grad_c = grad_out.contiguous()
+    out = torch.empty_like(x_c)
+    n_elements = x_c.numel()
+    if n_elements == 0:
+        return out
+
+    BLOCK_SIZE = 1024
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(x.device):
+        _i0_backward_kernel[grid](
+            grad_c,
+            x_c,
+            out,
+            n_elements,
+            IS_FP64=x_c.dtype == torch.float64,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+    return out
+
+
+def _i0_forward(x: torch.Tensor):
     if x.device.type != flag_gems.device:
         raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
     # Result dtype follows PyTorch's floating type behavior
@@ -123,6 +230,23 @@ def i0(x: torch.Tensor):
     out = torch.empty_like(x, dtype=out_dtype)
     _launch_i0(out, x)
     return out
+
+
+class I0Function(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x: torch.Tensor):
+        ctx.save_for_backward(x)
+        return _i0_forward(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        return i0_backward(grad_output, x)
+
+
+def i0(x: torch.Tensor):
+    logger.debug("GEMS I0")
+    return I0Function.apply(x)
 
 
 def i0_out(x: torch.Tensor, out: torch.Tensor):

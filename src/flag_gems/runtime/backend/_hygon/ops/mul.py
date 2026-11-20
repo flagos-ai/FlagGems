@@ -12,58 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-from numbers import Number
+from contextlib import nullcontext
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device as runtime_device
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils.shape_utils import volume
-
-logger = logging.getLogger(__name__)
-
-# Name of the active flag_gems backend device (e.g. "cuda", "musa"). The
-# optimized Triton path below runs on this device; tensors on other device
-# types (e.g. plain "cpu") fall through to the aten reference path. Gating on
-# the hardcoded literal "cuda" wrongly excluded backends whose device type is
-# not "cuda" (e.g. mthreads reports "musa") from the shared Triton path.
-_DEVICE_NAME = runtime_device.name
-
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
+from flag_gems.ops.mul import _as_tensor
+from flag_gems.ops.mul import _complex_output as _output
+from flag_gems.ops.mul import (
+    _contiguous_configs,
+    _dtype_name,
+    _mul,
+    _mul_,
+    _mul_contiguous_tile,
+    _prune_contiguous_configs,
+    mul_broadcast_get_configs,
 )
-
-
-def mul_get_configs():
-    return [
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
-    ]
-
-
-def mul_broadcast_get_configs():
-    return [
-        triton.Config({"BLOCK_SIZE": 256}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
-    ]
+from flag_gems.ops.mul import mul_complex_broadcast_func as _mul_complex_broadcast_func
+from flag_gems.ops.mul import mul_kernel
+from flag_gems.runtime import flagtune_enabled, torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 
 @libentry()
 @libtuner(
-    configs=mul_get_configs(),
+    configs=_contiguous_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
     warmup=5,
-    rep=5,
+    rep=20,
+    use_cuda_graph=True,
+    prune_configs_by={"early_config_prune": _prune_contiguous_configs},
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul",
 )
-@triton.jit
-def mul_kernel(
+@triton.heuristics(
+    {"EVEN_SIZE": lambda args: args["n_elements"] % args["BLOCK_SIZE"] == 0}
+)
+@triton.jit(do_not_specialize=["x_ptr", "y_ptr", "output_ptr"])
+def mul_contiguous_kernel(
     x_ptr,
     y_ptr,
     output_ptr,
@@ -71,27 +59,279 @@ def mul_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    EVEN_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out, mask=mask)
+    # The host launcher already restricts this path to n_elements < 2**31.
+    if dtype == "float16" or dtype == "float32" or dtype == "bfloat16":
+        _mul_contiguous_tile(
+            x_ptr,
+            y_ptr,
+            output_ptr,
+            n_elements,
+            tl.program_id(0),
+            BLOCK_SIZE,
+            EVEN_SIZE,
+        )
+    else:
+        offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
 @libtuner(
-    configs=mul_get_configs(),
+    configs=_contiguous_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
     warmup=5,
     rep=20,
+    use_cuda_graph=True,
+    prune_configs_by={"early_config_prune": _prune_contiguous_configs},
+    flagtune_op_name="mul",
+    flagtune_expand_op_name="mul",
+)
+@triton.heuristics(
+    {"EVEN_SIZE": lambda args: args["n_elements"] % args["BLOCK_SIZE"] == 0}
+)
+@triton.jit
+def mul_contiguous_bf16_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    n_elements,
+    dtype: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+    EVEN_SIZE: tl.constexpr,
+):
+    # Pointer specialization lets HCU vectorize BF16 memory accesses. Keep the
+    # original entry for other dtypes, whose small shapes prefer its layout.
+    _mul_contiguous_tile(
+        x_ptr, y_ptr, output_ptr, n_elements, tl.program_id(0), BLOCK_SIZE, EVEN_SIZE
+    )
+
+
+_hygon_contiguous_default = libentry()(mul_contiguous_kernel.fn.fn)
+_hygon_bf16_contiguous_default = libentry()(mul_contiguous_bf16_kernel.fn.fn)
+
+
+def _hygon_contiguous_config(n_elements, dtype):
+    if n_elements <= 4096:
+        if dtype == torch.bfloat16:
+            return 128, 1
+        return (1024, 4) if n_elements <= 1024 else (256, 1)
+    if n_elements <= 16384:
+        return 512, 2
+    if n_elements < 1048576:
+        return 1024, 8
+    if n_elements < 4194304:
+        return 2048, 4
+    return (1024, 4) if dtype == torch.bfloat16 else (1024, 8)
+
+
+def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
+    n_elements = output.numel()
+    if n_elements == 0:
+        return output
+    use_bf16 = dtype == torch.bfloat16 and n_elements >= 65536
+    kernel = mul_contiguous_bf16_kernel if use_bf16 else mul_contiguous_kernel
+    default_kernel = (
+        _hygon_bf16_contiguous_default if use_bf16 else _hygon_contiguous_default
+    )
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    guard = (
+        nullcontext()
+        if torch_device_fn.current_device() == output.device.index
+        else torch_device_fn.device(output.device)
+    )
+    with guard:
+        if (
+            n_elements < 2**31
+            and not torch._C._is_alias_of(output, a_t)
+            and not torch._C._is_alias_of(output, b_t)
+        ):
+            if (
+                dtype in (torch.float32, torch.bfloat16)
+                and n_elements <= 4194304
+                and kernel.fn._run_mode == "normal"
+                and not flagtune_enabled("mul")
+            ):
+                block, warps = _hygon_contiguous_config(n_elements, dtype)
+                default_kernel[grid](
+                    a_t,
+                    b_t,
+                    output,
+                    n_elements,
+                    dtype=_dtype_name(dtype),
+                    IS_BOOL=dtype is torch.bool,
+                    BLOCK_SIZE=block,
+                    num_warps=warps,
+                    num_stages=1,
+                )
+                return output
+            kernel[grid](
+                a_t,
+                b_t,
+                output,
+                n_elements,
+                dtype=_dtype_name(dtype),
+                IS_BOOL=dtype is torch.bool,
+            )
+            return output
+        mul_kernel[grid](
+            a_t,
+            b_t,
+            output,
+            n_elements,
+            dtype=_dtype_name(dtype),
+            IS_BOOL=dtype is torch.bool,
+        )
+    return output
+
+
+def _scalar_configs():
+    return [
+        triton.Config({"BLOCK_SIZE": block}, num_warps=warps, num_stages=1)
+        for block, warps in ((128, 1), (1024, 1), (1024, 4), (2048, 2))
+    ] + [triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3)]
+
+
+def _row_configs():
+    return [
+        triton.Config({"BLOCK_SIZE": block}, num_warps=warps, num_stages=1)
+        for block, warps in ((1024, 2), (1024, 4), (1024, 8), (2048, 1), (4096, 2))
+    ] + [
+        triton.Config({"BLOCK_SIZE": block}, num_warps=4, num_stages=3)
+        for block in (256, 512, 1024)
+    ]
+
+
+def _prune_mul_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    # BF16 shares the kernels without inheriting FP32-only preferences.
+    if args.get("dtype") == "bfloat16" and "n_cols" in args:
+        return configs
+    defaults = _row_configs() if "n_cols" in args else _scalar_configs()
+    default_signatures = {str(config) for config in defaults}
+    # Keep YAML's expanded domain; unavailable YAML still uses default pruning.
+    if any(str(config) not in default_signatures for config in configs):
+        return configs
+
+    elements = args.get("n_elements", 0)
+    outer = (
+        args.get("dtype") == "float32"
+        and 0 < args.get("n_cols", 0) <= 64
+        and args.get("a_s0") == 1
+        and args.get("a_s1") == 0
+        and args.get("b_s0") == 0
+        and args.get("b_s1") == 1
+        and args.get("out_s0") == args.get("n_cols")
+        and args.get("out_s1") == 1
+    )
+    if args.get("dtype") != "float32" or (
+        "n_cols" in args and not args.get("DENSE_COLS", 0) and not outer
+    ):
+        blocks = (256, 512, 1024) if "n_cols" in args else (1024,)
+        return [
+            c
+            for c in configs
+            if c.num_warps == 4
+            and c.num_stages == 3
+            and c.kwargs["BLOCK_SIZE"] in blocks
+        ]
+    if outer:
+        preferred = {(2048, 1)} if elements < 4194304 else {(4096, 2)}
+    elif "n_cols" in args:
+        preferred = {(1024, 8)} if elements >= 4194304 else {(1024, 2), (1024, 4)}
+    elif elements < 2048:
+        preferred = {(128, 1)}
+    elif elements <= 32768:
+        preferred = {(1024, 1), (2048, 2)}
+    else:
+        preferred = {(1024, 4)} if elements <= 131072 else {(2048, 2)}
+    return [
+        c
+        for c in configs
+        if c.num_stages == 1 and (c.kwargs["BLOCK_SIZE"], c.num_warps) in preferred
+    ]
+
+
+@triton.jit
+def _mul_dense_row(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    n_elements,
+    N_COLS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    EVEN_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if EVEN_SIZE:
+        scale = tl.load(a_ptr + offsets // N_COLS)
+        matrix = tl.load(b_ptr + offsets)
+        tl.store(out_ptr + offsets, scale * matrix)
+    else:
+        mask = offsets < n_elements
+        scale = tl.load(a_ptr + offsets // N_COLS, mask=mask, other=0)
+        matrix = tl.load(b_ptr + offsets, mask=mask, other=0)
+        tl.store(out_ptr + offsets, scale * matrix, mask=mask)
+
+
+@triton.jit
+def _mul_outer_broadcast(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    n_elements,
+    N_COLS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    BLOCK_N: tl.constexpr = min(BLOCK_SIZE, triton.next_power_of_2(N_COLS))
+    BLOCK_M: tl.constexpr = max(1, BLOCK_SIZE // BLOCK_N)
+    COL_TILES: tl.constexpr = tl.cdiv(N_COLS, BLOCK_N)
+    pid = tl.program_id(0)
+    rows = (pid // COL_TILES) * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = (pid % COL_TILES) * BLOCK_N + tl.arange(0, BLOCK_N)
+    row_mask = rows < n_elements // N_COLS
+    col_mask = cols < N_COLS
+    scale = tl.load(a_ptr + rows, row_mask, other=0)
+    vector = tl.load(b_ptr + cols, col_mask, other=0)
+    tl.store(
+        out_ptr + rows[:, None] * N_COLS + cols[None, :],
+        scale[:, None] * vector[None, :],
+        row_mask[:, None] & col_mask[None, :],
+    )
+
+
+@libentry()
+@libtuner(
+    configs=_scalar_configs(),
+    key=["n_elements", "dtype"],
+    strategy=["align32", "default"],
+    warmup=5,
+    rep=20,
+    use_cuda_graph=True,
+    prune_configs_by={"early_config_prune": _prune_mul_configs},
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul",
     flagtune_op_id="flaggems/mul",
     flagtune_variant="scalar",
     policy="flagtune",
+)
+@triton.heuristics(
+    {
+        "EVEN_SIZE": lambda args: args["n_elements"] % args["BLOCK_SIZE"] == 0,
+        "SINGLE_BLOCK": lambda args: args["n_elements"] <= args["BLOCK_SIZE"],
+        "PACKED": lambda args: args["dtype"] == "float32"
+        and 2048 <= args["n_elements"] <= 32768,
+        "PAIR_TILES": lambda args: args["dtype"] == "bfloat16"
+        and args["n_elements"] >= 262144
+        and args["n_elements"] % (2 * args["BLOCK_SIZE"]) == 0,
+    }
 )
 @triton.jit
 def mul_scalar_kernel(
@@ -102,26 +342,54 @@ def mul_scalar_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    EVEN_SIZE: tl.constexpr,
+    SINGLE_BLOCK: tl.constexpr,
+    PACKED: tl.constexpr,
+    PAIR_TILES: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    out = x & scalar if IS_BOOL else x * scalar
-    tl.store(output_ptr + offsets, out, mask=mask)
+    if PAIR_TILES:
+        # Merge two full tiles so the compiler can emit wider BF16 memory accesses.
+        offsets = tl.program_id(0) * (2 * BLOCK_SIZE) + tl.arange(0, 2 * BLOCK_SIZE)
+        x = tl.load(x_ptr + offsets)
+        tl.store(output_ptr + offsets, x * scalar)
+        return
+
+    if PACKED:
+        offsets = tl.arange(0, BLOCK_SIZE // 4)[:, None] * 4 + tl.arange(0, 4)[None, :]
+    else:
+        offsets = tl.arange(0, BLOCK_SIZE)
+    if not SINGLE_BLOCK:
+        offsets += tl.program_id(0) * BLOCK_SIZE
+    # Exact tiles need no per-element bounds checks. All launchers use ceildiv
+    # grids, so only the final partial tile requires a mask.
+    if EVEN_SIZE:
+        x = tl.load(x_ptr + offsets)
+        value = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, value)
+    else:
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        value = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, value, mask=mask)
 
 
 @libentry()
 @libtuner(
-    configs=mul_broadcast_get_configs(),
-    key=["n_elements", "n_cols", "dtype"],
-    strategy=["align32", "default", "default"],
+    configs=_row_configs(),
+    key=["n_elements", "n_cols", "dtype", "DENSE_COLS"],
+    strategy=["align32", "default", "default", "default"],
     warmup=5,
-    rep=5,
+    rep=20,
+    use_cuda_graph=True,
+    prune_configs_by={"early_config_prune": _prune_mul_configs},
     flagtune_op_name="mul",
-    flagtune_expand_op_name="mul_broadcast_2d",
+    flagtune_expand_op_name="mul_broadcast_2d_dense_row",
     flagtune_op_id="flaggems/mul",
     flagtune_variant="broadcast_2d",
     policy="flagtune",
+)
+@triton.heuristics(
+    {"EVEN_SIZE": lambda args: args["n_elements"] % args["BLOCK_SIZE"] == 0}
 )
 @triton.jit
 def mul_broadcast_2d_kernel(
@@ -129,7 +397,7 @@ def mul_broadcast_2d_kernel(
     b_ptr,
     out_ptr,
     n_elements,
-    n_cols,
+    n_cols: tl.constexpr,
     a_s0: tl.constexpr,
     a_s1: tl.constexpr,
     b_s0: tl.constexpr,
@@ -139,106 +407,35 @@ def mul_broadcast_2d_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
+    EVEN_SIZE: tl.constexpr,
+    DENSE_COLS: tl.constexpr = 0,
 ):
+    if DENSE_COLS:
+        _mul_dense_row(
+            a_ptr, b_ptr, out_ptr, n_elements, DENSE_COLS, BLOCK_SIZE, EVEN_SIZE
+        )
+        return
+    if (
+        (dtype == "float32" or dtype == "bfloat16")
+        and n_cols > 0
+        and n_cols <= 64
+        and a_s0 == 1
+        and a_s1 == 0
+        and b_s0 == 0
+        and b_s1 == 1
+        and out_s0 == n_cols
+        and out_s1 == 1
+    ):
+        _mul_outer_broadcast(a_ptr, b_ptr, out_ptr, n_elements, n_cols, BLOCK_SIZE)
+        return
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     row = offsets // n_cols
     col = offsets - row * n_cols
     a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
     b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
-
-
-@libentry()
-@libtuner(
-    configs=mul_broadcast_get_configs(),
-    key=["n_elements", "dtype"],
-    strategy=["align32", "default"],
-    warmup=5,
-    rep=5,
-    flagtune_op_name="mul",
-    flagtune_expand_op_name="mul",
-)
-@triton.jit
-def mul_generic_nd_kernel(
-    a_ptr,
-    b_ptr,
-    out_ptr,
-    n_elements,
-    SHAPE: tl.constexpr,
-    A_STRIDE: tl.constexpr,
-    B_STRIDE: tl.constexpr,
-    OUT_STRIDE: tl.constexpr,
-    NDIM: tl.constexpr,
-    dtype: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-    IS_BOOL: tl.constexpr,
-):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        a_offsets += idx * A_STRIDE[dim]
-        b_offsets += idx * B_STRIDE[dim]
-        out_offsets += idx * OUT_STRIDE[dim]
-
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
-
-
-@libentry()
-@libtuner(
-    configs=mul_broadcast_get_configs(),
-    key=["n_elements", "dtype"],
-    strategy=["align32", "default"],
-    warmup=5,
-    rep=5,
-    flagtune_op_name="mul",
-    flagtune_expand_op_name="mul",
-)
-@triton.jit
-def mul_generic_nd_runtime_meta_kernel(
-    a_ptr,
-    b_ptr,
-    out_ptr,
-    meta_ptr,
-    n_elements,
-    NDIM: tl.constexpr,
-    dtype: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-    IS_BOOL: tl.constexpr,
-):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        a_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        a_offsets += idx * a_stride_dim
-        b_offsets += idx * b_stride_dim
-        out_offsets += idx * out_stride_dim
-
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+    value = a & b if IS_BOOL else a * b
+    tl.store(out_ptr + row * out_s0 + col * out_s1, value, mask=mask)
 
 
 @libentry()
@@ -374,59 +571,6 @@ def mul_complex_generic_nd_runtime_meta_kernel(
     tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
-def _is_tensor_or_number(value) -> bool:
-    return isinstance(value, torch.Tensor) or isinstance(value, Number)
-
-
-def _select_device(a, b):
-    for value in (a, b):
-        if isinstance(value, torch.Tensor):
-            return value.device
-    return torch.device("cpu")
-
-
-def _as_tensor(value, *, device, dtype):
-    if isinstance(value, torch.Tensor):
-        if value.device != device or value.dtype != dtype:
-            return value.to(device=device, dtype=dtype)
-        return value
-    return torch.tensor(value, device=device, dtype=dtype)
-
-
-def _result_dtype(a, b):
-    return torch.result_type(a, b)
-
-
-def _dtype_name(dtype):
-    return str(dtype).split(".")[-1]
-
-
-def _is_bool_dtype(dtype):
-    return dtype is torch.bool
-
-
-def _triton_version_lt(major, minor):
-    version = triton.__version__.split("+", 1)[0]
-    parts = version.split(".")
-    try:
-        current = (int(parts[0]), int(parts[1]))
-    except (IndexError, ValueError):
-        return False
-    return current < (major, minor)
-
-
-def _needs_runtime_meta_for_constexpr_tuple():
-    if _triton_version_lt(3, 3):
-        return True
-    try:
-        import triton.language.core as tl_core
-
-        frontend_tuple = getattr(tl_core, "tuple", None)
-        return frontend_tuple is None or not hasattr(frontend_tuple, "__getitem__")
-    except Exception:
-        return False
-
-
 def _broadcast_shape(a_t, b_t):
     sa, sb = a_t.shape, b_t.shape
     if sa == sb:
@@ -449,21 +593,6 @@ def _broadcast_shape(a_t, b_t):
     return tuple(out)
 
 
-def _broadcasted_stride(shape, stride, out_shape):
-    if not out_shape:
-        return ()
-    offset = len(out_shape) - len(shape)
-    result = []
-    for out_dim, out_size in enumerate(out_shape):
-        in_dim = out_dim - offset
-        if in_dim < 0:
-            result.append(0)
-            continue
-        size = shape[in_dim]
-        result.append(0 if size == 1 and out_size != 1 else stride[in_dim])
-    return tuple(result)
-
-
 def _real_output(a_t, b_t, out=None):
     out_shape = _broadcast_shape(a_t, b_t)
     if out is None:
@@ -472,75 +601,38 @@ def _real_output(a_t, b_t, out=None):
         if tuple(b_t.shape) == out_shape:
             return torch.empty_like(b_t)
         return torch.empty(out_shape, device=a_t.device, dtype=a_t.dtype)
-    if tuple(out.shape) != out_shape:
-        raise RuntimeError(
-            f"output with shape {tuple(out.shape)} cannot be broadcast to {out_shape}"
-        )
-    if out.dtype != a_t.dtype:
-        raise RuntimeError(
-            f"output dtype {out.dtype} does not match result dtype {a_t.dtype}"
-        )
-    if out.device != a_t.device:
-        raise RuntimeError("output must be on the same device as inputs")
-    return out
-
-
-def _can_use_contiguous_tensor_tensor(a_t, b_t, out):
-    return (
-        tuple(a_t.shape) == tuple(b_t.shape) == tuple(out.shape)
-        and a_t.is_contiguous()
-        and b_t.is_contiguous()
-        and out.is_contiguous()
-        and not a_t.is_complex()
-        and not b_t.is_complex()
-    )
-
-
-def _can_use_contiguous_scalar(tensor, out):
-    return tensor.is_contiguous() and out.is_contiguous() and not tensor.is_complex()
-
-
-def _real_layout(out_shape, a_t, b_t, out):
-    a_stride = _broadcasted_stride(tuple(a_t.shape), tuple(a_t.stride()), out_shape)
-    b_stride = _broadcasted_stride(tuple(b_t.shape), tuple(b_t.stride()), out_shape)
-    out_stride = tuple(out.stride()) if out_shape else ()
-    return a_stride, b_stride, out_stride
-
-
-def _can_use_2d_broadcast(out_shape):
-    return len(out_shape) == 2
-
-
-def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
-    n_elements = output.numel()
-    if n_elements == 0:
-        return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(output.device):
-        mul_kernel[grid](
-            a_t,
-            b_t,
-            output,
-            n_elements,
-            dtype=_dtype_name(dtype),
-            IS_BOOL=_is_bool_dtype(dtype),
-        )
-    return output
+    return _output(out_shape, device=a_t.device, dtype=a_t.dtype, out=out)
 
 
 def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    def grid(meta):
+        block = meta["BLOCK_SIZE"]
+        if (
+            dtype == torch.bfloat16
+            and n_elements >= 262144
+            and n_elements % (2 * block) == 0
+        ):
+            block *= 2
+        return (triton.cdiv(n_elements, block),)
+
     with torch_device_fn.device(output.device):
-        mul_scalar_kernel[grid](
+        kernel = mul_scalar_kernel
+        launch = {}
+        if any(torch._C._is_alias_of(output, x) for x in (tensor,)):
+            kernel = kernel.fn.fn
+            launch = dict(BLOCK_SIZE=1024, num_warps=4, num_stages=3)
+        kernel[grid](
             tensor,
             output,
             scalar,
             n_elements,
             dtype=_dtype_name(dtype),
-            IS_BOOL=_is_bool_dtype(dtype),
+            IS_BOOL=dtype is torch.bool,
+            **launch,
         )
     return output
 
@@ -549,16 +641,42 @@ def _launch_2d_broadcast(
     a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
 ):
     n_elements = output.numel()
-    if n_elements == 0:
+    if not n_elements:
         return output
+    cols = out_shape[1]
+    dense_cols = 0
+    outer_cols = 0
+    if (
+        dtype in (torch.float32, torch.bfloat16)
+        and output.is_contiguous()
+        and n_elements < 2**31
+    ):
+        if b_stride == (1, 0) and a_stride in ((cols, 1), (0, 1)):
+            a_t, b_t = b_t, a_t
+            a_stride, b_stride = b_stride, a_stride
+        if a_stride == (1, 0) and b_stride == (cols, 1):
+            dense_cols = cols
+        elif a_stride == (1, 0) and b_stride == (0, 1) and 0 < cols <= 64:
+            outer_cols = cols
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    if outer_cols:
+        padded = triton.next_power_of_2(outer_cols)
+        grid = lambda meta: (
+            triton.cdiv(out_shape[0], max(1, meta["BLOCK_SIZE"] // padded))
+            * triton.cdiv(outer_cols, min(meta["BLOCK_SIZE"], padded)),
+        )
     with torch_device_fn.device(output.device):
-        mul_broadcast_2d_kernel[grid](
+        kernel = mul_broadcast_2d_kernel
+        launch = {}
+        if any(torch._C._is_alias_of(output, x) for x in (a_t, b_t)):
+            kernel = kernel.fn.fn
+            launch = dict(BLOCK_SIZE=1024, num_warps=4, num_stages=3)
+        kernel[grid](
             a_t,
             b_t,
             output,
             n_elements,
-            out_shape[1],
+            cols,
             a_s0=a_stride[0],
             a_s1=a_stride[1],
             b_s0=b_stride[0],
@@ -566,105 +684,11 @@ def _launch_2d_broadcast(
             out_s0=out_stride[0],
             out_s1=out_stride[1],
             dtype=_dtype_name(dtype),
-            IS_BOOL=_is_bool_dtype(dtype),
+            IS_BOOL=dtype is torch.bool,
+            DENSE_COLS=dense_cols,
+            **launch,
         )
     return output
-
-
-def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype):
-    n_elements = output.numel()
-    if n_elements == 0:
-        return output
-    shape = out_shape or (1,)
-    ndim = len(shape)
-    a_stride = a_stride or (0,)
-    b_stride = b_stride or (0,)
-    out_stride = out_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    if _needs_runtime_meta_for_constexpr_tuple():
-        meta = torch.tensor(
-            shape + a_stride + b_stride + out_stride,
-            device=output.device,
-            dtype=torch.int64,
-        )
-        with torch_device_fn.device(output.device):
-            mul_generic_nd_runtime_meta_kernel[grid](
-                a_t,
-                b_t,
-                output,
-                meta,
-                n_elements,
-                NDIM=ndim,
-                dtype=_dtype_name(dtype),
-                IS_BOOL=_is_bool_dtype(dtype),
-            )
-        return output
-
-    with torch_device_fn.device(output.device):
-        mul_generic_nd_kernel[grid](
-            a_t,
-            b_t,
-            output,
-            n_elements,
-            SHAPE=shape,
-            A_STRIDE=a_stride,
-            B_STRIDE=b_stride,
-            OUT_STRIDE=out_stride,
-            NDIM=ndim,
-            dtype=_dtype_name(dtype),
-            IS_BOOL=_is_bool_dtype(dtype),
-        )
-    return output
-
-
-def mul_broadcast_func(a, b, out=None):
-    if not (_is_tensor_or_number(a) and _is_tensor_or_number(b)):
-        raise TypeError("mul expects tensor or scalar inputs")
-
-    device = _select_device(a, b)
-    if device.type != _DEVICE_NAME:
-        if out is not None:
-            return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
-        return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
-
-    dtype = _result_dtype(a, b)
-
-    if (
-        isinstance(a, torch.Tensor)
-        and not isinstance(b, torch.Tensor)
-        and not isinstance(b, complex)
-    ):
-        a_t = _as_tensor(a, device=device, dtype=dtype)
-        output = _real_output(a_t, a_t.new_empty(()), out=out)
-        if _can_use_contiguous_scalar(a_t, output):
-            return _launch_scalar(a_t, b, output, dtype)
-
-    if (
-        isinstance(b, torch.Tensor)
-        and not isinstance(a, torch.Tensor)
-        and not isinstance(a, complex)
-    ):
-        b_t = _as_tensor(b, device=device, dtype=dtype)
-        output = _real_output(b_t.new_empty(()), b_t, out=out)
-        if _can_use_contiguous_scalar(b_t, output):
-            return _launch_scalar(b_t, a, output, dtype)
-
-    a_t = _as_tensor(a, device=device, dtype=dtype)
-    b_t = _as_tensor(b, device=device, dtype=dtype)
-    output = _real_output(a_t, b_t, out=out)
-
-    if _can_use_contiguous_tensor_tensor(a_t, b_t, output):
-        return _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype)
-
-    out_shape = tuple(output.shape)
-    a_stride, b_stride, out_stride = _real_layout(out_shape, a_t, b_t, output)
-    if _can_use_2d_broadcast(out_shape):
-        return _launch_2d_broadcast(
-            a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
-        )
-    return _launch_generic(
-        a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
-    )
 
 
 def _complex_parts(value, *, device, complex_dtype):
@@ -687,150 +711,43 @@ def _complex_parts(value, *, device, complex_dtype):
     )
 
 
-def _complex_output(out_shape, *, device, dtype, out=None):
-    if out is None:
-        return torch.empty(out_shape, device=device, dtype=dtype)
-    if tuple(out.shape) != out_shape:
-        raise RuntimeError(
-            f"output with shape {tuple(out.shape)} cannot be broadcast to {out_shape}"
-        )
-    if out.dtype != dtype:
-        raise RuntimeError(
-            f"output dtype {out.dtype} does not match result dtype {dtype}"
-        )
-    if out.device != device:
-        raise RuntimeError("output must be on the same device as inputs")
-    return out
-
-
-def _complex_layout(out_shape, tensors, out_r, out_i):
-    strides = [
-        _broadcasted_stride(tuple(tensor.shape), tuple(tensor.stride()), out_shape)
-        for tensor in tensors
-    ]
-    return (
-        strides,
-        tuple(out_r.stride()) if out_shape else (),
-        tuple(out_i.stride()) if out_shape else (),
-    )
-
-
-def _launch_complex_generic(
-    ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype
-):
-    n_elements = volume(out_shape)
-    if n_elements == 0:
-        return output
-    out_view = torch.view_as_real(output)
-    out_r = out_view[..., 0]
-    out_i = out_view[..., 1]
-    shape = out_shape or (1,)
-    ndim = len(shape)
-    strides = [stride or (0,) for stride in strides]
-    out_r_stride = out_r_stride or (0,)
-    out_i_stride = out_i_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    if _needs_runtime_meta_for_constexpr_tuple():
-        meta = torch.tensor(
-            shape
-            + strides[0]
-            + strides[1]
-            + strides[2]
-            + strides[3]
-            + out_r_stride
-            + out_i_stride,
-            device=output.device,
-            dtype=torch.int64,
-        )
-        with torch_device_fn.device(output.device):
-            mul_complex_generic_nd_runtime_meta_kernel[grid](
-                ar,
-                ai,
-                br,
-                bi,
-                out_r,
-                out_i,
-                meta,
-                n_elements,
-                NDIM=ndim,
-                dtype=_dtype_name(dtype),
-            )
-        return output
-
-    with torch_device_fn.device(output.device):
-        mul_complex_generic_nd_kernel[grid](
-            ar,
-            ai,
-            br,
-            bi,
-            out_r,
-            out_i,
-            n_elements,
-            SHAPE=shape,
-            AR_STRIDE=strides[0],
-            AI_STRIDE=strides[1],
-            BR_STRIDE=strides[2],
-            BI_STRIDE=strides[3],
-            OUT_R_STRIDE=out_r_stride,
-            OUT_I_STRIDE=out_i_stride,
-            NDIM=ndim,
-            dtype=_dtype_name(dtype),
-        )
-    return output
-
-
 def mul_complex_broadcast_func(a, b, out=None):
-    device = _select_device(a, b)
-    if device.type != _DEVICE_NAME:
-        if out is not None:
-            return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
-        return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
+    return _mul_complex_broadcast_func(
+        a,
+        b,
+        out=out,
+        parts=_complex_parts,
+        kernels=(
+            mul_complex_generic_nd_kernel,
+            mul_complex_generic_nd_runtime_meta_kernel,
+        ),
+    )
 
-    dtype = _result_dtype(a, b)
-    ar, ai = _complex_parts(a, device=device, complex_dtype=dtype)
-    br, bi = _complex_parts(b, device=device, complex_dtype=dtype)
-    out_shape = tuple(
-        torch.broadcast_shapes(
-            tuple(ar.shape), tuple(ai.shape), tuple(br.shape), tuple(bi.shape)
-        )
-    )
-    output = _complex_output(out_shape, device=device, dtype=dtype, out=out)
-    out_view = torch.view_as_real(output)
-    strides, out_r_stride, out_i_stride = _complex_layout(
-        out_shape, [ar, ai, br, bi], out_view[..., 0], out_view[..., 1]
-    )
-    return _launch_complex_generic(
-        ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype
-    )
+
+# Reuse common validation and fallbacks with this backend's launch policies.
+_REAL_LAUNCHERS = (
+    _launch_contiguous_tensor_tensor,
+    _launch_scalar,
+    _launch_2d_broadcast,
+)
 
 
 def mul(A, B, *, out=None):
-    logger.debug("GEMS_HYGON MUL")
-    if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
-        if (
-            (isinstance(A, torch.Tensor) and A.is_complex())
-            or (isinstance(B, torch.Tensor) and B.is_complex())
-            or isinstance(A, complex)
-            or isinstance(B, complex)
-        ):
-            return mul_complex_broadcast_func(A, B, out=out)
-        return mul_broadcast_func(A, B, out=out)
-    return torch.tensor(A * B)
+    return _mul(
+        A,
+        B,
+        out=out,
+        launchers=_REAL_LAUNCHERS,
+        real_output=_real_output,
+        complex_mul=mul_complex_broadcast_func,
+    )
 
 
 def mul_(A, B):
-    logger.debug("GEMS_HYGON MUL_")
-    if not isinstance(A, torch.Tensor):
-        raise TypeError("mul_ expects the first argument to be a tensor")
-    dtype = _result_dtype(A, B)
-    if dtype != A.dtype:
-        raise RuntimeError(
-            f"result type {dtype} cannot be cast to inplace dtype {A.dtype}"
-        )
-    if (
-        A.is_complex()
-        or (isinstance(B, torch.Tensor) and B.is_complex())
-        or isinstance(B, complex)
-    ):
-        return mul_complex_broadcast_func(A, B, out=A)
-    return mul_broadcast_func(A, B, out=A)
+    return _mul_(
+        A,
+        B,
+        launchers=_REAL_LAUNCHERS,
+        real_output=_real_output,
+        complex_mul=mul_complex_broadcast_func,
+    )

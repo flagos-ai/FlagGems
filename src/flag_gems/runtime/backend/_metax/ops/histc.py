@@ -12,450 +12,492 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+import operator
 
-import numpy as np
 import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger(__name__)
-
-
-_BLOCK = 1024
-_RBLOCK = 1024
-_HIST_BLOCK = 2048
-_SMALL_BLOCK = 1024
-_HIST_NB_MAX = 512
-_HIST_WARPS = 2
-_HIST_ACC_MIN = 1 << 22  # use register-accumulate variant above this many elements
+# ---------------------------------------------------------------------------
+# device kernels
+# ---------------------------------------------------------------------------
 
 
 @triton.jit
-def _div_rn32(num, sp):
-    # Correctly-rounded fp32 division via plain div + Markstein FMA refinement,
-    # matching IEEE-RN (torch reference) while avoiding the slow precise_divf.
-    q0 = num / sp
-    e = tl.math.fma(-q0, sp, num)
-    rc = 1.0 / sp
-    return tl.math.fma(e, rc, q0)
+def _mm_contig(x_ptr, mm_ptr, N, BLOCK: tl.constexpr, F64: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+    if F64:
+        x = x.to(tl.float64)
+    else:
+        x = x.to(tl.float32)
+    lmin = tl.min(tl.where(mask, x, float("inf")))
+    lmax = tl.max(tl.where(mask, x, float("-inf")))
+    tl.store(mm_ptr + 2 * pid, lmin)
+    tl.store(mm_ptr + 2 * pid + 1, lmax)
 
 
 @triton.jit
-def _histc_hist_kernel(
-    inp_ptr,
-    out_ptr,
+def _mm_strided(
+    x_ptr,
     mm_ptr,
-    n_elements,
-    mn,
-    mx,
-    bn,
-    IS_FLOAT: tl.constexpr,
-    IS_FP64: tl.constexpr,
-    IS_INT: tl.constexpr,
-    USE_PTR: tl.constexpr,
-    NO_MASK: tl.constexpr,
-    NB: tl.constexpr,
+    N,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    t0,
+    t1,
+    t2,
+    t3,
+    t4,
+    t5,
+    t6,
+    t7,
     BLOCK: tl.constexpr,
+    F64: tl.constexpr,
 ):
-    pid = tl.program_id(0).to(tl.int64)
-    offs = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    if NO_MASK:
-        x = tl.load(inp_ptr + offs)
-    else:
-        mask = offs < n_elements
-        x = tl.load(inp_ptr + offs, mask=mask, other=0)
-    if USE_PTR:
-        mn = tl.load(mm_ptr + 0)
-        mx = tl.load(mm_ptr + 1)
-        bn = tl.load(mm_ptr + 2)
-    if IS_INT:
-        xi = x.to(tl.int64)
-        mni = mn.to(tl.int64)
-        mxi = mx.to(tl.int64)
-        bni = bn.to(tl.int64)
-        span = mxi - mni
-        safe = tl.where(span == 0, 1, span)
-        t = (xi - mni) * bni // safe
-        idx = t.to(tl.int32)
-        idx = tl.where(span == 0, (bni // 2).to(tl.int32), idx)
-        idx = tl.minimum(idx, bni.to(tl.int32) - 1)
-        idx = tl.maximum(idx, 0)
-        if NO_MASK:
-            valid = (x >= mni) & (x <= mxi)
-        else:
-            valid = mask & (x >= mni) & (x <= mxi)
-    else:
-        sp = mx - mn
-        if IS_FP64:
-            t = (x - mn) * bn / sp
-        else:
-            t = _div_rn32((x - mn) * bn, sp)
-        idx = t.to(tl.int32)
-        idx = tl.where(sp == 0, bn.to(tl.int32) // 2, idx)
-        idx = tl.minimum(idx, bn.to(tl.int32) - 1)
-        idx = tl.maximum(idx, 0)
-        if NO_MASK:
-            valid = (x >= mn) & (x <= mx)
-        else:
-            valid = mask & (x >= mn) & (x <= mx)
-    hidx = tl.where(valid, idx, NB - 1)
-    h = tl.histogram(hidx, num_bins=NB)
-    if IS_INT:
-        if IS_FP64:
-            hc = h.to(tl.int64)
-        else:
-            hc = h.to(tl.int32)
-    else:
-        if IS_FP64:
-            hc = h.to(tl.float64)
-        else:
-            hc = h.to(tl.float32)
-    tl.atomic_add(
-        out_ptr + tl.arange(0, NB), hc, mask=tl.arange(0, NB) < bn.to(tl.int32)
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    src = (
+        ((offs // d0) % s0) * t0
+        + ((offs // d1) % s1) * t1
+        + ((offs // d2) % s2) * t2
+        + ((offs // d3) % s3) * t3
+        + ((offs // d4) % s4) * t4
+        + ((offs // d5) % s5) * t5
+        + ((offs // d6) % s6) * t6
+        + ((offs // d7) % s7) * t7
     )
+    x = tl.load(x_ptr + src, mask=mask, other=0.0)
+    if F64:
+        x = x.to(tl.float64)
+    else:
+        x = x.to(tl.float32)
+    lmin = tl.min(tl.where(mask, x, float("inf")))
+    lmax = tl.max(tl.where(mask, x, float("-inf")))
+    tl.store(mm_ptr + 2 * pid, lmin)
+    tl.store(mm_ptr + 2 * pid + 1, lmax)
 
 
 @triton.jit
-def _histc_acc_kernel(
-    inp_ptr,
+def _hist_agg_contig(
+    x_ptr,
     out_ptr,
     mm_ptr,
-    n_elements,
-    mn,
-    mx,
-    bn,
-    IS_FLOAT: tl.constexpr,
-    IS_FP64: tl.constexpr,
-    IS_INT: tl.constexpr,
-    USE_PTR: tl.constexpr,
-    NO_MASK: tl.constexpr,
-    NB: tl.constexpr,
-    BLOCK: tl.constexpr,
-    ITERS: tl.constexpr,
-):
-    # Register-accumulate variant: each block covers ITERS*BLOCK elements with
-    # per-block histograms accumulated in registers, then one atomic merge.
-    pid = tl.program_id(0).to(tl.int64)
-    if USE_PTR:
-        mn = tl.load(mm_ptr + 0)
-        mx = tl.load(mm_ptr + 1)
-        bn = tl.load(mm_ptr + 2)
-    if IS_INT:
-        if IS_FP64:
-            acc = tl.zeros([NB], dtype=tl.int64)
-        else:
-            acc = tl.zeros([NB], dtype=tl.int32)
-    else:
-        if IS_FP64:
-            acc = tl.zeros([NB], dtype=tl.float64)
-        else:
-            acc = tl.zeros([NB], dtype=tl.float32)
-    for i in tl.range(0, ITERS, num_stages=2):
-        base = pid * (ITERS * BLOCK) + i * BLOCK
-        offs = base + tl.arange(0, BLOCK).to(tl.int64)
-        if NO_MASK:
-            x = tl.load(inp_ptr + offs)
-        else:
-            mask = offs < n_elements
-            x = tl.load(inp_ptr + offs, mask=mask, other=0)
-        if IS_INT:
-            xi = x.to(tl.int64)
-            mni = mn.to(tl.int64)
-            mxi = mx.to(tl.int64)
-            bni = bn.to(tl.int64)
-            span = mxi - mni
-            safe = tl.where(span == 0, 1, span)
-            t = (xi - mni) * bni // safe
-            idx = t.to(tl.int32)
-            idx = tl.where(span == 0, (bni // 2).to(tl.int32), idx)
-            idx = tl.minimum(idx, bni.to(tl.int32) - 1)
-            idx = tl.maximum(idx, 0)
-            if NO_MASK:
-                valid = (x >= mni) & (x <= mxi)
-            else:
-                valid = mask & (x >= mni) & (x <= mxi)
-        else:
-            sp = mx - mn
-            if IS_FP64:
-                t = (x - mn) * bn / sp
-            else:
-                t = _div_rn32((x - mn) * bn, sp)
-            idx = t.to(tl.int32)
-            idx = tl.where(sp == 0, bn.to(tl.int32) // 2, idx)
-            idx = tl.minimum(idx, bn.to(tl.int32) - 1)
-            idx = tl.maximum(idx, 0)
-            if NO_MASK:
-                valid = (x >= mn) & (x <= mx)
-            else:
-                valid = mask & (x >= mn) & (x <= mx)
-        hidx = tl.where(valid, idx, NB - 1)
-        h = tl.histogram(hidx, num_bins=NB)
-        acc += h
-    tl.atomic_add(
-        out_ptr + tl.arange(0, NB), acc, mask=tl.arange(0, NB) < bn.to(tl.int32)
-    )
-
-
-@triton.jit
-def _histc_atomic_kernel(
-    inp_ptr,
-    out_ptr,
-    mm_ptr,
-    n_elements,
-    mn,
-    mx,
-    bn,
-    IS_FLOAT: tl.constexpr,
-    IS_FP64: tl.constexpr,
-    IS_INT: tl.constexpr,
-    USE_PTR: tl.constexpr,
+    N,
+    nprog_mm,
+    nbins,
+    nbins_f,
+    half_f,
+    lo,
+    hi,
+    HAS_RANGE: tl.constexpr,
+    NP2: tl.constexpr,
+    BINS_PAD: tl.constexpr,
+    OUT_F32: tl.constexpr,
+    SINGLE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(0).to(tl.int64)
-    offs = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    mask = offs < n_elements
-    x = tl.load(inp_ptr + offs, mask=mask, other=0)
-    if USE_PTR:
-        mn = tl.load(mm_ptr + 0)
-        mx = tl.load(mm_ptr + 1)
-        bn = tl.load(mm_ptr + 2)
-    if IS_INT:
-        xi = x.to(tl.int64)
-        mni = mn.to(tl.int64)
-        mxi = mx.to(tl.int64)
-        bni = bn.to(tl.int64)
-        span = mxi - mni
-        safe = tl.where(span == 0, 1, span)
-        t = (xi - mni) * bni // safe
-        idx = t.to(tl.int32)
-        idx = tl.where(span == 0, (bni // 2).to(tl.int32), idx)
-        idx = tl.minimum(idx, bni.to(tl.int32) - 1)
-        idx = tl.maximum(idx, 0)
-        valid = mask & (x >= mni) & (x <= mxi)
-    else:
-        sp = mx - mn
-        if IS_FP64:
-            t = (x - mn) * bn / sp
-        else:
-            t = _div_rn32((x - mn) * bn, sp)
-        idx = t.to(tl.int32)
-        idx = tl.where(sp == 0, bn.to(tl.int32) // 2, idx)
-        idx = tl.minimum(idx, bn.to(tl.int32) - 1)
-        idx = tl.maximum(idx, 0)
-        valid = mask & (x >= mn) & (x <= mx)
-    one = tl.zeros_like(x) + 1
-    tl.atomic_add(out_ptr + idx, one, mask=valid)
-
-
-@triton.jit
-def _block_minmax_kernel(
-    inp_ptr, mn_ptr, mx_ptr, n_elements, IS_FLOAT: tl.constexpr, BLOCK: tl.constexpr
-):
-    pid = tl.program_id(0).to(tl.int64)
-    offs = pid * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    mask = offs < n_elements
-    x = tl.load(inp_ptr + offs, mask=mask, other=0)
-    if IS_FLOAT:
-        xmn = tl.where(mask, x, float("inf"))
-        xmx = tl.where(mask, x, float("-inf"))
-    else:
-        xmn = tl.where(mask, x.to(tl.int64), 2**63 - 1)
-        xmx = tl.where(mask, x.to(tl.int64), -(2**63))
-    mn = tl.min(xmn, axis=0)
-    mx = tl.max(xmx, axis=0)
-    tl.store(mn_ptr + pid, mn)
-    tl.store(mx_ptr + pid, mx)
-
-
-@triton.jit
-def _final_minmax_kernel(
-    mn_ptr,
-    mx_ptr,
-    out_ptr,
-    G,
-    IS_FLOAT: tl.constexpr,
-    IS_FP64: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    if IS_FLOAT:
-        if IS_FP64:
-            hi = tl.full((), float("inf"), tl.float64)
-            lo = tl.full((), float("-inf"), tl.float64)
-        else:
-            hi = float("inf")
-            lo = float("-inf")
-    else:
-        hi = 2**63 - 1
-        lo = -(2**63)
-    mn_acc = hi
-    mx_acc = lo
-    for start in tl.range(0, G, BLOCK):
+    if not HAS_RANGE:
+        idx = tl.arange(0, 2 * NP2)
+        m = idx < 2 * nprog_mm
+        even = (idx % 2) == 0
+        odd = (idx % 2) == 1
+        v = tl.load(mm_ptr + idx, mask=m, other=0.0)
+        lo = tl.min(tl.where(m & even, v, float("inf")))
+        hi = tl.max(tl.where(m & odd, v, float("-inf")))
+    pid = tl.program_id(0)
+    step = tl.num_programs(0) * BLOCK
+    cnt = tl.zeros((BINS_PAD,), dtype=tl.int32)
+    for start in range(pid * BLOCK, N, step):
         offs = start + tl.arange(0, BLOCK)
-        m = offs < G
-        v = tl.load(mn_ptr + offs, mask=m, other=hi)
-        mn_acc = tl.minimum(mn_acc, tl.min(v, axis=0))
-        v = tl.load(mx_ptr + offs, mask=m, other=lo)
-        mx_acc = tl.maximum(mx_acc, tl.max(v, axis=0))
-    tl.store(out_ptr + 0, mn_acc)
-    tl.store(out_ptr + 1, mx_acc)
+        mask = offs < N
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+        ok = mask & (x >= lo) & (x <= hi)
+        span = hi - lo
+        raw = ((x - lo) * nbins_f) / span
+        bi = tl.where(span > 0.0, raw, half_f).to(tl.int32)
+        bi = tl.minimum(tl.maximum(bi, 0), nbins - 1)
+        bi = tl.where(ok, bi, nbins)
+        cnt += tl.histogram(bi, BINS_PAD)
+    bidx = tl.arange(0, BINS_PAD)
+    keep = bidx < nbins
+    if OUT_F32:
+        c = cnt.to(tl.float32)
+    else:
+        c = cnt
+    if SINGLE:
+        tl.store(out_ptr + bidx, c, mask=keep)
+    else:
+        tl.atomic_add(out_ptr + bidx, c, mask=keep)
 
 
-def _scalar(v):
-    if isinstance(v, torch.Tensor):
-        return v.item()
-    return v
+@triton.jit
+def _hist_contig(
+    x_ptr,
+    out_ptr,
+    mm_ptr,
+    N,
+    nprog,
+    nbins,
+    nbins_f,
+    half_f,
+    lo,
+    hi,
+    HAS_RANGE: tl.constexpr,
+    NP2: tl.constexpr,
+    BLOCK: tl.constexpr,
+    F64: tl.constexpr,
+    OUT_F32: tl.constexpr,
+):
+    if not HAS_RANGE:
+        idx = tl.arange(0, 2 * NP2)
+        m = idx < 2 * nprog
+        odd = (idx % 2) == 1
+        even = (idx % 2) == 0
+        v = tl.load(mm_ptr + idx, mask=m, other=0.0)
+        lo = tl.min(tl.where(m & even, v, float("inf")))
+        hi = tl.max(tl.where(m & odd, v, float("-inf")))
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    x = tl.load(x_ptr + offs, mask=mask, other=0.0)
+    if F64:
+        x = x.to(tl.float64)
+    else:
+        x = x.to(tl.float32)
+    ok = mask & (x >= lo) & (x <= hi)
+    span = hi - lo
+    raw = ((x - lo) * nbins_f) / span
+    bi = tl.where(span > 0.0, raw, half_f).to(tl.int32)
+    bi = tl.minimum(tl.maximum(bi, 0), nbins - 1)
+    if OUT_F32:
+        tl.atomic_add(out_ptr + bi, 1.0, mask=ok)
+    else:
+        tl.atomic_add(out_ptr + bi, 1, mask=ok)
 
 
-def histc(inp, bins=100, min=0, max=0):
-    bins_i = int(_scalar(bins))
-    min_v = float(_scalar(min))
-    max_v = float(_scalar(max))
+@triton.jit
+def _hist_strided(
+    x_ptr,
+    out_ptr,
+    mm_ptr,
+    N,
+    nprog,
+    nbins,
+    nbins_f,
+    half_f,
+    lo,
+    hi,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    t0,
+    t1,
+    t2,
+    t3,
+    t4,
+    t5,
+    t6,
+    t7,
+    HAS_RANGE: tl.constexpr,
+    NP2: tl.constexpr,
+    BLOCK: tl.constexpr,
+    F64: tl.constexpr,
+    OUT_F32: tl.constexpr,
+):
+    if not HAS_RANGE:
+        idx = tl.arange(0, 2 * NP2)
+        m = idx < 2 * nprog
+        odd = (idx % 2) == 1
+        even = (idx % 2) == 0
+        v = tl.load(mm_ptr + idx, mask=m, other=0.0)
+        lo = tl.min(tl.where(m & even, v, float("inf")))
+        hi = tl.max(tl.where(m & odd, v, float("-inf")))
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
+    src = (
+        ((offs // d0) % s0) * t0
+        + ((offs // d1) % s1) * t1
+        + ((offs // d2) % s2) * t2
+        + ((offs // d3) % s3) * t3
+        + ((offs // d4) % s4) * t4
+        + ((offs // d5) % s5) * t5
+        + ((offs // d6) % s6) * t6
+        + ((offs // d7) % s7) * t7
+    )
+    x = tl.load(x_ptr + src, mask=mask, other=0.0)
+    if F64:
+        x = x.to(tl.float64)
+    else:
+        x = x.to(tl.float32)
+    ok = mask & (x >= lo) & (x <= hi)
+    span = hi - lo
+    raw = ((x - lo) * nbins_f) / span
+    bi = tl.where(span > 0.0, raw, half_f).to(tl.int32)
+    bi = tl.minimum(tl.maximum(bi, 0), nbins - 1)
+    if OUT_F32:
+        tl.atomic_add(out_ptr + bi, 1.0, mask=ok)
+    else:
+        tl.atomic_add(out_ptr + bi, 1, mask=ok)
 
-    if not inp.is_contiguous():
-        inp = inp.contiguous()
-    dt = inp.dtype
-    is_float = dt.is_floating_point
-    is_fp64 = dt == torch.float64
-    n = inp.numel()
 
-    out = torch.zeros(bins_i, dtype=dt, device=inp.device)
-    if n == 0 or bins_i <= 0:
+@triton.jit
+def _cvt(src_ptr, dst_ptr, n, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    v = tl.load(src_ptr + offs, mask=m, other=0)
+    tl.store(dst_ptr + offs, v.to(dst_ptr.dtype.element_ty), mask=m)
+
+
+# ---------------------------------------------------------------------------
+# host wrapper
+# ---------------------------------------------------------------------------
+
+_MAX_DIMS = 8
+_BLOCK = 4096
+_BLOCK_MID = 2048
+_BLOCK_MM = 4096
+_MAX_AGG_BINS = 2047
+_SMS = {}
+
+
+def _sm_count(device):
+    idx = device.index
+    if idx is None:
+        idx = torch.cuda.current_device()
+    sm = _SMS.get(idx)
+    if sm is None:
+        sm = torch.cuda.get_device_properties(idx).multi_processor_count
+        _SMS[idx] = sm
+    return sm
+
+
+def histc(self, bins=100, min=0, max=0):
+    n_bins = operator.index(bins)
+    if n_bins <= 0:
+        raise RuntimeError("bins must be > 0")
+    lo_s = float(min)
+    hi_s = float(max)
+    if lo_s > hi_s:
+        raise RuntimeError("max must be larger than min")
+
+    x = self
+    dtype = x.dtype
+    if dtype == torch.float16:
+        raise RuntimeError("HalfTensor is not supported")
+    if dtype == torch.bfloat16:
+        raise NotImplementedError("\"histc\" not implemented for 'BFloat16'")
+    n = x.numel()
+    device = x.device
+    if n == 0:
+        return torch.zeros(n_bins, dtype=dtype, device=device)
+
+    auto = lo_s == hi_s
+    out_f32 = dtype == torch.float32
+    out_int = dtype == torch.int32
+    nbins_f = float(n_bins)
+    half_f = float(n_bins // 2)
+
+    # fast path: contiguous input, output dtype supports direct atomics
+    if (out_f32 or out_int) and n_bins <= _MAX_AGG_BINS and x.is_contiguous():
+        bins_pad = triton.next_power_of_2(n_bins + 1)
+        sm = _sm_count(device)
+        tiles = (n + _BLOCK - 1) // _BLOCK
+        if tiles > 4 * sm:
+            # enough CTAs to saturate: keep wide tiles, 4 warps
+            block = _BLOCK
+            warps = 4
+        elif tiles > 4:
+            # medium launch: double SM coverage at constant per-thread work
+            block = _BLOCK_MID
+            warps = 8
+        else:
+            # one or a few CTAs: widen each CTA instead of the grid
+            block = _BLOCK
+            warps = 8
+        nprog = (n + block - 1) // block
+        cap = 8 * sm
+        if nprog > cap:
+            nprog = cap
+        single = nprog == 1
+        if single:
+            out = torch.empty(n_bins, dtype=dtype, device=device)
+        else:
+            out = torch.zeros(n_bins, dtype=dtype, device=device)
+        if auto:
+            nprog_mm = (n + _BLOCK_MM - 1) // _BLOCK_MM
+            np2 = triton.next_power_of_2(nprog_mm)
+            mm = torch.empty(2 * nprog_mm, dtype=torch.float32, device=device)
+            _mm_contig[(nprog_mm,)](x, mm, n, _BLOCK_MM, False, num_warps=4)
+            _hist_agg_contig[(nprog,)](
+                x,
+                out,
+                mm,
+                n,
+                nprog_mm,
+                n_bins,
+                nbins_f,
+                half_f,
+                lo_s,
+                hi_s,
+                False,
+                np2,
+                bins_pad,
+                out_f32,
+                single,
+                block,
+                num_warps=warps,
+            )
+        else:
+            _hist_agg_contig[(nprog,)](
+                x,
+                out,
+                out,
+                n,
+                0,
+                n_bins,
+                nbins_f,
+                half_f,
+                lo_s,
+                hi_s,
+                True,
+                1,
+                bins_pad,
+                out_f32,
+                single,
+                block,
+                num_warps=warps,
+            )
         return out
 
-    mm = None
-    use_ptr = False
-    if min_v == max_v:
-        G = triton.cdiv(n, _RBLOCK)
-        pdtype = dt if is_float else torch.int64
-        if is_fp64:
-            mm = torch.tensor(
-                [min_v, max_v, float(bins_i)], dtype=torch.float64, device=inp.device
-            )
-        elif is_float:
-            mm = torch.tensor(
-                [min_v, max_v, float(bins_i)], dtype=torch.float32, device=inp.device
-            )
-        else:
-            mm = torch.tensor(
-                [int(min_v), int(max_v), int(bins_i)],
-                dtype=torch.int64,
-                device=inp.device,
-            )
-        mn_part = torch.empty(G, dtype=pdtype, device=inp.device)
-        mx_part = torch.empty(G, dtype=pdtype, device=inp.device)
-        _block_minmax_kernel[(G,)](
-            inp, mn_part, mx_part, n, IS_FLOAT=is_float, BLOCK=_RBLOCK
+    # general path
+    f64 = dtype == torch.float64
+    acc = torch.zeros(
+        n_bins, dtype=dtype if (out_f32 or out_int) else torch.int32, device=device
+    )
+    if auto:
+        nprog_mm = (n + _BLOCK_MM - 1) // _BLOCK_MM
+        np2 = triton.next_power_of_2(nprog_mm)
+        mm = torch.empty(
+            2 * nprog_mm, dtype=torch.float64 if f64 else torch.float32, device=device
         )
-        _final_minmax_kernel[(1,)](
-            mn_part, mx_part, mm, G, IS_FLOAT=is_float, IS_FP64=is_fp64, BLOCK=_RBLOCK
+    else:
+        nprog_mm = 0
+        np2 = 1
+        mm = acc
+    has_range = not auto
+    nprog = (n + _BLOCK - 1) // _BLOCK
+
+    if x.is_contiguous():
+        if auto:
+            _mm_contig[(nprog_mm,)](x, mm, n, _BLOCK_MM, f64, num_warps=4)
+        _hist_contig[(nprog,)](
+            x,
+            acc,
+            mm,
+            n,
+            nprog_mm,
+            n_bins,
+            nbins_f,
+            half_f,
+            lo_s,
+            hi_s,
+            has_range,
+            np2,
+            _BLOCK,
+            f64,
+            out_f32,
+            num_warps=4,
         )
-        use_ptr = True
-    elif is_float and not is_fp64:
-        pass
     else:
-        if is_fp64:
-            mm = torch.tensor(
-                [min_v, max_v, float(bins_i)], dtype=torch.float64, device=inp.device
-            )
-        else:
-            mm = torch.tensor(
-                [int(min_v), int(max_v), int(bins_i)],
-                dtype=torch.int64,
-                device=inp.device,
-            )
-        use_ptr = True
-
-    if mm is None:
-        mm = inp
-
-    if is_float and not is_fp64:
-        mn_arg = float(np.float32(min_v))
-        mx_arg = float(np.float32(max_v))
-        bn_arg = float(np.float32(bins_i))
-    else:
-        mn_arg = 0.0
-        mx_arg = 0.0
-        bn_arg = 0
-
-    nb = 1
-    while nb <= bins_i:
-        nb <<= 1
-
-    if nb <= _HIST_NB_MAX:
-        if n > _HIST_ACC_MIN:
-            span = 4 * _HIST_BLOCK
-            grid = (triton.cdiv(n, span),)
-            _histc_acc_kernel[grid](
-                inp,
-                out,
+        shape = list(x.shape)
+        stride = list(x.stride())
+        nd = len(shape)
+        divs = [1] * nd
+        cur = 1
+        for d in range(nd - 1, -1, -1):
+            divs[d] = cur
+            cur *= shape[d]
+        if nd <= _MAX_DIMS:
+            pad = _MAX_DIMS - nd
+            sargs = shape + [1] * pad + divs + [1] * pad + stride + [0] * pad
+            if auto:
+                _mm_strided[(nprog_mm,)](x, mm, n, *sargs, _BLOCK_MM, f64, num_warps=4)
+            _hist_strided[(nprog,)](
+                x,
+                acc,
                 mm,
                 n,
-                mn_arg,
-                mx_arg,
-                bn_arg,
-                IS_FLOAT=is_float,
-                IS_FP64=is_fp64,
-                IS_INT=not is_float,
-                USE_PTR=use_ptr,
-                NO_MASK=(n % span == 0),
-                NB=nb,
-                BLOCK=_HIST_BLOCK,
-                num_warps=_HIST_WARPS,
-                ITERS=4,
-            )
-        elif n > 65536:
-            grid = (triton.cdiv(n, _HIST_BLOCK),)
-            _histc_hist_kernel[grid](
-                inp,
-                out,
-                mm,
-                n,
-                mn_arg,
-                mx_arg,
-                bn_arg,
-                IS_FLOAT=is_float,
-                IS_FP64=is_fp64,
-                IS_INT=not is_float,
-                USE_PTR=use_ptr,
-                NO_MASK=(n % _HIST_BLOCK == 0),
-                NB=nb,
-                BLOCK=_HIST_BLOCK,
+                nprog_mm,
+                n_bins,
+                nbins_f,
+                half_f,
+                lo_s,
+                hi_s,
+                *sargs,
+                has_range,
+                np2,
+                _BLOCK,
+                f64,
+                out_f32,
                 num_warps=4,
             )
         else:
-            grid = (triton.cdiv(n, _SMALL_BLOCK),)
-            _histc_hist_kernel[grid](
-                inp,
-                out,
+            xc = x.contiguous()
+            if auto:
+                _mm_contig[(nprog_mm,)](xc, mm, n, _BLOCK_MM, f64, num_warps=4)
+            _hist_contig[(nprog,)](
+                xc,
+                acc,
                 mm,
                 n,
-                mn_arg,
-                mx_arg,
-                bn_arg,
-                IS_FLOAT=is_float,
-                IS_FP64=is_fp64,
-                IS_INT=not is_float,
-                USE_PTR=use_ptr,
-                NO_MASK=(n % _SMALL_BLOCK == 0),
-                NB=nb,
-                BLOCK=_SMALL_BLOCK,
-                num_warps=_HIST_WARPS,
+                nprog_mm,
+                n_bins,
+                nbins_f,
+                half_f,
+                lo_s,
+                hi_s,
+                has_range,
+                np2,
+                _BLOCK,
+                f64,
+                out_f32,
+                num_warps=4,
             )
-    else:
-        grid = (triton.cdiv(n, _BLOCK),)
-        _histc_atomic_kernel[grid](
-            inp,
-            out,
-            mm,
-            n,
-            mn_arg,
-            mx_arg,
-            bn_arg,
-            IS_FLOAT=is_float,
-            IS_FP64=is_fp64,
-            IS_INT=not is_float,
-            USE_PTR=use_ptr,
-            BLOCK=_BLOCK,
-        )
+
+    if out_f32 or out_int:
+        return acc
+    out = torch.empty(n_bins, dtype=dtype, device=device)
+    _cvt[(triton.cdiv(n_bins, 256),)](acc, out, n_bins, 256, num_warps=4)
     return out

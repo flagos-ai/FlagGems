@@ -23,7 +23,7 @@ Qwen3-1.7B INT8 decode showed no measurable benefit over ATen's native
 Qwen3RMSNorm.forward. See _arm/fused/fused_add_rms_norm.py for the note.
 """
 
-from flag_gems.runtime.backend._arm.fused.fused_add_rms_norm import (
+from flag_gems.runtime.backend._arm.deprecated.fused_add_rms_norm import (
     fused_add_rms_norm as _arm_fused_add_rms_norm,
 )
 
