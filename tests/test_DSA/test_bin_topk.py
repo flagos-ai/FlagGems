@@ -18,10 +18,7 @@ import numpy as np
 import pytest
 import torch
 
-# Import your operator
-from flag_gems.deprecated.DSA.bin_topk import (
-    bucket_sort_topk,  # Replace with actual module name
-)
+from flag_gems import bucket_sort_topk
 from flag_gems.deprecated.DSA.bin_topk import HAS_TLE
 
 
