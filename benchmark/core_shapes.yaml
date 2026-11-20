@@ -1627,3 +1627,10 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_grouped_matmul:
+  shapes:
+    - [16, 512, 2048, 128, 8, 8]
+    - [64, 2048, 6144, 32, 4, 4]
+    - [48, 4096, 4096, 32, 8, 4]
+  shape_desc: "M, K, N, experts, activation bits, weight bits"
