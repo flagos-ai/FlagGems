@@ -48,7 +48,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from flag_gems.ops.copy import copy_
 from flag_gems.ops.neg import neg
 from flag_gems.ops.zeros_like import zeros_like
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
@@ -77,6 +77,132 @@ config_ = CodeGenConfig(
 # (2**128 and above).  Constants used inside @triton.jit must stay literals or
 # ``tl.constexpr`` instances, hence the local literal in ``_exp2_xpu``.
 _EXP2_OVERFLOW = tl.constexpr(128.0)
+
+# ---------------------------------------------------------------------------
+# Flat fast path: fp16/bf16 source, integral exponent, dense same-shape operands
+# ---------------------------------------------------------------------------
+# The pointwise_dynamic codegen always emits a runtime tail mask plus a
+# per-program stride chain, which costs ~2x on the half-dtype benchmark shapes
+# (batch 20261119_01: 0.45-0.56x fp32, 1.05-1.26x half before the fast path).
+# The fast path launches a lean 1-D kernel instead:
+#   * the tail mask is a constexpr (``n % BLOCK == 0`` -> unmasked block DMA;
+#     an always-true runtime mask is ~1.5x slower on this backend);
+#   * fp16 sources use a single +-126 exponent factor: any |e| > 126 pushes the
+#     result beyond the fp16 range for every nonzero fp16 input, so one factor
+#     is exact after fp16 rounding;
+#   * bf16 sources keep the two +-126 factors (+-252 total) because the bf16
+#     range matches fp32;
+#   * no subnormal rescale is needed: an fp16/bf16 subnormal is a normal fp32
+#     number after promotion;
+#   * the sign bit of x is OR-ed onto the result so -0.0 keeps its sign, as in
+#     the fp32 path and in ATen.
+_FLAT_BLOCK_MIN = 256
+_FLAT_BLOCK_MAX = 16384
+# Below this size the pointwise launcher is cheaper than the flat one
+# (measured crossover on XPU6: n<=8 flat 5.2us vs pointwise 4.85us; n>=512 the
+# flat kernel is 5-10% faster, and at n=64/128 it is 2.6x faster).
+_FLAT_MIN_ELEMENTS = 256
+_FLAT_DTYPES = (torch.float16, torch.bfloat16)
+_FLAT_EXPONENT_DTYPES = (torch.int8, torch.int16, torch.int32)
+
+
+@triton.jit
+def _flat_pow2_scale(x, exponent, single: tl.constexpr):
+    """``x * 2**exponent`` for a half-precision source promoted to fp32."""
+    if single:
+        exponent_hi = tl.maximum(tl.minimum(exponent, 126), -126)
+        scale_hi = ((exponent_hi + 127) << 23).to(tl.float32, bitcast=True)
+        return x * scale_hi
+    exponent = tl.maximum(tl.minimum(exponent, 252), -252)
+    exponent_hi = tl.maximum(tl.minimum(exponent, 126), -126)
+    scale_hi = ((exponent_hi + 127) << 23).to(tl.float32, bitcast=True)
+    scale_lo = (((exponent - exponent_hi) + 127) << 23).to(tl.float32, bitcast=True)
+    return (x * scale_hi) * scale_lo
+
+
+@libentry()
+@triton.jit
+def _ldexp_flat_kernel(
+    x_ptr,
+    exponent_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    MASKED: tl.constexpr,
+    SINGLE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    if MASKED:
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask, other=0.0)
+        exponent = tl.load(exponent_ptr + offsets, mask, other=0)
+    else:
+        x = tl.load(x_ptr + offsets)
+        exponent = tl.load(exponent_ptr + offsets)
+    xf = x.to(tl.float32)
+    result = _flat_pow2_scale(xf, exponent.to(tl.int32), SINGLE)
+    # ATen keeps the sign of a flushed product (``-0.0 * 2**e`` stays -0.0);
+    # the multiplier normalises zero signs, so OR the sign back (no-op for
+    # every non-zero product).
+    result = (
+        result.to(tl.int32, bitcast=True)
+        | (xf.to(tl.int32, bitcast=True) & -2147483648)
+    ).to(tl.float32, bitcast=True)
+    result = result.to(out_ptr.dtype.element_ty)
+    if MASKED:
+        tl.store(out_ptr + offsets, result, mask)
+    else:
+        tl.store(out_ptr + offsets, result)
+
+
+def _flat_block_size(n_elements):
+    block = _FLAT_BLOCK_MIN
+    while block < n_elements and block < _FLAT_BLOCK_MAX:
+        block *= 2
+    return block
+
+
+def _run_flat_ldexp(self, other, out):
+    n_elements = self.numel()
+    if n_elements == 0:
+        return out
+    block = _flat_block_size(n_elements)
+    grid = (triton.cdiv(n_elements, block),)
+    _ldexp_flat_kernel[grid](
+        self,
+        other,
+        out,
+        n_elements,
+        BLOCK=block,
+        MASKED=(n_elements % block) != 0,
+        SINGLE=(self.dtype == torch.float16),
+    )
+    return out
+
+
+def _flat_fast_ok(self, other, out, result_dtype):
+    if result_dtype not in (torch.float16, torch.bfloat16):
+        return False
+    if self.dtype != result_dtype or not self.is_floating_point():
+        return False
+    if self.numel() < _FLAT_MIN_ELEMENTS:
+        return False
+    if not (self.is_contiguous() and other.is_contiguous()):
+        return False
+    if tuple(self.shape) != tuple(other.shape):
+        return False
+    if other.dtype not in _FLAT_EXPONENT_DTYPES:
+        # int64 exponents keep the pointwise path: an i64 clamp + trunc pair
+        # inside a masked 1-D kernel hits the known XPU lowering bug.
+        return False
+    if out is not None:
+        if out.dtype != result_dtype or not out.is_contiguous():
+            return False
+        if out.is_conj() or out.is_neg():
+            return False
+        if tuple(out.shape) != tuple(self.shape):
+            return False
+    return True
 
 
 @triton.jit
@@ -530,6 +656,17 @@ def _ldexp_impl(self, other, out=None):
             else ldexp_integral_func
         )
     if (
+        integral_exponent
+        and self.dtype in _FLAT_DTYPES
+        and self.numel() >= _FLAT_MIN_ELEMENTS
+        and _flat_fast_ok(self, other, out, result_dtype)
+    ):
+        # Lean 1-D path for the half-dtype dense case (batch 20261119_01).
+        if out is not None:
+            return _run_flat_ldexp(self, other, out)
+        result = torch.empty(self.shape, dtype=result_dtype, device=device)
+        return _run_flat_ldexp(self, other, result)
+    if (
         out is not None
         and tuple(out.shape)
         == torch.broadcast_shapes(self.shape, other.shape)  # allow-torch-compute
@@ -659,6 +796,15 @@ def ldexp_(self, other):
         else:
             _ldexp_complex_(self, other)
     else:
+        if (
+            integral_exponent
+            and self.dtype in _FLAT_DTYPES
+            and self.numel() >= _FLAT_MIN_ELEMENTS
+            and _flat_fast_ok(self, other, None, self.dtype)
+        ):
+            # Lean 1-D in-place path for the half-dtype dense case.
+            _run_flat_ldexp(self, other, self)
+            return self
         if integral_exponent:
             func = (
                 ldexp_inplace_integral_fp64_func
