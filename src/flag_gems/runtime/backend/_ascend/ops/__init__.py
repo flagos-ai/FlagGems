@@ -142,6 +142,7 @@ from .foreach_expm1_ import foreach_expm1_
 from .foreach_log10_ import foreach_log10_
 from .foreach_log1p_ import foreach_log1p_
 from .foreach_log2_ import foreach_log2_
+from .foreach_maximum_scalar_list_ import foreach_maximum_scalar_list_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -500,6 +501,7 @@ __all__ = [
     "foreach_log10_",
     "foreach_log1p_",
     "foreach_log2_",
+    "foreach_maximum_scalar_list_",
     "frac",
     "frac_",
     "full",
