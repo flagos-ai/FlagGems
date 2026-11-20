@@ -119,6 +119,7 @@ from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
+from .foreach_div_scalar_list import foreach_div_scalar_list
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -454,6 +455,7 @@ __all__ = [
     "flip",
     "float_power_scalar_tensor_out",
     "floor",
+    "foreach_div_scalar_list",
     "frac",
     "frac_",
     "full",
