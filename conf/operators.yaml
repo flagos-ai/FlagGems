@@ -3865,6 +3865,18 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: constant_pad_nd_backward
+  description: Computes the gradient of a constant-padded tensor with respect to its
+    input, cropping the padded region out of `grad_output`.
+  for:
+    - constant_pad_nd_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: contiguous
   description: 'Returns a contiguous in memory tensor containing the same data as
     `self` tensor.
