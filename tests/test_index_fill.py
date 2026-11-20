@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
@@ -155,6 +157,59 @@ def test_index_fill_duplicate_index():
     flag_gems.index_fill_(inp, 1, index, -7.0)
 
     gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_fill_
+@pytest.mark.parametrize("shape", [(2, 16321), (4, 151936)])
+def test_index_fill_large_row_fill(shape):
+    # A large inner size used to produce a 2-D (m, n) launch with more than 255
+    # n-blocks, which backends such as Enflame GCU reject ("out of resource:
+    # grid.y"). The fill must stay within the launch limits and stay exact.
+    inp = torch.arange(
+        shape[0] * shape[1], dtype=torch.float32, device=flag_gems.device
+    ).reshape(shape)
+    index = torch.tensor([0, shape[0] - 1], dtype=torch.long, device=flag_gems.device)
+
+    ref_inp = to_reference(inp.clone(), False)
+    ref_index = to_reference(index, False)
+    ref_inp.index_fill_(0, ref_index, -5.0)
+
+    res_out = flag_gems.index_fill_(inp, 0, index, -5.0)
+
+    assert res_out is inp
+    gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_fill_
+def test_index_fill_grid_stride(monkeypatch):
+    # Cap the flat launch below the number of tile blocks so the kernel's
+    # grid-stride loop runs several iterations; this is what keeps oversized
+    # fills legal on backends with small grid limits.
+    index_fill_ops = importlib.import_module("flag_gems.ops.index_fill")
+
+    monkeypatch.setattr(index_fill_ops, "_MAX_GRID", 3)
+
+    shape = (256, 16)
+    inp = torch.arange(
+        shape[0] * shape[1], dtype=torch.float32, device=flag_gems.device
+    ).reshape(shape)
+    index = torch.arange(shape[0], dtype=torch.long, device=flag_gems.device)
+
+    ref_inp = to_reference(inp.clone(), False)
+    ref_index = to_reference(index, False)
+    ref_inp.index_fill_(0, ref_index, -6.0)
+    flag_gems.index_fill_(inp, 0, index, -6.0)
+    gems_assert_equal(inp, ref_inp)
+
+    # Same fill through the generic strided kernel (non-contiguous input).
+    base = torch.arange(
+        shape[1] * shape[0], dtype=torch.float32, device=flag_gems.device
+    ).reshape(shape[1], shape[0])
+    view = base.t()
+    ref_view = to_reference(view.clone(), False)
+    ref_view.index_fill_(0, ref_index, -6.0)
+    flag_gems.index_fill_(view, 0, index, -6.0)
+    gems_assert_equal(view, ref_view)
 
 
 @pytest.mark.index_fill
