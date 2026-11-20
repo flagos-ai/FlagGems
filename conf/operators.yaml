@@ -2121,6 +2121,30 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atanh_backward
+  description: First-order autograd rule for atanh implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - atanh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
+- id: atanh_backward_
+  description: Extended first-order gradient for atanh_; validated against the out-of-place
+    PyTorch operation.
+  for:
+  - atanh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: atleast_1d
   description: Returns a view of the input tensor with at least one dimension (view
     operation).
@@ -5259,6 +5283,22 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: diag_embed_backward
+  description: |
+    Backward pass for `diag_embed`: the gradient with respect to the input is the
+    diagonal of the upstream gradient at (offset, dim1, dim2), viewed with the
+    input's shape. The default plane dims (-2, -1) gather through a single
+    Triton kernel; other plane placements return the exact ATen formula
+    (`torch.diagonal`) as a zero-copy view.
+  for:
+  - diag_embed_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: diagflat
   description: 'Creates a 2-D tensor whose diagonal, selected by `offset`, holds the
     flattened `input` and whose remaining elements are zero.
@@ -5317,6 +5357,22 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: diagonal_scatter_backward
+  description: |
+    Backward pass for `diagonal_scatter`: the input gradient keeps the upstream
+    gradient off the overwritten diagonal and is zero on it, while the `src`
+    gradient is the contiguous diagonal of the upstream gradient. A flat copy
+    kernel produces the input gradient and two small kernels zero and gather the
+    diagonal entries.
+  for:
+  - diagonal_scatter_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: diff
   description: 'Computes the n-th forward difference along the given dimension.
 
@@ -5725,6 +5781,18 @@ ops:
   description: The backward version of `elu()`.
   for:
   - elu_backward
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - NeuralNetwork
+  stages:
+  - stable: '4.0'
+- id: elu_backward_out
+  description: A variant of `elu_backward` that assigns the output to the `grad_input`
+    tensor.
+  for:
+  - elu_backward.grad_input
   labels:
   - aten
   - pointwise
@@ -20383,6 +20451,26 @@ ops:
   - BLAS
   stages:
   - alpha: 5.5.0
+- id: sparse_sum
+  description: |
+    Sparse COO sum (``aten::_sparse_sum``): sums a sparse COO tensor. The default
+    and ``.dtype`` overloads reduce every stored value into a 0-D dense scalar;
+    the ``.dim`` / ``.dim_dtype`` / ``.dim_out`` overloads sum along the given
+    sparse or dense dimensions, producing a coalesced sparse tensor when at
+    least one sparse dim is kept.
+  for:
+  - _sparse_sum
+  - _sparse_sum.dim
+  - _sparse_sum.dim_dtype
+  - _sparse_sum.dim_out
+  - _sparse_sum.dtype
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_sum_backward
   description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
     back onto the sorted-unique coordinate support of the input sparse tensor, keeping
