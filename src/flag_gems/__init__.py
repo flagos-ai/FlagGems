@@ -1141,7 +1141,6 @@ _FULL_CONFIG = (
     ("clamp_max_", clamp_max_),
     ("clamp_min", clamp_min),
     ("clamp_min_", clamp_min_),
-    ("clamp_min_backward", clamp_min_backward),
     ("clip", clip),
     ("clip_", clip_),
     (
