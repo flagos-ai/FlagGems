@@ -1996,6 +1996,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: asin_backward
+  description: Computes the gradient of `asin()` with one fused Triton kernel.
+  for:
+  - asin
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: asinh
   description: Returns a new tensor with the inverse hyperbolic sine of the elements
     of input.
