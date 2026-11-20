@@ -507,10 +507,11 @@ def test_aminmax_global_logical_nan_contract(strided, n, nan_index, dtype):
 def test_aminmax_global_empty_contract(shape):
     storage = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
     inp = storage if len(shape) == 1 else storage.transpose(0, 2)
-    with pytest.raises(RuntimeError, match="identity"):
+    with pytest.raises(RuntimeError) as reference:
         torch.aminmax(utils.to_reference(inp))
-    with pytest.raises(RuntimeError, match="identity"):
+    with pytest.raises(RuntimeError) as actual:
         flag_gems.aminmax(inp)
+    assert str(actual.value) == str(reference.value)
 
 
 @pytest.mark.aminmax
