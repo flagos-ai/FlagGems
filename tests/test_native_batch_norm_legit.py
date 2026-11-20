@@ -271,7 +271,9 @@ def test_native_batch_norm_legit_backward(shape, dtype, affine, training):
     reduction = math.prod(shape) // channels
 
     res_inp = inp.detach().clone().requires_grad_(True)
-    res_weight = None if weight is None else weight.detach().clone().requires_grad_(True)
+    res_weight = (
+        None if weight is None else weight.detach().clone().requires_grad_(True)
+    )
     res_bias = None if bias is None else bias.detach().clone().requires_grad_(True)
     out, save_mean, save_invstd = flag_gems._native_batch_norm_legit(
         res_inp,
@@ -300,7 +302,9 @@ def test_native_batch_norm_legit_backward(shape, dtype, affine, training):
         else utils.to_reference(weight, True).detach().requires_grad_(True)
     )
     ref_bias = (
-        None if bias is None else utils.to_reference(bias, True).detach().requires_grad_(True)
+        None
+        if bias is None
+        else utils.to_reference(bias, True).detach().requires_grad_(True)
     )
     ref_out, _, _ = torch.ops.aten._native_batch_norm_legit.default(
         ref_inp,
@@ -326,7 +330,9 @@ def test_native_batch_norm_legit_backward(shape, dtype, affine, training):
         ref_grad = ref_grad.to(res_grad.dtype)
         assert res_grad.shape == ref_grad.shape
         assert res_grad.dtype == ref_grad.dtype
-        utils.gems_assert_close(res_grad, ref_grad, dtype, reduce_dim=reduction, atol=1e-2)
+        utils.gems_assert_close(
+            res_grad, ref_grad, dtype, reduce_dim=reduction, atol=1e-2
+        )
 
 
 @pytest.mark.native_batch_norm_legit_backward

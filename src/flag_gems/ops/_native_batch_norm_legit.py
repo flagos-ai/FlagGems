@@ -21,7 +21,6 @@ import triton.language as tl
 from torch import Tensor
 
 from flag_gems.ops.batch_norm import batch_norm
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -168,10 +167,6 @@ def _native_batch_norm_legit_no_stats_out(
     )
     return _copy_outputs(result, out, save_mean, save_invstd)
 
-
-import torch
-import triton
-import triton.language as tl
 
 # A padded per-channel tile up to this many lanes is handled by one program.
 FUSED_LIMIT = 16384
@@ -477,8 +472,7 @@ def _make_plan(shape, dt, train, has_w, gw_mask, gb_mask, gi_mask):
         blk = max(ROW_PREF, 1 << (n - 1).bit_length())
         row = min(ROW_PREF, blk)
         nw = 4 if blk <= 2048 else (8 if blk <= 8192 else 16)
-        return (0, c_dim, c_dim, nw,
-                (s_dim, c_dim, n, blk, 1.0 / n, mode, row), None)
+        return (0, c_dim, c_dim, nw, (s_dim, c_dim, n, blk, 1.0 / n, mode, row), None)
 
     # Bound the number of (batch, tile) programs. ``ts`` can only shrink the
     # spatial tile count, so a large batch alone must also grow ``ts``; stop when
@@ -500,7 +494,6 @@ def _make_plan(shape, dt, train, has_w, gw_mask, gb_mask, gi_mask):
     if gw_mask or gb_mask:
         return (2, c_dim, nt, 8, rconsts, (nt, pb, mode))
     return (3, c_dim, nt, 8, rconsts, None)
-
 
 
 def _restore_layout(grad, like):
@@ -572,18 +565,32 @@ def _bn_legit_bwd_run(
     gip = gi if gi is not None else ph
 
     if kind == 0:
-        _bn_fused[(g0,)](grad_output, input, mu, vm, wp, gwp, gbp, gip, eps,
-                         *rconsts, num_warps=nw)
+        _bn_fused[(g0,)](
+            grad_output, input, mu, vm, wp, gwp, gbp, gip, eps, *rconsts, num_warps=nw
+        )
         return _restore_layout(gi, out_layout), gw, gb
 
     pdy = torch.empty(c_dim * g1, dtype=torch.float64, device=dev)
     pdx = torch.empty(c_dim * g1, dtype=torch.float64, device=dev)
-    _bn_red[(g0, g1)](grad_output, input, mu, vm, wp, pdy, pdx, gip, eps,
-                      *rconsts, num_warps=nw)
+    _bn_red[(g0, g1)](
+        grad_output, input, mu, vm, wp, pdy, pdx, gip, eps, *rconsts, num_warps=nw
+    )
     if aconsts is not None:
         if kind == 1:
-            _bn_apply[(g0, g1)](grad_output, input, mu, vm, wp, pdy, pdx, gwp,
-                                gbp, gip, *aconsts, num_warps=nw)
+            _bn_apply[(g0, g1)](
+                grad_output,
+                input,
+                mu,
+                vm,
+                wp,
+                pdy,
+                pdx,
+                gwp,
+                gbp,
+                gip,
+                *aconsts,
+                num_warps=nw,
+            )
         else:
             _bn_fin[(g0,)](pdy, pdx, gwp, gbp, *aconsts, num_warps=4)
     return _restore_layout(gi, out_layout), gw, gb
