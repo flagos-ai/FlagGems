@@ -290,3 +290,18 @@ def test_maximum_backward_float64():
 
     _, res_grads, ref_grads = _maximum_backward_grads(x, y, grad)
     _assert_matching_grads(res_grads, ref_grads)
+
+
+@pytest.mark.maximum_backward
+def test_maximum_backward_empty_broadcast():
+    x = torch.empty((0, 4), device=flag_gems.device, requires_grad=True)
+    y = torch.ones((1, 4), device=flag_gems.device, requires_grad=True)
+    grad = torch.empty_like(x)
+    ref_x = utils.to_reference(x.detach()).requires_grad_(True)
+    ref_y = utils.to_reference(y.detach()).requires_grad_(True)
+    expected = torch.autograd.grad(
+        torch.maximum(ref_x, ref_y), (ref_x, ref_y), utils.to_reference(grad)
+    )
+    result = torch.autograd.grad(flag_gems.maximum(x, y), (x, y), grad)
+    for actual, ref in zip(result, expected):
+        utils.gems_assert_equal(actual, ref)

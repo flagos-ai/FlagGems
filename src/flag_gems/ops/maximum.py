@@ -177,7 +177,11 @@ def _match_operand(grad, operand):
     if grad is None:
         return None
     if grad.shape != operand.shape:
-        grad = grad.sum_to_size(operand.shape)
+        if grad.numel() == 0:
+            return torch.zeros_like(operand)
+        from flag_gems.ops.sum_to_size import sum_to_size
+
+        grad = sum_to_size(grad, *operand.shape)
     if grad.dtype != operand.dtype:
         grad = grad.to(operand.dtype)
     return grad
