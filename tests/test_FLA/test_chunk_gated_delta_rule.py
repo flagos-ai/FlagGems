@@ -12,18 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
-
 import pytest
 import torch
 import torch.nn.functional as F
 import triton
 
 import flag_gems
-
-chunk_gated_delta_rule_module = importlib.import_module(
-    "flag_gems.fused.chunk_gated_delta_rule"
-)
 
 _TRITON_ALLOCATOR_READY = False
 
@@ -812,6 +806,11 @@ def test_chunk_gated_delta_rule_rejects_invalid_public_arguments(case, match):
 def test_chunk_gated_delta_rule_does_not_broadly_reject_iluvatar_chunk_path(
     monkeypatch,
 ):
+    import importlib
+
+    chunk_gated_delta_rule_module = importlib.import_module(
+        "flag_gems.deprecated.chunk_gated_delta_rule"
+    )
     dtype = torch.float32
     torch.manual_seed(7000)
     q, k, v, beta, g = _make_inputs(

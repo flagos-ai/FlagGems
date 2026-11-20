@@ -19,7 +19,7 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems.deprecated.matmuladd import matmuladd as default_matmuladd
+from flag_gems.fused.matmuladd import matmuladd as default_matmuladd
 
 logger = logging.getLogger(__name__)
 
