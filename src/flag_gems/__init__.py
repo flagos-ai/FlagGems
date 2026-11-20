@@ -2673,6 +2673,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "mm_backward",
     "only_enable",
     "use_gems",
 ]
