@@ -660,6 +660,7 @@ from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
 from flag_gems.ops.cast_Double import cast_Double
 from flag_gems.ops.cast_Float import cast_Float
+from flag_gems.ops.cast_Half import cast_Half
 from flag_gems.ops.cast_Long import cast_Long
 from flag_gems.ops.cast_Short import cast_Short
 from flag_gems.ops.cat import cat, cat_out
@@ -2400,6 +2401,7 @@ __all__ = [
     "cast_Char",
     "cast_Double",
     "cast_Float",
+    "cast_Half",
     "cast_Long",
     "cast_Short",
     "cat",
