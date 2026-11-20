@@ -47,12 +47,35 @@ CUDNN_CONV_BACKWARD_CASES = [
 BACKWARD_DTYPES = utils.PRIMARY_FLOAT_DTYPES
 
 
+# The reference goes through the portable functional convolutions rather than
+# torch.cudnn_convolution, which is CUDA-only and would pin the fp64 reference
+# to the device even under --ref cpu, where the harness compares on the CPU.
+_CONV_REF_FN = {
+    1: torch.nn.functional.conv1d,
+    2: torch.nn.functional.conv2d,
+    3: torch.nn.functional.conv3d,
+}
+
+
 def _grad_input_reduction_dim(weight_shape, groups):
     # grad_input accumulates over out_channels/groups and the kernel volume.
     reduce_dim = weight_shape[0] // groups
     for size in weight_shape[2:]:
         reduce_dim *= size
     return max(reduce_dim, 1)
+
+
+def _conv_reference_out(ref_inp, weight, padding, stride, dilation, groups):
+    """Reference forward pass on the device ``--ref`` selects."""
+    return _CONV_REF_FN[ref_inp.ndim - 2](
+        ref_inp,
+        utils.to_reference(weight, True),
+        bias=None,
+        stride=list(stride),
+        padding=list(padding),
+        dilation=list(dilation),
+        groups=groups,
+    )
 
 
 @pytest.mark.cudnn_convolution_backward
@@ -71,25 +94,14 @@ def test_cudnn_convolution_backward(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = inp.detach().to(dtype=torch.float64).requires_grad_(True)
-    ref_weight = weight.detach().to(dtype=torch.float64)
-
-    ref_out = torch.cudnn_convolution(
-        ref_inp,
-        ref_weight,
-        padding=list(padding),
-        stride=list(stride),
-        dilation=list(dilation),
-        groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
-    out_grad = torch.randn(ref_out.shape, dtype=torch.float64, device=ref_out.device)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad)
+    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
+    ref_out = _conv_reference_out(ref_inp, weight, padding, stride, dilation, groups)
+    out_grad = torch.randn(ref_out.shape, dtype=dtype, device=flag_gems.device)
+    ref_grad = utils.to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
     res_in_grad = flag_gems.cudnn_convolution_backward(
-        out_grad.to(dtype),
+        out_grad,
         inp,
         weight,
         list(padding),
@@ -126,8 +138,8 @@ def test_cudnn_convolution_backward_shape_and_dtype(shape, kernel, dtype):
     ones = [1] * spatial_dims
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    out_shape = torch.cudnn_convolution(
-        inp, weight, ones, ones, ones, 1, False, False, False
+    out_shape = _conv_reference_out(
+        utils.to_reference(inp, True), weight, ones, ones, ones, 1
     ).shape
     out_grad = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
 
