@@ -2719,6 +2719,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "linalg_slogdet_backward",
     "only_enable",
     "use_gems",
 ]
