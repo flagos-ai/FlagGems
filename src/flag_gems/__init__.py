@@ -2699,5 +2699,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "sparse_addmm_backward",
     "use_gems",
 ]

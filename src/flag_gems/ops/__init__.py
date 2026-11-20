@@ -394,6 +394,7 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
 )
 from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
 from flag_gems.ops._sparse_addmm import _sparse_addmm, _sparse_addmm_out
+from flag_gems.ops._sparse_addmm_backward import sparse_addmm_backward
 from flag_gems.ops._sparse_log_softmax import (
     _sparse_log_softmax,
     _sparse_log_softmax_int,
@@ -3318,6 +3319,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "sparse_addmm_backward",
     "sparse_broadcast_to",
     "sparse_broadcast_to_copy",
     "sparse_bsc_tensor",
