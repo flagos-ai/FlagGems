@@ -13,6 +13,7 @@
 # limitations under the License.
 """Native layer norm: strided-row Hygon launch path with generic fallback."""
 
+import logging
 import math
 
 import torch
@@ -28,6 +29,8 @@ from flag_gems.ops.layernorm import (
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 _HYGON = runtime.device.vendor_name == "hygon"
 _DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -108,6 +111,7 @@ def _can_use_strided(input, normalized_shape, weight, bias):
 
 
 def native_layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    logger.debug("GEMS_HYGON NATIVE_LAYER_NORM")
     # Leave compiler/subclass dispatch on the original implementation. The
     # prepared eager launch assumes concrete metadata and ordinary Tensors.
     if (
