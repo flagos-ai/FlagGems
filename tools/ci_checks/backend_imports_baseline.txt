@@ -3,9 +3,5 @@
 # do not add new ones.
 src/flag_gems/runtime/backend/_aipu/ops/multinomial.py::module 'flag_gems.ops.runtime.backend._aipu.ops.cumsum' not found
 src/flag_gems/runtime/backend/_enflame/gcu300/ops/baddbmm.py::module 'flag_gems.runtime.backend._iluvatar.ops.bmm' not found
-src/flag_gems/runtime/backend/_kunlunxin/deprecated/bf16_paged_mqa_logits.py::module 'flag_gems.deprecated.bf16_paged_mqa_logits' not found
 src/flag_gems/runtime/backend/_kunlunxin/ops/scaled_mm.py::'_can_use_ascend_aligned_scaled_mm' is not defined in 'flag_gems.ops.scaled_mm'
 src/flag_gems/runtime/backend/_kunlunxin/ops/scaled_mm.py::'_maybe_make_contiguous_for_kernel' is not defined in 'flag_gems.ops.scaled_mm'
-src/flag_gems/runtime/backend/_mthreads/deprecated/matmul_bias_activation.py::module 'flag_gems.deprecated.matmul_bias_activation' not found
-src/flag_gems/runtime/backend/_mthreads/deprecated/matmuladd.py::module 'flag_gems.deprecated.matmuladd' not found
-src/flag_gems/runtime/backend/_spacemit/ops/bmm.py::'outer' is not defined in 'flag_gems.deprecated'
