@@ -22080,6 +22080,24 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: swiglu_group_quant
+  description: 'SwiGLU fused with group quantization to FP8: splits the last dim
+    into gate and linear halves, applies silu(x0) * x1, then quantizes each block
+    of 128 elements with an FP32 scale or each block of 32 with a UE8M0 scale.
+    Ascend Atlas A5 (Ascend950) only.
+
+    '
+  for:
+  - swiglu_group_quant
+  labels:
+  - non-aten
+  - NoCPU
+  - Quantization
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
