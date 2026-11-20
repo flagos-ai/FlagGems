@@ -168,22 +168,6 @@ def _sparse_addmm_sample_transposed_kernel(
 
 @libentry()
 @triton.jit
-def _sparse_addmm_row_index_kernel(
-    crow_ptr,
-    out_ptr,
-    BLOCK: tl.constexpr,
-):
-    """Expand ``crow`` into per-entry row indices for a COO gradient."""
-    row = ext.program_id(0)
-    start = tl.load(crow_ptr + row).to(tl.int64)
-    end = tl.load(crow_ptr + row + 1).to(tl.int64)
-    for e0 in range(start, end, BLOCK):
-        e = e0 + tl.arange(0, BLOCK)
-        tl.store(out_ptr + e, row, mask=e < end)
-
-
-@libentry()
-@triton.jit
 def _sparse_addmm_spmm_kernel(
     crow_ptr,
     row_ptr,
@@ -519,8 +503,6 @@ def _csr_of(mat1):
     )
 
 
-
-
 def _sample_csr(csr, dense, alpha):
     """Sample ``alpha * dense`` at a CSR pattern, in stored entry order."""
     values = torch.empty(
@@ -573,19 +555,11 @@ def _sparse_mat1_grad(mat1, dense, alpha):
     """
     layout = mat1.layout
     if layout is torch.sparse_coo:
-        # A COO tensor has no row pointer, so the coalesced pattern is
-        # expanded to CSR once (the only conversion this path needs) and the
-        # sampled values are wrapped back into mat1's own COO indices.
-        csr = _csr_of(mat1)
-        values = _sample_csr(csr, dense, alpha)
-        rows = torch.empty_like(csr.col_indices())
-        if rows.numel():
-            with torch_device_fn.device(mat1.device):
-                _sparse_addmm_row_index_kernel[(csr.shape[0],)](
-                    csr.crow_indices(), rows, BLOCK=_BLOCK
-                )
-        return torch.sparse_coo_tensor(  # allow-torch-compute: container ctor, no device math
-            torch.stack((rows, csr.col_indices())),  # allow-torch-compute: index concat, no device math
+        # Coalesced COO indices and its CSR conversion share row-major order.
+        pattern = mat1.coalesce()
+        values = _sample_csr(_csr_of(pattern), dense, alpha)
+        return torch.sparse_coo_tensor(  # allow-torch-compute: container constructor
+            pattern.indices(),
             values,
             size=mat1.shape,
             dtype=mat1.dtype,
@@ -603,13 +577,15 @@ def _sparse_mat1_grad(mat1, dense, alpha):
             device=mat1.device,
         )
     values = _sample_csr(mat1, dense, alpha)
-    return torch.sparse_csr_tensor(  # allow-torch-compute: container ctor, no device math
-        mat1.crow_indices(),
-        mat1.col_indices(),
-        values,
-        size=mat1.shape,
-        dtype=mat1.dtype,
-        device=mat1.device,
+    return (
+        torch.sparse_csr_tensor(  # allow-torch-compute: container ctor, no device math
+            mat1.crow_indices(),
+            mat1.col_indices(),
+            values,
+            size=mat1.shape,
+            dtype=mat1.dtype,
+            device=mat1.device,
+        )
     )
 
 
@@ -652,6 +628,10 @@ def _dense_matmul(a, b):
     """`a @ b` through the live FlagGems ``mm`` entry (no torch fallback)."""
     import flag_gems
 
+    # Empty tensors may share a null data pointer and be misidentified as
+    # a transpose pair by the SYRK dispatch (which has no empty launch).
+    if a.shape[0] == 0 or b.shape[1] == 0 or a.shape[1] == 0:
+        return torch.zeros((a.shape[0], b.shape[1]), dtype=a.dtype, device=a.device)
     return flag_gems.mm(a, b)
 
 

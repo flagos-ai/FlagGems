@@ -191,7 +191,9 @@ def test_sparse_addmm_backward_matches_native_autograd(dtype):
         ref_out = torch.ops.aten._sparse_addmm(
             ref_bias, ref_mat1, ref_mat2, beta=1.5, alpha=0.75
         )
-        native = torch.autograd.grad(ref_out, (ref_bias, ref_mat1, ref_mat2), grad_output)
+        native = torch.autograd.grad(
+            ref_out, (ref_bias, ref_mat1, ref_mat2), grad_output
+        )
 
         grads, _ = _gems_grads(grad_output, bias, mat1, mat2, 1.5, 0.75)
         atol = 1e-4
@@ -216,9 +218,7 @@ def test_sparse_addmm_backward_broadcast(bias_kind, dtype):
     bias = _bias_for(bias_kind, M, N, dtype, device)
     grad_output = torch.randn((M, N), dtype=dtype, device=device)
 
-    ref_self, _, _, _ = _reference_grads(
-        grad_output, bias, mat1, mat2, 1.5, 0.75
-    )
+    ref_self, _, _, _ = _reference_grads(grad_output, bias, mat1, mat2, 1.5, 0.75)
     grads, _ = _gems_grads(grad_output, bias, mat1, mat2, 1.5, 0.75)
 
     assert grads[0].shape == bias.shape
