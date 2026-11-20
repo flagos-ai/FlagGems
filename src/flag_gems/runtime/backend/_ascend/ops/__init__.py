@@ -128,6 +128,7 @@ from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
 from .foreach_atan_ import foreach_atan_
 from .foreach_ceil import foreach_ceil
 from .foreach_copy import foreach_copy
+from .foreach_copy_ import foreach_copy_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -472,6 +473,7 @@ __all__ = [
     "foreach_atan_",
     "foreach_ceil",
     "foreach_copy",
+    "foreach_copy_",
     "frac",
     "frac_",
     "full",
