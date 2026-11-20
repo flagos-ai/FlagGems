@@ -1193,7 +1193,6 @@ _FULL_CONFIG = (
     ("copysign.Scalar", copysign),
     ("copysign.Tensor", copysign),
     ("copysign_.Tensor", copysign_),
-    ("copysign_backward", copysign_backward),
     ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),
