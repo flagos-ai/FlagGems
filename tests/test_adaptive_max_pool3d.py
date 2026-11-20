@@ -136,6 +136,20 @@ ALL_CONFIGS = UNIQUE_CONFIGS
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_adaptive_max_pool3d_forward(shape, output_size, desc, dtype):
     """Forward correctness with return_indices=True — all curated configs."""
+    gather_bytes = (
+        shape[0]
+        * shape[1]
+        * output_size[0]
+        * output_size[1]
+        * output_size[2]
+        * torch.empty((), dtype=dtype).element_size()
+    )
+    if flag_gems.vendor_name == "enflame" and gather_bytes > (16 << 20):
+        pytest.skip(
+            "enflame/GCU400 backend capability: index-gather result exceeds the "
+            "16 MiB safe D2H copy limit; assert_close host fallback aborts the "
+            "process on large page-boundary copies"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 

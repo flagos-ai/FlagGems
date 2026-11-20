@@ -37,7 +37,13 @@ on:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    # Runs on the self-hosted cpu-runner instead of ubuntu-latest: this job
+    # only echoes a date (no GitHub API calls), and scheduling it on a
+    # GitHub-hosted runner lets the cron run sit in the hosted-fleet queue
+    # for hours during peak load, delaying every downstream job. cpu-runner is
+    # dedicated and immediately available, so the workflow starts at the cron
+    # time instead of whenever GitHub frees a hosted runner.
+    runs-on: cpu-runner
     outputs:
       datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
     steps:
@@ -56,6 +62,11 @@ jobs:
       group: python-op-${{ needs.prepare.outputs.datetime }}-shard${{ matrix.shard_index }}
       cancel-in-progress: true
     runs-on: jiuding
+    # Without an explicit timeout, the runner's default cap cuts quick-mode
+    # shards off mid-run (every cancelled daily run died at ~95 min). 1440
+    # mirrors ops-test.yaml; quick mode finishes well under this, so the
+    # ceiling only protects against a genuinely hung shard.
+    timeout-minutes: 1440
     strategy:
       fail-fast: false
       matrix:

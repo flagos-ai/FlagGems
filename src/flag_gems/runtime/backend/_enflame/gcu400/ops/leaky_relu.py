@@ -23,8 +23,12 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# Fixed grid matches GCU400's SIP topology; an in-kernel stride loop covers large shapes
 NUM_SIPS = 24
-BLOCK = 8192
+GRID_MULT = 2
+BLOCK_16 = 8192
+BLOCK_32 = 8192
+NUM_WARPS = 4
 
 
 @libentry()
@@ -35,6 +39,9 @@ def _leaky_relu_kernel(
     N_total,
     negative_slope,
     BLOCK_SIZE: tl.constexpr,
+    KEEP_FP32: tl.constexpr,
+    MUL_SIGN: tl.constexpr,
+    EVEN_PATH: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
@@ -42,28 +49,58 @@ def _leaky_relu_kernel(
     num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK_SIZE + arange
-        mask = off < N_total
-        x = tl.load(input_ptr + off, mask=mask).to(tl.float32)
-        output = tl.where(x >= 0, x, x * negative_slope)
-        tl.store(output_ptr + off, output, mask=mask)
+        if EVEN_PATH:
+            x = tl.load(input_ptr + off)
+            if KEEP_FP32:
+                x = x.to(tl.float32)
+            if MUL_SIGN:
+                # Collapse where's two branches into a scalar factor, keeping only one vector multiplication
+                factor = tl.where(x >= 0, 1.0, negative_slope)
+                output = x * factor
+            else:
+                output = tl.where(x >= 0, x, x * negative_slope)
+            tl.store(output_ptr + off, output)
+        else:
+            mask = off < N_total
+            x = tl.load(input_ptr + off, mask=mask, other=0.0)
+            if KEEP_FP32:
+                x = x.to(tl.float32)
+            if MUL_SIGN:
+                factor = tl.where(x >= 0, 1.0, negative_slope)
+                output = x * factor
+            else:
+                output = tl.where(x >= 0, x, x * negative_slope)
+            tl.store(output_ptr + off, output, mask=mask)
 
 
-def _grid(n_elements):
-    return min(triton.cdiv(n_elements, BLOCK), NUM_SIPS * 2)
+def _choose_block(n_elements, is_fp32):
+    if n_elements <= 1024:
+        return 1024
+    if n_elements <= 32768:
+        return triton.next_power_of_2(n_elements)
+    if is_fp32:
+        return BLOCK_32
+    return BLOCK_16
 
 
 def _launch_leaky_relu(input_ptr, output_ptr, n_elements, negative_slope):
     if n_elements == 0:
         return
-    grid = _grid(n_elements)
+    is_fp32 = input_ptr.dtype == torch.float32
+    block_size = _choose_block(n_elements, is_fp32)
+    grid = min(triton.cdiv(n_elements, block_size), NUM_SIPS * GRID_MULT)
+    even_path = False and (n_elements % block_size == 0)
     with torch_device_fn.device(input_ptr.device):
         _leaky_relu_kernel[(grid,)](
             input_ptr,
             output_ptr,
             n_elements,
             negative_slope,
-            BLOCK_SIZE=BLOCK,
-            num_warps=4,
+            BLOCK_SIZE=block_size,
+            KEEP_FP32=False,
+            MUL_SIGN=False,
+            EVEN_PATH=even_path,
+            num_warps=NUM_WARPS,
         )
 
 
@@ -79,9 +116,12 @@ def leaky_relu(A, negative_slope=0.01):
 def leaky_relu_(A, negative_slope=0.01):
     logger.debug("GEMS_ENFLAME LEAKY_RELU_")
     if not A.is_contiguous():
-        raise RuntimeError(
-            "leaky_relu_ requires a contiguous tensor for in-place operation"
-        )
+        # A non-contiguous view cannot be addressed linearly by 1D flat addresses; run the same Triton
+        # kernel on a contiguous copy first, then write back by the original stride, preserving in-place semantics and
+        # the returned alias.
+        # negative_slope must be forwarded, otherwise it silently degrades to the default 0.01.
+        A.copy_(leaky_relu(A, negative_slope))
+        return A
     _launch_leaky_relu(A, A, A.numel(), negative_slope)
     return A
 

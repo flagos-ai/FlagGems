@@ -40,6 +40,27 @@ from ._foreach_add_ScalarList import _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
 from ._foreach_addcdiv__ScalarList import _foreach_addcdiv__ScalarList
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
+from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__ScalarList import _foreach_addcmul__ScalarList
+from ._foreach_addcmul__Tensor import _foreach_addcmul__Tensor
+from ._foreach_asin_ import _foreach_asin_
+from ._foreach_atan import _foreach_atan
+from ._foreach_ceil import _foreach_ceil
+from ._foreach_clamp_max__List import _foreach_clamp_max__List
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max_List import _foreach_clamp_max_List
+from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
+from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
+from ._foreach_clamp_min__List import _foreach_clamp_min__List
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_div__ScalarList import _foreach_div__ScalarList
+from ._foreach_div__Tensor import _foreach_div__Tensor
+from ._foreach_erf import _foreach_erf
+from ._foreach_erf_ import _foreach_erf_
+from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_exp_ import _foreach_exp_
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -78,6 +99,7 @@ from .conv2d import conv2d
 from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .convolution_overrideable import convolution_overrideable
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
@@ -97,6 +119,7 @@ from .fake_quantize_per_tensor_affine_cachemask import (
 )
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
+from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -251,6 +274,27 @@ __all__ = [
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
+    "_foreach_addcmul__Tensor",
+    "_foreach_asin_",
+    "_foreach_atan",
+    "_foreach_ceil",
+    "_foreach_clamp_max__List",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max_List",
+    "_foreach_clamp_max_Scalar",
+    "_foreach_clamp_max_ScalarList",
+    "_foreach_clamp_min__List",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_clamp_min__ScalarList",
+    "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
+    "_foreach_div__Tensor",
+    "_foreach_erf",
+    "_foreach_erf_",
+    "_foreach_erfc_",
+    "_foreach_exp_",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
@@ -296,6 +340,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "convolution_backward",
+    "convolution_backward_out",
     "convolution_overrideable",
     "copy_",
     "cudnn_convolution",
@@ -314,6 +360,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fix",
+    "flash_attention_backward",
     "flip",
     "floor_divide",
     "floor_divide_",

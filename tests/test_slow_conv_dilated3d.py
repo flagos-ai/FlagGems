@@ -39,6 +39,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 from .conftest import QUICK_MODE
 
 # (input shape, weight shape, kernel_size, stride, padding, dilation)
@@ -77,7 +78,12 @@ if QUICK_MODE:
 DTYPES = (
     [torch.float32]
     if QUICK_MODE
-    else [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+    else [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=_SKIP_FP64),
+    ]
 )
 
 
