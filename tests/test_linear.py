@@ -174,6 +174,9 @@ def test_linear_bias_cancellation(dtype, features, batch):
 
 
 @pytest.mark.linear
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Non-vector bias is Ascend-specific"
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("layout", ["matrix", "broadcast", "strided"])
 def test_linear_nonvector_bias(dtype, layout):
@@ -248,6 +251,9 @@ def test_linear_nonvector_bias_graph(dtype):
 
 
 @pytest.mark.linear
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Non-vector bias is Ascend-specific"
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("layout", ["matrix", "broadcast", "strided"])
 def test_linear_nonvector_bias_cancellation(dtype, layout):
