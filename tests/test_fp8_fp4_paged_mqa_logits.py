@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import fp8_fp4_paged_mqa_logits
+from flag_gems import fp8_fp4_paged_mqa_logits
 
 device = flag_gems.device
 

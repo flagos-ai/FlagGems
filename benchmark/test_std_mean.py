@@ -21,7 +21,7 @@ import triton
 from packaging.version import Version
 
 import flag_gems
-from flag_gems.ops.std_mean import (
+from flag_gems import (
     std_mean,
     std_mean_correction,
     std_mean_correction_names,
