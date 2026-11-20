@@ -177,7 +177,7 @@ def _gems_wrapper(
     l2_scales,
     dtype,
 ):
-    from flag_gems.fused import fp8_fp4_mega_moe
+    from flag_gems import fp8_fp4_mega_moe
 
     return fp8_fp4_mega_moe(
         x_fp8,
