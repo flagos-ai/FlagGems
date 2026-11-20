@@ -28,6 +28,7 @@ from .exponential_ import exponential_
 from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
+from .flash_attention_backward import flash_attention_backward
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
 from .foreach_abs import foreach_abs
 from .foreach_abs_ import foreach_abs_
@@ -316,6 +317,7 @@ __all__ = [
     "erfinv_",
     "exponential_",
     "fake_quantize_per_tensor_affine_cachemask_backward",
+    "flash_attention_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
     "foreach_abs",
