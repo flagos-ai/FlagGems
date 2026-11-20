@@ -19,6 +19,9 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
+from flag_gems.ops.cat import cat
+from flag_gems.ops.index_fill import index_fill
+from flag_gems.ops.index_select import index_select
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
@@ -339,8 +342,8 @@ def index_put_backward(grad_output, indices, inp_size, accumulate=False):
     if accumulate:
         grad_inp = grad_output
     else:
-        grad_inp = torch.index_fill(grad_output, 0, torch.cat(indices, dim=0), 0)
-    grad_values = torch.index_select(grad_output, 0, torch.cat(indices, dim=0))
+        grad_inp = index_fill(grad_output, 0, cat(list(indices), dim=0), 0)
+    grad_values = index_select(grad_output, 0, cat(list(indices), dim=0))
     return grad_inp, grad_values
 
 
