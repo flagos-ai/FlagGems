@@ -694,6 +694,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: acosh_backward_
+  description: Backward of in-place acosh through autograd.
+  for:
+  - acosh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: act_quant_triton
   description: This is a fused operator.
   for:
