@@ -21,7 +21,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 # Select every overload and contract case with the operator marker.
 pytestmark = pytest.mark.chain_matmul
 
