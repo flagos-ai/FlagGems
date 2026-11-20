@@ -63,3 +63,26 @@ def test_i0_out(shape, dtype):
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.i0_backward
+@pytest.mark.parametrize("shape", I0_SHAPES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_i0_backward(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = utils.to_reference(inp, True)
+
+    res_out = flag_gems.i0(inp)
+    ref_out = torch.i0(ref_inp)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    # Full autograd chain: d/dx I0(x) = I1(x).
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_out_grad)
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+    # The public backward primitive must agree with the autograd path.
+    res_direct = flag_gems.i0_backward(out_grad, inp)
+    utils.gems_assert_close(res_direct, ref_in_grad, dtype)

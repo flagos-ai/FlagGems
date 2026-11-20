@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 @pytest.mark.msort
@@ -43,6 +44,8 @@ from . import accuracy_utils as utils
     ],
 )
 def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 requires an fp64 datapath; this device has none")
     inp = torch.randn(rows, 3, dtype=dtype, device=flag_gems.device)
     payloads = torch.tensor(bits, dtype=int_dtype, device=inp.device).view(dtype)
     inp[:4] = payloads[:, None]
@@ -67,9 +70,13 @@ def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
 
 @pytest.mark.msort_out
 @pytest.mark.parametrize("rows", [17, 512, 513, 1025])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64), torch.int64]
+)
 @pytest.mark.parametrize("view_alias", [False, True])
 def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 requires an fp64 datapath; this device has none")
     # Many columns and rows force multiple programs in both sorting paths.
     inp = _make_input((rows, 129), dtype)
     reference_input = utils.to_reference(inp).clone()
@@ -145,7 +152,9 @@ def test_msort_noncontiguous_empty_scalar_and_special_values():
 
 @pytest.mark.msort
 @pytest.mark.parametrize("shape", [(), (0,), (1,), (2, 3)])
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_msort_rejects_complex(shape, dtype):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     with pytest.raises(RuntimeError):

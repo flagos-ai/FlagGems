@@ -20,6 +20,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _assert_equal(actual, expected):
+    if IS_KUNLUNXIN:
+        actual, expected = actual.cpu(), expected.cpu()
+    utils.gems_assert_equal(actual, expected)
+
+
 # view_as_complex_copy maps a real dtype to the complex dtype one size up:
 # float16 -> complex32, float32 -> complex64, float64 -> complex128. bfloat16
 # and every non-float dtype are rejected, so the real domains here are the
@@ -76,7 +85,7 @@ def _assert_matches(res, ref, inp):
     # aliased view, so this is not redundant with it.
     assert not torch._C._is_alias_of(res, inp)
     # values -- full elementwise equality against the reference.
-    utils.gems_assert_equal(_as_complex64(res), _as_complex64(ref))
+    _assert_equal(_as_complex64(res), _as_complex64(ref))
 
 
 @pytest.mark.view_as_complex_copy
@@ -209,7 +218,7 @@ def test_accuracy_view_as_complex_copy_independent_storage(dtype):
 
     inp.add_(1.0)
     # The copy must not change when the source is mutated in place.
-    utils.gems_assert_equal(_as_complex64(res_out), _as_complex64(ref))
+    _assert_equal(_as_complex64(res_out), _as_complex64(ref))
 
 
 @pytest.mark.view_as_complex_copy
@@ -231,28 +240,29 @@ def test_accuracy_view_as_complex_copy_empty():
 @pytest.mark.view_as_complex_copy
 def test_accuracy_view_as_complex_copy_error_paths():
     dev = flag_gems.device
+    aten_error = (RuntimeError, ValueError) if IS_KUNLUNXIN else RuntimeError
 
     # 0-dim input.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(aten_error):
         torch.ops.aten.view_as_complex_copy(torch.tensor(1.0, device=dev))
     with pytest.raises(RuntimeError):
         flag_gems.view_as_complex_copy(torch.tensor(1.0, device=dev))
 
     # Last dimension different from 2.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(aten_error):
         torch.ops.aten.view_as_complex_copy(torch.randn(4, 3, device=dev))
     with pytest.raises(RuntimeError):
         flag_gems.view_as_complex_copy(torch.randn(4, 3, device=dev))
 
     # Last dimension stride different from 1.
     bad = torch.randn(4, 4, device=dev)[:, ::2]
-    with pytest.raises(RuntimeError):
+    with pytest.raises(aten_error):
         torch.ops.aten.view_as_complex_copy(bad)
     with pytest.raises(RuntimeError):
         flag_gems.view_as_complex_copy(bad)
 
     # Unsupported dtypes: bfloat16 and integers.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(aten_error):
         torch.ops.aten.view_as_complex_copy(
             torch.randn(4, 2, device=dev, dtype=torch.bfloat16)
         )

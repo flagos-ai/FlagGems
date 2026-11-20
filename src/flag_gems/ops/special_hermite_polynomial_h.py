@@ -28,18 +28,13 @@ Contract reproduced from the reference wrapper:
   * only float32/float64 input is supported (ValueError otherwise)
   * degrees outside [0, 9] raise ValueError, for scalar and tensor n
 
-Target notes (enflame GCU300 / flagtree backend):
+Implementation notes:
   * grid.x is capped at 65535, so a large launch uses a grid-stride loop.
-  * 64-bit data types are rejected by the compiler: int64 degree tensors are
-    read through an int32 word view (low word == torch's .to(int32) cast) and
-    float64 tensors (whose GCU storage keeps the values as a dense float32
-    array in the first half of the buffer) are read/written through a float32
-    view.
   * Dynamic loops must live in the top-level kernel (not in a jit helper) and
     zero-valued runtime stride arguments are rejected, hence the flat fast path
     and the +1 stride encoding on the general path.
-  * tl.atomic_rmw is not legalizable, so the degree-range violation flag is
-    written by a plain 1-element store of a constant.
+  * tl.atomic_rmw is not used, so the degree-range violation flag is written by
+    a plain 1-element store of a constant.
 """
 
 import logging
@@ -210,7 +205,6 @@ def _hermite_tensor_kernel(
     NDIM: tl.constexpr,
     XFLAT: tl.constexpr,
     NFLAT: tl.constexpr,
-    NINT64: tl.constexpr,
     SPOOL: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -325,11 +319,7 @@ def _hermite_tensor_kernel(
                 + (t % o5) * ns5
             )
 
-        if NINT64:
-            # one dense int32 word per int64 element on this backend
-            d = tl.load(n_ptr + no, mask=mask, other=0)
-        else:
-            d = tl.load(n_ptr + no, mask=mask, other=0).to(tl.int32)
+        d = tl.load(n_ptr + no, mask=mask, other=0).to(tl.int32)
 
         x = tl.load(x_ptr + xo, mask=mask, other=0)
         two_x = 2.0 * x
@@ -369,33 +359,6 @@ def _hermite_tensor_kernel(
 # --------------------------------------------------------------------------- #
 # host side
 # --------------------------------------------------------------------------- #
-def _low_words(t):
-    """Flat int32 view of an int64 tensor.
-
-    This backend stores int64 as ONE dense int32 word per element (the value
-    lives in word i, not word 2i), so element i is read at word offset i.
-    """
-    n = t.numel()
-    if t.is_contiguous():
-        return t.view(-1).view(torch.int32)[:n]
-    st = t.untyped_storage()
-    v = torch.empty(0, dtype=torch.int32, device=t.device)
-    v = v.set_(st, 0, (st.size() // 4,), (1,))
-    off = t.storage_offset()
-    return v[off : off + n]
-
-
-def _f32_words(t):
-    """Flat float32 view of the dense value words of a float64 tensor."""
-    if t.is_contiguous():
-        return t.view(-1).view(torch.float32)
-    st = t.untyped_storage()
-    v = torch.empty(0, dtype=torch.float32, device=t.device)
-    v = v.set_(st, 0, (st.size() // 4,), (1,))
-    off = t.storage_offset()
-    return v[off:] if off else v
-
-
 def _eff_strides(t, out_shape):
     lead = len(out_shape) - t.dim()
     st = []
@@ -447,25 +410,19 @@ def special_hermite_polynomial_h(x, n):
     else:
         raise ValueError("Second argument must be a Tensor or a number")
 
-    wordify = x.dtype is torch.float64
     out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
     total = out.numel()
     if total == 0:
         return out
     blkc = _BLOCK_BIG if total >= _BIG_TOTAL else _BLOCK
 
-    if wordify:
-        xarg = _f32_words(x)
-        oarg = _f32_words(out)
-    else:
-        xarg = x
-        oarg = out
+    xarg = x
+    oarg = out
 
     if n_is_tensor:
         ndt = ndeg.dtype
-        nint64 = ndt is torch.int64
-        if nint64:
-            narg = _low_words(ndeg)
+        if ndt is torch.int64:
+            narg = ndeg
         elif ndt in (torch.int32, torch.int16, torch.int8, torch.uint8, torch.float32):
             narg = ndeg
         elif ndt is torch.bool:
@@ -536,7 +493,6 @@ def special_hermite_polynomial_h(x, n):
             NDIM=ndim,
             XFLAT=xflat,
             NFLAT=nflat,
-            NINT64=nint64,
             SPOOL=spool,
             BLOCK=blkc,
             num_warps=_NUM_WARPS,

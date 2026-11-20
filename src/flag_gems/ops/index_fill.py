@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 _MAX_RANK = 8
 _BLOCK_SIZE = 512
 _COPY_BLOCK_SIZE = 1024
+# Upper bound for a launch's grid.x on the supported backends (Enflame GCU
+# reports 65535 as well). The contiguous fill walks its tile blocks with a
+# grid-stride loop, so capping the launch here is enough to stay legal.
+_MAX_GRID = 65535
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -73,15 +78,16 @@ def index_fill_kernel(
     DIM: tl.constexpr,
     RANK: tl.constexpr,
     VALUE_IS_TENSOR: tl.constexpr,
+    INT64_OFFSETS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     # Generic strided path: iterate over the fill space, i.e. all coordinates
     # of `out` with the `DIM`-th coordinate replaced by a position in `index`.
+    # The fill space can exceed the backend's grid.x cap (65535), so the launch
+    # is capped at the call site and the blocks are walked with a grid-stride
+    # loop; for grids that fit, the loop body runs exactly once.
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < N
-    linear = offsets.to(tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    block_stride = tl.num_programs(axis=0) * BLOCK_SIZE
     shapes = (shape_0, shape_1, shape_2, shape_3, shape_4, shape_5, shape_6, shape_7)
     strides = (
         stride_0,
@@ -93,23 +99,37 @@ def index_fill_kernel(
         stride_6,
         stride_7,
     )
-    for i in tl.static_range(RANK):
-        size = index_len if i == DIM else shapes[i]
-        coord = linear % size
-        linear = linear // size
-        if i == DIM:
-            raw_index = tl.load(index + coord, mask=mask, other=0).to(tl.int64)
-            valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
-            coord = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
-        out_offsets += coord * strides[i]
     if VALUE_IS_TENSOR:
         fill_value = tl.load(value)
     else:
         fill_value = value
-    # Out-of-range index entries are skipped silently by the store mask.
-    # (PyTorch reports them as an error, but tl.device_assert fails to
-    # compile on non-CUDA FlagGems backends, so the check is omitted.)
-    tl.store(out + out_offsets, fill_value, mask=mask & valid_index)
+    for block_start in range(pid * BLOCK_SIZE, N, block_stride):
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < N
+        # Backends without int64 tensor support (e.g. Enflame GCU300) reject
+        # i64 pointer arithmetic, so offsets fall back to int32 there.
+        if INT64_OFFSETS:
+            linear = offsets.to(tl.int64)
+            out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        else:
+            linear = offsets
+            out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+        for i in tl.static_range(RANK):
+            size = index_len if i == DIM else shapes[i]
+            coord = linear % size
+            linear = linear // size
+            if i == DIM:
+                if INT64_OFFSETS:
+                    raw_index = tl.load(index + coord, mask=mask, other=0).to(tl.int64)
+                else:
+                    raw_index = tl.load(index + coord, mask=mask, other=0)
+                valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+                coord = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+            out_offsets += coord * strides[i]
+        # Out-of-range index entries are skipped silently by the store mask.
+        # (PyTorch reports them as an error, but tl.device_assert fails to
+        # compile on non-CUDA FlagGems backends, so the check is omitted.)
+        tl.store(out + out_offsets, fill_value, mask=mask & valid_index)
 
 
 @libentry()
@@ -122,34 +142,50 @@ def index_fill_contiguous_kernel(
     index_len,
     dim_size,
     inner_size,
+    num_blocks_n,
+    total_blocks,
     VALUE_IS_TENSOR: tl.constexpr,
+    INT64_OFFSETS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # Contiguous fast path: 2-D grid over (outer x index) rows and inner blocks.
-    pid_m = tl.program_id(axis=0)
-    pid_n = tl.program_id(axis=1)
-    m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    inner_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    m_mask = m_offsets < outer_index_len
-    index_coord = m_offsets % index_len
-    outer_coord = m_offsets // index_len
-    raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
-    valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
-    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
-    out_offsets = outer_coord[:, None] * dim_size * inner_size
-    out_offsets += normalized_index[:, None] * inner_size
-    out_offsets += inner_offsets[None, :]
-    store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
-    store_mask = store_mask & valid_index[:, None]
-    if VALUE_IS_TENSOR:
-        fill_value = tl.load(value)
-    else:
-        fill_value = value
-    # Out-of-range index entries are skipped silently by the store mask.
-    # (PyTorch reports them as an error, but tl.device_assert fails to
-    # compile on non-CUDA FlagGems backends, so the check is omitted.)
-    tl.store(out + out_offsets, fill_value, mask=store_mask)
+    # Contiguous fast path: one program instance covers a (BLOCK_M x BLOCK_N)
+    # tile of the (outer x index, inner) fill space. The tiles are launched as a
+    # flat 1-D grid and walked with a grid-stride loop: a 2-D (m, n) launch can
+    # exceed a backend's grid.y limit (255 on Enflame GCU, which a plain
+    # large-vocabulary row fill reaches), while the flat grid only has to honor
+    # the grid.x limit and is capped at the call site.
+    pid = tl.program_id(axis=0)
+    num_programs = tl.num_programs(axis=0)
+    for block_id in range(pid, total_blocks, num_programs):
+        pid_m = block_id // num_blocks_n
+        pid_n = block_id % num_blocks_n
+        m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        inner_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        m_mask = m_offsets < outer_index_len
+        index_coord = m_offsets % index_len
+        outer_coord = m_offsets // index_len
+        if INT64_OFFSETS:
+            raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
+        else:
+            # Backends without int64 tensor support (e.g. Enflame GCU300) reject
+            # i64 pointer arithmetic, so keep the load and offsets in int32.
+            raw_index = tl.load(index + index_coord, mask=m_mask, other=0)
+        valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
+        normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index)
+        out_offsets = outer_coord[:, None] * dim_size * inner_size
+        out_offsets += normalized_index[:, None] * inner_size
+        out_offsets += inner_offsets[None, :]
+        store_mask = m_mask[:, None] & (inner_offsets[None, :] < inner_size)
+        store_mask = store_mask & valid_index[:, None]
+        if VALUE_IS_TENSOR:
+            fill_value = tl.load(value)
+        else:
+            fill_value = value
+        # Out-of-range index entries are skipped silently by the store mask.
+        # (PyTorch reports them as an error, but tl.device_assert fails to
+        # compile on non-CUDA FlagGems backends, so the check is omitted.)
+        tl.store(out + out_offsets, fill_value, mask=store_mask)
 
 
 @libentry()
@@ -179,10 +215,13 @@ def _index_fill_contiguous_launch(out, dim, index, value, value_is_tensor, fill_
         else:
             block_m = max(1, _BLOCK_SIZE // block_n)
     outer_index_len = fill_numel // inner_size
-    grid = (
-        triton.cdiv(outer_index_len, block_m),
-        triton.cdiv(inner_size, block_n),
-    )
+    num_blocks_m = triton.cdiv(outer_index_len, block_m)
+    num_blocks_n = triton.cdiv(inner_size, block_n)
+    total_blocks = num_blocks_m * num_blocks_n
+    # Flat launch capped at the grid.x limit; the kernel grid-strides over the
+    # remaining tile blocks. This keeps both the grid.x and grid.y limits of the
+    # backend (grid.y is only 255 on Enflame GCU) satisfied for every shape.
+    grid = (min(total_blocks, _MAX_GRID),)
     index_fill_contiguous_kernel[grid](
         out,
         index,
@@ -191,7 +230,10 @@ def _index_fill_contiguous_launch(out, dim, index, value, value_is_tensor, fill_
         index.numel(),
         dim_size,
         inner_size,
+        num_blocks_n,
+        total_blocks,
         VALUE_IS_TENSOR=value_is_tensor,
+        INT64_OFFSETS=bool(runtime_device.support_int64),
         BLOCK_M=block_m,
         BLOCK_N=block_n,
     )
@@ -236,7 +278,7 @@ def _index_fill_impl(out, dim, index, value, value_is_tensor):
             while len(shapes) < _MAX_RANK:
                 shapes.append(1)
                 strides.append(0)
-            grid = (triton.cdiv(fill_numel, _BLOCK_SIZE),)
+            grid = (min(triton.cdiv(fill_numel, _BLOCK_SIZE), _MAX_GRID),)
             index_fill_kernel[grid](
                 out,
                 index,
@@ -249,6 +291,7 @@ def _index_fill_impl(out, dim, index, value, value_is_tensor):
                 DIM=dim,
                 RANK=out.ndim,
                 VALUE_IS_TENSOR=value_is_tensor,
+                INT64_OFFSETS=bool(runtime_device.support_int64),
                 BLOCK_SIZE=_BLOCK_SIZE,
             )
     return out
@@ -266,6 +309,12 @@ def _prepare_index(inp, dim, index):
 
     if index.dtype != torch.long:
         raise IndexError("index_fill_(): Expected dtype int64 for index.")
+    # PyTorch mandates int64 indices, but some backends cannot hand an int64
+    # tensor to a kernel at all (Enflame GCU300 rejects i64 pointers at compile
+    # time). Downcasting is lossless here: every valid index is bounded by the
+    # filled dimension, which fits in int32.
+    if index.dtype == torch.int64 and not runtime_device.support_int64:
+        index = index.to(torch.int32)
     if index.device != inp.device:
         raise RuntimeError(
             "Expected all tensors to be on the same device, but found at least "

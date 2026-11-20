@@ -52,6 +52,37 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
+class LayerNormBackwardLargeMBenchmark(base.Benchmark):
+    DEFAULT_SHAPES = [
+        ((64, 16, 64, 16), (16,)),
+        ((128, 16, 16, 32), (32,)),
+        ((32768, 128), (128,)),
+        ((32768, 256), (256,)),
+        ((32768, 257), (257,)),
+    ]
+    DEFAULT_SHAPE_DESC = "input_shape, normalized_shape"
+
+    def get_input_iter(self, dtype):
+        for shape, normalized_shape in self.shapes:
+            grad_out = torch.randn(shape, dtype=dtype, device=self.device)
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
+            weight = torch.randn(normalized_shape, dtype=dtype, device=self.device)
+            bias = torch.randn(normalized_shape, dtype=dtype, device=self.device)
+            _, mean, rstd = torch.ops.aten.native_layer_norm(
+                inp, normalized_shape, weight, bias, 1e-5
+            )
+            yield (
+                grad_out,
+                inp,
+                normalized_shape,
+                mean,
+                rstd,
+                weight,
+                bias,
+                [True, True, True],
+            )
+
+
 def input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     layer_shape = shape[1:]
@@ -114,6 +145,16 @@ def test_layer_norm_backward():
     bench.run()
 
 
+@pytest.mark.layer_norm_backward
+def test_layer_norm_backward_large_m():
+    bench = LayerNormBackwardLargeMBenchmark(
+        op_name="layer_norm_backward_large_m",
+        torch_op=torch.ops.aten.native_layer_norm_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 class LayernormBenchmark(base.Benchmark):
     def get_input_iter(self, dtype):
         torch.manual_seed(20261103)
@@ -128,7 +169,7 @@ class LayernormBenchmark(base.Benchmark):
 @pytest.mark.layer_norm
 def test_layernorm():
     bench = LayernormBenchmark(
-        op_name="layernorm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
+        op_name="layer_norm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
     )
     bench.set_gems(lambda *args, **kwargs: flag_gems.layer_norm(*args, **kwargs)[0])
     bench.run()
@@ -227,9 +268,9 @@ def benchmark_manifest_case(record, nodes, replays, samples):
         "count": record["count"],
         "sources": record["sources"],
         "native_us": native_us,
-        "layernorm_us": candidate_us,
+        "layer_norm_us": candidate_us,
         "speedup": native_us / candidate_us,
-        "samples_us": {"native": native_samples, "layernorm": candidate_samples},
+        "samples_us": {"native": native_samples, "layer_norm": candidate_samples},
         "max_abs": max_abs,
         "atol": tolerance,
         "rtol": tolerance,
@@ -240,7 +281,7 @@ def benchmark_manifest_case(record, nodes, replays, samples):
 
 def core_layernorm_records(dtypes, shape_file):
     with shape_file.open() as stream:
-        cases = yaml.safe_load(stream)["layernorm"]["shapes"]
+        cases = yaml.safe_load(stream)["LayernormBenchmark"]["shapes"]
     records = []
     for shape, normalized_shape, eps in cases:
         for dtype in dtypes:
@@ -314,7 +355,7 @@ def run_manifest_benchmark():
         "src/flag_gems/runtime/backend/_metax/ops/layernorm.py"
     )
     report = {
-        "operator": "layernorm",
+        "operator": "layer_norm",
         "baseline": "device-native torch.nn.functional.layer_norm",
         "torch": torch.__version__,
         "triton": triton.__version__,

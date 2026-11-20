@@ -34,7 +34,10 @@ else:
 
 
 def cal_diff(x: torch.Tensor, y: torch.Tensor, name: str) -> None:
-    x, y = x.double(), y.double()
+    diff_dtype = (
+        torch.float64 if (utils.fp64_is_supported or cfg.TO_CPU) else torch.float32
+    )
+    x, y = x.to(diff_dtype), y.to(diff_dtype)
     x = x.to(y.device)
     RMSE = ((x - y) * (x - y)).mean().sqrt().item()
     cos_diff = 1 - 2 * (x * y).sum().item() / max((x * x + y * y).sum().item(), 1e-12)
