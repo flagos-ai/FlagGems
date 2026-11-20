@@ -268,7 +268,7 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
 def log_softmax_backward(grad_output, output, dim, input_dtype):
     logger.debug("GEMS LOG_SOFTMAX_BACKWARD")
     if output.is_cuda and grad_output.is_cuda:
-        return log_softmax_backward_optimized grad_output, output, dim, input_dtype
+        return log_softmax_backward_optimized(grad_output, output, dim, input_dtype)
     in_grad = torch.empty_like(output, dtype=input_dtype)
     return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)
 

@@ -127,6 +127,7 @@ def test_accuracy_log_softmax_backward_out(shape, dtype, dim):
     flag_gems.log_softmax_backward_out(res_grad, res_out, dim, dtype, out=res_in_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
+
 @pytest.mark.log_softmax_backward
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
