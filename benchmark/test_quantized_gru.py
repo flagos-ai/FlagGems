@@ -39,7 +39,7 @@ class QuantizedGruBenchmark(base.Benchmark):
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
-        from flag_gems.ops.quantized_gru import quantized_gru_input
+        from flag_gems import quantized_gru_input
 
         self.gems_op = quantized_gru_input
 

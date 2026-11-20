@@ -237,7 +237,7 @@ def test_logcumsumexp_backward_wide_range(dtype, monkeypatch):
 
     # Inject the native forward result to isolate the wide-range backward
     # while still exercising the public FlagGems autograd entry.
-    module = importlib.import_module("flag_gems.ops.logcumsumexp")
+    module = importlib.import_module(flag_gems.logcumsumexp.__module__)
     monkeypatch.setattr(module, "logcumsumexp_wrapper", lambda *args: out)
     res_inp = inp.detach().requires_grad_(True)
     res_out = flag_gems.logcumsumexp(res_inp, dim)

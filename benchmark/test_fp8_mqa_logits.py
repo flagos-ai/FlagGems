@@ -170,7 +170,7 @@ def _vllm_wrapper(q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke, q
 
 
 def _gems_wrapper(q_fp8, k_fp8, k_scales, weights, cu_seqlen_ks, cu_seqlen_ke, q_dtype):
-    from flag_gems.ops import fp8_mqa_logits
+    from flag_gems import fp8_mqa_logits
 
     return fp8_mqa_logits(
         q_fp8,
