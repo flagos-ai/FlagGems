@@ -120,6 +120,7 @@ from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .floor import floor
 from .foreach_abs_ import foreach_abs_
+from .foreach_acos_ import foreach_acos_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -456,6 +457,7 @@ __all__ = [
     "float_power_scalar_tensor_out",
     "floor",
     "foreach_abs_",
+    "foreach_acos_",
     "frac",
     "frac_",
     "full",
