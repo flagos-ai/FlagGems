@@ -78,7 +78,7 @@ def _indices_copy(self: torch.Tensor) -> torch.Tensor:
     """``aten::_indices_copy``: fresh copy of a sparse COO tensor's indices."""
     logger.debug("GEMS _INDICES_COPY")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
-        raise RuntimeError(
+        raise NotImplementedError(
             "_indices_copy only supports sparse coordinate (coo) tensors, "
             f"but got layout {getattr(self, 'layout', None)}"
         )
@@ -89,7 +89,7 @@ def _indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     """``aten::_indices_copy.out``: write the indices copy into ``out``."""
     logger.debug("GEMS _INDICES_COPY_OUT")
     if not isinstance(self, torch.Tensor) or self.layout != torch.sparse_coo:
-        raise RuntimeError(
+        raise NotImplementedError(
             "_indices_copy only supports sparse coordinate (coo) tensors, "
             f"but got layout {getattr(self, 'layout', None)}"
         )
@@ -101,4 +101,9 @@ def _indices_copy_out(self: torch.Tensor, *, out: torch.Tensor) -> torch.Tensor:
     sdim, nnz = self._indices().shape
     if tuple(out.shape) != (sdim, nnz):
         out.resize_((sdim, nnz))
+    if not out.is_contiguous():
+        tmp = torch.empty((sdim, nnz), dtype=torch.int64, device=out.device)
+        _indices_copy_impl(self, out=tmp)
+        out.copy_(tmp)
+        return out
     return _indices_copy_impl(self, out=out)

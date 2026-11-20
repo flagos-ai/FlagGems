@@ -153,8 +153,7 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
     logger.debug("GEMS AMINMAX")
 
     if dim is None:
-        # The global kernels read a dense logical sequence. Use the FlagGems
-        # copy path for views; contiguous inputs (including offsets) are a no-op.
+        # The whole-tensor kernels use flat offsets, so materialize strided views.
         inp = contiguous(inp)
         M = inp.numel()
         if M == 0:

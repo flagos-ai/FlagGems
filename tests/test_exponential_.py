@@ -52,6 +52,38 @@ def test_exponential_fast(shape, dtype):
     assert torch.abs(var_res - var_ref) < var_tol
 
 
+@pytest.mark.exponential_backward_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("noncontiguous", [False, True])
+def test_exponential_backward_(dtype, noncontiguous):
+    inp = torch.randn((8, 12), device=flag_gems.device, dtype=dtype)
+    if noncontiguous:
+        inp = inp.T
+    grad = torch.randn_like(inp)
+    ref = utils.to_reference(inp.detach().clone(), False).requires_grad_()
+    actual = inp.detach().clone().requires_grad_()
+    torch_out = ref.clone().exponential_(1.5)
+    gems_out = flag_gems.exponential_(actual.clone(), 1.5)
+    assert gems_out.data_ptr() != actual.data_ptr()
+    ref_grad = torch.autograd.grad(torch_out, ref, utils.to_reference(grad, False))[0]
+    gems_grad = torch.autograd.grad(gems_out, actual, grad)[0]
+    utils.gems_assert_equal(gems_grad, ref_grad)
+
+
+@pytest.mark.exponential_backward_
+@pytest.mark.parametrize("noncontiguous", [False, True])
+def test_exponential_inplace_version(noncontiguous):
+    x = torch.randn((4, 5), device=flag_gems.device, requires_grad=True)
+    target = x.T if noncontiguous else x
+    saved = (target * target).sum()
+    with torch.no_grad():
+        old_version = target._version
+        flag_gems.exponential_(target)
+    assert target._version > old_version
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        saved.backward()
+
+
 def _exponential_samples(backend, seed, size):
     x = torch.empty(size, device=flag_gems.device, dtype=torch.float32)
     generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
@@ -112,3 +144,110 @@ def test_exponential_far_left_tail(seed):
         assert (
             observed < bound
         ), f"seed={seed}: P(X < {t:.0e}) = {observed:.3e}, expected ~{t:.0e}"
+
+
+def _consecutive_exponential_samples(backend, seed, size, dtype):
+    generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
+    first = torch.empty(size, device=flag_gems.device, dtype=dtype)
+    second = torch.empty(size, device=flag_gems.device, dtype=dtype)
+    if backend == "flaggems":
+        flag_gems.exponential_(first, generator=generator)
+        flag_gems.exponential_(second, generator=generator)
+    else:
+        first.exponential_(generator=generator)
+        second.exponential_(generator=generator)
+    return first, second
+
+
+@pytest.mark.exponential_
+@pytest.mark.parametrize("backend", ["torch", "flaggems"])
+@pytest.mark.parametrize("seed", [260828, 2026, 7])
+@pytest.mark.parametrize(
+    "size, dtype",
+    [
+        (1 << 17, torch.float32),
+        (100, torch.float16),
+        (100, torch.bfloat16),
+    ],
+)
+def test_exponential_consecutive_calls_advance_generator(backend, seed, size, dtype):
+    """Back-to-back draws must not replay each other's philox counters (#7162).
+
+    The launch grid rounds ``N`` up to whole programs while the generator offset
+    only advanced by ``N // UNROLL``, so a second call replayed most of the
+    first call's random stream. In vLLM that froze the exponential-race
+    (Gumbel-max) sampler: every step drew almost the same noise and therefore
+    picked the same token regardless of the probabilities.
+    """
+    first, second = _consecutive_exponential_samples(backend, seed, size, dtype)
+
+    # Values drawn from a replayed counter are bit-identical, so counting how
+    # many of the second draw's values already appeared in the first draw
+    # detects the reuse without depending on the internal tile size.
+    repeated = torch.isin(second, first).float().mean().item()
+    assert repeated < 0.5, (
+        f"{backend} seed={seed} size={size} dtype={dtype}: {repeated:.2%} of the "
+        "second draw repeats values from the first draw; consecutive calls must "
+        "consume disjoint philox counters"
+    )
+
+
+# Vendors that ship their own exponential_ implementation instead of the shared
+# one this test exercises.
+_LOCAL_EXPONENTIAL_VENDORS = {
+    "arm",
+    "ascend",
+    "cambricon",
+    "hygon",
+    "kunlunxin",
+    "metax",
+    "sunrise",
+    "tsingmicro",
+}
+
+
+@pytest.mark.exponential_
+@pytest.mark.skipif(
+    flag_gems.vendor_name in _LOCAL_EXPONENTIAL_VENDORS,
+    reason="vendor-specific exponential_ implementation",
+)
+@pytest.mark.parametrize("seed", [2026, 7])
+def test_exponential_race_matches_categorical(seed):
+    """Exponential-race sampling must reproduce the categorical distribution.
+
+    vLLM samples with ``argmax(probs / q)`` where ``q ~ Exp(1)`` (the Gumbel-max
+    trick), so a distorted left tail of ``q`` changes the sampled distribution.
+    The fast log used to compress everything below ~1e-5 against a ~6.5e-6
+    floor, which made every draw noticeably more peaked than ``probs``: the mean
+    rank of the sampled token was about half of the theoretical value
+    (Issue #7162).
+    """
+    vocab, steps = 1 << 17, 1000
+    torch.manual_seed(seed)
+    probs = torch.softmax(
+        torch.randn(vocab, device=flag_gems.device, dtype=torch.float32) * 2.0,
+        dim=-1,
+    )
+
+    # rank[i] == number of tokens strictly more likely than token i
+    ranks = torch.empty(vocab, device=flag_gems.device, dtype=torch.float32)
+    ranks[torch.argsort(probs, descending=True)] = torch.arange(
+        vocab, device=flag_gems.device, dtype=torch.float32
+    )
+    expected = (ranks * probs).sum().item()
+    second_moment = (ranks * ranks * probs).sum().item()
+    stderr = ((second_moment - expected**2) / steps) ** 0.5
+
+    torch.manual_seed(seed)
+    q = torch.empty(vocab, device=flag_gems.device, dtype=torch.float32)
+    tokens = torch.empty(steps, dtype=torch.long, device=flag_gems.device)
+    for step in range(steps):
+        flag_gems.exponential_(q)
+        tokens[step] = (probs / q).argmax()
+
+    observed = ranks[tokens].mean().item()
+    assert abs(observed - expected) < 5 * stderr, (
+        f"seed={seed}: mean sampled rank {observed:.0f}, expected "
+        f"{expected:.0f} +/- {stderr:.0f} (5 sigma); the exponential noise no "
+        "longer matches Exp(1)"
+    )

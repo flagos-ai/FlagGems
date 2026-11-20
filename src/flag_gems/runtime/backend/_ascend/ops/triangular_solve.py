@@ -39,7 +39,8 @@ def _launch_resident(entry, pointers, constants, grid):
     if not _USE_LAUNCH_CACHE:
         entry[grid](*pointers, *constants)
         return
-    debug = triton.knobs.runtime.debug
+    _knobs = getattr(triton, "knobs", None)
+    debug = getattr(getattr(_knobs, "runtime", None), "debug", False)
     key = (
         entry,
         pointers[0].device,
@@ -65,21 +66,27 @@ def _launch_resident(entry, pointers, constants, grid):
 # These compiler closures cannot lower the resident substitution loop.
 # Use streamed substitution or the existing pure-Triton panel solver instead.
 try:
-    _USE_PANEL_SOLVER = (triton.__version__, version("flagtree")) in (
+    _FLAGTREE_VERSION = version("flagtree")
+    _USE_PANEL_SOLVER = (triton.__version__, _FLAGTREE_VERSION) in (
         ("3.2.0", "0.6.0+ascend3.2"),
         ("3.5.1", "0.7.0+ascend3.5"),
     )
     _USE_STREAMED_SOLVER = (
-        triton.__version__ == "3.5.1" and version("flagtree") == "0.7.0+ascend3.5"
+        triton.__version__ == "3.5.1" and _FLAGTREE_VERSION == "0.7.0+ascend3.5"
     )
-    _USE_LAUNCH_CACHE = triton.__version__ == "3.5.1" and version("flagtree") in (
+    _USE_LAUNCH_CACHE = triton.__version__ == "3.5.1" and _FLAGTREE_VERSION in (
         "0.6.0+ascend3.5",
         "0.7.0+ascend3.5",
+    )
+    _USE_PLAN_MEMORY_WORKAROUND = (triton.__version__, _FLAGTREE_VERSION) == (
+        "3.5.1",
+        "0.7.1a1+ascend3.5",
     )
 except PackageNotFoundError:
     _USE_PANEL_SOLVER = False
     _USE_STREAMED_SOLVER = False
     _USE_LAUNCH_CACHE = False
+    _USE_PLAN_MEMORY_WORKAROUND = False
 
 
 def _wide_matrix_offsets(batch, strides, rows, cols):
@@ -109,6 +116,7 @@ def _resident_solve_kernel(
     ROWS: tl.constexpr,
     COLS: tl.constexpr,
     ITEMS: tl.constexpr,
+    ROW_MAJOR_RHS: tl.constexpr = False,
 ):
     # Keep the RHS tile in UB for the entire substitution. Each program owns
     # complete RHS columns, so there are no inter-program dependencies or
@@ -119,6 +127,9 @@ def _resident_solve_kernel(
         or ITEMS * COLS * N >= 2**31
         or 2 * ITEMS >= 2**31
     )
+    ROW_AXIS: tl.constexpr = 0 if ROW_MAJOR_RHS else 1
+    RHS_AXIS: tl.constexpr = 1 - ROW_AXIS
+    PIVOT_SHAPE: tl.constexpr = (1, COLS) if ROW_MAJOR_RHS else (COLS, 1)
     rows = tl.arange(0, ROWS)
     cols = tl.arange(0, COLS)
     if WIDE:
@@ -143,9 +154,11 @@ def _resident_solve_kernel(
         a_ptr = A + a_offset
         b_ptr = B + b_offset
         rhs = col_tile * COLS + cols
-        valid = (rows[None, :] < N) & (rhs[:, None] < K)
+        rhs_rows = tl.expand_dims(rows, RHS_AXIS)
+        rhs_cols = tl.expand_dims(rhs, ROW_AXIS)
+        valid = (rhs_rows < N) & (rhs_cols < K)
         x = tl.load(
-            b_ptr + rows[None, :] * B_STRIDES[-2] + rhs[:, None] * B_STRIDES[-1],
+            b_ptr + rhs_rows * B_STRIDES[-2] + rhs_cols * B_STRIDES[-1],
             mask=valid,
             other=0.0,
         )
@@ -160,8 +173,8 @@ def _resident_solve_kernel(
             selected = rows == row
             # Select the pivot directly; a full one-hot reduction per row
             # wastes work and expands the loop-carried UB live range.
-            indices = tl.full((COLS, 1), row, tl.int32)
-            value = tl.gather(x, indices, axis=1)
+            indices = tl.full(PIVOT_SHAPE, row, tl.int32)
+            value = tl.gather(x, indices, axis=ROW_AXIS)
             if not UNIT:
                 pivot = tl.gather(diagonal, tl.full((1,), row, tl.int32), axis=0)
                 value = value / pivot[None, :]
@@ -174,12 +187,16 @@ def _resident_solve_kernel(
                 mask=(rows < N) & remaining,
                 other=0.0,
             )
-            x = tl.where(remaining[None, :], x - value * column[None, :], x)
-            x = tl.where(selected[None, :], value, x)
+            x = tl.where(
+                tl.expand_dims(remaining, RHS_AXIS),
+                x - value * tl.expand_dims(column, RHS_AXIS),
+                x,
+            )
+            x = tl.where(tl.expand_dims(selected, RHS_AXIS), value, x)
             # Order the loop-carried UB update before the next iteration or
             # final store on Ascend, including a specialization's first launch.
             tl.debug_barrier()
-        tl.store(X + batch * N * K + rhs[:, None] * N + rows[None, :], x, valid)
+        tl.store(X + batch * N * K + rhs_cols * N + rhs_rows, x, valid)
 
 
 @triton.jit
@@ -285,6 +302,7 @@ def _resident_solve_fused_kernel(
     COLS: tl.constexpr,
     ITEMS: tl.constexpr,
     STREAMED: tl.constexpr = False,
+    ROW_MAJOR_RHS: tl.constexpr = False,
 ):
     # Small systems share one launch for the solve and full original-A copy.
     # Copy tiles are distributed over the same programs as the RHS columns.
@@ -366,6 +384,7 @@ def _resident_solve_fused_kernel(
             ROWS,
             COLS,
             ITEMS,
+            ROW_MAJOR_RHS,
         )
 
 
@@ -388,9 +407,36 @@ def _resident_solve(
         if out is not None
         else torch.empty((*batch, k, n), dtype=B.dtype, device=B.device).mT
     )
-    # Limit the live RHS tile for large orders: four columns corrupt the
-    # loop-carried state at n=1024 on the supported Ascend 3.5 compiler.
-    cols = 1 if n > 512 and not streamed else min(4, 1 << (k - 1).bit_length())
+    # CANN 9.2.1 PlanMemory aborts when forward substitution carries a
+    # transposed row-major RHS tile across the row loop.
+    row_major_rhs = (
+        _USE_PLAN_MEMORY_WORKAROUND
+        and not upper
+        and B.stride(-1) == 1
+        and B.stride(-2) > 1
+    )
+    # The row-major gather scales poorly with the number of rows on this
+    # compiler. Give each program one column for the larger affected systems.
+    # A single column also keeps the resident state within UB at large orders.
+    single_rhs = row_major_rhs and n >= 32
+    if (n > 512 and not streamed) or single_rhs:
+        cols = 1
+    else:
+        cols = min(4, 1 << (k - 1).bit_length())
+    row_major_rhs = row_major_rhs and cols > 1
+    if (
+        _USE_PLAN_MEMORY_WORKAROUND
+        and coefficient is not None
+        and (n > 128 or single_rhs)
+        and A.stride(-2) != 1
+    ):
+        # The coefficient output is already allocated and alias-checked.
+        # Reuse its contiguous columns for the solve after copying original A.
+        packed = coefficient if A is original else coefficient.mT
+        if packed.stride(-2) == 1:
+            _copy_matrix(coefficient, original)
+            A = packed
+            coefficient = None
     items = math.prod(batch) * ((k + cols - 1) // cols)
     grid = (min(items, _num_cores()),)
     args = (
@@ -402,7 +448,7 @@ def _resident_solve(
     )
     solve_args = (upper, unitriangular, 1 << (n - 1).bit_length(), cols, items)
     if coefficient is not None and n <= 128:
-        solve_args = (*solve_args, streamed)
+        solve_args = (*solve_args, streamed, row_major_rhs)
         _launch_resident(
             _resident_solve_fused_kernel,
             (A, B, result, original, coefficient),
@@ -412,6 +458,8 @@ def _resident_solve(
     else:
         if coefficient is not None:
             _copy_matrix(coefficient, original)
+        if not streamed:
+            solve_args = (*solve_args, row_major_rhs)
         _launch_resident(
             _streamed_solve_entry if streamed else _resident_solve_entry,
             (A, B, result),

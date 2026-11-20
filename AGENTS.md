@@ -11,7 +11,7 @@ FlagGems is a high-performance, generic [Triton](https://github.com/openai/trito
 
 ## 2. Directory Structure
 
-- `src/flag_gems/`: Main package — `ops/` (standard kernels), `fused/` (fused kernels), `experimental_ops/` (incubating ops), `modules/` (`nn.Module` blocks like RMSNorm/RoPE), `runtime/` (multi-backend dispatchers & `backend/_<vendor>/`), `utils/` (`@pointwise_dynamic`, `LibTuner`, caching), `testing/` (test helpers).
+- `src/flag_gems/`: Main package — `ops/` (standard kernels), `fused/` (fused kernels), `deprecated/` (vLLM/TE operators), `experimental_ops/` (incubating ops), `modules/` (`nn.Module` blocks like RMSNorm/RoPE), `runtime/` (multi-backend dispatchers & `backend/_<vendor>/`), `utils/` (`@pointwise_dynamic`, `LibTuner`, caching), `testing/` (test helpers).
 - `cpp/`: C++ extensions (`include/`, `lib/` for `LibTritonJIT`, `ctest/`).
 - `conf/`: `operators.yaml` (operator metadata source of truth), `backends.yaml` (toolchains), `ci_test_aliases.yaml` (test markers).
 - `tests/` & `benchmark/`: Pytest accuracy suite and `triton.testing.do_bench` performance suite.
@@ -23,9 +23,9 @@ FlagGems is a high-performance, generic [Triton](https://github.com/openai/trito
 1. **Implement Kernel**:
    - Place in `src/flag_gems/{ops,fused,experimental_ops}/<op_name>.py` (`snake_case`, lowercase, no leading `_` or `.`).
    - **Generic Baseline ("公版算子")**: Must run on the official upstream Triton compiler on NVIDIA Ampere (e.g., A100). Place vendor-specific customizations under `src/flag_gems/runtime/backend/_<vendor>/`.
-   - **vLLM Notice**: vLLM-specific fused operators have migrated to [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm); submit vLLM kernels there instead of `src/flag_gems/fused/`.
+   - **vLLM Notice**: vLLM-specific fused operators have migrated to [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm); submit vLLM kernels there instead of `src/flag_gems/fused/`. vLLM-migrated operators are retained in `src/flag_gems/deprecated/` for backward compatibility.
 2. **Register & Export**:
-   - Export in `src/flag_gems/__init__.py` (or `fused/__init__.py`) and map ATen ops in `_FULL_CONFIG`.
+   - Export in `src/flag_gems/__init__.py` (or `fused/__init__.py` / `deprecated/__init__.py`) and map ATen ops in `_FULL_CONFIG`.
    - Sort `__all__` alphabetically via `python tools/ci_checks/sort_exports.py`.
 3. **Register Metadata (`conf/operators.yaml`)**:
    ```yaml
