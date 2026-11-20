@@ -1024,7 +1024,12 @@ _FULL_CONFIG = (
         None,
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
-    ("acosh_", acosh_),
+    (
+        "acosh_",
+        acosh_,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
     # adaptive_avg_pool3d is CompositeImplicitAutograd in ATen with no dedicated
     # Autograd kernel, so the device-key override below would drop its autograd

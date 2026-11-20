@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def acosh_func(x):
+    return _acosh_forward(x)
+
+
+@triton.jit
+def _acosh_forward(x):
     # acosh(x) = log(x + sqrt(x*x - 1))
     # Domain: [1, inf), returns NaN for x < 1 (except x=1 returns 0)
     x_f32 = x.to(tl.float32)
@@ -129,6 +134,17 @@ class AcoshFunction(torch.autograd.Function):
         return acosh_backward(grad_output, input)
 
 
+@pointwise_dynamic(
+    num_outputs=2,
+    promotion_methods=[(0, "DEFAULT"), (0, "DEFAULT")],
+)
+@triton.jit
+def _acosh_inplace_autograd_func(x):
+    # Save x while writing acosh(x) back to the same tensor.  Producing both
+    # values in one pointwise kernel avoids a separate clone/copy dispatch.
+    return _acosh_forward(x), x
+
+
 def acosh(A):
     logger.debug("GEMS ACOSH")
     if torch.is_grad_enabled() and A.requires_grad and not A.is_complex():
@@ -136,14 +152,50 @@ def acosh(A):
     return acosh_func(A)
 
 
-def acosh_(A):
-    logger.debug("GEMS ACOSH_")
-    # ATen rejects in-place acosh on integer and bool inputs (the float result
-    # cannot be cast back into the output buffer); mirror that instead of
-    # silently truncating.
+def _check_acosh_inplace(A):
+    if torch.is_grad_enabled() and A.requires_grad:
+        if A.is_leaf:
+            raise RuntimeError(
+                "a leaf Variable that requires grad is being used in an in-place operation."
+            )
+        if A._base is not None and A._base.is_leaf and A._base.requires_grad:
+            raise RuntimeError(
+                "a view of a leaf Variable that requires grad is being used in an in-place operation."
+            )
+    if any(size > 1 and stride == 0 for size, stride in zip(A.shape, A.stride())):
+        raise RuntimeError(
+            "unsupported operation: more than one element of the written-to tensor "
+            "refers to a single memory location. Please clone() the tensor before "
+            "performing the operation."
+        )
+    # ATen rejects in-place acosh on integer and bool inputs.
     if not A.dtype.is_floating_point:
         raise RuntimeError(
             "result type Float can't be cast to the desired output type " f"{A.dtype}"
         )
+
+
+class AcoshInplaceFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.mark_dirty(input)
+        result, saved_input = _acosh_inplace_autograd_func(input, out0=input)
+        ctx.save_for_backward(saved_input)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (input,) = ctx.saved_tensors
+        if not ctx.needs_input_grad[0]:
+            return None
+        return acosh_backward(grad_output, input)
+
+
+def acosh_(A):
+    logger.debug("GEMS ACOSH_")
+    _check_acosh_inplace(A)
+    if torch.is_grad_enabled() and A.requires_grad:
+        return AcoshInplaceFunction.apply(A)
     acosh_func(A, out0=A)
+    torch.autograd.graph.increment_version(A)
     return A
