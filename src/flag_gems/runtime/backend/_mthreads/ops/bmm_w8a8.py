@@ -39,6 +39,11 @@ MEDIUM_TILE_CONFIG = (128, 128, 64, 4, 2, 1)
 ALIGNED_TILE_CONFIG = (256, 64, 64, 4, 2, 1)
 # Host tensor-descriptor BM, BN, BK; one stage and four warps stay fixed.
 HOST_TME_TILE_CONFIG = (32, 32, 512)
+# Very small M keeps the same 32-row tile, because that BM/BN pair is the only
+# one that stays on the fast tensor-descriptor path, and raises the stage count
+# to hide the first tile's copy latency. Measured at M=4 on MTT S5000: one
+# stage 16.9 us, three stages 15.1 us, four stages 15.2 us.
+HOST_TME_TINY_M_TILE_CONFIG = (32, 32, 512, 3)
 TLE_SMALL_MAX_ROWS = 128
 TLE_MEDIUM_MAX_ROWS = 512
 # BM, BN, BK, pipe slots; main and producer partitions each use four warps.
@@ -275,7 +280,8 @@ def bmm_w8a8(
     INT8 accumulates in INT32. Scales are applied in FP32 before
     casting to out_dtype.
     block_size is retained for API compatibility and is unused here.
-    Small M with transposed contiguous weights uses an integer GEMV reduction.
+    Small M with transposed contiguous weights prefers the tiled route and falls
+    back to an integer GEMV reduction when the layout does not qualify.
     Aligned batch-one NT inputs use host tensor descriptors and select the TLE
     pipeline when the compiler exports integer WGMMA support. Other layouts
     reuse the shared Triton kernel.
@@ -300,7 +306,27 @@ def bmm_w8a8(
         return generic_bmm_w8a8(
             A, B, A_scale, B_scale, out_dtype, out, block_size=block_size, config=config
         )
-    if M <= GEMV_MAX_ROWS and K >= GEMV_MIN_REDUCTION and B.stride(1) == 1:
+    tme_eligible = (
+        batch == 1
+        and K > 0
+        and K % 128 == 0
+        and N % 16 == 0
+        and B.transpose(1, 2).is_contiguous()
+        and A.data_ptr() % 16 == 0
+        and B.data_ptr() % 16 == 0
+    )
+    # A per-row GEMV reduction rereads the whole weight tile once per row, so its
+    # traffic grows with M while a tiled route reads every tile once. The tiled
+    # route is already marginally ahead at M=1 and clearly ahead at M=4, where
+    # the GEMV path measured 25.7 us against a 13.3 us BF16 baseline. GEMV is
+    # retained for shapes and layouts the tiled route cannot accept.
+    tiny_m_uses_tiles = tme_eligible and M <= GEMV_MAX_ROWS and K >= GEMV_MIN_REDUCTION
+    if (
+        M <= GEMV_MAX_ROWS
+        and K >= GEMV_MIN_REDUCTION
+        and B.stride(1) == 1
+        and not tiny_m_uses_tiles
+    ):
         with torch_device_fn.device(A.device):
             channel_gemv_kernel[(triton.cdiv(N, GEMV_BLOCK_COLUMNS), M, batch)](
                 A,
@@ -319,16 +345,7 @@ def bmm_w8a8(
                 num_stages=1,
             )
         return out
-    if (
-        batch == 1
-        and M > GEMV_MAX_ROWS
-        and K > 0
-        and K % 128 == 0
-        and N % 16 == 0
-        and B.transpose(1, 2).is_contiguous()
-        and A.data_ptr() % 16 == 0
-        and B.data_ptr() % 16 == 0
-    ):
+    if tme_eligible and (M > GEMV_MAX_ROWS or tiny_m_uses_tiles):
         launch_warps = 4
         if HAS_TLE_INT8:
             if M <= TLE_SMALL_MAX_ROWS:
@@ -342,6 +359,10 @@ def bmm_w8a8(
                 bm, bn, bk, pipeline_stages = TLE_LARGE_TILE_CONFIG
             kernel = channel_tle_tme_kernel
             stage_parameters = (pipeline_stages, 4)
+        elif M <= GEMV_MAX_ROWS:
+            bm, bn, bk, host_stages = HOST_TME_TINY_M_TILE_CONFIG
+            kernel = channel_host_tme_kernel
+            stage_parameters = (host_stages,)
         else:
             bm, bn, bk = HOST_TME_TILE_CONFIG
             kernel = channel_host_tme_kernel
