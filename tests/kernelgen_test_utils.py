@@ -137,10 +137,10 @@ def make_input(dtype, shape, value_range):
         high = min(high, int(dtype_max))
         low = min(low, high)
 
-    # Ascend can store and transfer FP8, but its FP32-to-FP8 device cast is
+    # Ascend and Kunlunxin can store and transfer FP8, but their device cast is
     # unavailable on some stacks. Encode the payload on CPU, keeping the
     # operator input on its original target device with the requested dtype.
-    make_fp8_on_cpu = flag_gems.vendor_name == "ascend" and dtype in (
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
         torch.float8_e4m3fn,
         torch.float8_e5m2,
     )
@@ -343,8 +343,8 @@ def make_special_input(dtype, scenario):
         "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
         "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
     }
-    # Like make_input, encode Ascend FP8 on CPU before transferring its bytes.
-    make_fp8_on_cpu = flag_gems.vendor_name == "ascend" and dtype in (
+    # Like make_input, encode backend FP8 on CPU before transferring its bytes.
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
         torch.float8_e4m3fn,
         torch.float8_e5m2,
     )
