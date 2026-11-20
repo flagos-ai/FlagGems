@@ -15,9 +15,7 @@
 import pytest
 import torch
 
-from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
-    combine_topk_swa_indices,
-)
+from flag_gems import combine_topk_swa_indices
 
 try:
     from vllm.v1.attention.ops.deepseek_v4_ops import (
