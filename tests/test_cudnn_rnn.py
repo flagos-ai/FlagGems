@@ -24,7 +24,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
-_cudnn_rnn_impl = importlib.import_module("flag_gems.ops.cudnn_rnn")
+_cudnn_rnn_impl = importlib.import_module(flag_gems.cudnn_rnn.__module__)
 
 
 def _cudnn_rnn_layer_dropout(x, p, train):
