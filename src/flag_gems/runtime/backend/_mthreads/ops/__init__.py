@@ -67,6 +67,7 @@ from ._foreach_log10_ import _foreach_log10_
 from ._foreach_log1p_ import _foreach_log1p_
 from ._foreach_log2 import _foreach_log2
 from ._foreach_log2_ import _foreach_log2_
+from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -307,6 +308,7 @@ __all__ = [
     "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
+    "_foreach_maximum_Scalar",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
