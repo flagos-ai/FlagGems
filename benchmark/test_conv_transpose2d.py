@@ -59,11 +59,13 @@ def _case_fn(shape, dtype):
 
 def _build_inputs(plan, dtype, device):
     input_shape, weight_shape = plan.builder_args
-    return ({
-        "input": torch.randn(input_shape, device=device, dtype=dtype),
-        "weight": torch.randn(weight_shape, device=device, dtype=dtype),
-        **plan.params,
-    },)
+    return (
+        {
+            "input": torch.randn(input_shape, device=device, dtype=dtype),
+            "weight": torch.randn(weight_shape, device=device, dtype=dtype),
+            **plan.params,
+        },
+    )
 
 
 @pytest.mark.conv_transpose2d
