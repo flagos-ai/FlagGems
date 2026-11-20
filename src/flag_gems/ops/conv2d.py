@@ -259,7 +259,7 @@ def conv2d_backward_kernel_weight(
     BLOCK_NO: tl.constexpr,
     BLOCK_CI_HK_WK: tl.constexpr,
     BLOCK_CO: tl.constexpr,
-    ACCUM_DTYPE: tl.constexpr,
+    ACCUM_DTYPE: tl.constexpr = tl.float32,
 ):
     # load out_grad n (groups out_c)  ho wo
     # load weight (groups out_c) ci h w
@@ -685,7 +685,9 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert stride == 1, "Doesn't support any stride values other than 1 \
+            assert (
+                stride == 1
+            ), "Doesn't support any stride values other than 1 \
                 in padding = 'same' mode, received stride value {stride}"
             ih = input.shape[-2]
             iw = input.shape[-1]
