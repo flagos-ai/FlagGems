@@ -150,9 +150,7 @@ def test_log_softmax_backward(shape, dtype, dim):
     ref_in_grad = torch._log_softmax_backward_data(
         ref_grad_output, output, dim, ref_grad_output.dtype
     )
-    res_in_grad = flag_gems.log_softmax_backward(
-        grad_output, res_output, dim, dtype
-    )
+    res_in_grad = flag_gems.log_softmax_backward(grad_output, res_output, dim, dtype)
     utils.gems_assert_close(res_output, output, dtype)
     # bfloat16 has a 1/128 mantissa, so a fixed 1e-4 atol sits below one ulp of
     # these gradients; widen it to the dtype's own resolution.
@@ -205,9 +203,7 @@ def test_log_softmax_backward_non_last_dim(dtype):
 
     output = torch._log_softmax(ref_inp, dim, False)
     res_output = flag_gems.log_softmax(inp, dim=dim)
-    res_in_grad = flag_gems.log_softmax_backward(
-        grad_output, res_output, dim, dtype
-    )
+    res_in_grad = flag_gems.log_softmax_backward(grad_output, res_output, dim, dtype)
     ref_in_grad = torch._log_softmax_backward_data(
         ref_grad_output, output, dim, ref_grad_output.dtype
     )
@@ -236,9 +232,7 @@ def test_log_softmax_backward_expanded_grad(dtype):
 
     output = torch._log_softmax(ref_inp, dim, False)
     res_output = flag_gems.log_softmax(inp, dim=dim)
-    res_in_grad = flag_gems.log_softmax_backward(
-        grad_output, res_output, dim, dtype
-    )
+    res_in_grad = flag_gems.log_softmax_backward(grad_output, res_output, dim, dtype)
     ref_in_grad = torch._log_softmax_backward_data(
         ref_grad_output, output, dim, ref_grad_output.dtype
     )
