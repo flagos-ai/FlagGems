@@ -799,6 +799,7 @@ from flag_gems.ops.diagflat import run as diagflat
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
+from flag_gems.ops.diagonal_scatter_backward import diagonal_scatter_backward
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.dim import dim
@@ -2539,6 +2540,7 @@ __all__ = [
     "diagonal_backward",
     "diagonal_copy",
     "diagonal_scatter",
+    "diagonal_scatter_backward",
     "diff",
     "digamma",
     "digamma_",
