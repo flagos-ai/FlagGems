@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.util
+
 from torch_musa import current_device, get_device_capability
 
 from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
@@ -38,6 +40,38 @@ from ._foreach_add_ScalarList import _foreach_add_ScalarList
 from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
 from ._foreach_addcdiv__ScalarList import _foreach_addcdiv__ScalarList
 from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
+from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_addcmul__ScalarList import _foreach_addcmul__ScalarList
+from ._foreach_addcmul__Tensor import _foreach_addcmul__Tensor
+from ._foreach_asin_ import _foreach_asin_
+from ._foreach_atan import _foreach_atan
+from ._foreach_ceil import _foreach_ceil
+from ._foreach_clamp_max__List import _foreach_clamp_max__List
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_max_List import _foreach_clamp_max_List
+from ._foreach_clamp_max_Scalar import _foreach_clamp_max_Scalar
+from ._foreach_clamp_max_ScalarList import _foreach_clamp_max_ScalarList
+from ._foreach_clamp_min__List import _foreach_clamp_min__List
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_clamp_min__ScalarList import _foreach_clamp_min__ScalarList
+from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_div__ScalarList import _foreach_div__ScalarList
+from ._foreach_div__Tensor import _foreach_div__Tensor
+from ._foreach_erf import _foreach_erf
+from ._foreach_erf_ import _foreach_erf_
+from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_exp_ import _foreach_exp_
+from ._foreach_frac import _foreach_frac
+from ._foreach_frac_ import _foreach_frac_
+from ._foreach_log1p_ import _foreach_log1p_
+from ._foreach_log2 import _foreach_log2
+from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10_ import _foreach_log10_
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum_Scalar import _foreach_maximum_Scalar
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_minimum_Scalar import _foreach_minimum_Scalar
+from ._foreach_minimum_ScalarList import _foreach_minimum_ScalarList
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -76,6 +110,7 @@ from .conv2d import conv2d
 from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .convolution_overrideable import convolution_overrideable
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
@@ -95,6 +130,7 @@ from .fake_quantize_per_tensor_affine_cachemask import (
 )
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
+from .flash_attention_backward import flash_attention_backward
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -119,6 +155,7 @@ from .inverse import inverse
 from .isin import isin
 from .kl_div import kl_div
 from .kthvalue import kthvalue
+from .layernorm import layer_norm_backward
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
@@ -129,7 +166,6 @@ from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
 from .linalg_tensorinv import linalg_tensorinv
-from .linear import linear
 from .log import log
 from .log2_ import log2_
 from .log10 import log10, log10_, log10_out
@@ -180,6 +216,7 @@ from .repeat_interleave import (
 )
 from .replication_pad2d import replication_pad2d
 from .replication_pad3d_backward import replication_pad3d_backward
+from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -198,6 +235,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
 from .special_multigammaln import special_multigammaln
+from .special_ndtri import special_ndtri
 from .special_round import special_round
 from .special_round_out import special_round_out
 from .square_ import square_
@@ -217,9 +255,13 @@ from .upsample_nearest3d_backward_grad_input import (
 )
 from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
-from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
+
+# Older MUSA Triton releases do not provide tensor descriptor support.
+_HAS_TENSOR_DESCRIPTOR = (
+    importlib.util.find_spec("triton.tools.tensor_descriptor") is not None
+)
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
@@ -244,6 +286,38 @@ __all__ = [
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
+    "_foreach_addcmul__Tensor",
+    "_foreach_asin_",
+    "_foreach_atan",
+    "_foreach_ceil",
+    "_foreach_clamp_max__List",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_max_List",
+    "_foreach_clamp_max_Scalar",
+    "_foreach_clamp_max_ScalarList",
+    "_foreach_clamp_min__List",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_clamp_min__ScalarList",
+    "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
+    "_foreach_div__Tensor",
+    "_foreach_erf",
+    "_foreach_erf_",
+    "_foreach_erfc_",
+    "_foreach_exp_",
+    "_foreach_frac",
+    "_foreach_frac_",
+    "_foreach_log10_",
+    "_foreach_log1p_",
+    "_foreach_log2",
+    "_foreach_log2_",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum_Scalar",
+    "_foreach_minimum__Scalar",
+    "_foreach_minimum_Scalar",
+    "_foreach_minimum_ScalarList",
     "_functional_sym_constrain_range_for_size",
     "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
@@ -289,6 +363,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "convolution_backward",
+    "convolution_backward_out",
     "convolution_overrideable",
     "copy_",
     "cudnn_convolution",
@@ -307,6 +383,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fix",
+    "flash_attention_backward",
     "flip",
     "floor_divide",
     "floor_divide_",
@@ -340,6 +417,7 @@ __all__ = [
     "isin",
     "kl_div",
     "kthvalue",
+    "layer_norm_backward",
     "lcm",
     "lcm_",
     "ldl_factor_ex",
@@ -350,7 +428,6 @@ __all__ = [
     "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_tensorinv",
-    "linear",
     "log",
     "log10",
     "log10_",
@@ -433,6 +510,7 @@ __all__ = [
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
+    "special_ndtri",
     "special_round",
     "special_round_out",
     "square_",
@@ -454,35 +532,26 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
-    "w8a8_block_fp8_matmul",
     "zero_",
     "zeros",
     "zeros_like",
 ]
 
+if _HAS_TENSOR_DESCRIPTOR:
+    from .linear import linear  # noqa: F401
+    from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul  # noqa: F401
+
+    __all__.extend(["linear", "w8a8_block_fp8_matmul"])
+
 
 if get_device_capability(current_device())[0] >= 3:
-    from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
-    from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm, bmm_out  # noqa: F401
     from .gelu import gelu  # noqa: F401
-    from .mm import mm, mm_out  # noqa: F401
     from .mv import mv  # noqa: F401
     from .tanh import tanh  # noqa: F401
 
     __all__.extend(
         [
-            "addmm",
-            "addmm_dtype",
-            "addmm_dtype_out",
-            "addmm_out",
-            "baddbmm",
-            "baddbmm_out",
-            "bmm",
-            "bmm_out",
             "gelu",
-            "mm",
-            "mm_out",
             "mv",
             "tanh",
             "atan2",
@@ -544,12 +613,34 @@ if get_device_capability(current_device())[0] >= 3:
         ]
     )
 
-if get_device_capability(current_device()) >= (3, 1):
+    if _HAS_TENSOR_DESCRIPTOR:
+        from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
+        from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
+        from .bmm import bmm, bmm_out  # noqa: F401
+        from .mm import mm, mm_out  # noqa: F401
+
+        __all__.extend(
+            [
+                "addmm",
+                "addmm_dtype",
+                "addmm_dtype_out",
+                "addmm_out",
+                "baddbmm",
+                "baddbmm_out",
+                "bmm",
+                "bmm_out",
+                "mm",
+                "mm_out",
+            ]
+        )
+
+if _HAS_TENSOR_DESCRIPTOR and get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
-from .resolve_conj import resolve_conj
-from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
 
-__all__.extend(["scaled_mm", "scaled_mm_out"])
+if _HAS_TENSOR_DESCRIPTOR:
+    from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+
+    __all__.extend(["scaled_mm", "scaled_mm_out"])

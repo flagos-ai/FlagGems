@@ -107,7 +107,7 @@ with flag_gems.use_gems():
 
 ### 3.3 直接显式调用
 
-您也可以绕过 PyTorch 的 ATen 分发链路，直接调用 `flag_gems.ops` 或 `flag_gems.fused` 下的高性能算子实现：
+您也可以绕过 PyTorch 的 ATen 分发链路，直接调用 `flag_gems.ops` 或 `flag_gems.deprecated` 下的高性能算子实现：
 
 ```python
 import flag_gems
@@ -131,7 +131,7 @@ topk_ids = torch.randint(
     dtype=torch.int32,
 )
 sorted_ids, expert_ids, num_tokens_post_pad = (
-    flag_gems.fused.moe_align_block_size.moe_align_block_size(
+    flag_gems.deprecated.moe_align_block_size.moe_align_block_size(
         topk_ids, block_size, num_experts
     )
 )

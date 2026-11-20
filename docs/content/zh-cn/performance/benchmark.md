@@ -56,7 +56,7 @@ weight: 20
 
 ## 使用模型 Profiling Shape 进行基准测试
 
-FlagGems 在 `benchmark/model_shapes/` 下提供了按模型分类的 Profiling Shape 文件。
+FlagGems 在 `benchmark/models_shapes/` 下提供了按模型分类的 Profiling Shape 文件。
 这些 YAML 文件记录了真实推理过程中采集到的张量 shape，以及每个算子在各推理阶段占总
 GPU 时间的比例（`pct`）和调用次数（`calls`）。通过 `--model-profile` 参数可以直接
 使用这些 shape 进行测试，并在输出表格中新增 **Time Share** 列，从而直观地确定优化优先级。
@@ -65,7 +65,7 @@ GPU 时间的比例（`pct`）和调用次数（`calls`）。通过 `--model-pro
 
 | 文件 | 模型 | 硬件 | 采集日期 |
 |------|------|------|----------|
-| `benchmark/model_shapes/285B.yaml` | 285B MoE（DeepSeek-V3.2 架构） | 8×H100 80GB，TP=8 | 2026-11-16 |
+| `benchmark/models_shapes/285B.yaml` | 285B MoE（DeepSeek-V3.2 架构） | 8×H100 80GB，TP=8 | 2026-11-16 |
 
 ### 使用方式
 
@@ -77,11 +77,11 @@ pytest benchmark/test_mm.py benchmark/test_bmm.py \
        benchmark/test_fill.py benchmark/test_zeros.py \
        benchmark/test_silu.py benchmark/test_silu_and_mul.py \
        benchmark/test_softmax.py \
-       --model-profile benchmark/model_shapes/285B.yaml --level core -s
+       --model-profile benchmark/models_shapes/285B.yaml --level core -s
 
 # 或使用辅助脚本自动从 YAML 推导所需的测试 marker：
 python benchmark/benchmark_for_models.py \
-       --shape-file benchmark/model_shapes/285B.yaml
+       --shape-file benchmark/models_shapes/285B.yaml
 ```
 
 `--model-profile` 标志有两个作用：
@@ -130,7 +130,7 @@ flag 才能生效。各 Benchmark 子类对应的 shape 格式如下：
 
 ### 添加新模型的 Shape 文件
 
-1. 在 `benchmark/model_shapes/<ModelName>.yaml` 下参照上述格式新建文件。
+1. 在 `benchmark/models_shapes/<ModelName>.yaml` 下参照上述格式新建文件。
 2. 通过真实推理运行采集 Profiling 数据（例如使用开启 `record_shapes=True` 的
    `torch.profiler`）。
 3. 对于 FlagGems 中已注册的算子（见 `src/flag_gems/__init__.py`），为其添加实测

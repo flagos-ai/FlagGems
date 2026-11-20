@@ -77,7 +77,7 @@ These steps apply to Python-based operators as well as C++-wrapped operators.
 
 ## Running benchmarks with model-profiling shapes
 
-FlagGems ships per-model profiling shape files under `benchmark/model_shapes/`.
+FlagGems ships per-model profiling shape files under `benchmark/models_shapes/`.
 These YAML files record the tensor shapes observed during real model inference,
 along with the GPU time share (% of total phase time and call count) for each
 operator.  Using `--model-profile` runs only those shapes and adds a
@@ -87,7 +87,7 @@ operator.  Using `--model-profile` runs only those shapes and adds a
 
 | File | Model | Hardware | Collected |
 |------|-------|----------|-----------|
-| `benchmark/model_shapes/285B.yaml` | 285B MoE (DeepSeek-V3.2 architecture) | 8×H100 80GB, TP=8 | 2026-11-16 |
+| `benchmark/models_shapes/285B.yaml` | 285B MoE (DeepSeek-V3.2 architecture) | 8×H100 80GB, TP=8 | 2026-11-16 |
 
 ### Using `--model-profile`
 
@@ -99,11 +99,11 @@ pytest benchmark/test_mm.py benchmark/test_bmm.py \
        benchmark/test_fill.py benchmark/test_zeros.py \
        benchmark/test_silu.py benchmark/test_silu_and_mul.py \
        benchmark/test_softmax.py \
-       --model-profile benchmark/model_shapes/285B.yaml --level core -s
+       --model-profile benchmark/models_shapes/285B.yaml --level core -s
 
 # Or use the helper script that auto-selects markers from the YAML:
 python benchmark/benchmark_for_models.py \
-       --shape-file benchmark/model_shapes/285B.yaml
+       --shape-file benchmark/models_shapes/285B.yaml
 ```
 
 The `--model-profile` flag does two things:
@@ -155,7 +155,7 @@ the convention of the corresponding benchmark class:
 
 ### Adding a new model shape file
 
-1. Create `benchmark/model_shapes/<ModelName>.yaml` following the format above.
+1. Create `benchmark/models_shapes/<ModelName>.yaml` following the format above.
 2. Collect profiling data from a real inference run (e.g. using
    `torch.profiler` with `record_shapes=True`).
 3. For each operator that FlagGems supports (registered in
