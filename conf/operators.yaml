@@ -1232,6 +1232,18 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: addmv_backward
+  description: Computes all three addmv input gradients in one fused tiled Triton launch.
+  for:
+  - addmv
+  labels:
+  - aten
+  - KernelGen
+  - BLAS
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: addmv_out
   description: 'Performs a matrix-vector product of the matrix `mat` and the vector
     `vec`.
