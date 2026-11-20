@@ -44,12 +44,16 @@ def _trapz_epilogue_kernel(
     OUT_DTYPE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    idx = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = idx < M
-    t = tl.load(tmp_ptr + idx, mask=mask, other=0.0)
-    first = tl.load(y_ptr + idx * N, mask=mask, other=0.0).to(tl.float32)
-    last = tl.load(y_ptr + idx * N + (N - 1), mask=mask, other=0.0).to(tl.float32)
+    # Masked loads on this backend are unreliable at small M (the tail lanes
+    # of a single under-full program trip an on-device kernel exception,
+    # status 719/714), so every load reads a clamped, always in-bounds
+    # address; only the final store carries the real tail mask.
+    raw_idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = raw_idx < M
+    idx = tl.minimum(raw_idx, M - 1)
+    t = tl.load(tmp_ptr + idx)
+    first = tl.load(y_ptr + idx * N).to(tl.float32)
+    last = tl.load(y_ptr + idx * N + (N - 1)).to(tl.float32)
     r = dx * (t - 0.5 * (first + last))
     tl.store(out_ptr + idx, r.to(OUT_DTYPE), mask=mask)
 
