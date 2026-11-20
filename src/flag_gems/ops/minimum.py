@@ -279,12 +279,7 @@ class _Minimum(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         x, y = ctx.saved_tensors
-        needs = (ctx.needs_input_grad[0], ctx.needs_input_grad[1])
-        if not any(needs):
-            return None, None
-        if _fused_supported(grad_output, x, y):
-            return _minimum_backward_fused(grad_output, x, y, needs)
-        return _minimum_backward_general(grad_output, x, y, needs)
+        return minimum_backward(grad_output, x, y, ctx.needs_input_grad)
 
 
 def minimum(X, Y):
@@ -293,3 +288,12 @@ def minimum(X, Y):
     if torch.is_grad_enabled() and (X.requires_grad or Y.requires_grad):
         return _Minimum.apply(X, Y)
     return minimum_kernel(X, Y)
+
+
+def minimum_backward(grad_output, x, y, needs_input_grad=(True, True)):
+    """Return first-order gradients for the requested minimum operands."""
+    if not any(needs_input_grad):
+        return None, None
+    if _fused_supported(grad_output, x, y):
+        return _minimum_backward_fused(grad_output, x, y, needs_input_grad)
+    return _minimum_backward_general(grad_output, x, y, needs_input_grad)
