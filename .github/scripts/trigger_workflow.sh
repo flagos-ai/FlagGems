@@ -29,7 +29,7 @@
 #   3. Create the protected environment file below. Use "export" because the
 #      crontab sources this file before starting the script.
 #
-#      sudo tee /etc/github-actions/ops-test-trigger.env >/dev/null <<'EOF'
+#      sudo tee /etc/github-actions/flaggems-ops-test-trigger.env >/dev/null <<'EOF'
 #      export GITHUB_TOKEN=REPLACE_WITH_FINE_GRAINED_TOKEN
 #      export GITHUB_ORG=flagos-ai
 #      export GITHUB_REPO=FlagGems
@@ -40,9 +40,9 @@
 #      # required for this script when only api.github.com is accessed.
 #      export GITHUB_HTTPS_PROXY=socks5h://127.0.0.1:1080
 #      # export GITHUB_HTTPS_PROXY=http://proxy.example.com:3128
-#      export GITHUB_ACTIONS_LOG_FILE=/var/log/github-actions/trigger_workflow.log
+#      export GITHUB_ACTIONS_LOG_FILE=/var/log/github-actions/flaggems-ops-test-trigger.log
 #      EOF
-#      sudo chmod 600 /etc/github-actions/ops-test-trigger.env
+#      sudo chmod 600 /etc/github-actions/flaggems-ops-test-trigger.env
 #
 #      GITHUB_ORG defaults to "flagos-ai".
 #      GITHUB_REPO defaults to "FlagGems".
@@ -69,7 +69,7 @@
 #      SHELL=/bin/bash
 #      MAILTO=
 #      CRON_TZ=Asia/Shanghai
-#      30 21 * * 3,6 . /etc/github-actions/ops-test-trigger.env && \
+#      30 21 * * 3,6 . /etc/github-actions/flaggems-ops-test-trigger.env && \
 #        /opt/github-actions/trigger_workflow.sh
 #
 #      To schedule daily.yaml, create a separate env file. The cron time
@@ -77,7 +77,7 @@
 #      built-in schedule in daily.yaml which has been observed to drift by
 #      up to six hours during peak load.
 #
-#      sudo tee /etc/github-actions/daily-trigger.env >/dev/null <<'EOF'
+#      sudo tee /etc/github-actions/flaggems-daily-trigger.env >/dev/null <<'EOF'
 #      export GITHUB_TOKEN=REPLACE_WITH_FINE_GRAINED_TOKEN
 #      export GITHUB_ORG=flagos-ai
 #      export GITHUB_REPO=FlagGems
@@ -86,13 +86,13 @@
 #      # Choose one proxy example, or omit GITHUB_HTTPS_PROXY for direct access.
 #      export GITHUB_HTTPS_PROXY=socks5h://127.0.0.1:1080
 #      # export GITHUB_HTTPS_PROXY=http://proxy.example.com:3128
-#      export GITHUB_ACTIONS_LOG_FILE=/var/log/github-actions/daily-trigger.log
+#      export GITHUB_ACTIONS_LOG_FILE=/var/log/github-actions/flaggems-daily-trigger.log
 #      EOF
-#      sudo chmod 600 /etc/github-actions/daily-trigger.env
+#      sudo chmod 600 /etc/github-actions/flaggems-daily-trigger.env
 #
 #      Add a crontab entry that fires at 02:03 CST every day:
 #
-#      3 2 * * * . /etc/github-actions/daily-trigger.env && \
+#      3 2 * * * . /etc/github-actions/flaggems-daily-trigger.env && \
 #        /opt/github-actions/trigger_workflow.sh
 #
 #      daily.yaml declares workflow_dispatch with no inputs, so no -f/--input
@@ -280,7 +280,7 @@
 #     SHELL=/bin/bash
 #     MAILTO=
 #     CRON_TZ=Asia/Shanghai
-#     3 2 * * * . /etc/github-actions/daily-trigger.env && \
+#     3 2 * * * . /etc/github-actions/flaggems-daily-trigger.env && \
 #       /opt/github-actions/trigger_workflow.sh
 #
 #   Equivalent gh CLI command:
