@@ -1595,3 +1595,25 @@ LayernormBenchmark:
     - [[200, 40999], [40999], 1e-05]
     - [[2, 32], [32], 1e-05]
     - [[65536, 1, 1152], [1152], 1e-06]
+
+atanh_backward:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape
+
+atanh_backward_:
+  shapes:
+  - - 257
+  - - 64
+    - 64
+  - - 1024
+    - 1024
+  - - 4096
+    - 4096
+  shape_desc: backward input shape

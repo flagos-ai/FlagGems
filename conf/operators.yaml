@@ -2121,6 +2121,30 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atanh_backward
+  description: First-order autograd rule for atanh implemented with Triton kernels
+    or zero-copy gradient views.
+  for:
+  - atanh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
+- id: atanh_backward_
+  description: Extended first-order gradient for atanh_; validated against the out-of-place
+    PyTorch operation.
+  for:
+  - atanh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: atleast_1d
   description: Returns a view of the input tensor with at least one dimension (view
     operation).
