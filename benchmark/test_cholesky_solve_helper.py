@@ -196,7 +196,10 @@ class _CholeskyH800Baseline:
                 operator="cholesky_solve_helper_rowmajor_core",
                 collection_task=task,
                 environment=environment,
-                input_identity="Same matrix construction and full input contract; not cross-device random-byte identity",
+                input_identity=(
+                    "Same matrix construction and full input contract; "
+                    "not cross-device random-byte identity"
+                ),
                 ratio="Raw native H800 latency / locally timed candidate; no scaling",
             ),
             ("pr78:op_cholesky_solve_helper_rowmajor_h800_baseline"),
