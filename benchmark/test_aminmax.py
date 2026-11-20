@@ -104,3 +104,26 @@ def test__aminmax_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def aminmax_backward_reference(inp, dim=None, keepdim=False):
+    return torch.amin(inp, dim=dim, keepdim=keepdim) + torch.amax(
+        inp, dim=dim, keepdim=keepdim
+    )
+
+
+def aminmax_backward_candidate(inp, dim=None, keepdim=False):
+    min_output, max_output = flag_gems.aminmax(inp, dim=dim, keepdim=keepdim)
+    return min_output + max_output
+
+
+@pytest.mark.aminmax_backward
+def test_aminmax_backward():
+    bench = base.UnaryReductionBenchmark(
+        op_name="aminmax_backward",
+        torch_op=aminmax_backward_reference,
+        gems_op=aminmax_backward_candidate,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
