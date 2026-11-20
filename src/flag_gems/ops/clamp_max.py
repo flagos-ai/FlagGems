@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_max_func(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+    return tl.minimum(maxi, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL)
 
 
 def _convert_scalar(max_value, dtype):
