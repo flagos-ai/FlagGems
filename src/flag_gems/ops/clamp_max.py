@@ -55,8 +55,28 @@ def _convert_scalar(max_value, dtype):
     return max_value
 
 
+class ClampMaxFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, max_value):
+        ctx.save_for_backward(A)
+        ctx.max_value = max_value
+        return clamp_max_func(A, _convert_scalar(max_value, A.dtype))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::clamp_max`` has no standalone backward operator, so the
+        # gradient runs a Triton kernel from
+        # ``flag_gems.ops.clamp_max_backward``.
+        (A,) = ctx.saved_tensors
+        from flag_gems.ops.clamp_max_backward import clamp_max_backward
+
+        return clamp_max_backward(grad_output, A, ctx.max_value), None
+
+
 def clamp_max(A, max_value):
     logger.debug("GEMS CLAMP_MAX")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return ClampMaxFunction.apply(A, max_value)
     return clamp_max_func(A, _convert_scalar(max_value, A.dtype))
 
 
