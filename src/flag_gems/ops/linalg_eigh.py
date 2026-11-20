@@ -1250,3 +1250,14 @@ class _EighBackward(torch.autograd.Function):
             None,
             None,
         )
+
+
+def linalg_eigh_backward(grad_w, grad_v, w, v):
+    """Return the first-order matrix gradient from real eigenvalues and eigenvectors."""
+    if any(t is not None and t.is_complex() for t in (w, v, grad_w, grad_v)):
+        raise NotImplementedError("linalg_eigh_backward only supports real tensors")
+    if grad_v is not None and grad_v.numel() == 0:
+        grad_v = None
+    if grad_w is None and grad_v is None:
+        return None
+    return _eigh_backward_launch(grad_w, grad_v, w.contiguous(), v.contiguous())
