@@ -248,7 +248,8 @@ class NestedTensorFromMaskFunction(torch.autograd.Function):
 def _nested_tensor_from_mask_autograd(t, mask, mask_check=True):
     metadata = _NestedMetadata()
     values = NestedTensorFromMaskFunction.apply(t, mask, mask_check, metadata)
-    return torch.ops.aten._nested_view_from_buffer.default(
+    # Rebuild an alias over the packed values and preserve its autograd view.
+    return torch.ops.aten._nested_view_from_buffer.default(  # allow-torch-compute
         values, metadata.sizes, metadata.strides, metadata.storage_offsets
     )
 
