@@ -62,6 +62,9 @@ reservation progression and shape/stride coverage.
 
 This contract is dense fixed-length contiguous square BSHD MHA through
 `flag_gems._flash_attention_forward` and `flag_gems.flash_attention_backward`.
+For nonzero dropout the FlagGems forward returns size-one int64 seed and offset
+tensors so the Hygon backward can distinguish its `tl.rand` mask from the native
+Hygon scalar seed/offset ABI. Pass both tensors through to backward unchanged.
 Variable-length kernels are handled separately by PR #9116. Direct dense tests
 do not validate public SDPA dropout, mixed boxing-forward/FlagGems-backward,
 rectangular attention or arbitrary strides, and do not close issues #8748 or

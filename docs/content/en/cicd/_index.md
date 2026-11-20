@@ -32,5 +32,5 @@ what runs on a schedule, and what runs on release.
   coverage reporting, multi-vendor QA acceptance testing, and the manually
   dispatched tools (`random-test.yaml`, `probe-node.yaml`, `review-stats.yaml`)
 - [Release and sync](release-sync.md) — building/publishing wheels and
-  distribution packages, uploading artifacts to Nexus, and mirroring the
-  repository to other remotes
+  distribution package verification, publishing the docs site, and mirroring
+  the repository to other remotes

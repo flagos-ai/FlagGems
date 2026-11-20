@@ -27,7 +27,7 @@ from flag_gems.ops._foreach_binary import BINARY_OPS, registered_wrappers
 from flag_gems.ops._foreach_reduction import registered_wrappers as reduction_wrappers
 from flag_gems.runtime.backend import SpecOpRegistrar
 
-from .accuracy_utils import gems_assert_close, to_reference
+from .accuracy_utils import fp64_is_supported, gems_assert_close, to_reference
 
 BINARY_WRAPPERS = registered_wrappers()
 REDUCTION_WRAPPERS = reduction_wrappers()
@@ -717,7 +717,10 @@ def test_accuracy_foreach_copy_mixed_dtype(inplace, src_dtype):
         assert torch.equal(res[0].cpu(), ref[0].cpu())
 
 
-@pytest.mark.parametrize("device_dtype", [torch.float64, torch.int64])
+@pytest.mark.parametrize(
+    "device_dtype",
+    ([torch.float64] if fp64_is_supported else []) + [torch.int64],
+)
 def test_accuracy_foreach_max_large_values(device_dtype):
     """``max`` keeps the input dtype and does not round through fp32.
 

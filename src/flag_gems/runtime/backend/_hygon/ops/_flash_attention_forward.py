@@ -369,6 +369,14 @@ def run(
     max_q = _as_int(max_q, "max_q")
     max_k = _as_int(max_k, "max_k")
     dropout_p = _as_float(dropout_p, "dropout_p")
+    if not 0.0 <= dropout_p < 1.0:
+        raise ValueError("dropout_p must be in [0, 1)")
+    if dropout_p and (
+        q4.ndim != 4
+        or cumulative_sequence_length_q is not None
+        or cumulative_sequence_length_k is not None
+    ):
+        raise NotImplementedError("Hygon FlagGems dropout requires dense BSHD inputs")
     causal = _as_bool(is_causal, "is_causal")
     debug_mask = _as_bool(return_debug_mask, "return_debug_mask")
     fp32 = q4.dtype == torch.float32
@@ -431,7 +439,7 @@ def run(
         # Reserve the complete dense attention matrix so the returned RNG pair
         # can be replayed by the matching backward kernel and consecutive calls
         # consume disjoint Philox ranges.
-        generator = torch_device_fn.default_generators[torch_device_fn.current_device()]
+        generator = torch_device_fn.default_generators[device.index]
         state = generator.get_state()
         state_view = state.view(torch.int64)
         philox_seed = int(state_view[0])
@@ -544,13 +552,16 @@ def run(
         lse_res = lse_buf.view(nheads_q, batch, seqlen_q).permute(1, 0, 2)
     else:
         lse_res = lse_buf
-    # The seed/offset pair is part of the ATen contract: backward must replay
-    # exactly the mask consumed by this forward.
-    rng_state = torch.tensor(
-        [philox_seed, philox_offset], dtype=torch.int64, device=device
-    )
     dmask = torch.empty(0, dtype=torch.float32, device=device)
-    return (out_res, lse_res, rng_state[0], rng_state[1], dmask)
+    if dropout_p:
+        # Size-one vectors identify FlagGems' tl.rand replay. Native Hygon saves
+        # scalar tensors whose mask uses a different Philox mapping.
+        rng_state = torch.tensor(
+            [philox_seed, philox_offset], dtype=torch.int64, device=device
+        )
+        return (out_res, lse_res, rng_state[:1], rng_state[1:], dmask)
+    state = torch.empty(2, dtype=torch.int64, device=device)
+    return (out_res, lse_res, state[0], state[1], dmask)
 
 
 # Alias for FlagGems import convention

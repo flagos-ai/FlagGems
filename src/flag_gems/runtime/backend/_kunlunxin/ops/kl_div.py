@@ -19,9 +19,13 @@ with the resulting (small) rank.  When an operand's broadcast strides are the
 canonical contiguous strides the decomposition is skipped (``*_FLAT``).
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 _MAX_DIMS = 8
 
@@ -173,9 +177,9 @@ def _kl_none_kernel(
     if LOG_TARGET:
         loss = tl.exp(t) * (t - x)
     else:
-        # The target platform's aten::kl_div evaluates target*log(target)
-        # without the xlogy zero guard (target==0 -> NaN), so mirror it.
-        loss = t * tl.log(t) - t * x
+        # ATen kl_div uses xlogy semantics: xlogy(0, y) == 0.
+        xlogy = tl.where(t == 0.0, 0.0, t * tl.log(t))
+        loss = xlogy - t * x
     tl.store(out_ptr + offs, loss.to(out_ptr.dtype.element_ty), mask=mask)
 
 
@@ -308,7 +312,8 @@ def _kl_block_kernel(
         if LOG_TARGET:
             loss = tl.exp(t) * (t - x)
         else:
-            loss = t * (tl.log(t) - x)
+            # ATen kl_div uses xlogy semantics: xlogy(0, y) == 0.
+            loss = tl.where(t == 0.0, 0.0, t * tl.log(t)) - t * x
     else:
         mask = offs < n
         x = tl.load(x_ptr + xo, mask=mask, other=0.0).to(tl.float32)
@@ -319,7 +324,8 @@ def _kl_block_kernel(
         else:
             # padded lanes must contribute exactly 0: 1*(log(1) - 0) == 0
             t = tl.load(t_ptr + to, mask=mask, other=1.0).to(tl.float32)
-            loss = t * (tl.log(t) - x)
+            # ATen kl_div uses xlogy semantics: xlogy(0, y) == 0.
+            loss = tl.where(t == 0.0, 0.0, t * tl.log(t)) - t * x
     s = tl.sum(loss, axis=0)
     if FINAL:
         if DIV:
@@ -661,4 +667,5 @@ def run(self, target, reduction=1, log_target=False):
 
 # --- backend entry point ---------------------------------------------------
 def kl_div(self, target, reduction=1, log_target=False):
+    logger.debug("GEMS_KUNLUNXIN KL_DIV")
     return run(self, target, reduction, log_target)

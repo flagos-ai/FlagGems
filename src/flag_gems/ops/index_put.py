@@ -66,7 +66,23 @@ def generate_index_put_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    code.writeline("@triton.jit")
+    # Keep every size-like argument a runtime value. triton specializes an
+    # integer argument whose value is 1 into a compile-time constant, and these
+    # sizes are used both in masks and in the div/mod chains that decompose the
+    # offsets. When the index tensor holds a single element, `indices0_shape0`
+    # (and M) therefore collapse to 1, `mask0 = offset0 < M` becomes a constant
+    # mask, and the masked load's implicit constant `other` tensor makes
+    # triton-ascend's TritonToLinalgIncubated pass abort on its way to linalg
+    # (`llvm::cast<mlir::Attribute>` assertion on an OpFoldResult). None of these
+    # arguments feed a block size or a pointer stride, so dropping their value
+    # specialization costs nothing; the divisibility hints used for the strides
+    # are separate and are kept.
+    non_specialize = ["M", "N"]
+    non_specialize += [f"input_shape{i}" for i in range(inp_rank)]
+    non_specialize += [
+        f"indices{i}_shape{j}" for i in range(indices_len) for j in range(index_rank)
+    ]
+    code.writeline(f"@triton.jit(do_not_specialize={non_specialize})")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
         args = ["input_ptr,"]

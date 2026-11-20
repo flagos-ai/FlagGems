@@ -39,72 +39,104 @@ jobs:
         with:
           ref: gh-pages
 
+      # daily.yaml uploads one artifact per shard (op-ut-coverage-shard<N> for
+      # NVIDIA, op-ut-coverage-ascend-cann900-shard<N> for Ascend). Each holds the
+      # HTML report of its own shard, and the raw .coverage data is not uploaded,
+      # so the reports cannot be merged. Publish every matching artifact under
+      # its own COVERAGE_ID instead.
       - id: download
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           result-encoding: string
           script: |
+            let run_id;
             if (context.eventName === 'workflow_dispatch') {
               run_id = context.payload.inputs.run_id;
             } else {
               run_id = context.payload.workflow_run.id;
             }
-            console.log(`Fetch artifact for ${run_id}`);
-            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               run_id: run_id,
+            console.log(`Fetch artifacts for ${run_id}`);
+            const prefix = 'op-ut-coverage';
+            const allArtifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run_id,
+                per_page: 100,
+              }
+            );
+            const matched = allArtifacts.filter((artifact) => {
+              return !artifact.expired
+                && (artifact.name === prefix || artifact.name.startsWith(prefix + '-'))
+                && /^[A-Za-z0-9_.-]+$/.test(artifact.name);
             });
-            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == "op-ut-coverage";
-            })[0];
 
             // There could be a case that no coverage data were generated.
-            if (matchArtifact === undefined) {
+            if (matched.length === 0) {
               return "NO_DATA";
-            } else {
-              console.log(`Found artifact ${matchArtifact.id}`);
-              let download = await github.rest.actions.downloadArtifact({
-                 owner: context.repo.owner,
-                 repo: context.repo.repo,
-                 artifact_id: matchArtifact.id,
-                 archive_format: 'zip',
-              });
-              const fs = require('fs');
-              const path = require('path');
-              const temp = '${{ runner.temp }}/artifacts';
-              if (!fs.existsSync(temp)){
-                fs.mkdirSync(temp);
-              }
-              fs.writeFileSync(path.join(temp, 'op-ut-coverage.zip'), Buffer.from(download.data));
-              return "HAS_DATA";
             }
+
+            const fs = require('fs');
+            const path = require('path');
+            const temp = '${{ runner.temp }}/artifacts';
+            fs.mkdirSync(temp, { recursive: true });
+            for (const artifact of matched) {
+              console.log(`Found artifact ${artifact.name} (${artifact.id})`);
+              const download = await github.rest.actions.downloadArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+                archive_format: 'zip',
+              });
+              fs.writeFileSync(path.join(temp, `${artifact.name}.zip`), Buffer.from(download.data));
+            }
+            return "HAS_DATA";
 
       - id: unzip-artifact
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
-        run: unzip "${{ runner.temp }}/artifacts/op-ut-coverage.zip" -d "${{ runner.temp }}/artifacts"
+        shell: bash
+        run: |
+          cd "${{ runner.temp }}/artifacts"
+          for zip in *.zip; do
+            unzip -q "$zip" -d "${zip%.zip}"
+          done
 
       - id: prepare-changes
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
         shell: bash
         run: |
-          COV_ID=$(cat ${{ runner.temp }}/artifacts/COVERAGE_ID)
-          # Strip any newline characters to prevent environment variable injection
-          COV_ID=${COV_ID//$'\r'/}
-          COV_ID=${COV_ID//$'\n'/}
-          # Ensure COV_ID only contains safe characters (alphanumerics, underscore, dash)
-          if ! [[ "$COV_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
-            echo "Invalid COVERAGE_ID value: '$COV_ID'" >&2
+          published=0
+          for dir in "${{ runner.temp }}"/artifacts/*/; do
+            if [ ! -f "${dir}COVERAGE_ID" ]; then
+              echo "::warning::No COVERAGE_ID in ${dir}, skipping"
+              continue
+            fi
+            COV_ID=$(cat "${dir}COVERAGE_ID")
+            # Strip any newline characters to prevent environment variable injection
+            COV_ID=${COV_ID//$'\r'/}
+            COV_ID=${COV_ID//$'\n'/}
+            # Ensure COV_ID only contains safe characters (alphanumerics, underscore, dash)
+            if ! [[ "$COV_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+              echo "Invalid COVERAGE_ID value: '$COV_ID'" >&2
+              exit 1
+            fi
+            COV_DATE=${COV_ID:0:8}
+
+            rm -fr "docs/static/coverage/${COV_ID}"
+            mkdir -p "docs/static/coverage/${COV_ID}"
+            mv "${dir}htmlcov/"* "docs/static/coverage/${COV_ID}/"
+
+            mv "${dir}ut-summary.md" "docs/content/en/references/test/unit/${COV_ID}-summary.md"
+            published=$((published + 1))
+          done
+
+          if [ "$published" -eq 0 ]; then
+            echo "::error::Coverage artifacts were found but none contained a COVERAGE_ID" >&2
             exit 1
           fi
-          echo "COV_ID=${COV_ID}" > "$GITHUB_ENV"
-          DATE=${COV_ID:0:8}
-
-          rm -fr docs/static/coverage/${COV_ID}*
-          mkdir -p docs/static/coverage/${COV_ID}
-          mv ${{ runner.temp }}/artifacts/htmlcov/* docs/static/coverage/${COV_ID}/
-
-          mv ${{ runner.temp }}/artifacts/ut-summary.md docs/content/en/references/test/unit/${DATE}-summary.md
+          echo "COV_DATE=${COV_DATE}" >> "$GITHUB_ENV"
+          echo "COV_COUNT=${published}" >> "$GITHUB_ENV"
 
       - id: commit-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}
@@ -112,7 +144,7 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add docs
-          git commit -a -m "Add coverage data for ${COV_ID}"
+          git commit -a -m "Add coverage data for ${COV_DATE} (${COV_COUNT} reports)"
 
       - id: push-change
         if: ${{ steps.download.outputs.result == 'HAS_DATA' }}

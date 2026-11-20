@@ -128,7 +128,15 @@ Other fields for an operator include:
 
 ## 4. 算子元信息管理 {#operator-metadata-management}
 
-从 v4.2 版本开始，FlagGems 项目引入了算子目录，即 `conf/operators.yaml` 文件。其中每个算子都有一个由 `id` 字段标识的唯一标识符。各字段说明如下：
+从 v4.2 版本开始，FlagGems 项目引入了算子目录。`conf/operators.yaml` 记录当前维护的算子，`conf/deprecated_operators.yaml` 保存已废弃算子的元信息，包括 `src/flag_gems/deprecated` 下对应算子的描述。对于这些融合算子，建议使用 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 中的实现；vLLM 专有算子的新增和优化也应提交至该仓库。
+
+两份清单使用相同的 `ops` 列表结构和字段定义。算子的 `id` 在两份清单中必须全局唯一，各文件内的条目按 `id.casefold()` 排序。CI 元数据检查和标签查询同时读取两份清单，`tools/run_tests.py` 默认只从 `conf/operators.yaml` 选择算子；废弃算子仍可通过 `--ops` 显式指定。可运行以下命令检查两份清单的必填字段、重复 ID 和排序：
+
+```shell
+python tools/ci_checks/check_operators_yaml.py --all
+```
+
+其中每个算子都有一个由 `id` 字段标识的唯一标识符。各字段说明如下：
 
 | 字段          | 类型     | 用途                                           | 约束                                             |
 | ----------- | ------ | -------------------------------------------- | ---------------------------------------------- |
@@ -171,15 +179,15 @@ yaml 文件示例如下：
 
 ## 5. 算子交付件 {#operator-deliverables}
 
-开发新算子前，需要浏览`conf/operators.yaml` 中的`for`字段，避免开发重复算子。新算子需要提交以下内容：
+开发新算子前，需要浏览 `conf/operators.yaml` 和 `conf/deprecated_operators.yaml` 中的 `for` 字段，避免开发重复算子。新算子需要提交以下内容：
 
 > [!IMPORTANT]
 > **关于 vLLM 算子贡献的特别说明**：
-> 原 `src/flag_gems/fused` 下的 vLLM 专有算子及相关热补丁已正式迁移至独立仓库 [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm)。
+> 原 `src/flag_gems/deprecated` 下的 vLLM 专有算子及相关热补丁已正式迁移至独立仓库 [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm)。
 > 若您的优化工作或新增代码涉及 vLLM 算子（如 PagedAttention、FlashMLA、FusedMoE 等在 vLLM 中的特化实现），**请直接向 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 仓库提交 Issue 与 PR**。FlagGems 主仓库聚焦于通用的 PyTorch ATen 算子及基础核心组件。
 
 - 在 `conf/operators.yaml` 中填写算子元信息；
-- 在 `src/flag_gems/ops`、`src/flag_gems/fused` 或 `src/flag_gems/experimental_ops` 目录下添加 Triton 算子实现；
+- 在 `src/flag_gems/ops`、`src/flag_gems/deprecated` 或 `src/flag_gems/experimental_ops` 目录下添加 Triton 算子实现；
 - 在对应的 `__init__.py` 文件中导出 API；
 - 在 `src/flag_gems/__init__.py` 的 `_FULL_CONFIG` 中注册 ATen 算子；如有 backend 特化实现，放到 `src/flag_gems/runtime/backend` 路径下；
 - 在 `tests` 目录下添加单元测试；
@@ -187,7 +195,7 @@ yaml 文件示例如下：
 
 > [!IMPORTANT]
 > **公版算子定位与兼容性基准要求**：
-> `src/flag_gems/ops`、`src/flag_gems/fused` 以及 `src/flag_gems/experimental_ops` 目录下的代码均为 **公版算子实现**（Generic Baseline Implementations）。
+> `src/flag_gems/ops`、`src/flag_gems/deprecated` 以及 `src/flag_gems/experimental_ops` 目录下的代码均为 **公版算子实现**（Generic Baseline Implementations）。
 > 为确保 FlagGems 能够平滑移植至各异构 AI 芯片并具备最大兼容性，**公版算子实现必须能够基于官方上游 Triton 编译器（Upstream Official Triton）在 NVIDIA Ampere 架构（如 A100）上直接稳定运行**。
 > 公版算子中严禁使用仅特定厂商或私有编译器支持的非标语言扩展、私有编译指令或特定芯片内联汇编。若您的优化仅适用于特定硬件架构（如昇腾、海光、沐曦、摩尔线程等），请将其作为厂商特化算子放置于 `src/flag_gems/runtime/backend/_<vendor>/` 目录下进行派发重载，以保持公版实现的纯粹性与高兼容性。
 
