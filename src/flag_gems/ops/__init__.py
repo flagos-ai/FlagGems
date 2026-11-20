@@ -433,6 +433,13 @@ from flag_gems.ops._sparse_sparse_matmul import (
     _sparse_sparse_matmul,
     _sparse_sparse_matmul_out,
 )
+from flag_gems.ops._sparse_sum import (
+    _sparse_sum,
+    _sparse_sum_dim,
+    _sparse_sum_dim_dtype,
+    _sparse_sum_dim_out,
+    _sparse_sum_dtype,
+)
 from flag_gems.ops._sparse_sum_backward import (
     _sparse_sum_backward,
     _sparse_sum_backward_out,
@@ -795,10 +802,12 @@ from flag_gems.ops.det import det
 from flag_gems.ops.detach_copy import detach_copy
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
+from flag_gems.ops.diag_embed_backward import diag_embed_backward
 from flag_gems.ops.diagflat import run as diagflat
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
+from flag_gems.ops.diagonal_scatter_backward import diagonal_scatter_backward
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.dim import dim
@@ -817,7 +826,7 @@ from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dstack import run as dstack
-from flag_gems.ops.elu import elu, elu_, elu_backward
+from flag_gems.ops.elu import elu, elu_, elu_backward, elu_backward_out
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_bag import (
     _embedding_bag,
@@ -2189,8 +2198,13 @@ __all__ = [
     "_sparse_softmax_out",
     "_sparse_sparse_matmul",
     "_sparse_sparse_matmul_out",
+    "_sparse_sum",
     "_sparse_sum_backward",
     "_sparse_sum_backward_out",
+    "_sparse_sum_dim",
+    "_sparse_sum_dim_dtype",
+    "_sparse_sum_dim_out",
+    "_sparse_sum_dtype",
     "_stack",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_differentiable_lstm_cell_backward",
@@ -2535,10 +2549,12 @@ __all__ = [
     "detach_copy",
     "diag",
     "diag_embed",
+    "diag_embed_backward",
     "diagflat",
     "diagonal_backward",
     "diagonal_copy",
     "diagonal_scatter",
+    "diagonal_scatter_backward",
     "diff",
     "digamma",
     "digamma_",
@@ -2558,6 +2574,7 @@ __all__ = [
     "elu",
     "elu_",
     "elu_backward",
+    "elu_backward_out",
     "embedding",
     "embedding_backward",
     "embedding_bag",
