@@ -302,6 +302,9 @@ from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
 from flag_gems.ops._native_batch_norm_legit import (
+    _bn_legit_bwd_run as native_batch_norm_legit_backward,
+)
+from flag_gems.ops._native_batch_norm_legit import (
     _native_batch_norm_legit,
     _native_batch_norm_legit_no_stats,
     _native_batch_norm_legit_no_stats_out,
@@ -3063,6 +3066,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_backward",
     "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",

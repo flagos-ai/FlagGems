@@ -2716,6 +2716,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "native_batch_norm_legit_backward",
     "only_enable",
     "use_gems",
 ]
