@@ -155,6 +155,7 @@ from .foreach_reciprocal_ import foreach_reciprocal_
 from .foreach_sigmoid_ import foreach_sigmoid_
 from .foreach_sign_ import foreach_sign_
 from .foreach_sin_ import foreach_sin_
+from .foreach_sinh_ import foreach_sinh_
 from .frac import frac
 from .frac_ import frac_
 from .full import full
@@ -526,6 +527,7 @@ __all__ = [
     "foreach_sigmoid_",
     "foreach_sign_",
     "foreach_sin_",
+    "foreach_sinh_",
     "frac",
     "frac_",
     "full",
