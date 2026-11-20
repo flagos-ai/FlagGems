@@ -49,3 +49,23 @@ def test_topk_native(shape):
         args[0].gather(-1, actual[1]), actual[0], atol=0, rtol=0, equal_nan=True
     )
     assert not actual[1].sort(-1).values.diff(dim=-1).eq(0).any()
+
+
+@pytest.mark.parametrize("largest", [False, True])
+def test_topk_ties_and_nonfinite(largest):
+    x = (
+        torch.tensor(
+            [0.0, 0.0, -3.0, 2.0, float("inf"), float("-inf"), float("nan"), 0.0],
+            dtype=torch.float32,
+            device=flag_gems.device,
+        )
+        .repeat(8)
+        .reshape(1, 1, 64)
+    )
+    values, indices = flag_gems.topk(x, 16, dim=-1, largest=largest, sorted=True)
+    expected = torch.topk(x.cpu(), 16, dim=-1, largest=largest, sorted=True).values
+    torch.testing.assert_close(values.cpu(), expected, rtol=0, atol=0, equal_nan=True)
+    torch.testing.assert_close(
+        x.gather(-1, indices), values, rtol=0, atol=0, equal_nan=True
+    )
+    assert not indices.sort(-1).values.diff(dim=-1).eq(0).any()

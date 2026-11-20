@@ -25,9 +25,9 @@ def _reference():
 
 
 def _inputs(shape, dtype, device):
-    x = torch.randn(
-        (*shape[:-1], max(shape[-1], 64)), dtype=torch.float32, device=device
-    )[..., : shape[-1]]
+    x = torch.randn((*shape[:-1], max(shape[-1], 64)), dtype=dtype, device=device)[
+        ..., : shape[-1]
+    ]
     return (x, 16), dict(dim=-1, largest=shape[0] == 1, sorted=True)
 
 
@@ -52,7 +52,7 @@ def test_topk_perf():
         op_name="a5_topk",
         input_fn=_input_fn,
         torch_op=_reference(),
-        dtypes=[torch.bfloat16],
+        dtypes=[torch.float32],
     )
     bench.set_gems(flag_gems.topk)
     bench.run()
