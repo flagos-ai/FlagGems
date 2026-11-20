@@ -492,3 +492,12 @@ class MinDimFunction(torch.autograd.Function):
             return None, None, None
         inp, indices = ctx.saved_tensors
         return _min_backward_dim(grad_values, inp, indices, ctx.dim), None, None
+
+
+def min_backward(grad_output, inp, result, indices=None, dim=None):
+    """Return the min gradient; the dim overload requires its saved indices."""
+    if dim is None:
+        return _min_backward_global(grad_output, inp, result)
+    if indices is None:
+        raise ValueError("min_backward requires indices when dim is specified")
+    return _min_backward_dim(grad_output, inp, indices, dim)
