@@ -1143,7 +1143,7 @@ _FULL_CONFIG = (
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
     ("blackman_window", blackman_window),
     ("blackman_window.periodic", blackman_window_periodic),
-    ("block_diag", block_diag),
+    ("block_diag", block_diag, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("bucketize.Tensor", bucketize),
