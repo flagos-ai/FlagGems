@@ -264,6 +264,14 @@ def test_swapdims_autograd(dtype):
 def test_swapdims_invalid_dims(shape, dim0, dim1):
     # The error type and message must match ATen exactly.
     inp = torch.randn(shape, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin native swapdims does not validate out-of-range dimensions:
+        # these calls abort, hang or corrupt memory instead of raising, so no
+        # reference exception can be observed. Still require the candidate to
+        # reject every case here.
+        with pytest.raises(IndexError):
+            flag_gems.swapdims(inp, dim0, dim1)
+        return
     with pytest.raises(IndexError) as ref_exc_info:
         torch.swapdims(inp, dim0, dim1)
     with pytest.raises(IndexError) as res_exc_info:
