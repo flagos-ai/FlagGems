@@ -195,3 +195,65 @@ def test_upsample_bicubic2d_aa_backward(
         atol = 2e-2
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
+
+@pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.parametrize("layout", ["channels_last", "transposed", "sliced"])
+@pytest.mark.parametrize("output_size", [(5, 7), (13, 19), (5, 19)])
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_upsample_bicubic2d_aa_noncontiguous(layout, output_size, align_corners, dtype):
+    generator = torch.Generator().manual_seed(817)
+    if layout == "channels_last":
+        source = torch.randn(2, 8, 12, 4, generator=generator).to(dtype)
+        value = source.to(flag_gems.device).permute(0, 3, 1, 2)
+    elif layout == "transposed":
+        source = torch.randn(2, 4, 12, 8, generator=generator).to(dtype)
+        value = source.to(flag_gems.device).transpose(-1, -2)
+    else:
+        source = torch.randn(2, 4, 16, 24, generator=generator).to(dtype)
+        value = source.to(flag_gems.device)[..., ::2, ::2]
+    assert value.shape == (2, 4, 8, 12)
+    assert not value.is_contiguous()
+    before = value.cpu()
+    expected = torch._C._nn._upsample_bicubic2d_aa(
+        before.float(), output_size, align_corners
+    ).to(dtype)
+    actual = flag_gems._upsample_bicubic2d_aa(value, output_size, align_corners)
+    torch.testing.assert_close(
+        actual.cpu(),
+        expected,
+        atol=2e-5 if dtype == torch.float32 else 0.004,
+        rtol=1e-5 if dtype == torch.float32 else 0.01,
+    )
+    torch.testing.assert_close(value.cpu(), before, atol=0, rtol=0)
+
+
+@pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.parametrize(
+    "channels,source_size,target_size", [(768, 64, 40), (1024, 16, 10)]
+)
+def test_upsample_bicubic2d_aa_position_embedding_views(
+    channels, source_size, target_size
+):
+    generator = torch.Generator().manual_seed(718)
+    source = torch.randn(1, source_size, source_size, channels, generator=generator).to(
+        torch.bfloat16
+    )
+    # dtype conversion preserves the non-contiguous NHWC-to-NCHW view.
+    value = source.to(flag_gems.device).permute(0, 3, 1, 2).float()
+    assert not value.is_contiguous()
+    expected = torch._C._nn._upsample_bicubic2d_aa(
+        value.cpu(), [target_size, target_size], False
+    )
+    actual = flag_gems._upsample_bicubic2d_aa(value, [target_size, target_size], False)
+    torch.testing.assert_close(actual.cpu(), expected, atol=2e-5, rtol=1e-5)
+    with flag_gems.use_gems():
+        dispatched = torch.nn.functional.interpolate(
+            value,
+            size=[target_size, target_size],
+            mode="bicubic",
+            antialias=True,
+            align_corners=False,
+        )
+    torch.testing.assert_close(dispatched.cpu(), expected, atol=2e-5, rtol=1e-5)
