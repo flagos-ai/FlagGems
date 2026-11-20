@@ -213,3 +213,20 @@ def test_index_copy_strided_graph(dtype, inplace, index_dtype, layout):
         torch.npu.synchronize()
         gems_assert_equal(actual.cpu(), reference)
         gems_assert_equal(raw.cpu(), reference_raw if inplace else cpu_initial)
+
+
+@pytest.mark.index_copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index validation")
+@pytest.mark.parametrize("bad_index", [-1, 3])
+@pytest.mark.parametrize("strided", [False, True])
+def test_index_copy_out_of_range_leaves_input_unchanged(bad_index, strided):
+    device = flag_gems.device
+    dst = torch.zeros((3, 4), device=device)
+    src = torch.ones((2, 4), device=device)
+    if strided:
+        dst, src = dst.t().contiguous().t(), src.t().contiguous().t()
+    original = dst.clone()
+    index = torch.tensor([0, bad_index], device=device)
+    with pytest.raises(IndexError, match="index out of range"):
+        flag_gems.index_copy_(dst, 0, index, src)
+    gems_assert_equal(dst.cpu(), original.cpu())

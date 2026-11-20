@@ -288,18 +288,60 @@ def _strided_row_layout(out, dim, index, src):
     return inner, order
 
 
+@triton.jit
+def _index_copy_check_bounds_kernel(
+    index, valid, N, SIZE: tl.constexpr, DEVICE_CHECK: tl.constexpr, BLOCK: tl.constexpr
+):
+    good = tl.full((), True, tl.int1)
+    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
+        offsets = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        raw = tl.load(index + offsets, offsets < N, other=0).to(tl.int64)
+        good &= (
+            tl.min(((offsets >= N) | ((raw >= 0) & (raw < SIZE))).to(tl.int32), 0) != 0
+        )
+    if DEVICE_CHECK:
+        if not good:
+            tl.device_assert(False, "index out of range")
+    else:
+        tl.store(valid + tl.program_id(0), good)
+
+
+def _check_index_copy_bounds(index, size):
+    if index.numel() == 0:
+        return
+    index = index.contiguous()
+    block = min(1024, triton.next_power_of_2(index.numel()))
+    programs = min(48, triton.cdiv(index.numel(), block))
+    capturing = torch_device_fn.is_current_stream_capturing()
+    valid = (
+        None
+        if capturing
+        else torch.empty(programs, device=index.device, dtype=torch.int32)
+    )
+    _index_copy_check_bounds_kernel[(programs,)](
+        index, valid, index.numel(), size, capturing, block, debug=capturing
+    )
+    # Capture cannot read a host scalar. Enable the device assertion explicitly
+    # on that path; eager calls keep the normal Python IndexError contract.
+    if not capturing and not all(valid.cpu().tolist()):
+        raise IndexError(f"index out of range for dimension with size {size}")
+
+
 def _launch_index_copy(out, dim, index, src):
     index_len = index.numel()
     inner_size = math.prod(out.shape[dim + 1 :])
     outer_size = math.prod(out.shape[:dim])
 
-    if index_len == 0 or inner_size == 0 or outer_size == 0:
+    if index_len == 0:
         return
 
     input_dim = out.size(dim)
     numel = outer_size * index_len * inner_size
 
     with torch_device_fn.device(out.device):
+        _check_index_copy_bounds(index, input_dim)
+        if inner_size == 0 or outer_size == 0:
+            return
         if not (out.is_contiguous() and src.is_contiguous() and index.is_contiguous()):
             layout = _strided_row_layout(out, dim, index, src)
             if layout is not None:
