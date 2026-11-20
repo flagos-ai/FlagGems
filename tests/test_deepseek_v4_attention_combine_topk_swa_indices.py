@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems.testing as fg_testing
-from flag_gems.fused.deepseek_v4_attention_combine_topk_swa_indices import (
+from flag_gems.deprecated.deepseek_v4_attention_combine_topk_swa_indices import (
     combine_topk_swa_indices,
 )
 
