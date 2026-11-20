@@ -16102,6 +16102,17 @@ ops:
   - Logic
   stages:
   - alpha: '5.4'
+- id: npu_sparse_attention_score
+  description: Inclusive causal sparse BF16 attention over paged key and value tensors.
+  for:
+  - npu_sparse_attention_score
+  labels:
+  - non-aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nuclear_norm
   description: 'Computes the nuclear norm (sum of singular values) of a matrix.
 
