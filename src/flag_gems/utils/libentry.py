@@ -1847,28 +1847,7 @@ class LibEntry(triton.KernelInterface):
         # Kernel parameters are already specialized above. External options
         # (including backend-specific ones) also affect the compiled program.
         # Keep runtime grid/stream/warmup out of this compiler identity.
-        bypass_cache = bool(kwargs.get("warmup", False)) or "stream" in kwargs
-        try:
-            # Common scalar options need no recursive Python traversal. The
-            # frozenset makes keyword order irrelevant and preserves types.
-            options_key = frozenset(
-                (name, type(value), value)
-                for name, value in kwargs.items()
-                if name not in self._launch_option_exclusions
-            )
-        except TypeError:
-            options = {
-                name: value
-                for name, value in kwargs.items()
-                if name not in self._launch_option_exclusions
-            }
-            try:
-                options_key = _freeze_launch_option(options)
-            except (TypeError, RecursionError):
-                # Let Triton handle an opaque option; never risk reusing a
-                # kernel whose compiler identity we cannot snapshot safely.
-                options_key = ()
-                bypass_cache = True
+        options_key, bypass_cache = self._launch_options_key(kwargs)
         if options_key:
             entry_key += (("launch_options", options_key),)
         # CPU has one device per process and `current_device()` returns the
@@ -1984,6 +1963,31 @@ class LibEntry(triton.KernelInterface):
             kernel[grid[0:3]](*k_args.values())
         return kernel, constexprs
 
+    def _launch_options_key(self, kwargs):
+        bypass_cache = bool(kwargs.get("warmup", False)) or "stream" in kwargs
+        try:
+            # Common scalar options need no recursive Python traversal. The
+            # frozenset makes keyword order irrelevant and preserves types.
+            options_key = frozenset(
+                (name, type(value), value)
+                for name, value in kwargs.items()
+                if name not in self._launch_option_exclusions
+            )
+        except TypeError:
+            options = {
+                name: value
+                for name, value in kwargs.items()
+                if name not in self._launch_option_exclusions
+            }
+            try:
+                options_key = _freeze_launch_option(options)
+            except (TypeError, RecursionError):
+                # Let Triton handle an opaque option; never risk reusing a
+                # kernel whose compiler identity we cannot snapshot safely.
+                options_key = ()
+                bypass_cache = True
+        return options_key, bypass_cache
+
     def _init_cached_binding(self):
         import torch
 
@@ -2008,6 +2012,9 @@ class LibEntry(triton.KernelInterface):
         defaults and FlagTune dtype identity. Plans store constants only; each
         launch supplies its current tensors and unspecialized scalar values.
         """
+        options_key, bypass_cache = self._launch_options_key(kwargs)
+        if bypass_cache:
+            return None
         count = len(args)
         if count > len(self._binding_param_names):
             return None
@@ -2058,6 +2065,8 @@ class LibEntry(triton.KernelInterface):
             keys[0].append(("flagtune_dtypes",) + tuple(dtype_names))
         # Generic order is specialized, unspecialized, then constexpr values.
         entry_key = self.key(keys[1], keys[2], keys[0])
+        if options_key:
+            entry_key += (("launch_options", options_key),)
         device_index = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
             self._apply_flagtune(device_index, args, kwargs)

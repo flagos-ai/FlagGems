@@ -141,6 +141,7 @@ def test_flagtune_environment_controls_operator_selection(monkeypatch):
     """Apply global and per-operator selection using each operator's capability."""
     monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
     monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
     monkeypatch.setenv("USE_FLAGTUNE", "0")
 
     assert flagtune_runtime_mod.flagtune_enabled("mm") is False
@@ -2587,8 +2588,9 @@ def test_libcache_concurrent_write_on_signal():
         ("nested_option", {"axes": [0, 1]}, {"axes": [1, 0]}),
     ],
 )
+@pytest.mark.parametrize("cache_binding", [False, True])
 def test_libentry_separates_external_compiler_options(
-    monkeypatch, option, first, second
+    monkeypatch, option, first, second, cache_binding
 ):
     """Changing a compiler option must miss; changing only grid must hit."""
 
@@ -2596,7 +2598,7 @@ def test_libentry_separates_external_compiler_options(
     def kernel(output, size: tl.constexpr):
         pass
 
-    entry = libentry_mod.LibEntry(kernel)
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
     monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
     compiled, launched = [], []
 
@@ -2619,12 +2621,15 @@ def test_libentry_separates_external_compiler_options(
     assert len(entry._cpu_cache) == 2
 
 
-def test_libentry_snapshots_mutable_options_and_ignores_mapping_order(monkeypatch):
+@pytest.mark.parametrize("cache_binding", [False, True])
+def test_libentry_snapshots_mutable_options_and_ignores_mapping_order(
+    monkeypatch, cache_binding
+):
     @triton.jit
     def kernel(output):
         pass
 
-    entry = libentry_mod.LibEntry(kernel)
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
     monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
     compiled = []
 
@@ -2650,14 +2655,15 @@ def test_libentry_snapshots_mutable_options_and_ignores_mapping_order(monkeypatc
 
 
 @pytest.mark.parametrize("runtime_option", [{"warmup": True}, {"stream": 123}])
+@pytest.mark.parametrize("cache_binding", [False, True])
 def test_libentry_delegates_runtime_controls_without_cached_launch(
-    monkeypatch, runtime_option
+    monkeypatch, runtime_option, cache_binding
 ):
     @triton.jit
     def kernel(output):
         pass
 
-    entry = libentry_mod.LibEntry(kernel)
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
     monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
     delegated, launched = [], []
 
@@ -2679,12 +2685,13 @@ def test_libentry_delegates_runtime_controls_without_cached_launch(
     assert len(entry._cpu_cache) == 1
 
 
-def test_libentry_delegates_unhashable_backend_options(monkeypatch):
+@pytest.mark.parametrize("cache_binding", [False, True])
+def test_libentry_delegates_unhashable_backend_options(monkeypatch, cache_binding):
     @triton.jit
     def kernel(output):
         pass
 
-    entry = libentry_mod.LibEntry(kernel)
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
     monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
     delegated = []
 
@@ -2701,3 +2708,36 @@ def test_libentry_delegates_unhashable_backend_options(monkeypatch):
     entry.run(7, grid=(1,), backend_option=option)
     entry.run(7, grid=(1,), backend_option=option)
     assert len(delegated) == 2 and not entry._cpu_cache
+
+
+@pytest.mark.parametrize("cache_binding", [False, True])
+@pytest.mark.parametrize(
+    "option", [dict(num_warps=8), dict(extern_libs={"math": "/math.bc"})]
+)
+def test_plain_cache_entry_does_not_hide_later_compiler_options(
+    monkeypatch, cache_binding, option
+):
+    @triton.jit
+    def kernel(output):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled = []
+
+    class Compiled:
+        def __getitem__(self, grid):
+            return lambda *args: None
+
+    def compile_kernel(*args, **kwargs):
+        result = Compiled()
+        compiled.append(result)
+        return result
+
+    monkeypatch.setattr(kernel, "run", compile_kernel)
+    plain, _ = entry.run(7, grid=(1,))
+    changed, _ = entry.run(7, grid=(1,), **option)
+    assert changed is not plain
+    assert entry.run(7, grid=(1,), **option)[0] is changed
+    assert entry.run(7, grid=(1,))[0] is plain
+    assert len(compiled) == 2
