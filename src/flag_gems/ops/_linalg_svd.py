@@ -621,3 +621,15 @@ def _linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
         return empty, S, empty
     Vh = V.mH
     return U, S, Vh
+
+
+def linalg_svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh):
+    """Return the first-order input gradient from real float32 SVD factors."""
+    if any(
+        t is not None and t.dtype != torch.float32
+        for t in (grad_U, grad_S, grad_Vh, U, S, Vh)
+    ):
+        raise TypeError(
+            "linalg_svd_backward only supports float32 factors and gradients"
+        )
+    return _svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh)
