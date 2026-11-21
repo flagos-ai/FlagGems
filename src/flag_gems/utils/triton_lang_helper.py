@@ -70,6 +70,27 @@ def _fallback_pow(x, exponent):
 
 
 @triton.jit
+def _fallback_hypot(x, y):
+    # Scale by the larger magnitude to avoid overflowing x*x + y*y.
+    abs_x = tl.abs(x)
+    abs_y = tl.abs(y)
+    hi = tl.maximum(abs_x, abs_y)
+    lo = tl.minimum(abs_x, abs_y)
+    safe_hi = tl.where(hi == 0.0, 1.0, hi)
+    ratio = lo / safe_hi
+    result = hi * tl.sqrt(1.0 + ratio * ratio)
+
+    # Match hypot's special-value rules without libdevice helpers.
+    nan_x = x != x
+    nan_y = y != y
+    inf_x = (x == x) & ((x - x) != 0.0)
+    inf_y = (y == y) & ((y - y) != 0.0)
+    result = tl.where(nan_x | nan_y, x + y, result)
+    inf_value = tl.where(inf_x, abs_x, abs_y)
+    return tl.where(inf_x | inf_y, inf_value, result)
+
+
+@triton.jit
 def _fallback_asin(x):
     # asin(x) == atan(x / sqrt(1 - x*x)); used when a backend's libdevice lacks a
     # native asin (e.g. the sunrise tang fork). Borrowing the symbol is not enough
@@ -1443,6 +1464,7 @@ _FALLBACK_SYMBOLS = {
     "finitef": _fallback_isfinite,
     "floor": _fallback_floor,
     "isfinited": _fallback_isfinite,
+    "hypot": _fallback_hypot,
     "j0": _fallback_j0,
     "j1": _fallback_j1,
     "lgamma": _fallback_lgamma,
@@ -1518,6 +1540,7 @@ tl_extra_shim = _patch_missing_symbols(
         "finitef",
         "fmod",
         "floor",
+        "hypot",
         "gelu_none",
         "gelu_tanh",
         "isfinited",
