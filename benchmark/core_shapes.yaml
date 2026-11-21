@@ -1627,3 +1627,9 @@ atanh_backward_:
   - - 4096
     - 4096
   shape_desc: backward input shape
+
+npu_rotary_mul:
+  shapes:
+    - [1, 1, 1, 64]
+    - [8, 1, 1, 64]
+  shape_desc: "input shape"
