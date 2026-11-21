@@ -1065,6 +1065,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
+- id: addcmul_backward
+  description: Computes all three addcmul input gradients in one fused Triton launch.
+  for:
+  - addcmul
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: addcmul_out
   description: 'A variant of `addcmul` that allows the output to be assigned to `out`.
 
