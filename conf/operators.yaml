@@ -19943,6 +19943,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_compressed_tensor_unsafe
+  description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
+    components without validating the compressed indices; the payload dtype conversion
+    requested via the dtype argument runs in a Triton kernel before the native
+    assembly.
+
+    '
+  for:
+  - _sparse_compressed_tensor_unsafe
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_coo_tensor
   description: 'Assembles a sparse COO tensor from its stored components: the coordinate
     index matrix and the payload (values), with an explicit logical size or one inferred
