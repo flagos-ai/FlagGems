@@ -63,6 +63,9 @@ def slice_backward(
     step,
 ):
     logger.debug("GEMS SLICE_BACKWARD")
+    # The kernel reads the gradient linearly; reductions can supply expanded
+    # gradients backed by a single element.
+    grad_output = grad_output.contiguous()
     grad_input = torch.zeros(
         input_sizes,
         device=grad_output.device,
