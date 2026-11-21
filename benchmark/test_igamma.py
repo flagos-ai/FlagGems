@@ -31,6 +31,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -49,4 +51,32 @@ def test_igamma():
         input_fn=igamma_input_fn,
         dtypes=[torch.float32],
     )
+    bench.run()
+
+
+def igamma_backward_input_fn(shape, dtype, device):
+    grad = torch.randn(shape, dtype=dtype, device=device)
+    a = torch.rand(shape, dtype=dtype, device=device) + 0.1
+    x = torch.rand(shape, dtype=dtype, device=device) + 0.1
+    yield grad, a, x
+
+
+def igamma_backward_ref(grad, a, x):
+    # aten registers no igamma gradient; the analytic derivative is the baseline.
+    a_f = a.float()
+    x_f = x.float()
+    grad_f = grad.float()
+    dx = grad_f * torch.exp((a_f - 1.0) * torch.log(x_f) - x_f - torch.lgamma(a_f))
+    return dx.to(grad.dtype)
+
+
+@pytest.mark.igamma_backward
+def test_igamma_backward():
+    bench = base.GenericBenchmark(
+        op_name="igamma_backward",
+        torch_op=igamma_backward_ref,
+        input_fn=igamma_backward_input_fn,
+        dtypes=[torch.float32],
+    )
+    bench.set_gems(flag_gems.igamma_backward)
     bench.run()

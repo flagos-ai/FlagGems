@@ -19,7 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +147,144 @@ def igamma_kernel(
     tl.store(out_ptr + offsets, result, mask=mask)
 
 
+@triton.jit
+def _log_gamma_lanczos(a):
+    """log(Gamma(a)) via the Lanczos expansion used by ``igamma_kernel``."""
+    reflect_mask = a < 0.5
+    x_refl = tl.where(reflect_mask, 1.0 - a, a)
+
+    z = x_refl - 1.0
+    p = (
+        0.99999999999980993
+        + 676.5203681218851 / (z + 1.0)
+        + -1259.1392167224028 / (z + 2.0)
+        + 771.32342877765313 / (z + 3.0)
+        + -176.61502916214059 / (z + 4.0)
+        + 12.507343278686905 / (z + 5.0)
+        + -0.13857109526572012 / (z + 6.0)
+        + 9.9843695780195716e-6 / (z + 7.0)
+        + 1.5056327351493116e-7 / (z + 8.0)
+    )
+    sqrt_2pi = 2.5066282746310005024157652848110
+    t = z + 7.0 + 0.5
+    lg = (z + 0.5) * tl.log(t) - t + tl.log(sqrt_2pi * p)
+
+    pi = 3.1415926535897932384626433832795028841971
+    return tl.where(
+        reflect_mask,
+        _LOG_PI - tl.log(tl.abs(tl.sin(pi * a))) - lg,
+        lg,
+    )
+
+
+@libentry()
+@triton.jit
+def _igamma_backward_kernel(
+    grad_ptr,
+    a_ptr,
+    x_ptr,
+    out_ptr,
+    n_elements,
+    IS_FP64: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    grad = tl.load(grad_ptr + offsets, mask=mask, other=0.0)
+    a = tl.load(a_ptr + offsets, mask=mask, other=1.0)
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+
+    # Keep fp64 inputs at fp64; everything else computes in fp32.
+    if IS_FP64:
+        grad_c = grad.to(tl.float64)
+        a_c = a.to(tl.float64)
+        x_c = x.to(tl.float64)
+        tiny = 1e-300
+    else:
+        grad_c = grad.to(tl.float32)
+        a_c = a.to(tl.float32)
+        x_c = x.to(tl.float32)
+        tiny = 1e-20
+
+    # d/dx P(a, x) = x^(a-1) e^(-x) / Gamma(a)
+    x_safe = tl.maximum(x_c, tiny)
+    # libdevice lgamma has no fp64 variant; keep Lanczos for fp64 and use the
+    # fast libdevice path for everything else.
+    if IS_FP64:
+        log_gamma_a = _log_gamma_lanczos(a_c)
+    else:
+        log_gamma_a = tl_extra_shim.lgamma(a_c)
+    log_pdf = (a_c - 1.0) * tl.log(x_safe) - x_safe - log_gamma_a
+    dx = grad_c * tl.exp(log_pdf)
+
+    tl.store(out_ptr + offsets, dx, mask=mask)
+
+
+def igamma_backward(grad_out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+    """Backward of ``igamma`` with respect to ``x``.
+
+    ``d/dx P(a, x) = x^(a-1) e^(-x) / Gamma(a)``. ``aten`` registers no
+    gradient for ``igamma``, so this is the public backward primitive used by
+    the autograd wrapper, tests and benchmarks. The gradient with respect to
+    ``a`` has no elementary closed form and is not implemented (returns None).
+    """
+    logger.debug("GEMS IGAMMA_BACKWARD")
+    if a.device.type != flag_gems.device or x.device.type != flag_gems.device:
+        raise ValueError(
+            f"igamma_backward: inputs must be on {flag_gems.device} device"
+        )
+    if grad_out.device.type != flag_gems.device:
+        raise ValueError(
+            f"igamma_backward: grad_out must be on {flag_gems.device} device"
+        )
+    if a.shape != x.shape:
+        raise ValueError("igamma_backward: a and x must have the same shape")
+    if grad_out.numel() != x.numel():
+        raise ValueError("igamma_backward: grad_out and x must have the same numel")
+
+    a_c = a.contiguous()
+    x_c = x.contiguous()
+    grad_c = grad_out.contiguous()
+    out = torch.empty_like(x_c)
+    n_elements = x_c.numel()
+    if n_elements == 0:
+        return out
+
+    BLOCK_SIZE = 512
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    with torch_device_fn.device(x.device):
+        _igamma_backward_kernel[grid](
+            grad_c,
+            a_c,
+            x_c,
+            out,
+            n_elements,
+            IS_FP64=x_c.dtype == torch.float64,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+    return out
+
+
+class IgammaFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, a, x):
+        ctx.save_for_backward(a, x)
+        return _igamma_forward(a, x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, x = ctx.saved_tensors
+        return None, igamma_backward(grad_output, a, x)
+
+
 def igamma(a, x):
     logger.debug("GEMS IGAMMA")
+    return IgammaFunction.apply(a, x)
+
+
+def _igamma_forward(a, x):
     if not isinstance(a, torch.Tensor):
         raise TypeError("igamma expects a torch.Tensor as the first argument")
     if not isinstance(x, torch.Tensor):
