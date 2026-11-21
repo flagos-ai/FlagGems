@@ -357,7 +357,7 @@ def mul_scalar_kernel(
         tl.store(output_ptr + offsets, value, mask)
 
 
-@libentry()
+@libentry(cache_binding=True)
 @libtuner(
     configs=_broadcast_configs(),
     key=["n_elements", "n_cols", "dtype"],
