@@ -233,6 +233,10 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
+      - name: Diagnose flagtree load path
+        shell: bash --login -e -o pipefail {0}
+        run: bash tools/diag_flagtree.sh
+
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         shell: bash --login -e -o pipefail {0}

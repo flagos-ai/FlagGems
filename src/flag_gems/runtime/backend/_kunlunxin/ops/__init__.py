@@ -25,6 +25,8 @@ from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
 from ._ctc_loss import _ctc_loss, _ctc_loss_out
 from ._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
+from ._cummax_helper import _cummax_helper
+from ._cummin_helper import _cummin_helper
 from ._dirichlet_grad import _dirichlet_grad, _dirichlet_grad_into  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -318,6 +320,7 @@ from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
+from .bilinear import bilinear
 from .binary_cross_entropy import binary_cross_entropy, binary_cross_entropy_out
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
@@ -392,6 +395,7 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convolution import convolution
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
@@ -1087,6 +1091,8 @@ __all__ = [
     "_ctc_loss_backward",
     "_ctc_loss_backward_out",
     "_ctc_loss_out",
+    "_cummax_helper",
+    "_cummin_helper",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
@@ -1335,6 +1341,7 @@ __all__ = [
     "batch_norm_no_update",
     "bernoulli",
     "bernoulli_",
+    "bilinear",
     "binary_cross_entropy",
     "binary_cross_entropy_backward",
     "binary_cross_entropy_out",
@@ -1406,6 +1413,7 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose2d",
     "conv_transpose3d",
+    "convolution",
     "copy",
     "copy_",
     "copysign",
