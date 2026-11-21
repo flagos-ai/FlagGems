@@ -1391,6 +1391,7 @@ _FULL_CONFIG = (
     ("exp.out", exp_out),
     ("exp2", exp2),
     ("exp2_", exp2_),
+    ("exp2_backward", exp2_backward),
     ("exp_", exp_),
     ("expand", expand),
     ("expand_copy", expand_copy),

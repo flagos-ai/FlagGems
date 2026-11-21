@@ -6209,6 +6209,19 @@ ops:
   - Math
   stages:
   - stable: '4.0'
+- id: exp2_backward
+  description: Computes the gradient of `exp2()` with respect to `input`, equal to
+    `grad * exp2(input) * ln(2)`.
+  for:
+  - exp2_backward
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: exp_
   description: The in-place version of `exp()`.
   for:
