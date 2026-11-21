@@ -836,7 +836,7 @@ from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rnn_relu import rnn_relu
 from .roll import roll
 from .rot90 import rot90
-from .round import round, round_, round_out
+from .round import round, round_, round_decimals, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .row_stack import row_stack  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -1897,6 +1897,7 @@ __all__ = [
     "rot90",
     "round",
     "round_",
+    "round_decimals",
     "round_out",
     "row_indices_copy",
     "row_indices_copy_out",
