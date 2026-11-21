@@ -21,10 +21,18 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from .accuracy_utils import _SKIP_FP64
 
+_SKIP_FP64_KUNLUNXIN = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="kunlunxin does not support FP64 for nanquantile",
+)
+
 DTYPES = (
     [torch.float32]
     if cfg.QUICK_MODE
-    else [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+    else [
+        torch.float32,
+        pytest.param(torch.float64, marks=[_SKIP_FP64, _SKIP_FP64_KUNLUNXIN]),
+    ]
 )
 INTERPOLATIONS = (
     ["linear"]
