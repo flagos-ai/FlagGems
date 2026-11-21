@@ -30,15 +30,6 @@ _SHAPES = [
 ] + [(20, 32)]
 
 
-# These FP32 CPU reference combinations reproducibly diverge on the input
-# sequence seeded by _make_inputs. The remaining combinations are compared.
-_MUSA_CPU_FP32_DIVERGENCES = {
-    (0.5, 10.0): {(8, 32), (64, 32), (20, 320, 4), (20, 320, 15), (20, 320, 32), (20, 32)},
-    (1.0, 50.0): {(64, 2), (64, 15), (64, 32), (20, 320, 2), (20, 320, 4), (20, 320, 15), (20, 320, 32)},
-    (0.2, 100.0): {(8, 32), (64, 32), (20, 320, 2), (20, 320, 4), (20, 320, 15), (20, 320, 32), (20, 32)},
-}
-
-
 def _run_dirichlet_grad(x, alpha, total):
     candidate = getattr(flag_gems, "dirichlet_grad", None)
     if candidate is None:
@@ -61,22 +52,11 @@ def _make_inputs(shape, dtype, alpha_range):
     return x, alpha, total
 
 
-@pytest.mark.skipif(
-    cfg.TO_CPU and flag_gems.vendor_name != "mthreads",
-    reason="CPU ref diverges from CUDA kernel on saddle-point branch",
-)
 @pytest.mark.dirichlet_grad
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype", DIRICHLET_GRAD_DTYPES)
 @pytest.mark.parametrize("alpha_range", _ALPHA_RANGES)
 def test_dirichlet_grad_regimes(shape, dtype, alpha_range):
-    if (
-        cfg.TO_CPU
-        and flag_gems.vendor_name == "mthreads"
-        and dtype == torch.float32
-        and shape in _MUSA_CPU_FP32_DIVERGENCES.get(alpha_range, ())
-    ):
-        pytest.skip("CPU and MUSA FP32 saddle-point results diverge")
     x, alpha, total = _make_inputs(shape, dtype, alpha_range)
     x_before = x.clone()
     alpha_before = alpha.clone()
