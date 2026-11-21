@@ -42,12 +42,8 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+from triton import knobs
 from triton.runtime import driver
-
-try:
-    from triton import knobs
-except ImportError:  # older triton / flagtree builds without knobs
-    knobs = None
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import (
@@ -706,6 +702,218 @@ def _labels(dtype: torch.dtype) -> str:
     return str(dtype).replace("torch.", "").capitalize()
 
 
+@triton.jit
+def _foreach16_kernel_pow(
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    a8,
+    a9,
+    a10,
+    a11,
+    a12,
+    a13,
+    a14,
+    a15,
+    o0,
+    o1,
+    o2,
+    o3,
+    o4,
+    o5,
+    o6,
+    o7,
+    o8,
+    o9,
+    o10,
+    o11,
+    o12,
+    o13,
+    o14,
+    o15,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    s8,
+    s9,
+    s10,
+    s11,
+    s12,
+    s13,
+    s14,
+    s15,
+    n,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    OT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """One launch, up to 16 tensors with equal numel.
+
+    Every program walks the same ``BLOCK``-element chunk of each live tensor
+    (``NT`` constexpr-guarded), so each pointer stays a kernel argument all the
+    way into the load/store -- the block-DMA analysis can prove stride 1.
+    """
+    off = tl.program_id(0) * BLOCK
+    idx = off + tl.arange(0, BLOCK)
+    if EVEN:
+        if NT > 0:
+            tl.store(o0 + idx, fn(tl.load(a0 + idx).to(OT), s0.to(OT)).to(OT))
+        if NT > 1:
+            tl.store(o1 + idx, fn(tl.load(a1 + idx).to(OT), s1.to(OT)).to(OT))
+        if NT > 2:
+            tl.store(o2 + idx, fn(tl.load(a2 + idx).to(OT), s2.to(OT)).to(OT))
+        if NT > 3:
+            tl.store(o3 + idx, fn(tl.load(a3 + idx).to(OT), s3.to(OT)).to(OT))
+        if NT > 4:
+            tl.store(o4 + idx, fn(tl.load(a4 + idx).to(OT), s4.to(OT)).to(OT))
+        if NT > 5:
+            tl.store(o5 + idx, fn(tl.load(a5 + idx).to(OT), s5.to(OT)).to(OT))
+        if NT > 6:
+            tl.store(o6 + idx, fn(tl.load(a6 + idx).to(OT), s6.to(OT)).to(OT))
+        if NT > 7:
+            tl.store(o7 + idx, fn(tl.load(a7 + idx).to(OT), s7.to(OT)).to(OT))
+        if NT > 8:
+            tl.store(o8 + idx, fn(tl.load(a8 + idx).to(OT), s8.to(OT)).to(OT))
+        if NT > 9:
+            tl.store(o9 + idx, fn(tl.load(a9 + idx).to(OT), s9.to(OT)).to(OT))
+        if NT > 10:
+            tl.store(o10 + idx, fn(tl.load(a10 + idx).to(OT), s10.to(OT)).to(OT))
+        if NT > 11:
+            tl.store(o11 + idx, fn(tl.load(a11 + idx).to(OT), s11.to(OT)).to(OT))
+        if NT > 12:
+            tl.store(o12 + idx, fn(tl.load(a12 + idx).to(OT), s12.to(OT)).to(OT))
+        if NT > 13:
+            tl.store(o13 + idx, fn(tl.load(a13 + idx).to(OT), s13.to(OT)).to(OT))
+        if NT > 14:
+            tl.store(o14 + idx, fn(tl.load(a14 + idx).to(OT), s14.to(OT)).to(OT))
+        if NT > 15:
+            tl.store(o15 + idx, fn(tl.load(a15 + idx).to(OT), s15.to(OT)).to(OT))
+    else:
+        m = idx < n
+        if NT > 0:
+            tl.store(
+                o0 + idx,
+                fn(tl.load(a0 + idx, mask=m).to(OT), s0.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 1:
+            tl.store(
+                o1 + idx,
+                fn(tl.load(a1 + idx, mask=m).to(OT), s1.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 2:
+            tl.store(
+                o2 + idx,
+                fn(tl.load(a2 + idx, mask=m).to(OT), s2.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 3:
+            tl.store(
+                o3 + idx,
+                fn(tl.load(a3 + idx, mask=m).to(OT), s3.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 4:
+            tl.store(
+                o4 + idx,
+                fn(tl.load(a4 + idx, mask=m).to(OT), s4.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 5:
+            tl.store(
+                o5 + idx,
+                fn(tl.load(a5 + idx, mask=m).to(OT), s5.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 6:
+            tl.store(
+                o6 + idx,
+                fn(tl.load(a6 + idx, mask=m).to(OT), s6.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 7:
+            tl.store(
+                o7 + idx,
+                fn(tl.load(a7 + idx, mask=m).to(OT), s7.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 8:
+            tl.store(
+                o8 + idx,
+                fn(tl.load(a8 + idx, mask=m).to(OT), s8.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 9:
+            tl.store(
+                o9 + idx,
+                fn(tl.load(a9 + idx, mask=m).to(OT), s9.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 10:
+            tl.store(
+                o10 + idx,
+                fn(tl.load(a10 + idx, mask=m).to(OT), s10.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 11:
+            tl.store(
+                o11 + idx,
+                fn(tl.load(a11 + idx, mask=m).to(OT), s11.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 12:
+            tl.store(
+                o12 + idx,
+                fn(tl.load(a12 + idx, mask=m).to(OT), s12.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 13:
+            tl.store(
+                o13 + idx,
+                fn(tl.load(a13 + idx, mask=m).to(OT), s13.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 14:
+            tl.store(
+                o14 + idx,
+                fn(tl.load(a14 + idx, mask=m).to(OT), s14.to(OT)).to(OT),
+                mask=m,
+            )
+        if NT > 15:
+            tl.store(
+                o15 + idx,
+                fn(tl.load(a15 + idx, mask=m).to(OT), s15.to(OT)).to(OT),
+                mask=m,
+            )
+
+
+_SCRATCH: dict = {}
+
+
+def _scratch_for(any_tensor: torch.Tensor, n: int) -> torch.Tensor:
+    """Per-(device, n) scratch big enough for n elements (reused)."""
+    dev = any_tensor.device
+    key = (dev, any_tensor.dtype, n)
+    buf = _SCRATCH.get(key)
+    if buf is None or buf.numel() < n:
+        buf = torch.empty(n, dtype=any_tensor.dtype, device=dev)
+        _SCRATCH[key] = buf
+    return buf
+
+
 def _pick_block(n: int) -> int:
     for block in (8192, 4096, 2048, 1024):
         if n % block == 0:
@@ -738,10 +946,6 @@ _RAW_CACHE: dict = {}
 
 def _raw_launch(jit_fn, grid, const_key, tensors, args, num_warps) -> bool:
     """Launch ``jit_fn`` bypassing the binder; False if the caller must not."""
-    # Without ``triton.knobs`` we cannot prove no hook is installed, so this
-    # Triton build must take the normal dispatch path.
-    if knobs is None:
-        return False
     # The knob holds a ``HookChain``, never ``None``, and the chain defines no
     # ``__bool__``/``__len__`` -- so it is always truthy and ``is not None`` would
     # reject every call.  An empty ``calls`` list means nobody is profiling; any
@@ -799,34 +1003,30 @@ def _launch16(
     o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
     svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
     grid = (triton.cdiv(n, block),)
+    live = svals[:nt16]
     ot = tl_dtype(dsts[0].dtype)
-    # Always take the per-slot kernel.  The shared-scalar entry (_foreach16s_kernel)
-    # passes one scalar 16 times, so the body converts the *same* SSA value to
-    # OT 16 times; TritonXPUUnrollControl CSEs those 16 converts and then
-    # misplaces the single result, failing with "operand #0 does not dominate
-    # this use" (fp16 block=1024 for sub/mul/minimum, and every shape for pow).
-    # Distinct per-slot scalar arguments stay distinct SSA values and compile.
-    args = (*a, *o, *svals, n, fn, nt16, ot, block, even)
-    if even and n % 16 == 0 and n != 1:
-        if _raw_launch(
-            _foreach16_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
-        ):
-            return
-    _foreach16_kernel[grid](*args, num_warps=8)
-
-
-_SCRATCH: dict = {}
-
-
-def _scratch_for(any_tensor: torch.Tensor, n: int) -> torch.Tensor:
-    """Per-(device, n) scratch big enough for n elements (reused)."""
-    dev = any_tensor.device
-    key = (dev, any_tensor.dtype, n)
-    buf = _SCRATCH.get(key)
-    if buf is None or buf.numel() < n:
-        buf = torch.empty(n, dtype=any_tensor.dtype, device=dev)
-        _SCRATCH[key] = buf
-    return buf
+    if live and live.count(live[0]) == nt16:
+        # One scalar for every slot: 35 kernel arguments instead of 50.
+        args = (*a, *o, live[0], n, fn, nt16, ot, block, even)
+        if even and n % 16 == 0 and n != 1:
+            if _raw_launch(
+                _foreach16s_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
+            ):
+                return
+        _foreach16s_kernel[grid](*args, num_warps=8)
+        return
+    _foreach16_kernel[grid](
+        *a,
+        *o,
+        *svals,
+        n,
+        fn,
+        nt16,
+        ot,
+        block,
+        even,
+        num_warps=8,
+    )
 
 
 def _launch1(
@@ -879,6 +1079,29 @@ def _torch_to_tl(dtype: torch.dtype):
     return tl_dtype(dtype)
 
 
+def _launch16_pow(srcs, dsts, vals, fn, n):
+    from flag_gems.utils.foreach import tl_dtype as _torch_to_tl
+
+    block, even = _pick_block(n)
+    nt = len(srcs)
+    nt16 = min(nt, _K16_SLOTS)
+    a = list(srcs[:nt16]) + [srcs[0]] * (_K16_SLOTS - nt16)
+    o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
+    svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
+    _foreach16_kernel_pow[(triton.cdiv(n, block),)](
+        *a,
+        *o,
+        *svals,
+        n,
+        fn,
+        nt16,
+        _torch_to_tl(dsts[0].dtype),
+        block,
+        even,
+        num_warps=8,
+    )
+
+
 def _launch(
     srcs: List[torch.Tensor],
     dsts: List[torch.Tensor],
@@ -888,6 +1111,12 @@ def _launch(
     numels = [s.numel() for s in srcs]
     n = max(numels)
     if n == 0:
+        return
+    # pow's extern body (exp2/log2) trips a TritonXPUUnrollControl dominance bug
+    # on the new _f16_body constexpr ladder; route it through the pre-#8028
+    # direct-pointer kernel to keep both pow perf and the clamp_max_scalar win.
+    if fn is _fpow and len(srcs) > 1:
+        _launch16_pow(srcs, dsts, vals, fn, n)
         return
     if len(srcs) <= _K16_SLOTS and all(x == n for x in numels) and n <= _K16_MAX_NUMEL:
         _launch16(srcs, dsts, vals, fn, n)

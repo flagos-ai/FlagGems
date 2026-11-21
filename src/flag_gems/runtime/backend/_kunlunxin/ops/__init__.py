@@ -230,6 +230,10 @@ from ._upsample_nearest_exact1d_backward import (  # noqa: F401
 )
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._upsample_nearest_exact3d_backward import (
+    _upsample_nearest_exact3d_backward,
+    _upsample_nearest_exact3d_backward_grad_input,
+)
 from ._weight_norm_differentiable_backward import (  # noqa: F401
     weight_norm_differentiable_backward,
 )
@@ -1244,6 +1248,7 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
+    "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
     "abs",
