@@ -78,7 +78,6 @@ class SQLPersistantModel(PersistantModel):
             def set_sqlite_pragma(dbapi_conn, connection_record):
                 cursor = dbapi_conn.cursor()
                 try:
-                    cursor.execute("PRAGMA busy_timeout=30000")
                     # Only the first connection needs to switch journal mode.
                     # Parallel benchmark workers can race for that lock.
                     for attempt in range(8):
