@@ -1049,6 +1049,15 @@ class WrapperGenerator:
                     code.writeline("buffer_size_limit=2048,")
                 if self.config.isCloseVectorization:
                     code.writeline("isCloseVectorization=True,")
+                if not self.config.isCloseVectorization and schema.num_input_tensors():
+                    _widen = [
+                        f"({self.input_name(i)}.dtype.is_floating_point is False"
+                        f" and {self.input_name(i)}.element_size() < out0.element_size())"
+                        for i in range(schema.num_input_tensors())
+                    ]
+                    code.writeline(
+                        "isCloseVectorization=" + " or ".join(_widen) + ", # XPU int widen"
+                    )
                 if self.config.isCloseInterleave:
                     code.writeline("isCloseInterleave=True,")
                 if self.config.isCloseDtypeConvert:

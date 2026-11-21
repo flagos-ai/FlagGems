@@ -58,6 +58,12 @@ else:
 def _maybe_move_to_cpu(res, ref):
     if res.device.type == "cpu" or ref.device.type == "cpu":
         return res, ref
+    # The XPU xdnn eq wrapper does not support complex inputs, so compare
+    # complex results on CPU where torch.testing works.
+    if runtime.device.vendor_name == "kunlunxin" and (
+        res.is_complex() or ref.is_complex()
+    ):
+        return res.cpu(), ref.cpu()
 
     required = res.numel() * res.element_size()
 
