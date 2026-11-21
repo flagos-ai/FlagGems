@@ -40,7 +40,6 @@ SHARED_HCU_OPTIONS = dict(
     kpack=2,
     mmac_transposed=True,
     optimize_epilogue=True,
-    rebase_buffer_store=False,
     terminal_readonly_publication=False,
 )
 
