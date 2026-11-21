@@ -851,6 +851,7 @@ from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.eq_ import eq_, eq_scalar_
 from flag_gems.ops.erf import erf, erf_
+from flag_gems.ops.erf_backward import erf_backward
 from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
@@ -2592,6 +2593,7 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
+    "erf_backward",
     "erfc",
     "erfc_",
     "erfinv",
