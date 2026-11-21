@@ -14132,6 +14132,20 @@ ops:
   - LinearAlg
   stages:
   - stable: '1.0'
+- id: mean_backward
+  description: The backward computation of `mean()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - mean
+  - mean.dim
+  labels:
+  - aten
+  - Reduction
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: mean_dim
   description: 'Returns the mean value of each row of the `input` tensor in the given
     dimension `dim`.
