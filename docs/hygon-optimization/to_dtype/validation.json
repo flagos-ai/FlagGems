@@ -1,0 +1,34 @@
+{
+  "operator": "aten::to.dtype / aten::_to_copy",
+  "official_master": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+  "tested_candidate": "2862d83d0d8cd7d599f2059131309e6db554744d",
+  "candidate_src_tree": "7d6ebe9c65b06ab3917fdc76142920f042d668f1",
+  "date": "2026-11-12",
+  "focused_hardware": {
+    "passed": 98,
+    "skipped": 0,
+    "job": 1102371
+  },
+  "performance": {
+    "cases": 59,
+    "old_correct": 48,
+    "new_correct": 59,
+    "das_correct": 56,
+    "qualified_old_new": 8,
+    "qualified_new_das": 11,
+    "target90": 10,
+    "hardware_job": 1102371,
+    "analysis_job": 1102372,
+    "old_new_range": [
+      0.9783113872023146,
+      2.8690558235699517
+    ],
+    "no_device_work": [
+      "to-row-1716",
+      "to-control-empty-preserve_format",
+      "to-control-empty-contiguous_format"
+    ],
+    "status": "complete_with_per_case_qualification",
+    "evidence": "performance-20261112/README.md"
+  }
+}

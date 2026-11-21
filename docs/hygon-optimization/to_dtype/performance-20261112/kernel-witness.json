@@ -1,0 +1,1306 @@
+{
+  "cases": {
+    "to-row-1711": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1712": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1713": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 8, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#12}::operator()() const::{lambda(c10::BFloat16)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1714": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1715": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1716": {
+      "aa": {},
+      "das": {},
+      "das_repeat": {},
+      "new": {},
+      "old": {},
+      "old_repeat": {}
+    },
+    "to-row-1717": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1718": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1719": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-row-1720": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940010": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940011": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940012": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940013": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940014": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940015": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940016": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940017": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940018": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940019": {
+      "aa": {
+        "kernel:cast_fp32_bf16_quad": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_fp32_bf16_quad": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940020": {
+      "aa": {
+        "kernel:cast_fp32_bf16_quad": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_fp32_bf16_quad": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940021": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940022": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940023": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940024": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940025": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940026": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940027": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940028": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940029": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940030": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940031": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940032": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940033": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940034": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940035": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940036": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940037": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940038": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940039": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940040": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940041": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940042": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#11}::operator()() const::{lambda(bool)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940043": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940044": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-extended-940045": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16tofloat32_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(c10::BFloat16)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-contiguous-preserve_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-contiguous-contiguous_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-transpose-preserve_format": {
+      "aa": {
+        "kernel:cast_dense": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:cast_dense": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-transpose-contiguous_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      }
+    },
+    "to-control-offset-preserve_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::unrolled_elementwise_kernel<at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast>(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::unrolled_elementwise_kernel<at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast>(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-offset-contiguous_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::unrolled_elementwise_kernel<at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast>(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::unrolled_elementwise_kernel<at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast>(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-holes-preserve_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      }
+    },
+    "to-control-holes-contiguous_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "das": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})": 1000,
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_2": 1000
+      }
+    },
+    "to-control-empty-preserve_format": {
+      "aa": {},
+      "das": {},
+      "das_repeat": {},
+      "new": {},
+      "old": {},
+      "old_repeat": {}
+    },
+    "to-control-empty-contiguous_format": {
+      "aa": {},
+      "das": {},
+      "das_repeat": {},
+      "new": {},
+      "old": {},
+      "old_repeat": {}
+    },
+    "to-control-scalar-preserve_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-scalar-contiguous_format": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    },
+    "to-control-special-bits": {
+      "aa": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "das": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "das_repeat": {
+        "kernel:void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul> >(int, at::native::bfloat16_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda(float)#1}, std::array<char*, 2ul>)": 1000
+      },
+      "new": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      },
+      "old_repeat": {
+        "kernel:_to_copy_func_kernel_rank_1": 1000
+      }
+    }
+  },
+  "source_accounting_files": [
+    {
+      "path": "to-dtype-group-00/aa/accounting-0.json",
+      "sha256": "4b01076e286f1f65e06b703394e0c515fa560e28c2e4a506518e441aab666b07"
+    },
+    {
+      "path": "to-dtype-group-00/aa/accounting-1.json",
+      "sha256": "8dec0b7deb79da73fda9f114f8a8d7e2a838bd847ed060285862a859509b9152"
+    },
+    {
+      "path": "to-dtype-group-00/das/accounting-0.json",
+      "sha256": "5b13702147b373db1488c53fd2301c0bfc932e431ed12666fc80b72ea15feeee"
+    },
+    {
+      "path": "to-dtype-group-00/das/accounting-1.json",
+      "sha256": "9e8fbb0d1c20a19c993a359eb96b45485273dc5fc33dff1101c3aad070145b39"
+    },
+    {
+      "path": "to-dtype-group-00/das_repeat/accounting-0.json",
+      "sha256": "6cfe6b9a110359a1b9d3fae3936aa0e0ae7615d547c8ff791d2902d7b1edbc6b"
+    },
+    {
+      "path": "to-dtype-group-00/das_repeat/accounting-1.json",
+      "sha256": "952b71e5a57c6db169cc1a92c48bd8b6c864a8c8d2d0cf239983a27e9867757b"
+    },
+    {
+      "path": "to-dtype-group-00/new/accounting-0.json",
+      "sha256": "a8c32e0efea442a8c75dfb3f75bf56dfd5116d3e300eb76448fcd5cb021ef4d8"
+    },
+    {
+      "path": "to-dtype-group-00/new/accounting-1.json",
+      "sha256": "e27a4c87244e1811850193cec333f21bbcbfc014b10f126ccaedaa7b1542b4a3"
+    },
+    {
+      "path": "to-dtype-group-00/old/accounting-0.json",
+      "sha256": "bf45271b06ed207b8466d7bfc63152fd0f23b1efedf7fd480ccda5b049490a22"
+    },
+    {
+      "path": "to-dtype-group-00/old/accounting-1.json",
+      "sha256": "f697c3b4cc5f618e34856cb6323a4c461cb9fc80195641cbab4bbcc55018b3e3"
+    },
+    {
+      "path": "to-dtype-group-00/old_repeat/accounting-0.json",
+      "sha256": "eb9de5cf4ef11aa069924ff90185f7d56a1700d1d8e71190231dd2030ec23a7c"
+    },
+    {
+      "path": "to-dtype-group-00/old_repeat/accounting-1.json",
+      "sha256": "4f8ade8be6b9e64c08258c4ec462c91050d0f16bb0c9e366a1a0303e27b31610"
+    },
+    {
+      "path": "to-dtype-group-01/aa/accounting-0.json",
+      "sha256": "d465e276a07a3501ecf66ca4b2d2d35f405c98bb748bd6300afa79c616fa4488"
+    },
+    {
+      "path": "to-dtype-group-01/aa/accounting-1.json",
+      "sha256": "dba155d6c59c7ae4ddf33a1b2d9af9d98e5d56e4fbc19601dbb4734fc6e65d01"
+    },
+    {
+      "path": "to-dtype-group-01/das/accounting-0.json",
+      "sha256": "988b2d1a66e27f262fc73f04d8e7c66dda84b9c8a0895b03a5c52f36e1d5bc7c"
+    },
+    {
+      "path": "to-dtype-group-01/das/accounting-1.json",
+      "sha256": "a853999f277aed65f8de246af48ff882f64d5e9fa8f1edac7e85bd56845c78d5"
+    },
+    {
+      "path": "to-dtype-group-01/das_repeat/accounting-0.json",
+      "sha256": "7de14a9f91ee7ec7a0e635f2e26e6ad4a32cc9fccc72abb51a5af1d3b00531d6"
+    },
+    {
+      "path": "to-dtype-group-01/das_repeat/accounting-1.json",
+      "sha256": "1fcfbcc130f166d0cad0ecc4fdea5dc78464086e8c759243b043c21b015b8ffc"
+    },
+    {
+      "path": "to-dtype-group-01/new/accounting-0.json",
+      "sha256": "722e6cc0ca9f66e03ce09ae396040b1caf507707e6d618d7a7d2452fb8b368bb"
+    },
+    {
+      "path": "to-dtype-group-01/new/accounting-1.json",
+      "sha256": "e9c5dde475562f84f82127a1c91421f9e01fa0e885222d701eebbb563287e758"
+    },
+    {
+      "path": "to-dtype-group-01/old/accounting-0.json",
+      "sha256": "7538111858a0766e2496bc56e6760918872847326f1d78613de29d920ed8525b"
+    },
+    {
+      "path": "to-dtype-group-01/old/accounting-1.json",
+      "sha256": "55deca26776bb8f4899df59c6d4e198874b8a68e8c87e7e2943ee54a7bed7385"
+    },
+    {
+      "path": "to-dtype-group-01/old_repeat/accounting-0.json",
+      "sha256": "c43d37c0629f8d34b139b3ff423c9108f4db93c272b93f078aa23cc0c0f94106"
+    },
+    {
+      "path": "to-dtype-group-01/old_repeat/accounting-1.json",
+      "sha256": "8d1d89610484f41293bbaee65138f5746afe8422ae5c289ef84f1dceac33f233"
+    },
+    {
+      "path": "to-dtype-group-02/aa/accounting-0.json",
+      "sha256": "9b9c04406e077061a3b732c1a471a47d73061a29f3ddb344e98765a984c9e860"
+    },
+    {
+      "path": "to-dtype-group-02/aa/accounting-1.json",
+      "sha256": "d79094cdf2a3905509450ce60ea5c48ef1a8d919a5893511d938b4c220379c44"
+    },
+    {
+      "path": "to-dtype-group-02/das/accounting-0.json",
+      "sha256": "42631a4e84fbd3c63cbdc76dfa7c21efdf449b36faf6ae0c9475daba007b4da5"
+    },
+    {
+      "path": "to-dtype-group-02/das/accounting-1.json",
+      "sha256": "3c1748c861638413727d6ac9c30315715fa6a8ebc591a60d818a6151aef8c5b0"
+    },
+    {
+      "path": "to-dtype-group-02/das_repeat/accounting-0.json",
+      "sha256": "696a43012ae609abc526910259ffe6a7724eaa7029e93d4eeb0cc7231b72a0ad"
+    },
+    {
+      "path": "to-dtype-group-02/das_repeat/accounting-1.json",
+      "sha256": "4944c63fbb70466d292550220a26f7322e445afe900e19c4faaab15eea908e1f"
+    },
+    {
+      "path": "to-dtype-group-02/new/accounting-0.json",
+      "sha256": "31f367980850f8b3320397d2957cc046a7125e4079e39cdf65aed0d169911967"
+    },
+    {
+      "path": "to-dtype-group-02/new/accounting-1.json",
+      "sha256": "44e894779d428255b03dc8f4ef569ac2cc3c73427fc9f267cc68d62e644a9c60"
+    },
+    {
+      "path": "to-dtype-group-02/old/accounting-0.json",
+      "sha256": "efb5f4d0ef1c3d4655f40b5b04cf4a205ec17d28f1d94b8599f0248dc9dee44c"
+    },
+    {
+      "path": "to-dtype-group-02/old/accounting-1.json",
+      "sha256": "ce424846b81521ce6e60594f4816d1f8ef2f02a35f9069188cb5238e8ef419f6"
+    },
+    {
+      "path": "to-dtype-group-02/old_repeat/accounting-0.json",
+      "sha256": "8edbeea1a767f87ac95a7a9c6f752bcd5149eaafa6f12688f04ad68e4afbb60b"
+    },
+    {
+      "path": "to-dtype-group-02/old_repeat/accounting-1.json",
+      "sha256": "edbadb8efa2cbb2b5b6febf34cbc8581ae158f820e8f822cbfacaad1831291d9"
+    }
+  ]
+}

@@ -1,0 +1,1336 @@
+[
+  {
+    "case": 940010,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            56
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 823,
+        "model": "TargetDiff",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940011,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            798
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 824,
+        "model": "TargetDiff",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940012,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            798,
+            27
+          ],
+          "stride": [
+            27,
+            1
+          ],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 825,
+        "model": "TargetDiff",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940013,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2048
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": true,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 826,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940014,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            1536,
+            2048
+          ],
+          "stride": [
+            3145728,
+            2048,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 827,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940015,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            2048,
+            10
+          ],
+          "stride": [
+            20480,
+            10,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.float32",
+        "layout": "torch.strided",
+        "device": "device(type='cuda', index=0)"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 828,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940016,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            2049,
+            2048
+          ],
+          "stride": [
+            4196352,
+            2048,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 829,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940017,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            1
+          ],
+          "stride": [
+            1,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 830,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940018,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            2048,
+            10
+          ],
+          "stride": [
+            20480,
+            10,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 831,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940019,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            2049,
+            2048
+          ],
+          "stride": [
+            4196352,
+            2048,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 832,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940020,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            8,
+            2049,
+            5120
+          ],
+          "stride": [
+            10490880,
+            5120,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        }
+      ],
+      {
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "大于5%的模型工况",
+        "row": 833,
+        "model": "STATE",
+        "owner": "罗"
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940021,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            43,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 9,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940022,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            64
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 10,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940023,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            64,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 11,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940024,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            64
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 12,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940025,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1024
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 13,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940026,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            1024,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 14,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940027,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            21,
+            28
+          ],
+          "storage_offset": 0,
+          "stride": [
+            588,
+            28,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 15,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940028,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            1024
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 16,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940029,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            150,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            300,
+            2,
+            1
+          ]
+        }
+      ],
+      {
+        "device": "device(type='cuda', index=0)",
+        "dtype": "torch.float32",
+        "layout": "torch.strided"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 17,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940030,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            150,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            300,
+            2,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 18,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940031,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            87,
+            3
+          ],
+          "storage_offset": 0,
+          "stride": [
+            3,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 19,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940032,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            262144
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 20,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940033,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            9,
+            2395,
+            12
+          ],
+          "storage_offset": 0,
+          "stride": [
+            28740,
+            12,
+            1
+          ]
+        }
+      ],
+      {
+        "device": "device(type='cuda', index=0)",
+        "dtype": "torch.float32",
+        "layout": "torch.strided"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 21,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940034,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            9,
+            2395,
+            12
+          ],
+          "storage_offset": 0,
+          "stride": [
+            28740,
+            12,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 22,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940035,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2783,
+            94
+          ],
+          "storage_offset": 0,
+          "stride": [
+            94,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 23,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940036,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2,
+            211,
+            282
+          ],
+          "storage_offset": 0,
+          "stride": [
+            59502,
+            282,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 24,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940037,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            262144,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 25,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940038,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            262144
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 26,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940039,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            15,
+            3802,
+            19
+          ],
+          "storage_offset": 0,
+          "stride": [
+            72238,
+            19,
+            1
+          ]
+        }
+      ],
+      {
+        "device": "device(type='cuda', index=0)",
+        "dtype": "torch.float32",
+        "layout": "torch.strided"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 27,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940040,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2097152
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 28,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940041,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            3,
+            533,
+            710
+          ],
+          "storage_offset": 0,
+          "stride": [
+            378430,
+            710,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 29,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940042,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            2097152,
+            1
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bool"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 30,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940043,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            7873,
+            266
+          ],
+          "storage_offset": 0,
+          "stride": [
+            266,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 31,
+        "model": "TargetDiff",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940044,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "layout": "torch.strided",
+          "requires_grad": false,
+          "shape": [
+            15,
+            3802,
+            19
+          ],
+          "storage_offset": 0,
+          "stride": [
+            72238,
+            19,
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 32,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  },
+  {
+    "case": 940045,
+    "operator": "aten::_to_copy",
+    "metadata": [
+      [
+        {
+          "device": "cuda:0",
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "requires_grad": true,
+          "shape": [
+            2097152
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        }
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "references": [
+      {
+        "sheet": "规模扩展工况",
+        "row": 33,
+        "model": "STATE",
+        "owner": null
+      }
+    ],
+    "input_values": "Deterministic metadata reconstruction; not frozen model operands",
+    "seed": 20261109
+  }
+]
