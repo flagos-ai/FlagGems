@@ -1,0 +1,65 @@
+{
+  "case": "model54-r50",
+  "prior_run": "official-master010-linear-r2-20261113-0025",
+  "current_run": "official-master010-linear-wideguard-20261113-0450",
+  "prior_audit_sha256": "036b39715fe029698528a678d5d97f8e0611d5f5e458ef5c6468ad93e245cb97",
+  "current_audit_sha256": "b45bc773528bb68f0cf51f29a125e6cd09ad91f3ae3cf5ea8adcc8ca53f524c0",
+  "same_role_cross_run_checks": {
+    "old": {
+      "actual_sha256": true,
+      "reference_sha256": true,
+      "cpu_input_hashes": true,
+      "max_absolute_error": true
+    },
+    "new": {
+      "actual_sha256": true,
+      "reference_sha256": true,
+      "cpu_input_hashes": true,
+      "max_absolute_error": true
+    },
+    "das": {
+      "actual_sha256": true,
+      "reference_sha256": true,
+      "cpu_input_hashes": true,
+      "max_absolute_error": true
+    },
+    "old_repeat": {
+      "actual_sha256": true,
+      "reference_sha256": true,
+      "cpu_input_hashes": true,
+      "max_absolute_error": true
+    },
+    "aa": {
+      "actual_sha256": true,
+      "reference_sha256": true,
+      "cpu_input_hashes": true,
+      "max_absolute_error": true
+    },
+    "das_repeat": {
+      "actual_sha256": true,
+      "reference_sha256": true,
+      "cpu_input_hashes": true,
+      "max_absolute_error": true
+    }
+  },
+  "prior_old_new_output_differs": true,
+  "current_old_new_output_differs": true,
+  "max_absolute_error": {
+    "old": 1.0,
+    "new": 1.0,
+    "das": 1.0
+  },
+  "not_correctness_qualified": true,
+  "max_absolute_error_metric_scope": "Global maximum over all output elements. It is not the maximum over only the elements failing the frozen atol+rtol assertion;the global maximum alone is not the reason for rejection.",
+  "frozen_assertion_examples_from_initial_source": {
+    "old": "Tensor-likes are not close!\n\nMismatched elements: 6 / 371200 (0.0%)\nGreatest absolute difference: 7.62939453125e-05 at index (0, 99, 2526) (up to 1e-05 allowed)\nGreatest relative difference: 0.1796875 at index (0, 46, 882) (up to 0.016 allowed)",
+    "new": "Tensor-likes are not close!\n\nMismatched elements: 6 / 371200 (0.0%)\nGreatest absolute difference: 6.103515625e-05 at index (0, 63, 32) (up to 1e-05 allowed)\nGreatest relative difference: 0.0771484375 at index (0, 11, 453) (up to 0.016 allowed)",
+    "das": "Tensor-likes are not close!\n\nMismatched elements: 4 / 371200 (0.0%)\nGreatest absolute difference: 6.103515625e-05 at index (0, 99, 2526) (up to 1e-05 allowed)\nGreatest relative difference: 0.10791015625 at index (0, 11, 453) (up to 0.016 allowed)"
+  },
+  "prior_tested_source": "acd931bad57715ba965e8be427ea325068cf4aa4",
+  "current_tested_source": "603af7eb112210767dbed397ed0bb99fe3a24dc8",
+  "current_result_sha256": "12c553f21e5a72c19b547f1be963ada0684e84168664776feed53eb4903dd42d",
+  "private_output_audit_proof_sha256": "97dff6a0026e22ffb14bb7231af88f34d6a414bf3b1a83093d671e65b2d42520",
+  "current_all_six_roles_assertion_details_equal_prior": true,
+  "scope": "The six per-role outputs, reference and input hashes were separately audited unchanged across runs. Old and new outputs differ within each run; both remain reference-failing. Frozen tolerances are unchanged. No performance acceptance or DAS pass."
+}

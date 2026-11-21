@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-13T04:50:48.610781",
+  "official_master": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "candidate": "603af7eb112210767dbed397ed0bb99fe3a24dc8",
+  "candidate_src_tree": "091642c92e6892ebc92ed57dbe066a347cdb99f0",
+  "source_only_feature_files": [
+    "src/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py",
+    "src/flag_gems/runtime/backend/_hygon/ops/linear_projection.py",
+    "src/flag_gems/runtime/backend/_hygon/ops/mm.py",
+    "tests/test_hygon_linear_projection.py"
+  ],
+  "hooks": {
+    "src/flag_gems/runtime/backend/_hygon/ops/mm.py": {
+      "only_changes": [
+        "from .linear_projection import try_linear_projection",
+        "projection = try_linear_projection(a, b)",
+        "if projection is not None:\n    return projection"
+      ],
+      "remaining_complete_module_ast_identical_to_official_master": true,
+      "candidate_file_sha256": "16c11bcd7829e2b4055400f697ca90a6855320be34e1d43234a3e7b2c775e918"
+    },
+    "src/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py": {
+      "only_changes": [
+        "from ..linear_projection import try_linear_affine",
+        "result = try_linear_affine(bias, mat1, mat2, beta=beta, alpha=alpha)",
+        "if result is not None:\n    return result"
+      ],
+      "remaining_complete_module_ast_identical_to_official_master": true,
+      "candidate_file_sha256": "6c0323a2b171b49c54e5909628c37c4273245b243ff7dd4f54c3c063a2a3a31a"
+    }
+  },
+  "common_addmm_byte_identical_to_current_master": true,
+  "mm_optimization_pr_dependency": false,
+  "runtime_chain": "aten::linear composite/eager decomposition -> exact PrivateUse1 mm/addmm registration -> public Hygon MM optional projection or public packaged Hygon ADDMM optional K1 affine -> unchanged upstream fallback otherwise",
+  "validation_scope": "Static complete-module AST proof;hardware full109 and12 focused tests are tracked separately;no performance claim here."
+}

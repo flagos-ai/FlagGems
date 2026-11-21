@@ -1,0 +1,73 @@
+{
+  "case": "model54-r55",
+  "baseline": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "current_source": "603af7eb112210767dbed397ed0bb99fe3a24dc8",
+  "initial_source": "acd931bad57715ba965e8be427ea325068cf4aa4",
+  "current_result_sha256": "12c553f21e5a72c19b547f1be963ada0684e84168664776feed53eb4903dd42d",
+  "initial_result_sha256": "75ec813503a0b2d6be6e4d11c5f419212dea60be9f0bcb6a1f60cc8048a89bb3",
+  "current_kernel_witness_sha256": "7b5abe4d9dd94d40bfd41da64d8843cac705201cb19884f0297d79b863b824f0",
+  "initial_stable_diagnostic_latency_factor": 7.159938121388993,
+  "current_stable_diagnostic_latency_factor": 1.0007654487839492,
+  "current_device_us": {
+    "old": 4175.361000000001,
+    "new": 4178.557025,
+    "das": 1986.718525
+  },
+  "current_AA_old_new_DAS": [
+    true,
+    true,
+    true
+  ],
+  "correct_old_new_DAS": [
+    false,
+    false,
+    false
+  ],
+  "current_input_match": true,
+  "current_old_over_new": 0.9992351366797491,
+  "current_DAS_over_new": 0.47545564488257763,
+  "current_all_role_kernel_counts": {
+    "aa": {
+      "kernel:mm_kernel": 1000
+    },
+    "das": {
+      "kernel:Cijk_Alik_Bljk_BBH_MT256x256x32_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETSP_EPS0_FL0_GRVW8_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW8_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR1_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT8_8_TLM0_ULDSWM0_USFGRO0_USSB0_VAW2_VSn1_VW8_WG32_32_1_WGM1": 1000,
+      "memory:Memset": 1
+    },
+    "das_repeat": {
+      "kernel:Cijk_Alik_Bljk_BBH_MT256x256x32_SE_AMAS3_BW_DTL0_BL1_DRB16_ALT_KME0_ETSP_EPS0_FL0_GRVW8_GSU1_ISA936_IU1_KME_GRCMn1_K1_KLA_LDL1_LRVW8_MAC_MMAC_BW1_MMAC_KM0_MMAC_KME1_NLCA1_NLCB1_OLDSR1_PGR2_PLR1_RK0_SU0_SUM0_SUS256_SVW4_TT8_8_TLM0_ULDSWM0_USFGRO0_USSB0_VAW2_VSn1_VW8_WG32_32_1_WGM1": 1000,
+      "memory:Memset": 1
+    },
+    "new": {
+      "kernel:mm_kernel": 1000
+    },
+    "old": {
+      "kernel:mm_kernel": 1000,
+      "memory:Memset": 1
+    },
+    "old_repeat": {
+      "kernel:mm_kernel": 1000,
+      "memory:Memset": 1
+    }
+  },
+  "initial_new_repeat_kernel_counts": {
+    "new": {
+      "kernel:mm_bf16_staticmasked_kernel": 1000
+    },
+    "aa": {
+      "kernel:mm_bf16_staticmasked_kernel": 1000
+    }
+  },
+  "guard_domain": [
+    145,
+    2560,
+    262208
+  ],
+  "only_one_declared_case_dispatch_changed": [
+    "model54-r55"
+  ],
+  "other_module_AST_unchanged": true,
+  "full_retest_cases": 109,
+  "correctness_qualified_performance": false,
+  "scope": "Guard eliminates the initial stable diagnostic slowdown and restores unchanged upstream MM dispatch. Reference correctness remains failed and DAS remains faster. No accepted gain or DAS pass is claimed. No microarchitectural cause inferred."
+}

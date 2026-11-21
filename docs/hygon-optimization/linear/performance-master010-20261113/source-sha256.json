@@ -1,0 +1,5 @@
+{
+  "src/flag_gems/runtime/backend/_hygon/ops/addmm/addmm.py": "6c0323a2b171b49c54e5909628c37c4273245b243ff7dd4f54c3c063a2a3a31a",
+  "src/flag_gems/runtime/backend/_hygon/ops/linear_projection.py": "5572c0e57ba831545f16b559aff5f28d3b7dc84d0d4353c302f3fcead85dd84a",
+  "src/flag_gems/runtime/backend/_hygon/ops/mm.py": "16c11bcd7829e2b4055400f697ca90a6855320be34e1d43234a3e7b2c775e918"
+}

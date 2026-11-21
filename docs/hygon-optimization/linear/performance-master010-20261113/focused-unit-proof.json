@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-13T04:54:57.103584",
+  "ssh_alias": "luojun850",
+  "run_id": "official-master010-linear-wideguard-20261113-0450",
+  "source": "603af7eb112210767dbed397ed0bb99fe3a24dc8",
+  "src_tree": "091642c92e6892ebc92ed57dbe066a347cdb99f0",
+  "all_passed": 12,
+  "raw_junit_sha256": "03838513f43a8ca41e7f69ff75f994b480819945f621eae1df97de08a7ae24b1",
+  "baseline": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
+  "published_junit_sha256": "2e9b984774994a0ba33e1ab60e49a87a802902aeb22790bd90213dfde3415d42",
+  "junit_normalization": "Only one final LF added if absent;raw XML remains hashed separately"
+}
