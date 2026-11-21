@@ -12,20 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import pytest
 import torch
+
+import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 from .test_linalg_cond import _MusaLinalgStaticBaseline
 
-SHAPES = [(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512)]
+SHAPES = [
+    (16, 16),
+    (32, 32),
+    (64, 64),
+    (128, 128),
+    (256, 256),
+    (512, 512),
+]
+MASTER_EXTRA_SHAPES = [
+    (1024, 1024),
+    (4096, 4096),
+    (1024, 65536),
+]
 
 
 class OperatorCaseBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(SHAPES)
+        self.shapes = SHAPES + MASTER_EXTRA_SHAPES
         self.shape_desc = "(*B), M, N"
+
+    def build_inputs(self, case):
+        if (
+            flag_gems.vendor_name == "mthreads"
+            and not (base.Config.preflight_only or base.Config.profile_only)
+            and case.builder_args[0].builder_args[0] in MASTER_EXTRA_SHAPES
+        ):
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("The historical MUSA SVD values baseline does not cover this shape")
+        return super().build_inputs(case)
 
 
 def _case_fn(shape, dtype):
@@ -47,6 +73,17 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.linalg_svdvals
 def test_linalg_svdvals():
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not (
+            base.Config.query
+            or base.Config.list_cases
+            or base.Config.preflight_only
+            or base.Config.profile_only
+        )
+        and not os.environ.get("FLAGGEMS_MUSA_LINALG_H800_BASELINE")
+    ):
+        pytest.skip("MUSA native SVD values require unavailable LAPACK support")
     OperatorCaseBenchmark(
         op_name="linalg_svdvals",
         torch_op=torch.linalg.svdvals,

@@ -243,6 +243,12 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.linalg_polar
 def test_linalg_polar():
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not (base.Config.list_cases or base.Config.preflight_only)
+        and not os.environ.get("FLAGGEMS_NV_BASELINE")
+    ):
+        pytest.skip("MUSA native polar SVD requires unavailable LAPACK support")
     LinalgPolarBenchmark(
         op_name="linalg_polar",
         torch_op=_native_polar,

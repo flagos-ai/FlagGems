@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import pytest
 import torch
+
+import flag_gems
 
 
 from . import base, consts
@@ -61,6 +65,12 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.linalg_polar_out
 def test_linalg_polar_out():
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not (base.Config.list_cases or base.Config.preflight_only)
+        and not os.environ.get("FLAGGEMS_NV_BASELINE")
+    ):
+        pytest.skip("MUSA native polar out SVD requires unavailable LAPACK support")
     LinalgPolarOutBenchmark(
         op_name="linalg_polar_out",
         torch_op=_native_polar_out,

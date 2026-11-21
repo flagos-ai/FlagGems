@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -46,6 +48,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.linalg_svd
 def test_linalg_svd():
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not (base.Config.list_cases or base.Config.preflight_only)
+    ):
+        pytest.skip("MUSA native SVD requires unavailable LAPACK support")
     LinalgSvdBenchmark(
         op_name="linalg_svd",
         torch_op=torch.linalg.svd,

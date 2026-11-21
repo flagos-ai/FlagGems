@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from math import prod
+
 import pytest
 import torch
 
@@ -40,6 +42,18 @@ LINALG_EIGVALSH_SHAPES = [
 ]
 
 _UPLO_VALUES = ("L", "U")
+
+# The default overload has these additional real symmetric workloads on master.
+_MASTER_SYMMETRIC_CASES = (
+    ((2, 2), "L"),
+    ((1, 3, 3), "U"),
+    ((2, 4, 4), "L"),
+    ((2, 3, 5, 5), "U"),
+    ((1, 7, 7), "L"),
+    ((3, 3, 3), "U"),
+    ((2, 2, 4, 4), "L"),
+    ((4, 6, 6), "U"),
+)
 
 # Native kernels exist only for these dtypes; complex inputs return the
 # corresponding real eigenvalue dtype.
@@ -95,14 +109,45 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
-    shape, uplo = plan.builder_args
+    shape, uplo, *symmetric = plan.builder_args
     # benchmark.utils.generate_tensor_input produces nothing for float64 and
     # complex128, so the input is built directly for every supported dtype.
     inp = torch.randn(shape, dtype=dtype, device=device)
+    if symmetric:
+        inp = inp + inp.transpose(-1, -2)
     return inp, {"UPLO": uplo}
 
 
 class LinalgEigvalshBenchmark(OperatorBenchmark):
+    def get_case_iter(self, dtype):
+        yield from super().get_case_iter(dtype)
+        if not self._include_master_cases or dtype.is_complex:
+            return
+        offset = len(self.shapes) * len(_UPLO_VALUES)
+        for ordinal, (shape, uplo) in enumerate(_MASTER_SYMMETRIC_CASES, offset):
+            plan = base.BenchmarkCasePlan(
+                shape={"input": shape},
+                params={"UPLO": uplo},
+                builder_args=(shape, uplo, True),
+            )
+            yield self._case_from_plan(dtype, ordinal, plan)
+
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "thead" and not (
+            base.Config.preflight_only or base.Config.profile_only
+        ):
+            shape = case.builder_args[0].builder_args[0]
+            if case.dtype.is_complex:
+                reason = "PPU native eigvalsh aborts on complex inputs"
+            elif prod(shape[:-2]) > 1 and shape[-1] <= 32:
+                reason = "PPU native eigvalsh does not support its small batched solver"
+            else:
+                reason = None
+            if reason:
+                base.Config.skipped_case_ids.add(case.case_id)
+                pytest.skip(reason)
+        return super().build_inputs(case)
+
     def set_shapes(self, shape_file_path=None, *, default_shapes=None):
         # core_shapes.yaml has no linalg_eigvalsh entry, so the local square
         # shapes are the default while a caller-supplied shape file still wins.
@@ -117,16 +162,20 @@ class LinalgEigvalshBenchmark(OperatorBenchmark):
         else:
             super().set_shapes(shape_file_path, default_shapes=shapes)
         _validate_shapes(self.shapes)
+        self._include_master_cases = self.shapes == LINALG_EIGVALSH_SHAPES
 
 
 @pytest.mark.linalg_eigvalsh
 def test_linalg_eigvalsh():
+    if flag_gems.vendor_name == "mthreads" and not (
+        base.Config.list_cases or base.Config.preflight_only or base.Config.profile_only
+    ):
+        pytest.skip("MUSA native eigvalsh requires unavailable CPU LAPACK support")
     bench = LinalgEigvalshBenchmark(
         op_name="linalg_eigvalsh",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.linalg_eigvalsh,
-        gems_op=getattr(flag_gems, "linalg_eigvalsh", None),
         dtypes=LINALG_EIGVALSH_DTYPES,
     )
     bench.run()
