@@ -1142,6 +1142,18 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: addmm_backward
+  description: Computes all three addmm input gradients in one fused tiled Triton launch.
+  for:
+  - addmm
+  labels:
+  - aten
+  - KernelGen
+  - BLAS
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: addmm_dtype
   description: 'A variant of `addmm` that allows the dtype of the output tensor to
     be specified.
