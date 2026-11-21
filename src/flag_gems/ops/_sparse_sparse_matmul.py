@@ -192,6 +192,14 @@ def _sspm_emit(
 def _sparse_sparse_matmul(self, other):
     logger.debug("GEMS _SPARSE_SPARSE_MATMUL")
 
+    if torch.is_grad_enabled() and (
+        (self.requires_grad and self.is_sparse)
+        or (other.requires_grad and other.is_sparse)
+    ):
+        # Only attach the custom node when a gradient is actually requested:
+        # the eager path below stays allocation-identical for inference.
+        return _SparseSparseMatmulFunction.apply(self, other)
+
     if not self.is_sparse or not other.is_sparse:
         raise RuntimeError(
             "_sparse_sparse_matmul: expected sparse tensors for both operands"
@@ -311,3 +319,81 @@ def _sparse_sparse_matmul_out(self, other, *, out):
             f"got {tuple(out.shape)}"
         )
     return out.copy_(result)
+
+
+# ---------------------------------------------------------------------------
+# Backward: ``aten::_sparse_sparse_matmul`` autograd
+# ---------------------------------------------------------------------------
+#
+# There is no ``aten::_sparse_sparse_matmul_backward`` schema.  PyTorch derives
+# the gradient in ``torch/csrc/autograd/FunctionsManual.cpp``
+# (``sparse_sparse_matmul_backward``), which for each requested operand does one
+# SpGEMM against the transposed other operand and then projects the product
+# back onto the saved operand's stored support:
+#
+#     a_grad = sparse_mask_like_grad(a, spgemm(grad, b.t()), False)
+#     b_grad = sparse_mask_like_grad(b, spgemm(a.t(), grad), False)
+#
+# ``sparse_mask_like_grad`` is *not* a single operation: it picks between
+# ``_sparse_mask_projection(gx, x)`` (result keeps the product's stored entries,
+# zeroing the values whose coordinate ``x`` lacks) and ``gx.sparse_mask(x)``
+# (result keeps ``x``'s stored entries) by comparing ``_nnz()``, because the two
+# searches have different costs.  The two not only differ in cost but produce
+# different stored supports, so the choice below follows ATen branch for branch.
+# Both kernels already exist in this package; the backward reuses them instead
+# of duplicating the intersection logic.
+
+
+def _mask_like_grad(x, gx):
+    """Mirror ATen ``sparse_mask_like_grad(x, gx, accumulate_matches=False)``."""
+    from flag_gems.ops._sparse_mask_projection import _sparse_mask_projection
+    from flag_gems.ops.sparse_mask import sparse_mask
+
+    if x.is_coalesced() and gx.is_coalesced():
+        if x._nnz() >= gx._nnz():
+            return _sparse_mask_projection(gx, x, False)
+        return sparse_mask(gx, x)
+    if x.is_coalesced():
+        return sparse_mask(gx, x)
+    if gx.is_coalesced():
+        return _sparse_mask_projection(gx, x, False)
+    if x._nnz() >= gx._nnz():
+        return _sparse_mask_projection(gx.coalesce(), x, False)
+    return sparse_mask(gx, x.coalesce())
+
+
+class _SparseSparseMatmulFunction(torch.autograd.Function):
+    """First-order autograd entry for ``_sparse_sparse_matmul``.
+
+    ``_sparse_sparse_matmul`` is a pure function of its two operands, so the
+    saved tensors are reused for both gradient orders.  ATen itself cannot
+    differentiate the result twice, and this wrapper keeps the same first-order
+    contract rather than inventing a second-order one.
+    """
+
+    @staticmethod
+    def forward(ctx, self, other):
+        ctx.save_for_backward(self, other)
+        return _sparse_sparse_matmul(self, other)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        self, other = ctx.saved_tensors
+        return sparse_sparse_matmul_backward(
+            grad_output, self, other, ctx.needs_input_grad
+        )
+
+
+def sparse_sparse_matmul_backward(
+    grad_output, self, other, needs_input_grad=(True, True)
+):
+    """Return first-order sparse gradients on the two input supports."""
+    needs_self, needs_other = needs_input_grad
+    grad_self = grad_other = None
+    if needs_self:
+        grad_self = _mask_like_grad(self, _sparse_sparse_matmul(grad_output, other.t()))
+    if needs_other:
+        grad_other = _mask_like_grad(
+            other, _sparse_sparse_matmul(self.t(), grad_output)
+        )
+    return grad_self, grad_other

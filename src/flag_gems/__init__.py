@@ -2717,5 +2717,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "sparse_sparse_matmul_backward",
     "use_gems",
 ]
