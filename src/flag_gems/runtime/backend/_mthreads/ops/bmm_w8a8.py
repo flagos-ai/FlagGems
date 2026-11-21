@@ -44,9 +44,13 @@ HOST_TME_TILE_CONFIG = (32, 32, 512)
 # to hide the first tile's copy latency. Measured at M=4 on MTT S5000: one
 # stage 16.9 us, three stages 15.1 us, four stages 15.2 us.
 HOST_TME_TINY_M_TILE_CONFIG = (32, 32, 512, 3)
+TLE_TINY_MAX_ROWS = 32
 TLE_SMALL_MAX_ROWS = 128
 TLE_MEDIUM_MAX_ROWS = 512
 # BM, BN, BK, pipe slots; main and producer partitions each use four warps.
+# Tiny M benefits from halving the number of K iterations.
+TLE_TINY_TILE_CONFIG = (32, 64, 512, 2)
+TLE_SINGLE_K_TILE_CONFIG = (64, 64, 256, 1)
 TLE_SMALL_TILE_CONFIG = (32, 64, 256, 3)
 TLE_MEDIUM_TILE_CONFIG = (64, 64, 256, 2)
 TLE_LARGE_TILE_CONFIG = (128, 128, 128, 3)
@@ -55,6 +59,12 @@ TLE_WIDE_MIN_ROWS = 8192
 TLE_WIDE_NK = (1024, 4096)
 TLE_WIDE_TILE_CONFIG = (256, 128, 128, 3)
 TLE_WIDE_MAIN_WARPS = 8
+TLE_INTERMEDIATE_MIN_ROWS = 3072
+TLE_INTERMEDIATE_TILE_CONFIG = (256, 128, 128, 2)
+TLE_LARGE_N_MIN_COLUMNS = 4096
+TLE_LARGE_N_REDUCTION = 1024
+TLE_LARGE_N_TILE_CONFIG = (256, 256, 64, 3)
+TLE_LARGE_N_MAIN_WARPS = 16
 
 
 @libentry()
@@ -142,6 +152,30 @@ if HAS_TLE_INT8:
     from .mm_w8a8_fp8 import _produce as produce_tiles
 
     @triton.jit
+    def channel_tle_store(
+        accumulator,
+        output,
+        activation_scale,
+        weight_scale,
+        batch,
+        rows,
+        columns,
+        M: tl.constexpr,
+        N: tl.constexpr,
+    ):
+        row_scale = tl.load(activation_scale + batch * M + rows, rows < M, other=0)
+        column_scale = tl.load(weight_scale + batch * N + columns, columns < N, other=0)
+        scaled = accumulator.to(tl.float32) * row_scale[:, None] * column_scale[None, :]
+        output_offsets = (
+            batch * M * N + rows[:, None].to(tl.int64) * N + columns[None, :]
+        )
+        tl.store(
+            output + output_offsets,
+            scaled,
+            (rows[:, None] < M) & (columns[None, :] < N),
+        )
+
+    @triton.jit
     def channel_tle_consumer(
         reader,
         output,
@@ -171,16 +205,16 @@ if HAS_TLE_INT8:
             # The slot cannot be reused while SQMMA still reads its operands.
             accumulator = tle.gpu.wgmma_wait(0, accumulator)
             reader.release(block)
-        row_scale = tl.load(activation_scale + batch * M + rows, rows < M, other=0)
-        column_scale = tl.load(weight_scale + batch * N + columns, columns < N, other=0)
-        scaled = accumulator.to(tl.float32) * row_scale[:, None] * column_scale[None, :]
-        output_offsets = (
-            batch * M * N + rows[:, None].to(tl.int64) * N + columns[None, :]
-        )
-        tl.store(
-            output + output_offsets,
-            scaled,
-            (rows[:, None] < M) & (columns[None, :] < N),
+        channel_tle_store(
+            accumulator,
+            output,
+            activation_scale,
+            weight_scale,
+            batch,
+            rows,
+            columns,
+            M,
+            N,
         )
 
     @libentry()
@@ -258,8 +292,71 @@ if HAS_TLE_INT8:
             worker_num_regs=[24],
         )
 
+    @libentry()
+    @triton.jit
+    def channel_single_k_kernel(
+        activation_descriptor,
+        weight_descriptor,
+        output,
+        activation_scale,
+        weight_scale,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+    ):
+        tl.static_assert(K <= BK)
+        tile = tl.program_id(0)
+        batch = tl.program_id(1)
+        row_start = tile // tl.cdiv(N, BN) * BM
+        column_start = tile % tl.cdiv(N, BN) * BN
+        activation_shared = tle.gpu.alloc((BM, BK), tl.int8, nv_mma_shared_layout=True)
+        weight_shared = tle.gpu.alloc((BN, BK), tl.int8, nv_mma_shared_layout=True)
+        activation_ready = tle.gpu.alloc_barrier(expect_bytes=BM * BK)
+        weight_ready = tle.gpu.alloc_barrier(expect_bytes=BN * BK)
+        tle.gpu.copy(
+            activation_descriptor,
+            activation_shared,
+            (BM, BK),
+            (batch * M + row_start, 0),
+            barrier=activation_ready,
+        )
+        tle.gpu.copy(
+            weight_descriptor,
+            weight_shared,
+            (BN, BK),
+            (batch * N + column_start, 0),
+            barrier=weight_ready,
+        )
+        tle.gpu.barrier_wait(activation_ready, phaseIdx=0)
+        tle.gpu.barrier_wait(weight_ready, phaseIdx=0)
+        accumulator = tle.gpu.wgmma(
+            activation_shared,
+            weight_shared,
+            tl.zeros((BM, BN), tl.int32),
+            out_dtype=tl.int32,
+            trans_b=True,
+        )
+        accumulator = tle.gpu.wgmma_wait(0, accumulator)
+        rows = row_start + tl.arange(0, BM)
+        columns = column_start + tl.arange(0, BN)
+        channel_tle_store(
+            accumulator,
+            output,
+            activation_scale,
+            weight_scale,
+            batch.to(tl.int64),
+            rows,
+            columns,
+            M,
+            N,
+        )
+
 else:
     channel_tle_tme_kernel = None
+    channel_single_k_kernel = None
 
 
 def bmm_w8a8(
@@ -348,17 +445,36 @@ def bmm_w8a8(
     if tme_eligible and (M > GEMV_MAX_ROWS or tiny_m_uses_tiles):
         launch_warps = 4
         if HAS_TLE_INT8:
-            if M <= TLE_SMALL_MAX_ROWS:
+            if M <= TLE_TINY_MAX_ROWS:
+                bm, bn, bk, pipeline_stages = TLE_TINY_TILE_CONFIG
+            elif K <= TLE_SINGLE_K_TILE_CONFIG[2]:
+                bm, bn, bk, pipeline_stages = TLE_SINGLE_K_TILE_CONFIG
+            elif M <= TLE_SMALL_MAX_ROWS:
                 bm, bn, bk, pipeline_stages = TLE_SMALL_TILE_CONFIG
             elif M <= TLE_MEDIUM_MAX_ROWS:
                 bm, bn, bk, pipeline_stages = TLE_MEDIUM_TILE_CONFIG
             elif M >= TLE_WIDE_MIN_ROWS and (N, K) == TLE_WIDE_NK:
                 bm, bn, bk, pipeline_stages = TLE_WIDE_TILE_CONFIG
                 launch_warps = TLE_WIDE_MAIN_WARPS
+            elif M >= TLE_INTERMEDIATE_MIN_ROWS and (N, K) == TLE_WIDE_NK:
+                bm, bn, bk, pipeline_stages = TLE_INTERMEDIATE_TILE_CONFIG
+                launch_warps = TLE_WIDE_MAIN_WARPS
+            elif (
+                M >= TLE_WIDE_MIN_ROWS
+                and N >= TLE_LARGE_N_MIN_COLUMNS
+                and K == TLE_LARGE_N_REDUCTION
+            ):
+                bm, bn, bk, pipeline_stages = TLE_LARGE_N_TILE_CONFIG
+                launch_warps = TLE_LARGE_N_MAIN_WARPS
             else:
                 bm, bn, bk, pipeline_stages = TLE_LARGE_TILE_CONFIG
-            kernel = channel_tle_tme_kernel
-            stage_parameters = (pipeline_stages, 4)
+            if K <= bk:
+                # One K tile has no next load to overlap with a producer partition.
+                kernel = channel_single_k_kernel
+                stage_parameters = ()
+            else:
+                kernel = channel_tle_tme_kernel
+                stage_parameters = (pipeline_stages, 4)
         elif M <= GEMV_MAX_ROWS:
             bm, bn, bk, host_stages = HOST_TME_TINY_M_TILE_CONFIG
             kernel = channel_host_tme_kernel

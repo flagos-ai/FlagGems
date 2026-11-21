@@ -13,6 +13,7 @@ from .accuracy_utils import gems_assert_close, gems_assert_equal
 
 CONTRACT_SHAPES = [
     (1, 1, 1, 1),
+    (1, 65, 80, 256),
     (2, 33, 65, 129),
     (4, 64, 128, 256),
     (2, 129, 17, 257),
