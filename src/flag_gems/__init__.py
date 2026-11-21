@@ -1709,9 +1709,9 @@ _FULL_CONFIG = (
     ("randint_like", randint_like),
     ("randn", randn),
     ("randn_like", randn_like),
-    ("randperm", randperm),
     ("random_", random_),
     ("random_.from", random_from),
+    ("randperm", randperm),
     ("range", range),
     ("ravel", ravel),
     (
