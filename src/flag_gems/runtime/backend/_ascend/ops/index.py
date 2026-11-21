@@ -12,93 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
+import importlib.util
 import logging
 import os
+from functools import lru_cache
+from hashlib import sha256
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
+from flag_gems.utils.shape_utils import broadcast_shapes
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
-
 _LAYOUT_2D_TILE = 0
 _LAYOUT_SUFFIX_LOOP = 1
-
-
-@triton.jit
-def index_kernel_func(
-    input_ptr,
-    stride: tl.constexpr,
-    index_len,
-    index_ptr,
-    out_ptr,
-    BLOCK_SIZE: tl.constexpr,
-    MAX_DATA_SIZE: tl.constexpr,
-):
-    pid0 = tl.program_id(axis=0)
-
-    for i in range(0, BLOCK_SIZE):
-        offset = pid0 * BLOCK_SIZE + i
-
-        if offset < index_len:
-            in_start_index = tl.load(index_ptr + offset) * stride
-            out_start_offset = offset * stride
-            loop_num = (stride - 1) // MAX_DATA_SIZE + 1
-
-            for loop_idx in range(0, loop_num):
-                inner_offset = loop_idx * MAX_DATA_SIZE + tl.arange(0, MAX_DATA_SIZE)
-                mask = inner_offset < stride
-                cur_value = tl.load(
-                    input_ptr + in_start_index + inner_offset, mask=mask
-                )
-                tl.store(
-                    out_ptr + out_start_offset + inner_offset, cur_value, mask=mask
-                )
-
-
-def index_wrapper(input, indices, out):
-    """
-    Simple kernel wrapper for contiguous tensor indices starting from dim 0
-    """
-    input_shape = input.shape
-    input_dim = len(input_shape)
-    indices_dim = len(indices)
-    stride = 1
-
-    for i in range(indices_dim, input_dim):
-        stride *= input_shape[i]
-
-    index_len = indices[0].numel()
-    if index_len <= 0:
-        return
-
-    actual_index = indices[0]
-    for idx in range(0, indices_dim - 1):
-        actual_index = actual_index * input_shape[idx + 1] + indices[idx + 1]
-
-    BLOCK_SIZE = 32
-    MAX_DATA_SIZE = 8 * 1024
-
-    grid = lambda meta: (triton.cdiv(index_len, meta["BLOCK_SIZE"]),)
-
-    index_kernel_func[grid](
-        input,
-        stride,
-        index_len,
-        actual_index,
-        out,
-        BLOCK_SIZE=BLOCK_SIZE,
-        MAX_DATA_SIZE=MAX_DATA_SIZE,
-    )
 
 
 def _shape_product(shape):
@@ -537,16 +471,24 @@ def _tensor_index_dims_are_adjacent(tensor_index_dims):
 
 
 def _can_use_linearized_adjacent_index(inp, indices):
-    # Keep this condition aligned with flag_gems.ops.index.index.
     tensor_index_dims = _tensor_index_dims(indices)
-    # The Ascend specialized kernel is currently validated for floating payloads;
-    # integer tensors keep the upstream redispatch path for exact semantics.
     supported_dtype = inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
-    return (
+    if not (
         supported_dtype
         and tensor_index_dims
-        and inp.is_contiguous()
         and _tensor_index_dims_are_adjacent(tensor_index_dims)
+    ):
+        return False
+    if inp.is_contiguous():
+        return True
+    output_numel = indices[tensor_index_dims[0]].numel() * _shape_product(
+        inp.size(dim) for dim in range(inp.ndim) if dim not in tensor_index_dims
+    )
+    # A direct gather is slower for small views. Bound layout-copy work by
+    # either a small absolute budget or a constant multiple of output size.
+    return (
+        inp.numel() * inp.element_size() <= 128 * 1024**2
+        or inp.numel() <= 4 * output_numel
     )
 
 
@@ -565,160 +507,375 @@ def _run_linearized_adjacent_index(inp, indices):
     if inp.numel() == 0 or out.numel() == 0:
         return out.contiguous()
 
+    inp = inp.contiguous()
     tensor_indices = [idx.contiguous() for idx in tensor_indices]
     _adjacent_index_func(inp, start_dim, tensor_indices, out)
     return out.contiguous()
 
 
-def _aten_index_fallback(inp, indices):
-    # Redispatch bypasses the Python registration installed by only_enable/use_gems;
-    # using inp[...] here would re-enter this implementation for fallback cases.
-    aten_indices = [idx if idx is not None else None for idx in indices]
-    return torch.ops.aten.index.Tensor.redispatch(_FALLBACK_KEYSET, inp, aten_indices)
+@libentry()
+@triton.jit
+def _index_check_bounds_kernel(
+    index, valid, N, SIZE: tl.constexpr, DEVICE_CHECK: tl.constexpr, BLOCK: tl.constexpr
+):
+    good = tl.full((), True, tl.int1)
+    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
+        offsets = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        raw = tl.load(index + offsets, offsets < N, other=0).to(tl.int64)
+        good &= (
+            tl.min(((offsets >= N) | ((raw >= -SIZE) & (raw < SIZE))).to(tl.int32), 0)
+            != 0
+        )
+    if DEVICE_CHECK:
+        if not good:
+            tl.device_assert(False, "index out of bounds")
+    else:
+        tl.store(valid + tl.program_id(0), good)
+
+
+def _check_index_bounds(index, size):
+    if index.numel() == 0:
+        return
+    index = index.contiguous()
+    block = min(1024, triton.next_power_of_2(index.numel()))
+    programs = min(48, triton.cdiv(index.numel(), block))
+    capturing = torch_device_fn.is_current_stream_capturing()
+    valid = (
+        None
+        if capturing
+        else torch.empty(programs, device=index.device, dtype=torch.int32)
+    )
+    _index_check_bounds_kernel[(programs,)](
+        index, valid, index.numel(), size, capturing, block, debug=capturing
+    )
+    # Capture cannot read a host scalar. Enable the device assertion explicitly
+    # on that path; eager calls keep the normal Python IndexError contract.
+    if not capturing and not all(valid.cpu().tolist()):
+        raise IndexError(f"index is out of bounds for dimension with size {size}")
+
+
+@triton.jit
+def _mask_block_counts(mask, counts, N, BLOCK: tl.constexpr):
+    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
+        offsets = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        selected = tl.load(mask + offsets, offsets < N, other=0) != 0
+        tl.store(counts + tile, tl.sum(selected.to(tl.int32), 0))
+
+
+@triton.jit
+def _mask_prefix_counts(counts, prefixes, total, TILES, BLOCK: tl.constexpr):
+    carry = tl.full((), 0, tl.int64)
+    for start in range(0, TILES, BLOCK):
+        offsets = start + tl.arange(0, BLOCK)
+        values = tl.load(counts + offsets, offsets < TILES, other=0)
+        inclusive = tl.cumsum(values, 0)
+        tl.store(prefixes + offsets, carry + inclusive - values, offsets < TILES)
+        carry += tl.sum(values, 0).to(tl.int64)
+    tl.store(total, carry)
+
+
+@triton.jit
+def _mask_scatter_coordinates(
+    mask, prefixes, out, N, COUNT, SHAPE: tl.constexpr, BLOCK: tl.constexpr
+):
+    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
+        offsets = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+        selected = (offsets < N) & (tl.load(mask + offsets, offsets < N, other=0) != 0)
+        ranks = tl.cumsum(selected.to(tl.int32), 0) - 1
+        prefix = tl.load(prefixes + tile)
+        destination = tl.where(selected, prefix + ranks, 0)
+        remaining = offsets
+        for dim in tl.static_range(len(SHAPE) - 1, -1, -1):
+            coordinate = remaining % SHAPE[dim]
+            remaining = remaining // SHAPE[dim]
+            tl.store(out + dim * COUNT + destination, coordinate, selected)
+
+
+def _boolean_coordinates(mask, device):
+    # Dynamic output sizes require a host count, as with native nonzero.
+    # Reject capture before launching any device work rather than retrying later.
+    if torch_device_fn.is_current_stream_capturing():
+        raise RuntimeError(
+            "boolean indexing with a data-dependent output shape cannot be captured"
+        )
+    mask = mask.to(device).contiguous()
+    if mask.numel() == 0:
+        return [
+            torch.empty(0, device=mask.device, dtype=torch.int64) for _ in mask.shape
+        ]
+    tiles = triton.cdiv(mask.numel(), 1024)
+    counts = torch.empty(tiles, device=mask.device, dtype=torch.int32)
+    prefixes = torch.empty(tiles, device=mask.device, dtype=torch.int64)
+    total = torch.empty((), device=mask.device, dtype=torch.int64)
+    grid = (min(tiles, 65535),)
+    _mask_block_counts[grid](mask, counts, mask.numel(), BLOCK=1024)
+    _mask_prefix_counts[(1,)](counts, prefixes, total, tiles, BLOCK=1024)
+    count = int(total.item())
+    coordinates = torch.empty((mask.ndim, count), device=mask.device, dtype=torch.int64)
+    if count:
+        _mask_scatter_coordinates[grid](
+            mask,
+            prefixes,
+            coordinates,
+            mask.numel(),
+            count,
+            tuple(mask.shape),
+            BLOCK=1024,
+        )
+    return [coordinates.select(0, dim) for dim in range(mask.ndim)]
+
+
+@lru_cache(maxsize=256)
+def _gather_function(
+    shape,
+    strides,
+    index_dims,
+    index_strides,
+    broadcast_shape,
+    output_shape,
+    plain_axes,
+    broadcast_axes,
+):
+    # Generate only shape/stride address arithmetic; payloads and index values
+    # remain device inputs. No contiguous copies or native index redispatch.
+    lines = [
+        "import triton",
+        "import triton.language as tl",
+        "from flag_gems.utils import libentry",
+        "@libentry()",
+        "@triton.jit",
+    ]
+    args = (
+        ["inp"]
+        + [f"index{i}" for i in range(len(index_dims))]
+        + ["out", "N", "BLOCK: tl.constexpr", "PROGRAMS: tl.constexpr"]
+    )
+    lines += [
+        "def kernel(" + ", ".join(args) + "):",
+        "    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), PROGRAMS):",
+        "        linear = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)",
+        "        active = linear < N",
+        "        remaining = linear.to(tl.int64)",
+        "        source = tl.full((BLOCK,), 0, tl.int64)",
+    ]
+    for axis in reversed(range(len(output_shape))):
+        lines += [
+            f"        c{axis} = remaining % {output_shape[axis]}",
+            f"        remaining = remaining // {output_shape[axis]}",
+        ]
+    for dim, axis in plain_axes:
+        lines += [f"        source += c{axis} * {strides[dim]}"]
+    for i, dim in enumerate(index_dims):
+        # Extent-one coordinates are always zero. Leaving their strides in
+        # the expression creates a splatted pointer under a vector mask after
+        # folding, which FlagTree cannot lower. Use the scalar load below.
+        terms = [
+            f"c{axis} * {stride}"
+            for axis, stride in zip(broadcast_axes, index_strides[i])
+            if stride and output_shape[axis] > 1
+        ]
+        offset = " + ".join(terms)
+        load = (
+            f"tl.load(index{i} + ({offset}), active, other=0)"
+            if terms
+            else f"tl.load(index{i})"
+        )
+        lines += [
+            f"        raw{i} = {load}.to(tl.int64)",
+            f"        normalized{i} = tl.where(raw{i} < 0, raw{i} + {shape[dim]}, raw{i})",
+            f"        tl.device_assert((~active) | ((normalized{i} >= 0) "
+            f'& (normalized{i} < {shape[dim]})), "index out of bounds")',
+            f"        source += normalized{i} * {strides[dim]}",
+            f"        active = active & (normalized{i} >= 0) & (normalized{i} < {shape[dim]})",
+        ]
+    lines += [
+        "        value = tl.load(inp + source, active, other=0)",
+        "        tl.store(out + linear, value, active)",
+    ]
+    plain_shape = tuple(output_shape[axis] for _, axis in plain_axes)
+    plain_numel = 1
+    for extent in plain_shape:
+        plain_numel *= extent
+    broadcast_numel = 1
+    for extent in broadcast_shape:
+        broadcast_numel *= extent
+    span = sum((extent - 1) * stride for extent, stride in zip(shape, strides))
+    # A program owns a broadcast index and one small plain-data tile. Index
+    # loads and int64 normalization are scalar, amortized across that tile.
+    # Wide payloads also benefit beyond 65535 indices; narrow payloads retain
+    # their existing traversal. Only bounded payload and output offsets narrow;
+    # the indexed source base stays int64 when the view spans a wide address range.
+    scalar_indices = (
+        1 <= broadcast_numel
+        and plain_numel <= 1024
+        and (broadcast_numel <= 65535 or plain_numel >= 128)
+        and sum((output_shape[axis] - 1) * strides[dim] for dim, axis in plain_axes)
+        < 2**31
+        and broadcast_numel * plain_numel < 2**31
+    )
+    if scalar_indices:
+        out_strides = [1] * len(output_shape)
+        for axis in range(len(output_shape) - 2, -1, -1):
+            out_strides[axis] = out_strides[axis + 1] * output_shape[axis + 1]
+        block = triton.next_power_of_2(plain_numel)
+        lines = lines[:5] + [
+            "def kernel(" + ", ".join(args) + "):",
+            f"    for item in range(tl.program_id(0), {broadcast_numel}, PROGRAMS):",
+            "        broadcast_remaining = item.to(tl.int64)",
+            "        destination_base = 0",
+        ]
+        for dim in reversed(range(len(broadcast_shape))):
+            axis = broadcast_axes[dim]
+            lines += [
+                f"        b{dim} = broadcast_remaining % {broadcast_shape[dim]}",
+                f"        broadcast_remaining = broadcast_remaining // {broadcast_shape[dim]}",
+                f"        destination_base += b{dim} * {out_strides[axis]}",
+            ]
+        lines += [
+            "        source_base = tl.full((), 0, tl.int64)",
+            "        valid_index = tl.full((), True, tl.int1)",
+        ]
+        for i, dim in enumerate(index_dims):
+            terms = [
+                f"b{j} * {stride}"
+                for j, stride in enumerate(index_strides[i])
+                if stride and broadcast_shape[j] > 1
+            ]
+            offset = " + ".join(terms) or "0"
+            lines += [
+                f"        raw{i} = tl.load(index{i} + ({offset})).to(tl.int64)",
+                f"        normalized{i} = tl.where(raw{i} < 0, raw{i} + {shape[dim]}, raw{i})",
+                f"        valid{i} = (normalized{i} >= 0) & (normalized{i} < {shape[dim]})",
+                f'        tl.device_assert(valid{i}, "index out of bounds")',
+                f"        source_base += tl.where(valid{i}, normalized{i}, 0) * {strides[dim]}",
+                f"        valid_index = valid_index & valid{i}",
+            ]
+        if span < 2**31:
+            lines += ["        source_base = source_base.to(tl.int32)"]
+        lines += [
+            "        destination_base = destination_base.to(tl.int32)",
+            f"        plain = tl.arange(0, {block})",
+            "        remaining = plain",
+            f"        source = tl.full(({block},), 0, tl.int32)",
+            "        destination = destination_base + tl.full(("
+            + str(block)
+            + ",), 0, tl.int32)",
+        ]
+        for j in reversed(range(len(plain_axes))):
+            dim, axis = plain_axes[j]
+            lines += [
+                f"        c{j} = remaining % {output_shape[axis]}",
+                f"        remaining = remaining // {output_shape[axis]}",
+                f"        source += c{j} * {strides[dim]}",
+                f"        destination += c{j} * {out_strides[axis]}",
+            ]
+        lines += [
+            f"        active = (plain < {plain_numel}) & valid_index",
+            "        value = tl.load(inp + source_base + source, active, other=0)",
+            "        tl.store(out + destination, value, active)",
+        ]
+
+    code = "\n".join(lines) + "\n"
+    key = sha256(code.encode()).hexdigest()
+    path = code_cache_dir() / f"ascend_strided_index_{key}.py"
+    write_atomic(path, code)
+    spec = importlib.util.spec_from_file_location(f"ascend_strided_index_{key}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.kernel, broadcast_numel if scalar_indices else None
+
+
+def _index_impl(inp, indices):
+    if not indices:
+        raise ValueError("at least one index must be provided")
+    if all(item is None for item in indices):
+        raise IndexError("Index out of range")
+    expanded = []
+    mask_dims = set()
+    for item in indices:
+        if item is None:
+            expanded.append(None)
+        elif item.dtype in (torch.bool, torch.uint8):
+            if item.ndim == 0:
+                raise IndexError(
+                    "zero-dimensional boolean indices are not supported by aten.index"
+                )
+            start = len(expanded)
+            if start + item.ndim > inp.ndim or tuple(item.shape) != tuple(
+                inp.shape[start : start + item.ndim]
+            ):
+                raise IndexError("boolean index shape does not match indexed tensor")
+            expanded.extend(_boolean_coordinates(item, inp.device))
+            mask_dims.update(range(start, start + item.ndim))
+        elif item.dtype in (torch.int32, torch.int64):
+            expanded.append(item.to(inp.device))
+        else:
+            raise IndexError(
+                "tensors used as indices must be long, int, byte or bool tensors"
+            )
+    if len(expanded) > inp.ndim:
+        raise IndexError(f"too many indices for tensor of dimension {inp.ndim}")
+    expanded.extend([None] * (inp.ndim - len(expanded)))
+    index_dims = tuple(dim for dim, item in enumerate(expanded) if item is not None)
+    tensors = [expanded[dim] for dim in index_dims]
+    try:
+        broadcast_shape = broadcast_shapes([item.shape for item in tensors])
+    except ValueError as error:
+        raise IndexError(
+            "shape mismatch: indexing tensors could not be broadcast together"
+        ) from error
+    tensors = [item.expand(broadcast_shape) for item in tensors]
+    has_output = all(broadcast_shape) and all(
+        inp.size(dim) for dim in range(inp.ndim) if dim not in index_dims
+    )
+    if has_output:
+        # Check original indices once, before their broadcast expansion.
+        # Boolean coordinates already satisfy the matching shape bounds.
+        for dim in index_dims:
+            if dim not in mask_dims:
+                _check_index_bounds(expanded[dim], inp.size(dim))
+    for dim, tensor in zip(index_dims, tensors):
+        expanded[dim] = tensor
+    if _can_use_linearized_adjacent_index(inp, expanded):
+        return _run_linearized_adjacent_index(inp, expanded)
+    adjacent = index_dims == tuple(range(index_dims[0], index_dims[-1] + 1))
+    plain_dims = [dim for dim in range(inp.ndim) if dim not in index_dims]
+    before = (
+        [dim for dim in plain_dims if index_dims and dim < index_dims[0]]
+        if adjacent
+        else []
+    )
+    after = [dim for dim in plain_dims if dim not in before]
+    output_shape = (
+        tuple(inp.shape[dim] for dim in before)
+        + tuple(broadcast_shape)
+        + tuple(inp.shape[dim] for dim in after)
+    )
+    broadcast_axes = tuple(range(len(before), len(before) + len(broadcast_shape)))
+    plain_axes = tuple((dim, axis) for axis, dim in enumerate(before)) + tuple(
+        (dim, len(before) + len(broadcast_shape) + axis)
+        for axis, dim in enumerate(after)
+    )
+    out = torch.empty(output_shape, device=inp.device, dtype=inp.dtype)
+    if out.numel():
+        kernel, index_tiles = _gather_function(
+            tuple(inp.shape),
+            tuple(inp.stride()),
+            index_dims,
+            tuple(tuple(item.stride()) for item in tensors),
+            tuple(broadcast_shape),
+            output_shape,
+            plain_axes,
+            broadcast_axes,
+        )
+        programs = min(48, index_tiles or triton.cdiv(out.numel(), 1024))
+        # Eager and capture bounds checks run before gathering. Read and write
+        # masks also exclude invalid coordinates during graph replay.
+        kernel[(programs,)](inp, *tensors, out, out.numel(), 1024, programs)
+    return out
 
 
 def index(inp, indices):
     logger.debug("GEMS_ASCEND INDEX")
-    indices = list(indices)
-    if not indices:
-        raise ValueError("at least one index must be provided")
-
-    indices = [
-        (
-            index.to(inp.device)
-            if index is not None and index.device != inp.device
-            else index
-        )
-        for index in indices
-    ]
-
-    # Step 1: Process indices (convert bool/int8 to long, handle None)
-    # Following PyTorch meta implementation
-    processed_indices = []
-    for i, index in enumerate(indices):
-        if index is not None:
-            # Check dtype
-            if index.dtype in [torch.int8, torch.bool]:
-                # Convert boolean/int8 mask to long indices
-                nonzero = index.nonzero()
-                k = len(processed_indices)
-                if k + index.ndim > inp.ndim:
-                    raise IndexError(
-                        f"too many indices for tensor of dimension {inp.ndim}"
-                    )
-                # Check shape matches
-                for j in range(index.ndim):
-                    if index.shape[j] != inp.shape[k + j]:
-                        raise IndexError(
-                            f"The shape of the mask {index.shape} at index {i} "
-                            f"does not match the shape of the indexed tensor "
-                            f"{inp.shape} at index {k + j}"
-                        )
-                # Extract indices from nonzero
-                for j in range(index.ndim):
-                    processed_indices.append(nonzero.select(1, j))
-            elif index.dtype in [torch.long, torch.int, torch.int32, torch.int64]:
-                processed_indices.append(index)
-            else:
-                raise TypeError(
-                    "tensors used as indices must be long, int, byte or bool tensors"
-                )
-        else:
-            processed_indices.append(None)
-
-    indices = processed_indices
-
-    # Check indices count
-    if len(indices) > inp.ndim:
-        raise IndexError(
-            f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
-        )
-
-    # Step 2: Broadcast indices (only tensor indices, not None)
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if tensor_indices:
-        # Broadcast all tensor indices together
-        if len(tensor_indices) > 1:
-            tensor_indices = list(torch.broadcast_tensors(*tensor_indices))
-        # Update indices list with broadcasted tensors
-        tensor_idx = 0
-        for i in range(len(indices)):
-            if indices[i] is not None:
-                indices[i] = tensor_indices[tensor_idx]
-                tensor_idx += 1
-
-    # Step 3: Add missing None indices (pad to input.ndim)
-    while len(indices) < inp.ndim:
-        indices.append(None)
-
-    # Step 4: Check if has contiguous subspace
-    # (all non-None tensors are adjacent)
-    state = 0
-    has_contiguous_subspace = False
-    starts_from_zero = False
-    for i, index in enumerate(indices):
-        if state == 0:
-            if index is not None:
-                if i == 0:
-                    starts_from_zero = True
-                state = 1
-        elif state == 1:
-            if index is None:
-                state = 2
-        else:
-            if index is not None:
-                break
-    else:
-        has_contiguous_subspace = True
-
-    # Adjacent tensor indices on contiguous input, e.g. x[idx, :] or
-    # x[:, idx0, idx1, :], can be linearized in place. This preserves
-    # PyTorch's output order and avoids the transpose-to-front path below.
-    if has_contiguous_subspace and _can_use_linearized_adjacent_index(inp, indices):
-        return _run_linearized_adjacent_index(inp, indices)
-
-    # Step 5: Transpose-to-front/complex indexing fallback.
-    if not has_contiguous_subspace or not starts_from_zero:
-        return _aten_index_fallback(inp, indices)
-
-    # Step 6: Now indices have contiguous subspace
-    # Calculate output shape: before_shape + replacement_shape + after_shape
-    before_shape = []
-    after_shape = []
-    replacement_shape = []
-
-    for dim, index in enumerate(indices):
-        if index is None:
-            if replacement_shape:
-                # None after tensor indices -> goes to after_shape
-                after_shape.append(inp.shape[dim])
-            else:
-                # None before tensor indices -> goes to before_shape
-                before_shape.append(inp.shape[dim])
-        else:
-            # First tensor index determines replacement_shape
-            if not replacement_shape:
-                replacement_shape = list(index.shape)
-
-    # Step 7: Build output shape and create output tensor
-    out_shape = before_shape + replacement_shape + after_shape
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
-
-    # Step 8: Handle empty tensor case
-    if inp.numel() == 0 or out.numel() == 0:
-        return out
-
-    # Step 9: Extract only tensor indices for kernel
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
-        # All None, just reshape
-        return inp.view(*out_shape)
-
-    # Step 10: Call kernel with tensor indices
-    # Note: kernel needs to handle the fact that input was potentially permuted
-    # and output shape includes None dimensions
-    if inp.ndim == 1 and len(tensor_indices) == 1:
-        return torch.gather(inp, 0, tensor_indices[0])
-
-    index_wrapper(inp, tensor_indices, out)
-    return out
+    with torch_device_fn.device(inp.device):
+        return _index_impl(inp, indices)
