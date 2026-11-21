@@ -2965,6 +2965,18 @@ ops:
   stages:
   - stable: '1.0'
   cpp: '4.0'
+- id: bmm_backward
+  description: First-order autograd rule for bmm implemented with Triton kernels or
+    zero-copy gradient views.
+  for:
+  - bmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: 5.5.0
 - id: bmm_out
   description: 'Performs a batch matrix-matrix product of matrices stored in `input`
     and `mat2`.

@@ -1174,7 +1174,7 @@ _FULL_CONFIG = (
     ("blackman_window", blackman_window),
     ("blackman_window.periodic", blackman_window_periodic),
     ("block_diag", block_diag),
-    ("bmm", bmm),
+    ("bmm", bmm, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("bmm.out", bmm_out),
     ("bucketize.Tensor", bucketize),
     ("can_cast", can_cast, None, ["CompositeImplicitAutograd"]),
