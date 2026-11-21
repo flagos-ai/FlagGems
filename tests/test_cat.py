@@ -130,3 +130,23 @@ def test_cat_out_matches_reference(dtype):
     flag_gems.cat_out([a, b], dim, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.cat
+@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_cat_bool(dim):
+    # Regression test for #8298: bool inputs raised a TypeError from
+    # torch.iinfo() while converting the StridedBuffer offset to bytes.
+    inp = [
+        torch.randint(0, 2, (8, 4), device=flag_gems.device).to(torch.bool)
+        for _ in range(2)
+    ]
+    ref_inp = [utils.to_reference(_) for _ in inp]
+    ref_out = torch.cat(ref_inp, dim)
+
+    res_out = flag_gems.cat(inp, dim)
+
+    utils.gems_assert_equal(res_out, ref_out)
