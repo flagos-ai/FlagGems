@@ -291,7 +291,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 from flag_gems.ops._linalg_det import _linalg_det
 from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
-from flag_gems.ops._linalg_slogdet import _linalg_slogdet
+from flag_gems.ops._linalg_slogdet import _linalg_slogdet, linalg_slogdet_backward
 from flag_gems.ops._linalg_solve_ex import _linalg_solve_ex
 from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._list_to_tensor import _list_to_tensor
@@ -2910,6 +2910,7 @@ __all__ = [
     "linalg_qr",
     "linalg_qr_out",
     "linalg_slogdet",
+    "linalg_slogdet_backward",
     "linalg_solve",
     "linalg_solve_ex",
     "linalg_solve_triangular",

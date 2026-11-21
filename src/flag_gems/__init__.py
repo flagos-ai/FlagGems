@@ -2533,6 +2533,40 @@ _FULL_CONFIG = (
 if vendor_name == "amd":
     _FULL_CONFIG = _FULL_CONFIG + (("empty.memory_format", empty),)
 
+
+def _bind_slogdet_autograd_entry(config):
+    """Add the Autograd-key binding to the ``_linalg_slogdet`` entry.
+
+    The device implementation of ``aten::_linalg_slogdet`` is a forward-only
+    Triton kernel. Overriding only the device key leaves the native
+    ``AutogradCUDA`` formula in place, and that formula consumes the LU and
+    pivots outputs, which this implementation returns as schema-parity
+    placeholders. Binding the same differentiable entry to the Autograd key
+    makes ``torch.ops.aten._linalg_slogdet`` and ``torch.linalg.slogdet``
+    record a graph whose backward is the fused ``_slogdet_backward_kernel``.
+    ``aten::linalg_slogdet`` is ``CompositeImplicitAutograd`` in ATen, so its
+    device override likewise needs the autograd node that carries the
+    gradient: ``linalg_slogdet`` in ``flag_gems/ops/linalg_slogdet.py`` routes
+    differentiable calls through ``_LinalgSlogdetAutograd`` for the same
+    reason. Only these two entries are touched; every other entry keeps its
+    existing registration.
+    """
+    rebound = []
+    for entry in config:
+        key, fn = entry[0], entry[1]
+        if key in ("_linalg_slogdet", "linalg_slogdet") and len(entry) == 2:
+            entry = (
+                key,
+                fn,
+                None,
+                ((AUTOGRAD_DISPATCH_KEY + backend_info.dispatch_key, fn),),
+            )
+        rebound.append(entry)
+    return tuple(rebound)
+
+
+_FULL_CONFIG = _bind_slogdet_autograd_entry(_FULL_CONFIG)
+
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
 FULL_CONFIG_BY_FUNC = {}
 for _item in _FULL_CONFIG:
@@ -2716,6 +2750,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "linalg_slogdet_backward",
     "only_enable",
     "use_gems",
 ]
