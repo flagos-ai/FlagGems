@@ -8,6 +8,17 @@ from . import base, consts
 DTYPES = consts.FLOAT_DTYPES + [torch.int8, torch.uint8]
 
 
+def _torch_nansum(inp, *args, **kwargs):
+    # muDNN promotes uint8 to uint64 and then refuses to reduce it. ATen's
+    # integer nansum yields int64 anyway, so apply that promotion up front.
+    if inp.dtype == torch.uint8:
+        inp = inp.to(torch.int64)
+    return torch.nansum(inp, *args, **kwargs)
+
+
+TORCH_NANSUM = _torch_nansum if flag_gems.vendor_name == "mthreads" else torch.nansum
+
+
 class _NansumBenchmark(base.UnaryReductionBenchmark):
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
@@ -38,7 +49,7 @@ class _NansumBenchmark(base.UnaryReductionBenchmark):
 def test_benchmark_nansum():
     bench = _NansumBenchmark(
         op_name="nansum",
-        torch_op=torch.nansum,
+        torch_op=TORCH_NANSUM,
         dtypes=DTYPES,
     )
     bench.set_gems(flag_gems.nansum)
