@@ -14421,6 +14421,18 @@ ops:
   stages:
   - stable: '1.0'
   cpp: '4.0'
+- id: mm_backward
+  description: The backward computation of `mm()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - mm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.4'
 - id: mm_out
   description: A variant of `mm()` with `out` specified.
   for:

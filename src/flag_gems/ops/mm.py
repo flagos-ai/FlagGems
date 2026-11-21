@@ -641,3 +641,19 @@ def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     c = torch.empty((M, N), device=x.device, dtype=torch.float32)
     b = weight.t().contiguous()
     return general_mm(x, b, c, M, N, K)
+
+
+def mm_backward(grad_output, a, b, needs_input_grad=(True, True)):
+    """Return first-order gradients using the NVIDIA Hopper implementation."""
+    if (
+        torch.version.cuda is None
+        or not a.is_cuda
+        or torch.cuda.get_device_capability(a.device)[0] != 9
+    ):
+        raise NotImplementedError("FlagGems mm_backward requires an NVIDIA Hopper GPU")
+
+    from flag_gems.runtime.backend._nvidia.hopper.ops.mm import (
+        mm_backward as hopper_mm_backward,
+    )
+
+    return hopper_mm_backward(grad_output, a, b, needs_input_grad)
