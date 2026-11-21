@@ -1935,7 +1935,7 @@ class SharedMMConfig:
 def _shared_address_supported(mode="scalar"):
     if mode == "direct":
         return True
-    options = ("coalesce_lgkm_waits",)
+    options = ("coalesce_lgkm_waits", "combine_shifted_disjoint_or")
     if mode == "scalar":
         options += ("buffer_store_address_mode",)
     return supports_hcu_options(options)
@@ -1971,6 +1971,7 @@ def _shared_compile_parameters(config, transposed_b):
     # Keep the candidate identity while checking/setting each real capability.
     if config.address_mode != "direct":
         options["coalesce_lgkm_waits"] = True
+        options["combine_shifted_disjoint_or"] = True
     if config.address_mode == "scalar":
         options["buffer_store_address_mode"] = "scalar-fold"
     if not config.local_prefetch:
@@ -2367,6 +2368,7 @@ _COOPERATIVE_HCU_OPTIONS = dict(
     priority_after_first_mmac=True,
     buffer_store_address_mode="scalar",
     interleave_global_lds_reads=True,
+    combine_shifted_disjoint_or=True,
 )
 if supports_hcu_options(("mmac_operand_reuse",)):
     _COOPERATIVE_HCU_OPTIONS["mmac_operand_reuse"] = True
