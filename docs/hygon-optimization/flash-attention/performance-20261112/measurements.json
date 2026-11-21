@@ -1,0 +1,1402 @@
+{
+  "baseline": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+  "tested_candidate": "efd32566fb2fd258f23d6dea469d39088a929381",
+  "candidate_src_tree": "32e61e7a180a480dc36598c4b196b52089189ed2",
+  "date": "2026-11-12",
+  "native_comparator": "2.8.4+dtk2604.torch2100.2609292239.g74de14",
+  "native_extension_sha256": "4dbb514cd0d6b30b720bbc739b13f3655ec5b345765b303e463184a1cd243f25",
+  "case_selection_policy": null,
+  "method": {
+    "samples_per_role": 50,
+    "blocks": 2,
+    "samples_per_block": 25,
+    "aa_drift_limit": 0.05,
+    "timing": "sum of producer-linked device activities / calls_per_roi; kernel and copy retained separately",
+    "correctness": "full output comparison against frozen reference; failures retain diagnostic timing",
+    "input_scope": "same deterministically reconstructed backing across providers; metadata assumptions disclosed per case, not original model-payload acceptance"
+  },
+  "accounting_source_sha256": "142c9b0aaff8a28cba7d7a1f997e9c96e6dfe39378258d19f3ef51ef1cf4920a",
+  "preserved_accounting_sha256": "fbbf76b6b5139b94c3ba2489774f6c490761678c8b9eabb910444ed61f97142f",
+  "cases": [
+    {
+      "id": "flash-model_state",
+      "experiment_id": null,
+      "base": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+      "head": "efd32566fb2fd258f23d6dea469d39088a929381",
+      "primary_metric": "kernel_sum",
+      "calls_per_roi": 20,
+      "input_match": true,
+      "old_correct": true,
+      "new_correct": true,
+      "das_correct": true,
+      "old_stable": true,
+      "new_stable": true,
+      "das_stable": true,
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "old_over_new": 2.6810362062998685,
+      "das_over_new": 0.9249619956433114,
+      "improvement_percent": 168.10362062998684,
+      "latency_reduction_percent": 62.70098860842642,
+      "target90": true,
+      "new_correctness_regression": false,
+      "source_witness": {
+        "old": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:288:prune_fwd_configs": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 506,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 506,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 506,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 506,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 505
+        },
+        "new": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:338:state_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:34:_load_state_kernel": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:112:launch_state_kernel": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:117:<listcomp>": 1
+        },
+        "das": {},
+        "old_repeat": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:288:prune_fwd_configs": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 495,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 495,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 495,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 495,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 494
+        },
+        "aa": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:338:state_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:34:_load_state_kernel": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:112:launch_state_kernel": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:117:<listcomp>": 1
+        },
+        "das_repeat": {}
+      },
+      "arms": {
+        "old": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "44ebfeb326f5a257e890668d149dd0e28a715052ab3d7560d14726f39107fc04"
+          },
+          "device_blocks": [
+            [4670.076950000001,4671.284949999999,4670.6209499999995,4671.429,4671.773,4670.052949999999,4674.78895,4670.47695,4670.44495,4671.70095,4669.71695,4669.285,4672.66895,4672.01295,4668.71695,4671.22095,4670.99695,4669.51695,4673.88495,4667.60495,4672.01295,4671.06095,4671.124949999999,4672.22895,4669.844950000001],
+            [4669.97295,4670.8929499999995,4670.317,4670.356949999999,4670.1169500000005,4672.916950000001,4670.10895,4670.36495,4670.78895,4668.94095,4671.0849499999995,4673.06095,4670.18095,4673.22095,4669.78095,4670.95695,4670.55695,4670.6609499999995,4671.25295,4669.98095,4669.98895,4670.34095,4671.5809500000005,4669.18895,4673.10895]
+          ],
+          "kernel_blocks": [
+            [4670.076950000001,4671.284949999999,4670.6209499999995,4671.429,4671.773,4670.052949999999,4674.78895,4670.47695,4670.44495,4671.70095,4669.71695,4669.285,4672.66895,4672.01295,4668.71695,4671.22095,4670.99695,4669.51695,4673.88495,4667.60495,4672.01295,4671.06095,4671.124949999999,4672.22895,4669.844950000001],
+            [4669.97295,4670.8929499999995,4670.317,4670.356949999999,4670.1169500000005,4672.916950000001,4670.10895,4670.36495,4670.78895,4668.94095,4671.0849499999995,4673.06095,4670.18095,4673.22095,4669.78095,4670.95695,4670.55695,4670.6609499999995,4671.25295,4669.98095,4669.98895,4670.34095,4671.5809500000005,4669.18895,4673.10895]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "new": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "44ebfeb326f5a257e890668d149dd0e28a715052ab3d7560d14726f39107fc04"
+          },
+          "device_blocks": [
+            [1739.51885,1740.16685,1742.39885,1742.23085,1742.2629000000002,1742.16685,1741.8709,1742.23085,1742.1669000000002,1741.9828499999999,1742.2388999999998,1742.25485,1742.1589,1742.04685,1742.1028999999999,1742.1108499999998,1742.3829,1742.1108499999998,1742.1028999999999,1742.30285,1742.2789,1742.02285,1741.0389,1739.5748500000002,1742.28685],
+            [1742.2469,1739.6468499999999,1739.75085,1741.01485,1739.48685,1741.9908500000001,1740.45485,1740.8548500000002,1742.2628499999998,1741.9828499999999,1742.1189,1742.0628499999998,1739.6549,1739.78285,1742.15085,1742.1908500000002,1742.1508999999999,1741.9108499999998,1742.2388999999998,1742.1908500000002,1741.1669000000002,1742.1588500000003,1742.0867999999998,1742.0788499999999,1742.04685]
+          ],
+          "kernel_blocks": [
+            [1739.51885,1740.16685,1742.39885,1742.23085,1742.2629000000002,1742.16685,1741.8709,1742.23085,1742.1669000000002,1741.9828499999999,1742.2388999999998,1742.25485,1742.1589,1742.04685,1742.1028999999999,1742.1108499999998,1742.3829,1742.1108499999998,1742.1028999999999,1742.30285,1742.2789,1742.02285,1741.0389,1739.5748500000002,1742.28685],
+            [1742.2469,1739.6468499999999,1739.75085,1741.01485,1739.48685,1741.9908500000001,1740.45485,1740.8548500000002,1742.2628499999998,1741.9828499999999,1742.1189,1742.0628499999998,1739.6549,1739.78285,1742.15085,1742.1908500000002,1742.1508999999999,1741.9108499999998,1742.2388999999998,1742.1908500000002,1741.1669000000002,1742.1588500000003,1742.0867999999998,1742.0788499999999,1742.04685]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "44ebfeb326f5a257e890668d149dd0e28a715052ab3d7560d14726f39107fc04"
+          },
+          "device_blocks": [
+            [1611.48695,1609.42295,1609.855,1611.52695,1611.487,1611.78295,1611.327,1610.95095,1611.167,1611.58295,1611.767,1609.63895,1611.423,1611.5189500000001,1611.759,1611.18295,1611.343,1611.9029500000001,1611.615,1610.5189500000001,1611.9270000000001,1610.95095,1611.215,1611.19095,1611.423],
+            [1611.2629499999998,1611.6069499999999,1611.815,1610.96695,1611.591,1610.6469499999998,1611.895,1611.49495,1611.223,1610.6709500000002,1609.591,1611.9029500000001,1611.127,1611.4149499999999,1611.895,1610.96695,1611.431,1611.27095,1609.431,1609.8389499999998,1611.039,1611.8469499999999,1611.423,1611.34295,1611.77495]
+          ],
+          "kernel_blocks": [
+            [1611.48695,1609.42295,1609.855,1611.52695,1611.487,1611.78295,1611.327,1610.95095,1611.167,1611.58295,1611.767,1609.63895,1611.423,1611.5189500000001,1611.759,1611.18295,1611.343,1611.9029500000001,1611.615,1610.5189500000001,1611.9270000000001,1610.95095,1611.215,1611.19095,1611.423],
+            [1611.2629499999998,1611.6069499999999,1611.815,1610.96695,1611.591,1610.6469499999998,1611.895,1611.49495,1611.223,1610.6709500000002,1609.591,1611.9029500000001,1611.127,1611.4149499999999,1611.895,1610.96695,1611.431,1611.27095,1609.431,1609.8389499999998,1611.039,1611.8469499999999,1611.423,1611.34295,1611.77495]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "old_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "44ebfeb326f5a257e890668d149dd0e28a715052ab3d7560d14726f39107fc04"
+          },
+          "device_blocks": [
+            [4670.8929499999995,4669.24495,4671.79695,4670.79695,4671.44495,4669.21305,4668.41305,4670.18095,4669.380950000001,4670.3489500000005,4668.50895,4668.25295,4670.78895,4671.4048999999995,4668.21295,4670.50895,4669.68495,4668.9249,4670.24495,4670.19695,4670.64495,4668.27695,4667.588949999999,4671.4209,4670.13295],
+            [4669.47695,4669.48495,4672.46895,4669.0849499999995,4668.820949999999,4668.7729,4669.55695,4668.8288999999995,4672.38895,4667.34095,4667.9329,4670.1809,4670.46895,4669.0049,4667.5409500000005,4671.64495,4668.6368999999995,4670.30095,4670.437,4669.7729500000005,4669.8129500000005,4670.87695,4669.06095,4672.14095,4666.916950000001]
+          ],
+          "kernel_blocks": [
+            [4670.8929499999995,4669.24495,4671.79695,4670.79695,4671.44495,4669.21305,4668.41305,4670.18095,4669.380950000001,4670.3489500000005,4668.50895,4668.25295,4670.78895,4671.4048999999995,4668.21295,4670.50895,4669.68495,4668.9249,4670.24495,4670.19695,4670.64495,4668.27695,4667.588949999999,4671.4209,4670.13295],
+            [4669.47695,4669.48495,4672.46895,4669.0849499999995,4668.820949999999,4668.7729,4669.55695,4668.8288999999995,4672.38895,4667.34095,4667.9329,4670.1809,4670.46895,4669.0049,4667.5409500000005,4671.64495,4668.6368999999995,4670.30095,4670.437,4669.7729500000005,4669.8129500000005,4670.87695,4669.06095,4672.14095,4666.916950000001]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "aa": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "44ebfeb326f5a257e890668d149dd0e28a715052ab3d7560d14726f39107fc04"
+          },
+          "device_blocks": [
+            [1742.0389,1739.9269,1741.8548500000002,1739.67085,1740.8309000000002,1739.76685,1740.2069,1739.35885,1739.41485,1742.1908500000002,1740.1109000000001,1740.5988499999999,1742.1349500000001,1741.9028999999998,1742.2149000000002,1742.04685,1741.9989,1742.3509,1740.7589,1741.9669000000001,1742.3589,1741.3348999999998,1739.82285,1741.89485,1742.23095],
+            [1740.4388999999999,1739.7749,1740.9749,1741.8309000000002,1742.1028999999999,1741.9749,1741.8949,1742.0389,1741.71085,1742.04685,1742.11895,1741.1589,1739.89485,1740.99885,1742.33495,1742.13485,1742.0548999999999,1742.0309000000002,1742.0389,1742.0229,1741.9669000000001,1741.9749,1741.8709,1742.07085,1742.1829000000002]
+          ],
+          "kernel_blocks": [
+            [1742.0389,1739.9269,1741.8548500000002,1739.67085,1740.8309000000002,1739.76685,1740.2069,1739.35885,1739.41485,1742.1908500000002,1740.1109000000001,1740.5988499999999,1742.1349500000001,1741.9028999999998,1742.2149000000002,1742.04685,1741.9989,1742.3509,1740.7589,1741.9669000000001,1742.3589,1741.3348999999998,1739.82285,1741.89485,1742.23095],
+            [1740.4388999999999,1739.7749,1740.9749,1741.8309000000002,1742.1028999999999,1741.9749,1741.8949,1742.0389,1741.71085,1742.04685,1742.11895,1741.1589,1739.89485,1740.99885,1742.33495,1742.13485,1742.0548999999999,1742.0309000000002,1742.0389,1742.0229,1741.9669000000001,1741.9749,1741.8709,1742.07085,1742.1829000000002]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "44ebfeb326f5a257e890668d149dd0e28a715052ab3d7560d14726f39107fc04"
+          },
+          "device_blocks": [
+            [1611.455,1609.52695,1609.6709500000002,1611.3989,1611.831,1611.75895,1611.51095,1609.87095,1611.95095,1611.68695,1611.479,1611.31895,1611.38295,1609.4549499999998,1609.91895,1611.02295,1609.66295,1611.3349,1611.215,1610.29495,1610.97495,1610.94295,1611.56695,1610.97495,1611.76695],
+            [1610.96695,1609.52695,1611.17495,1611.35095,1611.62295,1609.3509,1609.5909,1610.4549000000002,1611.407,1611.29495,1612.0949500000002,1612.159,1611.367,1611.2869500000002,1611.2629499999998,1610.53495,1610.911,1611.99895,1610.775,1611.62295,1612.30295,1611.4549499999998,1610.567,1609.7749,1611.2629499999998]
+          ],
+          "kernel_blocks": [
+            [1611.455,1609.52695,1609.6709500000002,1611.3989,1611.831,1611.75895,1611.51095,1609.87095,1611.95095,1611.68695,1611.479,1611.31895,1611.38295,1609.4549499999998,1609.91895,1611.02295,1609.66295,1611.3349,1611.215,1610.29495,1610.97495,1610.94295,1611.56695,1610.97495,1611.76695],
+            [1610.96695,1609.52695,1611.17495,1611.35095,1611.62295,1609.3509,1609.5909,1610.4549000000002,1611.407,1611.29495,1612.0949500000002,1612.159,1611.367,1611.2869500000002,1611.2629499999998,1610.53495,1610.911,1611.99895,1610.775,1611.62295,1612.30295,1611.4549499999998,1610.567,1609.7749,1611.2629499999998]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        }
+      }
+    },
+    {
+      "id": "flash-expanded_small",
+      "experiment_id": null,
+      "base": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+      "head": "efd32566fb2fd258f23d6dea469d39088a929381",
+      "primary_metric": "kernel_sum",
+      "calls_per_roi": 20,
+      "input_match": true,
+      "old_correct": true,
+      "new_correct": true,
+      "das_correct": true,
+      "old_stable": true,
+      "new_stable": true,
+      "das_stable": true,
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "old_over_new": 1.6705035971223021,
+      "das_over_new": 1.3107913669064746,
+      "improvement_percent": 67.05035971223022,
+      "latency_reduction_percent": 40.13781223083549,
+      "target90": true,
+      "new_correctness_regression": false,
+      "source_witness": {
+        "old": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 1
+        },
+        "new": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:416:small_state_attention": 1
+        },
+        "das": {},
+        "old_repeat": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 1
+        },
+        "aa": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:416:small_state_attention": 1
+        },
+        "das_repeat": {}
+      },
+      "arms": {
+        "old": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "130b3b91027d785413d8f6454c71af066f76c3f625ff34c3c2fff9fb43016503",
+            "1": "076b7854cc6dda420cf2230d0592ffec24b1ab750c8550fcb889a71afc0b859d",
+            "2": "f9c798238185b723f3e3b39bfeb399bf25fb35ced0de451f1de15d7f2a193ae5"
+          },
+          "device_blocks": [
+            [9.296,8.488,8.504000000000001,8.512,8.936,9.288,9.28,9.296,9.28,9.28,9.28,9.28,9.304,9.288,9.272,9.288,9.296,9.304,9.288,9.296,9.32,9.304,9.296,9.288,9.264],
+            [9.296,9.28,9.32,9.368,9.32,9.288,9.248000000000001,9.288,9.304,9.272,9.296,9.304,9.296,9.304,9.288,9.296,9.30395,9.288,9.328,9.296,9.31195,9.27995,9.288,9.288,9.328]
+          ],
+          "kernel_blocks": [
+            [9.296,8.488,8.504000000000001,8.512,8.936,9.288,9.28,9.296,9.28,9.28,9.28,9.28,9.304,9.288,9.272,9.288,9.296,9.304,9.288,9.296,9.32,9.304,9.296,9.288,9.264],
+            [9.296,9.28,9.32,9.368,9.32,9.288,9.248000000000001,9.288,9.304,9.272,9.296,9.304,9.296,9.304,9.288,9.296,9.30395,9.288,9.328,9.296,9.31195,9.27995,9.288,9.288,9.328]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "new": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "130b3b91027d785413d8f6454c71af066f76c3f625ff34c3c2fff9fb43016503",
+            "1": "076b7854cc6dda420cf2230d0592ffec24b1ab750c8550fcb889a71afc0b859d",
+            "2": "f9c798238185b723f3e3b39bfeb399bf25fb35ced0de451f1de15d7f2a193ae5"
+          },
+          "device_blocks": [
+            [5.5920000000000005,5.5920000000000005,5.544,5.544,5.543950000000001,5.5280000000000005,5.5280000000000005,5.544,5.6,5.576,5.568,5.568,5.568,5.544,5.576,5.5920000000000005,5.568,5.58395,5.5840000000000005,5.5840000000000005,5.5920000000000005,5.5920000000000005,5.576,5.5920000000000005,5.5600000000000005],
+            [5.544,4.752000000000001,4.744,4.76,5.544,5.576,5.5520000000000005,5.5600000000000005,5.5920000000000005,5.568,5.544,5.536,5.576,5.512,5.5840000000000005,5.5600000000000005,5.5280000000000005,5.5600000000000005,5.5600000000000005,5.536,5.568,5.5520000000000005,5.5520000000000005,5.543950000000001,5.5840000000000005]
+          ],
+          "kernel_blocks": [
+            [5.5920000000000005,5.5920000000000005,5.544,5.544,5.543950000000001,5.5280000000000005,5.5280000000000005,5.544,5.6,5.576,5.568,5.568,5.568,5.544,5.576,5.5920000000000005,5.568,5.58395,5.5840000000000005,5.5840000000000005,5.5920000000000005,5.5920000000000005,5.576,5.5920000000000005,5.5600000000000005],
+            [5.544,4.752000000000001,4.744,4.76,5.544,5.576,5.5520000000000005,5.5600000000000005,5.5920000000000005,5.568,5.544,5.536,5.576,5.512,5.5840000000000005,5.5600000000000005,5.5280000000000005,5.5600000000000005,5.5600000000000005,5.536,5.568,5.5520000000000005,5.5520000000000005,5.543950000000001,5.5840000000000005]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "130b3b91027d785413d8f6454c71af066f76c3f625ff34c3c2fff9fb43016503",
+            "1": "076b7854cc6dda420cf2230d0592ffec24b1ab750c8550fcb889a71afc0b859d",
+            "2": "f9c798238185b723f3e3b39bfeb399bf25fb35ced0de451f1de15d7f2a193ae5"
+          },
+          "device_blocks": [
+            [8.368,7.312,8.8,7.272,7.30395,7.279999999999999,7.287999999999999,7.272,7.287999999999999,7.256,7.264,7.295999999999999,7.304,8.408,7.287999999999999,7.279999999999999,7.279999999999999,7.304,7.264,7.32,7.287999999999999,7.279999999999999,7.295999999999999,8.17595,7.312],
+            [8.144,7.279999999999999,7.304,7.279999999999999,8.272,7.295999999999999,7.279999999999999,7.279999999999999,7.287999999999999,7.264,7.2879499999999995,7.287999999999999,7.248,7.2639499999999995,8.792,7.287999999999999,7.2879499999999995,7.287999999999999,7.312,7.29595,7.264,7.304,7.328,7.264,8.120000000000001]
+          ],
+          "kernel_blocks": [
+            [8.368,7.312,8.8,7.272,7.30395,7.279999999999999,7.287999999999999,7.272,7.287999999999999,7.256,7.264,7.295999999999999,7.304,8.408,7.287999999999999,7.279999999999999,7.279999999999999,7.304,7.264,7.32,7.287999999999999,7.279999999999999,7.295999999999999,8.17595,7.312],
+            [8.144,7.279999999999999,7.304,7.279999999999999,8.272,7.295999999999999,7.279999999999999,7.279999999999999,7.287999999999999,7.264,7.2879499999999995,7.287999999999999,7.248,7.2639499999999995,8.792,7.287999999999999,7.2879499999999995,7.287999999999999,7.312,7.29595,7.264,7.304,7.328,7.264,8.120000000000001]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "old_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "130b3b91027d785413d8f6454c71af066f76c3f625ff34c3c2fff9fb43016503",
+            "1": "076b7854cc6dda420cf2230d0592ffec24b1ab750c8550fcb889a71afc0b859d",
+            "2": "f9c798238185b723f3e3b39bfeb399bf25fb35ced0de451f1de15d7f2a193ae5"
+          },
+          "device_blocks": [
+            [9.31995,8.48,8.495999999999999,9.208,9.312000000000001,9.295950000000001,9.288,9.304,9.28,9.296,9.28,9.296,9.296,9.304,9.272,9.296,9.288,9.312000000000001,9.295950000000001,9.27195,9.312000000000001,9.288,9.288,9.312000000000001,9.328],
+            [8.504000000000001,8.52795,8.504000000000001,9.288,9.288,9.288,9.312000000000001,9.304,9.296,9.304,9.32,9.304,9.288,9.27195,9.304,9.28,8.632,8.495999999999999,8.52,8.528,8.504000000000001,9.296,9.296,9.304,9.304]
+          ],
+          "kernel_blocks": [
+            [9.31995,8.48,8.495999999999999,9.208,9.312000000000001,9.295950000000001,9.288,9.304,9.28,9.296,9.28,9.296,9.296,9.304,9.272,9.296,9.288,9.312000000000001,9.295950000000001,9.27195,9.312000000000001,9.288,9.288,9.312000000000001,9.328],
+            [8.504000000000001,8.52795,8.504000000000001,9.288,9.288,9.288,9.312000000000001,9.304,9.296,9.304,9.32,9.304,9.288,9.27195,9.304,9.28,8.632,8.495999999999999,8.52,8.528,8.504000000000001,9.296,9.296,9.304,9.304]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "aa": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "130b3b91027d785413d8f6454c71af066f76c3f625ff34c3c2fff9fb43016503",
+            "1": "076b7854cc6dda420cf2230d0592ffec24b1ab750c8550fcb889a71afc0b859d",
+            "2": "f9c798238185b723f3e3b39bfeb399bf25fb35ced0de451f1de15d7f2a193ae5"
+          },
+          "device_blocks": [
+            [5.6240000000000006,4.752000000000001,4.768,4.784000000000001,4.808,4.76,5.5600000000000005,5.5920000000000005,5.5920000000000005,5.6,5.576,5.5600000000000005,5.488,5.504,5.5840000000000005,5.5600000000000005,5.568,5.568,5.576,5.568,5.6,5.5840000000000005,5.5280000000000005,5.576,5.544],
+            [5.616,4.736,4.768,5.6,5.5840000000000005,5.5280000000000005,5.607950000000001,5.5600000000000005,5.5600000000000005,5.5520000000000005,5.568,5.568,4.92,4.744,4.776,4.76,4.75995,4.720000000000001,5.096,5.5600000000000005,5.5920000000000005,5.55195,4.744,4.784000000000001,4.76]
+          ],
+          "kernel_blocks": [
+            [5.6240000000000006,4.752000000000001,4.768,4.784000000000001,4.808,4.76,5.5600000000000005,5.5920000000000005,5.5920000000000005,5.6,5.576,5.5600000000000005,5.488,5.504,5.5840000000000005,5.5600000000000005,5.568,5.568,5.576,5.568,5.6,5.5840000000000005,5.5280000000000005,5.576,5.544],
+            [5.616,4.736,4.768,5.6,5.5840000000000005,5.5280000000000005,5.607950000000001,5.5600000000000005,5.5600000000000005,5.5520000000000005,5.568,5.568,4.92,4.744,4.776,4.76,4.75995,4.720000000000001,5.096,5.5600000000000005,5.5920000000000005,5.55195,4.744,4.784000000000001,4.76]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "130b3b91027d785413d8f6454c71af066f76c3f625ff34c3c2fff9fb43016503",
+            "1": "076b7854cc6dda420cf2230d0592ffec24b1ab750c8550fcb889a71afc0b859d",
+            "2": "f9c798238185b723f3e3b39bfeb399bf25fb35ced0de451f1de15d7f2a193ae5"
+          },
+          "device_blocks": [
+            [8.576,7.287999999999999,8.120000000000001,7.279999999999999,7.248,7.24,7.248,7.2879499999999995,7.272,7.272,7.287999999999999,7.304,8.76,7.256,7.2639499999999995,7.312,7.272,7.248,7.264,7.256,7.2639499999999995,7.2639499999999995,8.552,7.2799499999999995,7.264],
+            [7.864,7.279999999999999,7.279999999999999,7.272,7.24,7.272,7.256,7.279999999999999,7.264,7.304,8.064,7.264,7.248,7.312,7.2879499999999995,7.272,7.295999999999999,7.279999999999999,7.304,7.2799499999999995,7.31995,8.831999999999999,7.248,7.287999999999999,7.264]
+          ],
+          "kernel_blocks": [
+            [8.576,7.287999999999999,8.120000000000001,7.279999999999999,7.248,7.24,7.248,7.2879499999999995,7.272,7.272,7.287999999999999,7.304,8.76,7.256,7.2639499999999995,7.312,7.272,7.248,7.264,7.256,7.2639499999999995,7.2639499999999995,8.552,7.2799499999999995,7.264],
+            [7.864,7.279999999999999,7.279999999999999,7.272,7.24,7.272,7.256,7.279999999999999,7.264,7.304,8.064,7.264,7.248,7.312,7.2879499999999995,7.272,7.295999999999999,7.279999999999999,7.304,7.2799499999999995,7.31995,8.831999999999999,7.248,7.287999999999999,7.264]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        }
+      }
+    },
+    {
+      "id": "flash-expanded_medium",
+      "experiment_id": null,
+      "base": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+      "head": "efd32566fb2fd258f23d6dea469d39088a929381",
+      "primary_metric": "kernel_sum",
+      "calls_per_roi": 20,
+      "input_match": true,
+      "old_correct": true,
+      "new_correct": true,
+      "das_correct": true,
+      "old_stable": true,
+      "new_stable": true,
+      "das_stable": true,
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "old_over_new": 1.6212792906903104,
+      "das_over_new": 1.3147561747941736,
+      "improvement_percent": 62.12792906903104,
+      "latency_reduction_percent": 38.3203125,
+      "target90": true,
+      "new_correctness_regression": false,
+      "source_witness": {
+        "old": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 1
+        },
+        "new": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:416:small_state_attention": 1
+        },
+        "das": {},
+        "old_repeat": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 1
+        },
+        "aa": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:416:small_state_attention": 1
+        },
+        "das_repeat": {}
+      },
+      "arms": {
+        "old": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "bb03de9107715d4f56aa4751c8e94dc8c93a8851b7e1923f632b74ddd228a787",
+            "1": "85a74e4269e7d74001019371e0928db8ecd02ca1b53256ac6cc553184e202e84",
+            "2": "46ee4de1110d04f4244b298ef548d8b85cee8420defc51fffe29108c3d55ee00"
+          },
+          "device_blocks": [
+            [9.47195,9.528,10.288,10.23995,10.264,10.24,10.26395,10.264,10.296,10.256,10.264,10.232,9.504000000000001,9.456,9.504000000000001,10.27995,10.288,10.264,10.264,10.23995,10.24,10.232,10.2,10.24,10.272],
+            [9.431999999999999,9.52,9.488,10.264,10.216,10.232,10.24,10.296,9.48,10.11195,10.28,10.248000000000001,10.264,10.28,10.24,10.264,9.440000000000001,9.456,9.504000000000001,9.472,9.488,9.84,10.248000000000001,10.256,10.208]
+          ],
+          "kernel_blocks": [
+            [9.47195,9.528,10.288,10.23995,10.264,10.24,10.26395,10.264,10.296,10.256,10.264,10.232,9.504000000000001,9.456,9.504000000000001,10.27995,10.288,10.264,10.264,10.23995,10.24,10.232,10.2,10.24,10.272],
+            [9.431999999999999,9.52,9.488,10.264,10.216,10.232,10.24,10.296,9.48,10.11195,10.28,10.248000000000001,10.264,10.28,10.24,10.264,9.440000000000001,9.456,9.504000000000001,9.472,9.488,9.84,10.248000000000001,10.256,10.208]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "new": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "bb03de9107715d4f56aa4751c8e94dc8c93a8851b7e1923f632b74ddd228a787",
+            "1": "85a74e4269e7d74001019371e0928db8ecd02ca1b53256ac6cc553184e202e84",
+            "2": "46ee4de1110d04f4244b298ef548d8b85cee8420defc51fffe29108c3d55ee00"
+          },
+          "device_blocks": [
+            [5.544,5.5840000000000005,5.568,5.5520000000000005,5.544,6.384,6.34395,6.3759999999999994,6.36,6.368,6.352,6.384,6.32,6.343999999999999,6.311999999999999,6.311999999999999,6.384,6.384,6.328,6.4,6.336,6.311999999999999,6.3359499999999995,5.5280000000000005,5.536],
+            [6.336,5.5520000000000005,5.512,5.544,5.5280000000000005,5.5520000000000005,5.544,6.36,6.35195,6.343999999999999,6.343999999999999,6.36,6.343999999999999,6.352,6.023899999999999,5.544,5.5200000000000005,5.55195,5.536,5.5600000000000005,5.496,5.536,6.352,6.3359499999999995,5.512]
+          ],
+          "kernel_blocks": [
+            [5.544,5.5840000000000005,5.568,5.5520000000000005,5.544,6.384,6.34395,6.3759999999999994,6.36,6.368,6.352,6.384,6.32,6.343999999999999,6.311999999999999,6.311999999999999,6.384,6.384,6.328,6.4,6.336,6.311999999999999,6.3359499999999995,5.5280000000000005,5.536],
+            [6.336,5.5520000000000005,5.512,5.544,5.5280000000000005,5.5520000000000005,5.544,6.36,6.35195,6.343999999999999,6.343999999999999,6.36,6.343999999999999,6.352,6.023899999999999,5.544,5.5200000000000005,5.55195,5.536,5.5600000000000005,5.496,5.536,6.352,6.3359499999999995,5.512]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "bb03de9107715d4f56aa4751c8e94dc8c93a8851b7e1923f632b74ddd228a787",
+            "1": "85a74e4269e7d74001019371e0928db8ecd02ca1b53256ac6cc553184e202e84",
+            "2": "46ee4de1110d04f4244b298ef548d8b85cee8420defc51fffe29108c3d55ee00"
+          },
+          "device_blocks": [
+            [8.32,8.264,8.304,8.296,8.288,8.352,8.352,9.687999999999999,8.24,8.312000000000001,8.312000000000001,8.312000000000001,8.352,8.288,8.328,8.336,8.336,9.784,8.344,8.328,8.304,8.288,8.32,8.296,8.312000000000001],
+            [8.288,8.304,8.32,8.296,8.304,8.272,9.784,8.296,8.24795,8.288,8.28,8.264,8.312000000000001,8.288,8.288,8.304,9.799949999999999,8.304,8.32,8.336,8.31195,8.32,8.288,8.296,8.304]
+          ],
+          "kernel_blocks": [
+            [8.32,8.264,8.304,8.296,8.288,8.352,8.352,9.687999999999999,8.24,8.312000000000001,8.312000000000001,8.312000000000001,8.352,8.288,8.328,8.336,8.336,9.784,8.344,8.328,8.304,8.288,8.32,8.296,8.312000000000001],
+            [8.288,8.304,8.32,8.296,8.304,8.272,9.784,8.296,8.24795,8.288,8.28,8.264,8.312000000000001,8.288,8.288,8.304,9.799949999999999,8.304,8.32,8.336,8.31195,8.32,8.288,8.296,8.304]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "old_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "bb03de9107715d4f56aa4751c8e94dc8c93a8851b7e1923f632b74ddd228a787",
+            "1": "85a74e4269e7d74001019371e0928db8ecd02ca1b53256ac6cc553184e202e84",
+            "2": "46ee4de1110d04f4244b298ef548d8b85cee8420defc51fffe29108c3d55ee00"
+          },
+          "device_blocks": [
+            [9.472,10.264,10.256,10.21595,10.248000000000001,10.232,10.26395,10.216,10.264,10.256,10.264,10.272,10.25595,10.248000000000001,10.264,10.232,10.296,10.248000000000001,10.248000000000001,10.24,10.288,10.264,10.272,10.264,10.232],
+            [10.232,9.464,9.472,9.440000000000001,9.424,9.47195,9.87195,10.272,9.687999999999999,9.488,9.48,9.456,9.559999999999999,10.216,10.232,10.256,10.216,10.248000000000001,10.104000000000001,10.312000000000001,10.248000000000001,10.232,9.76,9.456,9.45595]
+          ],
+          "kernel_blocks": [
+            [9.472,10.264,10.256,10.21595,10.248000000000001,10.232,10.26395,10.216,10.264,10.256,10.264,10.272,10.25595,10.248000000000001,10.264,10.232,10.296,10.248000000000001,10.248000000000001,10.24,10.288,10.264,10.272,10.264,10.232],
+            [10.232,9.464,9.472,9.440000000000001,9.424,9.47195,9.87195,10.272,9.687999999999999,9.488,9.48,9.456,9.559999999999999,10.216,10.232,10.256,10.216,10.248000000000001,10.104000000000001,10.312000000000001,10.248000000000001,10.232,9.76,9.456,9.45595]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "aa": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "bb03de9107715d4f56aa4751c8e94dc8c93a8851b7e1923f632b74ddd228a787",
+            "1": "85a74e4269e7d74001019371e0928db8ecd02ca1b53256ac6cc553184e202e84",
+            "2": "46ee4de1110d04f4244b298ef548d8b85cee8420defc51fffe29108c3d55ee00"
+          },
+          "device_blocks": [
+            [5.5520000000000005,5.53595,5.536,6.384,6.336,6.343999999999999,5.544,5.5600000000000005,5.544,5.5600000000000005,6.352,6.4079999999999995,6.3759999999999994,6.368,6.36,6.288,5.5520000000000005,5.5280000000000005,6.392,6.3759999999999994,6.384,6.343999999999999,6.368,6.36,6.368],
+            [6.36,5.5600000000000005,5.544,5.576,5.512,5.5280000000000005,5.5280000000000005,5.543950000000001,6.343999999999999,6.352,6.343999999999999,6.36,6.36,6.384,6.3759999999999994,6.36,6.384,6.384,6.36,6.3759500000000005,6.392,6.384,6.343999999999999,6.3679499999999996,6.352]
+          ],
+          "kernel_blocks": [
+            [5.5520000000000005,5.53595,5.536,6.384,6.336,6.343999999999999,5.544,5.5600000000000005,5.544,5.5600000000000005,6.352,6.4079999999999995,6.3759999999999994,6.368,6.36,6.288,5.5520000000000005,5.5280000000000005,6.392,6.3759999999999994,6.384,6.343999999999999,6.368,6.36,6.368],
+            [6.36,5.5600000000000005,5.544,5.576,5.512,5.5280000000000005,5.5280000000000005,5.543950000000001,6.343999999999999,6.352,6.343999999999999,6.36,6.36,6.384,6.3759999999999994,6.36,6.384,6.384,6.36,6.3759500000000005,6.392,6.384,6.343999999999999,6.3679499999999996,6.352]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "bb03de9107715d4f56aa4751c8e94dc8c93a8851b7e1923f632b74ddd228a787",
+            "1": "85a74e4269e7d74001019371e0928db8ecd02ca1b53256ac6cc553184e202e84",
+            "2": "46ee4de1110d04f4244b298ef548d8b85cee8420defc51fffe29108c3d55ee00"
+          },
+          "device_blocks": [
+            [8.328,8.272,8.296,8.296,9.815949999999999,8.296,8.264,8.256,8.24795,8.304,8.288,8.256,8.352,8.304,9.27995,8.304,8.264,8.312000000000001,8.304,8.256,8.32,8.296,8.288,8.304,9.76],
+            [8.264,8.288,8.312000000000001,8.296,8.296,9.808,8.296,8.28,8.288,8.344,8.296,8.264,8.264,8.256,8.288,9.544,8.36,8.264,8.32,8.32,8.24,8.312000000000001,8.248000000000001,8.272,8.38395]
+          ],
+          "kernel_blocks": [
+            [8.328,8.272,8.296,8.296,9.815949999999999,8.296,8.264,8.256,8.24795,8.304,8.288,8.256,8.352,8.304,9.27995,8.304,8.264,8.312000000000001,8.304,8.256,8.32,8.296,8.288,8.304,9.76],
+            [8.264,8.288,8.312000000000001,8.296,8.296,9.808,8.296,8.28,8.288,8.344,8.296,8.264,8.264,8.256,8.288,9.544,8.36,8.264,8.32,8.32,8.24,8.312000000000001,8.248000000000001,8.272,8.38395]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        }
+      }
+    },
+    {
+      "id": "flash-expanded_large",
+      "experiment_id": null,
+      "base": "9a9aecb53103cc83dda27bc7458fc3bfd07f3188",
+      "head": "efd32566fb2fd258f23d6dea469d39088a929381",
+      "primary_metric": "kernel_sum",
+      "calls_per_roi": 20,
+      "input_match": true,
+      "old_correct": true,
+      "new_correct": true,
+      "das_correct": true,
+      "old_stable": true,
+      "new_stable": true,
+      "das_stable": true,
+      "fg_pair_qualified": true,
+      "fg_das_qualified": true,
+      "old_over_new": 1.7256161538897226,
+      "das_over_new": 0.9372818176771072,
+      "improvement_percent": 72.56161538897226,
+      "latency_reduction_percent": 42.049684818614296,
+      "target90": true,
+      "new_correctness_regression": false,
+      "source_witness": {
+        "old": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 1
+        },
+        "new": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:416:small_state_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:126:launch_short_state_kernel": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:131:<listcomp>": 1
+        },
+        "das": {},
+        "old_repeat": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:23:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention.py:1144:flash_attention_forward": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:589:mha_fwd": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:39:CHECK_DEVICE": 4,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:660:<lambda>": 3,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:111:__init__": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:758:dispatch": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:233:block_m_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:237:block_n_splitkv_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:670:splits_heuristic": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:241:args": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:242:<genexpr>": 58,
+          "src/flag_gems/utils/libentry.py:1677:run": 1,
+          "src/flag_gems/utils/libentry.py:1632:_first_run": 1,
+          "src/flag_gems/utils/libentry.py:1649:_first_run_once": 1,
+          "src/flag_gems/utils/libentry.py:1666:<genexpr>": 65,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:298:flash_fwd_kernel_heur_block_k": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:311:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:312:<lambda>": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_kernel.py:241:is_even_mn": 2,
+          "src/flag_gems/runtime/backend/_hygon/ops/flash_api.py:829:<lambda>": 1
+        },
+        "aa": {
+          "src/flag_gems/runtime/backend/_hygon/ops/_scaled_dot_product_flash_attention.py:27:_scaled_dot_product_flash_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/ops/attention_state.py:416:small_state_attention": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:126:launch_short_state_kernel": 1,
+          "src/flag_gems/runtime/backend/_hygon/attention_state_hip.py:131:<listcomp>": 1
+        },
+        "das_repeat": {}
+      },
+      "arms": {
+        "old": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "f4a8c88aad6f1668b30d4706270269d05f7df656f476c18d600dda3991bff57a",
+            "1": "fecd10205f10da818d2e368df885a1d9393bef948632b57eb874ee1aa45b71fd",
+            "2": "71239635df508fe3473da551b9e1b7e6cf018ace5afa2f93b2243d7b00139be3"
+          },
+          "device_blocks": [
+            [76.352,76.2159,76.18395000000001,76.19194999999999,76.112,76.464,76.2559,77.24,76.904,77.03999999999999,77.06395,76.9279,76.90395,77.0,76.98400000000001,76.824,77.176,76.92,77.09595,76.9999,76.088,76.2079,76.0639,76.12795,75.848],
+            [76.22395,76.71995,76.95995,76.80795,76.87195,76.99199999999999,76.91995,77.096,77.02395,76.8639,77.15195,77.144,76.9999,76.87995,77.2639,76.67195000000001,77.08795,77.048,77.23195,76.9759,77.224,77.088,76.92795,76.98395000000001,77.05595]
+          ],
+          "kernel_blocks": [
+            [76.352,76.2159,76.18395000000001,76.19194999999999,76.112,76.464,76.2559,77.24,76.904,77.03999999999999,77.06395,76.9279,76.90395,77.0,76.98400000000001,76.824,77.176,76.92,77.09595,76.9999,76.088,76.2079,76.0639,76.12795,75.848],
+            [76.22395,76.71995,76.95995,76.80795,76.87195,76.99199999999999,76.91995,77.096,77.02395,76.8639,77.15195,77.144,76.9999,76.87995,77.2639,76.67195000000001,77.08795,77.048,77.23195,76.9759,77.224,77.088,76.92795,76.98395000000001,77.05595]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "new": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "f4a8c88aad6f1668b30d4706270269d05f7df656f476c18d600dda3991bff57a",
+            "1": "fecd10205f10da818d2e368df885a1d9393bef948632b57eb874ee1aa45b71fd",
+            "2": "71239635df508fe3473da551b9e1b7e6cf018ace5afa2f93b2243d7b00139be3"
+          },
+          "device_blocks": [
+            [43.72,43.760000000000005,44.608,44.63995,44.68795,44.64,44.688,44.71995,44.655950000000004,44.608,44.632,44.624,44.624,44.71995,44.6399,44.647949999999994,44.536,44.616,44.592,44.424,43.70395,43.775999999999996,43.768,43.736000000000004,43.74395],
+            [43.712,43.727999999999994,43.72795,44.56,44.696,44.672000000000004,44.216,43.81595,43.744,43.704,43.704,43.704,44.59995,44.56795,44.552,44.55995,44.632,44.632,43.68,43.712,43.751999999999995,44.616,44.63195,44.6959,44.6319]
+          ],
+          "kernel_blocks": [
+            [43.72,43.760000000000005,44.608,44.63995,44.68795,44.64,44.688,44.71995,44.655950000000004,44.608,44.632,44.624,44.624,44.71995,44.6399,44.647949999999994,44.536,44.616,44.592,44.424,43.70395,43.775999999999996,43.768,43.736000000000004,43.74395],
+            [43.712,43.727999999999994,43.72795,44.56,44.696,44.672000000000004,44.216,43.81595,43.744,43.704,43.704,43.704,44.59995,44.56795,44.552,44.55995,44.632,44.632,43.68,43.712,43.751999999999995,44.616,44.63195,44.6959,44.6319]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "f4a8c88aad6f1668b30d4706270269d05f7df656f476c18d600dda3991bff57a",
+            "1": "fecd10205f10da818d2e368df885a1d9393bef948632b57eb874ee1aa45b71fd",
+            "2": "71239635df508fe3473da551b9e1b7e6cf018ace5afa2f93b2243d7b00139be3"
+          },
+          "device_blocks": [
+            [41.751999999999995,43.296,41.759949999999996,41.78395,41.704,41.759949999999996,41.72,41.824,41.8,41.78395,43.232,43.26395,41.824,41.839999999999996,41.704,41.79995,41.775999999999996,41.87195,41.75195,41.727999999999994,43.03195,41.808,41.760000000000005,41.695949999999996,41.727999999999994],
+            [43.17595,41.888,41.82395,41.79195,41.751999999999995,41.79195,43.28,41.727999999999994,41.71995,41.82395,41.760000000000005,41.816,41.71995,41.832,41.71195,43.23195,41.784,41.816,41.792,41.78395,41.77595,41.77595,41.8,41.736000000000004,41.784]
+          ],
+          "kernel_blocks": [
+            [41.751999999999995,43.296,41.759949999999996,41.78395,41.704,41.759949999999996,41.72,41.824,41.8,41.78395,43.232,43.26395,41.824,41.839999999999996,41.704,41.79995,41.775999999999996,41.87195,41.75195,41.727999999999994,43.03195,41.808,41.760000000000005,41.695949999999996,41.727999999999994],
+            [43.17595,41.888,41.82395,41.79195,41.751999999999995,41.79195,43.28,41.727999999999994,41.71995,41.82395,41.760000000000005,41.816,41.71995,41.832,41.71195,43.23195,41.784,41.816,41.792,41.78395,41.77595,41.77595,41.8,41.736000000000004,41.784]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "old_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "f4a8c88aad6f1668b30d4706270269d05f7df656f476c18d600dda3991bff57a",
+            "1": "fecd10205f10da818d2e368df885a1d9393bef948632b57eb874ee1aa45b71fd",
+            "2": "71239635df508fe3473da551b9e1b7e6cf018ace5afa2f93b2243d7b00139be3"
+          },
+          "device_blocks": [
+            [76.264,76.07995,76.216,76.23995,76.84795,77.304,77.07995,76.88795,77.13595000000001,76.89595,77.1519,76.89595,77.08,77.03999999999999,77.0479,76.728,77.224,77.136,76.93595,77.31994999999999,75.976,76.31989999999999,76.79195,77.07995,77.03200000000001],
+            [76.15195,76.10395,76.02395,76.27195,76.28795,76.24795,76.6959,76.6319,76.24795,75.96795,76.12795,76.23195,76.94395,76.99995,77.04795,76.91995,76.29595,76.23995,77.05595,77.12,76.312,75.952,76.11994999999999,76.3759,77.10395]
+          ],
+          "kernel_blocks": [
+            [76.264,76.07995,76.216,76.23995,76.84795,77.304,77.07995,76.88795,77.13595000000001,76.89595,77.1519,76.89595,77.08,77.03999999999999,77.0479,76.728,77.224,77.136,76.93595,77.31994999999999,75.976,76.31989999999999,76.79195,77.07995,77.03200000000001],
+            [76.15195,76.10395,76.02395,76.27195,76.28795,76.24795,76.6959,76.6319,76.24795,75.96795,76.12795,76.23195,76.94395,76.99995,77.04795,76.91995,76.29595,76.23995,77.05595,77.12,76.312,75.952,76.11994999999999,76.3759,77.10395]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "aa": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "f4a8c88aad6f1668b30d4706270269d05f7df656f476c18d600dda3991bff57a",
+            "1": "fecd10205f10da818d2e368df885a1d9393bef948632b57eb874ee1aa45b71fd",
+            "2": "71239635df508fe3473da551b9e1b7e6cf018ace5afa2f93b2243d7b00139be3"
+          },
+          "device_blocks": [
+            [44.46395,43.71995,43.75195,43.70395,43.688,43.71995,44.183949999999996,43.71195,43.751999999999995,43.696,43.688,43.736000000000004,43.71195,43.68,43.696,44.143950000000004,43.695949999999996,43.73595,43.71995,43.736000000000004,43.688,43.751999999999995,43.727999999999994,43.71195,43.672000000000004],
+            [43.72795,43.74395,43.7599,43.751999999999995,43.6719,44.191950000000006,43.70395,43.73595,43.695949999999996,43.73595,43.71995,43.736000000000004,43.727999999999994,43.72,44.19995,43.736000000000004,43.74395,43.75195,43.76795,43.727999999999994,43.76795,43.688,43.712,43.71995,44.368]
+          ],
+          "kernel_blocks": [
+            [44.46395,43.71995,43.75195,43.70395,43.688,43.71995,44.183949999999996,43.71195,43.751999999999995,43.696,43.688,43.736000000000004,43.71195,43.68,43.696,44.143950000000004,43.695949999999996,43.73595,43.71995,43.736000000000004,43.688,43.751999999999995,43.727999999999994,43.71195,43.672000000000004],
+            [43.72795,43.74395,43.7599,43.751999999999995,43.6719,44.191950000000006,43.70395,43.73595,43.695949999999996,43.73595,43.71995,43.736000000000004,43.727999999999994,43.72,44.19995,43.736000000000004,43.74395,43.75195,43.76795,43.727999999999994,43.76795,43.688,43.712,43.71995,44.368]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        },
+        "das_repeat": {
+          "timing_valid": true,
+          "correct": true,
+          "correctness_details": [
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            },
+            {
+              "correct": true,
+              "error": null,
+              "failures": [],
+              "semantic_failures": []
+            }
+          ],
+          "input_backing_hashes": {
+            "0": "f4a8c88aad6f1668b30d4706270269d05f7df656f476c18d600dda3991bff57a",
+            "1": "fecd10205f10da818d2e368df885a1d9393bef948632b57eb874ee1aa45b71fd",
+            "2": "71239635df508fe3473da551b9e1b7e6cf018ace5afa2f93b2243d7b00139be3"
+          },
+          "device_blocks": [
+            [41.751999999999995,41.81595,41.8,41.79995,41.712,41.83195,43.208,41.8,41.81595,41.79195,41.727999999999994,41.688,41.712,41.759949999999996,41.712,41.88,42.976,41.736000000000004,41.775999999999996,41.74395,41.751999999999995,41.768,41.784,41.75195,41.792],
+            [43.12,41.8,41.80795,41.872,41.695949999999996,41.832,41.71995,41.808,43.112,41.744,41.73595,41.736000000000004,41.79995,41.74395,41.759949999999996,41.77595,41.784,43.191950000000006,43.192,41.760000000000005,41.72795,41.768,41.751999999999995,41.744,41.824]
+          ],
+          "kernel_blocks": [
+            [41.751999999999995,41.81595,41.8,41.79995,41.712,41.83195,43.208,41.8,41.81595,41.79195,41.727999999999994,41.688,41.712,41.759949999999996,41.712,41.88,42.976,41.736000000000004,41.775999999999996,41.74395,41.751999999999995,41.768,41.784,41.75195,41.792],
+            [43.12,41.8,41.80795,41.872,41.695949999999996,41.832,41.71995,41.808,43.112,41.744,41.73595,41.736000000000004,41.79995,41.74395,41.759949999999996,41.77595,41.784,43.191950000000006,43.192,41.760000000000005,41.72795,41.768,41.751999999999995,41.744,41.824]
+          ],
+          "copy_blocks": [
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+            [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+          ],
+          "schema_witness": {
+            "aten::empty_like(Tensor self, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 1,
+            "aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor": 3,
+            "aten::transpose.int(Tensor(a) self, int dim0, int dim1) -> Tensor(a)": 1
+          },
+          "trace_provenance": {
+            "joined_sha256": null,
+            "event_count": null,
+            "segments": []
+          }
+        }
+      }
+    }
+  ]
+}
