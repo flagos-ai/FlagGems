@@ -185,11 +185,27 @@ def _wn_row1d_kernel(output, norm, v, g, N: tl.constexpr, eps):
 # For N > 8192 a triton per-row reduction is not viable (see _wn_first_forward):
 # we fall back to torch primitives, which use tuned vendor reduction/elementwise
 # kernels and are ~25x faster than any launch-bound triton chunked reduction.
+#
+# Cases with N <= 8192 but a large element count use the same fallback: on
+# (4096, 256) dim=0 the tiled kernel reaches 0.54x / 0.32x (bf16/fp32) while
+# the torch path reaches 1.46x / 1.46x. The threshold is 2^18 elements: small
+# shapes (64x64, 4x256x3) are still faster with the tiled kernel (1.69x vs
+# 0.99x), large shapes are the other way round.
+_WN_TORCH_MIN_ELEMS = 1 << 18
+
+
 def _wn_first_forward(output, norm, v, g, M, N):
     eps = torch.finfo(torch.float32).tiny
     with torch_device_fn.device(v.device):
-        if N <= _WN_TILE:
+        if N <= _WN_TILE and M * N < _WN_TORCH_MIN_ELEMS:
             TILE_M = _wn_fwd_tile_m(M, N)
+            # TritonXPU compiler limitation: with TILE_M == 4
+            # `_wn_multirow_kernel` fails inside ConvertTritonXPUToLLVM
+            # (PassManager::run failed), while TILE_M in {1, 2, 8} compiles.
+            # TILE_M == 4 is only a heuristic result, not a hard constraint,
+            # so bump it to 8 and let NEED_MASK cover the remaining rows.
+            if TILE_M == 4:
+                TILE_M = 8
             need_mask = (M % TILE_M) != 0
             grid = (triton.cdiv(M, TILE_M),)
             _wn_multirow_kernel[grid](
@@ -217,6 +233,53 @@ def _wn_first_forward(output, norm, v, g, M, N):
             gg = g.reshape(-1)[:M].to(torch.float32)  # first M elems == tl.load(g+row)
             norm.reshape(-1)[:M].copy_(nrm)
             output.view(M, N).copy_((vf * (gg / nrm)[:, None]).to(v.dtype))
+
+
+# dim=last is served by torch primitives.
+#
+# Semantics first, because this operator is easy to get backwards: ATen
+# `_weight_norm(v, g, dim)` is **norm_except_dim**, i.e. it reduces along every
+# dimension except `dim`. For dim=last the reduction is therefore **across
+# rows**: one norm per column, with `g` broadcast over columns.
+#
+# Performance background: the heuristic `weight_norm_kernel_last_block_row`
+# used by the legacy `weight_norm_kernel_last` returns 1 on its first line
+# (the rest is unreachable), so `for base in range(0, M, 1)` ran M times:
+# 6.4-7.1 ms versus 0.051-0.072 ms for torch on (4096, 256), i.e. 0.008-0.011x.
+# Raising BLOCK_ROW_SIZE to remove that loop is not viable because 2D tile
+# reductions are unreliable on this backend:
+#   1) [BC, BR] column-major with `tl.sum(axis=1)`: some (BC, BR) pairs are
+#      off by 1e4-1e9 (silently wrong).
+#   2) [BR, BC] row-major with `tl.sum(axis=0)`: most pairs raise
+#      `OutOfResources: uni_sram`, and the ones that compile are still off by
+#      about 4e3.
+#   3) The only stable form, BC=1 ([1, BR]), degenerates into one launch per
+#      column and stays at 0.01-0.05x.
+# So the vendor-tuned `sum` reduction is used instead (same approach as the
+# N > 8192 branch above):
+#   norm[c] = sqrt(sum_m v[m,c]^2 + eps);  out[m,c] = v[m,c] * g[c] / norm[c]
+# Measured (bf16/fp32): (64,64) 0.079->1.19 / 0.137->1.15;
+# (4096,256) 0.011->1.40 / 0.008->1.37; (4,256,3) 0.023->0.87 / 0.015->0.76,
+# all within tolerance.
+def _wn_last_forward(output, norm, v, g, M, N):
+    eps = torch.finfo(torch.float32).tiny
+    with torch_device_fn.device(v.device):
+        v2 = v.view(M, N)
+        vf = v2.float()
+        ss = vf.pow(2).sum(0)  # [N] row-wise reduction == norm_except_dim(dim=last)
+        nrm = torch.sqrt(ss + eps)  # [N]
+        gg = g.reshape(-1)[:N].to(torch.float32)  # first N elems == tl.load(g+col)
+        norm.reshape(-1)[:N].copy_(nrm)
+        # Cast the per-column scale to the output dtype first and multiply in
+        # place: one fewer full-size kernel than fp32 multiply + cast + copy_
+        # (each pass costs about 3us and small shapes dominate this operator).
+        # This runs before the no_grad context of WeightNorm.apply, so `out=`
+        # is legal; bypassing apply would raise "functions with out=... don't
+        # support automatic differentiation".
+        scale = (gg / nrm).to(v.dtype)
+        torch.mul(v2, scale[None, :], out=output.view(M, N))
+
+
 
 
 def heur_block_m_weight_norm_bwd_kernel_last(args):
@@ -660,11 +723,11 @@ def weight_norm_interface(v, g, dim=0):
     elif dim == v.ndim - 1:
         M = math.prod(v.shape[:-1])
         N = v.shape[dim]
-        grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-        with torch_device_fn.device(v.device):
-            weight_norm_kernel_last[grid](
-                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-            )
+        # The legacy `weight_norm_kernel_last` pins BLOCK_ROW_SIZE to 1, so its
+        # loop runs M times (0.008-0.011x on (4096, 256)), and its 2D reduction
+        # is silently wrong on this backend (see `_wn_last_forward`). All
+        # dim=last cases therefore go through the torch primitives.
+        _wn_last_forward(output, norm, v, g, M, N)
     return output, norm
 
 
