@@ -5415,6 +5415,24 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: digamma_backward
+  description: |
+    Backward pass for `digamma`: the input gradient is the elementwise product of
+    the upstream gradient with polygamma(1, x) (the trigamma function).
+    polygamma(1) is computed in float32 opmath for fp16/bf16 and materialised in
+    the input dtype before the multiply, matching ATen's DigammaBackward0.
+    Exposed as an explicit Triton entry point through a
+    `torch.autograd.Function` bridge because this Torch build has no standalone
+    `aten::digamma_backward` schema.
+  for:
+  - digamma_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6'
 - id: dim
   description: 'Returns the number of dimensions (rank) of a tensor: a pure metadata
     query independent of layout, dtype and stored data.
