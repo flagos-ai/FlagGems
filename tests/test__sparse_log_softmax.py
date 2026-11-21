@@ -646,3 +646,111 @@ def test_sparse_log_softmax_dispatch():
     assert torch.equal(res_int._indices().cpu(), ref._indices().cpu())
     assert res_out is o
     assert torch.equal(res_out._values().cpu(), ref._values().cpu())
+
+
+# grad_output supports that differ from the output support: native autograd
+# joins the upstream gradient to the output's coalesced support, so an output
+# coordinate the upstream gradient does not mention takes G = 0 and an upstream
+# coordinate that is absent from the output contributes to no output row.  The
+# rows cover both the sparse pooling branch (dim < sparse_dim) and the dense
+# block branch (dim >= sparse_dim), plus an empty upstream gradient, on a
+# fixture small enough for every case to stay a quick-mode member.
+SUPPORT_DIFF_ROWS = tu.selected_cases(
+    [
+        ((20, 320, 15), 2, 0),
+        ((20, 320, 15), 2, 2),
+        ((16, 128, 64, 60), 3, 1),
+    ],
+    quick=[((20, 320, 15), 2, 0)],
+)
+
+_SUPPORT_SCENARIOS = ("subset", "superset", "matched", "empty")
+
+
+def _grad_for(out, scenario):
+    """Upstream sparse gradient on a support derived from ``out``'s support.
+
+    subset   drops the last stored coordinate, so one output row has no
+             upstream gradient and must come back with a zero row,
+    superset appends a coordinate the output does not store, which native
+             drops from the gradient entirely,
+    matched  is out's own support with fresh values,
+    empty    has no stored coordinate at all.
+    """
+    idx = out._indices()
+    nnz = out._nnz()
+    values = torch.arange(
+        1, out.values().numel() + 1, dtype=out.dtype, device=out.device
+    ).reshape(out.values().shape)
+    if scenario == "matched":
+        return torch.sparse_coo_tensor(
+            idx,
+            values,
+            out.shape,
+            device=out.device,
+            dtype=out.dtype,
+            is_coalesced=True,
+        )
+    if scenario == "empty":
+        empty_values = values[:0]
+        return torch.sparse_coo_tensor(
+            idx[:, :0],
+            empty_values,
+            out.shape,
+            device=out.device,
+            dtype=out.dtype,
+            is_coalesced=True,
+        )
+    if scenario == "subset":
+        keep = max(nnz - 1, 0)
+        return torch.sparse_coo_tensor(
+            idx[:, :keep],
+            values[:keep],
+            out.shape,
+            device=out.device,
+            dtype=out.dtype,
+            is_coalesced=True,
+        )
+    shape = out.shape
+    sparse_dim = out.sparse_dim()
+    sizes = [int(s) for s in shape[:sparse_dim]]
+    extra = torch.zeros(sparse_dim, 1, dtype=torch.long, device=out.device)
+    for axis in range(sparse_dim):
+        extra[axis, 0] = (int(idx[axis, -1]) + 1) % sizes[axis] if sizes[axis] else 0
+    return torch.sparse_coo_tensor(
+        torch.cat([idx, extra], dim=1),
+        torch.cat([values, values[-1:]]),
+        out.shape,
+        device=out.device,
+        dtype=out.dtype,
+        is_coalesced=True,
+    )
+
+
+@pytest.mark.sparse_log_softmax
+@pytest.mark.sparse_log_softmax_backward
+@pytest.mark.parametrize("shape,sparse_dim,dim", SUPPORT_DIFF_ROWS)
+@pytest.mark.parametrize("scenario", _SUPPORT_SCENARIOS)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test__sparse_log_softmax_backward_support_diff(
+    shape, sparse_dim, dim, scenario, dtype
+):
+    inp = _sparse_input(shape, sparse_dim, dtype, dim=dim, requires_grad=True)
+    ref_inp = tu.to_reference(inp)
+
+    ref_out = torch.ops.aten._sparse_log_softmax.default(ref_inp, dim, False)
+    res_out = flag_gems._sparse_log_softmax(inp, dim, half_to_float=False)
+    tu.assert_result_close(res_out, ref_out)
+
+    res_grad = torch.autograd.grad(
+        res_out, inp, grad_outputs=_grad_for(res_out, scenario)
+    )[0]
+    ref_grad = torch.autograd.grad(
+        ref_out, ref_inp, grad_outputs=_grad_for(ref_out, scenario)
+    )[0]
+
+    tu.assert_result_close(res_grad, ref_grad)
+    # The gradient support is the output support regardless of the upstream
+    # support: this is the contract the fused kernels must not break.
+    assert res_grad._nnz() == ref_grad._nnz()
+    assert res_grad.is_coalesced() == ref_grad.is_coalesced()
