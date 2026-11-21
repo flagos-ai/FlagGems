@@ -838,7 +838,7 @@ from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
-from .row_stack import row_stack  # noqa: F401
+from .row_stack import row_stack, row_stack_out  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -1901,6 +1901,7 @@ __all__ = [
     "row_indices_copy",
     "row_indices_copy_out",
     "row_stack",
+    "row_stack_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
