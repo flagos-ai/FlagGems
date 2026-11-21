@@ -116,6 +116,39 @@ def test_linear_3d_with_bias(dtype, batch1, batch2, in_features, out_features):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=in_features)
 
 
+DECODE_SIZES = [4, 5, 6, 7, 8]
+
+
+@pytest.mark.linear
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("batch_size", DECODE_SIZES)
+def test_linear_decode_sizes(batch_size, dtype):
+    """Decode-size M must stay exact, including M in 5..8 (Issue #7278).
+
+    FlagTree's AABS shrinks the dot tile to `next_power_of_2(M)`, so these M
+    values used to select an 8-row tile. On PPU a BF16 `tl.dot` with
+    `BLOCK_M=8` mis-addresses the A operand (FlagTree #1350) and `linear`
+    returned silently wrong values for exactly 5..8 while 4 and 16 were exact.
+    """
+    in_features = 512
+    out_features = 1024
+
+    input_tensor = torch.randn(
+        (batch_size, in_features), dtype=dtype, device=flag_gems.device
+    )
+    weight = torch.randn(
+        (out_features, in_features), dtype=dtype, device=flag_gems.device
+    )
+
+    ref_input = utils.to_reference(input_tensor, True)
+    ref_weight = utils.to_reference(weight, True)
+
+    ref_out = torch.nn.functional.linear(ref_input, ref_weight)
+    res_out = flag_gems.linear(input_tensor, weight)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=in_features)
+
+
 FWD_1D_SHAPES = [
     (128, 64),
     (16, 16),
