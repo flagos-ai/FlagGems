@@ -73,3 +73,17 @@ def test_nested_from_padded_tensor():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.nested_from_padded_tensor_backward
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_nested_from_padded_tensor_backward(dtype):
+    """Time the autograd backward of the un-padding operator per dtype."""
+    bench = NestedFromPaddedTensorBenchmark(
+        op_name="nested_from_padded_tensor",
+        torch_op=_native_op,
+        gems_op=_gems_op,
+        dtypes=[dtype],
+        is_backward=True,
+    )
+    bench.run()

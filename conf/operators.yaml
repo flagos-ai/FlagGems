@@ -15355,6 +15355,25 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_from_padded_tensor_backward
+  description: 'Triton kernel implementation for the backward of
+    `_nested_from_padded_tensor`, exercised through the autograd of the forward
+
+    operator. Scatters the flat `values` gradient back into a padded dense
+
+    gradient, filling rows beyond each component length with zeros.
+
+    '
+  for:
+  - _nested_from_padded_tensor
+  labels:
+  - aten
+  - NoCPU
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.4'
 - id: nested_select_backward
   description: 'Triton kernel implementation for the backward of nested tensor `select`
 
