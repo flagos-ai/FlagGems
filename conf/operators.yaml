@@ -21868,6 +21868,18 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: standard_gamma_backward
+  description: The backward computation of `_standard_gamma()`, exercised through
+    the autograd of the stochastic forward operator.
+  for:
+  - _standard_gamma
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: standard_gamma_grad
   description: Triton kernel implementation for _standard_gamma_grad.
   for:

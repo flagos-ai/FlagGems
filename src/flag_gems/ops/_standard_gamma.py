@@ -19,15 +19,20 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops._standard_gamma_grad import _digamma_one, _standard_gamma_grad_one
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
 )
 from flag_gems.utils.shape_utils import volume
+from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+_pow = tl_extra_shim.pow
 
 # Each lane draws up to MAX_ITERS Marsaglia-Tsang proposals; every proposal
 # consumes one philox call (4 uint32 -> 4 uniforms) and one extra call is
@@ -122,6 +127,11 @@ def standard_gamma_kernel(
 
 def standard_gamma(input, generator=None):
     logger.debug("GEMS _STANDARD_GAMMA")
+    # Differentiable path: attach the fused Triton backward.  ``Function.forward``
+    # runs with grad disabled, so the call below re-enters this function and
+    # takes the plain sampling branch.
+    if torch.is_grad_enabled() and input.requires_grad:
+        return _StandardGammaFunction.apply(input, generator)
 
     # ATen's gamma_cuda is only implemented for floating-point tensors and
     # raises a RuntimeError for integral/bool inputs. Reject them explicitly
@@ -166,3 +176,221 @@ def standard_gamma(input, generator=None):
         )
 
     return output
+
+
+# ---------------------------------------------------------------------------
+# Autograd backward
+#
+# ATen's ``StandardGammaBackward0`` is
+#
+#     grad_alpha = grad_output * aten::_standard_gamma_grad(alpha, sample)
+#
+# and the native autograd runs it as the ``_standard_gamma_grad`` kernel plus a
+# separate elementwise multiply, which materializes the intermediate gamma
+# gradient.  ``_standard_gamma_grad_one`` above already holds ATen's exact
+# reparameterized derivative, so the backward below fuses the multiply into that
+# kernel: one launch, no intermediate tensor.
+#
+# ATen's control flow is ``x < 0.8 ? taylor : (alpha > 8 ? rice : rational)``.
+# The Rice tile is therefore unreachable for a tile in which no lane has
+# ``alpha > 8``, which is the common case for the concentration ranges the
+# operator is exercised with.  Skipping it is a pure work removal -- the tile's
+# result is discarded by the same ``tl.where`` either way -- and it accounts for
+# most of the measured gain on the large default shapes.  Every other
+# expression is kept verbatim, including ``pow(x, alpha)``: cancelling it
+# algebraically would change the ``0/0 -> 0`` result ATen produces for tiny
+# samples with large alpha.
+#
+# Only ``alpha`` is differentiable; the forward's ``Generator`` argument
+# carries no gradient.  The op is first-order only, matching ATen, whose
+# ``_standard_gamma_grad`` has no derivative.
+BACKWARD_BLOCK_SIZE = 128
+BACKWARD_NUM_WARPS = 4
+
+
+@triton.jit
+def _standard_gamma_backward_taylor(alpha, x):
+    """ATen's Taylor-series tile for small samples (``x < 0.8``), verbatim."""
+    one = tl.full(alpha.shape, 1.0, alpha.dtype)
+    numer = one
+    denom = alpha
+    series1 = numer / denom
+    series2 = numer / (denom * denom)
+    for i in range(1, 6):
+        numer = numer * (-x / i)
+        denom = denom + 1.0
+        series1 = series1 + numer / denom
+        series2 = series2 + numer / (denom * denom)
+    pow_x_alpha = _pow(x, alpha)
+    gamma_pdf = _pow(x, alpha - one) * tl.exp(-x)
+    gamma_cdf = pow_x_alpha * series1
+    gamma_cdf_alpha = (
+        tl.log(x) - _digamma_one(alpha)
+    ) * gamma_cdf - pow_x_alpha * series2
+    small = -gamma_cdf_alpha / gamma_pdf
+    return tl.where(small != small, 0.0, small)
+
+
+@triton.jit
+def _standard_gamma_backward_rational(alpha, x):
+    """ATen's bivariate rational tile (the default regime), verbatim."""
+    u = tl.log(x / alpha)
+    v = tl.log(alpha)
+    cv0 = 0.16009398 + u * (0.53487893 + u * 0.040121004)
+    cv1 = -0.094634809 + u * (0.1298071 + u * (-0.0065914022))
+    cv2 = 0.025146376 + u * (0.065735949 + u * (-0.0026286047))
+    cv3 = -0.0030648343 + u * (-0.0015649758 + u * (-0.0013441777))
+    cv4 = 1.0 + u * (0.16639465 + u * 0.017050642)
+    cv5 = 0.32668115 + u * (0.020070113 + u * (-0.0021309326))
+    cv6 = 0.10406089 + u * (-0.0035938915 + u * 0.00085092367)
+    cv7 = 0.0014179084 + u * (-0.00058392623 + u * (-1.5247877e-07))
+    p = cv0 + v * (cv1 + v * (cv2 + v * cv3))
+    q = cv4 + v * (cv5 + v * (cv6 + v * cv7))
+    return tl.exp(p / q)
+
+
+@triton.jit
+def _standard_gamma_backward_rice(alpha, x):
+    """ATen's Rice saddle-point tile for large alpha (``alpha > 8``), verbatim."""
+    numer_1 = 1.0 + 24.0 * alpha * (1.0 + 12.0 * alpha)
+    numer_2 = (
+        1440.0 * (alpha * alpha)
+        + 6.0 * x * (53.0 - 120.0 * x)
+        - 65.0 * x * x / alpha
+        + alpha * (107.0 + 3600.0 * x)
+    )
+    denom_a = 1244160.0 * (alpha * alpha) * (alpha * alpha)
+    near_mode = numer_1 * numer_2 / denom_a
+    denom_b = tl.sqrt(8.0 * alpha)
+    term2 = denom_b / (alpha - x)
+    term3 = _pow(
+        x - alpha - alpha * tl.log(x / alpha),
+        tl.full(alpha.shape, -1.5, alpha.dtype),
+    )
+    term23 = tl.where(x < alpha, term2 - term3, term2 + term3)
+    term1 = tl.log(x / alpha) * term23 - tl.sqrt(2.0 / alpha) * (alpha + x) / (
+        (alpha - x) * (alpha - x)
+    )
+    stirling = 1.0 + 1.0 / (12.0 * alpha) * (1.0 + 1.0 / (24.0 * alpha))
+    away = -stirling * (x * term1) / denom_b
+    is_near = (0.9 * alpha <= x) & (x <= 1.1 * alpha)
+    return tl.where(is_near, near_mode, away)
+
+
+@triton.jit
+def _standard_gamma_backward_value(alpha, x):
+    """Select ATen's tile per lane, skipping tiles no lane in the tile selects."""
+    value = _standard_gamma_backward_rational(alpha, x)
+    if tl.max((x < 0.8).to(tl.int32)) > 0:
+        value = tl.where(x < 0.8, _standard_gamma_backward_taylor(alpha, x), value)
+    # ATen tests ``x < 0.8`` first, so Rice only reaches lanes with x >= 0.8.
+    large = (x >= 0.8) & (alpha > 8.0)
+    if tl.max(large.to(tl.int32)) > 0:
+        value = tl.where(large, _standard_gamma_backward_rice(alpha, x), value)
+    return value
+
+
+@libentry()
+@triton.jit
+def _standard_gamma_backward_kernel(
+    grad_output_ptr,
+    alpha_ptr,
+    output_ptr,
+    grad_input_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    LARGE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if LARGE:
+        pid = pid.to(tl.int64)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    grad_output = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0)
+    alpha = tl.load(alpha_ptr + offsets, mask=mask, other=1.0)
+    output = tl.load(output_ptr + offsets, mask=mask, other=1.0)
+    # As in ``_standard_gamma_grad``, evaluate the derivative in the compute
+    # dtype (fp32 unless the input is fp64).  Fusing the multiply lets the
+    # product round to the input dtype only once; rounding the gamma gradient
+    # first and multiplying in the low-precision dtype (what two separate ATen
+    # kernels do) adds a second rounding that pushes ~1e-5 of fp16 lanes outside
+    # the repository tolerance.
+    if alpha.dtype.is_fp64():
+        grad_value = (
+            _standard_gamma_grad_one(alpha, output.to(tl.float64)) * grad_output
+        )
+    else:
+        grad_value = _standard_gamma_backward_value(
+            alpha.to(tl.float32), output.to(tl.float32)
+        ) * grad_output.to(tl.float32)
+    tl.store(grad_input_ptr + offsets, grad_value.to(alpha.dtype), mask=mask)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True], promotion_methods=[(0, 1, 2, "DEFAULT")]
+)
+@triton.jit
+def _standard_gamma_backward_strided(grad_output, alpha, output):
+    # Strided/broadcast fallback for non-contiguous saved tensors and expanded
+    # upstream gradients; the math mirrors the fused kernel.
+    if alpha.dtype.is_fp64():
+        grad_value = (
+            _standard_gamma_grad_one(alpha, output.to(tl.float64)) * grad_output
+        )
+    else:
+        grad_value = _standard_gamma_backward_value(
+            alpha.to(tl.float32), output.to(tl.float32)
+        ) * grad_output.to(tl.float32)
+    return grad_value.to(alpha.dtype)
+
+
+def _standard_gamma_backward(grad_output, alpha, output):
+    """Return d(loss)/d(alpha) for a sample drawn by ``_standard_gamma``."""
+    if not (
+        grad_output.is_contiguous()
+        and alpha.is_contiguous()
+        and output.is_contiguous()
+        and grad_output.shape == alpha.shape
+        and output.shape == alpha.shape
+    ):
+        return _standard_gamma_backward_strided(grad_output, alpha, output).to(
+            alpha.dtype
+        )
+    grad_input = torch.empty_like(alpha)
+    n_elements = alpha.numel()
+    if n_elements:
+        with torch_device_fn.device(alpha.device):
+            _standard_gamma_backward_kernel[
+                (triton.cdiv(n_elements, BACKWARD_BLOCK_SIZE),)
+            ](
+                grad_output,
+                alpha,
+                output,
+                grad_input,
+                n_elements,
+                BLOCK=BACKWARD_BLOCK_SIZE,
+                LARGE=n_elements > 2147483647,
+                num_warps=BACKWARD_NUM_WARPS,
+            )
+    return grad_input
+
+
+class _StandardGammaFunction(torch.autograd.Function):
+    """Attach the Triton backward to the stochastic forward.
+
+    ``_standard_gamma`` has no independent ATen backward schema, so the
+    differentiable path is this ``autograd.Function``.  The forward keeps the
+    existing sampling kernel and its generator semantics; the backward returns
+    the alpha gradient and ``None`` for the non-differentiable generator.
+    """
+
+    @staticmethod
+    def forward(ctx, input, generator=None):
+        output = standard_gamma(input, generator)
+        ctx.save_for_backward(input, output)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, output = ctx.saved_tensors
+        return _standard_gamma_backward(grad_output, input, output), None

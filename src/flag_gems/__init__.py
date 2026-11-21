@@ -2717,5 +2717,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "standard_gamma_backward",
     "use_gems",
 ]
