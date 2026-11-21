@@ -381,6 +381,7 @@ from .col2im import col2im
 from .col_indices_copy import col_indices_copy
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
+from .conj import conj
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
 from .contiguous import contiguous
@@ -1395,6 +1396,7 @@ __all__ = [
     "column_stack",
     "column_stack_out",
     "concatenate",
+    "conj",
     "conj_physical",
     "constant_pad_nd",
     "contiguous",

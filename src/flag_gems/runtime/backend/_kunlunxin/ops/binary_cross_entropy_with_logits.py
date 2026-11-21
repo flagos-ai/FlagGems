@@ -13,23 +13,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Kunlunxin backend-local binary_cross_entropy_with_logits.
 #
-# Perf evidence (harness/solution/performance/binary_cross_entropy_with_logits_xpu3_20260817.md):
-#  1. pointwise_dynamic 1D codegen uses a 512-lane tile: measured ~22 GB/s.
-#     A single-tile-per-CTA copy at BLOCK=16384 reaches ~1.6 TB/s (torch
-#     native copy: 1.85 TB/s).  Per-CTA dynamic `range` loops collapse to
-#     ~4 GB/s (gm2lm cannot pipeline loads across dynamic loop iterations);
-#     `tl.static_range` unrolling keeps the DMA path fast (~11 ms for the
-#     full elementwise+reduce of 2^28 fp16, vs ~840 ms with the dynamic
-#     loop).  So: static-unrolled kernels, BLOCK=16384, U=4-16.
-#  2. The elementwise formula evaluates log(1+exp(-|x|)) once per element
-#     (one exp + one log) instead of computing both branches; the other
-#     branch is recovered exactly by identity log(1+e^x) = x + log(1+e^-x).
-#     (2-exp + 2-log variant measured identical: the memory path, not the
-#     transcendental count, is the wall on this backend.)
-#  3. reduction=mean/sum no longer routes through the single-CTA mean kernel
-#     (BLOCK up to 65536, one CTA -> tens-of-ms for 1e7+ elements).  A
-#     two-stage fp32 split reduction (static-unrolled parallel partials +
-#     tiny fold) is used and the pointwise tensor is never materialized.
+# Design notes:
+#  1. Static-unrolled kernels (tl.static_range, BLOCK=16384, U=4-16): the DMA
+#     path pipelines loads across statically-unrolled iterations, whereas a
+#     per-CTA dynamic `range` loop cannot and is far slower.
+#  2. The elementwise formula evaluates log(1+exp(-|x|)) once per element (one
+#     exp + one log); the other branch is recovered exactly by the identity
+#     log(1+e^x) = x + log(1+e^-x). The memory path, not the transcendental
+#     count, is the bottleneck here.
+#  3. reduction=mean/sum uses a two-stage fp32 split reduction (static-unrolled
+#     parallel partials + a tiny fold) and never materializes the pointwise
+#     tensor, avoiding the single-CTA mean kernel.
 # ---------------------------------------------------------------------------
 
 # tl.sum safety cap on this backend is 8192 (no buffer) / 32768 (with
@@ -411,7 +405,10 @@ def binary_cross_entropy_with_logits(
     # ---- fast path: contiguous inputs ----
     if reduction == 0:
         blk, u, grid = _flat_cfg(N)
-        need_mask = _need_mask(N, blk, u)
+        # XPU miscompiles the unmasked fully-unrolled bf16 flat kernel on
+        # exact-tile shapes (f32->bf16 store gives wrong values); the masked
+        # variant is correct. Force the masked path for bf16; f16/f32 unchanged.
+        need_mask = _need_mask(N, blk, u) or self.dtype == torch.bfloat16
         out = torch.empty_like(self)
         with torch_device_fn.device(self.device):
             if has_w and has_pw:
