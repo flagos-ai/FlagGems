@@ -280,14 +280,24 @@ def isin(
     logger.debug("GEMS_ENFLAME ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
-        in0 = torch.tensor(in0, device=in1.device)
+        # ATen treats a Python scalar as a wrapped number and applies the
+        # tensor dtype. Building the tensor with the default int64 would mix
+        # int64 with int16/int32 inside the kernels, whose implicit widening
+        # fails to link on GCU300 (R_DTU_ADDR16_*_ICALL against tops_extsi_*).
+        in0 = torch.tensor(in0, device=in1.device, dtype=in1.dtype)
     elif not torch.is_tensor(in1):
         assert torch.is_tensor(in0)
-        in1 = torch.tensor(in1, device=in0.device)
+        in1 = torch.tensor(in1, device=in0.device, dtype=in0.dtype)
     # GCU300 Triton kernels cannot *store* 64-bit elements, but loading and
     # comparing them is supported. Truncating int64 inputs here silently mapped
     # values such as 2**32 onto 0 (FlagGems #8527), so keep the original dtype
     # and let the kernels compare the full 64-bit value.
+    if in0.dtype != in1.dtype:
+        # The same linker limitation forbids widening one integer operand
+        # inside the kernel, so promote on the host (PyTorch semantics).
+        common_dtype = torch.promote_types(in0.dtype, in1.dtype)
+        in0 = in0.to(common_dtype)
+        in1 = in1.to(common_dtype)
     if in0.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
     if in1.numel() == 0:
