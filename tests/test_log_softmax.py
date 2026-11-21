@@ -126,3 +126,121 @@ def test_accuracy_log_softmax_backward_out(shape, dtype, dim):
     res_in_grad = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     flag_gems.log_softmax_backward_out(res_grad, res_out, dim, dtype, out=res_in_grad)
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.log_softmax_backward
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+def test_log_softmax_backward(shape, dtype, dim):
+    if flag_gems.vendor_name == "sunrise" and shape == (200, 40999, 3):
+        pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    grad_output = torch.randn_like(inp)
+    ref_grad_output = utils.to_reference(grad_output, True)
+
+    # The forward output is the saved tensor the backward consumes.
+    output = torch._log_softmax(ref_inp, dim=dim, half_to_float=False)
+    res_output = flag_gems.log_softmax(inp, dim=dim)
+
+    ref_in_grad = torch._log_softmax_backward_data(
+        ref_grad_output, output, dim, ref_grad_output.dtype
+    )
+    res_in_grad = flag_gems.log_softmax_backward(grad_output, res_output, dim, dtype)
+    utils.gems_assert_close(res_output, output, dtype)
+    # bfloat16 has a 1/128 mantissa, so a fixed 1e-4 atol sits below one ulp of
+    # these gradients; widen it to the dtype's own resolution.
+    utils.gems_assert_close(
+        res_in_grad,
+        ref_in_grad,
+        dtype,
+        reduce_dim=shape[dim],
+        atol=max(1e-4, 2 * torch.finfo(dtype).eps),
+    )
+
+
+@pytest.mark.log_softmax_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_log_softmax_backward_autograd(dtype):
+    """FlagGems owns ``aten::_log_softmax_backward_data``, so the gradient that
+    ``torch._log_softmax`` autograd produces must match the native backward."""
+    shape, dim = (16, 33), -1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp.requires_grad_()
+    ref_inp = utils.to_reference(inp.detach(), True).requires_grad_()
+    grad_output = torch.randn_like(inp)
+
+    (in_grad,) = torch.autograd.grad(
+        torch._log_softmax(inp, dim, False), inp, grad_output
+    )
+    (ref_in_grad,) = torch.autograd.grad(
+        torch._log_softmax(ref_inp, dim, False),
+        ref_inp,
+        utils.to_reference(grad_output),
+    )
+    utils.gems_assert_close(
+        in_grad,
+        ref_in_grad,
+        dtype,
+        reduce_dim=shape[dim],
+        atol=max(1e-4, 2 * torch.finfo(dtype).eps),
+    )
+
+
+@pytest.mark.log_softmax_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_log_softmax_backward_non_last_dim(dtype):
+    # A middle reduction dimension leaves inner > 1, so the row is strided.
+    shape, dim = (7, 11, 5), 1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    grad_output = torch.randn_like(inp)
+    ref_grad_output = utils.to_reference(grad_output, True)
+
+    output = torch._log_softmax(ref_inp, dim, False)
+    res_output = flag_gems.log_softmax(inp, dim=dim)
+    res_in_grad = flag_gems.log_softmax_backward(grad_output, res_output, dim, dtype)
+    ref_in_grad = torch._log_softmax_backward_data(
+        ref_grad_output, output, dim, ref_grad_output.dtype
+    )
+    # bfloat16 has a 1/128 mantissa, so a fixed 1e-4 atol sits below one ulp of
+    # these gradients; widen it to the dtype's own resolution.
+    utils.gems_assert_close(
+        res_in_grad,
+        ref_in_grad,
+        dtype,
+        reduce_dim=shape[dim],
+        atol=max(1e-4, 2 * torch.finfo(dtype).eps),
+    )
+
+
+@pytest.mark.log_softmax_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_log_softmax_backward_expanded_grad(dtype):
+    # The incoming gradient is a broadcast view; the backward must not require it
+    # to be contiguous and must not write through it.
+    shape, dim = (6, 13), -1
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    grad_output = torch.randn((shape[0], 1), dtype=dtype, device=flag_gems.device)
+    grad_output = grad_output.expand(shape)
+    ref_grad_output = utils.to_reference(grad_output, True)
+
+    output = torch._log_softmax(ref_inp, dim, False)
+    res_output = flag_gems.log_softmax(inp, dim=dim)
+    res_in_grad = flag_gems.log_softmax_backward(grad_output, res_output, dim, dtype)
+    ref_in_grad = torch._log_softmax_backward_data(
+        ref_grad_output, output, dim, ref_grad_output.dtype
+    )
+    utils.gems_assert_close(
+        res_in_grad,
+        ref_in_grad,
+        dtype,
+        reduce_dim=shape[dim],
+        atol=max(1e-4, 2 * torch.finfo(dtype).eps),
+    )

@@ -2716,6 +2716,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "log_softmax_backward",
     "only_enable",
     "use_gems",
 ]
