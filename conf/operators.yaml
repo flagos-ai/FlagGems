@@ -15077,6 +15077,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_batch_norm_legit_no_training_backward
+  description: The backward computation of `_native_batch_norm_legit_no_training`,
+    exercised through the autograd of the forward operator. The engine derives it
+    from `native_batch_norm_backward` with train=False and empty saved statistics,
+    so the running estimates are the normalisation statistics.
+  for:
+  - _native_batch_norm_legit_no_training
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: native_batch_norm_legit_out
   description: Out variant of batch normalization with running statistics.
   for:

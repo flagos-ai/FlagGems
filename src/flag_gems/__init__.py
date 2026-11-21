@@ -512,9 +512,16 @@ _FULL_CONFIG = (
         "_native_batch_norm_legit_functional",
         _native_batch_norm_legit_functional,
     ),
+    # ``_native_batch_norm_legit_no_training`` is CompositeImplicitAutograd in
+    # ATen: it has no dedicated Autograd kernel, so overriding only the device
+    # key would drop the engine-generated backward formula.  The autograd.Function
+    # wrapper supplies the backward and the Autograd fallthrough lets the wrapper
+    # own the differentiable path (cf. the ``adaptive_avg_pool3d`` entry).
     (
         "_native_batch_norm_legit_no_training",
         _native_batch_norm_legit_no_training,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("_native_multi_head_attention", _native_multi_head_attention),
     ("_neg_view_copy", _neg_view_copy),
@@ -2716,6 +2723,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "native_batch_norm_legit_no_training_backward",
     "only_enable",
     "use_gems",
 ]
