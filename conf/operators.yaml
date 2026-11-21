@@ -4817,6 +4817,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: cudnn_convolution_backward
+  description: Computes the gradient of a cuDNN convolution with respect to its input
+    tensor, returning only `grad_input`.
+  for:
+    - cudnn_convolution_backward
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Math
+  stages:
+    - alpha: '5.5.0'
 - id: cudnn_convolution_relu
   description: 'Fused cuDNN-style convolution followed by a ReLU, computing relu(conv(input,
     weight) + bias).

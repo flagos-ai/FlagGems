@@ -1305,6 +1305,7 @@ _FULL_CONFIG = (
     ("cudnn_convolution", cudnn_convolution),
     ("cudnn_convolution_add_relu", cudnn_convolution_add_relu),
     ("cudnn_convolution_add_relu.out", cudnn_convolution_add_relu_out),
+    ("cudnn_convolution_backward", cudnn_convolution_backward),
     ("cudnn_convolution_relu", cudnn_convolution_relu),
     ("cudnn_convolution_relu.out", cudnn_convolution_relu_out),
     ("cudnn_convolution_transpose", cudnn_convolution_transpose),
