@@ -308,11 +308,45 @@ class IndexPutFunction:
 _index_put_func = IndexPutFunction()
 
 
-def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX_PUT")
-
+def _index_put_forward(inp, indices, values, accumulate=False):
     out = inp.clone()
     return index_put_(out, indices, values, accumulate)
+
+
+class IndexPutOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, indices, values, accumulate):
+        ctx.indices = list(indices)
+        ctx.accumulate = accumulate
+        return _index_put_forward(inp, indices, values, accumulate)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_inp, grad_values = index_put_backward(
+            grad_output, ctx.indices, None, ctx.accumulate
+        )
+        return grad_inp, None, grad_values, None
+
+
+def index_put_backward(grad_output, indices, inp_size, accumulate=False):
+    """Backward of ``index_put`` with respect to ``inp`` and ``values``.
+
+    With accumulation the ``inp`` gradient is the output gradient unchanged
+    and the ``values`` gradient gathers it at the indices; without
+    accumulation the ``inp`` gradient zeroes the assigned positions first.
+    """
+    logger.debug("GEMS INDEX_PUT_BACKWARD")
+    if accumulate:
+        grad_inp = grad_output
+    else:
+        grad_inp = torch.index_fill(grad_output, 0, torch.cat(indices, dim=0), 0)
+    grad_values = torch.index_select(grad_output, 0, torch.cat(indices, dim=0))
+    return grad_inp, grad_values
+
+
+def index_put(inp, indices, values, accumulate=False):
+    logger.debug("GEMS INDEX_PUT")
+    return IndexPutOpFunction.apply(inp, indices, values, accumulate)
 
 
 def index_put_(inp, indices, values, accumulate=False):

@@ -177,3 +177,35 @@ def test_index_put__acc_true():
         dtypes=[torch.float16, torch.float32],
     )
     bench.run()
+
+
+INDEX_PUT_BACKWARD_CASES = [((1024, 64), 0), ((2048, 32), 0), ((4096, 64), 0)]
+
+
+class IndexPutBackwardBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [case[0] for case in INDEX_PUT_BACKWARD_CASES]
+
+    def get_input_iter(self, dtype):
+        for shape, dim in INDEX_PUT_BACKWARD_CASES:
+            inp = torch.randn(shape, dtype=dtype, device=self.device)
+            index_len = shape[dim] // 2
+            index = torch.randperm(index_len, device=self.device)
+            values = torch.randn(
+                (index_len, *shape[dim + 1 :]), dtype=dtype, device=self.device
+            )
+            yield inp, (index,), values
+
+
+@pytest.mark.index_put_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_put_backward():
+    bench = IndexPutBackwardBenchmark(
+        op_name="index_put",
+        torch_op=torch.index_put,
+        dtypes=[torch.float32],
+        is_backward=True,
+    )
+    bench.run()
