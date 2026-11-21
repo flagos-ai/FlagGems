@@ -52,3 +52,22 @@ def test_index_select(shape, dim, dtype):
     res_out = flag_gems.index_select(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.index_select
+@pytest.mark.parametrize("shape", [(8, 4), (32, 8, 128)])
+@pytest.mark.parametrize("dim", [0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_select_non_contiguous_index(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    # Every other element of a longer random index: a valid stride-2 view that
+    # still refers to the full index values.
+    index = torch.randint(0, shape[dim], [shape[dim] * 2], device=flag_gems.device)[::2]
+    assert index.stride(0) == 2
+
+    ref_inp = utils.to_reference(inp)
+    ref_index = utils.to_reference(index)
+    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    res_out = flag_gems.index_select(inp, dim, index)
+
+    utils.gems_assert_equal(res_out, ref_out)
