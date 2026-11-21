@@ -58,6 +58,8 @@ def entry(monkeypatch, request):
         inspect._empty,
         inspect._empty,
     )
+    e._cache_miss_fallback = None
+    e._launch_option_exclusions = frozenset(e.arg_names) | {"grid", "stream", "warmup"}
     e.signature = inspect.Signature(
         [
             inspect.Parameter(n, inspect.Parameter.POSITIONAL_OR_KEYWORD)
