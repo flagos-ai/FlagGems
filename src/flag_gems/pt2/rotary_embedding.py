@@ -65,11 +65,15 @@ if _HAS_TRITON_OP:
             cos.stride(0),
             sin.stride(0),
             0,  # seq_len is unused when position_ids is provided.
-            query.shape[-2],
-            key.shape[-2],
-            head_dim,
-            padded_head_dim,
-            rotary_interleaved,
+            # This raw launch bypasses autotuning, so no token bucket is needed.
+            n_tokens_bucket=0,
+            NUM_Q_HEADS=query.shape[-2],
+            NUM_K_HEADS=key.shape[-2],
+            HEAD_DIM=head_dim,
+            PADDED_HEAD_DIM=padded_head_dim,
+            # Keep the one-program-per-token grid and serial-head configuration.
+            HEAD_BLOCK_SIZE=0,
+            ROTARY_INTERLEAVED=rotary_interleaved,
             MAX_POSITION_EMBEDDINGS=cos.shape[0],
         )
 

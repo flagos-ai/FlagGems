@@ -36,13 +36,13 @@ from __future__ import annotations
 import torch
 import triton
 
-from flag_gems.deprecated.fused_add_rms_norm import (
+from flag_gems.fused.fused_add_rms_norm import (
     fused_add_rms_norm as _eager_fused_add_rms_norm,
 )
-from flag_gems.deprecated.fused_add_rms_norm import (
+from flag_gems.fused.fused_add_rms_norm import (
     fused_add_rms_norm_kernel as _fused_small_entry,
 )
-from flag_gems.deprecated.fused_add_rms_norm import (
+from flag_gems.fused.fused_add_rms_norm import (
     fused_add_rms_norm_loop_kernel as _fused_loop_entry,
 )
 from flag_gems.ops.rms_norm import rms_norm as _eager_rms_norm
@@ -204,7 +204,7 @@ FUSED_ADD_RMS_NORM_SPEC = register_compile_spec(
         op_name="flag_gems_pt2::fused_add_rms_norm",
         kind=CompileKind.TRITON_TRACEABLE,
         source_kernel=(
-            "flag_gems.deprecated.fused_add_rms_norm."
+            "flag_gems.fused.fused_add_rms_norm."
             "{fused_add_rms_norm_kernel,fused_add_rms_norm_loop_kernel}."
             "jit_function"
         ),
