@@ -740,6 +740,9 @@ from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
 )
+from flag_gems.ops.convolution_overrideable_backward import (
+    convolution_overrideable_backward,
+)
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
@@ -2484,6 +2487,7 @@ __all__ = [
     "convolution_backward_overrideable",
     "convolution_backward_overrideable_out",
     "convolution_overrideable",
+    "convolution_overrideable_backward",
     "convolution_overrideable_out",
     "copy",
     "copy_",
