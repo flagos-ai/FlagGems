@@ -58,6 +58,10 @@
         "1.1.1": {
           "sha256": "a460783ab65c43d5b99c27d555cb5ff6f0cfdd487b03e240dc783c1a186ac55f",
           "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-thead-zw810e_v1.1.1.tar.gz"
+        },
+        "1.2.0": {
+          "sha256": "e725828e5baaaa4c04ae74dddab7a9d6e7408078c50f67cd0240a910f789dbd8",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-thead-zw810e_v1.2.0.tar.gz"
         }
       }
     }
