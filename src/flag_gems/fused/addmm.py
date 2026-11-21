@@ -5,9 +5,9 @@ import triton.language as tl
 
 @triton.jit
 def addmm_kernel(
+    c_ptr,
     a_ptr,
     b_ptr,
-    c_ptr,
     out_ptr,
     M,
     N,
@@ -25,15 +25,23 @@ def addmm_kernel(
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    a = tl.load(a_ptr + offs_m[:, None] * K + offs_k[None, :], mask=offs_m[:, None] < M)
-    b = tl.load(b_ptr + offs_k[:, None] * N + offs_n[None, :], mask=offs_n[None, :] < N)
-    acc = tl.sum(a * b, axis=1)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, K, BLOCK_K):
+        a = tl.load(
+            a_ptr + offs_m[:, None] * K + (k + offs_k)[None, :],
+            mask=(k + offs_k)[None, :] < K,
+        )
+        b = tl.load(
+            b_ptr + (k + offs_k)[:, None] * N + offs_n[None, :],
+            mask=(k + offs_k)[:, None] < K,
+        )
+        acc += tl.dot(a, b)
 
     c = tl.load(
         c_ptr + offs_m[:, None] * N + offs_n[None, :],
         mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
     )
-    out_val = alpha * acc[:, None] + beta * c
+    out_val = beta * c + alpha * acc
     tl.store(
         out_ptr + offs_m[:, None] * N + offs_n[None, :],
         out_val,
@@ -41,7 +49,7 @@ def addmm_kernel(
     )
 
 
-def addmm(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, alpha=1.0, beta=1.0):
+def addmm(c: torch.Tensor, a: torch.Tensor, b: torch.Tensor, alpha=1.0, beta=1.0):
     M, K = a.shape
     K2, N = b.shape
     assert K == K2
@@ -52,5 +60,5 @@ def addmm(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, alpha=1.0, beta=1.0
     BLOCK_N = 64
     BLOCK_K = 32
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-    addmm_kernel[grid](a, b, c, out, M, N, K, alpha, beta, BLOCK_M, BLOCK_N, BLOCK_K)
+    addmm_kernel[grid](c, a, b, out, M, N, K, alpha, beta, BLOCK_M, BLOCK_N, BLOCK_K)
     return out
