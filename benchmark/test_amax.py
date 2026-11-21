@@ -29,3 +29,15 @@ def test_amax():
         op_name="amax", torch_op=torch.amax, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
+
+
+@pytest.mark.amax_backward
+def test_amax_backward():
+    bench = base.UnaryReductionBenchmark(
+        op_name="amax_backward",
+        torch_op=torch.amax,
+        gems_op=flag_gems.amax,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
