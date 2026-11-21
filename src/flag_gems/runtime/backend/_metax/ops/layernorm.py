@@ -379,8 +379,11 @@ def layer_norm(
     width = math.prod(normalized_shape)
     rows = input.numel() // width
     output = torch.empty(input.shape, dtype=input.dtype, device=input.device)
-    # Preserve the flat, input-dtype statistics expected by the existing backward.
-    mean = torch.empty(rows, dtype=input.dtype, device=input.device)
+    # ATen keeps mean/rstd in the accumulation dtype (float32 for fp16/bfloat16),
+    # so the backward pass sees the unrounded statistics. Storing them in the
+    # input dtype loses precision in the affine weight gradient.
+    stats_dtype = torch.promote_types(input.dtype, torch.float32)
+    mean = torch.empty(rows, dtype=stats_dtype, device=input.device)
     rstd = torch.empty_like(mean)
     if rows == 0:
         return output, mean, rstd

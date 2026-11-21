@@ -155,13 +155,13 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
     assert len(result) == len(ref_result) == 3
     stats_dtype = (
         torch.float32
-        if flag_gems.vendor_name in ("hygon", "nvidia", "thead")
+        if flag_gems.vendor_name in ("hygon", "metax", "nvidia", "thead")
         else dtype
     )
     for index, (actual, expected, expected_dtype) in enumerate(
         zip(result, ref_result, (dtype, stats_dtype, stats_dtype))
     ):
-        if flag_gems.vendor_name in ("nvidia", "thead") and index > 0:
+        if flag_gems.vendor_name in ("metax", "nvidia", "thead") and index > 0:
             assert actual.dtype == torch.float32
         utils.gems_assert_close(actual, expected, expected_dtype)
 
@@ -269,12 +269,26 @@ def test_native_layer_norm_statistics(shape, dtype):
     reduce_dim = math.prod(normalized_shape)
     stats_dtype = (
         torch.float32
-        if flag_gems.vendor_name in ("hygon", "nvidia", "thead")
+        if flag_gems.vendor_name in ("hygon", "metax", "nvidia", "thead")
         else dtype
     )
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_mean, ref_mean, stats_dtype, reduce_dim=reduce_dim)
     utils.gems_assert_close(res_rstd, ref_rstd, stats_dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.layer_norm
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_layer_norm_statistics_dtype_matches_aten(dtype):
+    if flag_gems.vendor_name not in ("metax", "nvidia"):
+        pytest.skip("backend follows its own statistics dtype contract")
+    inp = torch.randn((64, 32), dtype=dtype, device=flag_gems.device)
+    _, mean, rstd = flag_gems.layer_norm(inp, (32,), None, None, 1e-5)
+    _, ref_mean, ref_rstd = torch.ops.aten.native_layer_norm(
+        inp, (32,), None, None, 1e-5
+    )
+    assert mean.dtype == ref_mean.dtype == torch.float32
+    assert rstd.dtype == ref_rstd.dtype == torch.float32
 
 
 @pytest.mark.layer_norm_backward
@@ -592,11 +606,11 @@ def test_layernorm_contract(dtype, shape, norm, affine):
         tensor, norm, weight, bias, 1e-6
     )
     assert mean.shape == rstd.shape == (tensor.numel() // math.prod(norm),)
-    assert mean.dtype == rstd.dtype == tensor.dtype
+    assert mean.dtype == rstd.dtype == expected_mean.dtype
     for stats, expected_stats in ((mean, expected_mean), (rstd, expected_rstd)):
         torch.testing.assert_close(
             stats,
-            expected_stats.reshape(-1).to(tensor.dtype),
+            expected_stats.reshape(-1).to(stats.dtype),
             atol=tolerance,
             rtol=tolerance,
         )
@@ -742,7 +756,10 @@ def test_layernorm_large_normalized_extents(shape, normalized_shape, dtype):
     torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
     for stats, expected_stats in ((mean, expected_mean), (rstd, expected_rstd)):
         torch.testing.assert_close(
-            stats, expected_stats.reshape(-1).to(dtype), atol=tolerance, rtol=tolerance
+            stats,
+            expected_stats.reshape(-1).to(stats.dtype),
+            atol=tolerance,
+            rtol=tolerance,
         )
 
 
