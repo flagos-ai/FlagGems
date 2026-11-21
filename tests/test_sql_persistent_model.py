@@ -25,9 +25,10 @@ def test_config_round_trip(tmp_path, key_count_limit, use_async):
     config = triton.Config(
         {"BLOCK_SIZE": 1024, "USE_ASYNC": use_async}, num_warps=4, num_stages=2
     )
+    name = f"op_config_{key_count_limit}_{int(use_async)}"
 
-    model.put_config("op_config", keys, config)
-    got = model.get_config("op_config", keys)
+    model.put_config(name, keys, config)
+    got = model.get_config(name, keys)
 
     assert got is not None
     assert got.all_kwargs()["BLOCK_SIZE"] == 1024
@@ -46,12 +47,13 @@ def test_benchmark_round_trip(tmp_path, key_count_limit):
     sync_config = triton.Config(
         {"BLOCK_SIZE": 1024, "USE_ASYNC": False}, num_warps=4, num_stages=2
     )
+    name = f"op_bench_{key_count_limit}"
 
-    model.put_benchmark("op_bench", keys, config, (1.5, 1.0, 2.0))
-    model.put_benchmark("op_bench", keys, sync_config, (2.5, 2.0, 3.0))
+    model.put_benchmark(name, keys, config, (1.5, 1.0, 2.0))
+    model.put_benchmark(name, keys, sync_config, (2.5, 2.0, 3.0))
 
-    assert model.get_benchmark("op_bench", keys, config) == (1.5, 1.0, 2.0)
-    assert model.get_benchmark("op_bench", keys, sync_config) == (2.5, 2.0, 3.0)
+    assert model.get_benchmark(name, keys, config) == (1.5, 1.0, 2.0)
+    assert model.get_benchmark(name, keys, sync_config) == (2.5, 2.0, 3.0)
 
 
 def test_reload_existing_db_via_automap(tmp_path):
