@@ -16416,6 +16416,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: pdist_forward_backward
+  description: The backward computation of `pdist()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - pdist
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: per_token_group_quant_fp8
   description: 'Function to perform per-token-group quantization on an input tensor
     `x`.
