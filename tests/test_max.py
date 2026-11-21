@@ -403,3 +403,56 @@ def test_max_backward_autograd_dispatch(dtype):
     assert calls["evenly_distribute_backward"] == 1, calls
     utils.gems_assert_close(res_dim_grad, ref_dim_grad, dtype)
     utils.gems_assert_close(res_full_grad, ref_full_grad, dtype)
+
+
+@pytest.mark.max
+@pytest.mark.parametrize("shape", [(3,), (7, 129), (16, 4096)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_max_nan(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    flat = inp.view(-1)
+    # One NaN in the first reduction tile and one in the last, so both the
+    # per-tile reduction and the merge of the two stages have to keep it.
+    flat[0] = float("nan")
+    flat[-1] = float("nan")
+
+    ref_out = torch.max(utils.to_reference(inp))
+    res_out = flag_gems.max(inp)
+
+    assert torch.isnan(ref_out)
+    assert torch.isnan(res_out)
+
+
+@pytest.mark.max_dim
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_max_dim_nan(dtype, keepdim):
+    inp = torch.randn((6, 128), dtype=dtype, device=flag_gems.device)
+    inp[0, 5] = float("nan")
+    inp[1, 0] = float("nan")
+    inp[1, 3] = float("nan")  # the first NaN must win over the later one
+    inp[2, 127] = float("nan")
+
+    ref_value, ref_index = torch.max(utils.to_reference(inp), dim=1, keepdim=keepdim)
+    res_value, res_index = flag_gems.max_dim(inp, dim=1, keepdim=keepdim)
+
+    assert torch.isnan(res_value[:3]).all()
+    assert torch.isfinite(res_value[3:]).all()
+    utils.gems_assert_equal(res_index, ref_index)
+    utils.gems_assert_equal(res_value, ref_value, equal_nan=True)
+
+
+@pytest.mark.max_dim
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_max_dim_nan_cross_tile(dtype):
+    inp = torch.randn((4, 5000), dtype=dtype, device=flag_gems.device)
+    inp[0, 10] = float("nan")
+    inp[0, 4900] = float("nan")
+
+    ref_value, ref_index = torch.max(utils.to_reference(inp), dim=1)
+    res_value, res_index = flag_gems.max_dim(inp, dim=1)
+
+    assert torch.isnan(res_value[0])
+    assert torch.isfinite(res_value[1:]).all()
+    utils.gems_assert_equal(res_index, ref_index)
+    utils.gems_assert_equal(res_value, ref_value, equal_nan=True)
