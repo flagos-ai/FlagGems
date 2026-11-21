@@ -791,6 +791,36 @@ def simple_unique_flat(
     )
 
 
+def ops_unique_flat(in0: torch.Tensor, return_inverse: bool, return_counts: bool):
+    """Unique over sort + pointwise ops, for inputs the flat kernels cannot run.
+
+    The GCU300 tiled kernels either fail to compile ("ran out of registers")
+    or fault on the largest shapes (the prefix-sum tile overflows local
+    memory), so this path reproduces the same result with ops that are
+    supported on the backend.  ``int64`` cumsum is broken on GCU300 while the
+    unique count fits in ``int32`` for real inputs, hence the cast.
+    """
+    x = in0.ravel()
+    n = x.numel()
+    sorted_data, sorted_indices = torch.sort(x)
+    ne = torch.empty(n, dtype=torch.bool, device=x.device)
+    ne[0] = True
+    ne[1:] = sorted_data[1:] != sorted_data[:-1]
+    idx = ne.nonzero(as_tuple=False).flatten().to(torch.int64)
+    data_out = sorted_data.index_select(0, idx)
+    counts = None
+    if return_counts:
+        tail = torch.full((1,), n, dtype=torch.int64, device=x.device)
+        ends = torch.cat([idx[1:], tail], dim=0)
+        counts = ends - idx
+    inverse_indices = None
+    if return_inverse:
+        rank = (torch.cumsum(ne.to(torch.int32), 0) - 1).to(torch.int64)
+        inverse_indices = torch.empty(n, dtype=torch.int64, device=x.device)
+        inverse_indices.scatter_(0, sorted_indices.to(torch.int64), rank)
+    return data_out, inverse_indices, counts
+
+
 def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
@@ -813,15 +843,11 @@ def _unique2(
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data, sorted_indices.to(torch.int32), return_inverse, return_counts
         )
-    elif return_inverse:
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices.to(torch.int32), return_counts
-        )
     else:
-        sorted_data, _ = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts
+        # Large inputs: the tiled flat kernels are unusable on GCU300 (see
+        # ops_unique_flat), so use the sort + pointwise implementation.
+        data_out, inverse_indices, counts = ops_unique_flat(
+            in0, return_inverse, return_counts
         )
     # Keep the ATen return contract: the auxiliary outputs are empty int64
     # tensors when they are not requested, and counts is int64 (the kernels
