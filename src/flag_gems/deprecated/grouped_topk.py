@@ -98,6 +98,7 @@ def group_idx_and_topk_triton(
     N_GROUP: tl.constexpr,
     TOPK_GROUP: tl.constexpr,
     TOPK: tl.constexpr,
+    BLOCK_TOPK: tl.constexpr,
     BLOCK_GROUP: tl.constexpr,
     BLOCK_EXPERT: tl.constexpr,
     INPUT_DTYPE: tl.constexpr,
@@ -191,9 +192,13 @@ def group_idx_and_topk_triton(
         neg_inf,
     )
 
-    topk_vals = tl.full([TOPK], 0.0, tl.float32)
-    topk_idx = tl.full([TOPK], 0, tl.int32)
-    pos_range = tl.arange(0, TOPK)
+    # Triton requires every block shape to be a power of two, while `topk` is
+    # the logical number of selected experts and may be any value (e.g. 10, 12,
+    # 14 for models with heterogeneous `num_experts_per_tok`). Allocate the
+    # padded block and mask the tail when storing. See Issue #9070.
+    topk_vals = tl.full([BLOCK_TOPK], 0.0, tl.float32)
+    topk_idx = tl.full([BLOCK_TOPK], 0, tl.int32)
+    pos_range = tl.arange(0, BLOCK_TOPK)
 
     for i in range(TOPK):
         max_val = tl.max(selection_scores, axis=0)
@@ -224,7 +229,7 @@ def group_idx_and_topk_triton(
     topk_vals = topk_vals * scale
 
     default_idx = pos_range.to(tl.int32)
-    default_vals = tl.full([TOPK], 1.0 / topk, tl.float32)
+    default_vals = tl.full([BLOCK_TOPK], 1.0 / topk, tl.float32)
 
     final_vals = tl.where(if_proceed, topk_vals, default_vals)
     final_idx = tl.where(if_proceed, topk_idx, default_idx)
@@ -346,6 +351,7 @@ def grouped_topk(
         N_GROUP=n_group,
         TOPK_GROUP=topk_group,
         TOPK=topk,
+        BLOCK_TOPK=triton.next_power_of_2(topk),
         BLOCK_GROUP=BLOCK_GROUP,
         BLOCK_EXPERT=BLOCK_EXPERT,
         INPUT_DTYPE=INPUT_DTYPE,
