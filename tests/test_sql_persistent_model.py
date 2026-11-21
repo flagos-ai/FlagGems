@@ -16,10 +16,15 @@ import triton
 from flag_gems.utils.models.sql import SQLPersistantModel
 
 
-def test_config_round_trip(tmp_path):
+@pytest.mark.parametrize("key_count_limit", [1, 64])
+@pytest.mark.parametrize("use_async", [False, True])
+def test_config_round_trip(tmp_path, key_count_limit, use_async):
     model = SQLPersistantModel(f"sqlite:///{tmp_path}/cache.db")
+    model.key_count_limit = key_count_limit
     keys = [128, "float16", True]
-    config = triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2)
+    config = triton.Config(
+        {"BLOCK_SIZE": 1024, "USE_ASYNC": use_async}, num_warps=4, num_stages=2
+    )
 
     model.put_config("op_config", keys, config)
     got = model.get_config("op_config", keys)
@@ -27,16 +32,26 @@ def test_config_round_trip(tmp_path):
     assert got is not None
     assert got.all_kwargs()["BLOCK_SIZE"] == 1024
     assert got.all_kwargs()["num_warps"] == 4
+    assert got.kwargs["USE_ASYNC"] == use_async
 
 
-def test_benchmark_round_trip(tmp_path):
+@pytest.mark.parametrize("key_count_limit", [1, 64])
+def test_benchmark_round_trip(tmp_path, key_count_limit):
     model = SQLPersistantModel(f"sqlite:///{tmp_path}/cache.db")
+    model.key_count_limit = key_count_limit
     keys = [128, "float16", True]
-    config = triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2)
+    config = triton.Config(
+        {"BLOCK_SIZE": 1024, "USE_ASYNC": True}, num_warps=4, num_stages=2
+    )
+    sync_config = triton.Config(
+        {"BLOCK_SIZE": 1024, "USE_ASYNC": False}, num_warps=4, num_stages=2
+    )
 
     model.put_benchmark("op_bench", keys, config, (1.5, 1.0, 2.0))
+    model.put_benchmark("op_bench", keys, sync_config, (2.5, 2.0, 3.0))
 
     assert model.get_benchmark("op_bench", keys, config) == (1.5, 1.0, 2.0)
+    assert model.get_benchmark("op_bench", keys, sync_config) == (2.5, 2.0, 3.0)
 
 
 def test_reload_existing_db_via_automap(tmp_path):
