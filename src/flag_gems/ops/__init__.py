@@ -1036,7 +1036,7 @@ from flag_gems.ops.igamma import igamma
 from flag_gems.ops.igamma_ import igamma_
 from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.igammac_ import igammac_
-from flag_gems.ops.im2col import im2col
+from flag_gems.ops.im2col import im2col, im2col_backward
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
@@ -2783,6 +2783,7 @@ __all__ = [
     "igammac_",
     "igammac_out",
     "im2col",
+    "im2col_backward",
     "index",
     "index_add",
     "index_add_",
