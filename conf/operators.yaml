@@ -8830,6 +8830,7 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: fused_add_rms_norm
+  description: Add two inputs element-wise and apply RMS normalization.
   for:
   - add_rms_norm
   labels:
