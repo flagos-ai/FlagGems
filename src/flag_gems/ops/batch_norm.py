@@ -218,6 +218,7 @@ def batch_norm_backward_kernel(
     input_grad_mask: tl.constexpr,
     weight_grad_mask: tl.constexpr,
     bias_grad_mask: tl.constexpr,
+    is_train: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -314,11 +315,17 @@ def batch_norm_backward_kernel(
                 curr_output_grad_pointer,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
             ).to(tl.float32)
-            curr_input_grad = (
-                inv_std
-                * weight
-                * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
-            )
+            if is_train:
+                curr_input_grad = (
+                    inv_std
+                    * weight
+                    * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
+                )
+            else:
+                # evaluation mode: the saved statistics are the fixed
+                # running ones, so the input gradient is the plain chain-rule
+                # term with no batch means
+                curr_input_grad = inv_std * weight * curr_output_grad
             tl.store(
                 curr_input_grad_pointer,
                 curr_input_grad,
@@ -403,13 +410,24 @@ def batch_norm_backward(
     else:
         bias_grad = None
 
+    # under eval mode the forward never writes save_mean / save_invstd
+    # (they are the batch statistics the training forward computes);
+    # a full use_gems() run hands uninitialized memory here. ATen's
+    # _batch_norm_impl_index_backward uses the running stats for the eval path.
+    if train:
+        mean_for_kernel = save_mean
+        inv_std_for_kernel = save_invstd
+    else:
+        mean_for_kernel = running_mean.to(torch.float32)
+        inv_std_for_kernel = torch.rsqrt(running_var.to(torch.float32) + eps)
+
     # Launches 1D grid where each program operates over one feature.
     with torch_device_fn.device(input.device):
         batch_norm_backward_kernel[(feat_dim,)](
             output_grad_3d,
             input_3d,
-            save_mean,
-            save_invstd,
+            mean_for_kernel,
+            inv_std_for_kernel,
             weight,
             input_grad,
             weight_grad,
@@ -420,6 +438,7 @@ def batch_norm_backward(
             *input_3d.stride(),
             *input_grad.stride(),
             *output_mask,
+            is_train=train,
         )
 
     # Pads output with None because a gradient is necessary for
