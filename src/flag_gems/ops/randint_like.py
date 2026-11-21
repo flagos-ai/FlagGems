@@ -32,7 +32,7 @@ UNROLL = 4
 
 
 @triton.heuristics(runtime.get_heuristic_config("rand"))
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "high"])
 def randint_kernel(
     out_ptr,
     N,
