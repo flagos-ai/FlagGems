@@ -139,7 +139,7 @@ def test_grouped_topk(
 @pytest.mark.parametrize("n_token", [32, 64])
 @pytest.mark.parametrize("n_expert", [64])
 @pytest.mark.parametrize("n_group", [8])
-@pytest.mark.parametrize("topk", [8])
+@pytest.mark.parametrize("topk", [8, 10, 12])
 @pytest.mark.parametrize("topk_group", [2])
 @pytest.mark.parametrize("renormalize", [True, False])
 @pytest.mark.parametrize("scoring_func", [0, 1])
@@ -286,3 +286,52 @@ def test_grouped_topk_sigmoid(renormalize):
     atol, rtol = get_tolerance(dtype, 1, renormalize)
     res_weights = utils.to_reference(res_weights)
     torch.testing.assert_close(res_weights, ref_weights, atol=atol, rtol=rtol)
+
+
+@pytest.mark.grouped_topk
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.parametrize("topk", [3, 5, 6, 10, 12, 14, 18])
+@pytest.mark.parametrize("renormalize", [True, False])
+@pytest.mark.parametrize("scoring_func", [0, 1])
+def test_grouped_topk_non_power_of_two_topk(topk, renormalize, scoring_func):
+    """`topk` is the number of routed experts, not a Triton block size.
+
+    Checkpoints with heterogeneous `num_experts_per_tok` (e.g. 10/12/14) must
+    work; only the internal block shapes are padded to a power of two. See
+    Issue #9070.
+    """
+    torch.manual_seed(0)
+    n_token, n_expert, n_group, topk_group = 8, 64, 8, 4
+    routed_scaling_factor = 2.5
+
+    scores = torch.randn(
+        (n_token, n_expert), dtype=torch.float32, device=flag_gems.device
+    )
+    bias = torch.randn((n_expert,), dtype=torch.float32, device=flag_gems.device)
+
+    weights, indices = flag_gems.grouped_topk(
+        scores,
+        n_group,
+        topk_group,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        bias,
+        scoring_func,
+    )
+
+    assert weights.shape == (n_token, topk)
+    assert indices.shape == (n_token, topk)
+    assert torch.all(indices >= 0)
+    assert torch.all(indices < n_expert)
+    # A token must not be routed to the same expert twice.
+    sorted_indices = indices.sort(dim=-1).values
+    assert torch.all(sorted_indices[:, 1:] != sorted_indices[:, :-1])
+
+    if renormalize:
+        torch.testing.assert_close(
+            weights.sum(dim=-1),
+            torch.full((n_token,), routed_scaling_factor, device=weights.device),
+            atol=1e-4,
+            rtol=1e-4,
+        )
