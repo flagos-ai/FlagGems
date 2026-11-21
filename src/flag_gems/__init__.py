@@ -2716,6 +2716,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "logaddexp2_backward",
     "only_enable",
     "use_gems",
 ]

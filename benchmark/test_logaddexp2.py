@@ -52,3 +52,21 @@ def test_logaddexp2_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.logaddexp2_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_logaddexp2_backward():
+    # is_backward=True appends "_backward" to op_name, so the default case set
+    # resolves through core_shapes.yaml "Benchmark" to the five default shapes,
+    # and get_latency times torch.autograd.grad on top of one forward graph.
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="logaddexp2",
+        torch_op=torch.logaddexp2,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.logaddexp2)
+    bench.run()
