@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.libentry import libentry
@@ -48,10 +49,30 @@ _SMALL_NUM_WARPS = 1
 _SMALL_INPUT = 8192
 
 
-@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def log2_func(x):
     return tl.log2(x.to(tl.float32))
+
+
+def log2_complex(A):
+    """log2 of a complex tensor: ``log2(z) = log2(|z|) + i * arg(z) / ln 2``.
+
+    No dedicated complex kernel exists yet, so the complex value is split
+    with ``view_as_real`` and the two components run through existing
+    FlagGems real pointwise kernels (``hypot`` -> ``log2`` for the real part,
+    ``atan2`` scaled by ``1 / ln 2`` for the imaginary part).  Forward-only:
+    the composed calls build no autograd graph, matching the single-tensor
+    operator contract elsewhere in the library.  ``flag_gems.log2`` routes
+    complex inputs here before the real dispatch below.
+    """
+    real, imag = torch.view_as_real(A).unbind(-1)  # allow-torch-compute
+    modulus = flag_gems.hypot(real, imag)
+    argument = flag_gems.atan2(imag, real)
+    out_real = log2_func(modulus)
+    out_imag = flag_gems.mul(argument, 1.4426950408889634)
+    stacked = torch.stack((out_real, out_imag), dim=-1)  # allow-torch-compute
+    return torch.view_as_complex(stacked)  # allow-torch-compute
 
 
 @libentry()
@@ -165,6 +186,8 @@ class _Log2Function(torch.autograd.Function):
 
 def log2(A):
     logger.debug("GEMS LOG2")
+    if isinstance(A, torch.Tensor) and A.is_complex():
+        return log2_complex(A)
     if isinstance(A, torch.Tensor) and A.requires_grad and torch.is_grad_enabled():
         if not A.is_complex():
             return _Log2Function.apply(A)
@@ -173,5 +196,8 @@ def log2(A):
 
 def log2_(A):
     logger.debug("GEMS LOG2_")
+    if isinstance(A, torch.Tensor) and A.is_complex():
+        A.copy_(log2_complex(A))
+        return A
     log2_func(A, out0=A)
     return A

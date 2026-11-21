@@ -53,18 +53,76 @@ _SPECIAL_X = [
 ]
 _SPECIAL_GRAD = [1.0, -1.0, 0.0, 2.5, float("inf"), float("nan")]
 
+# log2 promotes integral inputs to float in ATen, so 1-byte ints are accepted.
+LOG2_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_INT_DTYPES
+
+COMPLEX_DTYPES = utils.COMPLEX_DTYPES
+# ATen's ``log2_cuda`` raises NotImplementedError for ComplexHalf, so the
+# complex coverage targets the two dtypes ATen actually implements.
+LOG2_COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+
 
 @pytest.mark.log2
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", LOG2_DTYPES)
 def test_log2(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in utils.BYTE_INT_DTYPES:
+        inp = torch.randint(1, 100, shape, dtype=torch.int32, device="cpu").to(
+            dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.log2(ref_inp)
     res_out = flag_gems.log2(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
+
+
+@pytest.mark.log2
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", LOG2_COMPLEX_DTYPES)
+def test_log2_complex(shape, dtype):
+    """log2 of a complex tensor: log2(z) = log2(|z|) + i * arg(z) / ln 2.
+
+    The complex path is forward-only — no autograd graph, matching the
+    single-tensor operator contract. Zeros and negative reals are included
+    so the branch cuts and the signed infinities stay pinned.
+    """
+    base = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) + 0.25
+    inp = torch.complex(base, base * 0.5).to(dtype)
+    # Fold in the domain corners ATen defines: zero, negative real, pure
+    # imaginary, and a full-plane point.
+    if inp.numel() >= 4:
+        flat = inp.view(-1)
+        flat[0] = 0j
+        flat[1] = -1 + 0j
+        flat[2] = 1j
+        flat[3] = -3 - 4j
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_out = torch.log2(ref_inp)
+    res_out = flag_gems.log2(inp)
+
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
+
+
+@pytest.mark.log2_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", LOG2_COMPLEX_DTYPES)
+def test_log2__complex(shape, dtype):
+    """In-place complex log2 keeps the input tensor's dtype and values updated."""
+    base = torch.rand(shape, dtype=torch.float32, device=flag_gems.device) + 0.25
+    inp = torch.complex(base, base * 0.5).to(dtype)
+
+    ref_inp = utils.to_reference(inp.clone(), True)
+    ref_out = ref_inp.log2_()
+    res_out = flag_gems.log2_(inp)
+
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_out, res_out.dtype)
 
 
 @pytest.mark.log2
