@@ -26,6 +26,196 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def _logical_offset(linear, shape: tl.constexpr, strides: tl.constexpr):
+    offset = linear * 0
+    for axis in tl.static_range(len(shape) - 1, -1, -1):
+        coordinate = linear % shape.value[axis]
+        linear = linear // shape.value[axis]
+        offset += coordinate * strides.value[axis]
+    return offset
+
+
+@triton.jit
+def as_strided_scatter_backward_kernel(
+    grad_output,
+    grad_self,
+    grad_src,
+    self_numel,
+    src_numel,
+    GRAD_SHAPE: tl.constexpr,
+    GRAD_STRIDES: tl.constexpr,
+    VIEW_SIZE: tl.constexpr,
+    VIEW_STRIDE: tl.constexpr,
+    DECODE_SIZE: tl.constexpr,
+    DECODE_STRIDE: tl.constexpr,
+    STORAGE_OFFSET: tl.constexpr,
+    HAS_SOURCE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    logical = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+
+    self_mask = logical < self_numel
+    relative = logical - STORAGE_OFFSET
+    belongs_to_view = relative >= 0
+    if HAS_SOURCE:
+        for axis in tl.static_range(len(DECODE_SIZE)):
+            coordinate = relative // DECODE_STRIDE.value[axis]
+            belongs_to_view &= coordinate < DECODE_SIZE.value[axis]
+            relative -= coordinate * DECODE_STRIDE.value[axis]
+        belongs_to_view &= relative == 0
+    else:
+        belongs_to_view = False
+    grad_offset = _logical_offset(logical, GRAD_SHAPE, GRAD_STRIDES)
+    self_value = tl.load(
+        grad_output + grad_offset,
+        mask=self_mask & belongs_to_view,
+        other=0.0,
+    )
+    tl.store(grad_self + logical, self_value, mask=self_mask)
+
+    src_mask = logical < src_numel
+    if HAS_SOURCE:
+        remaining = logical
+        target = logical * 0 + STORAGE_OFFSET
+        for axis in tl.static_range(len(VIEW_SIZE) - 1, -1, -1):
+            coordinate = remaining % VIEW_SIZE.value[axis]
+            remaining //= VIEW_SIZE.value[axis]
+            target += coordinate * VIEW_STRIDE.value[axis]
+        src_grad_offset = _logical_offset(target, GRAD_SHAPE, GRAD_STRIDES)
+        src_value = tl.load(grad_output + src_grad_offset, mask=src_mask)
+        tl.store(grad_src + logical, src_value, mask=src_mask)
+
+
+def _validate_non_overlapping_view(size, stride):
+    # Size-one dimensions do not affect overlap. Sorting the remaining strides
+    # lets us compare each new dimension against the storage span built so far.
+    dimensions = sorted(
+        (
+            (dim_stride, dim_size)
+            for dim_size, dim_stride in zip(size, stride)
+            if dim_size > 1
+        )
+    )
+    span = 1
+    for dim_stride, dim_size in dimensions:
+        if dim_stride < span:
+            raise RuntimeError(
+                "as_strided_scatter_backward does not support overlapping views"
+            )
+        span += (dim_size - 1) * dim_stride
+
+
+def as_strided_scatter_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    src: torch.Tensor,
+    size,
+    stride,
+    storage_offset=None,
+):
+    """Compute both as-strided scatter adjoints with one tiled Triton kernel."""
+    logger.debug("GEMS AS_STRIDED_SCATTER_BACKWARD")
+    if not self.is_contiguous():
+        raise RuntimeError(
+            "as_strided_scatter backward is currently only supported for contiguous inputs"
+        )
+    if grad_output.shape != self.shape:
+        raise RuntimeError("grad_output and self must have the same shape")
+    if not (grad_output.device == self.device == src.device):
+        raise RuntimeError("grad_output, self, and src must be on the same device")
+    if not (grad_output.dtype == self.dtype == src.dtype):
+        raise RuntimeError("grad_output, self, and src must have the same dtype")
+
+    size = tuple(int(value) for value in size)
+    stride = tuple(int(value) for value in stride)
+    if len(size) != len(stride):
+        raise RuntimeError("mismatch in length of strides and shape")
+    if any(dim_size < 0 for dim_size in size):
+        raise RuntimeError("as_strided_scatter does not support negative sizes")
+    if any(dim_stride < 0 for dim_stride in stride):
+        raise RuntimeError(
+            "as_strided: Negative strides are not supported at the moment"
+        )
+    expected_numel = math.prod(size)
+    if src.numel() != expected_numel:
+        raise RuntimeError("src size must match the requested as_strided view size")
+
+    _validate_non_overlapping_view(size, stride)
+    target_offset = 0 if storage_offset is None else int(storage_offset)
+    has_source = expected_numel > 0
+    if has_source:
+        final_offset = target_offset + sum(
+            (dim_size - 1) * dim_stride for dim_size, dim_stride in zip(size, stride)
+        )
+        if target_offset < 0 or final_offset >= grad_output.numel():
+            raise RuntimeError("as_strided_scatter_backward view is out of bounds")
+
+    grad_self = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    grad_src = torch.empty(src.shape, dtype=src.dtype, device=src.device)
+    self_numel = self.numel()
+    src_numel = src.numel()
+    launch_numel = max(self_numel, src_numel)
+    if launch_numel == 0:
+        return grad_self, grad_src
+
+    decode_dimensions = sorted(
+        (
+            (dim_stride, dim_size)
+            for dim_size, dim_stride in zip(size, stride)
+            if dim_size > 1
+        ),
+        reverse=True,
+    )
+    decode_stride = tuple(item[0] for item in decode_dimensions)
+    decode_size = tuple(item[1] for item in decode_dimensions)
+    # 256 elements balance launch overhead and occupancy for both output paths.
+    block_size = 256
+    grid = (triton.cdiv(launch_numel, block_size),)
+    with torch_device_fn.device(self.device):
+        as_strided_scatter_backward_kernel[grid](
+            grad_output,
+            grad_self,
+            grad_src,
+            self_numel,
+            src_numel,
+            GRAD_SHAPE=tuple(grad_output.shape),
+            GRAD_STRIDES=tuple(grad_output.stride()),
+            VIEW_SIZE=size,
+            VIEW_STRIDE=stride,
+            DECODE_SIZE=decode_size,
+            DECODE_STRIDE=decode_stride,
+            STORAGE_OFFSET=target_offset,
+            HAS_SOURCE=has_source,
+            BLOCK_SIZE=block_size,
+            num_warps=4,
+        )
+    return grad_self, grad_src
+
+
+class AsStridedScatterFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, src, size, stride, storage_offset):
+        ctx.size = size
+        ctx.stride = stride
+        ctx.storage_offset = storage_offset
+        ctx.save_for_backward(self, src)
+        return _as_strided_scatter_impl(self, src, size, stride, storage_offset)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        self, src = ctx.saved_tensors
+        grad_self, grad_src = as_strided_scatter_backward(
+            grad_output,
+            self,
+            src,
+            ctx.size,
+            ctx.stride,
+            ctx.storage_offset,
+        )
+        return grad_self, grad_src, None, None, None
+
+
+@triton.jit
 def _copy_storage_kernel(src, out, n_elements, BLOCK_SIZE: tl.constexpr):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -93,7 +283,7 @@ def _as_strided_scatter_kernel(
     tl.store(out + target, values, mask=mask & is_selected_writer)
 
 
-def as_strided_scatter(
+def _as_strided_scatter_impl(
     self: torch.Tensor,
     src: torch.Tensor,
     size,
@@ -101,7 +291,6 @@ def as_strided_scatter(
     storage_offset=None,
 ) -> torch.Tensor:
     """Clone ``self`` storage and scatter ``src`` through an as-strided view."""
-    logger.debug("GEMS AS_STRIDED_SCATTER")
     if self.device != src.device or self.dtype != src.dtype:
         raise RuntimeError("self and src must have the same device and dtype")
     if self.layout != torch.strided or src.layout != torch.strided:
@@ -198,3 +387,19 @@ def as_strided_scatter(
     return torch.as_strided(
         out_storage, self.size(), self.stride(), self.storage_offset()
     )
+
+
+def as_strided_scatter(
+    self: torch.Tensor,
+    src: torch.Tensor,
+    size,
+    stride,
+    storage_offset=None,
+) -> torch.Tensor:
+    """Clone ``self`` storage and scatter ``src`` through an as-strided view."""
+    logger.debug("GEMS AS_STRIDED_SCATTER")
+    if torch.is_grad_enabled() and (self.requires_grad or src.requires_grad):
+        return AsStridedScatterFunction.apply(
+            self, src, tuple(size), tuple(stride), storage_offset
+        )
+    return _as_strided_scatter_impl(self, src, size, stride, storage_offset)
