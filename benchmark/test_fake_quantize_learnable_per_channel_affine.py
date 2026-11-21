@@ -27,6 +27,12 @@ PER_CHANNEL_CASES = [
     ((2, 19, 7), 1, -128, 127),
     ((16, 128, 64, 60), 1, 0, 255),
     ((16, 128, 64, 60), 3, -128, 127),
+    ((8,), 0, -128, 127),
+    ((4, 8), 0, 0, 255),
+    ((4, 8), 1, -128, 127),
+    ((2, 19, 7), 1, 0, 255),
+    ((16, 128, 64, 60), 1, -128, 127),
+    ((16, 128, 64, 60), 3, 0, 255),
 ]
 
 
@@ -55,14 +61,21 @@ class FakeQuantizeLearnablePerChannelAffineBenchmark(OperatorBenchmark):
         self.shapes = PER_CHANNEL_CASES
 
 
-@pytest.mark.fake_quantize_learnable_per_channel_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine
 def test_fake_quantize_learnable_per_channel_affine():
+    op_name = "_fake_quantize_learnable_per_channel_affine"
     bench = FakeQuantizeLearnablePerChannelAffineBenchmark(
-        op_name="fake_quantize_learnable_per_channel_affine",
+        op_name=op_name,
         torch_op=torch.ops.aten._fake_quantize_learnable_per_channel_affine,
-        gems_op=flag_gems._fake_quantize_learnable_per_channel_affine,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=(
+            [dtype for dtype in consts.FLOAT_DTYPES if dtype != torch.float16]
+            if flag_gems.vendor_name == "kunlunxin"
+            else consts.FLOAT_DTYPES
+        ),
     )
+    registry = base.Config.override_registry
+    if registry is None or registry.get_override(op_name) is None:
+        bench.set_gems(flag_gems._fake_quantize_learnable_per_channel_affine)
     bench.run()

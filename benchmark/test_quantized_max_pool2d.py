@@ -540,6 +540,11 @@ def test_quantized_max_pool2d():
 
 @pytest.mark.quantized_max_pool2d_out
 def test_quantized_max_pool2d_out():
+    missing_native = flag_gems.vendor_name == "hygon" or (
+        flag_gems.vendor_name == "iluvatar" and not os.environ.get("FLAGGEMS_NV_BASELINE")
+    )
+    if missing_native and not (base.Config.list_cases or base.Config.preflight_only):
+        pytest.skip("Native quantized_max_pool2d.out requires unavailable cuDNN support")
     # The out variant writes the pooled result into the caller-provided quantized
     # tensor. It dispatches through the aten .out overload, which takes the out
     # tensor via the ``out`` keyword; flag_gems registers it as

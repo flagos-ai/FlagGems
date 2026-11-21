@@ -85,10 +85,20 @@ def _torch_lstm(value, hx, params, deq, *args):
 
 @pytest.mark.quantized_lstm
 def test_quantized_lstm():
+    if flag_gems.vendor_name in {"hygon", "mthreads"} and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("PyTorch has no native quantized_lstm accelerator kernel")
     bench = QuantizedLstmBenchmark(
         op_name="quantized_lstm", torch_op=_torch_lstm,
         case_fn=_case_fn, build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(lambda value, hx, params, deq, *args: flag_gems.quantized_lstm(value, hx, params, *args))
+    registry = base.Config.override_registry
+    if registry is None or registry.get_override(bench.op_name) is None:
+        bench.set_gems(
+            lambda value, hx, params, deq, *args: flag_gems.quantized_lstm(
+                value, hx, params, *args
+            )
+        )
     bench.run()

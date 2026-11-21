@@ -17,7 +17,6 @@ import torch
 
 import flag_gems
 
-from . import accuracy_utils as utils
 
 # Building the reference requires a quantization engine compiled into PyTorch
 # (fbgemm/qnnpack/onednn/x86). The reference GRU runs on CPU while the FlagGems
@@ -29,6 +28,13 @@ pytestmark = pytest.mark.skipif(
     not _has_quantized_engine,
     reason="PyTorch build has no quantization engine for the reference GRU",
 )
+
+
+def _run_gru_candidate(*args, packed=False):
+    candidate = getattr(flag_gems, "quantized_gru", None)
+    if candidate is None:
+        candidate = flag_gems.quantized_gru_data if packed else flag_gems.quantized_gru_input
+    return candidate(*args)
 
 
 def _make_dynamic_quantized_gru(
@@ -67,8 +73,6 @@ def _make_dynamic_quantized_gru(
 )
 def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirectional):
     """Compare the dense Triton implementation with packed dynamic GRU."""
-    from flag_gems.ops.quantized_gru import quantized_gru_input
-
     torch.manual_seed(0)
     batch_size, seq_len, input_size = shape
     directions = 2 if bidirectional else 1
@@ -95,11 +99,11 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
     )
     # Reference runs on CPU via torch.ao dynamic quantized GRU
     # PyTorch's quantized_gru only supports CPU, so explicitly move to CPU
-    ref_input = utils.to_reference(input_tensor, True).cpu()
-    ref_hx = utils.to_reference(hx, True).cpu()
+    ref_input = input_tensor.cpu()
+    ref_hx = hx.cpu()
     ref_output, ref_hx_out = ref_gru(ref_input, ref_hx)
 
-    output, out_hx = quantized_gru_input(
+    output, out_hx = _run_gru_candidate(
         input_tensor,
         hx,
         params,
@@ -110,6 +114,8 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
         bidirectional,
         True,
     )
+    assert output.device == input_tensor.device and output.dtype == input_tensor.dtype
+    assert out_hx.device == hx.device and out_hx.dtype == hx.dtype
     assert output.shape == ref_output.shape
     assert out_hx.shape == ref_hx_out.shape
     # Quantized GRU has higher tolerance due to int8/fp16 weight quantization
@@ -122,8 +128,6 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
 def test_quantized_gru_packed_data(bidirectional):
-    from flag_gems.ops.quantized_gru import quantized_gru_data
-
     torch.manual_seed(0)
     batch_size, seq_len, input_size, hidden_size = 3, 5, 8, 20
     directions = 2 if bidirectional else 1
@@ -141,8 +145,9 @@ def test_quantized_gru_packed_data(bidirectional):
     hx_cpu = torch.zeros(directions, batch_size, hidden_size)
     ref_output, ref_hx = ref_gru(packed, hx_cpu)
 
-    output, out_hx = quantized_gru_data(
-        packed.data.to(flag_gems.device),
+    target_data = packed.data.to(flag_gems.device)
+    output, out_hx = _run_gru_candidate(
+        target_data,
         packed.batch_sizes,
         hx_cpu.to(flag_gems.device),
         params,
@@ -151,7 +156,10 @@ def test_quantized_gru_packed_data(bidirectional):
         0.0,
         False,
         bidirectional,
+        packed=True,
     )
+    assert output.device == target_data.device and output.dtype == target_data.dtype
+    assert out_hx.device == target_data.device and out_hx.dtype == hx_cpu.dtype
     # Quantized GRU: custom tolerance due to quantization error
     torch.testing.assert_close(output.cpu(), ref_output.data, rtol=0.08, atol=0.15)
     torch.testing.assert_close(out_hx.cpu(), ref_hx, rtol=0.08, atol=0.15)

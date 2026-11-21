@@ -4,12 +4,12 @@
 import pytest
 import torch
 
-from flag_gems.ops.quantized_gru import quantized_gru_input
+import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
-SHAPES = [(1, 4, 10, 20), (10, 8, 32, 64), (32, 16, 64, 128)]
+SHAPES = [(1, 4, 10, 20), (10, 8, 32, 64), (32, 16, 64, 128), (64, 32, 128, 256)]
 _FLOAT_PARAMS = {}
 
 
@@ -49,8 +49,16 @@ def _torch_gru(value, hx, params, has_biases, num_layers, dropout, train, bidire
 
 @pytest.mark.quantized_gru
 def test_quantized_gru():
-    QuantizedGruBenchmark(
-        op_name="quantized_gru", torch_op=_torch_gru, gems_op=quantized_gru_input,
+    if flag_gems.vendor_name == "hygon" and not (
+        base.Config.list_cases or base.Config.preflight_only
+    ):
+        pytest.skip("PyTorch has no native quantized_gru accelerator kernel on Hygon")
+    bench = QuantizedGruBenchmark(
+        op_name="quantized_gru", torch_op=_torch_gru,
         case_fn=_case_fn, build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32, torch.float16],
-    ).run()
+    )
+    registry = base.Config.override_registry
+    if registry is None or registry.get_override(bench.op_name) is None:
+        bench.set_gems(flag_gems.quantized_gru_input)
+    bench.run()
