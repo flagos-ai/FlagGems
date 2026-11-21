@@ -266,6 +266,53 @@ def isin_by_search(
     return out.view_as(in0)
 
 
+_ISIN_INTEGER_DTYPES = (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["value"])
+def _isin_tensor_scalar_kernel(
+    inp,
+    out,
+    value,
+    N: tl.constexpr,
+    SHAPE: tl.constexpr,
+    STRIDES: tl.constexpr,
+    CONTIGUOUS: tl.constexpr,
+    INVERT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    STREAMING: tl.constexpr,
+):
+    load_cache: tl.constexpr = ".cg" if STREAMING else ""
+    store_cache: tl.constexpr = ".cs" if STREAMING else ""
+    pid = tl.program_id(0)
+    if N > 2147483647:
+        index = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    else:
+        index = pid * BLOCK + tl.arange(0, BLOCK)
+    if CONTIGUOUS:
+        offset = index
+    else:
+        offset = tl.full((BLOCK,), 0, tl.int64)
+        remaining = index
+        for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
+            coord = remaining % SHAPE[axis]
+            remaining = remaining // SHAPE[axis]
+            offset += coord.to(tl.int64) * STRIDES[axis]
+    if N % BLOCK == 0:
+        x = tl.load(inp + offset, cache_modifier=load_cache)
+    else:
+        x = tl.load(inp + offset, index < N, other=0, cache_modifier=load_cache)
+    # Match native Tensor-Scalar equality, including wrapped integer scalars.
+    result = x == value.to(x.dtype)
+    if INVERT:
+        result = ~result
+    if N % BLOCK == 0:
+        tl.store(out + index, result, cache_modifier=store_cache)
+    else:
+        tl.store(out + index, result, index < N, cache_modifier=store_cache)
+
+
 def isin(
     in0,
     in1,
@@ -273,7 +320,45 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS_HYGON ALLCLOSE")
+    logger.debug("GEMS_HYGON ISIN")
+
+    if (
+        torch.is_tensor(in0)
+        and type(in1) is int
+        and in0.dtype in _ISIN_INTEGER_DTYPES
+        and -(1 << 63) <= in1 < (1 << 63)
+    ):
+        out = torch.empty(in0.shape, dtype=torch.bool, device=in0.device)
+        count = in0.numel()
+        if count:
+            contiguous = in0.is_contiguous()
+            shape = () if contiguous else tuple(in0.shape)
+            strides = () if contiguous else tuple(in0.stride())
+            streaming = contiguous and count >= 1 << 24
+            if not contiguous or count <= 8192:
+                block, warps = 512, 4
+            elif in0.dtype == torch.int16:
+                block, warps = (4096, 8) if streaming else (2048, 4)
+            elif in0.dtype == torch.int32:
+                block, warps = (2048, 8) if streaming else (1024, 4)
+            else:
+                block, warps = 512, 4
+            with torch_device_fn.device(in0.device):
+                _isin_tensor_scalar_kernel[(triton.cdiv(count, block),)](
+                    in0,
+                    out,
+                    in1,
+                    count,
+                    shape,
+                    strides,
+                    contiguous,
+                    invert,
+                    BLOCK=block,
+                    STREAMING=streaming,
+                    num_warps=warps,
+                )
+        return out
+
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
         in0 = torch.tensor(in0, device=in1.device)
