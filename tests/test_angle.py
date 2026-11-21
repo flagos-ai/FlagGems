@@ -62,3 +62,110 @@ def test_angle(shape, dtype):
 
     dtype_out = res_out.dtype
     utils.gems_assert_close(res_out, ref_out, dtype_out)
+
+
+ANGLE_BACKWARD_SHAPES = [(), (1,), (37,), (31, 47), (4, 5, 7)]
+
+
+@pytest.mark.angle_backward
+@pytest.mark.parametrize("shape", ANGLE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_angle_backward_complex(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    grad = torch.randn(shape, dtype=inp.real.dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    expected = torch.autograd.grad(
+        torch.angle(ref_inp), ref_inp, utils.to_reference(grad, False)
+    )[0]
+    result = flag_gems.angle_backward(grad, inp)
+    utils.gems_assert_close(result, expected, dtype)
+
+
+@pytest.mark.angle_backward
+@pytest.mark.parametrize("shape", ANGLE_BACKWARD_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_angle_backward_real(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn_like(inp)
+    result = flag_gems.angle_backward(grad, inp)
+    utils.gems_assert_equal(result, torch.zeros_like(inp))
+
+
+@pytest.mark.angle_backward
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_angle_backward_zero_and_axes(dtype):
+    inp = torch.tensor(
+        [0.0j, 1.0 + 0.0j, 0.0 + 1.0j, -2.0 + 3.0j],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    grad = torch.tensor([1.0, -2.0, 3.0, -4.0], dtype=inp.real.dtype).to(
+        flag_gems.device
+    )
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    expected = torch.autograd.grad(
+        torch.angle(ref_inp), ref_inp, utils.to_reference(grad, False)
+    )[0]
+    result = flag_gems.angle_backward(grad, inp)
+    utils.gems_assert_close(result, expected, dtype)
+
+
+@pytest.mark.angle_backward
+def test_angle_backward_registered_dispatch():
+    inp = torch.randn(
+        (31, 47), dtype=torch.complex64, device=flag_gems.device, requires_grad=True
+    )
+    grad = torch.randn((31, 47), dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    expected = torch.autograd.grad(
+        torch.angle(ref_inp), ref_inp, utils.to_reference(grad, False)
+    )[0]
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["angle"])
+        output = torch.angle(inp)
+        assert "AngleFunction" in type(output.grad_fn).__name__
+        result = torch.autograd.grad(output, inp, grad)[0]
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    utils.gems_assert_close(result, expected, torch.complex64)
+
+
+@pytest.mark.angle_backward
+def test_angle_backward_noncontiguous():
+    inp = torch.randn(
+        (13, 17, 19), dtype=torch.complex64, device=flag_gems.device
+    ).transpose(0, 2)
+    grad = torch.randn(
+        (13, 17, 19), dtype=torch.float32, device=flag_gems.device
+    ).transpose(0, 2)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    expected = torch.autograd.grad(
+        torch.angle(ref_inp), ref_inp, utils.to_reference(grad, False)
+    )[0]
+    result = flag_gems.angle_backward(grad, inp)
+    utils.gems_assert_close(result, expected, torch.complex64)
+
+
+@pytest.mark.angle_backward
+def test_angle_backward_single_kernel():
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = torch.randn((64, 512), dtype=torch.complex64, device=flag_gems.device)
+    grad = torch.randn((64, 512), dtype=torch.float32, device=flag_gems.device)
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        flag_gems.angle_backward(grad, inp)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "angle" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches

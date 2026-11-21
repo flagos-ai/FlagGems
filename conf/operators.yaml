@@ -1566,6 +1566,18 @@ ops:
   - Math
   stages:
   - stable: '3.0'
+- id: angle_backward
+  description: Computes the input gradient of angle in one Triton launch.
+  for:
+  - angle
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: any
   description: Tests if any element in `input` evaluates to True.
   for:
